@@ -1,0 +1,8 @@
+// Plik zasobów Windows - definiuje ikonę aplikacji
+// Ordinal 1 - ikona exe (Explorer, pasek zadań, Alt+Tab)
+1 ICON "icon.ico"
+// Named resource - ikona tray (ładowana przez NWG po nazwie)
+APP_ICON ICON "icon.ico"
+APP_ICON_ATTENTION ICON "icon_attention.ico"
+// Manifest - wymusza Common Controls v6 (GetWindowSubclass)
+1 24 "app.manifest"

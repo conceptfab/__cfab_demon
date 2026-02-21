@@ -1,0 +1,283 @@
+// Moduł system tray - ikona w zasobniku systemowym z menu kontekstowym
+
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use native_windows_gui as nwg;
+
+use crate::APP_NAME;
+const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
+
+/// Sposób zakończenia pętli tray.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrayExitAction {
+    Exit,
+    Restart,
+}
+
+fn load_assignment_attention_count() -> i64 {
+    let path = match crate::config::config_dir() {
+        Ok(dir) => dir.join(ASSIGNMENT_SIGNAL_FILE),
+        Err(_) => return 0,
+    };
+    let raw = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => return 0,
+    };
+    raw.trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|v| *v > 0)
+        .unwrap_or(0)
+}
+
+fn build_tray_tip() -> String {
+    let attention = load_assignment_attention_count();
+    if attention > 0 {
+        format!("{} * - {} unassigned session(s)", APP_NAME, attention)
+    } else {
+        format!("{} - running in background", APP_NAME)
+    }
+}
+
+/// Inicjalizuje i uruchamia pętlę zdarzeń z ikoną w tray.
+/// `stop_signal` — ustawiany na true przy zamknięciu.
+/// Zwraca informację, czy użytkownik poprosił o restart.
+pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
+    nwg::init().expect("Nie udało się zainicjalizować NWG");
+
+    let mut window = nwg::MessageWindow::default();
+    nwg::MessageWindow::builder()
+        .build(&mut window)
+        .expect("Nie udało się utworzyć MessageWindow");
+
+    let embed = nwg::EmbedResource::load(None).expect("Nie można załadować zasobów exe");
+    let icon = embed
+        .icon_str("APP_ICON", None)
+        .expect("Nie znaleziono ikony APP_ICON w zasobach");
+    
+    let icon_attention = embed
+        .icon_str("APP_ICON_ATTENTION", None)
+        .unwrap_or_else(|| {
+            embed
+                .icon_str("APP_ICON", None)
+                .expect("Nie znaleziono ikony APP_ICON w zasobach")
+        });
+
+    let tip = build_tray_tip();
+
+    let mut tray_obj = nwg::TrayNotification::default();
+    nwg::TrayNotification::builder()
+        .parent(&window)
+        .icon(Some(&icon))
+        .tip(Some(&tip))
+        .build(&mut tray_obj)
+        .expect("Nie udało się utworzyć ikony tray");
+    let tray = Rc::new(RefCell::new(tray_obj));
+
+    let mut tip_refresh_timer = nwg::AnimationTimer::default();
+    nwg::AnimationTimer::builder()
+        .parent(&window)
+        .interval(Duration::from_secs(5))
+        .active(true)
+        .build(&mut tip_refresh_timer)
+        .expect("Nie udało się utworzyć timera odświeżania tipa tray");
+
+    let mut menu = nwg::Menu::default();
+    nwg::Menu::builder()
+        .popup(true)
+        .parent(&window)
+        .build(&mut menu)
+        .expect("Nie udało się utworzyć menu");
+
+    let mut menu_exit = nwg::MenuItem::default();
+    nwg::MenuItem::builder()
+        .text("Wyjście")
+        .parent(&menu)
+        .build(&mut menu_exit)
+        .expect("Nie udało się utworzyć pozycji menu Wyjście");
+
+    let mut menu_restart = nwg::MenuItem::default();
+    nwg::MenuItem::builder()
+        .text("Restart")
+        .parent(&menu)
+        .build(&mut menu_restart)
+        .expect("Nie udało się utworzyć pozycji menu Restart");
+
+    let mut menu_dashboard = nwg::MenuItem::default();
+    nwg::MenuItem::builder()
+        .text("Uruchom Dashboard")
+        .parent(&menu)
+        .build(&mut menu_dashboard)
+        .expect("Nie udało się utworzyć pozycji menu Uruchom Dashboard");
+
+    let window_handle = window.handle;
+    let tray_handle = tray.borrow().handle;
+    let exit_handle = menu_exit.handle;
+    let restart_handle = menu_restart.handle;
+    let dashboard_handle = menu_dashboard.handle;
+    let tip_timer_handle = tip_refresh_timer.handle.clone();
+    let menu = Rc::new(menu);
+    let menu_clone = menu.clone();
+    let tray_clone = tray.clone();
+
+    let stop_clone = stop_signal.clone();
+    let action = Arc::new(Mutex::new(TrayExitAction::Exit));
+    let action_clone = action.clone();
+
+    let handler =
+        nwg::full_bind_event_handler(&window_handle, move |evt, _evt_data, handle| match evt {
+            nwg::Event::OnContextMenu => {
+                if handle == tray_handle {
+                    let refreshed_tip = build_tray_tip();
+                    tray_clone.borrow_mut().set_tip(&refreshed_tip);
+                    let (x, y) = nwg::GlobalCursor::position();
+                    menu_clone.popup(x, y);
+                }
+            }
+
+            nwg::Event::OnTimerTick => {
+                if handle == tip_timer_handle {
+                    let attention = load_assignment_attention_count();
+                    let refreshed_tip = if attention > 0 {
+                        format!("{} * - {} unassigned session(s)", APP_NAME, attention)
+                    } else {
+                        format!("{} - running in background", APP_NAME)
+                    };
+                    
+                    let tray = tray_clone.borrow_mut();
+                    tray.set_tip(&refreshed_tip);
+                    
+                    if attention > 0 {
+                        tray.set_icon(&icon_attention);
+                    } else {
+                        tray.set_icon(&icon);
+                    }
+                }
+            }
+
+            nwg::Event::OnMenuItemSelected => {
+                if handle == exit_handle {
+                    log::info!("Zamykanie demona");
+                    stop_clone.store(true, Ordering::SeqCst);
+                    nwg::stop_thread_dispatch();
+                } else if handle == restart_handle {
+                    log::info!("Restart demona z menu tray");
+                    if let Ok(mut a) = action_clone.lock() {
+                        *a = TrayExitAction::Restart;
+                    }
+                    stop_clone.store(true, Ordering::SeqCst);
+                    nwg::stop_thread_dispatch();
+                } else if handle == dashboard_handle {
+                    log::info!("Uruchamianie Dashboard z menu tray");
+                    launch_dashboard();
+                }
+            }
+
+            _ => {}
+        });
+
+    log::info!("Demon uruchomiony - ikona w zasobniku systemowym");
+
+    nwg::dispatch_thread_events();
+
+    // Ukryj ikonę tray przed wyjściem
+    tray.borrow().set_visibility(false);
+
+    nwg::unbind_event_handler(&handler);
+    log::info!("Demon zatrzymany");
+
+    // Zwróć żądaną akcję wyjścia (Exit / Restart).
+    action.lock().map(|a| *a).unwrap_or(TrayExitAction::Exit)
+}
+
+fn is_dashboard_running() -> bool {
+    use sysinfo::System;
+    let s = System::new_all();
+    s.processes().values().any(|p| {
+        let name = p.name().to_lowercase();
+        name.contains("cfab-dashboard")
+            || name.contains("cfab_dashboard")
+            || name.contains("cfabdashboard")
+    })
+}
+
+fn launch_dashboard() {
+    use std::process::Command;
+
+    if is_dashboard_running() {
+        log::info!("Dashboard już działa");
+        return;
+    }
+
+    let daemon_exe = match std::env::current_exe() {
+        Ok(path) => path,
+        Err(e) => {
+            log::error!("Nie można ustalić ścieżki exe: {}", e);
+            return;
+        }
+    };
+
+    let daemon_dir = match daemon_exe.parent() {
+        Some(dir) => dir,
+        None => {
+            log::error!("Nie można ustalić katalogu exe");
+            return;
+        }
+    };
+
+    // Nazwy exe dashboardu (Tauri productName -> CfabDashboard, Cargo -> cfab-dashboard)
+    let exe_names = [
+        "cfab-dashboard.exe",
+        "CfabDashboard.exe",
+        "cfab_dashboard.exe",
+    ];
+
+    let mut possible_paths = Vec::new();
+    for name in &exe_names {
+        possible_paths.push(daemon_dir.join(name));
+    }
+    // Lokalizacja deweloperska
+    for name in &exe_names {
+        possible_paths.push(
+            daemon_dir
+                .join("dashboard")
+                .join("src-tauri")
+                .join("target")
+                .join("release")
+                .join(name),
+        );
+    }
+
+    let dashboard_exe = possible_paths.iter().find(|p| p.exists());
+
+    if let Some(path) = dashboard_exe {
+        match Command::new(path).spawn() {
+            Ok(_) => log::info!("Dashboard uruchomiony: {:?}", path),
+            Err(e) => log::error!("Błąd uruchamiania Dashboard: {}", e),
+        }
+    } else {
+        log::error!("Nie znaleziono dashboard exe w {:?}", daemon_dir);
+        show_error_message("Nie znaleziono Dashboardu (cfab-dashboard.exe).\nUpewnij się, że plik jest w tym samym folderze co cfab-demon.exe.");
+    }
+}
+
+fn show_error_message(msg: &str) {
+    use std::ptr;
+    let title: Vec<u16> = "Cfab Demon"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let text: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
+    unsafe {
+        winapi::um::winuser::MessageBoxW(
+            ptr::null_mut(),
+            text.as_ptr(),
+            title.as_ptr(),
+            winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONWARNING,
+        );
+    }
+}

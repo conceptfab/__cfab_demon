@@ -1,0 +1,38 @@
+# Rust/Cargo build artifacts
+target/
+
+# Python / build output
+dist/
+*.pyc
+__pycache__/
+.venv/
+venv/
+*.egg-info/
+*.egg
+
+# Node (root level)
+node_modules/
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / editor (local)
+.claude/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/

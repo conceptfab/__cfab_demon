@@ -1,0 +1,28 @@
+mod analysis;
+mod assignment_model;
+mod daemon;
+mod dashboard;
+mod export;
+mod helpers;
+mod import;
+mod import_data;
+mod manual_sessions;
+mod monitored;
+mod projects;
+mod sessions;
+mod settings;
+mod types;
+
+// Re-export all public commands (required by tauri::generate_handler![])
+pub use analysis::*;
+pub use assignment_model::*;
+pub use daemon::*;
+pub use dashboard::*;
+pub use export::*;
+pub use import::*;
+pub use import_data::*;
+pub use manual_sessions::*;
+pub use monitored::*;
+pub use projects::*;
+pub use sessions::*;
+pub use settings::*;

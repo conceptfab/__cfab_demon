@@ -1,0 +1,813 @@
+use std::sync::atomic::Ordering;
+use tauri::AppHandle;
+
+use super::analysis::compute_project_activity_unique;
+use super::helpers::{LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
+use super::types::{DateRange, FolderProjectCandidate, Project, ProjectFolder, ProjectWithStats};
+use crate::db;
+use rusqlite::OptionalExtension;
+
+pub(crate) fn load_project_folders_from_db(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<ProjectFolder>, String> {
+    let mut stmt = conn
+        .prepare_cached("SELECT path, added_at FROM project_folders ORDER BY added_at")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(ProjectFolder {
+                path: row.get(0)?,
+                added_at: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(rows
+        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
+        .collect())
+}
+
+fn cleanup_missing_project_folders(conn: &rusqlite::Connection) -> Result<usize, String> {
+    let folders = load_project_folders_from_db(conn)?;
+    let missing: Vec<&str> = folders
+        .iter()
+        .filter(|f| {
+            let p = std::path::PathBuf::from(&f.path);
+            !(p.exists() && p.is_dir())
+        })
+        .map(|f| f.path.as_str())
+        .collect();
+
+    if missing.is_empty() {
+        return Ok(0);
+    }
+
+    let placeholders: Vec<String> = (1..=missing.len())
+        .map(|i| format!("lower(?{})", i))
+        .collect();
+    let sql = format!(
+        "DELETE FROM project_folders WHERE lower(path) IN ({})",
+        placeholders.join(", ")
+    );
+    let params: Vec<&dyn rusqlite::types::ToSql> = missing
+        .iter()
+        .map(|s| s as &dyn rusqlite::types::ToSql)
+        .collect();
+    let removed = conn
+        .execute(&sql, params.as_slice())
+        .map_err(|e| e.to_string())?;
+
+    if removed > 0 {
+        log::info!(
+            "Removed {} missing project folder(s) from database during refresh",
+            removed
+        );
+    }
+    Ok(removed)
+}
+
+fn prune_projects_missing_on_disk(conn: &rusqlite::Connection) -> Result<usize, String> {
+    // Safety: never delete user projects during background refresh.
+    // Keep only folder-root cleanup here to avoid stale paths.
+    let removed_folders = cleanup_missing_project_folders(conn)?;
+    if removed_folders > 0 {
+        log::info!(
+            "Cleaned {} missing project folder root(s) during refresh",
+            removed_folders
+        );
+    }
+    Ok(0)
+}
+
+fn prune_if_stale(conn: &rusqlite::Connection) -> Result<usize, String> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let last = LAST_PRUNE_EPOCH_SECS.load(Ordering::Relaxed);
+    if now.saturating_sub(last) < PRUNE_CACHE_TTL_SECS {
+        return Ok(0);
+    }
+    let result = prune_projects_missing_on_disk(conn);
+    if result.is_ok() {
+        LAST_PRUNE_EPOCH_SECS.store(now, Ordering::Relaxed);
+    }
+    result
+}
+
+pub(crate) fn project_color_for_name(name: &str) -> String {
+    let palette = [
+        "#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee",
+    ];
+    let idx = name
+        .bytes()
+        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32)) as usize
+        % palette.len();
+    palette[idx].to_string()
+}
+
+pub(crate) fn project_exists_by_name(conn: &rusqlite::Connection, name: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) > 0 FROM projects WHERE lower(name) = lower(?1)",
+        [name],
+        |row| row.get(0),
+    )
+    .unwrap_or(false)
+}
+
+pub(crate) fn create_project_if_missing(
+    conn: &rusqlite::Connection,
+    name: &str,
+) -> Result<bool, String> {
+    if project_exists_by_name(conn, name) {
+        return Ok(false);
+    }
+    conn.execute(
+        "INSERT INTO projects (name, color) VALUES (?1, ?2)",
+        rusqlite::params![name, project_color_for_name(name)],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// Sprawdza czy ścieżka pliku sugeruje przynależność do projektu
+fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> Option<String> {
+    let path = std::path::Path::new(file_path);
+
+    // Sprawdź każdy folder projektu
+    for root in project_roots {
+        let root_path = std::path::Path::new(&root.path);
+        match path.strip_prefix(&root_path) {
+            Ok(relative_path) => {
+                // Plik jest wewnątrz folderu projektu
+                // Wyodrębnij nazwę projektu ze ścieżki
+                if let Some(first_component) = relative_path.components().next() {
+                    let project_name = first_component.as_os_str().to_string_lossy().into_owned();
+                    return Some(project_name);
+                }
+            }
+            Err(_) => {}
+        }
+    }
+    None
+}
+
+/// Próbuje wyłuskać nazwę projektu z tytułu pliku.
+fn infer_project_name_from_file_title(
+    title: &str,
+    project_roots: &[ProjectFolder],
+) -> Option<String> {
+    // Najpierw sprawdź ścieżkę pliku
+    if let Some(project_from_path) = infer_project_from_path(title, project_roots) {
+        return Some(project_from_path);
+    }
+
+    // Jeśli tytuł ma format "plik - folder", wyciągnij folder jako nazwę projektu
+    if let Some(pos) = title.rfind(" - ") {
+        let candidate = title[pos + 3..].trim();
+        if !candidate.is_empty() {
+            return Some(candidate.to_string());
+        }
+    }
+    
+    // Jeśli żadna inna metoda nie zadziałała, przekaż pełen tekst jako fallback
+    // ensure_app_project_from_file_hint sprawdzi najpierw wyciągnięty tekst,
+    // a jeśli nie, to spróbuje oryginału.
+    Some(title.trim().to_string())
+}
+
+/// Jeśli nazwa projektu z pliku pasuje do istniejącego projektu,
+/// zwraca project_id dla pliku.
+pub(crate) fn ensure_app_project_from_file_hint(
+    conn: &rusqlite::Connection,
+    file_name: &str,
+    project_roots: &[ProjectFolder],
+) -> Option<i64> {
+    if file_name.trim() == "(background)" {
+        return None;
+    }
+
+    let mut candidates = Vec::new();
+    
+    // Najpierw cały string i heurystyka ścieżkowa.
+    candidates.push(file_name.trim().to_string());
+    if let Some(inferred) = infer_project_name_from_file_title(file_name, project_roots) {
+        candidates.push(inferred);
+    }
+    
+    // Następnie dodajmy KAŻDĄ część po podziale myślnikiem jako potencjalną nazwę projektu. 
+    // Jeżeli okno to np. "__cfab_demon - Antigravity", to sprawdzimy zarówno "__cfab_demon" jak i "Antigravity".
+    for part in file_name.split(" - ") {
+        let trimmed = part.trim();
+        if !trimmed.is_empty() {
+            candidates.push(trimmed.to_string());
+        }
+    }
+    
+    // Sprawdź również alternatywne separatory, jakie demon czasami zostawia
+    for part in file_name.split(" | ") {
+        let trimmed = part.trim();
+        if !trimmed.is_empty() && !candidates.contains(&trimmed.to_string()) {
+            candidates.push(trimmed.to_string());
+        }
+    }
+
+    for candidate_name in candidates {
+        let proj_id: Option<i64> = match conn.query_row(
+            "SELECT id FROM projects WHERE lower(name) = lower(?1)",
+            [candidate_name.as_str()],
+            |row| row.get(0),
+        ) {
+            Ok(id) => Some(id),
+            Err(rusqlite::Error::QueryReturnedNoRows) => None,
+            Err(e) => {
+                log::warn!(
+                    "Failed to resolve project '{}' from file hint '{}': {}",
+                    candidate_name,
+                    file_name,
+                    e
+                );
+                None
+            }
+        };
+
+        if proj_id.is_some() {
+            return proj_id;
+        }
+    }
+    
+    None
+}
+
+fn query_projects_with_stats(
+    conn: &rusqlite::Connection,
+    excluded: bool,
+) -> Result<Vec<ProjectWithStats>, String> {
+    let filter = if excluded {
+        "p.excluded_at IS NOT NULL"
+    } else {
+        "p.excluded_at IS NULL"
+    };
+
+    let (min_date, max_date): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT MIN(d), MAX(d)
+             FROM (
+                 SELECT date as d FROM sessions
+                 UNION ALL
+                 SELECT date as d FROM manual_sessions
+             )",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut totals_ci: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    if let (Some(start), Some(end)) = (min_date, max_date) {
+        let (_, totals) = compute_project_activity_unique(conn, &DateRange { start, end }, false)?;
+        totals_ci = totals
+            .into_iter()
+            .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
+            .collect();
+    }
+
+    let sql = format!(
+        "SELECT p.id, p.name, p.color, p.created_at, p.excluded_at,
+                COUNT(DISTINCT a.id) as app_count,
+                (SELECT MAX(s.end_time)
+                 FROM sessions s
+                 JOIN applications a2 ON a2.id = s.app_id
+                 WHERE a2.project_id = p.id) as last_session_activity,
+                (SELECT MAX(ms.end_time)
+                 FROM manual_sessions ms
+                 WHERE ms.project_id = p.id) as last_manual_activity,
+                p.assigned_folder_path
+         FROM projects p
+         LEFT JOIN applications a ON a.project_id = p.id
+         WHERE {}
+         GROUP BY p.id
+         ORDER BY p.id",
+        filter
+    );
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            let name: String = row.get(1)?;
+            let key = name.to_lowercase();
+            let last_session: Option<String> = row.get(6)?;
+            let last_manual: Option<String> = row.get(7)?;
+            let last_activity = match (last_session, last_manual) {
+                (Some(a), Some(b)) => Some(if a >= b { a } else { b }),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            };
+            Ok(ProjectWithStats {
+                id: row.get(0)?,
+                name,
+                color: row.get(2)?,
+                created_at: row.get::<_, String>(3).unwrap_or_default(),
+                excluded_at: row.get(4)?,
+                total_seconds: *totals_ci.get(&key).unwrap_or(&0),
+                app_count: row.get(5)?,
+                last_activity,
+                assigned_folder_path: row.get(8)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out: Vec<ProjectWithStats> = rows
+        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
+        .collect();
+
+    if excluded {
+        out.sort_by(|a, b| {
+            b.excluded_at
+                .as_deref()
+                .unwrap_or("")
+                .cmp(a.excluded_at.as_deref().unwrap_or(""))
+        });
+    } else {
+        out.sort_by(|a, b| {
+            b.total_seconds
+                .cmp(&a.total_seconds)
+                .then_with(|| a.name.cmp(&b.name))
+        });
+    }
+
+    Ok(out)
+}
+
+pub(crate) fn collect_project_subfolders(roots: &[ProjectFolder]) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for root in roots {
+        let root_path = std::path::PathBuf::from(&root.path);
+        if !root_path.exists() || !root_path.is_dir() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(&root_path) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
+                Some(v) if !v.trim().is_empty() => v,
+                _ => continue,
+            };
+            let folder_path = p.to_string_lossy().to_string();
+            if !seen.insert(folder_path.clone()) {
+                continue;
+            }
+            out.push((name, folder_path, root.path.clone()));
+        }
+    }
+    out
+}
+
+// ==================== Tauri Commands ====================
+
+#[tauri::command]
+pub async fn get_projects(app: AppHandle) -> Result<Vec<ProjectWithStats>, String> {
+    let conn = db::get_connection(&app)?;
+    prune_if_stale(&conn)?;
+    query_projects_with_stats(&conn, false)
+}
+
+#[tauri::command]
+pub async fn get_excluded_projects(app: AppHandle) -> Result<Vec<ProjectWithStats>, String> {
+    let conn = db::get_connection(&app)?;
+    prune_if_stale(&conn)?;
+    query_projects_with_stats(&conn, true)
+}
+
+#[tauri::command]
+pub async fn create_project(
+    app: AppHandle,
+    name: String,
+    color: String,
+    assigned_folder_path: Option<String>,
+) -> Result<Project, String> {
+    let conn = db::get_connection(&app)?;
+
+    let mut normalized_folder = None;
+    if let Some(path) = assigned_folder_path {
+        let raw = path.trim();
+        if !raw.is_empty() {
+            if let Ok(canonical) = std::fs::canonicalize(raw) {
+                if canonical.is_dir() {
+                    let norm = canonical.to_string_lossy().to_string();
+                    let added_at = chrono::Local::now().to_rfc3339();
+                    conn.execute(
+                        "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
+                        rusqlite::params![norm, added_at],
+                    ).map_err(|e| e.to_string())?;
+                    normalized_folder = Some(norm);
+                }
+            }
+        }
+    }
+
+    conn.execute(
+        "INSERT INTO projects (name, color, assigned_folder_path) VALUES (?1, ?2, ?3)",
+        rusqlite::params![name, color, normalized_folder],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let id = conn.last_insert_rowid();
+    Ok(Project {
+        id,
+        name,
+        color,
+        created_at: chrono::Local::now().to_rfc3339(),
+        excluded_at: None,
+        assigned_folder_path: normalized_folder,
+        is_imported: 0,
+    })
+}
+
+#[tauri::command]
+pub async fn update_project(
+    app: AppHandle,
+    id: i64,
+    color: String,
+) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    let updated = conn
+        .execute(
+            "UPDATE projects SET color = ?2 WHERE id = ?1",
+            rusqlite::params![id, color],
+        )
+        .map_err(|e| e.to_string())?;
+    if updated == 0 {
+        return Err("Project not found".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    if let Err(e) = conn.execute(
+        "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
+        [id],
+    ) {
+        log::warn!(
+            "Failed to clear project references for project {}: {}",
+            id,
+            e
+        );
+    }
+    conn.execute(
+        "UPDATE projects
+         SET excluded_at = COALESCE(excluded_at, datetime('now'))
+         WHERE id = ?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    conn.execute("UPDATE projects SET excluded_at = NULL WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_project(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    if let Err(e) = conn.execute(
+        "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
+        [id],
+    ) {
+        log::warn!(
+            "Failed to clear project references for project {}: {}",
+            id,
+            e
+        );
+    }
+    conn.execute("DELETE FROM projects WHERE id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn assign_app_to_project(
+    app: AppHandle,
+    app_id: i64,
+    project_id: Option<i64>,
+) -> Result<(), String> {
+    let mut conn = db::get_connection(&app)?;
+    
+    // Fetch old project id for feedback loop
+    let old_project_id: Option<i64> = conn.query_row(
+        "SELECT project_id FROM applications WHERE id = ?1",
+        [app_id],
+        |row| row.get(0)
+    ).optional().map_err(|e: rusqlite::Error| e.to_string())?;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE applications SET project_id = ?2 WHERE id = ?1",
+        rusqlite::params![app_id, project_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    match project_id {
+        Some(pid) => {
+            tx.execute(
+                "UPDATE file_activities
+                 SET project_id = ?2
+                 WHERE app_id = ?1 AND (project_id IS NULL OR project_id = ?2)",
+                rusqlite::params![app_id, pid],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        None => {
+            tx.execute(
+                "UPDATE file_activities SET project_id = NULL WHERE app_id = ?1",
+                [app_id],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
+
+    // Insert feedback
+    tx.execute(
+        "INSERT INTO assignment_feedback (app_id, from_project_id, to_project_id, source, created_at)
+         VALUES (?1, ?2, ?3, 'manual_app_assign', datetime('now'))",
+        rusqlite::params![app_id, old_project_id, project_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Increment feedback counter
+    tx.execute(
+        "INSERT INTO assignment_model_state (key, value, updated_at)
+         VALUES ('feedback_since_train', '1', datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+           value = CAST(COALESCE(NULLIF(assignment_model_state.value, ''), '0') AS INTEGER) + 1,
+           updated_at = datetime('now')",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_project_folders(app: AppHandle) -> Result<Vec<ProjectFolder>, String> {
+    let conn = db::get_connection(&app)?;
+    cleanup_missing_project_folders(&conn)?;
+    load_project_folders_from_db(&conn)
+}
+
+#[tauri::command]
+pub async fn add_project_folder(app: AppHandle, path: String) -> Result<(), String> {
+    let raw = path.trim();
+    if raw.is_empty() {
+        return Err("Path cannot be empty".to_string());
+    }
+    log::info!("add_project_folder called with path='{}'", raw);
+    let canonical = std::fs::canonicalize(raw).map_err(|e| e.to_string())?;
+    if !canonical.is_dir() {
+        return Err("Path is not a directory".to_string());
+    }
+
+    let normalized = canonical.to_string_lossy().to_string();
+    let conn = db::get_connection(&app)?;
+    let added_at = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
+        rusqlite::params![normalized, added_at],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut created = 0usize;
+    let entries = std::fs::read_dir(&canonical).map_err(|e| e.to_string())?;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let p = entry.path();
+        if !p.is_dir() {
+            continue;
+        }
+        let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
+            Some(v) if !v.trim().is_empty() => v,
+            _ => continue,
+        };
+        if create_project_if_missing(&conn, &name)? {
+            created += 1;
+        }
+    }
+    log::info!(
+        "Added project root '{}' and auto-created {} project(s)",
+        normalized,
+        created
+    );
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_project_folder(app: AppHandle, path: String) -> Result<(), String> {
+    let normalized = path.trim().to_string();
+    let conn = db::get_connection(&app)?;
+    conn.execute(
+        "DELETE FROM project_folders WHERE lower(path) = lower(?1)",
+        [normalized],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_folder_project_candidates(
+    app: AppHandle,
+) -> Result<Vec<FolderProjectCandidate>, String> {
+    let conn = db::get_connection(&app)?;
+    let roots = load_project_folders_from_db(&conn)?;
+    let mut out = Vec::new();
+    for (name, folder_path, root_path) in collect_project_subfolders(&roots) {
+        out.push(FolderProjectCandidate {
+            already_exists: project_exists_by_name(&conn, &name),
+            name,
+            folder_path,
+            root_path,
+        });
+    }
+
+    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn create_project_from_folder(
+    app: AppHandle,
+    folder_path: String,
+) -> Result<Project, String> {
+    let canonical = std::fs::canonicalize(folder_path.trim()).map_err(|e| e.to_string())?;
+    if !canonical.is_dir() {
+        return Err("Folder does not exist".to_string());
+    }
+    let name = canonical
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| "Cannot infer project name from folder".to_string())?;
+    let conn = db::get_connection(&app)?;
+    if !create_project_if_missing(&conn, &name)? {
+        return Err("Project already exists".to_string());
+    }
+
+    let id: i64 = conn
+        .query_row(
+            "SELECT id FROM projects WHERE lower(name)=lower(?1)",
+            [&name],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(Project {
+        id,
+        name: name.clone(),
+        color: project_color_for_name(&name),
+        created_at: chrono::Local::now().to_rfc3339(),
+        excluded_at: None,
+        assigned_folder_path: None,
+        is_imported: 0,
+    })
+}
+
+#[tauri::command]
+pub async fn sync_projects_from_folders(app: AppHandle) -> Result<usize, String> {
+    let conn = db::get_connection(&app)?;
+    let roots = load_project_folders_from_db(&conn)?;
+    let mut created = 0usize;
+
+    for (name, _, _) in collect_project_subfolders(&roots) {
+        if create_project_if_missing(&conn, &name)? {
+            created += 1;
+        }
+    }
+
+    Ok(created)
+}
+
+#[tauri::command]
+pub async fn auto_create_projects_from_detection(
+    app: AppHandle,
+    date_range: DateRange,
+    min_occurrences: i64,
+) -> Result<usize, String> {
+    let conn = db::get_connection(&app)?;
+    let threshold = min_occurrences.max(2);
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT fa.file_name
+             FROM file_activities fa
+             WHERE fa.date >= ?1 AND fa.date <= ?2
+             GROUP BY fa.file_name
+             HAVING COUNT(DISTINCT fa.date) >= ?3",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(
+            rusqlite::params![date_range.start, date_range.end, threshold],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Load app display names to avoid creating projects from app names
+    let app_names: Vec<String> = conn
+        .prepare_cached("SELECT LOWER(display_name) FROM applications")
+        .and_then(|mut s| {
+            s.query_map([], |row| row.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        })
+        .unwrap_or_default();
+
+    let mut created = 0usize;
+    for file_name in rows.filter_map(|r| r.ok()) {
+        let candidate = file_name.trim();
+        if candidate.is_empty() || candidate.len() > 200 || candidate.contains(['/', '\\', '\0']) {
+            continue;
+        }
+
+        // Wyodrębnij nazwę projektu z nazwy pliku
+        // Jeśli nie da się wyciągnąć nazwy (np. pojedynczy plik bez kontekstu), pomiń
+        let project_name = match infer_project_name_from_file_title(candidate, &[]) {
+            Some(name) => name,
+            None => continue,
+        };
+
+        // Pomiń jeśli nazwa to pojedynczy plik (zawiera rozszerzenie, np. "TODO.md")
+        if project_name.contains('.') && !project_name.contains(['/', '\\']) {
+            continue;
+        }
+
+        // Pomiń jeśli nazwa pasuje do nazwy aplikacji (np. "Antigravity" = antigravity.exe)
+        if app_names.contains(&project_name.to_lowercase()) {
+            continue;
+        }
+
+        if create_project_if_missing(&conn, &project_name)? {
+            created += 1;
+        }
+    }
+    Ok(created)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prune_projects_missing_on_disk;
+
+    fn setup_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE project_folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT NOT NULL UNIQUE,
+                added_at TEXT NOT NULL
+            );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    #[test]
+    fn prune_does_not_delete_manual_projects() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO projects (name) VALUES (?1)",
+            ["Manual Project"],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO project_folders (path, added_at) VALUES (?1, ?2)",
+            rusqlite::params![
+                "Z:\\this_path_should_not_exist_123456",
+                "2026-02-18T00:00:00Z"
+            ],
+        )
+        .expect("insert missing folder");
+
+        let removed = prune_projects_missing_on_disk(&conn).expect("prune");
+        assert_eq!(removed, 0);
+
+        let project_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+            .expect("project count");
+        assert_eq!(project_count, 1);
+
+        let folder_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM project_folders", [], |row| row.get(0))
+            .expect("folder count");
+        assert_eq!(folder_count, 0);
+    }
+}
