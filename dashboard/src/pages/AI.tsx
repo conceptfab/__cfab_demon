@@ -19,7 +19,7 @@ const RETRAIN_INTERVAL_HOURS = 24;
 const REMINDER_SNOOZE_HOURS = 24;
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "Nigdy";
+  if (!value) return "Never";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString();
@@ -58,11 +58,11 @@ function buildTrainingReminder(status: AssignmentModelStatus | null): {
 
   let reason: string | null = null;
   if (dueToFeedback) {
-    reason = `Masz ${status.feedback_since_train} korekt od ostatniego treningu (prog: ${FEEDBACK_TRIGGER}).`;
+    reason = `You have ${status.feedback_since_train} corrections since last training (threshold: ${FEEDBACK_TRIGGER}).`;
   } else if (dueToInterval) {
-    reason = `Minelo ponad ${RETRAIN_INTERVAL_HOURS}h od ostatniego treningu i sa nowe korekty.`;
+    reason = `Over ${RETRAIN_INTERVAL_HOURS}h passed since last training and there are new corrections.`;
   } else if (coldStart) {
-    reason = "Model ma dane z korekt, ale nie byl jeszcze trenowany.";
+    reason = "The model has correction data but has never been trained.";
   }
 
   if (!reason) {
@@ -149,10 +149,10 @@ export function AIPage() {
     try {
       const nextStatus = await trainAssignmentModel(true);
       syncFromStatus(nextStatus);
-      showInfo("Trening modelu zakonczony.");
+      showInfo("Model training completed.");
     } catch (e) {
       console.error(e);
-      showError(`Trening modelu nie powiodl sie: ${String(e)}`);
+      showError(`Model training failed: ${String(e)}`);
     } finally {
       setTraining(false);
     }
@@ -160,7 +160,7 @@ export function AIPage() {
 
   const handleRunAutoSafe = async () => {
     if (status?.mode !== "auto_safe") {
-      showError("Auto-safe jest wylaczony. Ustaw tryb auto_safe i zapisz ustawienia.");
+      showError("Auto-safe is disabled. Set mode to auto_safe and save settings.");
       return;
     }
 
@@ -170,13 +170,13 @@ export function AIPage() {
         Math.round(clampNumber(autoLimit, 1, 10_000))
       );
       showInfo(
-        `Auto-safe zakonczony. Przypisano ${result.assigned} / ${result.scanned} przeskanowanych sesji.`
+        `Auto-safe completed. Assigned ${result.assigned} / ${result.scanned} scanned sessions.`
       );
       triggerRefresh();
       await fetchStatus(true);
     } catch (e) {
       console.error(e);
-      showError(`Auto-safe nie powiodl sie: ${String(e)}`);
+      showError(`Auto-safe failed: ${String(e)}`);
     } finally {
       setRunningAuto(false);
     }
@@ -186,19 +186,19 @@ export function AIPage() {
     if (!status?.can_rollback_last_auto_run) return;
 
     const confirmed = window.confirm(
-      "Cofnac ostatnia paczke auto-safe? Cofnie tylko sesje, ktore od tego czasu nie byly zmieniane recznie."
+      "Rollback the last auto-safe batch? This will only revert sessions that haven't been manually changed since."
     );
     if (!confirmed) return;
 
     setRollingBack(true);
     try {
       const result = await rollbackLastAutoSafeRun();
-      showInfo(`Rollback zakonczony. Cofnieto ${result.reverted}, pominieto ${result.skipped}.`);
+      showInfo(`Rollback completed. Reverted ${result.reverted}, skipped ${result.skipped}.`);
       triggerRefresh();
       await fetchStatus(true);
     } catch (e) {
       console.error(e);
-      showError(`Rollback nie powiodl sie: ${String(e)}`);
+      showError(`Rollback failed: ${String(e)}`);
     } finally {
       setRollingBack(false);
     }
@@ -209,10 +209,10 @@ export function AIPage() {
     try {
       const nextStatus = await setAssignmentModelCooldown(REMINDER_SNOOZE_HOURS);
       syncFromStatus(nextStatus);
-      showInfo(`Przypomnienie odroczone o ${REMINDER_SNOOZE_HOURS}h.`);
+      showInfo(`Reminder snoozed for ${REMINDER_SNOOZE_HOURS}h.`);
     } catch (e) {
       console.error(e);
-      showError(`Nie udalo sie odroczyc przypomnienia: ${String(e)}`);
+      showError(`Failed to snooze reminder: ${String(e)}`);
     } finally {
       setSnoozingReminder(false);
     }
@@ -224,54 +224,54 @@ export function AIPage() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base font-semibold">
             <Brain className="h-4 w-4" />
-            Status modelu
+            Model Status
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Tryb</p>
+              <p className="text-xs text-muted-foreground">Mode</p>
               <p className="mt-1 font-medium">{status?.mode ?? "-"}</p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Stan treningu</p>
-              <p className="mt-1 font-medium">{status?.is_training ? "W trakcie" : "Bezczynny"}</p>
+              <p className="text-xs text-muted-foreground">Training State</p>
+              <p className="mt-1 font-medium">{status?.is_training ? "In progress" : "Idle"}</p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Ostatni trening</p>
+              <p className="text-xs text-muted-foreground">Last Training</p>
               <p className="mt-1 font-medium">{formatDateTime(status?.last_train_at)}</p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Korekty od ostatniego treningu</p>
+              <p className="text-xs text-muted-foreground">Corrections since last training</p>
               <p className="mt-1 font-medium">{status?.feedback_since_train ?? 0}</p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Metryki ostatniego treningu</p>
+              <p className="text-xs text-muted-foreground">Last training metrics</p>
               <p className="mt-1 font-medium">
                 {(status?.last_train_samples ?? 0) > 0
                   ? `${status?.last_train_samples} samples / ${status?.last_train_duration_ms ?? 0} ms`
-                  : "Brak danych"}
+                  : "No data"}
               </p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Ostatni przebieg auto-safe</p>
+              <p className="text-xs text-muted-foreground">Last auto-safe run</p>
               <p className="mt-1 font-medium">
                 {status?.last_auto_run_at
-                  ? `${formatDateTime(status.last_auto_run_at)} (${status.last_auto_assigned_count} przypisanych)`
-                  : "Nigdy"}
+                  ? `${formatDateTime(status.last_auto_run_at)} (${status.last_auto_assigned_count} assigned)`
+                  : "Never"}
               </p>
             </div>
           </div>
 
           {status?.train_error_last && (
             <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              Ostatni blad treningu: {status.train_error_last}
+              Last training error: {status.train_error_last}
             </div>
           )}
 
           {trainingReminder.cooldownUntil && !trainingReminder.shouldShow && (
             <div className="rounded-md border border-border/70 bg-background/35 px-3 py-2 text-xs text-muted-foreground">
-              Przypomnienie o treningu odroczone do: {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
+              Training reminder snoozed until: {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
             </div>
           )}
 
@@ -283,7 +283,7 @@ export function AIPage() {
               disabled={training || status?.is_training}
             >
               <PlayCircle className="mr-2 h-4 w-4" />
-              {training || status?.is_training ? "Trening..." : "Trenuj teraz"}
+              {training || status?.is_training ? "Training..." : "Train Now"}
             </Button>
             <Button
               variant="outline"
@@ -291,7 +291,7 @@ export function AIPage() {
               onClick={() => fetchStatus()}
               disabled={loadingStatus}
             >
-              Odswiez status
+              Refresh Status
             </Button>
           </div>
         </CardContent>
@@ -301,12 +301,12 @@ export function AIPage() {
         <Card className="border-amber-500/40 bg-amber-500/10">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-amber-100">
-              Czas na trening modelu
+              Time for model training
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="text-amber-100/90">{trainingReminder.reason}</p>
-            <p className="text-xs text-amber-100/80">Szacowany koszt: lekki trening, zwykle do 10 sekund.</p>
+            <p className="text-xs text-amber-100/80">Estimated cost: light training, usually under 10 seconds.</p>
             <div className="flex flex-wrap gap-2">
               <Button
                 className="h-8"
@@ -314,7 +314,7 @@ export function AIPage() {
                 disabled={training || status?.is_training}
               >
                 <PlayCircle className="mr-2 h-4 w-4" />
-                {training || status?.is_training ? "Trening..." : "Trenuj teraz"}
+                {training || status?.is_training ? "Training..." : "Train Now"}
               </Button>
               <Button
                 variant="outline"
@@ -323,8 +323,8 @@ export function AIPage() {
                 disabled={snoozingReminder}
               >
                 {snoozingReminder
-                  ? "Zapisywanie..."
-                  : `Przypomnij pozniej (${REMINDER_SNOOZE_HOURS}h)`}
+                  ? "Saving..."
+                  : `Remind me later (${REMINDER_SNOOZE_HOURS}h)`}
               </Button>
             </div>
           </CardContent>
@@ -333,12 +333,12 @@ export function AIPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Tryb i progi</CardTitle>
+          <CardTitle className="text-base font-semibold">Mode and Thresholds</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">Tryb pracy modelu</span>
+              <span className="text-xs text-muted-foreground">Model operation mode</span>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                 value={mode}
@@ -402,7 +402,7 @@ export function AIPage() {
           <div className="flex justify-end">
             <Button className="h-9 min-w-[9rem]" onClick={handleSaveMode} disabled={savingMode}>
               <Save className="mr-2 h-4 w-4" />
-              {savingMode ? "Zapisywanie..." : "Zapisz ustawienia modelu"}
+              {savingMode ? "Saving..." : "Save model settings"}
             </Button>
           </div>
         </CardContent>
@@ -410,11 +410,11 @@ export function AIPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Akcje batch auto-safe</CardTitle>
+          <CardTitle className="text-base font-semibold">Batch auto-safe actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="block max-w-xs space-y-1.5 text-sm">
-            <span className="text-xs text-muted-foreground">Limit sesji na jedno uruchomienie</span>
+            <span className="text-xs text-muted-foreground">Session limit per run</span>
             <input
               type="number"
               min={1}
@@ -436,7 +436,7 @@ export function AIPage() {
               disabled={runningAuto || status?.mode !== "auto_safe"}
             >
               <WandSparkles className="mr-2 h-4 w-4" />
-              {runningAuto ? "Uruchamianie..." : "Uruchom auto-safe"}
+              {runningAuto ? "Starting..." : "Run auto-safe"}
             </Button>
 
             <Button
@@ -446,62 +446,62 @@ export function AIPage() {
               disabled={rollingBack || !status?.can_rollback_last_auto_run}
             >
               <RotateCcw className="mr-2 h-4 w-4" />
-              {rollingBack ? "Cofanie..." : "Cofnij ostatni batch auto-safe"}
+              {rollingBack ? "Rolling back..." : "Rollback last auto-safe batch"}
             </Button>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Rollback cofa tylko te sesje, ktore od czasu auto-safe nie zostaly recznie zmienione.
+            Rollback only reverts sessions that have not been manually changed since the auto-safe run.
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Jak trenowac i ustawic parametry</CardTitle>
+          <CardTitle className="text-base font-semibold">How to train and configure</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-6">
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
-            <p className="font-medium">Kiedy trenowac model</p>
+            <p className="font-medium">When to train the model</p>
             <p className="text-muted-foreground">
-              Trenuj po wiekszej serii recznych korekt, po imporcie nowych danych albo gdy przypomnienie na tej stronie
-              informuje, ze model jest do odswiezenia.
+              Train after a larger series of manual corrections, after importing new data, or when the reminder
+              indicates that the model needs refreshing.
             </p>
             <p className="mt-2 text-muted-foreground">
-              Przypomnienie wyswietla sie automatycznie, gdy: masz co najmniej {FEEDBACK_TRIGGER} nowych korekt lub minelo
-              ponad {RETRAIN_INTERVAL_HOURS}h od ostatniego treningu i pojawily sie nowe korekty.
+              The reminder appears automatically when: you have at least {FEEDBACK_TRIGGER} new corrections or over
+              {RETRAIN_INTERVAL_HOURS}h passed since last training and there are new corrections.
             </p>
           </div>
 
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
-            <p className="font-medium">Co oznaczaja parametry</p>
+            <p className="font-medium">What parameters mean</p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Mode</strong>: <code>off</code> wylacza podpowiedzi, <code>suggest</code> pokazuje sugestie bez
-              auto-zmian, <code>auto_safe</code> pozwala na automatyczne przypisania tylko przy wysokiej pewnosci.
+              <strong>Mode</strong>: <code>off</code> disables suggestions, <code>suggest</code> shows suggestions without
+              auto-changes, <code>auto_safe</code> allows automatic assignments only with high confidence.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Suggest Min Confidence</strong>: minimalna pewnosc, od ktorej sugestia bedzie pokazana w sesjach.
+              <strong>Suggest Min Confidence</strong>: minimum confidence to show suggestion in sessions.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Auto-safe Min Confidence</strong>: prog pewnosci wymagany do automatycznego przypisania.
+              <strong>Auto-safe Min Confidence</strong>: required confidence threshold for automatic assignment.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Auto-safe Min Evidence</strong>: ile sygnalow (np. historia app/tokenu/czasu) musi potwierdzac decyzje.
+              <strong>Auto-safe Min Evidence</strong>: how many signals (e.g. app/token/time history) must confirm decision.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Limit sesji</strong>: ile nieprzypisanych sesji auto-safe przeskanuje w jednym batchu.
+              <strong>Session Limit</strong>: how many unassigned sessions auto-safe will scan in one batch.
             </p>
           </div>
 
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
-            <p className="font-medium">Rekomendowane ustawienia startowe</p>
+            <p className="font-medium">Recommended starting settings</p>
             <p className="text-muted-foreground">
-              Zacznij od <code>mode=suggest</code>, <code>suggest=0.60</code>, <code>auto=0.85</code>,{" "}
-              <code>evidence=3</code>. Gdy sugestie sa trafne, wlacz <code>auto_safe</code>.
+              Start with <code>mode=suggest</code>, <code>suggest=0.60</code>, <code>auto=0.85</code>,{" "}
+              <code>evidence=3</code>. When suggestions are accurate, enable <code>auto_safe</code>.
             </p>
             <p className="mt-2 text-muted-foreground">
-              Jesli auto-safe robi bledne przypisania: podnies <code>Auto-safe Min Confidence</code> do 0.9+ albo{" "}
-              <code>Min Evidence</code> do 4-5.
+              If auto-safe makes wrong assignments: raise <code>Auto-safe Min Confidence</code> to 0.9+ or{" "}
+              <code>Min Evidence</code> to 4-5.
             </p>
           </div>
         </CardContent>

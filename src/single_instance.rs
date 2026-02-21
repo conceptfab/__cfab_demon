@@ -37,7 +37,7 @@ pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
 
         if handle.is_null() {
             return Err(format!(
-                "Nie udało się utworzyć mutex (błąd {})",
+                "Failed to create mutex (error {})",
                 GetLastError()
             ));
         }

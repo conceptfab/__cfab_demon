@@ -72,7 +72,7 @@ export function AllProjectsChart({ projects }: Props) {
                   contentStyle={TOOLTIP_CONTENT_STYLE}
                   labelStyle={{ color: "#f1f5f9", fontWeight: 600, marginBottom: 4 }}
                   itemStyle={{ color: "#e2e8f0" }}
-                  formatter={(value) => [formatDuration(Number(value)), "Czas"]}
+                  formatter={(value) => [formatDuration(Number(value)), "Time"]}
                   labelFormatter={(label) => String(label)}
                 />
                 <Bar dataKey="seconds" radius={[4, 4, 0, 0]}>

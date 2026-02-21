@@ -62,10 +62,10 @@ export function ImportPanel() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Upload className="h-5 w-5 text-orange-500" />
-          Import Danych
+          Data Import
         </CardTitle>
         <CardDescription>
-          Wgraj plik eksportu, aby przywrócić lub zsynchronizować dane.
+          Upload an export file to restore or sync your data.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -76,10 +76,10 @@ export function ImportPanel() {
               <FileJson className="h-12 w-12 text-muted-foreground opacity-50" />
             </div>
             <div>
-              <p className="text-sm font-medium">Kliknij, aby wybrać plik .json</p>
-              <p className="text-xs text-muted-foreground mt-1">Obsługiwane formaty: cfab-export-*.json</p>
+              <p className="text-sm font-medium">Click to pick a .json file</p>
+              <p className="text-xs text-muted-foreground mt-1">Supported formats: cfab-export-*.json</p>
             </div>
-            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); selectFile(); }}>Wybierz plik</Button>
+            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); selectFile(); }}>Select File</Button>
           </div>
         )}
 
@@ -87,7 +87,7 @@ export function ImportPanel() {
           <div className="space-y-4">
             <div className="p-4 bg-muted rounded-md space-y-2 border">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Status walidacji</span>
+                <span className="text-sm font-medium">Validation Status</span>
                 {validation.valid ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 ) : (
@@ -95,16 +95,16 @@ export function ImportPanel() {
                 )}
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>Brakujące projekty: {validation.missing_projects.length}</p>
-                <p>Brakujące aplikacje: {validation.missing_applications.length}</p>
-                <p>Konflikty sesji: {validation.overlapping_sessions.length}</p>
+                <p>Missing Projects: {validation.missing_projects.length}</p>
+                <p>Missing Applications: {validation.missing_applications.length}</p>
+                <p>Session Conflicts: {validation.overlapping_sessions.length}</p>
               </div>
             </div>
 
             {validation.missing_projects.length > 0 && (
               <div className="space-y-1">
                 <p className="text-xs font-medium flex items-center gap-1">
-                  <Info className="h-3 w-3" /> Nowe projekty do utworzenia:
+                  <Info className="h-3 w-3" /> New projects to be created:
                 </p>
                 <div className="text-[10px] bg-sky-500/10 text-sky-400 p-2 rounded max-h-24 overflow-y-auto">
                   {validation.missing_projects.join(", ")}
@@ -114,10 +114,10 @@ export function ImportPanel() {
 
             <Button onClick={handleImport} disabled={importing} className="w-full gap-2 bg-orange-600 hover:bg-orange-500">
               <Upload className="h-4 w-4" />
-              {importing ? "Importowanie..." : "Rozpocznij import"}
+              {importing ? "Importing..." : "Start Import"}
             </Button>
             <Button variant="ghost" onClick={() => { setValidation(null); setArchivePath(null); }} className="w-full text-xs">
-              Anuluj i wybierz inny plik
+              Cancel and select another file
             </Button>
           </div>
         )}
@@ -130,30 +130,30 @@ export function ImportPanel() {
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                 </div>
               </div>
-              <h3 className="font-semibold">Import zakończony!</h3>
+              <h3 className="font-semibold">Import Finished!</h3>
             </div>
             
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="p-2 border rounded bg-card/50">
-                <p className="text-muted-foreground">Projekty</p>
-                <p className="font-bold">{summary.projects_created} nowych</p>
+                <p className="text-muted-foreground">Projects</p>
+                <p className="font-bold">{summary.projects_created} new</p>
               </div>
               <div className="p-2 border rounded bg-card/50">
-                <p className="text-muted-foreground">Aplikacje</p>
-                <p className="font-bold">{summary.apps_created} nowych</p>
+                <p className="text-muted-foreground">Applications</p>
+                <p className="font-bold">{summary.apps_created} new</p>
               </div>
               <div className="p-2 border rounded bg-card/50">
-                <p className="text-muted-foreground">Sesje</p>
-                <p className="font-bold">{summary.sessions_imported} dodanych</p>
+                <p className="text-muted-foreground">Sessions</p>
+                <p className="font-bold">{summary.sessions_imported} added</p>
               </div>
               <div className="p-2 border rounded bg-card/50">
-                <p className="text-muted-foreground">Scalone</p>
-                <p className="font-bold">{summary.sessions_merged} sesji</p>
+                <p className="text-muted-foreground">Merged</p>
+                <p className="font-bold">{summary.sessions_merged} sessions</p>
               </div>
             </div>
 
             <Button variant="outline" onClick={() => { setSummary(null); setValidation(null); setArchivePath(null); }} className="w-full">
-              Gotowe
+              Done
             </Button>
           </div>
         )}

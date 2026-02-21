@@ -1,6 +1,8 @@
 import sqlite3
+import os
 
-db_path = r"C:\Users\micz\AppData\Roaming\conceptfab\cfab_demon.db"
+appdata = os.environ.get("APPDATA", "")
+db_path = os.path.join(appdata, "conceptfab", "cfab_dashboard.db")
 conn = sqlite3.connect(db_path)
 cur = conn.cursor()
 

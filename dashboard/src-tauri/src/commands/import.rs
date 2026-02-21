@@ -267,7 +267,7 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
 }
 
 fn purge_unregistered_apps(
-    conn: &rusqlite::Connection,
+    conn: &mut rusqlite::Connection,
     monitored_exes: &HashSet<String>,
 ) -> Result<(), String> {
     if monitored_exes.is_empty() {
@@ -289,12 +289,14 @@ fn purge_unregistered_apps(
         .map(|s| s as &dyn rusqlite::types::ToSql)
         .collect();
 
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
     let delete_files_sql = format!(
         "DELETE FROM file_activities
          WHERE app_id IN (SELECT id FROM applications WHERE {})",
         unregistered_unassigned_clause
     );
-    conn.execute(&delete_files_sql, params.as_slice())
+    tx.execute(&delete_files_sql, params.as_slice())
         .map_err(|e| e.to_string())?;
 
     let delete_sessions_sql = format!(
@@ -302,7 +304,7 @@ fn purge_unregistered_apps(
          WHERE app_id IN (SELECT id FROM applications WHERE {})",
         unregistered_unassigned_clause
     );
-    conn.execute(&delete_sessions_sql, params.as_slice())
+    tx.execute(&delete_sessions_sql, params.as_slice())
         .map_err(|e| e.to_string())?;
 
     let delete_apps_sql = format!(
@@ -312,9 +314,11 @@ fn purge_unregistered_apps(
            AND NOT EXISTS (SELECT 1 FROM file_activities fa WHERE fa.app_id = applications.id)",
         unregistered_unassigned_clause
     );
-    let removed = conn
+    let removed = tx
         .execute(&delete_apps_sql, params.as_slice())
         .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     if removed > 0 {
         log::info!(

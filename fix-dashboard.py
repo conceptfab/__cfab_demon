@@ -1,9 +1,13 @@
 import os
+import sys
 
-path = r"dashboard\src-tauri\src\commands\dashboard.rs"
+# Get the project root folder (two levels up from scripts/debug/)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+path = os.path.join(project_root, "dashboard", "src-tauri", "src", "commands", "dashboard.rs")
 
 # First run git restore safely
-os.system(r"git checkout HEAD -- dashboard/src-tauri/src/commands/dashboard.rs")
+os.system(f'cd "{project_root}" && git checkout HEAD -- dashboard/src-tauri/src/commands/dashboard.rs')
 
 with open(path, "r", encoding="utf-8") as f:
     content = f.read()

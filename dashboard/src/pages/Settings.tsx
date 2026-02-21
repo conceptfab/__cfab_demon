@@ -88,7 +88,7 @@ export function Settings() {
     setRebuilding(true);
     try {
       const merged = await rebuildSessions(sessionSettings.gapFillMinutes);
-      alert(`Pomyślnie połączono ${merged} bliskich sesji.`);
+      alert(`Successfully merged ${merged} close sessions.`);
       triggerRefresh();
     } catch (e) {
       console.error(e);

@@ -18,7 +18,11 @@ pub async fn get_dashboard_stats(
     let (total_seconds, app_count, session_count, day_count) =
         query_dashboard_counters(&conn, &date_range.start, &date_range.end)?;
 
-    let avg_daily = total_seconds / day_count;
+    let avg_daily = if day_count == 0 {
+        0
+    } else {
+        total_seconds / day_count
+    };
 
     let mut stmt = conn
         .prepare_cached(
@@ -319,6 +323,36 @@ pub async fn get_timeline(
     Ok(out)
 }
 
+#[tauri::command]
+pub async fn get_hourly_breakdown(
+    app: AppHandle,
+    date_range: DateRange,
+) -> Result<Vec<HourlyData>, String> {
+    let conn = db::get_connection(&app)?;
+    let (bucket_map, _) = compute_project_activity_unique(&conn, &date_range, true)?;
+
+    let mut totals_by_hour = [0f64; 24];
+    for (bucket, project_seconds) in bucket_map {
+        let hour = bucket
+            .split('T')
+            .nth(1)
+            .and_then(|time| time.split(':').next())
+            .and_then(|h| h.parse::<usize>().ok());
+        if let Some(hour) = hour.filter(|h| *h < 24) {
+            totals_by_hour[hour] += project_seconds.values().copied().sum::<f64>();
+        }
+    }
+
+    Ok(totals_by_hour
+        .iter()
+        .enumerate()
+        .map(|(hour, seconds)| HourlyData {
+            hour: hour as i32,
+            seconds: seconds.round() as i64,
+        })
+        .collect())
+}
+
 pub(crate) fn generate_color_for_app(name: &str) -> String {
     let palette = [
         "#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee",
@@ -332,41 +366,7 @@ pub(crate) fn generate_color_for_app(name: &str) -> String {
     palette[idx].to_string()
 }
 
-#[tauri::command]
-pub async fn get_hourly_breakdown(
-    app: AppHandle,
-    date_range: DateRange,
-) -> Result<Vec<HourlyData>, String> {
-    let conn = db::get_connection(&app)?;
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT CAST(SUBSTR(start_time, 12, 2) AS INTEGER) as hour,
-                    SUM(duration_seconds)
-             FROM (
-                 SELECT start_time, duration_seconds FROM sessions
-                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
-                 UNION ALL
-                 SELECT start_time, duration_seconds FROM manual_sessions
-                 WHERE date >= ?1 AND date <= ?2
-             )
-             GROUP BY hour
-             ORDER BY hour",
-        )
-        .map_err(|e| e.to_string())?;
 
-    let rows = stmt
-        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-            Ok(HourlyData {
-                hour: row.get(0)?,
-                seconds: row.get(1)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    Ok(rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect())
-}
 
 #[tauri::command]
 pub async fn get_applications(

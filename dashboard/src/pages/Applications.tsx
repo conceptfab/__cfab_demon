@@ -82,7 +82,7 @@ export function Applications() {
         (a) => a.display_name.toLowerCase().includes(q) || a.executable_name.toLowerCase().includes(q)
       );
     }
-    result.sort((a, b) => {
+    result = [...result].sort((a, b) => {
       let cmp = 0;
       if (sortKey === "display_name") cmp = a.display_name.localeCompare(b.display_name);
       else if (sortKey === "total_seconds") cmp = a.total_seconds - b.total_seconds;

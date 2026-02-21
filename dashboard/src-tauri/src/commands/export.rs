@@ -4,7 +4,7 @@ use super::types::{
     ManualSession, Project, SessionRow,
 };
 use crate::db;
-use rfd::FileDialog;
+use rfd::AsyncFileDialog;
 use std::collections::HashMap;
 use std::fs;
 use tauri::AppHandle;
@@ -16,7 +16,8 @@ pub async fn export_data(
     date_start: Option<String>,
     date_end: Option<String>,
 ) -> Result<String, String> {
-    let conn = db::get_connection(&app)?;
+    let (archive, default_name) = {
+        let conn = db::get_connection(&app)?;
 
     // 1. Resolve date range
     let start = date_start.unwrap_or_else(|| "2000-01-01".to_string());
@@ -260,6 +261,10 @@ pub async fn export_data(
 
     let machine_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
 
+    let default_name = format!(
+        "cfab-export-{}.json",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    );
     let archive = ExportArchive {
         version: "1.0".to_string(),
         exported_at: chrono::Local::now().to_rfc3339(),
@@ -284,21 +289,20 @@ pub async fn export_data(
             daily_files,
         },
     };
+    (archive, default_name)
+    };
 
     // 8. Save dialog
-    let default_name = format!(
-        "cfab-export-{}.json",
-        chrono::Local::now().format("%Y%m%d-%H%M%S")
-    );
-    let path = FileDialog::new()
+    let path = AsyncFileDialog::new()
         .set_file_name(&default_name)
         .add_filter("JSON", &["json"])
-        .save_file();
+        .save_file()
+        .await;
 
-    if let Some(path) = path {
+    if let Some(file_handle) = path {
         let json = serde_json::to_string_pretty(&archive).map_err(|e| e.to_string())?;
-        fs::write(&path, json).map_err(|e| e.to_string())?;
-        Ok(path.to_string_lossy().to_string())
+        fs::write(file_handle.path(), json).map_err(|e| e.to_string())?;
+        Ok(file_handle.path().to_string_lossy().to_string())
     } else {
         Err("Export cancelled".to_string())
     }

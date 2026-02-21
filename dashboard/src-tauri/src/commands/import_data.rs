@@ -14,34 +14,38 @@ pub async fn validate_import(
     let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     let conn = db::get_connection(&app)?;
 
+    let mut existing_projects: HashSet<String> = HashSet::new();
+    let mut stmt = conn.prepare_cached("SELECT name FROM projects")
+        .map_err(|e| e.to_string())?;
+    for row in stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
+        if let Ok(name) = row {
+            existing_projects.insert(name);
+        }
+    }
+
+    let mut existing_apps: HashSet<String> = HashSet::new();
+    let mut stmt = conn.prepare_cached("SELECT executable_name FROM applications")
+        .map_err(|e| e.to_string())?;
+    for row in stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
+        if let Ok(exe) = row {
+            existing_apps.insert(exe);
+        }
+    }
+
     let mut missing_projects = Vec::new();
     let mut missing_applications = Vec::new();
     let mut overlapping_sessions = Vec::new();
 
     // Check Projects
     for p in &archive.data.projects {
-        let exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) > 0 FROM projects WHERE name = ?1",
-                [&p.name],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-        if !exists {
+        if !existing_projects.contains(&p.name) {
             missing_projects.push(p.name.clone());
         }
     }
 
     // Check Applications
     for a in &archive.data.applications {
-        let exists: bool = conn
-            .query_row(
-                "SELECT COUNT(*) > 0 FROM applications WHERE executable_name = ?1",
-                [&a.executable_name],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-        if !exists {
+        if !existing_apps.contains(&a.executable_name) {
             missing_applications.push(format!("{} ({})", a.display_name, a.executable_name));
         }
     }
@@ -113,16 +117,19 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // 1. Map and Create Projects
+    let mut existing_projects_map: HashMap<String, i64> = HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT name, id FROM projects").map_err(|e| e.to_string())?;
+        for row in stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))).map_err(|e| e.to_string())? {
+            if let Ok((name, id)) = row {
+                existing_projects_map.insert(name, id);
+            }
+        }
+    }
+
     let mut project_mapping = HashMap::new(); // archive_id -> local_id
     for p in &archive.data.projects {
-        let local_id: Option<i64> = tx
-            .query_row(
-                "SELECT id FROM projects WHERE name = ?1",
-                [&p.name],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
+        let local_id = existing_projects_map.get(&p.name).copied();
 
         let id = if let Some(id) = local_id {
             id
@@ -132,22 +139,27 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                 rusqlite::params![p.name, p.color, p.created_at, p.excluded_at, p.assigned_folder_path]
             ).map_err(|e| e.to_string())?;
             summary.projects_created += 1;
-            tx.last_insert_rowid()
+            let new_id = tx.last_insert_rowid();
+            existing_projects_map.insert(p.name.clone(), new_id);
+            new_id
         };
         project_mapping.insert(p.id, id);
     }
 
     // 2. Map and Create Applications
+    let mut existing_apps_map: HashMap<String, i64> = HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT executable_name, id FROM applications").map_err(|e| e.to_string())?;
+        for row in stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))).map_err(|e| e.to_string())? {
+            if let Ok((exe, id)) = row {
+                existing_apps_map.insert(exe, id);
+            }
+        }
+    }
+
     let mut app_mapping = HashMap::new(); // archive_id -> local_id
     for a in &archive.data.applications {
-        let local_id: Option<i64> = tx
-            .query_row(
-                "SELECT id FROM applications WHERE executable_name = ?1",
-                [&a.executable_name],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
+        let local_id = existing_apps_map.get(&a.executable_name).copied();
 
         let mapped_project_id = a
             .project_id
@@ -170,7 +182,9 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                 rusqlite::params![a.executable_name, a.display_name, mapped_project_id]
             ).map_err(|e| e.to_string())?;
             summary.apps_created += 1;
-            tx.last_insert_rowid()
+            let new_id = tx.last_insert_rowid();
+            existing_apps_map.insert(a.executable_name.clone(), new_id);
+            new_id
         };
         app_mapping.insert(a.id, id);
     }
@@ -212,7 +226,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     for (date, daily) in &archive.data.daily_files {
         let file_path = data_dir.join(format!("{}.json", date));
         // We could merge daily files too, but simpler is to overwrite or skip.
-        // Specification says "Zapisz pliki JSON do data/".
+        // Specification says to save JSON files to data/.
         // We'll merge if exists for safety.
         let final_data = if file_path.exists() {
             let existing_content = fs::read_to_string(&file_path).unwrap_or_default();

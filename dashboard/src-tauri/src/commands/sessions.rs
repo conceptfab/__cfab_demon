@@ -312,21 +312,26 @@ pub async fn get_sessions(
 
 #[tauri::command]
 pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, String> {
-    if filters.project_id.is_some() {
-        let sessions = get_sessions(
-            app,
-            SessionFilters {
-                date_range: filters.date_range.clone(),
-                app_id: filters.app_id,
-                project_id: filters.project_id,
-                unassigned: filters.unassigned,
-                min_duration: filters.min_duration,
-                limit: None,
-                offset: None,
-            },
-        )
-        .await?;
-        return Ok(sessions.len() as i64);
+    if let Some(pid) = filters.project_id {
+        let conn = db::get_connection(&app)?;
+        let mut sql = String::from(
+            "SELECT COUNT(DISTINCT s.id) FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             LEFT JOIN file_activities fa ON fa.app_id = s.app_id AND fa.date = date(s.start_time)
+             WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
+               AND (s.project_id = ?1 OR fa.project_id = ?1)"
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(pid)];
+        let mut idx = 2;
+
+        let mut temp_filters = filters.clone();
+        temp_filters.project_id = None; // Already handled
+        apply_session_filters(&temp_filters, &mut sql, &mut params, &mut idx);
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let count: i64 = conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        return Ok(count);
     }
 
     let conn = db::get_connection(&app)?;

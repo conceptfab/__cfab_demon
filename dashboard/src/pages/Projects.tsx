@@ -3,7 +3,7 @@ import { Plus, CircleOff, TimerReset, RefreshCw, Wand2, ChevronDown, ChevronRigh
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-// import { FolderPlus, Trash2 } from "lucide-react"; // Nie używane po usunięciu przycisku edycji
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -510,13 +510,13 @@ export function Projects() {
               onClick={() => setViewMode("detailed")}
               className={`px-3 py-1 rounded-sm transition-colors ${viewMode === "detailed" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
             >
-              Szczegółowy
+              Detailed
             </button>
             <button
               onClick={() => setViewMode("compact")}
               className={`px-3 py-1 rounded-sm transition-colors ${viewMode === "compact" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
             >
-              Minimalny
+              Compact
             </button>
           </div>
           <Button size="sm" onClick={openCreate}>

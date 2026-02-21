@@ -126,6 +126,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut active_sessions: HashMap<String, Instant> = HashMap::new();
     // Indeks nazw plików per aplikacja -> pozycja w wektorze files
     let mut file_index_cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    for (exe_name, app_data) in &daily_data.apps {
+        let file_map = file_index_cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
+        for (idx, file_entry) in app_data.files.iter().enumerate() {
+            file_map.insert(file_entry.name.clone(), idx);
+        }
+    }
     // Stan CPU per aplikacja (dla detekcji aktywności w tle)
     let mut cpu_state: CpuState = HashMap::new();
 
@@ -154,6 +160,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             current_date = today;
             active_sessions.clear();
             file_index_cache.clear();
+            for (exe_name, app_data) in &daily_data.apps {
+                let file_map = file_index_cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
+                for (idx, file_entry) in app_data.files.iter().enumerate() {
+                    file_map.insert(file_entry.name.clone(), idx);
+                }
+            }
             cpu_state.clear();
         }
 
@@ -251,7 +263,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
         // Zapis okresowy
         if last_save.elapsed() >= save_interval {
             if let Err(e) = storage::save_daily(&mut daily_data) {
-                log::error!("Błąd zapisu danych dziennych: {}", e);
+                log::error!("Error saving daily data: {}", e);
                 log::logger().flush();
             }
             last_save = Instant::now();

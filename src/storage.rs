@@ -107,7 +107,7 @@ pub fn load_daily(date: NaiveDate) -> DailyData {
         match std::fs::read_to_string(&path) {
             Ok(contents) => {
                 return serde_json::from_str(&contents).unwrap_or_else(|e| {
-                    log::warn!("Błąd parsowania pliku dziennego z data/: {}", e);
+                    log::warn!("Error parsing daily file from data/: {}", e);
                     load_from_archive_or_empty(date)
                 });
             }
@@ -135,14 +135,14 @@ fn load_from_archive_or_empty(date: NaiveDate) -> DailyData {
     match std::fs::read_to_string(&archive_path) {
         Ok(contents) => {
             let mut data: DailyData = serde_json::from_str(&contents).unwrap_or_else(|e| {
-                log::warn!("Błąd parsowania pliku dziennego z archive/: {}", e);
+                log::warn!("Error parsing daily file from archive/: {}", e);
                 empty_daily(date)
             });
             
             // Jeśli udało się załadować z archive, przywróć do data/ żeby demon mógł kontynuować
             log::info!("Przywracanie danych z archive/ do data/ dla daty {}", date.format("%Y-%m-%d"));
             if let Err(e) = save_daily(&mut data) {
-                log::warn!("Nie udało się przywrócić danych z archive/: {}", e);
+                log::warn!("Failed to restore data from archive/: {}", e);
             }
             
             data

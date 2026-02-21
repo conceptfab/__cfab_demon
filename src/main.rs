@@ -56,8 +56,8 @@ fn main() {
     if matches!(tray_action, tray::TrayExitAction::Restart) {
         if let Ok(exe) = std::env::current_exe() {
             match Command::new(exe).spawn() {
-                Ok(_) => log::info!("{} - uruchomiono nową instancję (restart)", APP_NAME),
-                Err(e) => log::error!("{} - nie udało się uruchomić nowej instancji: {}", APP_NAME, e),
+                Ok(_) => log::info!("{} - started new instance (restart)", APP_NAME),
+                Err(e) => log::error!("{} - failed to start new instance: {}", APP_NAME, e),
             }
         }
         log::logger().flush();

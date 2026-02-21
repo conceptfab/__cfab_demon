@@ -177,11 +177,12 @@ export function Sessions() {
               : item
           )
         );
+        triggerRefresh();
       } catch (err) {
         console.error("Failed to reject AI suggestion:", err);
       }
     },
-    []
+    [triggerRefresh]
   );
 
   const loadMore = () => {
@@ -387,7 +388,7 @@ export function Sessions() {
                               <div className="flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1">
                                 <span
                                   className="flex items-center gap-1 text-[11px] text-sky-200"
-                                  title={`AI sugeruje ${s.suggested_project_name} (${((s.suggested_confidence ?? 0) * 100).toFixed(0)}%)`}
+                                  title={`AI suggests ${s.suggested_project_name} (${((s.suggested_confidence ?? 0) * 100).toFixed(0)}%)`}
                                 >
                                   <Sparkles className="h-3 w-3" />
                                   AI: {s.suggested_project_name} ({((s.suggested_confidence ?? 0) * 100).toFixed(0)}%)
@@ -397,7 +398,7 @@ export function Sessions() {
                                   className="h-6 px-2 text-[11px]"
                                   onClick={(e) => void handleAcceptSuggestion(s, e)}
                                 >
-                                  Akceptuj
+                                  Accept
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -405,14 +406,14 @@ export function Sessions() {
                                   className="h-6 px-2 text-[11px]"
                                   onClick={(e) => void handleRejectSuggestion(s, e)}
                                 >
-                                  Odrzuc
+                                  Reject
                                 </Button>
                               </div>
                             ) : (
                               <div className="flex items-center gap-1 rounded-md border border-muted bg-muted/20 px-2 py-1">
-                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50" title="Model AI nie ma jeszcze wystarczającej pewności. Przypisz sesję ręcznie, aby go douczyć!">
+                                <span className="flex items-center gap-1 text-[11px] text-muted-foreground/50" title="The AI model is not confident enough yet. Assign the session manually to train it!">
                                   <Sparkles className="h-3 w-3 opacity-50" />
-                                  AI: Brak próbki
+                                  AI: No sample
                                 </span>
                               </div>
                             )}

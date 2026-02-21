@@ -129,17 +129,17 @@ pub(crate) fn create_project_if_missing(
     Ok(true)
 }
 
-/// Sprawdza czy ścieżka pliku sugeruje przynależność do projektu
+/// Checks if the file path suggests it belongs to a project
 fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> Option<String> {
     let path = std::path::Path::new(file_path);
 
-    // Sprawdź każdy folder projektu
+    // Check each project folder
     for root in project_roots {
         let root_path = std::path::Path::new(&root.path);
         match path.strip_prefix(&root_path) {
             Ok(relative_path) => {
-                // Plik jest wewnątrz folderu projektu
-                // Wyodrębnij nazwę projektu ze ścieżki
+                // The file is inside a project folder
+                // Extract the project name from the path
                 if let Some(first_component) = relative_path.components().next() {
                     let project_name = first_component.as_os_str().to_string_lossy().into_owned();
                     return Some(project_name);
@@ -151,17 +151,17 @@ fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> 
     None
 }
 
-/// Próbuje wyłuskać nazwę projektu z tytułu pliku.
+/// Attempts to extract the project name from the file title.
 fn infer_project_name_from_file_title(
     title: &str,
     project_roots: &[ProjectFolder],
 ) -> Option<String> {
-    // Najpierw sprawdź ścieżkę pliku
+    // First check the file path
     if let Some(project_from_path) = infer_project_from_path(title, project_roots) {
         return Some(project_from_path);
     }
 
-    // Jeśli tytuł ma format "plik - folder", wyciągnij folder jako nazwę projektu
+    // If the title has the format "file - folder", extract the folder as the project name
     if let Some(pos) = title.rfind(" - ") {
         let candidate = title[pos + 3..].trim();
         if !candidate.is_empty() {
@@ -169,14 +169,14 @@ fn infer_project_name_from_file_title(
         }
     }
     
-    // Jeśli żadna inna metoda nie zadziałała, przekaż pełen tekst jako fallback
-    // ensure_app_project_from_file_hint sprawdzi najpierw wyciągnięty tekst,
-    // a jeśli nie, to spróbuje oryginału.
+    // If no other method worked, pass the full text as fallback
+    // ensure_app_project_from_file_hint will check the extracted text first,
+    // and if not, it will try the original.
     Some(title.trim().to_string())
 }
 
-/// Jeśli nazwa projektu z pliku pasuje do istniejącego projektu,
-/// zwraca project_id dla pliku.
+/// If the project name from the file matches an existing project,
+/// returns the project_id for the file.
 pub(crate) fn ensure_app_project_from_file_hint(
     conn: &rusqlite::Connection,
     file_name: &str,
@@ -188,14 +188,14 @@ pub(crate) fn ensure_app_project_from_file_hint(
 
     let mut candidates = Vec::new();
     
-    // Najpierw cały string i heurystyka ścieżkowa.
+    // First the full string and path heuristics.
     candidates.push(file_name.trim().to_string());
     if let Some(inferred) = infer_project_name_from_file_title(file_name, project_roots) {
         candidates.push(inferred);
     }
     
-    // Następnie dodajmy KAŻDĄ część po podziale myślnikiem jako potencjalną nazwę projektu. 
-    // Jeżeli okno to np. "__cfab_demon - Antigravity", to sprawdzimy zarówno "__cfab_demon" jak i "Antigravity".
+    // Next, add EACH part after splitting by hyphen as a potential project name. 
+    // If the window is e.g. "__cfab_demon - Antigravity", we check both "__cfab_demon" and "Antigravity".
     for part in file_name.split(" - ") {
         let trimmed = part.trim();
         if !trimmed.is_empty() {
@@ -203,7 +203,7 @@ pub(crate) fn ensure_app_project_from_file_hint(
         }
     }
     
-    // Sprawdź również alternatywne separatory, jakie demon czasami zostawia
+    // Also check alternative separators that the demon sometimes leaves
     for part in file_name.split(" | ") {
         let trimmed = part.trim();
         if !trimmed.is_empty() && !candidates.contains(&trimmed.to_string()) {
@@ -735,19 +735,19 @@ pub async fn auto_create_projects_from_detection(
             continue;
         }
 
-        // Wyodrębnij nazwę projektu z nazwy pliku
-        // Jeśli nie da się wyciągnąć nazwy (np. pojedynczy plik bez kontekstu), pomiń
+        // Extract project name from file name
+        // If the name cannot be extracted (e.g. single file without context), skip
         let project_name = match infer_project_name_from_file_title(candidate, &[]) {
             Some(name) => name,
             None => continue,
         };
 
-        // Pomiń jeśli nazwa to pojedynczy plik (zawiera rozszerzenie, np. "TODO.md")
+        // Skip if the name is a single file (contains extension, e.g. "TODO.md")
         if project_name.contains('.') && !project_name.contains(['/', '\\']) {
             continue;
         }
 
-        // Pomiń jeśli nazwa pasuje do nazwy aplikacji (np. "Antigravity" = antigravity.exe)
+        // Skip if the name matches an application name (e.g. "Antigravity" = antigravity.exe)
         if app_names.contains(&project_name.to_lowercase()) {
             continue;
         }

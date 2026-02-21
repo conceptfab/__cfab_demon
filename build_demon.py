@@ -189,9 +189,13 @@ class RustBuilder(CargoProjectBase):
             elapsed = time.time() - start_time
             print(f"   OK: {description} ukonczone w {elapsed:.2f}s")
 
-            if result.stdout:
+            if getattr(result, 'stdout', None):
                 print("   Stdout:")
                 print(result.stdout)
+
+            if getattr(result, 'stderr', None):
+                print("   Stderr:")
+                print(result.stderr)
 
             return True, result
 
@@ -382,10 +386,7 @@ class RustBuilder(CargoProjectBase):
                 print("   UWAGA: Testy nie przeszly, ale kontynuujemy...")
 
         print("\n   Kompilacja zakonczona pomyslnie!")
-
-        response = input("\n   Czy chcesz uruchomic aplikacje? (t/n): ").strip().lower()
-        if response in ["t", "tak", "y", "yes"]:
-            self.run_application(release=release)
+        self.run_application(release=release)
 
         return True
 

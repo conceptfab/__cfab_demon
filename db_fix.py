@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-db_path = os.path.join(os.getenv('APPDATA'), 'conceptfab', 'cfab_tracker.db')
+db_path = os.path.join(os.getenv('APPDATA'), 'conceptfab', 'cfab_dashboard.db')
 conn = sqlite3.connect(db_path)
 cur = conn.cursor()
 
@@ -25,3 +25,5 @@ else:
     print("Project '__cfab_demon' not found.")
     cur.execute("SELECT id, name FROM projects")
     print("All projects:", cur.fetchall())
+
+conn.close()

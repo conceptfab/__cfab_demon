@@ -91,27 +91,31 @@ pub async fn get_today_file_signature() -> Result<TodayFileSignature, String> {
 
 #[tauri::command]
 pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    conn.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
         .map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
+    tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
         .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    conn.execute(
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
         "DELETE FROM file_activities WHERE app_id IN (SELECT id FROM applications WHERE project_id = ?1)",
         [project_id],
     )
     .map_err(|e| e.to_string())?;
-    conn.execute(
+    tx.execute(
         "DELETE FROM sessions WHERE app_id IN (SELECT id FROM applications WHERE project_id = ?1)",
         [project_id],
     )
     .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -125,7 +129,15 @@ pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
          DELETE FROM applications;
          DELETE FROM imported_files;
          DELETE FROM project_folders;
-         DELETE FROM projects;",
+         DELETE FROM projects;
+         DELETE FROM assignment_auto_run_items;
+         DELETE FROM assignment_auto_runs;
+         DELETE FROM assignment_feedback;
+         DELETE FROM assignment_suggestions;
+         DELETE FROM assignment_model_app;
+         DELETE FROM assignment_model_token;
+         DELETE FROM assignment_model_time;
+         DELETE FROM assignment_model_state;",
     )
     .map_err(|e| e.to_string())?;
     Ok(())

@@ -119,7 +119,7 @@ fn get_exe_name_from_pid(pid: u32) -> Option<String> {
         );
         
         if handle.is_null() {
-            log::warn!("Błąd OpenProcess dla PID {}: {}", pid, winapi::um::errhandlingapi::GetLastError());
+            log::warn!("OpenProcess error for PID {}: {}", pid, winapi::um::errhandlingapi::GetLastError());
             return None;
         }
 
@@ -129,7 +129,7 @@ fn get_exe_name_from_pid(pid: u32) -> Option<String> {
         CloseHandle(handle);
 
         if res == 0 {
-            log::warn!("Błąd QueryFullProcessImageNameW dla PID {}: {}", pid, winapi::um::errhandlingapi::GetLastError());
+            log::warn!("QueryFullProcessImageNameW error for PID {}: {}", pid, winapi::um::errhandlingapi::GetLastError());
             return None;
         }
 

@@ -10,7 +10,7 @@ pub(crate) const DAEMON_AUTOSTART_LNK: &str = "Cfab Demon.lnk";
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-/// Ukrywa okno CMD przy uruchamianiu procesów systemowych (tasklist, taskkill, powershell).
+/// Hides the CMD window when running system processes (tasklist, taskkill, powershell).
 #[cfg(windows)]
 pub(crate) fn no_console(cmd: &mut Command) {
     cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW

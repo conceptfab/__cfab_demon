@@ -4,4 +4,4 @@ import subprocess
 import os
 
 os.chdir(os.path.join(os.path.dirname(__file__), "dashboard"))
-subprocess.run(["npm", "run", "tauri", "dev"], shell=True)
+subprocess.run("npm run tauri dev", shell=True)

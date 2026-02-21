@@ -4,7 +4,7 @@ mod db;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -54,6 +54,7 @@ pub fn run() {
             commands::get_dashboard_projects,
             commands::get_timeline,
             commands::get_hourly_breakdown,
+
             commands::get_applications,
             commands::get_app_timeline,
             commands::get_sessions,

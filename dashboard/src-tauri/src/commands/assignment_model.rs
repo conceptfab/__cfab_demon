@@ -625,7 +625,6 @@ pub async fn train_assignment_model(
     }
 }
 
-#[command]
 pub async fn suggest_project_for_session(
     app: AppHandle,
     session_id: i64,

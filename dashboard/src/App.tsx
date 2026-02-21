@@ -101,6 +101,8 @@ function AutoImporter() {
       .finally(() => {
         clearTimeout(warnTimer);
       });
+
+    return () => clearTimeout(warnTimer);
   }, [autoImportDone, setAutoImportDone, triggerRefresh]);
 
   return null;

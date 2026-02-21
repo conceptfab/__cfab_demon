@@ -61,7 +61,7 @@ pub fn ensure_app_dirs() -> Result<()> {
     if !base.exists() && legacy_base.exists() {
         if let Err(e) = std::fs::rename(&legacy_base, &base) {
             log::warn!(
-                "Nie udało się zmigrować katalogu {:?} -> {:?}: {}",
+                "Failed to migrate directory {:?} -> {:?}: {}",
                 legacy_base, base, e
             );
         }
@@ -108,7 +108,7 @@ pub fn load() -> Config {
 
     let mut cfg = match std::fs::read_to_string(&path) {
         Ok(contents) => serde_json::from_str(&contents).unwrap_or_else(|e| {
-            log::warn!("Błąd parsowania konfiguracji: {}", e);
+            log::warn!("Configuration parsing error: {}", e);
             Config::default()
         }),
         Err(e) => {

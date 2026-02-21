@@ -40,10 +40,10 @@ export function ExportPanel() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Archive className="h-5 w-5 text-sky-500" />
-          Eksport Danych
+          Data Export
         </CardTitle>
         <CardDescription>
-          Eksportuj projekty, sesje i nagrania do pliku JSON.
+          Export properties, sessions, and recordings to a JSON file.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -54,23 +54,23 @@ export function ExportPanel() {
               onClick={() => setExportType("all")}
               className="flex-1"
             >
-              Wszystkie dane
+              All Data
             </Button>
             <Button
               variant={exportType === "single" ? "default" : "outline"}
               onClick={() => setExportType("single")}
               className="flex-1"
             >
-              Pojedynczy projekt
+              Single Project
             </Button>
           </div>
 
           {exportType === "single" && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">Wybierz projekt</label>
+              <label className="text-sm font-medium">Select Project</label>
               <Select value={selectedProject} onValueChange={setSelectedProject}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Wybierz projekt" />
+                  <SelectValue placeholder="Select a project" />
                 </SelectTrigger>
                 <SelectContent>
                   {projects.map((p) => (
@@ -93,14 +93,14 @@ export function ExportPanel() {
                 className="h-4 w-4 rounded border-gray-300"
               />
               <label htmlFor="allTime" className="text-sm font-medium">
-                Cały zakres (od początku)
+                All time (from the beginning)
               </label>
             </div>
 
             {!allTime && (
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Od</label>
+                  <label className="text-xs text-muted-foreground">From</label>
                   <div className="relative">
                     <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <input
@@ -112,7 +112,7 @@ export function ExportPanel() {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Do</label>
+                  <label className="text-xs text-muted-foreground">To</label>
                   <div className="relative">
                     <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                     <input
@@ -130,7 +130,7 @@ export function ExportPanel() {
 
         <Button onClick={handleExport} disabled={loading} className="w-full gap-2">
           <Download className="h-4 w-4" />
-          {loading ? "Eksportowanie..." : "Eksportuj dane"}
+          {loading ? "Exporting..." : "Export Data"}
         </Button>
       </CardContent>
     </Card>

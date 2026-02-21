@@ -16,9 +16,9 @@ interface Props {
 }
 
 const SESSION_TYPES = [
-  { value: "meeting", label: "Spotkanie" },
-  { value: "call", label: "Telekonferencja" },
-  { value: "other", label: "Inne" },
+  { value: "meeting", label: "Meeting" },
+  { value: "call", label: "Call" },
+  { value: "other", label: "Other" },
 ];
 
 function toLocalDatetimeValue(iso?: string): string {
@@ -101,14 +101,14 @@ export function ManualSessionDialog({
   }, [open, editSession, defaultProjectId, defaultStartTime, projects, initializedId]);
 
   const handleDelete = async () => {
-    if (!editSession || !confirm("Czy na pewno chcesz usunąć tę sesję?")) return;
+    if (!editSession || !confirm("Are you sure you want to delete this session?")) return;
     setSaving(true);
     try {
       await deleteManualSession(editSession.id);
       onOpenChange(false);
       onSaved();
     } catch (error: unknown) {
-      setError(getErrorMessage(error, "Błąd usuwania"));
+      setError(getErrorMessage(error, "Delete Error"));
     } finally {
       setSaving(false);
     }
@@ -116,19 +116,19 @@ export function ManualSessionDialog({
 
   const handleSave = async () => {
     if (!title.trim()) {
-      setError("Podaj tytuł sesji");
+      setError("Please enter a title");
       return;
     }
     if (!projectId) {
-      setError("Wybierz projekt");
+      setError("Please select a project");
       return;
     }
     if (!startTime || !endTime) {
-      setError("Podaj czas rozpoczęcia i zakończenia");
+      setError("Please enter start and end times");
       return;
     }
     if (endTime <= startTime) {
-      setError("Czas zakończenia musi być po czasie rozpoczęcia");
+      setError("End time must be after the start time");
       return;
     }
 
@@ -150,7 +150,7 @@ export function ManualSessionDialog({
       onOpenChange(false);
       onSaved();
     } catch (error: unknown) {
-      setError(getErrorMessage(error, "Błąd zapisu"));
+      setError(getErrorMessage(error, "Save Error"));
     } finally {
       setSaving(false);
     }
@@ -160,21 +160,21 @@ export function ManualSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{editSession ? "Edytuj sesję" : "Dodaj sesję manualną"}</DialogTitle>
+          <DialogTitle>{editSession ? "Edit Session" : "Add Manual Session"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Tytuł</label>
+            <label className="text-sm font-medium">Title</label>
             <input
               className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="np. Daily standup"
+              placeholder="e.g. Daily standup"
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Typ</label>
+            <label className="text-sm font-medium">Type</label>
             <Select value={sessionType} onValueChange={setSessionType}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
@@ -190,13 +190,13 @@ export function ManualSessionDialog({
           </div>
 
           <div>
-            <label className="text-sm font-medium">Projekt</label>
+            <label className="text-sm font-medium">Project</label>
             <Select
               value={projectId ? String(projectId) : ""}
               onValueChange={(v) => setProjectId(Number(v))}
             >
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Wybierz projekt" />
+                <SelectValue placeholder="Select a project" />
               </SelectTrigger>
               <SelectContent>
                 {projects.map((p) => (
@@ -225,7 +225,7 @@ export function ManualSessionDialog({
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Koniec</label>
+              <label className="text-sm font-medium">End</label>
               <input
                 type="datetime-local"
                 className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -240,11 +240,11 @@ export function ManualSessionDialog({
           <div className="flex gap-2">
             {editSession && (
               <Button onClick={handleDelete} variant="destructive" className="flex-1" disabled={saving}>
-                Usuń
+                Delete
               </Button>
             )}
             <Button onClick={handleSave} className="flex-[2]" disabled={saving}>
-              {saving ? "Zapisywanie..." : editSession ? "Zapisz" : "Dodaj sesję"}
+              {saving ? "Saving..." : editSession ? "Save" : "Add Session"}
             </Button>
           </div>
         </div>

@@ -11,14 +11,14 @@ export function DataManagement() {
           <Database className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Zarządzanie Danymi</h1>
-          <p className="text-muted-foreground">Eksportuj swoje dane do kopii zapasowej lub importuj z innego źródła.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Data Management</h1>
+          <p className="text-muted-foreground">Export your data to a backup or import from another source.</p>
         </div>
       </div>
 
       <Tabs defaultValue="export" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
-          <TabsTrigger value="export">Eksport</TabsTrigger>
+          <TabsTrigger value="export">Export</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
         <TabsContent value="export" className="space-y-4">

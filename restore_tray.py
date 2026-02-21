@@ -1,4 +1,8 @@
-// Moduł system tray - ikona w zasobniku systemowym z menu kontekstowym
+import os
+
+file_path = "src/tray.rs"
+
+original_content = """// Moduł system tray - ikona w zasobniku systemowym z menu kontekstowym
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -259,11 +263,11 @@ fn launch_dashboard() {
     if let Some(path) = dashboard_exe {
         match Command::new(path).spawn() {
             Ok(_) => log::info!("Dashboard uruchomiony: {:?}", path),
-            Err(e) => log::error!("Error starting Dashboard: {}", e),
+            Err(e) => log::error!("Błąd uruchamiania Dashboard: {}", e),
         }
     } else {
         log::error!("Nie znaleziono dashboard exe w {:?}", daemon_dir);
-        show_error_message("Dashboard not found (cfab-dashboard.exe).\nMake sure it is located in the same folder as cfab-demon.exe.");
+        show_error_message("Dashboard not found (cfab-dashboard.exe).\\nMake sure it is located in the same folder as cfab-demon.exe.");
     }
 }
 
@@ -283,3 +287,9 @@ fn show_error_message(msg: &str) {
         );
     }
 }
+"""
+
+with open(file_path, 'w', encoding='utf-8') as f:
+    f.write(original_content)
+
+print(f"Successfully restored {file_path}")

@@ -178,7 +178,7 @@ pub struct DateRange {
     pub end: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct SessionFilters {
     #[serde(rename = "dateRange")]
     pub date_range: Option<DateRange>,

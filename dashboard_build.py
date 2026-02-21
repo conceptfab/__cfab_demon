@@ -14,7 +14,7 @@ FINAL_NAME = "cfab-dashboard.exe"
 
 def main():
     os.chdir(DASHBOARD)
-    result = subprocess.run(["npm", "run", "tauri", "build"], shell=True)
+    result = subprocess.run("npm run tauri build", shell=True)
     if result.returncode != 0:
         sys.exit(result.returncode)
 
@@ -43,6 +43,7 @@ def main():
                     break
     if not copied:
         print(f"\n   UWAGA: Nie znaleziono exe w {bundle_dir}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

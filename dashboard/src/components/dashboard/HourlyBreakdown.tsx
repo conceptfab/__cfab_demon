@@ -50,7 +50,7 @@ export function HourlyBreakdown({ data }: Props) {
                 contentStyle={TOOLTIP_CONTENT_STYLE}
                 labelStyle={{ color: "#f1f5f9", fontWeight: 600 }}
                 itemStyle={{ color: "#e2e8f0" }}
-                formatter={(value) => [`${value} min`, "Czas"]}
+                formatter={(value) => [`${value} min`, "Time"]}
               />
               <Bar dataKey="minutes" fill="#38bdf8" radius={[2, 2, 0, 0]} />
             </BarChart>
