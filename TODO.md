@@ -1,4 +1,4 @@
-Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku). przygotuj szczegółowy raport.md
+Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku). Przygotuj szczegółowy raport.md
 
 
 - splash screen/górne menu File/Exit, About

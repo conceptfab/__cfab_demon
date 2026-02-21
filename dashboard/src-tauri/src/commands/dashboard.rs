@@ -27,7 +27,7 @@ pub async fn get_dashboard_stats(
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
              LEFT JOIN projects p ON p.id = a.project_id
-             WHERE s.date >= ?1 AND s.date <= ?2
+             WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              GROUP BY s.app_id
              ORDER BY total DESC
              LIMIT 5",
@@ -95,10 +95,10 @@ fn query_dashboard_counters(
             "SELECT
                 (SELECT COUNT(DISTINCT app_id)
                  FROM sessions
-                 WHERE date >= ?1 AND date <= ?2),
+                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)),
                 (SELECT COUNT(*)
                  FROM sessions
-                 WHERE date >= ?1 AND date <= ?2) +
+                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)) +
                 (SELECT COUNT(*)
                  FROM manual_sessions
                  WHERE date >= ?1 AND date <= ?2),
@@ -108,7 +108,7 @@ fn query_dashboard_counters(
                         ELSE COUNT(DISTINCT date)
                     END
                  FROM (
-                     SELECT date FROM sessions WHERE date >= ?1 AND date <= ?2
+                     SELECT date FROM sessions WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
                      UNION
                      SELECT date FROM manual_sessions WHERE date >= ?1 AND date <= ?2
                  ))",
@@ -163,7 +163,7 @@ fn query_project_counts(
                  AND fa.project_id IS NOT NULL
                  AND fa.last_seen > s.start_time
                  AND fa.first_seen < s.end_time
-                WHERE s.date >= ?1 AND s.date <= ?2
+                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
                 GROUP BY s.id, s.app_id, fa.project_id
             ),
             ranked_overlap AS (
@@ -188,7 +188,7 @@ fn query_project_counts(
                 LEFT JOIN ranked_overlap ro
                   ON ro.session_id = s.id
                  AND ro.rn = 1
-                WHERE s.date >= ?1 AND s.date <= ?2
+                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
             ),
             combined AS (
                 SELECT COALESCE(p.name, 'Unassigned') as project_name, sp.app_id as app_id, 1 as session_count
@@ -344,7 +344,7 @@ pub async fn get_hourly_breakdown(
                     SUM(duration_seconds)
              FROM (
                  SELECT start_time, duration_seconds FROM sessions
-                 WHERE date >= ?1 AND date <= ?2
+                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
                  UNION ALL
                  SELECT start_time, duration_seconds FROM manual_sessions
                  WHERE date >= ?1 AND date <= ?2
@@ -389,6 +389,7 @@ pub async fn get_applications(
                ON s.app_id = a.id
               AND s.date >= ?1
               AND s.date <= ?2
+              AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              LEFT JOIN projects p ON p.id = a.project_id
              GROUP BY a.id
              ORDER BY total_seconds DESC"
@@ -405,7 +406,7 @@ pub async fn get_applications(
                     p.color as project_color,
                     a.color as app_color
              FROM applications a
-             LEFT JOIN sessions s ON s.app_id = a.id
+             LEFT JOIN sessions s ON s.app_id = a.id AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              LEFT JOIN projects p ON p.id = a.project_id
              GROUP BY a.id
              ORDER BY total_seconds DESC"
@@ -482,7 +483,7 @@ pub async fn get_app_timeline(
         .prepare_cached(
             "SELECT date, SUM(duration_seconds)
              FROM sessions
-             WHERE app_id = ?1 AND date >= ?2 AND date <= ?3
+             WHERE app_id = ?1 AND date >= ?2 AND date <= ?3 AND (is_hidden IS NULL OR is_hidden = 0)
              GROUP BY date
              ORDER BY date",
         )
@@ -516,7 +517,8 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 app_id INTEGER NOT NULL,
                 duration_seconds INTEGER NOT NULL,
-                date TEXT NOT NULL
+                date TEXT NOT NULL,
+                is_hidden INTEGER DEFAULT 0
             );
             CREATE TABLE manual_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

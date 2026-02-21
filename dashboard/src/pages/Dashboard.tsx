@@ -31,6 +31,7 @@ import type {
   ProjectWithStats,
   SessionWithApp,
   StackedBarData,
+  DateRange,
 } from "@/lib/db-types";
 
 function AutoImportBanner() {
@@ -83,7 +84,7 @@ function AutoImportBanner() {
   );
 }
 
-function TopProjectsList({ projects, allProjectsList }: { projects: ProjectTimeRow[], allProjectsList: ProjectWithStats[] }) {
+function TopProjectsList({ projects, allProjectsList, dateRange, setSessionsFocusDate }: { projects: ProjectTimeRow[], allProjectsList: ProjectWithStats[], dateRange: DateRange, setSessionsFocusDate: (date: string | null) => void }) {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const setSessionsFocusProject = useAppStore((s) => s.setSessionsFocusProject);
 
@@ -104,6 +105,7 @@ function TopProjectsList({ projects, allProjectsList }: { projects: ProjectTimeR
           key={`${p.name}-${i}`}
           className="space-y-1.5 cursor-pointer hover:bg-muted/50 p-2 -mx-2 rounded-md transition-colors"
           onClick={() => {
+            setSessionsFocusDate(dateRange.end);
             if (p.name === "Unassigned") {
               setSessionsFocusProject("unassigned");
             } else {
@@ -406,7 +408,12 @@ export function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <TopProjectsList projects={topProjects} allProjectsList={projectsList} />
+                  <TopProjectsList
+                    projects={topProjects}
+                    allProjectsList={projectsList}
+                    dateRange={dateRange}
+                    setSessionsFocusDate={setSessionsFocusDate}
+                  />
           </CardContent>
         </Card>
 

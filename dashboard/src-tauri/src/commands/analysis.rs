@@ -125,7 +125,7 @@ pub(crate) fn compute_project_activity_unique(
                   AND fa.project_id IS NOT NULL
                   AND fa.last_seen > s.start_time
                   AND fa.first_seen < s.end_time
-                 WHERE s.date >= ?1 AND s.date <= ?2
+                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
                  GROUP BY s.id, fa.project_id
              ),
              ranked_overlap AS (
@@ -150,7 +150,7 @@ pub(crate) fn compute_project_activity_unique(
                  LEFT JOIN ranked_overlap ro
                    ON ro.session_id = s.id
                   AND ro.rn = 1
-                 WHERE s.date >= ?1 AND s.date <= ?2
+                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              )
              SELECT sp.start_time, sp.end_time, COALESCE(p.name, 'Unassigned') as project_name
              FROM session_projects sp
@@ -319,7 +319,7 @@ pub async fn get_heatmap(
                     SUM(duration_seconds)
              FROM (
                  SELECT date, start_time, duration_seconds FROM sessions
-                 WHERE date >= ?1 AND date <= ?2
+                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
                  UNION ALL
                  SELECT date, start_time, duration_seconds FROM manual_sessions
                  WHERE date >= ?1 AND date <= ?2
@@ -356,10 +356,10 @@ pub async fn get_stacked_timeline(
             "SELECT s.date, a.display_name, SUM(s.duration_seconds)
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
-             WHERE s.date >= ?1 AND s.date <= ?2
+             WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              AND a.id IN (
                 SELECT app_id FROM sessions
-                WHERE date >= ?1 AND date <= ?2
+                WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
                 GROUP BY app_id
                 ORDER BY SUM(duration_seconds) DESC
                 LIMIT ?3
