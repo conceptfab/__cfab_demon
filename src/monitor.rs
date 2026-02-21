@@ -13,8 +13,8 @@ use winapi::um::tlhelp32::{
     PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 
-/// Cache PID → (exe_name, timestamp). Używany do ewikcji starych wpisów.
-pub type PidCache = HashMap<u32, (String, Instant, Instant)>;
+/// Cache PID -> (exe_name, creation_time, cached_at, last_alive_check). Used to evict old entries and validate PID reuse.
+pub type PidCache = HashMap<u32, (String, u64, Instant, Instant)>;
 
 /// Informacja o aktywnym procesie
 #[derive(Debug, Clone)]
@@ -24,8 +24,8 @@ pub struct ProcessInfo {
     pub window_title: String,
 }
 
-/// Sprawdza czy proces o danym PID nadal żyje (ochrona przed PID reuse).
-fn process_still_alive(pid: u32) -> bool {
+/// Gets the creation time of a process as u64. Returns None if unable to fetch.
+fn get_process_creation_time(pid: u32) -> Option<u64> {
     unsafe {
         let handle = OpenProcess(
             winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
@@ -33,10 +33,31 @@ fn process_still_alive(pid: u32) -> bool {
             pid,
         );
         if handle.is_null() {
-            return false;
+            return None;
         }
+
+        let mut creation: FILETIME = std::mem::zeroed();
+        let mut exit: FILETIME = std::mem::zeroed();
+        let mut kernel: FILETIME = std::mem::zeroed();
+        let mut user: FILETIME = std::mem::zeroed();
+
+        let ok = GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user);
         CloseHandle(handle);
-        true
+
+        if ok != 0 {
+            Some(filetime_to_u64(&creation))
+        } else {
+            None
+        }
+    }
+}
+
+/// Checks if a process with a specific PID is still alive AND has the same creation time (protects against PID reuse).
+fn process_still_alive(pid: u32, expected_creation_time: u64) -> bool {
+    if let Some(current_creation_time) = get_process_creation_time(pid) {
+        current_creation_time == expected_creation_time
+    } else {
+        false
     }
 }
 
@@ -77,24 +98,24 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
 
         // Nazwa exe — z cache (z walidacją PID reuse) lub przez OpenProcess
         let now = Instant::now();
-        let exe_name = if let Some((name, cached_at, last_alive_check)) = pid_cache.get_mut(&pid) {
+        let exe_name = if let Some((name, creation_time, cached_at, last_alive_check)) = pid_cache.get_mut(&pid) {
             // Re-walidacja PID ograniczona do 60s, aby zredukować koszt OpenProcess.
             if now.duration_since(*last_alive_check) < std::time::Duration::from_secs(60) {
                 *cached_at = now;
                 name.clone()
-            } else if process_still_alive(pid) {
+            } else if process_still_alive(pid, *creation_time) {
                 *cached_at = now;
                 *last_alive_check = now;
                 name.clone()
             } else {
                 pid_cache.remove(&pid);
-                let name = get_exe_name_from_pid(pid)?;
-                pid_cache.insert(pid, (name.clone(), now, now));
+                let (name, new_creation_time) = get_exe_name_and_creation_time(pid)?;
+                pid_cache.insert(pid, (name.clone(), new_creation_time, now, now));
                 name
             }
         } else {
-            let name = get_exe_name_from_pid(pid)?;
-            pid_cache.insert(pid, (name.clone(), now, now));
+            let (name, creation_time) = get_exe_name_and_creation_time(pid)?;
+            pid_cache.insert(pid, (name.clone(), creation_time, now, now));
             name
         };
 
@@ -106,12 +127,11 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
     }
 }
 
-/// Pobiera nazwę exe z PID. Próbuje różnych metod WinAPI dla maksymalnej skuteczności.
-fn get_exe_name_from_pid(pid: u32) -> Option<String> {
+/// Retrieves the exe name and process creation time from PID.
+fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
     use winapi::um::winbase::QueryFullProcessImageNameW;
     
     unsafe {
-        // Próbujemy najpierw PROCESS_QUERY_LIMITED_INFORMATION (Działa dla większości procesów, nawet z wyższymi uprawnieniami)
         let handle = OpenProcess(
             winapi::um::winnt::PROCESS_QUERY_LIMITED_INFORMATION,
             0,
@@ -126,10 +146,17 @@ fn get_exe_name_from_pid(pid: u32) -> Option<String> {
         let mut buf = [0u16; 1024];
         let mut size = buf.len() as DWORD;
         let res = QueryFullProcessImageNameW(handle, 0, buf.as_mut_ptr(), &mut size);
+        
+        let mut creation: FILETIME = std::mem::zeroed();
+        let mut exit: FILETIME = std::mem::zeroed();
+        let mut kernel: FILETIME = std::mem::zeroed();
+        let mut user: FILETIME = std::mem::zeroed();
+        let times_ok = GetProcessTimes(handle, &mut creation, &mut exit, &mut kernel, &mut user);
+        
         CloseHandle(handle);
 
-        if res == 0 {
-            log::warn!("QueryFullProcessImageNameW error for PID {}: {}", pid, winapi::um::errhandlingapi::GetLastError());
+        if res == 0 || times_ok == 0 {
+            log::warn!("QueryFullProcessImageNameW or GetProcessTimes error for PID {}: {}", pid, winapi::um::errhandlingapi::GetLastError());
             return None;
         }
 
@@ -139,8 +166,10 @@ fn get_exe_name_from_pid(pid: u32) -> Option<String> {
             .next()
             .unwrap_or(&full_path)
             .to_lowercase();
+            
+        let creation_time = filetime_to_u64(&creation);
 
-        Some(exe_name)
+        Some((exe_name, creation_time))
     }
 }
 
@@ -148,7 +177,7 @@ fn get_exe_name_from_pid(pid: u32) -> Option<String> {
 /// Zmniejsza serię wywołań OpenProcess po wyczyszczeniu.
 pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: std::time::Duration) {
     let now = Instant::now();
-    pid_cache.retain(|_, (_, ts, _)| now.duration_since(*ts) < max_age);
+    pid_cache.retain(|_, (_, _, ts, _)| now.duration_since(*ts) < max_age);
 }
 
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
@@ -253,12 +282,20 @@ pub fn build_process_snapshot() -> ProcessSnapshot {
     ProcessSnapshot { tree, exe_pids }
 }
 
-/// Rekurencyjnie zbiera wszystkie potomne PIDs.
-fn collect_descendants(tree: &HashMap<u32, Vec<u32>>, root: u32, result: &mut Vec<u32>) {
+/// Recursively collects all descendant PIDs.
+fn collect_descendants(
+    tree: &HashMap<u32, Vec<u32>>,
+    root: u32,
+    result: &mut Vec<u32>,
+    visited: &mut std::collections::HashSet<u32>,
+) {
+    if !visited.insert(root) {
+        return; // Cycle detected or already visited
+    }
     if let Some(children) = tree.get(&root) {
         for &child in children {
             result.push(child);
-            collect_descendants(tree, child, result);
+            collect_descendants(tree, child, result, visited);
         }
     }
 }
@@ -304,8 +341,9 @@ pub fn measure_cpu_for_app(
     let root_pids = proc_snap.exe_pids.get(exe_name).cloned().unwrap_or_default();
 
     let mut all_pids = root_pids.clone();
+    let mut visited = std::collections::HashSet::new();
     for &root in &root_pids {
-        collect_descendants(&proc_snap.tree, root, &mut all_pids);
+        collect_descendants(&proc_snap.tree, root, &mut all_pids, &mut visited);
     }
 
     let now = Instant::now();

@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS assignment_auto_run_items (
     confidence REAL NOT NULL,
     evidence_count INTEGER NOT NULL,
     applied_at TEXT NOT NULL,
-    FOREIGN KEY (run_id) REFERENCES assignment_auto_runs(id) ON DELETE CASCADE
+    FOREIGN KEY (run_id) REFERENCES assignment_auto_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_assignment_model_app_app ON assignment_model_app(app_id);
@@ -441,30 +442,27 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         )?;
     }
 
-    // Clean up projects that match application display names (e.g. "Antigravity" auto-created from app name)
-    // First clear references so they don't become orphaned "(background)" entries
+    // Clean up '(background)' entries (which were pseudo-projects) on startup
+    // Normal project names matching app display names shouldn't be deleted implicitly here
     db.execute(
         "UPDATE file_activities SET project_id = NULL
-         WHERE project_id IN (
-             SELECT p.id FROM projects p
-             JOIN applications a ON LOWER(p.name) = LOWER(a.display_name)
-         ) OR project_id IN (SELECT id FROM projects WHERE LOWER(name) = '(background)')",
+         WHERE project_id IN (SELECT id FROM projects WHERE LOWER(name) = '(background)')",
         [],
     ).ok();
+    
     db.execute(
         "UPDATE sessions SET project_id = NULL
-         WHERE project_id IN (
-             SELECT p.id FROM projects p
-             JOIN applications a ON LOWER(p.name) = LOWER(a.display_name)
-         ) OR project_id IN (SELECT id FROM projects WHERE LOWER(name) = '(background)')",
+         WHERE project_id IN (SELECT id FROM projects WHERE LOWER(name) = '(background)')",
         [],
     ).ok();
+    
     let cleaned = db.execute(
-        "DELETE FROM projects WHERE LOWER(name) IN (SELECT LOWER(display_name) FROM applications) OR LOWER(name) = '(background)'",
+        "DELETE FROM projects WHERE LOWER(name) = '(background)'",
         [],
     ).unwrap_or(0);
+    
     if cleaned > 0 {
-        log::info!("Removed {} project(s) that matched application display names or were named (background)", cleaned);
+        log::info!("Removed {} '(background)' pseudo-project(s)", cleaned);
     }
 
     Ok(())

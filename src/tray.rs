@@ -142,11 +142,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
             nwg::Event::OnTimerTick => {
                 if handle == tip_timer_handle {
                     let attention = load_assignment_attention_count();
-                    let refreshed_tip = if attention > 0 {
-                        format!("{} * - {} unassigned session(s)", APP_NAME, attention)
-                    } else {
-                        format!("{} - running in background", APP_NAME)
-                    };
+                    let refreshed_tip = build_tray_tip();
                     
                     let tray = tray_clone.borrow_mut();
                     tray.set_tip(&refreshed_tip);

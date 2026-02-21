@@ -48,8 +48,8 @@ pub struct FileEntry {
 /// Podsumowanie dnia
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DailySummary {
-    pub total_tracked_seconds: u64,
-    pub total_tracked_formatted: String,
+    pub total_app_seconds: u64,
+    pub total_app_formatted: String,
     pub apps_active_count: usize,
 }
 
@@ -192,8 +192,8 @@ fn empty_daily(date: NaiveDate) -> DailyData {
         generated_at: Local::now().to_rfc3339(),
         apps: HashMap::new(),
         summary: DailySummary {
-            total_tracked_seconds: 0,
-            total_tracked_formatted: "0h 0m 0s".to_string(),
+            total_app_seconds: 0,
+            total_app_formatted: "0h 0m 0s".to_string(),
             apps_active_count: 0,
         },
     }
@@ -209,8 +209,8 @@ fn update_summary(data: &mut DailyData) {
         total_seconds += app_data.total_seconds;
     }
 
-    data.summary.total_tracked_seconds = total_seconds;
-    data.summary.total_tracked_formatted = format_duration(total_seconds);
+    data.summary.total_app_seconds = total_seconds;
+    data.summary.total_app_formatted = format_duration(total_seconds);
     data.summary.apps_active_count = data.apps.len();
 }
 

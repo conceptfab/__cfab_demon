@@ -120,6 +120,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut last_cache_evict = Instant::now();
     let mut last_config_reload = Instant::now();
     let mut last_heartbeat = Instant::now();
+    let mut last_tracking_tick = Instant::now();
     write_heartbeat();
 
     // Stan aktywnej sesji per aplikacja
@@ -185,6 +186,11 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             cpu_thresh = iv.cpu_threshold;
         }
 
+        // Oblicz rzeczywisty czas jaki minął od ostatniego odpytania (D-9, D-11)
+        let now = Instant::now();
+        let actual_elapsed = now.duration_since(last_tracking_tick);
+        last_tracking_tick = now;
+
         // Odpytaj foreground window
         let foreground_exe = monitor::get_foreground_info(&mut pid_cache).and_then(|info| {
             log::debug!("Wykryto okno: {} (PID: {}) [{}]", info.exe_name, info.pid, info.window_title);
@@ -204,7 +210,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             record_app_activity(
                 &info.exe_name,
                 &file_name,
-                poll_interval,
+                actual_elapsed,
                 session_gap,
                 &cfg,
                 &mut daily_data,
@@ -243,7 +249,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                     record_app_activity(
                         exe_name,
                         "(background)",
-                        poll_interval,
+                        actual_elapsed,
                         session_gap,
                         &cfg,
                         &mut daily_data,
@@ -255,7 +261,9 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
         }
 
         // Heartbeat dla zewnętrznej diagnostyki "żywego" demona.
-        if last_heartbeat.elapsed() >= Duration::from_secs(30) {
+        // Używamy minimum z poll_interval i 30s
+        let heartbeat_interval = std::cmp::min(poll_interval, Duration::from_secs(30));
+        if last_heartbeat.elapsed() >= heartbeat_interval {
             write_heartbeat();
             last_heartbeat = Instant::now();
         }
@@ -275,13 +283,19 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             last_cache_evict = Instant::now();
         }
 
-        // Śpij z wczesnym sprawdzeniem sygnału zatrzymania (max 1s opóźnienie)
-        let sleep_chunks = poll_interval.as_secs().max(1).min(3600) as u32;
-        for _ in 0..sleep_chunks {
-            if stop_signal.load(Ordering::Relaxed) {
-                break;
+        // Śpij z wczesnym sprawdzeniem sygnału zatrzymania (D-10)
+        // Check time remaining to the next scheduled tick
+        let elapsed_since_tick = last_tracking_tick.elapsed();
+        if elapsed_since_tick < poll_interval {
+            let remain = poll_interval - elapsed_since_tick;
+            let sleep_chunks = (remain.as_secs_f32().ceil() as u32).max(1);
+            
+            for _ in 0..sleep_chunks {
+                if stop_signal.load(Ordering::Relaxed) {
+                    break;
+                }
+                thread::sleep(Duration::from_secs(1).min(remain));
             }
-            thread::sleep(Duration::from_secs(1));
         }
     }
 }

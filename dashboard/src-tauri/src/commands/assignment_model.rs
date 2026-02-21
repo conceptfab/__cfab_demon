@@ -666,7 +666,7 @@ pub async fn run_auto_safe_assignment(
         return Err("Mode must be 'auto_safe' to run auto assignment".to_string());
     }
 
-    let conn = db::get_connection(&app)?;
+    let mut conn = db::get_connection(&app)?;
     let effective_limit = clamp_i64(limit.unwrap_or(500), 1, 10_000);
     let session_ids = fetch_unassigned_session_ids(&conn, effective_limit, date_range)?;
 
@@ -700,10 +700,12 @@ pub async fn run_auto_safe_assignment(
     };
 
     let run_work = (|| -> Result<(), String> {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        
         for session_id in session_ids {
             result.scanned += 1;
 
-            let session = conn
+            let session = tx
                 .query_row(
                     "SELECT app_id, date, start_time, end_time, project_id
                      FROM sessions
@@ -731,11 +733,11 @@ pub async fn run_auto_safe_assignment(
                 continue;
             }
 
-            let Some(context) = build_session_context(&conn, session_id)? else {
+            let Some(context) = build_session_context(&tx, session_id)? else {
                 result.skipped_low_confidence += 1;
                 continue;
             };
-            let Some(suggestion) = compute_raw_suggestion(&conn, &context)? else {
+            let Some(suggestion) = compute_raw_suggestion(&tx, &context)? else {
                 result.skipped_low_confidence += 1;
                 continue;
             };
@@ -753,7 +755,7 @@ pub async fn run_auto_safe_assignment(
 
             result.suggested += 1;
 
-            conn.execute(
+            tx.execute(
                 "INSERT INTO assignment_suggestions (
                     session_id, app_id, suggested_project_id, suggested_confidence,
                     suggested_evidence_count, model_version, created_at, status
@@ -768,9 +770,9 @@ pub async fn run_auto_safe_assignment(
                 ],
             )
             .map_err(|e| e.to_string())?;
-            let suggestion_id = conn.last_insert_rowid();
+            let suggestion_id = tx.last_insert_rowid();
 
-            let updated_session = conn
+            let updated_session = tx
                 .execute(
                     "UPDATE sessions
                      SET project_id = ?1
@@ -781,14 +783,14 @@ pub async fn run_auto_safe_assignment(
 
             if updated_session == 0 {
                 result.skipped_already_assigned += 1;
-                let _ = conn.execute(
+                let _ = tx.execute(
                     "UPDATE assignment_suggestions SET status = 'expired' WHERE id = ?1",
                     rusqlite::params![suggestion_id],
                 );
                 continue;
             }
 
-            conn.execute(
+            tx.execute(
                 "UPDATE file_activities
                  SET project_id = ?1
                  WHERE app_id = ?2
@@ -805,7 +807,7 @@ pub async fn run_auto_safe_assignment(
             )
             .map_err(|e| e.to_string())?;
 
-            conn.execute(
+            tx.execute(
                 "INSERT INTO assignment_auto_run_items (
                     run_id, session_id, app_id, from_project_id, to_project_id,
                     suggestion_id, confidence, evidence_count, applied_at
@@ -822,23 +824,24 @@ pub async fn run_auto_safe_assignment(
             )
             .map_err(|e| e.to_string())?;
 
-            conn.execute(
+            tx.execute(
                 "UPDATE assignment_suggestions SET status = 'accepted' WHERE id = ?1",
                 rusqlite::params![suggestion_id],
             )
             .map_err(|e| e.to_string())?;
 
-            conn.execute(
+            tx.execute(
                 "INSERT INTO assignment_feedback (
                     suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
                  ) VALUES (?1, ?2, ?3, NULL, ?4, 'auto_accept', datetime('now'))",
                 rusqlite::params![suggestion_id, session_id, app_id, suggestion.project_id],
             )
             .map_err(|e| e.to_string())?;
-            increment_feedback_counter(&conn);
+            increment_feedback_counter(&tx);
 
             result.assigned += 1;
         }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(())
     })();
 
@@ -881,7 +884,7 @@ pub async fn run_auto_safe_assignment(
 pub async fn rollback_last_auto_safe_run(
     app: AppHandle,
 ) -> Result<AutoSafeRollbackResult, String> {
-    let conn = db::get_connection(&app)?;
+    let mut conn = db::get_connection(&app)?;
 
     let run_id = conn
         .query_row(
@@ -900,31 +903,37 @@ pub async fn rollback_last_auto_safe_run(
     let mut reverted = 0_i64;
     let mut skipped = 0_i64;
 
-    let mut item_stmt = conn
-        .prepare(
-            "SELECT session_id, app_id, from_project_id, to_project_id, suggestion_id
-             FROM assignment_auto_run_items
-             WHERE run_id = ?1
-             ORDER BY id DESC",
-        )
-        .map_err(|e| e.to_string())?;
-    let item_rows = item_stmt
-        .query_map(rusqlite::params![run_id], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, Option<i64>>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, Option<i64>>(4)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?;
+    let trx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let item_rows: Vec<_> = {
+        let mut item_stmt = trx
+            .prepare(
+                "SELECT session_id, app_id, from_project_id, to_project_id, suggestion_id
+                 FROM assignment_auto_run_items
+                 WHERE run_id = ?1
+                 ORDER BY id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let res: Vec<_> = item_stmt
+            .query_map(rusqlite::params![run_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())?;
+        res
+    };
 
     for row in item_rows {
-        let (session_id, app_id, from_project_id, to_project_id, suggestion_id) =
-            row.map_err(|e| e.to_string())?;
+        let (session_id, app_id, from_project_id, to_project_id, suggestion_id) = row;
 
-        let updated = conn
+        let updated = trx
             .execute(
                 "UPDATE sessions
                  SET project_id = ?1
@@ -938,7 +947,7 @@ pub async fn rollback_last_auto_safe_run(
             continue;
         }
 
-        let session_time = conn
+        let session_time = trx
             .query_row(
                 "SELECT date, start_time, end_time FROM sessions WHERE id = ?1",
                 rusqlite::params![session_id],
@@ -954,7 +963,7 @@ pub async fn rollback_last_auto_safe_run(
             .map_err(|e| e.to_string())?;
 
         if let Some((date, start_time, end_time)) = session_time {
-            conn.execute(
+            trx.execute(
                 "UPDATE file_activities
                  SET project_id = ?1
                  WHERE app_id = ?2
@@ -967,14 +976,14 @@ pub async fn rollback_last_auto_safe_run(
         }
 
         if let Some(suggestion_id) = suggestion_id {
-            conn.execute(
+            trx.execute(
                 "UPDATE assignment_suggestions SET status = 'rejected' WHERE id = ?1",
                 rusqlite::params![suggestion_id],
             )
             .map_err(|e| e.to_string())?;
         }
 
-        conn.execute(
+        trx.execute(
             "INSERT INTO assignment_feedback (
                 suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, 'auto_reject', datetime('now'))",
@@ -987,12 +996,12 @@ pub async fn rollback_last_auto_safe_run(
             ],
         )
         .map_err(|e| e.to_string())?;
-        increment_feedback_counter(&conn);
+        increment_feedback_counter(&trx);
 
         reverted += 1;
     }
 
-    conn.execute(
+    trx.execute(
         "UPDATE assignment_auto_runs
          SET rolled_back_at = datetime('now'),
              rollback_reverted = ?2,
@@ -1001,6 +1010,8 @@ pub async fn rollback_last_auto_safe_run(
         rusqlite::params![run_id, reverted, skipped],
     )
     .map_err(|e| e.to_string())?;
+
+    trx.commit().map_err(|e| e.to_string())?;
 
     Ok(AutoSafeRollbackResult {
         run_id,
