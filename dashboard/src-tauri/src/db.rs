@@ -25,6 +25,12 @@ CREATE TABLE IF NOT EXISTS applications (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS monitored_apps (
+    exe_name TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    added_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     app_id INTEGER NOT NULL,
@@ -32,6 +38,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     end_time TEXT NOT NULL,
     duration_seconds INTEGER NOT NULL,
     date TEXT NOT NULL,
+    rate_multiplier REAL NOT NULL DEFAULT 1.0,
     project_id INTEGER,
     FOREIGN KEY (app_id) REFERENCES applications(id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
@@ -594,6 +601,28 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
             "ALTER TABLE sessions ADD COLUMN is_hidden INTEGER DEFAULT 0",
             [],
         )?;
+    }
+
+    let has_sessions_rate_multiplier: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='rate_multiplier'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_sessions_rate_multiplier {
+        log::info!("Migrating sessions: adding rate_multiplier");
+        db.execute(
+            "ALTER TABLE sessions ADD COLUMN rate_multiplier REAL NOT NULL DEFAULT 1.0",
+            [],
+        )?;
+    } else {
+        // Normalize any legacy null/invalid values to 1.0.
+        db.execute(
+            "UPDATE sessions
+             SET rate_multiplier = 1.0
+             WHERE rate_multiplier IS NULL OR rate_multiplier <= 0",
+            [],
+        )
+        .ok();
     }
 
     // Clean up '(background)' entries (which were pseudo-projects) on startup

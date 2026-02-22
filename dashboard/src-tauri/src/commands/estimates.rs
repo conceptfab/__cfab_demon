@@ -154,6 +154,95 @@ fn query_project_session_counts(
     Ok(out)
 }
 
+fn query_project_multiplier_extra_seconds(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+) -> Result<HashMap<String, f64>, String> {
+    let mut stmt = conn
+        .prepare_cached(
+            "WITH session_project_overlap AS (
+                SELECT s.id as session_id,
+                       fa.project_id as project_id,
+                       SUM(
+                           MAX(
+                               0,
+                               MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
+                               MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
+                           )
+                       ) as overlap_seconds,
+                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
+                FROM sessions s
+                JOIN file_activities fa
+                  ON fa.app_id = s.app_id
+                 AND fa.date = s.date
+                 AND fa.project_id IS NOT NULL
+                 AND fa.last_seen > s.start_time
+                 AND fa.first_seen < s.end_time
+                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+                GROUP BY s.id, fa.project_id
+            ),
+            ranked_overlap AS (
+                SELECT session_id, project_id, overlap_seconds, span_seconds,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY session_id
+                           ORDER BY overlap_seconds DESC, project_id ASC
+                       ) as rn,
+                       COUNT(*) OVER (PARTITION BY session_id) as project_count
+                FROM session_project_overlap
+            ),
+            session_projects AS (
+                SELECT s.id,
+                       CASE
+                           WHEN s.project_id IS NOT NULL THEN s.project_id
+                           WHEN ro.project_count = 1
+                            AND ro.overlap_seconds * 2 >= ro.span_seconds
+                           THEN ro.project_id
+                           ELSE NULL
+                       END as project_id,
+                       CAST(s.duration_seconds AS REAL) as duration_seconds,
+                       CASE
+                           WHEN s.rate_multiplier IS NULL OR s.rate_multiplier <= 0 THEN 1.0
+                           ELSE s.rate_multiplier
+                       END as rate_multiplier
+                FROM sessions s
+                LEFT JOIN ranked_overlap ro
+                  ON ro.session_id = s.id
+                 AND ro.rn = 1
+                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+            ),
+            combined AS (
+                SELECT COALESCE(p.name, 'Unassigned') as project_name,
+                       CASE
+                           WHEN sp.rate_multiplier <= 1.0 THEN 0.0
+                           ELSE (sp.duration_seconds * (sp.rate_multiplier - 1.0))
+                       END as extra_seconds
+                FROM session_projects sp
+                LEFT JOIN projects p ON p.id = sp.project_id
+                UNION ALL
+                SELECT p.name as project_name,
+                       0.0 as extra_seconds
+                FROM manual_sessions ms
+                JOIN projects p ON p.id = ms.project_id
+                WHERE ms.date >= ?1 AND ms.date <= ?2
+            )
+            SELECT project_name, SUM(extra_seconds) as extra_seconds
+            FROM combined
+            GROUP BY project_name",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut out = HashMap::new();
+    for row in rows.filter_map(|r| r.ok()) {
+        out.insert(row.0.to_lowercase(), row.1);
+    }
+    Ok(out)
+}
+
 fn build_estimate_rows(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
@@ -166,6 +255,7 @@ fn build_estimate_rows(
 
     let project_meta = query_project_meta(conn)?;
     let session_counts = query_project_session_counts(conn, date_range)?;
+    let multiplier_extra_seconds_by_project = query_project_multiplier_extra_seconds(conn, date_range)?;
 
     let mut rows: Vec<EstimateProjectRow> = Vec::new();
     for (project_name, seconds_f64) in totals {
@@ -185,7 +275,12 @@ fn build_estimate_rows(
         let seconds = seconds_f64.round() as i64;
         let hours = seconds_f64 / 3600.0;
         let effective_hourly_rate = project_hourly_rate.unwrap_or(global_hourly_rate);
-        let estimated_value = hours * effective_hourly_rate;
+        let weighted_hours = hours + (multiplier_extra_seconds_by_project
+            .get(&key)
+            .copied()
+            .unwrap_or(0.0)
+            / 3600.0);
+        let estimated_value = weighted_hours * effective_hourly_rate;
         let session_count = session_counts.get(&key).copied().unwrap_or(0);
 
         rows.push(EstimateProjectRow {
@@ -312,6 +407,7 @@ mod tests {
                 end_time TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
                 project_id INTEGER,
                 is_hidden INTEGER DEFAULT 0
             );

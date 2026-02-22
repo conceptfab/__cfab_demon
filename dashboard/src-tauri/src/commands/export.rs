@@ -145,6 +145,7 @@ fn build_export_archive(
         let mut stmt = conn
             .prepare(
                 "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds, s.date
+                        , COALESCE(s.rate_multiplier, 1.0)
                  FROM sessions s
                  INNER JOIN _export_app_ids e ON e.id = s.app_id
                  WHERE s.date >= ?1 AND s.date <= ?2",
@@ -159,6 +160,7 @@ fn build_export_archive(
                     end_time: row.get(3)?,
                     duration_seconds: row.get(4)?,
                     date: row.get(5)?,
+                    rate_multiplier: row.get(6)?,
                 })
             })
             .map_err(|e| e.to_string())?;

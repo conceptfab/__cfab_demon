@@ -91,6 +91,7 @@ pub struct SessionWithApp {
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,
+    pub rate_multiplier: f64,
     pub app_name: String,
     pub executable_name: String,
     pub project_name: Option<String>,
@@ -398,7 +399,13 @@ pub struct SessionRow {
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,
+    #[serde(default = "default_rate_multiplier")]
+    pub rate_multiplier: f64,
     pub date: String,
+}
+
+fn default_rate_multiplier() -> f64 {
+    1.0
 }
 
 #[derive(Serialize)]

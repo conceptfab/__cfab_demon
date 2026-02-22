@@ -23,6 +23,7 @@ export interface Session {
   start_time: string;
   end_time: string;
   duration_seconds: number;
+  rate_multiplier?: number;
 }
 
 export interface FileActivity {

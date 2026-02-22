@@ -26,6 +26,7 @@ interface SegmentData {
   endMs: number;
   appName: string;
   appId: number;
+  rateMultiplier?: number;
   isManual?: boolean;
   manualTitle?: string;
   manualSession?: ManualSessionWithProject;
@@ -288,6 +289,7 @@ export function ProjectDayTimeline({
         endMs: item.endMs,
         appName: item.s.app_name,
         appId: item.s.app_id,
+        rateMultiplier: item.s.rate_multiplier ?? 1,
       });
     }
 
@@ -401,7 +403,7 @@ export function ProjectDayTimeline({
                           backgroundColor: row.color,
                           opacity: 0.9,
                         }}
-                        title={`${segment.isManual ? `[Manual] ${segment.manualTitle}` : segment.appName}: ${fmtHourMinute(segment.startMs)} - ${fmtHourMinute(segment.endMs)}`}
+                        title={`${segment.isManual ? `[Manual] ${segment.manualTitle}` : segment.appName}: ${fmtHourMinute(segment.startMs)} - ${fmtHourMinute(segment.endMs)}${(segment.rateMultiplier ?? 1) > 1.000001 ? ` • $$ ${Number.isInteger(segment.rateMultiplier ?? 1) ? `x${(segment.rateMultiplier ?? 1).toFixed(0)}` : `x${(segment.rateMultiplier ?? 1).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`}` : ""}`}
                         onContextMenu={
                           !segment.isManual
                             ? (e) => handleSegmentContextMenu(e, segment)
@@ -412,6 +414,11 @@ export function ProjectDayTimeline({
                       >
                         {segment.isManual && (
                           <div className="absolute inset-0 rounded-sm" style={HATCH_STYLE} />
+                        )}
+                        {(segment.rateMultiplier ?? 1) > 1.000001 && (
+                          <div className="pointer-events-none absolute right-0.5 top-0.5 rounded bg-black/35 px-1 py-[1px] text-[9px] font-semibold leading-none text-emerald-100 shadow-sm">
+                            $$
+                          </div>
                         )}
                       </div>
                     );

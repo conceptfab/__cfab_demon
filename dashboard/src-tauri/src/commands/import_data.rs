@@ -207,6 +207,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                 start_time: s.start_time.clone(),
                 end_time: s.end_time.clone(),
                 duration_seconds: s.duration_seconds,
+                rate_multiplier: s.rate_multiplier,
                 date: s.date.clone(),
             };
 
@@ -317,6 +318,7 @@ fn merge_or_insert_session(
 ) -> Result<bool, String> {
     let mut merged_start = incoming.start_time.clone();
     let mut merged_end = incoming.end_time.clone();
+    let mut merged_rate_multiplier = incoming.rate_multiplier.max(1.0);
     let mut overlap_ids: HashSet<i64> = HashSet::new();
 
     // Expand interval until closure: if merged range touches more sessions,
@@ -325,6 +327,7 @@ fn merge_or_insert_session(
         let mut stmt = tx
             .prepare(
                 "SELECT id, start_time, end_time
+                        , COALESCE(rate_multiplier, 1.0)
                  FROM sessions
                  WHERE app_id = ?1 AND date = ?2
                    AND start_time <= ?3
@@ -340,6 +343,7 @@ fn merge_or_insert_session(
                         row.get::<_, i64>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
+                        row.get::<_, f64>(3)?,
                     ))
                 },
             )
@@ -347,10 +351,13 @@ fn merge_or_insert_session(
 
         let prev_count = overlap_ids.len();
         for row in rows {
-            let (id, start, end) = row.map_err(|e| e.to_string())?;
+            let (id, start, end, rate_multiplier) = row.map_err(|e| e.to_string())?;
             overlap_ids.insert(id);
             merged_start = min_timestamp(&merged_start, &start);
             merged_end = max_timestamp(&merged_end, &end);
+            if rate_multiplier.is_finite() && rate_multiplier > merged_rate_multiplier {
+                merged_rate_multiplier = rate_multiplier;
+            }
         }
 
         if overlap_ids.len() == prev_count {
@@ -360,14 +367,15 @@ fn merge_or_insert_session(
 
     if overlap_ids.is_empty() {
         tx.execute(
-            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
                 local_app_id,
                 incoming.start_time,
                 incoming.end_time,
                 incoming.duration_seconds,
-                incoming.date
+                incoming.date,
+                merged_rate_multiplier
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -382,9 +390,9 @@ fn merge_or_insert_session(
 
     tx.execute(
         "UPDATE sessions
-         SET start_time = ?1, end_time = ?2, duration_seconds = ?3
-         WHERE id = ?4",
-        rusqlite::params![merged_start, merged_end, duration, keep_id],
+         SET start_time = ?1, end_time = ?2, duration_seconds = ?3, rate_multiplier = ?4
+         WHERE id = ?5",
+        rusqlite::params![merged_start, merged_end, duration, merged_rate_multiplier, keep_id],
     )
     .map_err(|e| e.to_string())?;
 
@@ -465,7 +473,8 @@ mod tests {
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
-                date TEXT NOT NULL
+                date TEXT NOT NULL,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0
             );",
         )
         .expect("create sessions schema");
@@ -507,6 +516,7 @@ mod tests {
             start_time: "2026-01-01T09:30:00+00:00".to_string(),
             end_time: "2026-01-01T10:10:00+00:00".to_string(),
             duration_seconds: 2400,
+            rate_multiplier: 1.0,
             date: "2026-01-01".to_string(),
         };
 

@@ -1,7 +1,9 @@
-// Moduł konfiguracji — ładowanie/zapisywanie listy monitorowanych aplikacji
-// Plik konfiguracyjny: %APPDATA%/TimeFlow/monitored_apps.json
+// Moduł konfiguracji demona:
+// - interwały: %APPDATA%/TimeFlow/monitored_apps.json (legacy/config)
+// - monitorowane aplikacje: tabela monitored_apps w %APPDATA%/TimeFlow/timeflow_dashboard.db
 
 use anyhow::{Context, Result};
+use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -110,8 +112,12 @@ fn config_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("monitored_apps.json"))
 }
 
-/// Ładuje konfigurację z pliku. Zwraca pustą jeśli plik nie istnieje.
-pub fn load() -> Config {
+fn dashboard_db_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("timeflow_dashboard.db"))
+}
+
+/// Ładuje legacy konfigurację z pliku JSON (interwały + fallback lista aplikacji).
+fn load_legacy_json_config() -> Config {
     let path = match config_path() {
         Ok(p) => p,
         Err(e) => {
@@ -138,6 +144,77 @@ pub fn load() -> Config {
     // Legacy compatibility: normalize exe names so comparisons are case-insensitive.
     for app in &mut cfg.apps {
         app.exe_name = app.exe_name.trim().to_lowercase();
+    }
+
+    cfg
+}
+
+fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
+    let db_path = dashboard_db_path()?;
+    if !db_path.exists() {
+        anyhow::bail!("Dashboard DB not found: {:?}", db_path);
+    }
+
+    let conn = rusqlite::Connection::open(&db_path)
+        .with_context(|| format!("Nie można otworzyć DB dashboardu: {:?}", db_path))?;
+    conn.busy_timeout(std::time::Duration::from_millis(2000))
+        .context("Nie można ustawić busy_timeout dla DB dashboardu")?;
+
+    let table_exists = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='monitored_apps' LIMIT 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .context("Nie można sprawdzić tabeli monitored_apps")?
+        .is_some();
+    if !table_exists {
+        anyhow::bail!("Tabela monitored_apps nie istnieje jeszcze");
+    }
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT exe_name, display_name, added_at
+             FROM monitored_apps
+             ORDER BY display_name COLLATE NOCASE, exe_name COLLATE NOCASE",
+        )
+        .context("Nie można przygotować zapytania monitored_apps")?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(MonitoredApp {
+                exe_name: row.get(0)?,
+                display_name: row.get(1)?,
+                added_at: row.get(2)?,
+            })
+        })
+        .context("Nie można odczytać monitored_apps z DB")?;
+
+    let mut apps = Vec::new();
+    for row in rows {
+        let mut app = row.context("Błąd mapowania monitored_apps row")?;
+        app.exe_name = app.exe_name.trim().to_lowercase();
+        apps.push(app);
+    }
+    Ok(apps)
+}
+
+/// Ładuje konfigurację demona. Lista monitorowanych aplikacji pochodzi z DB dashboardu.
+/// JSON pozostaje fallbackiem (legacy) oraz źródłem interwałów.
+pub fn load() -> Config {
+    let mut cfg = load_legacy_json_config();
+
+    match load_monitored_apps_from_dashboard_db() {
+        Ok(apps) => {
+            cfg.apps = apps;
+        }
+        Err(e) => {
+            // Fallback dla pierwszego uruchomienia / starszych DB.
+            log::warn!(
+                "Nie można odczytać monitored_apps z DB dashboardu (fallback do JSON): {}",
+                e
+            );
+        }
     }
 
     cfg

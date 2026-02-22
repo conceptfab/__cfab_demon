@@ -90,6 +90,8 @@ export function assignSessionToProject(sessionId: number, projectId: number | nu
 }
 export const deleteSession = (sessionId: number) =>
   invoke<void>("delete_session", { sessionId });
+export const updateSessionRateMultiplier = (sessionId: number, multiplier: number | null) =>
+  invoke<void>("update_session_rate_multiplier", { sessionId, multiplier });
 export const getProjectFolders = () => invoke<ProjectFolder[]>("get_project_folders");
 export const addProjectFolder = (path: string) =>
   invoke<void>("add_project_folder", { path });
@@ -233,6 +235,8 @@ export const addMonitoredApp = (exeName: string, displayName: string) =>
   invoke<void>("add_monitored_app", { exeName, displayName });
 export const removeMonitoredApp = (exeName: string) =>
   invoke<void>("remove_monitored_app", { exeName });
+export const renameMonitoredApp = (exeName: string, displayName: string) =>
+  invoke<void>("rename_monitored_app", { exeName, displayName });
 
 // Refresh & Reset
 export const refreshToday = () =>
@@ -241,6 +245,10 @@ export const getTodayFileSignature = () =>
   invoke<TodayFileSignature>("get_today_file_signature");
 export const resetAppTime = (appId: number) =>
   invoke<void>("reset_app_time", { appId });
+export const renameApplication = (appId: number, displayName: string) =>
+  invoke<void>("rename_application", { appId, displayName });
+export const deleteAppAndData = (appId: number) =>
+  invoke<void>("delete_app_and_data", { appId });
 export const resetProjectTime = (projectId: number) =>
   invoke<void>("reset_project_time", { projectId });
 

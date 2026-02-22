@@ -32,6 +32,7 @@ sysinfo = "0.30"
 
 # Obsługa błędów
 anyhow = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Logowanie
 log = { version = "0.4", features = ["std"] }

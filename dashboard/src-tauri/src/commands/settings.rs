@@ -150,6 +150,76 @@ pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn rename_application(
+    app: AppHandle,
+    app_id: i64,
+    display_name: String,
+) -> Result<(), String> {
+    let new_name = display_name.trim();
+    if new_name.is_empty() {
+        return Err("Display name cannot be empty".to_string());
+    }
+
+    let conn = db::get_connection(&app)?;
+    let updated = conn
+        .execute(
+            "UPDATE applications SET display_name = ?1 WHERE id = ?2",
+            rusqlite::params![new_name, app_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+    if updated == 0 {
+        return Err("Application not found".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), String> {
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let exists: bool = tx
+        .query_row(
+            "SELECT COUNT(*) > 0 FROM applications WHERE id = ?1",
+            [app_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    if !exists {
+        return Err("Application not found".to_string());
+    }
+
+    // Remove AI/model records first to avoid orphaned rows (some tables don't use FKs).
+    tx.execute(
+        "DELETE FROM assignment_feedback WHERE app_id = ?1 OR session_id IN (SELECT id FROM sessions WHERE app_id = ?1)",
+        [app_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM assignment_suggestions WHERE app_id = ?1 OR session_id IN (SELECT id FROM sessions WHERE app_id = ?1)",
+        [app_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM assignment_model_app WHERE app_id = ?1", [app_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM assignment_model_time WHERE app_id = ?1", [app_id])
+        .map_err(|e| e.to_string())?;
+
+    // Session-linked auto-run items are removed by FK cascade when sessions are deleted.
+    tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
+        .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM applications WHERE id = ?1", [app_id])
+        .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), String> {
     let mut conn = db::get_connection(&app)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;

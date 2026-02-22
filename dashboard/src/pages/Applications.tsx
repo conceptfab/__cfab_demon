@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { Search, ArrowUpDown, Plus, Trash2, Shield, TimerReset } from "lucide-react";
+import { Search, ArrowUpDown, Plus, Trash2, Shield, TimerReset, Pencil } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getApplications, getMonitoredApps, addMonitoredApp, removeMonitoredApp, resetAppTime, updateAppColor } from "@/lib/tauri";
+import { getApplications, getMonitoredApps, addMonitoredApp, removeMonitoredApp, renameMonitoredApp, resetAppTime, updateAppColor, deleteAppAndData, renameApplication } from "@/lib/tauri";
 import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import type { AppWithStats, MonitoredApp } from "@/lib/db-types";
@@ -74,6 +74,26 @@ export function Applications() {
     }
   };
 
+  const handleRenameMonitoredApp = async (app: MonitoredApp) => {
+    const current = app.display_name || app.exe_name;
+    const next = window.prompt("Rename monitored application:", current);
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed) {
+      window.alert("Application name cannot be empty.");
+      return;
+    }
+    if (trimmed === current) return;
+
+    try {
+      await renameMonitoredApp(app.exe_name, trimmed);
+      loadMonitored();
+    } catch (e) {
+      console.error("Failed to rename monitored app:", e);
+      window.alert(`Failed to rename monitored app: ${String(e)}`);
+    }
+  };
+
   const filtered = useMemo(() => {
     let result = apps;
     if (search) {
@@ -102,6 +122,47 @@ export function Applications() {
     await updateAppColor(appId, color);
     setEditingColorId(null);
     triggerRefresh();
+  };
+
+  const handleRenameApp = async (app: AppWithStats) => {
+    const current = app.display_name || app.executable_name;
+    const next = window.prompt("Rename application (display name):", current);
+    if (next == null) return;
+    const trimmed = next.trim();
+    if (!trimmed) {
+      window.alert("Application name cannot be empty.");
+      return;
+    }
+    if (trimmed === current) return;
+
+    try {
+      await renameApplication(app.id, trimmed);
+      triggerRefresh();
+    } catch (e) {
+      console.error("Failed to rename application:", e);
+      window.alert(`Failed to rename application: ${String(e)}`);
+    }
+  };
+
+  const handleDeleteApp = async (app: AppWithStats) => {
+    const label = app.display_name || app.executable_name;
+    const confirmed = window.confirm(
+      `Delete application "${label}" and all related sessions/files?\n\n` +
+      `This will remove:\n` +
+      `- app row (${app.executable_name})\n` +
+      `- ${app.session_count} sessions\n` +
+      `- related file activity records\n\n` +
+      `This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      await deleteAppAndData(app.id);
+      triggerRefresh();
+    } catch (e) {
+      console.error("Failed to delete app and data:", e);
+      window.alert(`Failed to delete application: ${String(e)}`);
+    }
   };
 
   const toggleSort = (key: SortKey) => {
@@ -155,14 +216,26 @@ export function Applications() {
                     <span className="text-sm font-medium">{app.display_name}</span>
                     <span className="text-xs text-muted-foreground ml-2">{app.exe_name}</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleRemoveApp(app.exe_name)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => handleRenameMonitoredApp(app)}
+                      title="Rename monitored application"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleRemoveApp(app.exe_name)}
+                      title="Remove monitored application"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -272,15 +345,35 @@ export function Applications() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => handleResetAppTime(app.id)}
-                      title="Reset time"
-                    >
-                      <TimerReset className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleRenameApp(app)}
+                        title="Rename application"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleResetAppTime(app.id)}
+                        title="Reset time"
+                      >
+                        <TimerReset className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleDeleteApp(app)}
+                        title="Delete app and sessions"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -48,6 +48,7 @@ pub async fn get_sessions(
 
         let mut sql = String::from(
             "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
+                    COALESCE(s.rate_multiplier, 1.0),
                     a.display_name, a.executable_name, s.project_id, p.name, p.color
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
@@ -81,17 +82,18 @@ pub async fn get_sessions(
         let rows = stmt
             .query_map(params_ref.as_slice(), |row| {
                 let id: i64 = row.get(0)?;
-                let explicit_pid: Option<i64> = row.get(7)?;
-                let explicit_pname: Option<String> = row.get(8)?;
-                let explicit_pcolor: Option<String> = row.get(9)?;
+                let explicit_pid: Option<i64> = row.get(8)?;
+                let explicit_pname: Option<String> = row.get(9)?;
+                let explicit_pcolor: Option<String> = row.get(10)?;
                 Ok((SessionWithApp {
                     id,
                     app_id: row.get(1)?,
                     start_time: row.get(2)?,
                     end_time: row.get(3)?,
                     duration_seconds: row.get(4)?,
-                    app_name: row.get(5)?,
-                    executable_name: row.get(6)?,
+                    rate_multiplier: row.get(5)?,
+                    app_name: row.get(6)?,
+                    executable_name: row.get(7)?,
                     project_name: explicit_pname,
                     project_color: explicit_pcolor,
                     files: Vec::new(),
@@ -427,6 +429,41 @@ pub async fn assign_session_to_project(
 }
 
 #[tauri::command]
+pub async fn update_session_rate_multiplier(
+    app: AppHandle,
+    session_id: i64,
+    multiplier: Option<f64>,
+) -> Result<(), String> {
+    let normalized = match multiplier {
+        None => 1.0,
+        Some(v) => {
+            if !v.is_finite() {
+                return Err("Multiplier must be a finite number".to_string());
+            }
+            if v <= 0.0 {
+                return Err("Multiplier must be > 0".to_string());
+            }
+            if v > 100.0 {
+                return Err("Multiplier must be <= 100".to_string());
+            }
+            if (v - 1.0).abs() < 0.000_001 { 1.0 } else { v }
+        }
+    };
+
+    let conn = db::get_connection(&app)?;
+    let updated = conn
+        .execute(
+            "UPDATE sessions SET rate_multiplier = ?1 WHERE id = ?2",
+            rusqlite::params![normalized, session_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if updated == 0 {
+        return Err("Session not found".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn delete_session(
     app: AppHandle,
     session_id: i64,
@@ -453,6 +490,7 @@ pub async fn rebuild_sessions(
         id: i64,
         app_id: i64,
         project_id: Option<i64>,
+        rate_multiplier: f64,
         end_time: String,
         start_ms: i64,
         end_ms: i64,
@@ -462,15 +500,15 @@ pub async fn rebuild_sessions(
 
     let mut sessions: Vec<SessionRow> = {
         let mut stmt = tx.prepare(
-            "SELECT id, app_id, project_id, start_time, end_time, date, duration_seconds
+            "SELECT id, app_id, project_id, COALESCE(rate_multiplier, 1.0), start_time, end_time, date, duration_seconds
              FROM sessions
              WHERE (is_hidden IS NULL OR is_hidden = 0)
              ORDER BY app_id, project_id, start_time ASC"
         ).map_err(|e| e.to_string())?;
 
         let rows = stmt.query_map([], |row| {
-            let start_time: String = row.get(3)?;
-            let end_time: String = row.get(4)?;
+            let start_time: String = row.get(4)?;
+            let end_time: String = row.get(5)?;
             
             let parse_time_to_ms = |ts_str: &str| -> i64 {
                 if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
@@ -498,11 +536,12 @@ pub async fn rebuild_sessions(
                 id: row.get(0)?,
                 app_id: row.get(1)?,
                 project_id: row.get(2)?,
+                rate_multiplier: row.get(3)?,
                 end_time,
                 start_ms,
                 end_ms,
                 original_end_ms: end_ms,
-                duration_seconds: row.get(6)?,
+                duration_seconds: row.get(7)?,
             })
         }).map_err(|e| e.to_string())?;
 
@@ -522,6 +561,7 @@ pub async fn rebuild_sessions(
             
             if curr_app_id == sessions[i].app_id 
                 && curr_proj_id == sessions[i].project_id
+                && (sessions[c_idx].rate_multiplier - sessions[i].rate_multiplier).abs() < 0.000_001
                 && (sessions[i].start_ms - curr_end) <= gap_ms 
             {
                 let gap_duration = (sessions[i].start_ms - curr_end) / 1000;

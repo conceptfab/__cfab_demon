@@ -10,6 +10,22 @@ use super::types::{
 };
 use crate::db;
 
+fn mode_import_dir(base_dir: &std::path::Path, demo_mode: bool) -> std::path::PathBuf {
+    if demo_mode {
+        base_dir.join("import_demo")
+    } else {
+        base_dir.join("import")
+    }
+}
+
+fn mode_archive_dir(base_dir: &std::path::Path, demo_mode: bool) -> std::path::PathBuf {
+    if demo_mode {
+        base_dir.join("archive_demo")
+    } else {
+        base_dir.join("archive")
+    }
+}
+
 #[tauri::command]
 pub async fn import_json_files(
     app: AppHandle,
@@ -110,11 +126,11 @@ pub(crate) fn import_single_file(conn: &mut rusqlite::Connection, file_path: &st
 
 /// Core upsert logic shared by import and refresh_today.
 pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyData) -> usize {
-    let monitored_exes = match monitored_exe_name_set() {
+    let monitored_exes = match monitored_exe_name_set(conn) {
         Ok(v) => v,
         Err(e) => {
             log::warn!(
-                "Failed to load monitored_apps.json, import filter disabled for this run: {}",
+                "Failed to load monitored apps from database, import filter disabled for this run: {}",
                 e
             );
             HashSet::new()
@@ -401,9 +417,9 @@ fn archive_json_file(
 #[tauri::command]
 pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResult, String> {
     let base_dir = timeflow_data_dir()?;
-    let import_dir = base_dir.join("import");
-    let archive_dir = base_dir.join("archive");
     let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let import_dir = mode_import_dir(&base_dir, demo_mode);
+    let archive_dir = mode_archive_dir(&base_dir, demo_mode);
 
     if !import_dir.exists() {
         return Ok(AutoImportResult {
@@ -502,8 +518,10 @@ pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResul
 }
 
 #[tauri::command]
-pub async fn get_archive_files() -> Result<Vec<ArchivedFileInfo>, String> {
-    let archive_dir = timeflow_data_dir()?.join("archive");
+pub async fn get_archive_files(app: AppHandle) -> Result<Vec<ArchivedFileInfo>, String> {
+    let base_dir = timeflow_data_dir()?;
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let archive_dir = mode_archive_dir(&base_dir, demo_mode);
 
     if !archive_dir.exists() {
         return Ok(Vec::new());
@@ -548,7 +566,7 @@ pub async fn get_archive_files() -> Result<Vec<ArchivedFileInfo>, String> {
 }
 
 #[tauri::command]
-pub async fn delete_archive_file(file_name: String) -> Result<(), String> {
+pub async fn delete_archive_file(app: AppHandle, file_name: String) -> Result<(), String> {
     let safe_name = std::path::Path::new(&file_name)
         .file_name()
         .ok_or_else(|| "Invalid file name".to_string())?
@@ -558,7 +576,9 @@ pub async fn delete_archive_file(file_name: String) -> Result<(), String> {
         return Err("Invalid file name".to_string());
     }
 
-    let archive_dir = timeflow_data_dir()?.join("archive");
+    let base_dir = timeflow_data_dir()?;
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let archive_dir = mode_archive_dir(&base_dir, demo_mode);
     let target = archive_dir.join(&safe_name);
 
     if !target.exists() {

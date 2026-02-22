@@ -3,7 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight, Trash2, Sparkles } from "lucide
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getSessions, getProjects, assignSessionToProject, deleteSession } from "@/lib/tauri";
+import { getSessions, getProjects, assignSessionToProject, deleteSession, updateSessionRateMultiplier } from "@/lib/tauri";
 import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { addDays, format, parseISO, subDays } from "date-fns";
@@ -15,6 +15,11 @@ interface ContextMenu {
   session: SessionWithApp;
 }
 type RangeMode = "daily" | "weekly";
+
+function formatMultiplierLabel(multiplier?: number): string {
+  const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
+  return Number.isInteger(value) ? `x${value.toFixed(0)}` : `x${value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
 
 export function Sessions() {
   const { refreshKey, triggerRefresh, sessionsFocusDate, clearSessionsFocusDate, sessionsFocusProject, setSessionsFocusProject } = useAppStore();
@@ -132,6 +137,38 @@ export function Sessions() {
     },
     [ctxMenu, triggerRefresh]
   );
+
+  const handleSetRateMultiplier = useCallback(
+    async (multiplier: number | null) => {
+      if (!ctxMenu) return;
+      try {
+        await updateSessionRateMultiplier(ctxMenu.session.id, multiplier);
+        triggerRefresh();
+      } catch (err) {
+        console.error("Failed to update session rate multiplier:", err);
+        window.alert(`Failed to update session rate multiplier: ${String(err)}`);
+      }
+      setCtxMenu(null);
+    },
+    [ctxMenu, triggerRefresh]
+  );
+
+  const handleCustomRateMultiplier = useCallback(async () => {
+    if (!ctxMenu) return;
+    const current = typeof ctxMenu.session.rate_multiplier === "number" ? ctxMenu.session.rate_multiplier : 1;
+    const raw = window.prompt(
+      "Set session rate multiplier (e.g. 1.5, 2, 3). Use 1 to reset:",
+      String(current)
+    );
+    if (raw == null) return;
+    const normalizedRaw = raw.trim().replace(",", ".");
+    const parsed = Number(normalizedRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      window.alert("Multiplier must be a positive number.");
+      return;
+    }
+    await handleSetRateMultiplier(parsed);
+  }, [ctxMenu, handleSetRateMultiplier]);
 
   const handleAcceptSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
@@ -374,6 +411,11 @@ export function Sessions() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium truncate">{s.app_name}</span>
+                            {(s.rate_multiplier ?? 1) > 1.000_001 && (
+                              <Badge variant="outline" className="text-[10px] h-5 border-emerald-500/40 text-emerald-300">
+                                $$ {formatMultiplierLabel(s.rate_multiplier)}
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {formatDate(s.start_time)} &middot; {formatTime(s.start_time)} – {formatTime(s.end_time)}
@@ -482,9 +524,48 @@ export function Sessions() {
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            Assign this session ({ctxMenu.session.app_name}) to project
+            Session actions ({ctxMenu.session.app_name})
           </div>
           <div className="h-px bg-border my-1" />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">
+            Rate multiplier: <span className="font-mono">{formatMultiplierLabel(ctxMenu.session.rate_multiplier)}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 px-1 pb-1">
+            <button
+              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => void handleSetRateMultiplier(1.5)}
+            >
+              $$ x1.5
+            </button>
+            <button
+              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => void handleSetRateMultiplier(2)}
+            >
+              $$ x2
+            </button>
+            <button
+              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => void handleSetRateMultiplier(3)}
+            >
+              $$ x3
+            </button>
+            <button
+              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => void handleSetRateMultiplier(1)}
+            >
+              Reset x1
+            </button>
+            <button
+              className="col-span-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => void handleCustomRateMultiplier()}
+            >
+              Custom multiplier...
+            </button>
+          </div>
+          <div className="h-px bg-border my-1" />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">
+            Assign to project
+          </div>
           <div className="max-h-[58vh] overflow-y-auto pr-1">
             <button
               className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
