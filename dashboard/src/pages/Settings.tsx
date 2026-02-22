@@ -434,6 +434,24 @@ export function Settings() {
               />
             </label>
 
+            <label className="grid gap-1.5 text-sm">
+              <span className={labelClassName}>API Token (Bearer)</span>
+              <input
+                type="password"
+                autoComplete="off"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                placeholder="Token przypisany do User ID na serwerze"
+                value={onlineSyncSettings.apiToken}
+                onChange={(e) => {
+                  setOnlineSyncSettings((prev) => ({ ...prev, apiToken: e.target.value }));
+                  setSavedSettings(false);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">
+                Required on Railway/production when sync server uses token auth.
+              </p>
+            </label>
+
             <div className="grid gap-1.5 text-sm">
               <span className={labelClassName}>Device ID</span>
               <div className="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs break-all">

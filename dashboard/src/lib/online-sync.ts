@@ -11,6 +11,7 @@ export interface OnlineSyncSettings {
   autoSyncOnStartup: boolean;
   serverUrl: string;
   userId: string;
+  apiToken: string;
   deviceId: string;
   requestTimeoutMs: number;
 }
@@ -86,6 +87,7 @@ const DEFAULT_ONLINE_SYNC_SETTINGS: OnlineSyncSettings = {
   autoSyncOnStartup: true,
   serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
   userId: "",
+  apiToken: "",
   deviceId: "",
   requestTimeoutMs: 15_000,
 };
@@ -278,6 +280,7 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
     serverUrl:
       normalizeServerUrl(parsed?.serverUrl) || DEFAULT_ONLINE_SYNC_SETTINGS.serverUrl,
     userId: typeof parsed?.userId === "string" ? parsed.userId.trim() : "",
+    apiToken: typeof parsed?.apiToken === "string" ? parsed.apiToken.trim() : "",
     deviceId,
     requestTimeoutMs:
       typeof parsed?.requestTimeoutMs === "number" && Number.isFinite(parsed.requestTimeoutMs)
@@ -299,6 +302,10 @@ export function saveOnlineSyncSettings(next: Partial<OnlineSyncSettings>): Onlin
       normalizeServerUrl(next.serverUrl ?? current.serverUrl) ||
       DEFAULT_ONLINE_SYNC_SETTINGS.serverUrl,
     userId: typeof (next.userId ?? current.userId) === "string" ? String(next.userId ?? current.userId).trim() : current.userId,
+    apiToken:
+      typeof (next.apiToken ?? current.apiToken) === "string"
+        ? String(next.apiToken ?? current.apiToken).trim()
+        : current.apiToken,
     deviceId:
       typeof (next.deviceId ?? current.deviceId) === "string" && String(next.deviceId ?? current.deviceId).trim()
         ? String(next.deviceId ?? current.deviceId).trim()
@@ -341,15 +348,21 @@ async function postJson<T>(
   path: string,
   body: Record<string, unknown>,
   timeoutMs: number,
+  apiToken?: string,
 ): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (apiToken && apiToken.trim()) {
+      headers.Authorization = `Bearer ${apiToken.trim()}`;
+    }
+
     const response = await fetch(`${baseUrl}${path}`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -433,6 +446,7 @@ export async function runOnlineSyncOnce(
         clientHash: localState.serverHash,
       },
       settings.requestTimeoutMs,
+      settings.apiToken,
     );
 
     if (status.shouldPull) {
@@ -445,6 +459,7 @@ export async function runOnlineSyncOnce(
           clientRevision: localState.serverRevision,
         },
         settings.requestTimeoutMs,
+        settings.apiToken,
       );
 
       if (pull.hasUpdate && pull.archive) {
@@ -495,6 +510,7 @@ export async function runOnlineSyncOnce(
         archive,
       },
       settings.requestTimeoutMs,
+      settings.apiToken,
     );
 
     saveOnlineSyncState({
