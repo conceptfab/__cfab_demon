@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, CircleOff, TimerReset, RefreshCw, Wand2, ChevronDown, ChevronRight, CalendarPlus } from "lucide-react";
+import { Plus, CircleOff, TimerReset, RefreshCw, Wand2, ChevronDown, ChevronRight, CalendarPlus, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import {
   updateProject,
   excludeProject,
   restoreProject,
+  deleteProject,
   getApplications,
   assignAppToProject,
   getProjectFolders,
@@ -216,6 +217,34 @@ export function Projects() {
   const handleRestore = async (id: number) => {
     await restoreProject(id);
     triggerRefresh();
+  };
+
+  const handleDeleteProject = async (project: ProjectWithStats) => {
+    const projectLabel = project.name.trim() || `#${project.id}`;
+    const confirmed = window.confirm(
+      `Delete project permanently?\n\n${projectLabel}\n\n` +
+      `This will:\n` +
+      `- remove the project record\n` +
+      `- unassign linked apps/sessions/file activities\n` +
+      `- delete manual sessions assigned to this project\n\n` +
+      `This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const busyKey = `delete-project:${project.id}`;
+    setBusy(busyKey);
+    try {
+      await deleteProject(project.id);
+      setProjectDialogId((prev) => (prev === project.id ? null : prev));
+      setAssignOpen((prev) => (prev === project.id ? null : prev));
+      setEditingColorId((prev) => (prev === project.id ? null : prev));
+      triggerRefresh();
+    } catch (e) {
+      console.error("Failed to delete project:", e);
+      window.alert(`Failed to delete project "${projectLabel}": ${getErrorMessage(e, "Unknown error")}`);
+    } finally {
+      setBusy((prev) => (prev === busyKey ? null : prev));
+    }
   };
 
   const handleResetProjectTime = async (id: number) => {
@@ -460,7 +489,9 @@ export function Projects() {
     [projects, projectDialogId]
   );
 
-  const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => (
+  const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => {
+    const isDeleting = busy === `delete-project:${p.id}`;
+    return (
     <Card key={p.id}>
       <CardHeader
         className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? "pr-10" : ""}`}
@@ -506,11 +537,35 @@ export function Projects() {
           </CardTitle>
         </div>
         <div className={`flex gap-1 ${options?.inDialog ? "mr-8" : ""}`}>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleResetProjectTime(p.id)} title="Reset time">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => handleResetProjectTime(p.id)}
+            title="Reset time"
+            disabled={isDeleting}
+          >
             <TimerReset className="h-3.5 w-3.5" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleExclude(p.id)} title="Exclude project">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive"
+            onClick={() => handleExclude(p.id)}
+            title="Exclude project"
+            disabled={isDeleting}
+          >
             <CircleOff className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive"
+            onClick={() => void handleDeleteProject(p)}
+            title="Delete project permanently"
+            disabled={isDeleting}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         </div>
       </CardHeader>
@@ -531,6 +586,7 @@ export function Projects() {
             size="sm"
             className="flex-1"
             onClick={() => setAssignOpen(assignOpen === p.id ? null : p.id)}
+            disabled={isDeleting}
           >
             Manage Apps
           </Button>
@@ -542,6 +598,7 @@ export function Projects() {
               setSessionDialogOpen(true);
             }}
             title="Add manual session"
+            disabled={isDeleting}
           >
             <CalendarPlus className="h-3.5 w-3.5" />
           </Button>
@@ -555,6 +612,7 @@ export function Projects() {
                   checked={app.project_id === p.id}
                   onChange={() => handleAssign(app.id, app.project_id === p.id ? null : p.id)}
                   className="accent-primary"
+                  disabled={isDeleting}
                 />
                 <span className="truncate">{app.display_name}</span>
               </label>
@@ -564,6 +622,7 @@ export function Projects() {
       </CardContent>
     </Card>
   );
+  };
 
   return (
     <div className="space-y-6">
@@ -706,6 +765,16 @@ export function Projects() {
                   </div>
                   <Button variant="outline" size="sm" onClick={() => handleRestore(p.id)}>
                     Restore
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={() => void handleDeleteProject(p)}
+                    disabled={busy === `delete-project:${p.id}`}
+                    title="Delete project permanently"
+                  >
+                    Delete
                   </Button>
                 </div>
               ))}

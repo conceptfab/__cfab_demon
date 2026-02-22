@@ -19,6 +19,7 @@ import {
   refreshToday,
   assignSessionToProject,
   getManualSessions,
+  updateSessionRateMultiplier,
 } from "@/lib/tauri";
 import { formatDuration } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -202,12 +203,26 @@ export function Dashboard() {
   }, [timePreset]);
 
   const handleAssignSession = useCallback(
-    async (sessionId: number, projectId: number | null) => {
+    async (sessionIds: number[], projectId: number | null) => {
       try {
-        await assignSessionToProject(sessionId, projectId);
+        await Promise.all(sessionIds.map((sessionId) => assignSessionToProject(sessionId, projectId)));
         triggerRefresh();
       } catch (err) {
         console.error("Failed to assign session to project:", err);
+        throw err;
+      }
+    },
+    [triggerRefresh]
+  );
+
+  const handleUpdateSessionRateMultiplier = useCallback(
+    async (sessionIds: number[], multiplier: number | null) => {
+      try {
+        await Promise.all(sessionIds.map((sessionId) => updateSessionRateMultiplier(sessionId, multiplier)));
+        triggerRefresh();
+      } catch (err) {
+        console.error("Failed to update session rate multiplier:", err);
+        throw err;
       }
     },
     [triggerRefresh]
@@ -389,6 +404,7 @@ export function Dashboard() {
           workingHours={workingHours}
           projects={projectsList}
           onAssignSession={handleAssignSession}
+          onUpdateSessionRateMultiplier={handleUpdateSessionRateMultiplier}
           onAddManualSession={(startTime) => {
             setSessionDialogStartTime(startTime);
             setSessionDialogOpen(true);

@@ -15,6 +15,7 @@ interface ContextMenu {
   session: SessionWithApp;
 }
 type RangeMode = "daily" | "weekly";
+const DEFAULT_RATE_MULTIPLIER = 2;
 
 function formatMultiplierLabel(multiplier?: number): string {
   const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
@@ -156,9 +157,10 @@ export function Sessions() {
   const handleCustomRateMultiplier = useCallback(async () => {
     if (!ctxMenu) return;
     const current = typeof ctxMenu.session.rate_multiplier === "number" ? ctxMenu.session.rate_multiplier : 1;
+    const suggested = current > 1 ? current : DEFAULT_RATE_MULTIPLIER;
     const raw = window.prompt(
       "Set session rate multiplier (e.g. 1.5, 2, 3). Use 1 to reset:",
-      String(current)
+      String(suggested)
     );
     if (raw == null) return;
     const normalizedRaw = raw.trim().replace(",", ".");
@@ -413,7 +415,7 @@ export function Sessions() {
                             <span className="font-medium truncate">{s.app_name}</span>
                             {(s.rate_multiplier ?? 1) > 1.000_001 && (
                               <Badge variant="outline" className="text-[10px] h-5 border-emerald-500/40 text-emerald-300">
-                                $$ {formatMultiplierLabel(s.rate_multiplier)}
+                                $$$ {formatMultiplierLabel(s.rate_multiplier)}
                               </Badge>
                             )}
                           </div>
@@ -528,26 +530,26 @@ export function Sessions() {
           </div>
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            Rate multiplier: <span className="font-mono">{formatMultiplierLabel(ctxMenu.session.rate_multiplier)}</span>
+            Rate multiplier (default x2): <span className="font-mono">{formatMultiplierLabel(ctxMenu.session.rate_multiplier)}</span>
           </div>
           <div className="grid grid-cols-2 gap-1 px-1 pb-1">
             <button
               className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(1.5)}
-            >
-              $$ x1.5
-            </button>
-            <button
-              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => void handleSetRateMultiplier(2)}
             >
-              $$ x2
+              $$$ x2 (default)
             </button>
             <button
               className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => void handleSetRateMultiplier(3)}
             >
-              $$ x3
+              $$$ x3
+            </button>
+            <button
+              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => void handleSetRateMultiplier(1.5)}
+            >
+              $$$ x1.5
             </button>
             <button
               className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"

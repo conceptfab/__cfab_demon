@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatDuration } from "@/lib/utils";
 import {
   normalizeHexColor,
@@ -15,18 +17,24 @@ interface Props {
   title?: string;
   minHeightClassName?: string;
   projects?: ProjectWithStats[];
-  onAssignSession?: (sessionId: number, projectId: number | null) => void;
+  onAssignSession?: (sessionIds: number[], projectId: number | null) => void | Promise<void>;
+  onUpdateSessionRateMultiplier?: (sessionIds: number[], multiplier: number | null) => void | Promise<void>;
   onAddManualSession?: (startTime?: string) => void;
   onEditManualSession?: (session: ManualSessionWithProject) => void;
 }
 
 interface SegmentData {
   sessionId: number;
+  sessionIds?: number[];
+  fragmentCount?: number;
+  fragments?: SegmentData[];
   startMs: number;
   endMs: number;
   appName: string;
+  appNames?: string[];
   appId: number;
   rateMultiplier?: number;
+  mixedRateMultiplier?: boolean;
   isManual?: boolean;
   manualTitle?: string;
   manualSession?: ManualSessionWithProject;
@@ -41,8 +49,14 @@ interface TimelineRow {
 }
 
 type CtxMenu =
-  | { type: "assign"; x: number; y: number; segment: SegmentData }
+  | { type: "assign"; x: number; y: number; segment: SegmentData; rowName: string; rowColor: string }
   | { type: "timeline"; x: number; y: number; timeMs: number; editSession?: ManualSessionWithProject };
+
+interface ClusterDetailsState {
+  rowName: string;
+  rowColor: string;
+  segment: SegmentData;
+}
 
 const HATCH_STYLE: React.CSSProperties = {
   background: `repeating-linear-gradient(
@@ -54,6 +68,129 @@ const HATCH_STYLE: React.CSSProperties = {
   )`,
   pointerEvents: "none",
 };
+const DEFAULT_RATE_MULTIPLIER = 2;
+const SESSION_FRAGMENT_CLUSTER_GAP_MS = 60_000;
+
+function formatMultiplierLabel(multiplier?: number): string {
+  const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
+  return Number.isInteger(value)
+    ? `x${value.toFixed(0)}`
+    : `x${value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`;
+}
+
+function getSegmentSessionIds(segment: SegmentData): number[] {
+  if (segment.isManual) return [];
+  if (segment.sessionIds && segment.sessionIds.length > 0) return segment.sessionIds;
+  return [segment.sessionId];
+}
+
+function getSegmentFragments(segment: SegmentData): SegmentData[] {
+  if (segment.fragments && segment.fragments.length > 0) return segment.fragments;
+  return [segment];
+}
+
+function summarizeCluster(segment: SegmentData) {
+  const fragments = getSegmentFragments(segment)
+    .filter((f) => !f.isManual)
+    .slice()
+    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const sessionIds = Array.from(new Set(fragments.flatMap((f) => getSegmentSessionIds(f))));
+  const appNames = Array.from(new Set(fragments.map((f) => f.appName))).sort((a, b) => a.localeCompare(b));
+  const spanMs = Math.max(0, segment.endMs - segment.startMs);
+  const sumMs = fragments.reduce((acc, f) => acc + Math.max(0, f.endMs - f.startMs), 0);
+
+  let unionMs = 0;
+  let cursorStart = -1;
+  let cursorEnd = -1;
+  for (const f of fragments) {
+    if (cursorStart < 0) {
+      cursorStart = f.startMs;
+      cursorEnd = f.endMs;
+      continue;
+    }
+    if (f.startMs <= cursorEnd) {
+      cursorEnd = Math.max(cursorEnd, f.endMs);
+      continue;
+    }
+    unionMs += Math.max(0, cursorEnd - cursorStart);
+    cursorStart = f.startMs;
+    cursorEnd = f.endMs;
+  }
+  if (cursorStart >= 0) {
+    unionMs += Math.max(0, cursorEnd - cursorStart);
+  }
+
+  const overlapMs = Math.max(0, sumMs - unionMs);
+  const boostedCount = fragments.filter((f) => (f.rateMultiplier ?? 1) > 1.000_001).length;
+  return { fragments, sessionIds, appNames, spanMs, sumMs, unionMs, overlapMs, boostedCount };
+}
+
+function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
+  if (segments.length <= 1) return segments;
+
+  const sorted = [...segments].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const out: SegmentData[] = [];
+
+  for (const segment of sorted) {
+    const prev = out[out.length - 1];
+    const canMerge =
+      prev &&
+      !prev.isManual &&
+      !segment.isManual &&
+      segment.startMs <= prev.endMs + SESSION_FRAGMENT_CLUSTER_GAP_MS;
+
+    if (!canMerge) {
+      const fragments = segment.isManual ? undefined : [segment];
+      const appNames = segment.isManual ? undefined : [segment.appName];
+      out.push({
+        ...segment,
+        sessionIds: segment.isManual ? undefined : getSegmentSessionIds(segment),
+        fragmentCount: segment.isManual ? undefined : 1,
+        fragments,
+        appNames,
+        mixedRateMultiplier: segment.isManual ? undefined : false,
+      });
+      continue;
+    }
+
+    const prevIds = getSegmentSessionIds(prev);
+    const nextIds = getSegmentSessionIds(segment);
+    const prevRate = typeof prev.rateMultiplier === "number" ? prev.rateMultiplier : 1;
+    const nextRate = typeof segment.rateMultiplier === "number" ? segment.rateMultiplier : 1;
+    const mergedRate = Math.max(prevRate, nextRate);
+    const mixedRateMultiplier =
+      Boolean(prev.mixedRateMultiplier) ||
+      Boolean(segment.mixedRateMultiplier) ||
+      Math.abs(prevRate - nextRate) > 0.000_001;
+
+    const prevFragments = getSegmentFragments(prev);
+    const nextFragments = getSegmentFragments(segment);
+    const mergedFragments = [...prevFragments, ...nextFragments].sort(
+      (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
+    );
+    const appNames = Array.from(new Set(mergedFragments.map((f) => f.appName)));
+    const appLabel =
+      appNames.length <= 1
+        ? (appNames[0] ?? prev.appName)
+        : `${appNames.length} apps`;
+
+    out[out.length - 1] = {
+      ...prev,
+      sessionIds: [...prevIds, ...nextIds],
+      sessionId: prevIds[0] ?? prev.sessionId,
+      fragmentCount: (prev.fragmentCount ?? prevIds.length ?? 1) + (segment.fragmentCount ?? nextIds.length ?? 1),
+      fragments: mergedFragments,
+      appNames,
+      appName: appLabel,
+      startMs: Math.min(prev.startMs, segment.startMs),
+      endMs: Math.max(prev.endMs, segment.endMs),
+      rateMultiplier: mergedRate,
+      mixedRateMultiplier,
+    };
+  }
+
+  return out;
+}
 
 function fmtHourMinute(ms: number): string {
   const d = new Date(ms);
@@ -92,10 +229,12 @@ export function ProjectDayTimeline({
   minHeightClassName,
   projects,
   onAssignSession,
+  onUpdateSessionRateMultiplier,
   onAddManualSession,
   onEditManualSession,
 }: Props) {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
+  const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -117,13 +256,15 @@ export function ProjectDayTimeline({
   }, [ctxMenu]);
 
   const handleSegmentContextMenu = useCallback(
-    (e: React.MouseEvent, segment: SegmentData) => {
-      if (!onAssignSession || !projects?.length) return;
+    (e: React.MouseEvent, segment: SegmentData, rowName: string, rowColor: string) => {
+      const canAssign = Boolean(onAssignSession && projects?.length);
+      const canSetMultiplier = Boolean(onUpdateSessionRateMultiplier);
+      if (!canAssign && !canSetMultiplier) return;
       e.preventDefault();
       e.stopPropagation();
-      setCtxMenu({ type: "assign", x: e.clientX, y: e.clientY, segment });
+      setCtxMenu({ type: "assign", x: e.clientX, y: e.clientY, segment, rowName, rowColor });
     },
-    [onAssignSession, projects]
+    [onAssignSession, onUpdateSessionRateMultiplier, projects]
   );
 
   const handleTimelineContextMenu = useCallback(
@@ -156,13 +297,69 @@ export function ProjectDayTimeline({
   );
 
   const handleAssign = useCallback(
-    (projectId: number | null) => {
+    async (projectId: number | null) => {
       if (!ctxMenu || ctxMenu.type !== "assign" || !onAssignSession) return;
-      onAssignSession(ctxMenu.segment.sessionId, projectId);
-      setCtxMenu(null);
+      try {
+        const sessionIds = getSegmentSessionIds(ctxMenu.segment);
+        if (sessionIds.length === 0) return;
+        await onAssignSession(sessionIds, projectId);
+      } catch (err) {
+        console.error("Failed to assign session(s) to project:", err);
+        window.alert(`Failed to assign session(s): ${String(err)}`);
+      } finally {
+        setCtxMenu(null);
+      }
     },
     [ctxMenu, onAssignSession]
   );
+
+  const handleSetRateMultiplier = useCallback(
+    async (multiplier: number | null) => {
+      if (!ctxMenu || ctxMenu.type !== "assign" || !onUpdateSessionRateMultiplier) return;
+      try {
+        const sessionIds = getSegmentSessionIds(ctxMenu.segment);
+        if (sessionIds.length === 0) return;
+        await onUpdateSessionRateMultiplier(sessionIds, multiplier);
+      } catch (err) {
+        console.error("Failed to update session rate multiplier:", err);
+        window.alert(`Failed to update session rate multiplier: ${String(err)}`);
+      } finally {
+        setCtxMenu(null);
+      }
+    },
+    [ctxMenu, onUpdateSessionRateMultiplier]
+  );
+
+  const handleCustomRateMultiplier = useCallback(async () => {
+    if (!ctxMenu || ctxMenu.type !== "assign") return;
+    const current =
+      ctxMenu.segment.mixedRateMultiplier
+        ? 1
+        : (typeof ctxMenu.segment.rateMultiplier === "number" ? ctxMenu.segment.rateMultiplier : 1);
+    const suggested = current > 1 ? current : DEFAULT_RATE_MULTIPLIER;
+    const raw = window.prompt(
+      "Set session rate multiplier (e.g. 1.5, 2, 3). Use 1 to reset:",
+      String(suggested)
+    );
+    if (raw == null) return;
+    const normalizedRaw = raw.trim().replace(",", ".");
+    const parsed = Number(normalizedRaw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      window.alert("Multiplier must be a positive number.");
+      return;
+    }
+    await handleSetRateMultiplier(parsed);
+  }, [ctxMenu, handleSetRateMultiplier]);
+
+  const handleOpenClusterDetails = useCallback(() => {
+    if (!ctxMenu || ctxMenu.type !== "assign") return;
+    setClusterDetails({
+      rowName: ctxMenu.rowName,
+      rowColor: ctxMenu.rowColor,
+      segment: ctxMenu.segment,
+    });
+    setCtxMenu(null);
+  }, [ctxMenu]);
 
   const handleAddSession = useCallback(() => {
     if (!ctxMenu || ctxMenu.type !== "timeline" || !onAddManualSession) return;
@@ -320,7 +517,12 @@ export function ProjectDayTimeline({
       });
     }
 
-    const rows = Array.from(byProject.values()).sort((a, b) => b.totalSeconds - a.totalSeconds);
+    const rows = Array.from(byProject.values())
+      .map((row) => ({
+        ...row,
+        segments: mergeSessionFragments(row.segments),
+      }))
+      .sort((a, b) => b.totalSeconds - a.totalSeconds);
     const ticks: number[] = [];
     for (let t = rangeStart; t <= rangeEnd; t += tickMs) {
       ticks.push(t);
@@ -329,6 +531,11 @@ export function ProjectDayTimeline({
     const totalSeconds = rows.reduce((acc, row) => acc + row.totalSeconds, 0);
     return { rows, ticks, rangeStart, rangeSpan, totalSeconds, workingRange };
   }, [sessions, manualSessions, workingHours]);
+
+  const clusterDetailsSummary = useMemo(() => {
+    if (!clusterDetails) return null;
+    return summarizeCluster(clusterDetails.segment);
+  }, [clusterDetails]);
 
   return (
     <Card>
@@ -393,20 +600,35 @@ export function ProjectDayTimeline({
                   {row.segments.map((segment, idx) => {
                     const left = ((segment.startMs - model.rangeStart) / model.rangeSpan) * 100;
                     const width = ((segment.endMs - segment.startMs) / model.rangeSpan) * 100;
+                    const fragmentCount = segment.fragmentCount ?? 1;
+                    const hasManyFragments = !segment.isManual && fragmentCount > 1;
+                    const hasBoostedRate = (segment.rateMultiplier ?? 1) > 1.000001;
+                    const multiplierLabel = segment.mixedRateMultiplier
+                      ? "mixed"
+                      : formatMultiplierLabel(segment.rateMultiplier);
+                    const titleBase = segment.isManual
+                      ? `[Manual] ${segment.manualTitle}`
+                      : segment.appName;
+                    const titleFragments = hasManyFragments
+                      ? ` • ${fragmentCount} sessions`
+                      : "";
+                    const titleRate = hasBoostedRate || segment.mixedRateMultiplier
+                      ? ` • $$$ ${multiplierLabel}`
+                      : "";
                     return (
                       <div
                         key={`${row.name}-${idx}-${segment.startMs}`}
-                        className={`absolute top-1 bottom-1 rounded-sm${onAssignSession ? " cursor-context-menu" : ""}`}
+                        className={`absolute top-1 bottom-1 rounded-sm${(onAssignSession || onUpdateSessionRateMultiplier) ? " cursor-context-menu" : ""}`}
                         style={{
                           left: `${Math.max(0, Math.min(100, left))}%`,
                           width: `${Math.max(0.8, Math.min(100, width))}%`,
                           backgroundColor: row.color,
                           opacity: 0.9,
                         }}
-                        title={`${segment.isManual ? `[Manual] ${segment.manualTitle}` : segment.appName}: ${fmtHourMinute(segment.startMs)} - ${fmtHourMinute(segment.endMs)}${(segment.rateMultiplier ?? 1) > 1.000001 ? ` • $$ ${Number.isInteger(segment.rateMultiplier ?? 1) ? `x${(segment.rateMultiplier ?? 1).toFixed(0)}` : `x${(segment.rateMultiplier ?? 1).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`}` : ""}`}
+                        title={`${titleBase}: ${fmtHourMinute(segment.startMs)} - ${fmtHourMinute(segment.endMs)}${titleFragments}${titleRate}`}
                         onContextMenu={
                           !segment.isManual
-                            ? (e) => handleSegmentContextMenu(e, segment)
+                            ? (e) => handleSegmentContextMenu(e, segment, row.name, row.color)
                             : segment.isManual
                               ? (e) => handleManualSegmentContextMenu(e, segment)
                               : undefined
@@ -417,7 +639,7 @@ export function ProjectDayTimeline({
                         )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
                           <div className="pointer-events-none absolute right-0.5 top-0.5 rounded bg-black/35 px-1 py-[1px] text-[9px] font-semibold leading-none text-emerald-100 shadow-sm">
-                            $$
+                            $$$
                           </div>
                         )}
                       </div>
@@ -451,41 +673,236 @@ export function ProjectDayTimeline({
         )}
       </CardContent>
 
-      {/* Context menu for assigning one unassigned session to a project */}
-      {ctxMenu && ctxMenu.type === "assign" && projects && projects.length > 0 && (
+      {/* Context menu for session actions on timeline segment */}
+      {ctxMenu && ctxMenu.type === "assign" && (
         <div
           ref={ctxRef}
           className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            Assign this session ({ctxMenu.segment.appName}) to project
+            Session actions ({ctxMenu.segment.appName})
+            {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
+              <span className="ml-1 text-[10px] font-normal">
+                · {(ctxMenu.segment.fragmentCount ?? 1)} sessions
+              </span>
+            ) : null}
           </div>
           <div className="h-px bg-border my-1" />
-          <div className="max-h-[58vh] overflow-y-auto pr-1">
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => handleAssign(null)}
-            >
-              <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-              <span className="truncate">Unassigned</span>
-            </button>
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                onClick={() => handleAssign(p.id)}
-              >
-                <div
-                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: p.color }}
-                />
-                <span className="truncate">{p.name}</span>
-              </button>
-            ))}
-          </div>
+          <button
+            className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-between rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+            onClick={handleOpenClusterDetails}
+          >
+            <span>Detale sesji</span>
+            {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
+              <span className="font-mono text-[10px] opacity-80">
+                {(ctxMenu.segment.fragmentCount ?? 1)}
+              </span>
+            ) : null}
+          </button>
+          {onUpdateSessionRateMultiplier && (
+            <>
+              <div className="h-px bg-border my-1" />
+              {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 && (
+                <div className="px-2 py-1 text-[11px] text-muted-foreground">
+                  Applies to all {(ctxMenu.segment.fragmentCount ?? 1)} sessions in this visual chunk
+                </div>
+              )}
+              <div className="px-2 py-1 text-[11px] text-muted-foreground">
+                Rate multiplier (default x2):{" "}
+                <span className="font-mono">
+                  {ctxMenu.segment.mixedRateMultiplier
+                    ? "mixed"
+                    : formatMultiplierLabel(ctxMenu.segment.rateMultiplier)}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1 px-1 pb-1">
+                <button
+                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => void handleSetRateMultiplier(2)}
+                >
+                  $$$ x2 (default)
+                </button>
+                <button
+                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => void handleSetRateMultiplier(3)}
+                >
+                  $$$ x3
+                </button>
+                <button
+                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => void handleSetRateMultiplier(1.5)}
+                >
+                  $$$ x1.5
+                </button>
+                <button
+                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => void handleSetRateMultiplier(1)}
+                >
+                  Reset x1
+                </button>
+                <button
+                  className="col-span-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => void handleCustomRateMultiplier()}
+                >
+                  Custom multiplier...
+                </button>
+              </div>
+            </>
+          )}
+          {onAssignSession && (
+            <>
+              <div className="h-px bg-border my-1" />
+              <div className="px-2 py-1 text-[11px] text-muted-foreground">
+                Assign to project
+              </div>
+              <div className="max-h-[58vh] overflow-y-auto pr-1">
+                <button
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => handleAssign(null)}
+                >
+                  <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
+                  <span className="truncate">Unassigned</span>
+                </button>
+                {projects && projects.length > 0 ? (
+                  projects.map((p) => (
+                    <button
+                      key={p.id}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                      onClick={() => handleAssign(p.id)}
+                    >
+                      <div
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: p.color }}
+                      />
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    No projects available
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
+
+      <Dialog
+        open={clusterDetails !== null}
+        onOpenChange={(open) => {
+          if (!open) setClusterDetails(null);
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          {clusterDetails && clusterDetailsSummary && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: clusterDetails.rowColor }}
+                  />
+                  <span className="truncate">Detale sesji</span>
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-md border p-3">
+                  <p className="text-[11px] text-muted-foreground">Project</p>
+                  <p className="truncate text-sm font-medium" title={clusterDetails.rowName}>
+                    {clusterDetails.rowName}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-[11px] text-muted-foreground">Time range</p>
+                  <p className="text-sm font-mono">
+                    {fmtHourMinute(clusterDetails.segment.startMs)} - {fmtHourMinute(clusterDetails.segment.endMs)}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    span {formatDuration(Math.round(clusterDetailsSummary.spanMs / 1000))}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-[11px] text-muted-foreground">Sessions</p>
+                  <p className="text-sm font-medium">{clusterDetailsSummary.sessionIds.length}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {clusterDetailsSummary.appNames.length} app{clusterDetailsSummary.appNames.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3">
+                  <p className="text-[11px] text-muted-foreground">Activity</p>
+                  <p className="text-sm font-mono">
+                    {formatDuration(Math.round(clusterDetailsSummary.unionMs / 1000))}
+                  </p>
+                  {clusterDetailsSummary.overlapMs > 0 && (
+                    <p className="text-[11px] text-amber-300">
+                      overlap +{formatDuration(Math.round(clusterDetailsSummary.overlapMs / 1000))}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-md border p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground">Apps in chunk:</span>
+                  {clusterDetailsSummary.appNames.map((appName) => (
+                    <Badge key={appName} variant="secondary" className="text-[10px]">
+                      {appName}
+                    </Badge>
+                  ))}
+                  {clusterDetailsSummary.boostedCount > 0 && (
+                    <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300">
+                      $$$ on {clusterDetailsSummary.boostedCount}/{clusterDetailsSummary.fragments.length}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Sessions inside merged chunk
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Sum durations: {formatDuration(Math.round(clusterDetailsSummary.sumMs / 1000))}
+                  </p>
+                </div>
+                <div className="max-h-[50vh] space-y-1 overflow-y-auto rounded-md border p-2">
+                  {clusterDetailsSummary.fragments.map((f, idx) => {
+                    const durationSec = Math.max(0, Math.round((f.endMs - f.startMs) / 1000));
+                    const multiplierValue = f.rateMultiplier ?? 1;
+                    return (
+                      <div
+                        key={`${f.sessionId}-${idx}-${f.startMs}`}
+                        className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1.5 text-xs"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate font-medium">{f.appName}</span>
+                            {(multiplierValue > 1.000_001) && (
+                              <Badge variant="outline" className="h-4 text-[10px] border-emerald-500/40 text-emerald-300">
+                                $$$ {formatMultiplierLabel(multiplierValue)}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="font-mono text-[11px] text-muted-foreground">
+                            {fmtHourMinute(f.startMs)} - {fmtHourMinute(f.endMs)} · id {f.sessionId}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-mono">{formatDuration(durationSec)}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Context menu for adding manual session on timeline */}
       {ctxMenu && ctxMenu.type === "timeline" && onAddManualSession && (
