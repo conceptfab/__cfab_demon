@@ -1,0 +1,237 @@
+{
+  "date": "2025-11-05",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2025-11-05T11:51:00+01:00",
+          "end": "2025-11-05T12:36:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-11-05T21:51:00+01:00",
+          "end": "2025-11-05T22:21:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_comments.pdf - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2700,
+          "first_seen": "2025-11-05T11:51:00+01:00",
+          "last_seen": "2025-11-05T12:36:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_comments.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-05T21:51:00+01:00",
+          "last_seen": "2025-11-05T22:21:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-05T23:11:00+01:00",
+          "end": "2025-11-05T23:41:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_loop.aep - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-05T23:11:00+01:00",
+          "last_seen": "2025-11-05T23:41:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-11-05T09:56:00+01:00",
+          "end": "2025-11-05T10:36:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-11-05T15:43:00+01:00",
+          "end": "2025-11-05T16:03:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-11-05T19:03:00+01:00",
+          "end": "2025-11-05T19:23:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_reference_board.bridge - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-05T09:56:00+01:00",
+          "last_seen": "2025-11-05T10:36:00+01:00"
+        },
+        {
+          "name": "aurora_black_friday_asset_selects.bridge - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-05T15:43:00+01:00",
+          "last_seen": "2025-11-05T16:03:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_reference_board.bridge - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-05T19:03:00+01:00",
+          "last_seen": "2025-11-05T19:23:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-11-05T22:38:00+01:00",
+          "end": "2025-11-05T23:03:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_ui_master.fig - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1500,
+          "first_seen": "2025-11-05T22:38:00+01:00",
+          "last_seen": "2025-11-05T23:03:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 8100,
+      "sessions": [
+        {
+          "start": "2025-11-05T10:45:00+01:00",
+          "end": "2025-11-05T11:45:00+01:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-11-05T18:15:00+01:00",
+          "end": "2025-11-05T18:55:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-11-05T21:01:00+01:00",
+          "end": "2025-11-05T21:36:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_icons.ai - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3600,
+          "first_seen": "2025-11-05T10:45:00+01:00",
+          "last_seen": "2025-11-05T11:45:00+01:00"
+        },
+        {
+          "name": "aurora_black_friday_vector.ai - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-05T18:15:00+01:00",
+          "last_seen": "2025-11-05T18:55:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_dieline.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-05T21:01:00+01:00",
+          "last_seen": "2025-11-05T21:36:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 14100,
+      "sessions": [
+        {
+          "start": "2025-11-05T08:03:00+01:00",
+          "end": "2025-11-05T09:47:00+01:00",
+          "duration_seconds": 6240
+        },
+        {
+          "start": "2025-11-05T13:42:00+01:00",
+          "end": "2025-11-05T14:33:00+01:00",
+          "duration_seconds": 3060
+        },
+        {
+          "start": "2025-11-05T19:29:00+01:00",
+          "end": "2025-11-05T20:49:00+01:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_layout.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 6240,
+          "first_seen": "2025-11-05T08:03:00+01:00",
+          "last_seen": "2025-11-05T09:47:00+01:00"
+        },
+        {
+          "name": "atlas_conference_poster_spreads.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3060,
+          "first_seen": "2025-11-05T13:42:00+01:00",
+          "last_seen": "2025-11-05T14:33:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_print.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 4800,
+          "first_seen": "2025-11-05T19:29:00+01:00",
+          "last_seen": "2025-11-05T20:49:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 9300,
+      "sessions": [
+        {
+          "start": "2025-11-05T14:42:00+01:00",
+          "end": "2025-11-05T15:37:00+01:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-11-05T16:09:00+01:00",
+          "end": "2025-11-05T17:19:00+01:00",
+          "duration_seconds": 4200
+        },
+        {
+          "start": "2025-11-05T17:37:00+01:00",
+          "end": "2025-11-05T18:07:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_exports.psd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3300,
+          "first_seen": "2025-11-05T14:42:00+01:00",
+          "last_seen": "2025-11-05T15:37:00+01:00"
+        },
+        {
+          "name": "aurora_black_friday_master.psd - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 4200,
+          "first_seen": "2025-11-05T16:09:00+01:00",
+          "last_seen": "2025-11-05T17:19:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_retouch.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-05T17:37:00+01:00",
+          "last_seen": "2025-11-05T18:07:00+01:00"
+        }
+      ]
+    }
+  }
+}

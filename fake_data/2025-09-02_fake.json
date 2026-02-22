@@ -1,0 +1,201 @@
+{
+  "date": "2025-09-02",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-09-02T09:48:00+02:00",
+          "end": "2025-09-02T10:13:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_proof.pdf - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 1500,
+          "first_seen": "2025-09-02T09:48:00+02:00",
+          "last_seen": "2025-09-02T10:13:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-09-02T18:44:00+02:00",
+          "end": "2025-09-02T19:09:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_variants.aep - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 1500,
+          "first_seen": "2025-09-02T18:44:00+02:00",
+          "last_seen": "2025-09-02T19:09:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-09-02T19:23:00+02:00",
+          "end": "2025-09-02T20:33:00+02:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_lighting.blend - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 4200,
+          "first_seen": "2025-09-02T19:23:00+02:00",
+          "last_seen": "2025-09-02T20:33:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-09-02T08:06:00+02:00",
+          "end": "2025-09-02T08:36:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_reference_board.bridge - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-02T08:06:00+02:00",
+          "last_seen": "2025-09-02T08:36:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-09-02T08:48:00+02:00",
+          "end": "2025-09-02T09:38:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_handoff.fig - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 3000,
+          "first_seen": "2025-09-02T08:48:00+02:00",
+          "last_seen": "2025-09-02T09:38:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 6300,
+      "sessions": [
+        {
+          "start": "2025-09-02T10:30:00+02:00",
+          "end": "2025-09-02T11:05:00+02:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-09-02T12:52:00+02:00",
+          "end": "2025-09-02T13:22:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-09-02T16:45:00+02:00",
+          "end": "2025-09-02T17:25:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_icons.ai - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-02T12:52:00+02:00",
+          "last_seen": "2025-09-02T13:22:00+02:00"
+        },
+        {
+          "name": "cedar_product_launch_icons.ai - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 2100,
+          "first_seen": "2025-09-02T10:30:00+02:00",
+          "last_seen": "2025-09-02T11:05:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_vector.ai - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 2400,
+          "first_seen": "2025-09-02T16:45:00+02:00",
+          "last_seen": "2025-09-02T17:25:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-09-02T15:14:00+02:00",
+          "end": "2025-09-02T16:34:00+02:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_layout.indd - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 4800,
+          "first_seen": "2025-09-02T15:14:00+02:00",
+          "last_seen": "2025-09-02T16:34:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 11400,
+      "sessions": [
+        {
+          "start": "2025-09-02T11:21:00+02:00",
+          "end": "2025-09-02T12:01:00+02:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-09-02T13:38:00+02:00",
+          "end": "2025-09-02T15:03:00+02:00",
+          "duration_seconds": 5100
+        },
+        {
+          "start": "2025-09-02T17:34:00+02:00",
+          "end": "2025-09-02T18:39:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_exports.psd - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2400,
+          "first_seen": "2025-09-02T11:21:00+02:00",
+          "last_seen": "2025-09-02T12:01:00+02:00"
+        },
+        {
+          "name": "cedar_product_launch_exports.psd - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 5100,
+          "first_seen": "2025-09-02T13:38:00+02:00",
+          "last_seen": "2025-09-02T15:03:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_master.psd - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 3900,
+          "first_seen": "2025-09-02T17:34:00+02:00",
+          "last_seen": "2025-09-02T18:39:00+02:00"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,141 @@
+{
+  "date": "2025-09-22",
+  "apps": {
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-09-22T13:20:00+02:00",
+          "end": "2025-09-22T13:45:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_autumn_window_main_comp.aep - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 1500,
+          "first_seen": "2025-09-22T13:20:00+02:00",
+          "last_seen": "2025-09-22T13:45:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-09-22T11:31:00+02:00",
+          "end": "2025-09-22T12:31:00+02:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_autumn_window_camera.blend - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 3600,
+          "first_seen": "2025-09-22T11:31:00+02:00",
+          "last_seen": "2025-09-22T12:31:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-09-22T08:39:00+02:00",
+          "end": "2025-09-22T09:14:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_autumn_window_review_board.fig - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 2100,
+          "first_seen": "2025-09-22T08:39:00+02:00",
+          "last_seen": "2025-09-22T09:14:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 6000,
+      "sessions": [
+        {
+          "start": "2025-09-22T09:28:00+02:00",
+          "end": "2025-09-22T10:08:00+02:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-09-22T14:02:00+02:00",
+          "end": "2025-09-22T15:02:00+02:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_autumn_window_icons.ai - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 2400,
+          "first_seen": "2025-09-22T09:28:00+02:00",
+          "last_seen": "2025-09-22T10:08:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_dieline.ai - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 3600,
+          "first_seen": "2025-09-22T14:02:00+02:00",
+          "last_seen": "2025-09-22T15:02:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-09-22T15:18:00+02:00",
+          "end": "2025-09-22T16:28:00+02:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_trail_map_layout.indd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 4200,
+          "first_seen": "2025-09-22T15:18:00+02:00",
+          "last_seen": "2025-09-22T16:28:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-09-22T10:24:00+02:00",
+          "end": "2025-09-22T11:19:00+02:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-09-22T16:39:00+02:00",
+          "end": "2025-09-22T17:09:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_autumn_window_retouch.psd - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 3300,
+          "first_seen": "2025-09-22T10:24:00+02:00",
+          "last_seen": "2025-09-22T11:19:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_exports.psd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-22T16:39:00+02:00",
+          "last_seen": "2025-09-22T17:09:00+02:00"
+        }
+      ]
+    }
+  }
+}

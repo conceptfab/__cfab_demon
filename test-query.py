@@ -2,7 +2,7 @@ import sqlite3
 import os
 
 appdata = os.getenv("APPDATA")
-db_path = os.path.join(appdata, "conceptfab", "cfab_dashboard.db")
+db_path = os.path.join(appdata, "TimeFlow", "timeflow_dashboard.db")
 conn = sqlite3.connect(db_path)
 cur = conn.cursor()
 
@@ -18,3 +18,4 @@ cur.execute("SELECT id, app_id, duration_seconds FROM sessions WHERE date = ? AN
 print("Unassigned sessions details:", cur.fetchall())
 
 conn.close()
+

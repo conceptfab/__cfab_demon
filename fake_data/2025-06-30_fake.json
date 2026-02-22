@@ -1,0 +1,119 @@
+{
+  "date": "2025-06-30",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-06-30T12:02:00+02:00",
+          "end": "2025-06-30T12:32:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_comments.pdf - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 1800,
+          "first_seen": "2025-06-30T12:02:00+02:00",
+          "last_seen": "2025-06-30T12:32:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-06-30T13:14:00+02:00",
+          "end": "2025-06-30T13:34:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_asset_selects.bridge - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 1200,
+          "first_seen": "2025-06-30T13:14:00+02:00",
+          "last_seen": "2025-06-30T13:34:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-06-30T11:19:00+02:00",
+          "end": "2025-06-30T11:44:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_review_board.fig - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 1500,
+          "first_seen": "2025-06-30T11:19:00+02:00",
+          "last_seen": "2025-06-30T11:44:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5700,
+      "sessions": [
+        {
+          "start": "2025-06-30T09:34:00+02:00",
+          "end": "2025-06-30T11:09:00+02:00",
+          "duration_seconds": 5700
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_icons.ai - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 5700,
+          "first_seen": "2025-06-30T09:34:00+02:00",
+          "last_seen": "2025-06-30T11:09:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-06-30T08:29:00+02:00",
+          "end": "2025-06-30T09:29:00+02:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_print.indd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 3600,
+          "first_seen": "2025-06-30T08:29:00+02:00",
+          "last_seen": "2025-06-30T09:29:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-06-30T12:39:00+02:00",
+          "end": "2025-06-30T13:09:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_exports.psd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 1800,
+          "first_seen": "2025-06-30T12:39:00+02:00",
+          "last_seen": "2025-06-30T13:09:00+02:00"
+        }
+      ]
+    }
+  }
+}

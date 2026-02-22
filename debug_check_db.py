@@ -2,7 +2,7 @@ import sqlite3
 import os
 
 appdata = os.environ.get("APPDATA", "")
-db_path = os.path.join(appdata, "conceptfab", "cfab_dashboard.db")
+db_path = os.path.join(appdata, "TimeFlow", "timeflow_dashboard.db")
 conn = sqlite3.connect(db_path)
 cur = conn.cursor()
 
@@ -18,3 +18,4 @@ with open("debug_db.txt", "w", encoding="utf-8") as f:
         f.write(f"{row}\n")
 
 print("Done")
+

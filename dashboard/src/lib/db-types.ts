@@ -245,6 +245,13 @@ export interface TodayFileSignature {
   size_bytes: number | null;
 }
 
+export interface DemoModeStatus {
+  enabled: boolean;
+  activeDbPath: string;
+  primaryDbPath: string;
+  demoDbPath: string;
+}
+
 export interface ManualSession {
   id: number;
   title: string;

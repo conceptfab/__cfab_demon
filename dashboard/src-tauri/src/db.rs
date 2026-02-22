@@ -1,4 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 const SCHEMA: &str = r#"
@@ -172,51 +174,201 @@ CREATE INDEX IF NOT EXISTS idx_assignment_auto_run_items_run ON assignment_auto_
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_run_items_session ON assignment_auto_run_items(session_id);
 "#;
 
-pub fn db_path(app: &AppHandle) -> PathBuf {
-    let app_dir = std::env::var("APPDATA")
-        .map(PathBuf::from)
-        .map(|p| p.join("conceptfab"))
-        .unwrap_or_else(|_| {
-            app.path()
-                .app_data_dir()
-                .expect("Failed to get app data dir")
-        });
-    std::fs::create_dir_all(&app_dir).ok();
-    let db_path = app_dir.join("cfab_dashboard.db");
+const PRIMARY_DB_FILE_NAME: &str = "timeflow_dashboard.db";
+const DEMO_DB_FILE_NAME: &str = "timeflow_dashboard_demo.db";
+const DB_MODE_FILE_NAME: &str = "timeflow_dashboard_mode.json";
+const LEGACY_PRIMARY_DB_FILE_NAME: &str = "cfab_dashboard.db";
+const LEGACY_DEMO_DB_FILE_NAME: &str = "cfab_dashboard_demo.db";
+const LEGACY_DB_MODE_FILE_NAME: &str = "cfab_dashboard_mode.json";
 
-    // One-time migration from legacy Tauri app_data_dir location.
-    if !db_path.exists() {
-        if let Ok(legacy_dir) = app.path().app_data_dir() {
-            let legacy_db = legacy_dir.join("cfab_dashboard.db");
-            if legacy_db.exists() {
-                if let Err(e) = std::fs::copy(&legacy_db, &db_path) {
-                    log::warn!(
-                        "Failed to migrate legacy database '{}' -> '{}': {}",
-                        legacy_db.display(),
-                        db_path.display(),
-                        e
-                    );
-                } else {
-                    log::info!(
-                        "Migrated legacy database '{}' -> '{}'",
-                        legacy_db.display(),
-                        db_path.display()
-                    );
-                }
+#[derive(Serialize, Deserialize, Default)]
+struct StoredDbModeConfig {
+    #[serde(default)]
+    demo_mode: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DemoModeStatus {
+    pub enabled: bool,
+    pub active_db_path: String,
+    pub primary_db_path: String,
+    pub demo_db_path: String,
+}
+
+fn copy_first_existing_file_if_missing(
+    dest: &PathBuf,
+    label: &str,
+    candidates: impl IntoIterator<Item = PathBuf>,
+) {
+    if dest.exists() {
+        return;
+    }
+
+    for candidate in candidates {
+        if !candidate.exists() {
+            continue;
+        }
+        match std::fs::copy(&candidate, dest) {
+            Ok(_) => {
+                log::info!(
+                    "Migrated {} '{}' -> '{}'",
+                    label,
+                    candidate.display(),
+                    dest.display()
+                );
+                break;
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to migrate {} '{}' -> '{}': {}",
+                    label,
+                    candidate.display(),
+                    dest.display(),
+                    e
+                );
             }
         }
     }
+}
+
+fn app_storage_dir(app: &AppHandle) -> PathBuf {
+    let app_dir = if let Ok(appdata) = std::env::var("APPDATA") {
+        let appdata_path = PathBuf::from(&appdata);
+        let preferred = appdata_path.join("TimeFlow");
+
+        if !preferred.exists() {
+            for legacy_name in ["conceptfab", "CfabDemon", "TimeFlowDemon"] {
+                let legacy_dir = appdata_path.join(legacy_name);
+                if !legacy_dir.exists() {
+                    continue;
+                }
+                match std::fs::rename(&legacy_dir, &preferred) {
+                    Ok(_) => {
+                        log::info!(
+                            "Migrated app storage dir '{}' -> '{}'",
+                            legacy_dir.display(),
+                            preferred.display()
+                        );
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to migrate app storage dir '{}' -> '{}': {}",
+                            legacy_dir.display(),
+                            preferred.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        preferred
+    } else {
+        app.path()
+            .app_data_dir()
+            .expect("Failed to get app data dir")
+    };
+    std::fs::create_dir_all(&app_dir).ok();
+    app_dir
+}
+
+fn primary_db_path(app: &AppHandle) -> PathBuf {
+    let app_dir = app_storage_dir(app);
+    let db_path = app_dir.join(PRIMARY_DB_FILE_NAME);
+
+    // One-time migration from legacy names / old Tauri app_data_dir location.
+    let mut candidates = vec![app_dir.join(LEGACY_PRIMARY_DB_FILE_NAME)];
+    if let Ok(legacy_dir) = app.path().app_data_dir() {
+        candidates.push(legacy_dir.join(PRIMARY_DB_FILE_NAME));
+        candidates.push(legacy_dir.join(LEGACY_PRIMARY_DB_FILE_NAME));
+    }
+    copy_first_existing_file_if_missing(&db_path, "primary database", candidates);
 
     db_path
 }
 
+pub fn db_path(app: &AppHandle) -> PathBuf {
+    primary_db_path(app)
+}
+
+pub fn demo_db_path(app: &AppHandle) -> PathBuf {
+    let app_dir = app_storage_dir(app);
+    let db_path = app_dir.join(DEMO_DB_FILE_NAME);
+    let mut candidates = vec![app_dir.join(LEGACY_DEMO_DB_FILE_NAME)];
+    if let Ok(legacy_dir) = app.path().app_data_dir() {
+        candidates.push(legacy_dir.join(DEMO_DB_FILE_NAME));
+        candidates.push(legacy_dir.join(LEGACY_DEMO_DB_FILE_NAME));
+    }
+    copy_first_existing_file_if_missing(&db_path, "demo database", candidates);
+    db_path
+}
+
+fn db_mode_file_path(app: &AppHandle) -> PathBuf {
+    let app_dir = app_storage_dir(app);
+    let mode_path = app_dir.join(DB_MODE_FILE_NAME);
+    let mut candidates = vec![app_dir.join(LEGACY_DB_MODE_FILE_NAME)];
+    if let Ok(legacy_dir) = app.path().app_data_dir() {
+        candidates.push(legacy_dir.join(DB_MODE_FILE_NAME));
+        candidates.push(legacy_dir.join(LEGACY_DB_MODE_FILE_NAME));
+    }
+    copy_first_existing_file_if_missing(&mode_path, "db mode file", candidates);
+    mode_path
+}
+
+fn read_persisted_demo_mode(app: &AppHandle) -> bool {
+    let path = db_mode_file_path(app);
+    let raw = match std::fs::read_to_string(&path) {
+        Ok(raw) => raw,
+        Err(_) => return false,
+    };
+
+    serde_json::from_str::<StoredDbModeConfig>(&raw)
+        .map(|cfg| cfg.demo_mode)
+        .unwrap_or(false)
+}
+
+fn write_persisted_demo_mode(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    let path = db_mode_file_path(app);
+    let payload = serde_json::to_string_pretty(&StoredDbModeConfig { demo_mode: enabled })
+        .map_err(|e| e.to_string())?;
+    std::fs::write(path, payload).map_err(|e| e.to_string())
+}
+
+fn active_db_path_for_mode(app: &AppHandle, demo_mode: bool) -> PathBuf {
+    if demo_mode {
+        demo_db_path(app)
+    } else {
+        primary_db_path(app)
+    }
+}
+
 pub async fn initialize(app: &AppHandle) -> Result<(), String> {
-    let path = db_path(app);
+    let demo_mode = read_persisted_demo_mode(app);
+    let path = active_db_path_for_mode(app, demo_mode);
     let path_str = path.to_string_lossy().to_string();
 
-    log::info!("Database path: {}", path_str);
+    log::info!(
+        "Database path: {} (mode: {})",
+        path_str,
+        if demo_mode { "demo" } else { "primary" }
+    );
 
-    let db = rusqlite_open(&path_str).map_err(|e| e.to_string())?;
+    initialize_database_file(&path_str)?;
+
+    // Store db path for later use
+    app.manage(DbPath(Mutex::new(path_str)));
+    app.manage(DemoModeFlag(Mutex::new(demo_mode)));
+
+    Ok(())
+}
+
+pub struct DbPath(pub Mutex<String>);
+pub struct DemoModeFlag(pub Mutex<bool>);
+
+fn initialize_database_file(path_str: &str) -> Result<(), String> {
+    let db = rusqlite_open(path_str).map_err(|e| e.to_string())?;
 
     db.execute_batch(SCHEMA)
         .map_err(|e| format!("Schema error: {}", e))?;
@@ -225,13 +377,8 @@ pub async fn initialize(app: &AppHandle) -> Result<(), String> {
     run_migrations(&db).map_err(|e| format!("Migration error: {}", e))?;
     ensure_post_migration_indexes(&db).map_err(|e| format!("Index creation error: {}", e))?;
 
-    // Store db path for later use
-    app.manage(DbPath(path_str));
-
     Ok(())
 }
-
-pub struct DbPath(pub String);
 
 fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     let has_projects_excluded_at: bool = db
@@ -522,5 +669,84 @@ pub fn get_connection(app: &AppHandle) -> Result<rusqlite::Connection, String> {
     let db_path = app
         .try_state::<DbPath>()
         .ok_or_else(|| "DbPath state unavailable (database not initialized)".to_string())?;
-    rusqlite_open(&db_path.0).map_err(|e| e.to_string())
+    let path = db_path
+        .0
+        .lock()
+        .map_err(|_| "DbPath mutex poisoned".to_string())?
+        .clone();
+    rusqlite_open(&path).map_err(|e| e.to_string())
 }
+
+fn current_demo_mode_enabled(app: &AppHandle) -> Result<bool, String> {
+    let state = app
+        .try_state::<DemoModeFlag>()
+        .ok_or_else(|| "DemoModeFlag state unavailable (database not initialized)".to_string())?;
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| "DemoModeFlag mutex poisoned".to_string())?;
+    Ok(*guard)
+}
+
+pub fn is_demo_mode_enabled(app: &AppHandle) -> Result<bool, String> {
+    current_demo_mode_enabled(app)
+}
+
+fn current_active_db_path_string(app: &AppHandle) -> Result<String, String> {
+    let state = app
+        .try_state::<DbPath>()
+        .ok_or_else(|| "DbPath state unavailable (database not initialized)".to_string())?;
+    let guard = state
+        .0
+        .lock()
+        .map_err(|_| "DbPath mutex poisoned".to_string())?;
+    Ok(guard.clone())
+}
+
+pub fn get_demo_mode_status(app: &AppHandle) -> Result<DemoModeStatus, String> {
+    Ok(DemoModeStatus {
+        enabled: current_demo_mode_enabled(app)?,
+        active_db_path: current_active_db_path_string(app)?,
+        primary_db_path: db_path(app).to_string_lossy().to_string(),
+        demo_db_path: demo_db_path(app).to_string_lossy().to_string(),
+    })
+}
+
+pub fn set_demo_mode(app: &AppHandle, enabled: bool) -> Result<DemoModeStatus, String> {
+    let target_path = active_db_path_for_mode(app, enabled);
+    let target_path_str = target_path.to_string_lossy().to_string();
+
+    initialize_database_file(&target_path_str)?;
+    write_persisted_demo_mode(app, enabled)?;
+
+    let db_path_state = app
+        .try_state::<DbPath>()
+        .ok_or_else(|| "DbPath state unavailable (database not initialized)".to_string())?;
+    {
+        let mut guard = db_path_state
+            .0
+            .lock()
+            .map_err(|_| "DbPath mutex poisoned".to_string())?;
+        *guard = target_path_str.clone();
+    }
+
+    let demo_mode_state = app
+        .try_state::<DemoModeFlag>()
+        .ok_or_else(|| "DemoModeFlag state unavailable (database not initialized)".to_string())?;
+    {
+        let mut guard = demo_mode_state
+            .0
+            .lock()
+            .map_err(|_| "DemoModeFlag mutex poisoned".to_string())?;
+        *guard = enabled;
+    }
+
+    log::info!(
+        "Switched dashboard database mode to {} ({})",
+        if enabled { "demo" } else { "primary" },
+        target_path_str
+    );
+
+    get_demo_mode_status(app)
+}
+

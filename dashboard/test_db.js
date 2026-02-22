@@ -1,11 +1,11 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('C:/_cloud/__cfab_demon/dashboard/cfab_dashboard_copy.db');
+const db = new sqlite3.Database('C:/_cloud/__timeflow_demon/dashboard/timeflow_dashboard_copy.db');
 
-db.all("SELECT * FROM projects WHERE name LIKE '%cfab%' OR name LIKE '%pano%'", [], (err, rows) => {
+db.all("SELECT * FROM projects WHERE name LIKE '%timeflow%' OR name LIKE '%pano%'", [], (err, rows) => {
     console.log('--- PROJECTS ---');
     console.log(rows);
     
-    db.all("SELECT a.executable_name, a.display_name, p.name as project_name FROM applications a LEFT JOIN projects p ON a.project_id = p.id WHERE p.name LIKE '%cfab%' OR p.name LIKE '%pano%'", [], (err, rows) => {
+    db.all("SELECT a.executable_name, a.display_name, p.name as project_name FROM applications a LEFT JOIN projects p ON a.project_id = p.id WHERE p.name LIKE '%timeflow%' OR p.name LIKE '%pano%'", [], (err, rows) => {
         console.log('--- APPS ---');
         console.log(rows);
         
@@ -16,3 +16,4 @@ db.all("SELECT * FROM projects WHERE name LIKE '%cfab%' OR name LIKE '%pano%'", 
         });
     });
 });
+

@@ -195,7 +195,7 @@ pub(crate) fn ensure_app_project_from_file_hint(
     }
     
     // Next, add EACH part after splitting by hyphen as a potential project name. 
-    // If the window is e.g. "__cfab_demon - Antigravity", we check both "__cfab_demon" and "Antigravity".
+    // If the window is e.g. "__timeflow_demon - Antigravity", we check both "__timeflow_demon" and "Antigravity".
     for part in file_name.split(" - ") {
         let trimmed = part.trim();
         if !trimmed.is_empty() {
@@ -813,3 +813,4 @@ mod tests {
         assert_eq!(folder_count, 0);
     }
 }
+

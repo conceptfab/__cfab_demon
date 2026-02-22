@@ -1,0 +1,163 @@
+{
+  "date": "2025-12-08",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-12-08T12:50:00+01:00",
+          "end": "2025-12-08T13:45:00+01:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-12-08T17:27:00+01:00",
+          "end": "2025-12-08T17:52:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_proof.pdf - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 3300,
+          "first_seen": "2025-12-08T12:50:00+01:00",
+          "last_seen": "2025-12-08T13:45:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_proof.pdf - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-08T17:27:00+01:00",
+          "last_seen": "2025-12-08T17:52:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-12-08T16:39:00+01:00",
+          "end": "2025-12-08T17:09:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_loop.aep - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1800,
+          "first_seen": "2025-12-08T16:39:00+01:00",
+          "last_seen": "2025-12-08T17:09:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2025-12-08T09:58:00+01:00",
+          "end": "2025-12-08T10:48:00+01:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-12-08T15:22:00+01:00",
+          "end": "2025-12-08T16:22:00+01:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_scene.blend - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 3000,
+          "first_seen": "2025-12-08T09:58:00+01:00",
+          "last_seen": "2025-12-08T10:48:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_camera.blend - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 3600,
+          "first_seen": "2025-12-08T15:22:00+01:00",
+          "last_seen": "2025-12-08T16:22:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-12-08T19:22:00+01:00",
+          "end": "2025-12-08T19:47:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_ui_master.fig - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-08T19:22:00+01:00",
+          "last_seen": "2025-12-08T19:47:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 9600,
+      "sessions": [
+        {
+          "start": "2025-12-08T08:06:00+01:00",
+          "end": "2025-12-08T09:41:00+01:00",
+          "duration_seconds": 5700
+        },
+        {
+          "start": "2025-12-08T18:02:00+01:00",
+          "end": "2025-12-08T19:07:00+01:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_icons.ai - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 5700,
+          "first_seen": "2025-12-08T08:06:00+01:00",
+          "last_seen": "2025-12-08T09:41:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_icons.ai - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 3900,
+          "first_seen": "2025-12-08T18:02:00+01:00",
+          "last_seen": "2025-12-08T19:07:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-12-08T10:58:00+01:00",
+          "end": "2025-12-08T11:53:00+01:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-12-08T14:00:00+01:00",
+          "end": "2025-12-08T15:15:00+01:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_master.psd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 3300,
+          "first_seen": "2025-12-08T10:58:00+01:00",
+          "last_seen": "2025-12-08T11:53:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_master.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 4500,
+          "first_seen": "2025-12-08T14:00:00+01:00",
+          "last_seen": "2025-12-08T15:15:00+01:00"
+        }
+      ]
+    }
+  }
+}

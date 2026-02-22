@@ -77,7 +77,7 @@ export function ImportPanel() {
             </div>
             <div>
               <p className="text-sm font-medium">Click to pick a .json file</p>
-              <p className="text-xs text-muted-foreground mt-1">Supported formats: cfab-export-*.json</p>
+              <p className="text-xs text-muted-foreground mt-1">Supported formats: timeflow-export-*.json</p>
             </div>
             <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); selectFile(); }}>Select File</Button>
           </div>
@@ -161,3 +161,4 @@ export function ImportPanel() {
     </Card>
   );
 }
+

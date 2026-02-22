@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Wspólna logika dla build.py i dev.py — projekt Cfab Demon.
+Wspólna logika dla build.py i dev.py — projekt TimeFlow Demon.
 """
 
 import subprocess
@@ -54,3 +54,4 @@ class CargoProjectBase:
         except Exception as e:
             print(f"  BŁĄD: {e}")
             return False, e
+

@@ -1,0 +1,218 @@
+{
+  "date": "2025-10-02",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-10-02T10:12:00+02:00",
+          "end": "2025-10-02T10:42:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-10-02T15:52:00+02:00",
+          "end": "2025-10-02T16:22:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_proof.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-02T10:12:00+02:00",
+          "last_seen": "2025-10-02T10:42:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_proof.pdf - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-02T15:52:00+02:00",
+          "last_seen": "2025-10-02T16:22:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-10-02T20:38:00+02:00",
+          "end": "2025-10-02T21:23:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_holiday_pos_loop.aep - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 2700,
+          "first_seen": "2025-10-02T20:38:00+02:00",
+          "last_seen": "2025-10-02T21:23:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-10-02T13:58:00+02:00",
+          "end": "2025-10-02T14:18:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-02T18:00:00+02:00",
+          "end": "2025-10-02T18:25:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_trail_map_review_board.fig - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-02T13:58:00+02:00",
+          "last_seen": "2025-10-02T14:18:00+02:00"
+        },
+        {
+          "name": "northwind_holiday_pos_review_board.fig - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-02T18:00:00+02:00",
+          "last_seen": "2025-10-02T18:25:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 11100,
+      "sessions": [
+        {
+          "start": "2025-10-02T09:05:00+02:00",
+          "end": "2025-10-02T10:00:00+02:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-10-02T13:26:00+02:00",
+          "end": "2025-10-02T13:46:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-02T16:35:00+02:00",
+          "end": "2025-10-02T17:50:00+02:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-10-02T18:40:00+02:00",
+          "end": "2025-10-02T19:15:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_icons.ai - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3300,
+          "first_seen": "2025-10-02T09:05:00+02:00",
+          "last_seen": "2025-10-02T10:00:00+02:00"
+        },
+        {
+          "name": "aurora_store_shelf_vector.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-02T13:26:00+02:00",
+          "last_seen": "2025-10-02T13:46:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_icons.ai - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 4500,
+          "first_seen": "2025-10-02T16:35:00+02:00",
+          "last_seen": "2025-10-02T17:50:00+02:00"
+        },
+        {
+          "name": "northwind_holiday_pos_vector.ai - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 2100,
+          "first_seen": "2025-10-02T18:40:00+02:00",
+          "last_seen": "2025-10-02T19:15:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 8100,
+      "sessions": [
+        {
+          "start": "2025-10-02T08:07:00+02:00",
+          "end": "2025-10-02T08:52:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-10-02T10:52:00+02:00",
+          "end": "2025-10-02T11:52:00+02:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-10-02T15:07:00+02:00",
+          "end": "2025-10-02T15:37:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_spreads.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2700,
+          "first_seen": "2025-10-02T08:07:00+02:00",
+          "last_seen": "2025-10-02T08:52:00+02:00"
+        },
+        {
+          "name": "aurora_store_shelf_layout.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 3600,
+          "first_seen": "2025-10-02T10:52:00+02:00",
+          "last_seen": "2025-10-02T11:52:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_print.indd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-02T15:07:00+02:00",
+          "last_seen": "2025-10-02T15:37:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2025-10-02T11:59:00+02:00",
+          "end": "2025-10-02T12:19:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-02T14:35:00+02:00",
+          "end": "2025-10-02T15:00:00+02:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-10-02T19:27:00+02:00",
+          "end": "2025-10-02T20:32:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_master.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-02T11:59:00+02:00",
+          "last_seen": "2025-10-02T12:19:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_master.psd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-02T14:35:00+02:00",
+          "last_seen": "2025-10-02T15:00:00+02:00"
+        },
+        {
+          "name": "northwind_holiday_pos_exports.psd - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 3900,
+          "first_seen": "2025-10-02T19:27:00+02:00",
+          "last_seen": "2025-10-02T20:32:00+02:00"
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use tauri::AppHandle;
 
-use super::helpers::cfab_demon_dir;
+use super::helpers::timeflow_data_dir;
 use super::monitored::monitored_exe_name_set;
 use super::projects::{ensure_app_project_from_file_hint, load_project_folders_from_db};
 use super::types::{
@@ -35,6 +35,12 @@ pub(crate) fn is_today_data_file(file_path: &str) -> bool {
         }
     }
     false
+}
+
+fn is_fake_named_json_file(path: &std::path::Path) -> bool {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase().contains("fake"))
+        .unwrap_or(false)
 }
 
 pub(crate) fn import_single_file(conn: &mut rusqlite::Connection, file_path: &str) -> ImportResult {
@@ -394,9 +400,10 @@ fn archive_json_file(
 
 #[tauri::command]
 pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResult, String> {
-    let base_dir = cfab_demon_dir()?;
+    let base_dir = timeflow_data_dir()?;
     let import_dir = base_dir.join("import");
     let archive_dir = base_dir.join("archive");
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
 
     if !import_dir.exists() {
         return Ok(AutoImportResult {
@@ -419,15 +426,17 @@ pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResul
                     .file_name()
                     .map(|n| n.to_string_lossy().starts_with('.'))
                     .unwrap_or(false)
+                && (demo_mode || !is_fake_named_json_file(p))
         })
         .collect();
     json_files.append(&mut found);
 
     let files_found = json_files.len();
     log::info!(
-        "Auto-import scan: import_dir='{}', files_found={}",
+        "Auto-import scan: import_dir='{}', files_found={}, mode={}",
         import_dir.display(),
-        files_found
+        files_found,
+        if demo_mode { "demo" } else { "primary" }
     );
     let mut conn = db::get_connection(&app)?;
 
@@ -494,7 +503,7 @@ pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResul
 
 #[tauri::command]
 pub async fn get_archive_files() -> Result<Vec<ArchivedFileInfo>, String> {
-    let archive_dir = cfab_demon_dir()?.join("archive");
+    let archive_dir = timeflow_data_dir()?.join("archive");
 
     if !archive_dir.exists() {
         return Ok(Vec::new());
@@ -549,7 +558,7 @@ pub async fn delete_archive_file(file_name: String) -> Result<(), String> {
         return Err("Invalid file name".to_string());
     }
 
-    let archive_dir = cfab_demon_dir()?.join("archive");
+    let archive_dir = timeflow_data_dir()?.join("archive");
     let target = archive_dir.join(&safe_name);
 
     if !target.exists() {
@@ -606,3 +615,4 @@ pub async fn get_detected_projects(
         .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
         .collect())
 }
+

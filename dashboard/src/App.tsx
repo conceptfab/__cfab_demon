@@ -273,7 +273,7 @@ function AutoOnlineSync() {
 
       if (disposed) return;
       if (result.skipped) {
-        if (result.reason !== "disabled") {
+        if (result.reason !== "disabled" && result.reason !== "demo_mode") {
           console.log(`Online sync (${source}) skipped: ${result.reason}`);
         }
         return;

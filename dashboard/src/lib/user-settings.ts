@@ -4,7 +4,8 @@ export interface WorkingHoursSettings {
   color: string;
 }
 
-const WORKING_HOURS_STORAGE_KEY = "cfab.settings.working-hours";
+const WORKING_HOURS_STORAGE_KEY = "timeflow.settings.working-hours";
+const LEGACY_WORKING_HOURS_STORAGE_KEY = "cfab.settings.working-hours";
 
 export const DEFAULT_WORKING_HOURS: WorkingHoursSettings = {
   start: "09:00",
@@ -45,7 +46,9 @@ function normalizeWorkingHours(input: Partial<WorkingHoursSettings>): WorkingHou
 export function loadWorkingHoursSettings(): WorkingHoursSettings {
   if (typeof window === "undefined") return { ...DEFAULT_WORKING_HOURS };
   try {
-    const raw = window.localStorage.getItem(WORKING_HOURS_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(WORKING_HOURS_STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_WORKING_HOURS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_WORKING_HOURS };
     const parsed = JSON.parse(raw) as Partial<WorkingHoursSettings>;
     return normalizeWorkingHours(parsed ?? {});
@@ -67,7 +70,8 @@ export interface SessionSettings {
   rebuildOnStartup: boolean;
 }
 
-const SESSION_STORAGE_KEY = "cfab.settings.sessions";
+const SESSION_STORAGE_KEY = "timeflow.settings.sessions";
+const LEGACY_SESSION_STORAGE_KEY = "cfab.settings.sessions";
 
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   gapFillMinutes: 5,
@@ -84,7 +88,9 @@ function normalizeGapFillMinutes(value: unknown): number {
 export function loadSessionSettings(): SessionSettings {
   if (typeof window === "undefined") return { ...DEFAULT_SESSION_SETTINGS };
   try {
-    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(SESSION_STORAGE_KEY) ??
+      window.localStorage.getItem(LEGACY_SESSION_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SESSION_SETTINGS };
     const parsed = JSON.parse(raw);
     return {
@@ -106,3 +112,4 @@ export function saveSessionSettings(next: SessionSettings): SessionSettings {
   }
   return normalized;
 }
+

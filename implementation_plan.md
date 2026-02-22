@@ -11,7 +11,7 @@ Wdrozyc MVP synchronizacji danych `offline-first` dla dashboardu:
 
 ## Architektura (MVP)
 
-- Serwer: osobny projekt Next.js (`__cfab_server`) z endpointami API.
+- Serwer: osobny projekt Next.js (`__timeflow_server`) z endpointami API.
 - Magazyn danych: prosty plik JSON na serwerze (MVP lokalny/dev).
 - Jednostka synchronizacji: snapshot calej paczki eksportu (`ExportArchive`) z dashboardu.
 - Wersjonowanie: `revision` (numer rosnacy per user) + `payloadSha256`.
@@ -31,7 +31,7 @@ Wdrozyc MVP synchronizacji danych `offline-first` dla dashboardu:
 
 ## Etapy
 
-- [x] Analiza obecnego stanu repo i `__cfab_server`
+- [x] Analiza obecnego stanu repo i `__timeflow_server`
 - [x] Potwierdzenie formatu paczki eksportu (`ExportArchive`) w dashboardzie
 - [x] Przygotowanie planu i checklisty postepu
 - [x] MVP serwera: storage plikowy (revision/hash/metadata + snapshot)
@@ -57,12 +57,12 @@ Wdrozyc MVP synchronizacji danych `offline-first` dla dashboardu:
 
 ## Progress Log
 
-- 2026-02-22: Rozpoczeto implementacje MVP serwera sync w `__cfab_server` (storage + endpointy `status/push/pull`).
+- 2026-02-22: Rozpoczeto implementacje MVP serwera sync w `__timeflow_server` (storage + endpointy `status/push/pull`).
 - 2026-02-22: Dodano plikowy storage `data/sync-store.json` (MVP dev) oraz endpointy:
   - `POST /api/sync/status`
   - `POST /api/sync/push`
   - `POST /api/sync/pull`
-- 2026-02-22: `npm run lint` w `__cfab_server` przechodzi bez bledow.
+- 2026-02-22: `npm run lint` w `__timeflow_server` przechodzi bez bledow.
 - 2026-02-22: Dodano komendy Tauri pod auto-sync bez dialogow:
   - `export_data_archive` (zwraca `ExportArchive`)
   - `import_data_archive` (import z obiektu archiwum)
@@ -92,7 +92,7 @@ Wdrozyc MVP synchronizacji danych `offline-first` dla dashboardu:
 
 Klient przechowuje konfiguracje sync w `localStorage` pod kluczem:
 
-- `cfab.settings.online-sync`
+- `timeflow.settings.online-sync`
 
 Przyklad:
 
@@ -100,23 +100,23 @@ Przyklad:
 {
   "enabled": true,
   "autoSyncOnStartup": true,
-  "serverUrl": "https://cfabserver-production.up.railway.app",
+  "serverUrl": "https://timeflowserver-production.up.railway.app",
   "userId": "demo-user"
 }
 ```
 
 Uwagi:
 
-- Domyslnie ustawiany jest URL Railway: `https://cfabserver-production.up.railway.app`, ale mozna go zmienic w `Settings`.
+- Domyslnie ustawiany jest URL Railway: `https://timeflowserver-production.up.railway.app`, ale mozna go zmienic w `Settings`.
 - `deviceId` generuje sie automatycznie i zostaje zapisany w tym samym obiekcie.
-- Lokalny stan synchronizacji (ostatni `serverRevision` / `serverHash`) trzymany jest pod kluczem `cfab.sync.state`.
+- Lokalny stan synchronizacji (ostatni `serverRevision` / `serverHash`) trzymany jest pod kluczem `timeflow.sync.state`.
 
 ## Test reczny (MVP)
 
 Uruchom serwer:
 
 ```bash
-cd __cfab_server
+cd __timeflow_server
 npm run dev
 ```
 
@@ -175,3 +175,4 @@ curl -X POST http://localhost:3000/api/sync/pull ^
 ```
 
 Oczekiwane: `hasUpdate=true` i `archive` z danymi.
+

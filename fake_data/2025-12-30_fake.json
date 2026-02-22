@@ -1,0 +1,185 @@
+{
+  "date": "2025-12-30",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2025-12-30T08:10:00+01:00",
+          "end": "2025-12-30T08:45:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-12-30T11:44:00+01:00",
+          "end": "2025-12-30T12:24:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_comments.pdf - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 2100,
+          "first_seen": "2025-12-30T08:10:00+01:00",
+          "last_seen": "2025-12-30T08:45:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_proof.pdf - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2400,
+          "first_seen": "2025-12-30T11:44:00+01:00",
+          "last_seen": "2025-12-30T12:24:00+01:00"
+        }
+      ]
+    },
+    "code.exe": {
+      "display_name": "Visual Studio Code",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-12-30T14:54:00+01:00",
+          "end": "2025-12-30T15:49:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_enrollment_landing_prototype.html - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 3300,
+          "first_seen": "2025-12-30T14:54:00+01:00",
+          "last_seen": "2025-12-30T15:49:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-12-30T15:54:00+01:00",
+          "end": "2025-12-30T16:59:00+01:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_enrollment_landing_ui_master.fig - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 3900,
+          "first_seen": "2025-12-30T15:54:00+01:00",
+          "last_seen": "2025-12-30T16:59:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5400,
+      "sessions": [
+        {
+          "start": "2025-12-30T08:57:00+01:00",
+          "end": "2025-12-30T09:22:00+01:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-12-30T13:24:00+01:00",
+          "end": "2025-12-30T14:09:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-12-30T14:24:00+01:00",
+          "end": "2025-12-30T14:44:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_dieline.ai - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-30T08:57:00+01:00",
+          "last_seen": "2025-12-30T09:22:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_icons.ai - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2700,
+          "first_seen": "2025-12-30T13:24:00+01:00",
+          "last_seen": "2025-12-30T14:09:00+01:00"
+        },
+        {
+          "name": "solstice_enrollment_landing_dieline.ai - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 1200,
+          "first_seen": "2025-12-30T14:24:00+01:00",
+          "last_seen": "2025-12-30T14:44:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 9300,
+      "sessions": [
+        {
+          "start": "2025-12-30T09:27:00+01:00",
+          "end": "2025-12-30T10:32:00+01:00",
+          "duration_seconds": 3900
+        },
+        {
+          "start": "2025-12-30T17:10:00+01:00",
+          "end": "2025-12-30T18:40:00+01:00",
+          "duration_seconds": 5400
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_layout.indd - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 3900,
+          "first_seen": "2025-12-30T09:27:00+01:00",
+          "last_seen": "2025-12-30T10:32:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_layout.indd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 5400,
+          "first_seen": "2025-12-30T17:10:00+01:00",
+          "last_seen": "2025-12-30T18:40:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-12-30T10:39:00+01:00",
+          "end": "2025-12-30T10:59:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-12-30T11:09:00+01:00",
+          "end": "2025-12-30T11:34:00+01:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-12-30T18:55:00+01:00",
+          "end": "2025-12-30T19:20:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_master.psd - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 1200,
+          "first_seen": "2025-12-30T10:39:00+01:00",
+          "last_seen": "2025-12-30T10:59:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_master.psd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-30T11:09:00+01:00",
+          "last_seen": "2025-12-30T11:34:00+01:00"
+        },
+        {
+          "name": "solstice_enrollment_landing_exports.psd - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-30T18:55:00+01:00",
+          "last_seen": "2025-12-30T19:20:00+01:00"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,190 @@
+{
+  "date": "2026-02-02",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2026-02-02T19:56:00+01:00",
+          "end": "2026-02-02T20:51:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_annual_report_comments.pdf - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 3300,
+          "first_seen": "2026-02-02T19:56:00+01:00",
+          "last_seen": "2026-02-02T20:51:00+01:00"
+        }
+      ]
+    },
+    "code.exe": {
+      "display_name": "Visual Studio Code",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2026-02-02T15:24:00+01:00",
+          "end": "2026-02-02T16:19:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_enrollment_landing_hooks.js - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 3300,
+          "first_seen": "2026-02-02T15:24:00+01:00",
+          "last_seen": "2026-02-02T16:19:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 8400,
+      "sessions": [
+        {
+          "start": "2026-02-02T08:15:00+01:00",
+          "end": "2026-02-02T09:15:00+01:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2026-02-02T17:36:00+01:00",
+          "end": "2026-02-02T18:56:00+01:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_social_ad_ui_master.fig - Bluehaven Foods: Social Ad Variants January Push",
+          "total_seconds": 3600,
+          "first_seen": "2026-02-02T08:15:00+01:00",
+          "last_seen": "2026-02-02T09:15:00+01:00"
+        },
+        {
+          "name": "solstice_enrollment_landing_handoff.fig - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 4800,
+          "first_seen": "2026-02-02T17:36:00+01:00",
+          "last_seen": "2026-02-02T18:56:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2026-02-02T09:33:00+01:00",
+          "end": "2026-02-02T09:58:00+01:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2026-02-02T11:59:00+01:00",
+          "end": "2026-02-02T12:19:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2026-02-02T13:30:00+01:00",
+          "end": "2026-02-02T14:35:00+01:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_social_ad_dieline.ai - Bluehaven Foods: Social Ad Variants January Push",
+          "total_seconds": 1500,
+          "first_seen": "2026-02-02T09:33:00+01:00",
+          "last_seen": "2026-02-02T09:58:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_vector.ai - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 3900,
+          "first_seen": "2026-02-02T13:30:00+01:00",
+          "last_seen": "2026-02-02T14:35:00+01:00"
+        },
+        {
+          "name": "solstice_enrollment_landing_icons.ai - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 1200,
+          "first_seen": "2026-02-02T11:59:00+01:00",
+          "last_seen": "2026-02-02T12:19:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 10200,
+      "sessions": [
+        {
+          "start": "2026-02-02T16:29:00+01:00",
+          "end": "2026-02-02T17:18:00+01:00",
+          "duration_seconds": 2940
+        },
+        {
+          "start": "2026-02-02T19:02:00+01:00",
+          "end": "2026-02-02T19:51:00+01:00",
+          "duration_seconds": 2940
+        },
+        {
+          "start": "2026-02-02T20:56:00+01:00",
+          "end": "2026-02-02T22:08:00+01:00",
+          "duration_seconds": 4320
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_annual_report_layout.indd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 7260,
+          "first_seen": "2026-02-02T16:29:00+01:00",
+          "last_seen": "2026-02-02T22:08:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_print.indd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2940,
+          "first_seen": "2026-02-02T19:02:00+01:00",
+          "last_seen": "2026-02-02T19:51:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2026-02-02T10:13:00+01:00",
+          "end": "2026-02-02T10:53:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2026-02-02T11:03:00+01:00",
+          "end": "2026-02-02T11:48:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2026-02-02T14:42:00+01:00",
+          "end": "2026-02-02T15:07:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_social_ad_retouch.psd - Bluehaven Foods: Social Ad Variants January Push",
+          "total_seconds": 2400,
+          "first_seen": "2026-02-02T10:13:00+01:00",
+          "last_seen": "2026-02-02T10:53:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_master.psd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2700,
+          "first_seen": "2026-02-02T11:03:00+01:00",
+          "last_seen": "2026-02-02T11:48:00+01:00"
+        },
+        {
+          "name": "solstice_enrollment_landing_master.psd - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 1500,
+          "first_seen": "2026-02-02T14:42:00+01:00",
+          "last_seen": "2026-02-02T15:07:00+01:00"
+        }
+      ]
+    }
+  }
+}

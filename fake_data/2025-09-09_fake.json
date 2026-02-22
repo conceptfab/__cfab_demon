@@ -1,0 +1,144 @@
+{
+  "date": "2025-09-09",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-09-09T13:30:00+02:00",
+          "end": "2025-09-09T14:00:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_comments.pdf - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-09T13:30:00+02:00",
+          "last_seen": "2025-09-09T14:00:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-09-09T11:40:00+02:00",
+          "end": "2025-09-09T12:10:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_reference_board.bridge - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-09T11:40:00+02:00",
+          "last_seen": "2025-09-09T12:10:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-09-09T12:49:00+02:00",
+          "end": "2025-09-09T13:24:00+02:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-09-09T17:53:00+02:00",
+          "end": "2025-09-09T18:13:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_vector.ai - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 2100,
+          "first_seen": "2025-09-09T12:49:00+02:00",
+          "last_seen": "2025-09-09T13:24:00+02:00"
+        },
+        {
+          "name": "luma_pediatric_brochure_icons.ai - Luma Dental Group: Pediatric Brochure Illustration Pack",
+          "total_seconds": 1200,
+          "first_seen": "2025-09-09T17:53:00+02:00",
+          "last_seen": "2025-09-09T18:13:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 9300,
+      "sessions": [
+        {
+          "start": "2025-09-09T09:49:00+02:00",
+          "end": "2025-09-09T11:29:00+02:00",
+          "duration_seconds": 6000
+        },
+        {
+          "start": "2025-09-09T15:38:00+02:00",
+          "end": "2025-09-09T16:33:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_layout.indd - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 6000,
+          "first_seen": "2025-09-09T09:49:00+02:00",
+          "last_seen": "2025-09-09T11:29:00+02:00"
+        },
+        {
+          "name": "luma_pediatric_brochure_print.indd - Luma Dental Group: Pediatric Brochure Illustration Pack",
+          "total_seconds": 3300,
+          "first_seen": "2025-09-09T15:38:00+02:00",
+          "last_seen": "2025-09-09T16:33:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 12600,
+      "sessions": [
+        {
+          "start": "2025-09-09T08:11:00+02:00",
+          "end": "2025-09-09T09:36:00+02:00",
+          "duration_seconds": 5100
+        },
+        {
+          "start": "2025-09-09T14:13:00+02:00",
+          "end": "2025-09-09T15:33:00+02:00",
+          "duration_seconds": 4800
+        },
+        {
+          "start": "2025-09-09T16:51:00+02:00",
+          "end": "2025-09-09T17:36:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_product_launch_retouch.psd - Cedar Peak Outdoor: Product Launch Lookbook",
+          "total_seconds": 5100,
+          "first_seen": "2025-09-09T08:11:00+02:00",
+          "last_seen": "2025-09-09T09:36:00+02:00"
+        },
+        {
+          "name": "harbor_winter_key_exports.psd - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 4800,
+          "first_seen": "2025-09-09T14:13:00+02:00",
+          "last_seen": "2025-09-09T15:33:00+02:00"
+        },
+        {
+          "name": "luma_pediatric_brochure_master.psd - Luma Dental Group: Pediatric Brochure Illustration Pack",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-09T16:51:00+02:00",
+          "last_seen": "2025-09-09T17:36:00+02:00"
+        }
+      ]
+    }
+  }
+}

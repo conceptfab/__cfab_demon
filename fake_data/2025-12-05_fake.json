@@ -1,0 +1,182 @@
+{
+  "date": "2025-12-05",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-12-05T09:55:00+01:00",
+          "end": "2025-12-05T10:05:00+01:00",
+          "duration_seconds": 600
+        },
+        {
+          "start": "2025-12-05T18:22:00+01:00",
+          "end": "2025-12-05T19:07:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_comments.pdf - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2700,
+          "first_seen": "2025-12-05T18:22:00+01:00",
+          "last_seen": "2025-12-05T19:07:00+01:00"
+        },
+        {
+          "name": "meridian_lobby_digital_proof.pdf - Meridian Properties: Lobby Digital Signage Loop",
+          "total_seconds": 600,
+          "first_seen": "2025-12-05T09:55:00+01:00",
+          "last_seen": "2025-12-05T10:05:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 5400,
+      "sessions": [
+        {
+          "start": "2025-12-05T08:16:00+01:00",
+          "end": "2025-12-05T09:46:00+01:00",
+          "duration_seconds": 5400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_lobby_digital_variants.aep - Meridian Properties: Lobby Digital Signage Loop",
+          "total_seconds": 5400,
+          "first_seen": "2025-12-05T08:16:00+01:00",
+          "last_seen": "2025-12-05T09:46:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 8100,
+      "sessions": [
+        {
+          "start": "2025-12-05T14:41:00+01:00",
+          "end": "2025-12-05T15:16:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-12-05T15:47:00+01:00",
+          "end": "2025-12-05T17:27:00+01:00",
+          "duration_seconds": 6000
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_camera.blend - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2100,
+          "first_seen": "2025-12-05T14:41:00+01:00",
+          "last_seen": "2025-12-05T15:16:00+01:00"
+        },
+        {
+          "name": "aurora_private_label_scene.blend - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 6000,
+          "first_seen": "2025-12-05T15:47:00+01:00",
+          "last_seen": "2025-12-05T17:27:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-12-05T13:57:00+01:00",
+          "end": "2025-12-05T14:32:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_asset_selects.bridge - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2100,
+          "first_seen": "2025-12-05T13:57:00+01:00",
+          "last_seen": "2025-12-05T14:32:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 7500,
+      "sessions": [
+        {
+          "start": "2025-12-05T11:32:00+01:00",
+          "end": "2025-12-05T13:17:00+01:00",
+          "duration_seconds": 6300
+        },
+        {
+          "start": "2025-12-05T15:22:00+01:00",
+          "end": "2025-12-05T15:42:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_icons.ai - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1200,
+          "first_seen": "2025-12-05T15:22:00+01:00",
+          "last_seen": "2025-12-05T15:42:00+01:00"
+        },
+        {
+          "name": "aurora_private_label_vector.ai - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 6300,
+          "first_seen": "2025-12-05T11:32:00+01:00",
+          "last_seen": "2025-12-05T13:17:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-12-05T17:39:00+01:00",
+          "end": "2025-12-05T18:04:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_spreads.indd - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-05T17:39:00+01:00",
+          "last_seen": "2025-12-05T18:04:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8700,
+      "sessions": [
+        {
+          "start": "2025-12-05T10:11:00+01:00",
+          "end": "2025-12-05T11:26:00+01:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-12-05T19:17:00+01:00",
+          "end": "2025-12-05T20:27:00+01:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_exports.psd - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 4500,
+          "first_seen": "2025-12-05T10:11:00+01:00",
+          "last_seen": "2025-12-05T11:26:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_retouch.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 4200,
+          "first_seen": "2025-12-05T19:17:00+01:00",
+          "last_seen": "2025-12-05T20:27:00+01:00"
+        }
+      ]
+    }
+  }
+}

@@ -72,7 +72,8 @@ export function Projects() {
   const [sessionDialogProjectId, setSessionDialogProjectId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("compact");
 
-  const SECTION_STORAGE_KEY = "cfab-dashboard-projects-section-open";
+  const SECTION_STORAGE_KEY = "timeflow-dashboard-projects-section-open";
+  const LEGACY_SECTION_STORAGE_KEY = "cfab-dashboard-projects-section-open";
   const defaultSectionOpen = {
     excluded: true,
     folders: true,
@@ -81,7 +82,9 @@ export function Projects() {
   };
   const [sectionOpen, setSectionOpen] = useState(() => {
     try {
-      const raw = localStorage.getItem(SECTION_STORAGE_KEY);
+      const raw =
+        localStorage.getItem(SECTION_STORAGE_KEY) ??
+        localStorage.getItem(LEGACY_SECTION_STORAGE_KEY);
       if (!raw) return defaultSectionOpen;
       const parsed = JSON.parse(raw) as Record<string, boolean>;
       const next = {
@@ -100,6 +103,7 @@ export function Projects() {
   const persistSectionOpen = (next: typeof defaultSectionOpen) => {
     try {
       localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(next));
+      localStorage.removeItem(LEGACY_SECTION_STORAGE_KEY);
     } catch (error) {
       console.debug("Failed to persist sections state:", error);
     }
@@ -369,7 +373,7 @@ export function Projects() {
         grouped.get(root)!.push(project);
         continue;
       }
-      // 2. Project name contains a folder's basename (e.g. "TODO.md - __cfab_demon" contains "__cfab_demon")
+      // 2. Project name contains a folder's basename (e.g. "TODO.md - __timeflow_demon" contains "__timeflow_demon")
       const nameLC = project.name.toLowerCase();
       const matchedFolder = folderBasenames.find((f) => nameLC.includes(f.basename));
       if (matchedFolder && grouped.has(matchedFolder.path)) {
@@ -908,3 +912,4 @@ export function Projects() {
     </div>
   );
 }
+

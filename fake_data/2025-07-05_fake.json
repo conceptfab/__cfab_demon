@@ -1,0 +1,62 @@
+{
+  "date": "2025-07-05",
+  "apps": {
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2025-07-05T12:06:00+02:00",
+          "end": "2025-07-05T13:21:00+02:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_camera.blend - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 4500,
+          "first_seen": "2025-07-05T12:06:00+02:00",
+          "last_seen": "2025-07-05T13:21:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-07-05T10:40:00+02:00",
+          "end": "2025-07-05T11:45:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_icons.ai - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 3900,
+          "first_seen": "2025-07-05T10:40:00+02:00",
+          "last_seen": "2025-07-05T11:45:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-07-05T09:43:00+02:00",
+          "end": "2025-07-05T10:28:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_exports.psd - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 2700,
+          "first_seen": "2025-07-05T09:43:00+02:00",
+          "last_seen": "2025-07-05T10:28:00+02:00"
+        }
+      ]
+    }
+  }
+}

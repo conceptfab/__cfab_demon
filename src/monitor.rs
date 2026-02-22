@@ -183,7 +183,7 @@ pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: std::time::Duratio
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
 /// Heurystyka: bierze pierwszą część przed separatorem (` - `, ` — `, ` | `).
 /// Przykłady:
-///   "main.rs - cfab_demon - Visual Studio Code" → "main.rs - cfab_demon"
+///   "main.rs - timeflow_demon - Visual Studio Code" → "main.rs - timeflow_demon"
 ///   "projekt.psd @ 100% (RGB/8)" → "projekt.psd"
 ///   "Blender" → "Blender"
 pub fn extract_file_from_title(title: &str) -> String {
@@ -202,7 +202,7 @@ pub fn extract_file_from_title(title: &str) -> String {
     }
 
     // Dla " - " — specjalne traktowanie: bierzemy wszystko oprócz ostatniego segmentu
-    // "main.rs - cfab_demon - Visual Studio Code" → "main.rs - cfab_demon"
+    // "main.rs - timeflow_demon - Visual Studio Code" → "main.rs - timeflow_demon"
     if let Some(pos) = title.rfind(" - ") {
         let left = title[..pos].trim();
         if !left.is_empty() {
@@ -376,8 +376,8 @@ mod tests {
     #[test]
     fn extract_file_single_separator() {
         assert_eq!(
-            extract_file_from_title("main.rs - cfab_demon - Visual Studio Code"),
-            "main.rs - cfab_demon"
+            extract_file_from_title("main.rs - timeflow_demon - Visual Studio Code"),
+            "main.rs - timeflow_demon"
         );
     }
 
@@ -424,3 +424,4 @@ mod tests {
         );
     }
 }
+

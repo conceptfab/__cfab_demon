@@ -1,0 +1,111 @@
+{
+  "date": "2025-09-27",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-09-27T11:47:00+02:00",
+          "end": "2025-09-27T12:22:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_comments.pdf - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2100,
+          "first_seen": "2025-09-27T11:47:00+02:00",
+          "last_seen": "2025-09-27T12:22:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-09-27T15:04:00+02:00",
+          "end": "2025-09-27T15:34:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_asset_selects.bridge - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-27T15:04:00+02:00",
+          "last_seen": "2025-09-27T15:34:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-09-27T16:56:00+02:00",
+          "end": "2025-09-27T17:51:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_vector.ai - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3300,
+          "first_seen": "2025-09-27T16:56:00+02:00",
+          "last_seen": "2025-09-27T17:51:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 6900,
+      "sessions": [
+        {
+          "start": "2025-09-27T12:35:00+02:00",
+          "end": "2025-09-27T13:56:00+02:00",
+          "duration_seconds": 4860
+        },
+        {
+          "start": "2025-09-27T14:08:00+02:00",
+          "end": "2025-09-27T14:42:00+02:00",
+          "duration_seconds": 2040
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_print.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 4860,
+          "first_seen": "2025-09-27T12:35:00+02:00",
+          "last_seen": "2025-09-27T13:56:00+02:00"
+        },
+        {
+          "name": "atlas_conference_poster_spreads.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2040,
+          "first_seen": "2025-09-27T14:08:00+02:00",
+          "last_seen": "2025-09-27T14:42:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-09-27T15:44:00+02:00",
+          "end": "2025-09-27T16:34:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_retouch.psd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3000,
+          "first_seen": "2025-09-27T15:44:00+02:00",
+          "last_seen": "2025-09-27T16:34:00+02:00"
+        }
+      ]
+    }
+  }
+}

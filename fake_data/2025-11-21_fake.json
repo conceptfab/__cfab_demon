@@ -1,0 +1,185 @@
+{
+  "date": "2025-11-21",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-11-21T08:12:00+01:00",
+          "end": "2025-11-21T08:22:00+01:00",
+          "duration_seconds": 600
+        },
+        {
+          "start": "2025-11-21T11:21:00+01:00",
+          "end": "2025-11-21T11:51:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-11-21T15:16:00+01:00",
+          "end": "2025-11-21T16:01:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_comments.pdf - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2700,
+          "first_seen": "2025-11-21T15:16:00+01:00",
+          "last_seen": "2025-11-21T16:01:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_comments.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 600,
+          "first_seen": "2025-11-21T08:12:00+01:00",
+          "last_seen": "2025-11-21T08:22:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_proof.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-21T11:21:00+01:00",
+          "last_seen": "2025-11-21T11:51:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-11-21T14:17:00+01:00",
+          "end": "2025-11-21T15:07:00+01:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_scene.blend - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 3000,
+          "first_seen": "2025-11-21T14:17:00+01:00",
+          "last_seen": "2025-11-21T15:07:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-11-21T08:28:00+01:00",
+          "end": "2025-11-21T08:48:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_reference_board.bridge - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-21T08:28:00+01:00",
+          "last_seen": "2025-11-21T08:48:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5700,
+      "sessions": [
+        {
+          "start": "2025-11-21T10:26:00+01:00",
+          "end": "2025-11-21T11:06:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-11-21T16:52:00+01:00",
+          "end": "2025-11-21T17:47:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_vector.ai - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 3300,
+          "first_seen": "2025-11-21T16:52:00+01:00",
+          "last_seen": "2025-11-21T17:47:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_vector.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-21T10:26:00+01:00",
+          "last_seen": "2025-11-21T11:06:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 12300,
+      "sessions": [
+        {
+          "start": "2025-11-21T08:56:00+01:00",
+          "end": "2025-11-21T10:08:00+01:00",
+          "duration_seconds": 4320
+        },
+        {
+          "start": "2025-11-21T12:37:00+01:00",
+          "end": "2025-11-21T13:20:00+01:00",
+          "duration_seconds": 2580
+        },
+        {
+          "start": "2025-11-21T18:00:00+01:00",
+          "end": "2025-11-21T19:30:00+01:00",
+          "duration_seconds": 5400
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_layout.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 4320,
+          "first_seen": "2025-11-21T08:56:00+01:00",
+          "last_seen": "2025-11-21T10:08:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_spreads.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2580,
+          "first_seen": "2025-11-21T12:37:00+01:00",
+          "last_seen": "2025-11-21T13:20:00+01:00"
+        },
+        {
+          "name": "harbor_room_service_print.indd - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 5400,
+          "first_seen": "2025-11-21T18:00:00+01:00",
+          "last_seen": "2025-11-21T19:30:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-11-21T13:33:00+01:00",
+          "end": "2025-11-21T14:08:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-11-21T16:07:00+01:00",
+          "end": "2025-11-21T16:37:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_retouch.psd - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-21T16:07:00+01:00",
+          "last_seen": "2025-11-21T16:37:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_retouch.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-21T13:33:00+01:00",
+          "last_seen": "2025-11-21T14:08:00+01:00"
+        }
+      ]
+    }
+  }
+}

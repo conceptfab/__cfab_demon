@@ -1,4 +1,4 @@
-use super::helpers::cfab_demon_dir;
+use super::helpers::timeflow_data_dir;
 use super::types::{
     AppDailyData, ApplicationRow, DailyData, DateRange, ExportArchive, ExportData, ExportMetadata,
     ManualSession, Project, SessionRow,
@@ -203,7 +203,7 @@ fn build_export_archive(
 
     // 6. Fetch Daily JSON Files
     let mut daily_files = HashMap::new();
-    let data_dir = cfab_demon_dir()?.join("data");
+    let data_dir = timeflow_data_dir()?.join("data");
     if data_dir.exists() {
         for entry in fs::read_dir(data_dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -263,7 +263,7 @@ fn build_export_archive(
     let machine_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
 
     let default_name = format!(
-        "cfab-export-{}.json",
+        "timeflow-export-{}.json",
         chrono::Local::now().format("%Y%m%d-%H%M%S")
     );
     let archive = ExportArchive {
@@ -331,3 +331,4 @@ pub async fn export_data_archive(
     let (archive, _default_name) = build_export_archive(&app, project_id, date_start, date_end)?;
     Ok(archive)
 }
+

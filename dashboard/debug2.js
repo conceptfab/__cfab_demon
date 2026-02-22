@@ -1,4 +1,4 @@
-const db = require('better-sqlite3')('C:/Users/micz/AppData/Roaming/conceptfab/cfab_demon.db');
+const db = require('better-sqlite3')('C:/Users/micz/AppData/Roaming/TimeFlow/timeflow_demon.db');
 
 try {
   const p = db.prepare(`SELECT * FROM projects WHERE name LIKE '%background%' OR name LIKE '(%)'`).all();
@@ -21,3 +21,4 @@ try {
 } catch(e) {
   console.error(e);
 }
+

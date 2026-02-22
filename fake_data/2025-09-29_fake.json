@@ -1,0 +1,130 @@
+{
+  "date": "2025-09-29",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-09-29T15:24:00+02:00",
+          "end": "2025-09-29T15:59:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_proof.pdf - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 2100,
+          "first_seen": "2025-09-29T15:24:00+02:00",
+          "last_seen": "2025-09-29T15:59:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-09-29T16:11:00+02:00",
+          "end": "2025-09-29T16:56:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_loop.aep - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-29T16:11:00+02:00",
+          "last_seen": "2025-09-29T16:56:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-09-29T10:49:00+02:00",
+          "end": "2025-09-29T12:09:00+02:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_scene.blend - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 4800,
+          "first_seen": "2025-09-29T10:49:00+02:00",
+          "last_seen": "2025-09-29T12:09:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-09-29T17:10:00+02:00",
+          "end": "2025-09-29T17:55:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_handoff.fig - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-29T17:10:00+02:00",
+          "last_seen": "2025-09-29T17:55:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2025-09-29T09:19:00+02:00",
+          "end": "2025-09-29T10:34:00+02:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_dieline.ai - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 4500,
+          "first_seen": "2025-09-29T09:19:00+02:00",
+          "last_seen": "2025-09-29T10:34:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6900,
+      "sessions": [
+        {
+          "start": "2025-09-29T13:07:00+02:00",
+          "end": "2025-09-29T14:40:00+02:00",
+          "duration_seconds": 5580
+        },
+        {
+          "start": "2025-09-29T14:54:00+02:00",
+          "end": "2025-09-29T15:16:00+02:00",
+          "duration_seconds": 1320
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_exports.psd - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1320,
+          "first_seen": "2025-09-29T14:54:00+02:00",
+          "last_seen": "2025-09-29T15:16:00+02:00"
+        },
+        {
+          "name": "atlas_lab_equipment_retouch.psd - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 5580,
+          "first_seen": "2025-09-29T13:07:00+02:00",
+          "last_seen": "2025-09-29T14:40:00+02:00"
+        }
+      ]
+    }
+  }
+}

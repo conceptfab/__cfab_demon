@@ -90,6 +90,8 @@ pub fn run() {
             commands::clear_all_data,
             commands::export_database,
             commands::get_data_dir,
+            commands::get_demo_mode_status,
+            commands::set_demo_mode,
             commands::create_manual_session,
             commands::get_manual_sessions,
             commands::update_manual_session,

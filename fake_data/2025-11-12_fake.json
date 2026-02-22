@@ -1,0 +1,209 @@
+{
+  "date": "2025-11-12",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-11-12T14:15:00+01:00",
+          "end": "2025-11-12T14:50:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-11-12T19:26:00+01:00",
+          "end": "2025-11-12T19:51:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_proof.pdf - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1500,
+          "first_seen": "2025-11-12T19:26:00+01:00",
+          "last_seen": "2025-11-12T19:51:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_comments.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-12T14:15:00+01:00",
+          "last_seen": "2025-11-12T14:50:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-11-12T18:41:00+01:00",
+          "end": "2025-11-12T19:16:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_loop.aep - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-12T18:41:00+01:00",
+          "last_seen": "2025-11-12T19:16:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-11-12T09:08:00+01:00",
+          "end": "2025-11-12T09:38:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-11-12T16:17:00+01:00",
+          "end": "2025-11-12T16:37:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_reference_board.bridge - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-12T09:08:00+01:00",
+          "last_seen": "2025-11-12T09:38:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_reference_board.bridge - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-12T16:17:00+01:00",
+          "last_seen": "2025-11-12T16:37:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-11-12T13:02:00+01:00",
+          "end": "2025-11-12T14:02:00+01:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_handoff.fig - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 3600,
+          "first_seen": "2025-11-12T13:02:00+01:00",
+          "last_seen": "2025-11-12T14:02:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 6000,
+      "sessions": [
+        {
+          "start": "2025-11-12T14:59:00+01:00",
+          "end": "2025-11-12T15:59:00+01:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-11-12T20:52:00+01:00",
+          "end": "2025-11-12T21:32:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_vector.ai - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 3600,
+          "first_seen": "2025-11-12T14:59:00+01:00",
+          "last_seen": "2025-11-12T15:59:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_icons.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-12T20:52:00+01:00",
+          "last_seen": "2025-11-12T21:32:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2025-11-12T09:53:00+01:00",
+          "end": "2025-11-12T10:13:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-11-12T10:24:00+01:00",
+          "end": "2025-11-12T12:04:00+01:00",
+          "duration_seconds": 6000
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_print.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 7200,
+          "first_seen": "2025-11-12T09:53:00+01:00",
+          "last_seen": "2025-11-12T12:04:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 15300,
+      "sessions": [
+        {
+          "start": "2025-11-12T08:25:00+01:00",
+          "end": "2025-11-12T09:00:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-11-12T16:50:00+01:00",
+          "end": "2025-11-12T18:30:00+01:00",
+          "duration_seconds": 6000
+        },
+        {
+          "start": "2025-11-12T20:00:00+01:00",
+          "end": "2025-11-12T20:45:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-11-12T21:43:00+01:00",
+          "end": "2025-11-12T22:58:00+01:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_master.psd - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 6000,
+          "first_seen": "2025-11-12T16:50:00+01:00",
+          "last_seen": "2025-11-12T18:30:00+01:00"
+        },
+        {
+          "name": "aurora_black_friday_retouch.psd - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-12T08:25:00+01:00",
+          "last_seen": "2025-11-12T09:00:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_retouch.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2700,
+          "first_seen": "2025-11-12T20:00:00+01:00",
+          "last_seen": "2025-11-12T20:45:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_exports.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 4500,
+          "first_seen": "2025-11-12T21:43:00+01:00",
+          "last_seen": "2025-11-12T22:58:00+01:00"
+        }
+      ]
+    }
+  }
+}

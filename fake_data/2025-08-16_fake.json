@@ -1,0 +1,62 @@
+{
+  "date": "2025-08-16",
+  "apps": {
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-08-16T10:33:00+02:00",
+          "end": "2025-08-16T11:58:00+02:00",
+          "duration_seconds": 5100
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_lighting.blend - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 5100,
+          "first_seen": "2025-08-16T10:33:00+02:00",
+          "last_seen": "2025-08-16T11:58:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-08-16T13:05:00+02:00",
+          "end": "2025-08-16T13:35:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_icons.ai - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 1800,
+          "first_seen": "2025-08-16T13:05:00+02:00",
+          "last_seen": "2025-08-16T13:35:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-08-16T12:07:00+02:00",
+          "end": "2025-08-16T12:52:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_retouch.psd - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 2700,
+          "first_seen": "2025-08-16T12:07:00+02:00",
+          "last_seen": "2025-08-16T12:52:00+02:00"
+        }
+      ]
+    }
+  }
+}

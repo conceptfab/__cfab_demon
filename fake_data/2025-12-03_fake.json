@@ -1,0 +1,165 @@
+{
+  "date": "2025-12-03",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-12-03T11:48:00+01:00",
+          "end": "2025-12-03T12:23:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-12-03T13:19:00+01:00",
+          "end": "2025-12-03T13:29:00+01:00",
+          "duration_seconds": 600
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_room_service_proof.pdf - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 2700,
+          "first_seen": "2025-12-03T11:48:00+01:00",
+          "last_seen": "2025-12-03T13:29:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-12-03T15:38:00+01:00",
+          "end": "2025-12-03T15:58:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_loop.aep - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1200,
+          "first_seen": "2025-12-03T15:38:00+01:00",
+          "last_seen": "2025-12-03T15:58:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-12-03T17:05:00+01:00",
+          "end": "2025-12-03T18:00:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_scene.blend - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 3300,
+          "first_seen": "2025-12-03T17:05:00+01:00",
+          "last_seen": "2025-12-03T18:00:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-12-03T16:13:00+01:00",
+          "end": "2025-12-03T16:53:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_handoff.fig - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 2400,
+          "first_seen": "2025-12-03T16:13:00+01:00",
+          "last_seen": "2025-12-03T16:53:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-12-03T08:52:00+01:00",
+          "end": "2025-12-03T09:22:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-12-03T13:37:00+01:00",
+          "end": "2025-12-03T14:17:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_room_service_dieline.ai - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 1800,
+          "first_seen": "2025-12-03T08:52:00+01:00",
+          "last_seen": "2025-12-03T09:22:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_icons.ai - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 2400,
+          "first_seen": "2025-12-03T13:37:00+01:00",
+          "last_seen": "2025-12-03T14:17:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-12-03T10:08:00+01:00",
+          "end": "2025-12-03T11:33:00+01:00",
+          "duration_seconds": 5100
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_room_service_spreads.indd - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 5100,
+          "first_seen": "2025-12-03T10:08:00+01:00",
+          "last_seen": "2025-12-03T11:33:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-12-03T09:36:00+01:00",
+          "end": "2025-12-03T10:01:00+01:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-12-03T14:33:00+01:00",
+          "end": "2025-12-03T15:28:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_room_service_master.psd - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 1500,
+          "first_seen": "2025-12-03T09:36:00+01:00",
+          "last_seen": "2025-12-03T10:01:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_master.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 3300,
+          "first_seen": "2025-12-03T14:33:00+01:00",
+          "last_seen": "2025-12-03T15:28:00+01:00"
+        }
+      ]
+    }
+  }
+}

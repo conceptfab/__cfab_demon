@@ -1,0 +1,215 @@
+{
+  "date": "2025-10-16",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-10-16T11:56:00+02:00",
+          "end": "2025-10-16T12:16:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-16T15:11:00+02:00",
+          "end": "2025-10-16T15:31:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_proof.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-16T11:56:00+02:00",
+          "last_seen": "2025-10-16T12:16:00+02:00"
+        },
+        {
+          "name": "meridian_tower_a_comments.pdf - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-16T15:11:00+02:00",
+          "last_seen": "2025-10-16T15:31:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-10-16T20:00:00+02:00",
+          "end": "2025-10-16T20:50:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_holiday_pos_loop.aep - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 3000,
+          "first_seen": "2025-10-16T20:00:00+02:00",
+          "last_seen": "2025-10-16T20:50:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-10-16T08:19:00+02:00",
+          "end": "2025-10-16T08:39:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-16T15:49:00+02:00",
+          "end": "2025-10-16T16:09:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_reference_board.bridge - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-16T08:19:00+02:00",
+          "last_seen": "2025-10-16T08:39:00+02:00"
+        },
+        {
+          "name": "meridian_tower_a_asset_selects.bridge - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-16T15:49:00+02:00",
+          "last_seen": "2025-10-16T16:09:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-10-16T17:09:00+02:00",
+          "end": "2025-10-16T17:39:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_holiday_pos_ui_master.fig - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-16T17:09:00+02:00",
+          "last_seen": "2025-10-16T17:39:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 6300,
+      "sessions": [
+        {
+          "start": "2025-10-16T11:06:00+02:00",
+          "end": "2025-10-16T11:41:00+02:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-10-16T16:27:00+02:00",
+          "end": "2025-10-16T16:57:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-10-16T19:12:00+02:00",
+          "end": "2025-10-16T19:52:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_dieline.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2100,
+          "first_seen": "2025-10-16T11:06:00+02:00",
+          "last_seen": "2025-10-16T11:41:00+02:00"
+        },
+        {
+          "name": "meridian_tower_a_vector.ai - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-16T16:27:00+02:00",
+          "last_seen": "2025-10-16T16:57:00+02:00"
+        },
+        {
+          "name": "northwind_holiday_pos_dieline.ai - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 2400,
+          "first_seen": "2025-10-16T19:12:00+02:00",
+          "last_seen": "2025-10-16T19:52:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 9000,
+      "sessions": [
+        {
+          "start": "2025-10-16T09:37:00+02:00",
+          "end": "2025-10-16T10:52:00+02:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-10-16T13:09:00+02:00",
+          "end": "2025-10-16T14:24:00+02:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_spreads.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 4500,
+          "first_seen": "2025-10-16T09:37:00+02:00",
+          "last_seen": "2025-10-16T10:52:00+02:00"
+        },
+        {
+          "name": "meridian_tower_a_layout.indd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 4500,
+          "first_seen": "2025-10-16T13:09:00+02:00",
+          "last_seen": "2025-10-16T14:24:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2025-10-16T08:50:00+02:00",
+          "end": "2025-10-16T09:20:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-10-16T14:35:00+02:00",
+          "end": "2025-10-16T15:05:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-10-16T17:57:00+02:00",
+          "end": "2025-10-16T18:57:00+02:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_retouch.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-16T08:50:00+02:00",
+          "last_seen": "2025-10-16T09:20:00+02:00"
+        },
+        {
+          "name": "meridian_tower_a_retouch.psd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-16T14:35:00+02:00",
+          "last_seen": "2025-10-16T15:05:00+02:00"
+        },
+        {
+          "name": "northwind_holiday_pos_retouch.psd - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 3600,
+          "first_seen": "2025-10-16T17:57:00+02:00",
+          "last_seen": "2025-10-16T18:57:00+02:00"
+        }
+      ]
+    }
+  }
+}

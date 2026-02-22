@@ -1,7 +1,7 @@
 [package]
-name = "cfab-dashboard"
+name = "timeflow-dashboard"
 version = "0.1.0"
-description = "Cfab Time Tracking Dashboard"
+description = "TimeFlow Dashboard"
 authors = ["you"]
 license = ""
 repository = ""
@@ -28,3 +28,4 @@ tauri-plugin-fs = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio = { version = "1", features = ["time"] }
 rfd = "0.14"
+

@@ -1,0 +1,81 @@
+{
+  "date": "2025-10-11",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-10-11T10:16:00+02:00",
+          "end": "2025-10-11T10:51:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_comments.pdf - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 2100,
+          "first_seen": "2025-10-11T10:16:00+02:00",
+          "last_seen": "2025-10-11T10:51:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-10-11T13:02:00+02:00",
+          "end": "2025-10-11T13:27:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_icons.ai - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-11T13:02:00+02:00",
+          "last_seen": "2025-10-11T13:27:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-10-11T11:00:00+02:00",
+          "end": "2025-10-11T12:05:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_layout.indd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 3900,
+          "first_seen": "2025-10-11T11:00:00+02:00",
+          "last_seen": "2025-10-11T12:05:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-10-11T12:25:00+02:00",
+          "end": "2025-10-11T12:50:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_exports.psd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-11T12:25:00+02:00",
+          "last_seen": "2025-10-11T12:50:00+02:00"
+        }
+      ]
+    }
+  }
+}

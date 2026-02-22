@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "CfabDashboard",
+  "productName": "TimeFlow",
   "version": "0.1.0",
-  "identifier": "com.cfab.dashboard",
+  "identifier": "com.timeflow.dashboard",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Cfab Time Tracker",
+        "title": "TimeFlow",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
@@ -38,3 +38,4 @@
     ]
   }
 }
+

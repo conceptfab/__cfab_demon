@@ -1,0 +1,185 @@
+{
+  "date": "2025-10-07",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-10-07T13:13:00+02:00",
+          "end": "2025-10-07T13:33:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_proof.pdf - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-07T13:13:00+02:00",
+          "last_seen": "2025-10-07T13:33:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-10-07T08:10:00+02:00",
+          "end": "2025-10-07T08:40:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_loop.aep - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-07T08:10:00+02:00",
+          "last_seen": "2025-10-07T08:40:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-10-07T08:57:00+02:00",
+          "end": "2025-10-07T09:57:00+02:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-10-07T14:18:00+02:00",
+          "end": "2025-10-07T15:28:00+02:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_lighting.blend - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 3600,
+          "first_seen": "2025-10-07T08:57:00+02:00",
+          "last_seen": "2025-10-07T09:57:00+02:00"
+        },
+        {
+          "name": "aurora_private_label_camera.blend - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 4200,
+          "first_seen": "2025-10-07T14:18:00+02:00",
+          "last_seen": "2025-10-07T15:28:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2025-10-07T13:42:00+02:00",
+          "end": "2025-10-07T14:02:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-07T17:15:00+02:00",
+          "end": "2025-10-07T18:10:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_review_board.fig - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-07T13:42:00+02:00",
+          "last_seen": "2025-10-07T14:02:00+02:00"
+        },
+        {
+          "name": "harbor_winter_key_review_board.fig - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 3300,
+          "first_seen": "2025-10-07T17:15:00+02:00",
+          "last_seen": "2025-10-07T18:10:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-10-07T11:31:00+02:00",
+          "end": "2025-10-07T12:26:00+02:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-10-07T16:23:00+02:00",
+          "end": "2025-10-07T17:08:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-10-07T18:18:00+02:00",
+          "end": "2025-10-07T18:48:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_vector.ai - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 3300,
+          "first_seen": "2025-10-07T11:31:00+02:00",
+          "last_seen": "2025-10-07T12:26:00+02:00"
+        },
+        {
+          "name": "aurora_private_label_dieline.ai - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2700,
+          "first_seen": "2025-10-07T16:23:00+02:00",
+          "last_seen": "2025-10-07T17:08:00+02:00"
+        },
+        {
+          "name": "harbor_winter_key_dieline.ai - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-07T18:18:00+02:00",
+          "last_seen": "2025-10-07T18:48:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8400,
+      "sessions": [
+        {
+          "start": "2025-10-07T10:05:00+02:00",
+          "end": "2025-10-07T11:20:00+02:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-10-07T15:43:00+02:00",
+          "end": "2025-10-07T16:08:00+02:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-10-07T19:00:00+02:00",
+          "end": "2025-10-07T19:40:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_master.psd - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 4500,
+          "first_seen": "2025-10-07T10:05:00+02:00",
+          "last_seen": "2025-10-07T11:20:00+02:00"
+        },
+        {
+          "name": "aurora_private_label_master.psd - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-07T15:43:00+02:00",
+          "last_seen": "2025-10-07T16:08:00+02:00"
+        },
+        {
+          "name": "harbor_winter_key_exports.psd - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 2400,
+          "first_seen": "2025-10-07T19:00:00+02:00",
+          "last_seen": "2025-10-07T19:40:00+02:00"
+        }
+      ]
+    }
+  }
+}

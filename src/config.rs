@@ -1,5 +1,5 @@
 // Moduł konfiguracji — ładowanie/zapisywanie listy monitorowanych aplikacji
-// Plik konfiguracyjny: %APPDATA%/conceptfab/monitored_apps.json
+// Plik konfiguracyjny: %APPDATA%/TimeFlow/monitored_apps.json
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -54,16 +54,34 @@ pub struct Config {
 pub fn ensure_app_dirs() -> Result<()> {
     let appdata = std::env::var("APPDATA").context("Brak zmiennej APPDATA")?;
     let appdata_path = PathBuf::from(&appdata);
-    let base = appdata_path.join("conceptfab");
-    let legacy_base = appdata_path.join("CfabDemon");
+    let base = appdata_path.join("TimeFlow");
+    let legacy_bases = [
+        appdata_path.join("conceptfab"),
+        appdata_path.join("CfabDemon"),
+        appdata_path.join("TimeFlowDemon"),
+    ];
 
-    // One-time migration from legacy folder name.
-    if !base.exists() && legacy_base.exists() {
-        if let Err(e) = std::fs::rename(&legacy_base, &base) {
-            log::warn!(
-                "Failed to migrate directory {:?} -> {:?}: {}",
-                legacy_base, base, e
-            );
+    // One-time migration from legacy folder names.
+    if !base.exists() {
+        for legacy_base in legacy_bases {
+            if !legacy_base.exists() {
+                continue;
+            }
+            match std::fs::rename(&legacy_base, &base) {
+                Ok(_) => {
+                    log::info!(
+                        "Migrated app directory {:?} -> {:?}",
+                        legacy_base, base
+                    );
+                    break;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to migrate directory {:?} -> {:?}: {}",
+                        legacy_base, base, e
+                    );
+                }
+            }
         }
     }
 
@@ -81,10 +99,10 @@ pub fn ensure_app_dirs() -> Result<()> {
     Ok(())
 }
 
-/// Zwraca ścieżkę do katalogu konfiguracji: %APPDATA%/conceptfab
+/// Zwraca ścieżkę do katalogu konfiguracji: %APPDATA%/TimeFlow
 pub fn config_dir() -> Result<PathBuf> {
     let appdata = std::env::var("APPDATA").context("Brak zmiennej APPDATA")?;
-    Ok(PathBuf::from(appdata).join("conceptfab"))
+    Ok(PathBuf::from(appdata).join("TimeFlow"))
 }
 
 /// Ścieżka do pliku konfiguracyjnego
@@ -168,3 +186,4 @@ pub fn display_name_for(config: &Config, exe_name: &str) -> String {
         .map(|a| a.display_name.clone())
         .unwrap_or_else(|| exe_name.to_string())
 }
+

@@ -46,21 +46,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cfab-demon"
-version = "0.2.0"
-dependencies = [
- "anyhow",
- "chrono",
- "embed-resource",
- "log",
- "native-windows-gui",
- "serde",
- "serde_json",
- "sysinfo",
- "winapi",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -400,6 +385,21 @@ dependencies = [
  "once_cell",
  "rayon",
  "windows",
+]
+
+[[package]]
+name = "timeflow-demon"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "embed-resource",
+ "log",
+ "native-windows-gui",
+ "serde",
+ "serde_json",
+ "sysinfo",
+ "winapi",
 ]
 
 [[package]]

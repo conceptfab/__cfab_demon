@@ -1,0 +1,130 @@
+{
+  "date": "2026-01-15",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2026-01-15T09:47:00+01:00",
+          "end": "2026-01-15T10:12:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_proof.pdf - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1500,
+          "first_seen": "2026-01-15T09:47:00+01:00",
+          "last_seen": "2026-01-15T10:12:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2026-01-15T14:24:00+01:00",
+          "end": "2026-01-15T15:04:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_main_comp.aep - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 2400,
+          "first_seen": "2026-01-15T14:24:00+01:00",
+          "last_seen": "2026-01-15T15:04:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 5400,
+      "sessions": [
+        {
+          "start": "2026-01-15T15:18:00+01:00",
+          "end": "2026-01-15T16:48:00+01:00",
+          "duration_seconds": 5400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_camera.blend - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 5400,
+          "first_seen": "2026-01-15T15:18:00+01:00",
+          "last_seen": "2026-01-15T16:48:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2026-01-15T09:03:00+01:00",
+          "end": "2026-01-15T09:33:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_ui_master.fig - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1800,
+          "first_seen": "2026-01-15T09:03:00+01:00",
+          "last_seen": "2026-01-15T09:33:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2026-01-15T12:52:00+01:00",
+          "end": "2026-01-15T14:12:00+01:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_vector.ai - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 4800,
+          "first_seen": "2026-01-15T12:52:00+01:00",
+          "last_seen": "2026-01-15T14:12:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2026-01-15T08:28:00+01:00",
+          "end": "2026-01-15T08:56:00+01:00",
+          "duration_seconds": 1680
+        },
+        {
+          "start": "2026-01-15T10:24:00+01:00",
+          "end": "2026-01-15T11:56:00+01:00",
+          "duration_seconds": 5520
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_exports.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1680,
+          "first_seen": "2026-01-15T08:28:00+01:00",
+          "last_seen": "2026-01-15T08:56:00+01:00"
+        },
+        {
+          "name": "meridian_rooftop_amenity_master.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 5520,
+          "first_seen": "2026-01-15T10:24:00+01:00",
+          "last_seen": "2026-01-15T11:56:00+01:00"
+        }
+      ]
+    }
+  }
+}

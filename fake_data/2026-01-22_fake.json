@@ -1,0 +1,168 @@
+{
+  "date": "2026-01-22",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2026-01-22T08:03:00+01:00",
+          "end": "2026-01-22T08:58:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_comments.pdf - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 3300,
+          "first_seen": "2026-01-22T08:03:00+01:00",
+          "last_seen": "2026-01-22T08:58:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2026-01-22T15:30:00+01:00",
+          "end": "2026-01-22T16:55:00+01:00",
+          "duration_seconds": 5100
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_lighting.blend - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 5100,
+          "first_seen": "2026-01-22T15:30:00+01:00",
+          "last_seen": "2026-01-22T16:55:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2026-01-22T18:33:00+01:00",
+          "end": "2026-01-22T19:18:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_asset_selects.bridge - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 2700,
+          "first_seen": "2026-01-22T18:33:00+01:00",
+          "last_seen": "2026-01-22T19:18:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 14100,
+      "sessions": [
+        {
+          "start": "2026-01-22T10:13:00+01:00",
+          "end": "2026-01-22T10:59:00+01:00",
+          "duration_seconds": 2760
+        },
+        {
+          "start": "2026-01-22T13:53:00+01:00",
+          "end": "2026-01-22T15:18:00+01:00",
+          "duration_seconds": 5100
+        },
+        {
+          "start": "2026-01-22T17:06:00+01:00",
+          "end": "2026-01-22T18:20:00+01:00",
+          "duration_seconds": 4440
+        },
+        {
+          "start": "2026-01-22T19:25:00+01:00",
+          "end": "2026-01-22T19:55:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_dieline.ai - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 9540,
+          "first_seen": "2026-01-22T13:53:00+01:00",
+          "last_seen": "2026-01-22T18:20:00+01:00"
+        },
+        {
+          "name": "bluehaven_frozen_meals_icons.ai - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 2760,
+          "first_seen": "2026-01-22T10:13:00+01:00",
+          "last_seen": "2026-01-22T10:59:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_dieline.ai - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 1800,
+          "first_seen": "2026-01-22T19:25:00+01:00",
+          "last_seen": "2026-01-22T19:55:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 7500,
+      "sessions": [
+        {
+          "start": "2026-01-22T09:14:00+01:00",
+          "end": "2026-01-22T09:59:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2026-01-22T20:08:00+01:00",
+          "end": "2026-01-22T21:28:00+01:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_spreads.indd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 2700,
+          "first_seen": "2026-01-22T09:14:00+01:00",
+          "last_seen": "2026-01-22T09:59:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_layout.indd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 4800,
+          "first_seen": "2026-01-22T20:08:00+01:00",
+          "last_seen": "2026-01-22T21:28:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8400,
+      "sessions": [
+        {
+          "start": "2026-01-22T11:07:00+01:00",
+          "end": "2026-01-22T12:52:00+01:00",
+          "duration_seconds": 6300
+        },
+        {
+          "start": "2026-01-22T21:35:00+01:00",
+          "end": "2026-01-22T22:10:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_master.psd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 6300,
+          "first_seen": "2026-01-22T11:07:00+01:00",
+          "last_seen": "2026-01-22T12:52:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_exports.psd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2100,
+          "first_seen": "2026-01-22T21:35:00+01:00",
+          "last_seen": "2026-01-22T22:10:00+01:00"
+        }
+      ]
+    }
+  }
+}

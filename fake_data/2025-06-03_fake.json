@@ -1,0 +1,100 @@
+{
+  "date": "2025-06-03",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-06-03T12:41:00+02:00",
+          "end": "2025-06-03T13:16:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_comments.pdf - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 2100,
+          "first_seen": "2025-06-03T12:41:00+02:00",
+          "last_seen": "2025-06-03T13:16:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-06-03T11:03:00+02:00",
+          "end": "2025-06-03T11:28:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_asset_selects.bridge - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 1500,
+          "first_seen": "2025-06-03T11:03:00+02:00",
+          "last_seen": "2025-06-03T11:28:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-06-03T11:39:00+02:00",
+          "end": "2025-06-03T12:34:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_dieline.ai - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 3300,
+          "first_seen": "2025-06-03T11:39:00+02:00",
+          "last_seen": "2025-06-03T12:34:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2025-06-03T09:05:00+02:00",
+          "end": "2025-06-03T10:55:00+02:00",
+          "duration_seconds": 6600
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_print.indd - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 6600,
+          "first_seen": "2025-06-03T09:05:00+02:00",
+          "last_seen": "2025-06-03T10:55:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-06-03T13:30:00+02:00",
+          "end": "2025-06-03T14:20:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_retouch.psd - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 3000,
+          "first_seen": "2025-06-03T13:30:00+02:00",
+          "last_seen": "2025-06-03T14:20:00+02:00"
+        }
+      ]
+    }
+  }
+}

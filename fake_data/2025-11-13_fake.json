@@ -1,0 +1,212 @@
+{
+  "date": "2025-11-13",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-11-13T18:30:00+01:00",
+          "end": "2025-11-13T19:10:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_proof.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-13T18:30:00+01:00",
+          "last_seen": "2025-11-13T19:10:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 7500,
+      "sessions": [
+        {
+          "start": "2025-11-13T17:27:00+01:00",
+          "end": "2025-11-13T18:17:00+01:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-11-13T19:27:00+01:00",
+          "end": "2025-11-13T20:42:00+01:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_main_comp.aep - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 3000,
+          "first_seen": "2025-11-13T17:27:00+01:00",
+          "last_seen": "2025-11-13T18:17:00+01:00"
+        },
+        {
+          "name": "meridian_lobby_digital_variants.aep - Meridian Properties: Lobby Digital Signage Loop",
+          "total_seconds": 4500,
+          "first_seen": "2025-11-13T19:27:00+01:00",
+          "last_seen": "2025-11-13T20:42:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-13T10:11:00+01:00",
+          "end": "2025-11-13T10:41:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_reference_board.bridge - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-13T10:11:00+01:00",
+          "last_seen": "2025-11-13T10:41:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-11-13T13:08:00+01:00",
+          "end": "2025-11-13T13:33:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_review_board.fig - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1500,
+          "first_seen": "2025-11-13T13:08:00+01:00",
+          "last_seen": "2025-11-13T13:33:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-11-13T08:14:00+01:00",
+          "end": "2025-11-13T09:04:00+01:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-11-13T09:22:00+01:00",
+          "end": "2025-11-13T09:57:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_vector.ai - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-13T09:22:00+01:00",
+          "last_seen": "2025-11-13T09:57:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_dieline.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 3000,
+          "first_seen": "2025-11-13T08:14:00+01:00",
+          "last_seen": "2025-11-13T09:04:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-11-13T14:53:00+01:00",
+          "end": "2025-11-13T16:02:00+01:00",
+          "duration_seconds": 4140
+        },
+        {
+          "start": "2025-11-13T16:17:00+01:00",
+          "end": "2025-11-13T17:18:00+01:00",
+          "duration_seconds": 3660
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_layout.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 3660,
+          "first_seen": "2025-11-13T16:17:00+01:00",
+          "last_seen": "2025-11-13T17:18:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_spreads.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 4140,
+          "first_seen": "2025-11-13T14:53:00+01:00",
+          "last_seen": "2025-11-13T16:02:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 11100,
+      "sessions": [
+        {
+          "start": "2025-11-13T10:53:00+01:00",
+          "end": "2025-11-13T12:03:00+01:00",
+          "duration_seconds": 4200
+        },
+        {
+          "start": "2025-11-13T13:51:00+01:00",
+          "end": "2025-11-13T14:46:00+01:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-11-13T20:58:00+01:00",
+          "end": "2025-11-13T21:58:00+01:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_retouch.psd - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 4200,
+          "first_seen": "2025-11-13T10:53:00+01:00",
+          "last_seen": "2025-11-13T12:03:00+01:00"
+        },
+        {
+          "name": "aurora_store_shelf_master.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 3300,
+          "first_seen": "2025-11-13T13:51:00+01:00",
+          "last_seen": "2025-11-13T14:46:00+01:00"
+        },
+        {
+          "name": "meridian_lobby_digital_retouch.psd - Meridian Properties: Lobby Digital Signage Loop",
+          "total_seconds": 3600,
+          "first_seen": "2025-11-13T20:58:00+01:00",
+          "last_seen": "2025-11-13T21:58:00+01:00"
+        }
+      ]
+    },
+    "premierepro.exe": {
+      "display_name": "Adobe Premiere Pro",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-13T22:03:00+01:00",
+          "end": "2025-11-13T22:33:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_lobby_digital_render_queue.prproj - Meridian Properties: Lobby Digital Signage Loop",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-13T22:03:00+01:00",
+          "last_seen": "2025-11-13T22:33:00+01:00"
+        }
+      ]
+    }
+  }
+}

@@ -205,9 +205,11 @@ fn is_dashboard_running() -> bool {
     );
     s.processes().values().any(|p| {
         let name = p.name().to_lowercase();
-        name.contains("cfab-dashboard")
-            || name.contains("cfab_dashboard")
-            || name.contains("cfabdashboard")
+        (name == "timeflow"
+            || name.contains("timeflow-dashboard")
+            || name.contains("timeflow_dashboard")
+            || name.contains("timeflowdashboard"))
+            && !name.contains("timeflow-demon")
     })
 }
 
@@ -235,11 +237,11 @@ fn launch_dashboard() {
         }
     };
 
-    // Nazwy exe dashboardu (Tauri productName -> CfabDashboard, Cargo -> cfab-dashboard)
+    // Nazwy exe dashboardu (Tauri productName -> TimeFlow, Cargo -> timeflow-dashboard)
     let exe_names = [
-        "cfab-dashboard.exe",
-        "CfabDashboard.exe",
-        "cfab_dashboard.exe",
+        "timeflow-dashboard.exe",
+        "TimeFlow.exe",
+        "timeflow_dashboard.exe",
     ];
 
     let mut possible_paths = Vec::new();
@@ -267,13 +269,13 @@ fn launch_dashboard() {
         }
     } else {
         log::error!("Nie znaleziono dashboard exe w {:?}", daemon_dir);
-        show_error_message("Dashboard not found (cfab-dashboard.exe).\\nMake sure it is located in the same folder as cfab-demon.exe.");
+        show_error_message("Dashboard not found (timeflow-dashboard.exe).\\nMake sure it is located in the same folder as timeflow-demon.exe.");
     }
 }
 
 fn show_error_message(msg: &str) {
     use std::ptr;
-    let title: Vec<u16> = "Cfab Demon"
+    let title: Vec<u16> = "TimeFlow Demon"
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
@@ -293,3 +295,4 @@ with open(file_path, 'w', encoding='utf-8') as f:
     f.write(original_content)
 
 print(f"Successfully restored {file_path}")
+

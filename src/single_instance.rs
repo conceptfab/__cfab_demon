@@ -7,7 +7,7 @@ use winapi::um::handleapi::CloseHandle;
 use winapi::um::winnt::HANDLE;
 use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
 
-const MUTEX_NAME: &str = "Global\\CfabDemon_SingleInstance";
+const MUTEX_NAME: &str = "Global\\TimeFlowDemon_SingleInstance";
 
 /// RAII guard — mutex jest zwolniony przy dropie
 pub struct SingleInstanceGuard {
@@ -47,9 +47,10 @@ pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
         // więc last error code nie został nadpisany.
         if GetLastError() == ERROR_ALREADY_EXISTS {
             CloseHandle(handle);
-            return Err("Inna instancja Cfab Demon już działa.".into());
+            return Err("Inna instancja TimeFlow Demon już działa.".into());
         }
 
         Ok(SingleInstanceGuard { handle })
     }
 }
+

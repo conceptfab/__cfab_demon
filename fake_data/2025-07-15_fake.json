@@ -1,0 +1,122 @@
+{
+  "date": "2025-07-15",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-07-15T11:07:00+02:00",
+          "end": "2025-07-15T11:37:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_proof.pdf - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 1800,
+          "first_seen": "2025-07-15T11:07:00+02:00",
+          "last_seen": "2025-07-15T11:37:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-07-15T14:03:00+02:00",
+          "end": "2025-07-15T14:28:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_reference_board.bridge - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 1500,
+          "first_seen": "2025-07-15T14:03:00+02:00",
+          "last_seen": "2025-07-15T14:28:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5400,
+      "sessions": [
+        {
+          "start": "2025-07-15T10:14:00+02:00",
+          "end": "2025-07-15T10:59:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-07-15T15:23:00+02:00",
+          "end": "2025-07-15T16:08:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_icons.ai - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 2700,
+          "first_seen": "2025-07-15T10:14:00+02:00",
+          "last_seen": "2025-07-15T10:59:00+02:00"
+        },
+        {
+          "name": "northwind_summer_catalog_dieline.ai - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 2700,
+          "first_seen": "2025-07-15T15:23:00+02:00",
+          "last_seen": "2025-07-15T16:08:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 10200,
+      "sessions": [
+        {
+          "start": "2025-07-15T08:47:00+02:00",
+          "end": "2025-07-15T09:57:00+02:00",
+          "duration_seconds": 4200
+        },
+        {
+          "start": "2025-07-15T11:44:00+02:00",
+          "end": "2025-07-15T13:24:00+02:00",
+          "duration_seconds": 6000
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_print.indd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 4200,
+          "first_seen": "2025-07-15T08:47:00+02:00",
+          "last_seen": "2025-07-15T09:57:00+02:00"
+        },
+        {
+          "name": "northwind_summer_catalog_print.indd - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 6000,
+          "first_seen": "2025-07-15T11:44:00+02:00",
+          "last_seen": "2025-07-15T13:24:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-07-15T14:37:00+02:00",
+          "end": "2025-07-15T15:17:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_summer_catalog_master.psd - Northwind Beverages: Summer Catalog 2025",
+          "total_seconds": 2400,
+          "first_seen": "2025-07-15T14:37:00+02:00",
+          "last_seen": "2025-07-15T15:17:00+02:00"
+        }
+      ]
+    }
+  }
+}

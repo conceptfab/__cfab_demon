@@ -1,0 +1,156 @@
+{
+  "date": "2026-01-30",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2026-01-30T19:06:00+01:00",
+          "end": "2026-01-30T20:06:00+01:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2026-01-30T23:06:00+01:00",
+          "end": "2026-01-30T23:21:00+01:00",
+          "duration_seconds": 900
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_comments.pdf - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 4500,
+          "first_seen": "2026-01-30T19:06:00+01:00",
+          "last_seen": "2026-01-30T23:21:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2026-01-30T17:02:00+01:00",
+          "end": "2026-01-30T18:52:00+01:00",
+          "duration_seconds": 6600
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_lighting.blend - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 6600,
+          "first_seen": "2026-01-30T17:02:00+01:00",
+          "last_seen": "2026-01-30T18:52:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2026-01-30T10:23:00+01:00",
+          "end": "2026-01-30T11:08:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_reference_board.bridge - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 2700,
+          "first_seen": "2026-01-30T10:23:00+01:00",
+          "last_seen": "2026-01-30T11:08:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 18000,
+      "sessions": [
+        {
+          "start": "2026-01-30T09:42:00+01:00",
+          "end": "2026-01-30T10:12:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2026-01-30T11:25:00+01:00",
+          "end": "2026-01-30T13:05:00+01:00",
+          "duration_seconds": 6000
+        },
+        {
+          "start": "2026-01-30T13:42:00+01:00",
+          "end": "2026-01-30T14:47:00+01:00",
+          "duration_seconds": 3900
+        },
+        {
+          "start": "2026-01-30T21:11:00+01:00",
+          "end": "2026-01-30T22:56:00+01:00",
+          "duration_seconds": 6300
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_dieline.ai - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 14100,
+          "first_seen": "2026-01-30T09:42:00+01:00",
+          "last_seen": "2026-01-30T22:56:00+01:00"
+        },
+        {
+          "name": "bluehaven_frozen_meals_vector.ai - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 3900,
+          "first_seen": "2026-01-30T13:42:00+01:00",
+          "last_seen": "2026-01-30T14:47:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2026-01-30T08:41:00+01:00",
+          "end": "2026-01-30T09:26:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_layout.indd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 2700,
+          "first_seen": "2026-01-30T08:41:00+01:00",
+          "last_seen": "2026-01-30T09:26:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7500,
+      "sessions": [
+        {
+          "start": "2026-01-30T08:08:00+01:00",
+          "end": "2026-01-30T08:31:00+01:00",
+          "duration_seconds": 1380
+        },
+        {
+          "start": "2026-01-30T15:04:00+01:00",
+          "end": "2026-01-30T16:46:00+01:00",
+          "duration_seconds": 6120
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_frozen_meals_exports.psd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 1380,
+          "first_seen": "2026-01-30T08:08:00+01:00",
+          "last_seen": "2026-01-30T08:31:00+01:00"
+        },
+        {
+          "name": "bluehaven_frozen_meals_retouch.psd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 6120,
+          "first_seen": "2026-01-30T15:04:00+01:00",
+          "last_seen": "2026-01-30T16:46:00+01:00"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "date": "2026-02-22",
+  "apps": {
+    "code.exe": {
+      "display_name": "Visual Studio Code",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2026-02-22T14:19:00+01:00",
+          "end": "2026-02-22T15:04:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "vectorfleet_fleet_dashboard_styles.css - VectorFleet Logistics: Fleet Dashboard UI Mockup",
+          "total_seconds": 2700,
+          "first_seen": "2026-02-22T14:19:00+01:00",
+          "last_seen": "2026-02-22T15:04:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2026-02-22T13:00:00+01:00",
+          "end": "2026-02-22T14:10:00+01:00",
+          "duration_seconds": 4200
+        },
+        {
+          "start": "2026-02-22T21:42:00+01:00",
+          "end": "2026-02-22T22:42:00+01:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "vectorfleet_fleet_dashboard_handoff.fig - VectorFleet Logistics: Fleet Dashboard UI Mockup",
+          "total_seconds": 3600,
+          "first_seen": "2026-02-22T21:42:00+01:00",
+          "last_seen": "2026-02-22T22:42:00+01:00"
+        },
+        {
+          "name": "vectorfleet_fleet_dashboard_ui_master.fig - VectorFleet Logistics: Fleet Dashboard UI Mockup",
+          "total_seconds": 4200,
+          "first_seen": "2026-02-22T13:00:00+01:00",
+          "last_seen": "2026-02-22T14:10:00+01:00"
+        }
+      ]
+    }
+  }
+}

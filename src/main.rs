@@ -1,4 +1,4 @@
-// Cfab Demon - aplikacja tray daemon dla Windows z monitorem aplikacji
+// TimeFlow Demon - aplikacja tray daemon dla Windows z monitorem aplikacji
 #![windows_subsystem = "windows"]
 
 use std::ptr;
@@ -14,7 +14,7 @@ mod tracker;
 mod tray;
 
 /// Nazwa aplikacji — jedna stała używana wszędzie
-pub const APP_NAME: &str = "Cfab Demon";
+pub const APP_NAME: &str = "TimeFlow Demon";
 
 fn main() {
     // Inicjalizacja logowania do pliku
@@ -83,8 +83,8 @@ fn init_logging() {
 
     let log_path = std::env::current_exe()
         .ok()
-        .and_then(|p| p.parent().map(|d| d.join("cfab_demon.log")))
-        .unwrap_or_else(|| std::path::PathBuf::from("cfab_demon.log"));
+        .and_then(|p| p.parent().map(|d| d.join("timeflow_demon.log")))
+        .unwrap_or_else(|| std::path::PathBuf::from("timeflow_demon.log"));
 
     // Obcinamy plik logów jeśli > 1 MB
     if log_path.exists() {
@@ -140,3 +140,4 @@ impl log::Log for FileLogger {
         let _ = guard.flush();
     }
 }
+

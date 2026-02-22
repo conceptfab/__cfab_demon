@@ -1,0 +1,174 @@
+{
+  "date": "2025-09-30",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-09-30T17:34:00+02:00",
+          "end": "2025-09-30T18:14:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_trail_map_comments.pdf - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 2400,
+          "first_seen": "2025-09-30T17:34:00+02:00",
+          "last_seen": "2025-09-30T18:14:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-09-30T10:58:00+02:00",
+          "end": "2025-09-30T12:03:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_autumn_window_scene.blend - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 3900,
+          "first_seen": "2025-09-30T10:58:00+02:00",
+          "last_seen": "2025-09-30T12:03:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-09-30T16:56:00+02:00",
+          "end": "2025-09-30T17:26:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_trail_map_handoff.fig - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-30T16:56:00+02:00",
+          "last_seen": "2025-09-30T17:26:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 8400,
+      "sessions": [
+        {
+          "start": "2025-09-30T10:21:00+02:00",
+          "end": "2025-09-30T10:41:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-09-30T12:41:00+02:00",
+          "end": "2025-09-30T13:11:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-09-30T15:11:00+02:00",
+          "end": "2025-09-30T16:41:00+02:00",
+          "duration_seconds": 5400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_vector.ai - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 1200,
+          "first_seen": "2025-09-30T10:21:00+02:00",
+          "last_seen": "2025-09-30T10:41:00+02:00"
+        },
+        {
+          "name": "aurora_autumn_window_vector.ai - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 1800,
+          "first_seen": "2025-09-30T12:41:00+02:00",
+          "last_seen": "2025-09-30T13:11:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_icons.ai - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 5400,
+          "first_seen": "2025-09-30T15:11:00+02:00",
+          "last_seen": "2025-09-30T16:41:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 6000,
+      "sessions": [
+        {
+          "start": "2025-09-30T09:25:00+02:00",
+          "end": "2025-09-30T10:10:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-09-30T18:29:00+02:00",
+          "end": "2025-09-30T19:24:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_layout.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-30T09:25:00+02:00",
+          "last_seen": "2025-09-30T10:10:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_layout.indd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 3300,
+          "first_seen": "2025-09-30T18:29:00+02:00",
+          "last_seen": "2025-09-30T19:24:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-09-30T08:25:00+02:00",
+          "end": "2025-09-30T09:10:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-09-30T13:26:00+02:00",
+          "end": "2025-09-30T14:06:00+02:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-09-30T14:13:00+02:00",
+          "end": "2025-09-30T14:58:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_exports.psd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-30T08:25:00+02:00",
+          "last_seen": "2025-09-30T09:10:00+02:00"
+        },
+        {
+          "name": "aurora_autumn_window_retouch.psd - Aurora Retail Co.: Autumn Window Display Concepts",
+          "total_seconds": 2400,
+          "first_seen": "2025-09-30T13:26:00+02:00",
+          "last_seen": "2025-09-30T14:06:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_exports.psd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-30T14:13:00+02:00",
+          "last_seen": "2025-09-30T14:58:00+02:00"
+        }
+      ]
+    }
+  }
+}

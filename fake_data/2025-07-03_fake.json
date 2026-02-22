@@ -1,0 +1,122 @@
+{
+  "date": "2025-07-03",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-07-03T14:43:00+02:00",
+          "end": "2025-07-03T15:38:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_proof.pdf - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 3300,
+          "first_seen": "2025-07-03T14:43:00+02:00",
+          "last_seen": "2025-07-03T15:38:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-07-03T15:55:00+02:00",
+          "end": "2025-07-03T16:40:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_scene.blend - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 2700,
+          "first_seen": "2025-07-03T15:55:00+02:00",
+          "last_seen": "2025-07-03T16:40:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 7500,
+      "sessions": [
+        {
+          "start": "2025-07-03T09:40:00+02:00",
+          "end": "2025-07-03T10:30:00+02:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-07-03T11:51:00+02:00",
+          "end": "2025-07-03T13:06:00+02:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_icons.ai - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 3000,
+          "first_seen": "2025-07-03T09:40:00+02:00",
+          "last_seen": "2025-07-03T10:30:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_dieline.ai - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 4500,
+          "first_seen": "2025-07-03T11:51:00+02:00",
+          "last_seen": "2025-07-03T13:06:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-07-03T08:50:00+02:00",
+          "end": "2025-07-03T09:25:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_print.indd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 2100,
+          "first_seen": "2025-07-03T08:50:00+02:00",
+          "last_seen": "2025-07-03T09:25:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6900,
+      "sessions": [
+        {
+          "start": "2025-07-03T10:40:00+02:00",
+          "end": "2025-07-03T11:45:00+02:00",
+          "duration_seconds": 3900
+        },
+        {
+          "start": "2025-07-03T13:41:00+02:00",
+          "end": "2025-07-03T14:31:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_master.psd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 3900,
+          "first_seen": "2025-07-03T10:40:00+02:00",
+          "last_seen": "2025-07-03T11:45:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_master.psd - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 3000,
+          "first_seen": "2025-07-03T13:41:00+02:00",
+          "last_seen": "2025-07-03T14:31:00+02:00"
+        }
+      ]
+    }
+  }
+}

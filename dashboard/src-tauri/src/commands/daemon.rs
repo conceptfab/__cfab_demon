@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::process::Command;
 use tauri::AppHandle;
 
-use super::helpers::{cfab_demon_dir, no_console, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
+use super::helpers::{timeflow_data_dir, no_console, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
 use super::types::DaemonStatus;
 use crate::db;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
@@ -18,7 +18,7 @@ fn find_daemon_exe() -> Result<std::path::PathBuf, String> {
         }
     }
     // Check dist/ relative to APPDATA data dir
-    let data_dir = cfab_demon_dir()?;
+    let data_dir = timeflow_data_dir()?;
     if let Ok(content) = std::fs::read_to_string(data_dir.join("daemon_path.txt")) {
         let p = std::path::PathBuf::from(content.trim());
         if p.exists() {
@@ -38,7 +38,7 @@ fn find_daemon_exe() -> Result<std::path::PathBuf, String> {
             }
         }
     }
-    Err("Cannot find cfab-demon.exe".to_string())
+    Err("Cannot find timeflow-demon.exe".to_string())
 }
 
 fn daemon_log_path() -> Result<std::path::PathBuf, String> {
@@ -46,7 +46,7 @@ fn daemon_log_path() -> Result<std::path::PathBuf, String> {
     Ok(exe
         .parent()
         .ok_or_else(|| "Cannot determine parent directory of daemon exe".to_string())?
-        .join("cfab_demon.log"))
+        .join("timeflow_demon.log"))
 }
 
 fn startup_dir() -> Result<std::path::PathBuf, String> {
@@ -121,11 +121,11 @@ fn query_unassigned_counts(app: &AppHandle) -> (i64, i64) {
 }
 
 fn write_assignment_signal(unassigned_sessions: i64) {
-    let base_dir = match cfab_demon_dir() {
+    let base_dir = match timeflow_data_dir() {
         Ok(dir) => dir,
         Err(e) => {
             log::warn!(
-                "Failed to resolve conceptfab dir for assignment signal: {}",
+                "Failed to resolve TimeFlow dir for assignment signal: {}",
                 e
             );
             return;
@@ -277,3 +277,4 @@ pub async fn restart_daemon() -> Result<(), String> {
         .map_err(|e| format!("Failed to start daemon: {}", e))?;
     Ok(())
 }
+

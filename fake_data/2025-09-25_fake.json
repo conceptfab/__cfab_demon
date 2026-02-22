@@ -1,0 +1,155 @@
+{
+  "date": "2025-09-25",
+  "apps": {
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-09-25T17:03:00+02:00",
+          "end": "2025-09-25T17:48:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_winter_key_main_comp.aep - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 2700,
+          "first_seen": "2025-09-25T17:03:00+02:00",
+          "last_seen": "2025-09-25T17:48:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-09-25T18:06:00+02:00",
+          "end": "2025-09-25T18:31:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_winter_key_review_board.fig - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 1500,
+          "first_seen": "2025-09-25T18:06:00+02:00",
+          "last_seen": "2025-09-25T18:31:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2025-09-25T10:35:00+02:00",
+          "end": "2025-09-25T11:00:00+02:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-09-25T11:41:00+02:00",
+          "end": "2025-09-25T12:41:00+02:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-09-25T14:58:00+02:00",
+          "end": "2025-09-25T15:33:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_vector.ai - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 1500,
+          "first_seen": "2025-09-25T10:35:00+02:00",
+          "last_seen": "2025-09-25T11:00:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_icons.ai - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 3600,
+          "first_seen": "2025-09-25T11:41:00+02:00",
+          "last_seen": "2025-09-25T12:41:00+02:00"
+        },
+        {
+          "name": "harbor_winter_key_vector.ai - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 2100,
+          "first_seen": "2025-09-25T14:58:00+02:00",
+          "last_seen": "2025-09-25T15:33:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-09-25T09:19:00+02:00",
+          "end": "2025-09-25T10:19:00+02:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-09-25T13:37:00+02:00",
+          "end": "2025-09-25T14:47:00+02:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_print.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3600,
+          "first_seen": "2025-09-25T09:19:00+02:00",
+          "last_seen": "2025-09-25T10:19:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_layout.indd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 4200,
+          "first_seen": "2025-09-25T13:37:00+02:00",
+          "last_seen": "2025-09-25T14:47:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8400,
+      "sessions": [
+        {
+          "start": "2025-09-25T08:23:00+02:00",
+          "end": "2025-09-25T09:13:00+02:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-09-25T11:07:00+02:00",
+          "end": "2025-09-25T11:32:00+02:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-09-25T15:50:00+02:00",
+          "end": "2025-09-25T16:55:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_retouch.psd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 3000,
+          "first_seen": "2025-09-25T08:23:00+02:00",
+          "last_seen": "2025-09-25T09:13:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_master.psd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1500,
+          "first_seen": "2025-09-25T11:07:00+02:00",
+          "last_seen": "2025-09-25T11:32:00+02:00"
+        },
+        {
+          "name": "harbor_winter_key_exports.psd - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 3900,
+          "first_seen": "2025-09-25T15:50:00+02:00",
+          "last_seen": "2025-09-25T16:55:00+02:00"
+        }
+      ]
+    }
+  }
+}

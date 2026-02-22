@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Kompiluje po kolei: demon (cfab-demon) oraz dashboard (CfabDashboard).
+Kompiluje po kolei: demon (timeflow-demon) oraz dashboard (TimeFlow).
 Wszystkie pliki wykonywalne trafiają do wspólnego katalogu dist/.
 """
 import argparse
@@ -31,7 +31,7 @@ Przyklady:
     parser.add_argument(
         "--demon-only",
         action="store_true",
-        help="Kompiluj tylko demon (cfab-demon)",
+        help="Kompiluj tylko demon (timeflow-demon)",
     )
     parser.add_argument(
         "--dashboard-only",
@@ -86,3 +86,4 @@ Przyklady:
 
 if __name__ == "__main__":
     main()
+

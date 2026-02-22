@@ -1,0 +1,152 @@
+{
+  "date": "2025-08-11",
+  "apps": {
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-08-11T10:38:00+02:00",
+          "end": "2025-08-11T11:13:00+02:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-08-11T14:28:00+02:00",
+          "end": "2025-08-11T14:48:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_variants.aep - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2100,
+          "first_seen": "2025-08-11T10:38:00+02:00",
+          "last_seen": "2025-08-11T11:13:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_loop.aep - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-11T14:28:00+02:00",
+          "last_seen": "2025-08-11T14:48:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2025-08-11T15:46:00+02:00",
+          "end": "2025-08-11T17:01:00+02:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_lighting.blend - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 4500,
+          "first_seen": "2025-08-11T15:46:00+02:00",
+          "last_seen": "2025-08-11T17:01:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-08-11T13:55:00+02:00",
+          "end": "2025-08-11T14:15:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_asset_selects.bridge - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-11T13:55:00+02:00",
+          "last_seen": "2025-08-11T14:15:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-11T11:21:00+02:00",
+          "end": "2025-08-11T12:01:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_review_board.fig - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-11T11:21:00+02:00",
+          "last_seen": "2025-08-11T12:01:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-08-11T13:01:00+02:00",
+          "end": "2025-08-11T13:41:00+02:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-08-11T14:55:00+02:00",
+          "end": "2025-08-11T15:40:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_vector.ai - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-11T13:01:00+02:00",
+          "last_seen": "2025-08-11T13:41:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_icons.ai - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 2700,
+          "first_seen": "2025-08-11T14:55:00+02:00",
+          "last_seen": "2025-08-11T15:40:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8100,
+      "sessions": [
+        {
+          "start": "2025-08-11T09:16:00+02:00",
+          "end": "2025-08-11T10:31:00+02:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-08-11T17:17:00+02:00",
+          "end": "2025-08-11T18:17:00+02:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_master.psd - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 4500,
+          "first_seen": "2025-08-11T09:16:00+02:00",
+          "last_seen": "2025-08-11T10:31:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_master.psd - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 3600,
+          "first_seen": "2025-08-11T17:17:00+02:00",
+          "last_seen": "2025-08-11T18:17:00+02:00"
+        }
+      ]
+    }
+  }
+}

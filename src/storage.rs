@@ -1,5 +1,5 @@
 // Moduł storage — zapis/odczyt dziennych plików JSON
-// Lokalizacja: %APPDATA%/conceptfab/data/YYYY-MM-DD.json
+// Lokalizacja: %APPDATA%/TimeFlow/data/YYYY-MM-DD.json
 
 use anyhow::{Context, Result};
 use chrono::{Local, NaiveDate};
@@ -53,7 +53,7 @@ pub struct DailySummary {
     pub apps_active_count: usize,
 }
 
-/// Katalog danych: %APPDATA%/conceptfab/data (zakłada że ensure_app_dirs() wywołano przy starcie)
+/// Katalog danych: %APPDATA%/TimeFlow/data (zakłada że ensure_app_dirs() wywołano przy starcie)
 pub fn data_dir() -> Result<PathBuf> {
     Ok(config::config_dir()?.join("data"))
 }
@@ -221,3 +221,4 @@ pub(crate) fn format_duration(seconds: u64) -> String {
     let s = seconds % 60;
     format!("{}h {}m {}s", h, m, s)
 }
+

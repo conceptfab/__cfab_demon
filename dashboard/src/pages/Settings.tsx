@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff, TimerReset } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { clearAllData, rebuildSessions } from "@/lib/tauri";
+import { clearAllData, getDemoModeStatus, rebuildSessions, setDemoMode } from "@/lib/tauri";
+import type { DemoModeStatus } from "@/lib/db-types";
 import { useAppStore } from "@/store/app-store";
 import {
   loadWorkingHoursSettings,
@@ -54,6 +55,10 @@ export function Settings() {
     loadOnlineSyncState()
   );
   const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
+  const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(null);
+  const [demoModeLoading, setDemoModeLoading] = useState(true);
+  const [demoModeSwitching, setDemoModeSwitching] = useState(false);
+  const [demoModeError, setDemoModeError] = useState<string | null>(null);
 
   const labelClassName = "text-sm font-medium text-muted-foreground";
   const compactSelectClassName =
@@ -63,6 +68,34 @@ export function Settings() {
   const [startHour, startMinute] = useMemo(() => splitTime(workingHours.start), [workingHours.start]);
   const [endHour, endMinute] = useMemo(() => splitTime(workingHours.end), [workingHours.end]);
   const normalizedColor = normalizeHexColor(workingHours.color);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDemoStatus = async () => {
+      setDemoModeLoading(true);
+      setDemoModeError(null);
+      try {
+        const status = await getDemoModeStatus();
+        if (!cancelled) {
+          setDemoModeStatus(status);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setDemoModeError(String(e));
+        }
+      } finally {
+        if (!cancelled) {
+          setDemoModeLoading(false);
+        }
+      }
+    };
+
+    void loadDemoStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const updateTimePart = (field: "start" | "end", part: "hour" | "minute", value: string) => {
     setWorkingHours((prev) => {
@@ -136,6 +169,17 @@ export function Settings() {
   };
 
   const handleSyncNow = async () => {
+    if (demoModeStatus?.enabled) {
+      setManualSyncResult({
+        ok: true,
+        skipped: true,
+        action: "none",
+        reason: "demo_mode",
+        serverRevision: onlineSyncState.serverRevision,
+      });
+      return;
+    }
+
     setManualSyncing(true);
     setManualSyncResult(null);
     try {
@@ -163,12 +207,41 @@ export function Settings() {
     }
   };
 
+  const handleToggleDemoMode = async (enabled: boolean) => {
+    setDemoModeSwitching(true);
+    setDemoModeError(null);
+    try {
+      const status = await setDemoMode(enabled);
+      setDemoModeStatus(status);
+      setManualSyncResult(null);
+      triggerRefresh();
+      alert(
+        status.enabled
+          ? "Demo mode enabled. Dashboard now uses the demo database."
+          : "Demo mode disabled. Dashboard now uses the primary database.",
+      );
+    } catch (e) {
+      console.error(e);
+      setDemoModeError(String(e));
+      alert("Failed to switch demo mode: " + String(e));
+    } finally {
+      setDemoModeSwitching(false);
+    }
+  };
+
   const lastSyncLabel = onlineSyncState.lastSyncAt
     ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
     : "Never";
   const shortHash = onlineSyncState.serverHash
     ? `${onlineSyncState.serverHash.slice(0, 12)}...`
     : "n/a";
+  const localHashShort = onlineSyncState.localHash
+    ? `${onlineSyncState.localHash.slice(0, 12)}...`
+    : "n/a";
+  const pendingAckHashShort = onlineSyncState.pendingAck?.payloadSha256
+    ? `${onlineSyncState.pendingAck.payloadSha256.slice(0, 12)}...`
+    : "n/a";
+  const demoModeSyncDisabled = demoModeStatus?.enabled === true;
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
@@ -518,6 +591,12 @@ export function Settings() {
                   </p>
                 </div>
 
+                {demoModeSyncDisabled && (
+                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-300">
+                    Online sync is disabled while Demo Mode is active.
+                  </div>
+                )}
+
                 <div className="grid gap-1 text-xs text-muted-foreground">
                   <div>
                     Server revision:{" "}
@@ -529,6 +608,28 @@ export function Settings() {
                     Server hash:{" "}
                     <span className="font-mono text-foreground break-all">{shortHash}</span>
                   </div>
+                  <div>
+                    Local rev/hash:{" "}
+                    <span className="font-mono text-foreground">
+                      {onlineSyncState.localRevision ?? "n/a"} / {localHashShort}
+                    </span>
+                  </div>
+                  {onlineSyncState.pendingAck && (
+                    <div className="text-amber-500">
+                      Pending ACK:{" "}
+                      <span className="font-mono text-foreground">
+                        r{onlineSyncState.pendingAck.revision} / {pendingAckHashShort}
+                      </span>
+                      {onlineSyncState.pendingAck.retries > 0 && (
+                        <> (retries: {onlineSyncState.pendingAck.retries})</>
+                      )}
+                    </div>
+                  )}
+                  {onlineSyncState.needsReseed && (
+                    <div className="text-amber-500">
+                      Server payload was cleaned up after ACKs. Local reseed/export is required.
+                    </div>
+                  )}
                 </div>
 
                 {manualSyncResult && (
@@ -540,7 +641,11 @@ export function Settings() {
                     }
                   >
                     {manualSyncResult.ok
-                      ? `Last manual sync: ${manualSyncResult.action} (${manualSyncResult.reason})`
+                      ? manualSyncResult.skipped && manualSyncResult.reason === "demo_mode"
+                        ? "Last manual sync: skipped (disabled in Demo Mode)"
+                        : manualSyncResult.ackPending
+                          ? `Last manual sync: pull applied, ACK pending (${manualSyncResult.ackReason ?? manualSyncResult.reason})`
+                          : `Last manual sync: ${manualSyncResult.action} (${manualSyncResult.reason})`
                       : `Last manual sync failed: ${manualSyncResult.error ?? manualSyncResult.reason}`}
                   </div>
                 )}
@@ -551,11 +656,103 @@ export function Settings() {
                 variant="outline"
                 className="h-8 w-fit"
                 onClick={handleSyncNow}
-                disabled={manualSyncing}
+                disabled={manualSyncing || demoModeSyncDisabled}
               >
-                {manualSyncing ? "Syncing..." : "Sync now"}
+                {manualSyncing
+                  ? "Syncing..."
+                  : demoModeSyncDisabled
+                    ? "Sync disabled in demo"
+                    : "Sync now"}
               </Button>
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold">Demo Mode</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Switch dashboard data source to a separate demo database file (persists after restart).
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label
+            htmlFor="demoModeEnabled"
+            className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Use demo database</p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                Applies to the whole dashboard app (reads/writes/imports) and switches to a separate SQLite file.
+                In demo mode, live daily refresh reads from <code>fake_data</code> and expects <code>fake</code> in the JSON filename (for example <code>2026-02-22_fake.json</code>).
+              </p>
+            </div>
+            <input
+              id="demoModeEnabled"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={demoModeStatus?.enabled ?? false}
+              disabled={demoModeLoading || demoModeSwitching}
+              onChange={(e) => {
+                void handleToggleDemoMode(e.target.checked);
+              }}
+            />
+          </label>
+
+          <div className="rounded-md border border-border/70 bg-background/20 p-3 text-xs">
+            {demoModeLoading ? (
+              <p className="text-muted-foreground">Loading demo mode status...</p>
+            ) : demoModeStatus ? (
+              <div className="space-y-1.5 text-muted-foreground">
+                <div>
+                  Active DB:{" "}
+                  <span className="font-mono text-foreground break-all">
+                    {demoModeStatus.activeDbPath}
+                  </span>
+                </div>
+                <div>
+                  Primary DB:{" "}
+                  <span className="font-mono text-foreground break-all">
+                    {demoModeStatus.primaryDbPath}
+                  </span>
+                </div>
+                <div>
+                  Demo DB:{" "}
+                  <span className="font-mono text-foreground break-all">
+                    {demoModeStatus.demoDbPath}
+                  </span>
+                </div>
+                <div className={demoModeStatus.enabled ? "text-amber-500" : "text-emerald-500"}>
+                  {demoModeStatus.enabled
+                    ? "Demo mode is active. New imports/changes will affect the demo database."
+                    : "Primary mode is active."}
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground">Demo mode status unavailable.</p>
+            )}
+
+            {demoModeError && <p className="mt-2 text-destructive">{demoModeError}</p>}
+          </div>
+
+          <div className="flex items-center justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8"
+              disabled={demoModeLoading || demoModeSwitching}
+              onClick={() => {
+                if (!demoModeStatus) return;
+                void handleToggleDemoMode(!demoModeStatus.enabled);
+              }}
+            >
+              {demoModeSwitching
+                ? "Switching..."
+                : demoModeStatus?.enabled
+                  ? "Disable Demo Mode"
+                  : "Enable Demo Mode"}
+            </Button>
           </div>
         </CardContent>
       </Card>

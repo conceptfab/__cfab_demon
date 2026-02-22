@@ -1,4 +1,4 @@
-use super::helpers::cfab_demon_dir;
+use super::helpers::timeflow_data_dir;
 use super::types::{ExportArchive, ImportSummary, ImportValidation, SessionConflict, SessionRow};
 use crate::db;
 use std::collections::{HashMap, HashSet};
@@ -229,7 +229,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     }
 
     // 5. Daily Files
-    let data_dir = cfab_demon_dir()?.join("data");
+    let data_dir = timeflow_data_dir()?.join("data");
     if !data_dir.exists() {
         fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
     }
@@ -296,7 +296,7 @@ pub async fn import_data_archive(app: AppHandle, archive: ExportArchive) -> Resu
         .map_err(|e| e.to_string())?
         .as_millis();
     let temp_path = std::env::temp_dir().join(format!(
-        "cfab-sync-import-{}-{}.json",
+        "timeflow-sync-import-{}-{}.json",
         std::process::id(),
         timestamp_ms
     ));
@@ -528,3 +528,4 @@ mod tests {
         assert_eq!(duration, 9000);
     }
 }
+

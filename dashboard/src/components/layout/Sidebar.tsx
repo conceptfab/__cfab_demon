@@ -102,7 +102,7 @@ export function Sidebar() {
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r bg-card">
       <div className="flex h-14 items-center gap-2 border-b px-6">
         <BarChart3 className="h-5 w-5 text-primary" />
-        <span className="text-lg font-semibold">Cfab Tracker</span>
+        <span className="text-lg font-semibold">TimeFlow</span>
       </div>
 
       <nav className="flex-1 space-y-1 p-3">
@@ -149,3 +149,4 @@ export function Sidebar() {
     </aside>
   );
 }
+

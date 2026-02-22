@@ -1,7 +1,7 @@
 """Diagnostic: check DB state for unassigned sessions."""
 import sqlite3, os
 
-db = os.path.join(os.environ["APPDATA"], "conceptfab", "cfab_dashboard.db")
+db = os.path.join(os.environ["APPDATA"], "TimeFlow", "timeflow_dashboard.db")
 c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
 
 print("=== PROJECTS ===")
@@ -23,3 +23,4 @@ for r in c.execute(
     print(f"  id={r[0]} app={r[2]} start={r[3]} end={r[4]} dur={r[5]}s proj_id={r[6]}")
 
 c.close()
+

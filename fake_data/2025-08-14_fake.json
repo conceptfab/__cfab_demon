@@ -1,0 +1,182 @@
+{
+  "date": "2025-08-14",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-08-14T08:14:00+02:00",
+          "end": "2025-08-14T08:49:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_comments.pdf - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 2100,
+          "first_seen": "2025-08-14T08:14:00+02:00",
+          "last_seen": "2025-08-14T08:49:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-14T17:52:00+02:00",
+          "end": "2025-08-14T18:32:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_main_comp.aep - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-14T17:52:00+02:00",
+          "last_seen": "2025-08-14T18:32:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-08-14T12:43:00+02:00",
+          "end": "2025-08-14T13:03:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_reference_board.bridge - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-14T12:43:00+02:00",
+          "last_seen": "2025-08-14T13:03:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-08-14T09:59:00+02:00",
+          "end": "2025-08-14T10:19:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-08-14T17:12:00+02:00",
+          "end": "2025-08-14T17:47:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_handoff.fig - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-14T09:59:00+02:00",
+          "last_seen": "2025-08-14T10:19:00+02:00"
+        },
+        {
+          "name": "cedar_e_commerce_handoff.fig - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2100,
+          "first_seen": "2025-08-14T17:12:00+02:00",
+          "last_seen": "2025-08-14T17:47:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 11100,
+      "sessions": [
+        {
+          "start": "2025-08-14T10:30:00+02:00",
+          "end": "2025-08-14T11:20:00+02:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-08-14T14:36:00+02:00",
+          "end": "2025-08-14T15:21:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-08-14T15:27:00+02:00",
+          "end": "2025-08-14T16:57:00+02:00",
+          "duration_seconds": 5400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_vector.ai - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 3000,
+          "first_seen": "2025-08-14T10:30:00+02:00",
+          "last_seen": "2025-08-14T11:20:00+02:00"
+        },
+        {
+          "name": "cedar_e_commerce_vector.ai - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2700,
+          "first_seen": "2025-08-14T14:36:00+02:00",
+          "last_seen": "2025-08-14T15:21:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_vector.ai - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 5400,
+          "first_seen": "2025-08-14T15:27:00+02:00",
+          "last_seen": "2025-08-14T16:57:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-14T09:03:00+02:00",
+          "end": "2025-08-14T09:43:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_spreads.indd - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-14T09:03:00+02:00",
+          "last_seen": "2025-08-14T09:43:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6000,
+      "sessions": [
+        {
+          "start": "2025-08-14T11:27:00+02:00",
+          "end": "2025-08-14T11:57:00+02:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-08-14T13:12:00+02:00",
+          "end": "2025-08-14T14:22:00+02:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_retouch.psd - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 1800,
+          "first_seen": "2025-08-14T11:27:00+02:00",
+          "last_seen": "2025-08-14T11:57:00+02:00"
+        },
+        {
+          "name": "cedar_e_commerce_master.psd - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 4200,
+          "first_seen": "2025-08-14T13:12:00+02:00",
+          "last_seen": "2025-08-14T14:22:00+02:00"
+        }
+      ]
+    }
+  }
+}

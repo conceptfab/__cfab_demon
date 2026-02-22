@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 DASHBOARD = ROOT / "dashboard"
 DIST = ROOT / "dist"
-FINAL_NAME = "cfab-dashboard.exe"
+FINAL_NAME = "timeflow-dashboard.exe"
 
 
 def main():
@@ -22,7 +22,7 @@ def main():
     DIST.mkdir(parents=True, exist_ok=True)
     bundle_dir = DASHBOARD / "src-tauri" / "target" / "release"
     # Tauri może wygenerować różne nazwy w zależności od productName / Cargo name
-    exe_candidates = ["CfabDashboard.exe", "cfab-dashboard.exe", "cfab_dashboard.exe"]
+    exe_candidates = ["TimeFlow.exe", "timeflow-dashboard.exe", "timeflow_dashboard.exe"]
     copied = False
     for exe_name in exe_candidates:
         src_exe = bundle_dir / exe_name
@@ -48,3 +48,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

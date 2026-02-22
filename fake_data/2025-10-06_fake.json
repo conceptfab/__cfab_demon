@@ -1,0 +1,193 @@
+{
+  "date": "2025-10-06",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-10-06T10:51:00+02:00",
+          "end": "2025-10-06T11:11:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-06T17:00:00+02:00",
+          "end": "2025-10-06T17:35:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_proof.pdf - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-06T10:51:00+02:00",
+          "last_seen": "2025-10-06T11:11:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_comments.pdf - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 2100,
+          "first_seen": "2025-10-06T17:00:00+02:00",
+          "last_seen": "2025-10-06T17:35:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-10-06T13:44:00+02:00",
+          "end": "2025-10-06T14:14:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_variants.aep - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-06T13:44:00+02:00",
+          "last_seen": "2025-10-06T14:14:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3300,
+      "sessions": [
+        {
+          "start": "2025-10-06T09:11:00+02:00",
+          "end": "2025-10-06T10:06:00+02:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_lighting.blend - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 3300,
+          "first_seen": "2025-10-06T09:11:00+02:00",
+          "last_seen": "2025-10-06T10:06:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-10-06T10:23:00+02:00",
+          "end": "2025-10-06T10:43:00+02:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-10-06T20:11:00+02:00",
+          "end": "2025-10-06T20:31:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_review_board.fig - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-06T10:23:00+02:00",
+          "last_seen": "2025-10-06T10:43:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_ui_master.fig - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1200,
+          "first_seen": "2025-10-06T20:11:00+02:00",
+          "last_seen": "2025-10-06T20:31:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 8400,
+      "sessions": [
+        {
+          "start": "2025-10-06T08:13:00+02:00",
+          "end": "2025-10-06T08:58:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-10-06T17:44:00+02:00",
+          "end": "2025-10-06T19:19:00+02:00",
+          "duration_seconds": 5700
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_dieline.ai - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 2700,
+          "first_seen": "2025-10-06T08:13:00+02:00",
+          "last_seen": "2025-10-06T08:58:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_vector.ai - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 5700,
+          "first_seen": "2025-10-06T17:44:00+02:00",
+          "last_seen": "2025-10-06T19:19:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 7800,
+      "sessions": [
+        {
+          "start": "2025-10-06T11:18:00+02:00",
+          "end": "2025-10-06T12:48:00+02:00",
+          "duration_seconds": 5400
+        },
+        {
+          "start": "2025-10-06T16:08:00+02:00",
+          "end": "2025-10-06T16:48:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_conference_poster_spreads.indd - Atlas BioLabs: Conference Poster Series 2025",
+          "total_seconds": 5400,
+          "first_seen": "2025-10-06T11:18:00+02:00",
+          "last_seen": "2025-10-06T12:48:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_print.indd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 2400,
+          "first_seen": "2025-10-06T16:08:00+02:00",
+          "last_seen": "2025-10-06T16:48:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2025-10-06T14:31:00+02:00",
+          "end": "2025-10-06T15:51:00+02:00",
+          "duration_seconds": 4800
+        },
+        {
+          "start": "2025-10-06T19:35:00+02:00",
+          "end": "2025-10-06T20:05:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_exports.psd - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 4800,
+          "first_seen": "2025-10-06T14:31:00+02:00",
+          "last_seen": "2025-10-06T15:51:00+02:00"
+        },
+        {
+          "name": "cedar_trail_map_master.psd - Cedar Peak Outdoor: Trail Map Infographic System",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-06T19:35:00+02:00",
+          "last_seen": "2025-10-06T20:05:00+02:00"
+        }
+      ]
+    }
+  }
+}

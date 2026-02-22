@@ -1,16 +1,67 @@
 use tauri::AppHandle;
 
-use super::helpers::cfab_demon_dir;
+use super::helpers::timeflow_data_dir;
 use super::import::upsert_daily_data;
 use super::types::{DailyData, RefreshResult, TodayFileSignature};
 use crate::db;
 
+fn is_fake_named_json(path: &std::path::Path) -> bool {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase().contains("fake"))
+        .unwrap_or(false)
+}
+
+fn resolve_today_data_file(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let base_dir = timeflow_data_dir()?;
+    let demo_mode = db::is_demo_mode_enabled(app)?;
+
+    if !demo_mode {
+        return Ok(base_dir.join("data").join(format!("{}.json", today)));
+    }
+
+    let fake_data_dir = base_dir.join("fake_data");
+    let preferred = fake_data_dir.join(format!("{}_fake.json", today));
+    if preferred.exists() {
+        return Ok(preferred);
+    }
+
+    if !fake_data_dir.exists() {
+        return Ok(preferred);
+    }
+
+    let mut matches: Vec<std::path::PathBuf> = std::fs::read_dir(&fake_data_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension().map(|e| e == "json").unwrap_or(false)
+                && !path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().starts_with('.'))
+                    .unwrap_or(false)
+                && is_fake_named_json(path)
+                && path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().starts_with(&today))
+                    .unwrap_or(false)
+        })
+        .collect();
+
+    matches.sort_by(|a, b| {
+        let a_meta = std::fs::metadata(a).ok();
+        let b_meta = std::fs::metadata(b).ok();
+        let a_modified = a_meta.and_then(|m| m.modified().ok());
+        let b_modified = b_meta.and_then(|m| m.modified().ok());
+        b_modified.cmp(&a_modified).then_with(|| a.cmp(b))
+    });
+
+    Ok(matches.into_iter().next().unwrap_or(preferred))
+}
+
 #[tauri::command]
 pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let data_path = cfab_demon_dir()?
-        .join("data")
-        .join(format!("{}.json", today));
+    let data_path = resolve_today_data_file(&app)?;
 
     if !data_path.exists() {
         return Ok(RefreshResult {
@@ -59,11 +110,8 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
 }
 
 #[tauri::command]
-pub async fn get_today_file_signature() -> Result<TodayFileSignature, String> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let data_path = cfab_demon_dir()?
-        .join("data")
-        .join(format!("{}.json", today));
+pub async fn get_today_file_signature(app: AppHandle) -> Result<TodayFileSignature, String> {
+    let data_path = resolve_today_data_file(&app)?;
 
     if !data_path.exists() {
         return Ok(TodayFileSignature {
@@ -166,6 +214,24 @@ pub async fn export_database(app: AppHandle, path: String) -> Result<(), String>
 }
 
 #[tauri::command]
-pub async fn get_data_dir() -> Result<String, String> {
-    Ok(cfab_demon_dir()?.join("data").to_string_lossy().to_string())
+pub async fn get_data_dir(app: AppHandle) -> Result<String, String> {
+    let base_dir = timeflow_data_dir()?;
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let dir = if demo_mode {
+        base_dir.join("fake_data")
+    } else {
+        base_dir.join("data")
+    };
+    Ok(dir.to_string_lossy().to_string())
 }
+
+#[tauri::command]
+pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, String> {
+    db::get_demo_mode_status(&app)
+}
+
+#[tauri::command]
+pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, String> {
+    db::set_demo_mode(&app, enabled)
+}
+

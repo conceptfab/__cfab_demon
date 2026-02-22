@@ -1,0 +1,149 @@
+{
+  "date": "2025-10-08",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-10-08T13:15:00+02:00",
+          "end": "2025-10-08T13:40:00+02:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_comments.pdf - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-08T13:15:00+02:00",
+          "last_seen": "2025-10-08T13:40:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-10-08T13:46:00+02:00",
+          "end": "2025-10-08T14:26:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_loop.aep - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 2400,
+          "first_seen": "2025-10-08T13:46:00+02:00",
+          "last_seen": "2025-10-08T14:26:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-10-08T14:32:00+02:00",
+          "end": "2025-10-08T15:52:00+02:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_lighting.blend - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 4800,
+          "first_seen": "2025-10-08T14:32:00+02:00",
+          "last_seen": "2025-10-08T15:52:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-10-08T11:44:00+02:00",
+          "end": "2025-10-08T12:19:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_handoff.fig - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 2100,
+          "first_seen": "2025-10-08T11:44:00+02:00",
+          "last_seen": "2025-10-08T12:19:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-10-08T08:08:00+02:00",
+          "end": "2025-10-08T09:28:00+02:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_icons.ai - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 4800,
+          "first_seen": "2025-10-08T08:08:00+02:00",
+          "last_seen": "2025-10-08T09:28:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 4800,
+      "sessions": [
+        {
+          "start": "2025-10-08T16:03:00+02:00",
+          "end": "2025-10-08T17:23:00+02:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_spreads.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 4800,
+          "first_seen": "2025-10-08T16:03:00+02:00",
+          "last_seen": "2025-10-08T17:23:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 11100,
+      "sessions": [
+        {
+          "start": "2025-10-08T09:43:00+02:00",
+          "end": "2025-10-08T11:33:00+02:00",
+          "duration_seconds": 6600
+        },
+        {
+          "start": "2025-10-08T17:40:00+02:00",
+          "end": "2025-10-08T18:55:00+02:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_lab_equipment_exports.psd - Atlas BioLabs: Lab Equipment 3D Render Set",
+          "total_seconds": 6600,
+          "first_seen": "2025-10-08T09:43:00+02:00",
+          "last_seen": "2025-10-08T11:33:00+02:00"
+        },
+        {
+          "name": "northwind_holiday_pos_exports.psd - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 4500,
+          "first_seen": "2025-10-08T17:40:00+02:00",
+          "last_seen": "2025-10-08T18:55:00+02:00"
+        }
+      ]
+    }
+  }
+}

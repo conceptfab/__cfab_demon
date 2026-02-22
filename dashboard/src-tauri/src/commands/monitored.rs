@@ -1,9 +1,9 @@
-use super::helpers::cfab_demon_dir;
+use super::helpers::timeflow_data_dir;
 use super::types::{MonitoredApp, MonitoredConfig};
 use std::collections::HashSet;
 
 fn monitored_apps_path() -> Result<std::path::PathBuf, String> {
-    let dir = cfab_demon_dir()?;
+    let dir = timeflow_data_dir()?;
     if !dir.exists() {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     }
@@ -76,3 +76,4 @@ pub async fn remove_monitored_app(exe_name: String) -> Result<(), String> {
     config.apps.retain(|a| a.exe_name != exe);
     save_monitored_config(&config)
 }
+

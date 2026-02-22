@@ -1,0 +1,160 @@
+{
+  "date": "2025-11-08",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-08T12:42:00+01:00",
+          "end": "2025-11-08T13:12:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_comments.pdf - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-08T12:42:00+01:00",
+          "last_seen": "2025-11-08T13:12:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-11-08T17:01:00+01:00",
+          "end": "2025-11-08T17:36:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_holiday_pos_main_comp.aep - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-08T17:01:00+01:00",
+          "last_seen": "2025-11-08T17:36:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-11-08T15:03:00+01:00",
+          "end": "2025-11-08T15:23:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_holiday_pos_reference_board.bridge - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-08T15:03:00+01:00",
+          "last_seen": "2025-11-08T15:23:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-08T15:31:00+01:00",
+          "end": "2025-11-08T16:01:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_holiday_pos_ui_master.fig - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-08T15:31:00+01:00",
+          "last_seen": "2025-11-08T16:01:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-11-08T10:09:00+01:00",
+          "end": "2025-11-08T10:39:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-11-08T16:09:00+01:00",
+          "end": "2025-11-08T16:49:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_vector.ai - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-08T10:09:00+01:00",
+          "last_seen": "2025-11-08T10:39:00+01:00"
+        },
+        {
+          "name": "northwind_holiday_pos_icons.ai - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-08T16:09:00+01:00",
+          "last_seen": "2025-11-08T16:49:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-11-08T11:27:00+01:00",
+          "end": "2025-11-08T12:27:00+01:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_layout.indd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 3600,
+          "first_seen": "2025-11-08T11:27:00+01:00",
+          "last_seen": "2025-11-08T12:27:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 5700,
+      "sessions": [
+        {
+          "start": "2025-11-08T10:54:00+01:00",
+          "end": "2025-11-08T11:14:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-11-08T13:33:00+01:00",
+          "end": "2025-11-08T14:48:00+01:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_store_shelf_exports.psd - Aurora Retail Co.: Store Shelf Talker Templates",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-08T10:54:00+01:00",
+          "last_seen": "2025-11-08T11:14:00+01:00"
+        },
+        {
+          "name": "northwind_holiday_pos_retouch.psd - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 4500,
+          "first_seen": "2025-11-08T13:33:00+01:00",
+          "last_seen": "2025-11-08T14:48:00+01:00"
+        }
+      ]
+    }
+  }
+}

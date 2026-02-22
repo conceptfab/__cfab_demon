@@ -1,12 +1,12 @@
 [package]
-name = "cfab-demon"
+name = "timeflow-demon"
 version = "0.2.0"
 edition = "2021"
 description = "Windows tray daemon z monitorem aplikacji"
 autobins = false
 
 [[bin]]
-name = "cfab-demon"
+name = "timeflow-demon"
 path = "src/main.rs"
 
 [dependencies]
@@ -51,3 +51,4 @@ lto = true
 codegen-units = 1
 strip = false
 panic = "abort"
+

@@ -1,0 +1,272 @@
+{
+  "date": "2025-11-27",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 5700,
+      "sessions": [
+        {
+          "start": "2025-11-27T17:35:00+01:00",
+          "end": "2025-11-27T18:10:00+01:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-11-27T18:23:00+01:00",
+          "end": "2025-11-27T18:48:00+01:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-11-27T22:17:00+01:00",
+          "end": "2025-11-27T22:52:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_comments.pdf - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1500,
+          "first_seen": "2025-11-27T18:23:00+01:00",
+          "last_seen": "2025-11-27T18:48:00+01:00"
+        },
+        {
+          "name": "aurora_private_label_proof.pdf - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-27T17:35:00+01:00",
+          "last_seen": "2025-11-27T18:10:00+01:00"
+        },
+        {
+          "name": "harbor_room_service_comments.pdf - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-27T22:17:00+01:00",
+          "last_seen": "2025-11-27T22:52:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-27T16:08:00+01:00",
+          "end": "2025-11-27T16:38:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_main_comp.aep - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-27T16:08:00+01:00",
+          "last_seen": "2025-11-27T16:38:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 5700,
+      "sessions": [
+        {
+          "start": "2025-11-27T12:50:00+01:00",
+          "end": "2025-11-27T14:05:00+01:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-11-27T21:51:00+01:00",
+          "end": "2025-11-27T22:11:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_camera.blend - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 4500,
+          "first_seen": "2025-11-27T12:50:00+01:00",
+          "last_seen": "2025-11-27T14:05:00+01:00"
+        },
+        {
+          "name": "bluehaven_frozen_meals_lighting.blend - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-27T21:51:00+01:00",
+          "last_seen": "2025-11-27T22:11:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-11-27T10:35:00+01:00",
+          "end": "2025-11-27T10:55:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-11-27T15:27:00+01:00",
+          "end": "2025-11-27T15:57:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_reference_board.bridge - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-27T15:27:00+01:00",
+          "last_seen": "2025-11-27T15:57:00+01:00"
+        },
+        {
+          "name": "aurora_private_label_reference_board.bridge - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-27T10:35:00+01:00",
+          "last_seen": "2025-11-27T10:55:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-11-27T16:44:00+01:00",
+          "end": "2025-11-27T17:29:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_review_board.fig - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 2700,
+          "first_seen": "2025-11-27T16:44:00+01:00",
+          "last_seen": "2025-11-27T17:29:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 12300,
+      "sessions": [
+        {
+          "start": "2025-11-27T14:11:00+01:00",
+          "end": "2025-11-27T15:21:00+01:00",
+          "duration_seconds": 4200
+        },
+        {
+          "start": "2025-11-27T19:00:00+01:00",
+          "end": "2025-11-27T20:15:00+01:00",
+          "duration_seconds": 4500
+        },
+        {
+          "start": "2025-11-27T21:01:00+01:00",
+          "end": "2025-11-27T21:41:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-11-27T23:08:00+01:00",
+          "end": "2025-11-27T23:28:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_dieline.ai - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 4200,
+          "first_seen": "2025-11-27T14:11:00+01:00",
+          "last_seen": "2025-11-27T15:21:00+01:00"
+        },
+        {
+          "name": "aurora_private_label_vector.ai - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 4500,
+          "first_seen": "2025-11-27T19:00:00+01:00",
+          "last_seen": "2025-11-27T20:15:00+01:00"
+        },
+        {
+          "name": "bluehaven_frozen_meals_dieline.ai - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 2400,
+          "first_seen": "2025-11-27T21:01:00+01:00",
+          "last_seen": "2025-11-27T21:41:00+01:00"
+        },
+        {
+          "name": "harbor_room_service_dieline.ai - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-27T23:08:00+01:00",
+          "last_seen": "2025-11-27T23:28:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-11-27T23:59:00+01:00",
+          "end": "2025-11-28T01:04:00+01:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_room_service_layout.indd - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 3900,
+          "first_seen": "2025-11-27T23:59:00+01:00",
+          "last_seen": "2025-11-28T01:04:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 12000,
+      "sessions": [
+        {
+          "start": "2025-11-27T08:18:00+01:00",
+          "end": "2025-11-27T09:03:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-11-27T09:18:00+01:00",
+          "end": "2025-11-27T10:28:00+01:00",
+          "duration_seconds": 4200
+        },
+        {
+          "start": "2025-11-27T11:13:00+01:00",
+          "end": "2025-11-27T11:58:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-11-27T20:26:00+01:00",
+          "end": "2025-11-27T20:46:00+01:00",
+          "duration_seconds": 1200
+        },
+        {
+          "start": "2025-11-27T23:34:00+01:00",
+          "end": "2025-11-27T23:54:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_black_friday_master.psd - Aurora Retail Co.: Black Friday Campaign Assets",
+          "total_seconds": 6900,
+          "first_seen": "2025-11-27T09:18:00+01:00",
+          "last_seen": "2025-11-27T11:58:00+01:00"
+        },
+        {
+          "name": "aurora_private_label_master.psd - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2700,
+          "first_seen": "2025-11-27T08:18:00+01:00",
+          "last_seen": "2025-11-27T09:03:00+01:00"
+        },
+        {
+          "name": "bluehaven_frozen_meals_exports.psd - Bluehaven Foods: Frozen Meals Packaging Line",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-27T20:26:00+01:00",
+          "last_seen": "2025-11-27T20:46:00+01:00"
+        },
+        {
+          "name": "harbor_room_service_exports.psd - Harbor & Pine Hotels: Room Service Menu Layout Series",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-27T23:34:00+01:00",
+          "last_seen": "2025-11-27T23:54:00+01:00"
+        }
+      ]
+    }
+  }
+}

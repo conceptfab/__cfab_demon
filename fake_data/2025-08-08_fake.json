@@ -1,0 +1,157 @@
+{
+  "date": "2025-08-08",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2025-08-08T18:55:00+02:00",
+          "end": "2025-08-08T19:40:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-08-08T21:53:00+02:00",
+          "end": "2025-08-08T22:08:00+02:00",
+          "duration_seconds": 900
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_comments.pdf - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 2700,
+          "first_seen": "2025-08-08T18:55:00+02:00",
+          "last_seen": "2025-08-08T19:40:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_proof.pdf - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 900,
+          "first_seen": "2025-08-08T21:53:00+02:00",
+          "last_seen": "2025-08-08T22:08:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 6000,
+      "sessions": [
+        {
+          "start": "2025-08-08T15:04:00+02:00",
+          "end": "2025-08-08T16:44:00+02:00",
+          "duration_seconds": 6000
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_scene.blend - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 6000,
+          "first_seen": "2025-08-08T15:04:00+02:00",
+          "last_seen": "2025-08-08T16:44:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-08T08:20:00+02:00",
+          "end": "2025-08-08T09:00:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_asset_selects.bridge - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-08T08:20:00+02:00",
+          "last_seen": "2025-08-08T09:00:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 19200,
+      "sessions": [
+        {
+          "start": "2025-08-08T09:16:00+02:00",
+          "end": "2025-08-08T10:39:00+02:00",
+          "duration_seconds": 4980
+        },
+        {
+          "start": "2025-08-08T14:19:00+02:00",
+          "end": "2025-08-08T14:55:00+02:00",
+          "duration_seconds": 2160
+        },
+        {
+          "start": "2025-08-08T17:01:00+02:00",
+          "end": "2025-08-08T18:37:00+02:00",
+          "duration_seconds": 5760
+        },
+        {
+          "start": "2025-08-08T22:20:00+02:00",
+          "end": "2025-08-09T00:05:00+02:00",
+          "duration_seconds": 6300
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_dieline.ai - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 7140,
+          "first_seen": "2025-08-08T09:16:00+02:00",
+          "last_seen": "2025-08-08T14:55:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_icons.ai - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 6300,
+          "first_seen": "2025-08-08T22:20:00+02:00",
+          "last_seen": "2025-08-09T00:05:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_vector.ai - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 5760,
+          "first_seen": "2025-08-08T17:01:00+02:00",
+          "last_seen": "2025-08-08T18:37:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 3000,
+      "sessions": [
+        {
+          "start": "2025-08-08T13:24:00+02:00",
+          "end": "2025-08-08T14:14:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_spreads.indd - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 3000,
+          "first_seen": "2025-08-08T13:24:00+02:00",
+          "last_seen": "2025-08-08T14:14:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 6600,
+      "sessions": [
+        {
+          "start": "2025-08-08T10:47:00+02:00",
+          "end": "2025-08-08T12:37:00+02:00",
+          "duration_seconds": 6600
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_retouch.psd - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 6600,
+          "first_seen": "2025-08-08T10:47:00+02:00",
+          "last_seen": "2025-08-08T12:37:00+02:00"
+        }
+      ]
+    }
+  }
+}

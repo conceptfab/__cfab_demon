@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Automatyczny skrypt kompilacji dla aplikacji Cfab Demon
-Autor: Projekt Cfab Demon - Windows Tray Daemon
+Automatyczny skrypt kompilacji dla aplikacji TimeFlow Demon
+Autor: Projekt TimeFlow Demon - Windows Tray Daemon
 """
 
 import subprocess
@@ -121,10 +121,10 @@ class RustBuilder(CargoProjectBase):
         return ok
 
     def kill_running_instances(self) -> list[str]:
-        """Ubija dzialajace instancje demona (tylko cfab-demon.exe). Nie ubija rustc/cargo — moglyby to byc inne projekty."""
+        """Ubija dzialajace instancje demona (tylko timeflow-demon.exe). Nie ubija rustc/cargo — moglyby to byc inne projekty."""
         if os.name != "nt":
             return []
-        process_names = ["cfab-demon.exe"]
+        process_names = ["timeflow-demon.exe"]
         killed = []
         for name in process_names:
             try:
@@ -300,9 +300,9 @@ class RustBuilder(CargoProjectBase):
         jobs: Optional[int] = None,
     ) -> bool:
         """Buduje binarkę w trybie release i kopiuje do katalogu wyjściowego."""
-        demon_name = "cfab-demon"
+        demon_name = "timeflow-demon"
 
-        self.print_header("FINALNY BUILD - CFAB DEMON")
+        self.print_header("FINALNY BUILD - TIMEFLOW DEMON")
         print(f"   Katalog projektu: {self.project_dir}")
         print(f"   Tryb kompilacji:  release")
         print(f"   Binarka:          {demon_name}")
@@ -358,7 +358,7 @@ class RustBuilder(CargoProjectBase):
 
     def full_build_and_run(self, release=True, run_tests=False, verbose=False):
         """Pelny proces: czyszczenie, kompilacja, opcjonalne testy i uruchomienie."""
-        self.print_header("KOMPILACJA PROJEKTU CFAB DEMON")
+        self.print_header("KOMPILACJA PROJEKTU TIMEFLOW DEMON")
 
         if not self.check_cargo_project():
             return False
@@ -416,7 +416,7 @@ class RustBuilder(CargoProjectBase):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Automatyczny skrypt kompilacji dla projektu Cfab Demon",
+        description="Automatyczny skrypt kompilacji dla projektu TimeFlow Demon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Przyklady uzycia:
@@ -574,3 +574,4 @@ Przyklady uzycia:
 
 if __name__ == "__main__":
     main()
+

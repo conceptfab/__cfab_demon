@@ -1,0 +1,187 @@
+{
+  "date": "2026-02-03",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 3600,
+      "sessions": [
+        {
+          "start": "2026-02-03T13:31:00+01:00",
+          "end": "2026-02-03T14:01:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2026-02-03T20:31:00+01:00",
+          "end": "2026-02-03T21:01:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_comments.pdf - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 1800,
+          "first_seen": "2026-02-03T13:31:00+01:00",
+          "last_seen": "2026-02-03T14:01:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_comments.pdf - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 1800,
+          "first_seen": "2026-02-03T20:31:00+01:00",
+          "last_seen": "2026-02-03T21:01:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2026-02-03T12:59:00+01:00",
+          "end": "2026-02-03T13:24:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_reference_board.bridge - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 1500,
+          "first_seen": "2026-02-03T12:59:00+01:00",
+          "last_seen": "2026-02-03T13:24:00+01:00"
+        }
+      ]
+    },
+    "code.exe": {
+      "display_name": "Visual Studio Code",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2026-02-03T18:21:00+01:00",
+          "end": "2026-02-03T18:51:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_enrollment_landing_prototype.html - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 1800,
+          "first_seen": "2026-02-03T18:21:00+01:00",
+          "last_seen": "2026-02-03T18:51:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2026-02-03T19:03:00+01:00",
+          "end": "2026-02-03T20:18:00+01:00",
+          "duration_seconds": 4500
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_enrollment_landing_review_board.fig - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 4500,
+          "first_seen": "2026-02-03T19:03:00+01:00",
+          "last_seen": "2026-02-03T20:18:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 5400,
+      "sessions": [
+        {
+          "start": "2026-02-03T10:22:00+01:00",
+          "end": "2026-02-03T11:02:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2026-02-03T16:37:00+01:00",
+          "end": "2026-02-03T17:27:00+01:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_vector.ai - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 2400,
+          "first_seen": "2026-02-03T10:22:00+01:00",
+          "last_seen": "2026-02-03T11:02:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_vector.ai - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 3000,
+          "first_seen": "2026-02-03T16:37:00+01:00",
+          "last_seen": "2026-02-03T17:27:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 12900,
+      "sessions": [
+        {
+          "start": "2026-02-03T08:24:00+01:00",
+          "end": "2026-02-03T10:04:00+01:00",
+          "duration_seconds": 6000
+        },
+        {
+          "start": "2026-02-03T14:12:00+01:00",
+          "end": "2026-02-03T15:12:00+01:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2026-02-03T15:28:00+01:00",
+          "end": "2026-02-03T16:23:00+01:00",
+          "duration_seconds": 3300
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_print.indd - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 6000,
+          "first_seen": "2026-02-03T08:24:00+01:00",
+          "last_seen": "2026-02-03T10:04:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_layout.indd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 6900,
+          "first_seen": "2026-02-03T14:12:00+01:00",
+          "last_seen": "2026-02-03T16:23:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 4500,
+      "sessions": [
+        {
+          "start": "2026-02-03T11:20:00+01:00",
+          "end": "2026-02-03T12:05:00+01:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2026-02-03T17:44:00+01:00",
+          "end": "2026-02-03T18:14:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "bluehaven_recipe_booklet_master.psd - Bluehaven Foods: Recipe Booklet Spring Edition",
+          "total_seconds": 2700,
+          "first_seen": "2026-02-03T11:20:00+01:00",
+          "last_seen": "2026-02-03T12:05:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_retouch.psd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 1800,
+          "first_seen": "2026-02-03T17:44:00+01:00",
+          "last_seen": "2026-02-03T18:14:00+01:00"
+        }
+      ]
+    }
+  }
+}

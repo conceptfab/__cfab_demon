@@ -1,0 +1,141 @@
+{
+  "date": "2025-07-09",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-07-09T14:15:00+02:00",
+          "end": "2025-07-09T14:50:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_proof.pdf - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 2100,
+          "first_seen": "2025-07-09T14:15:00+02:00",
+          "last_seen": "2025-07-09T14:50:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-07-09T16:18:00+02:00",
+          "end": "2025-07-09T16:58:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_lighting.blend - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 2400,
+          "first_seen": "2025-07-09T16:18:00+02:00",
+          "last_seen": "2025-07-09T16:58:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-07-09T17:09:00+02:00",
+          "end": "2025-07-09T17:29:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_sparkling_packaging_reference_board.bridge - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 1200,
+          "first_seen": "2025-07-09T17:09:00+02:00",
+          "last_seen": "2025-07-09T17:29:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 9000,
+      "sessions": [
+        {
+          "start": "2025-07-09T10:07:00+02:00",
+          "end": "2025-07-09T11:02:00+02:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-07-09T12:29:00+02:00",
+          "end": "2025-07-09T14:04:00+02:00",
+          "duration_seconds": 5700
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_vector.ai - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 3300,
+          "first_seen": "2025-07-09T10:07:00+02:00",
+          "last_seen": "2025-07-09T11:02:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_dieline.ai - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 5700,
+          "first_seen": "2025-07-09T12:29:00+02:00",
+          "last_seen": "2025-07-09T14:04:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-07-09T11:07:00+02:00",
+          "end": "2025-07-09T11:47:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_print.indd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 2400,
+          "first_seen": "2025-07-09T11:07:00+02:00",
+          "last_seen": "2025-07-09T11:47:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2025-07-09T08:51:00+02:00",
+          "end": "2025-07-09T09:51:00+02:00",
+          "duration_seconds": 3600
+        },
+        {
+          "start": "2025-07-09T15:08:00+02:00",
+          "end": "2025-07-09T16:08:00+02:00",
+          "duration_seconds": 3600
+        }
+      ],
+      "files": [
+        {
+          "name": "luma_clinic_wayfinding_retouch.psd - Luma Dental Group: Clinic Wayfinding Signage System",
+          "total_seconds": 3600,
+          "first_seen": "2025-07-09T08:51:00+02:00",
+          "last_seen": "2025-07-09T09:51:00+02:00"
+        },
+        {
+          "name": "northwind_sparkling_packaging_retouch.psd - Northwind Beverages: Sparkling Line Packaging Refresh",
+          "total_seconds": 3600,
+          "first_seen": "2025-07-09T15:08:00+02:00",
+          "last_seen": "2025-07-09T16:08:00+02:00"
+        }
+      ]
+    }
+  }
+}

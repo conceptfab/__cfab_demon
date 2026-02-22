@@ -1,0 +1,204 @@
+{
+  "date": "2025-08-21",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-08-21T09:57:00+02:00",
+          "end": "2025-08-21T10:32:00+02:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_comments.pdf - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 2100,
+          "first_seen": "2025-08-21T09:57:00+02:00",
+          "last_seen": "2025-08-21T10:32:00+02:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-08-21T14:38:00+02:00",
+          "end": "2025-08-21T15:28:00+02:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-08-21T19:45:00+02:00",
+          "end": "2025-08-21T20:05:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_loop.aep - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 3000,
+          "first_seen": "2025-08-21T14:38:00+02:00",
+          "last_seen": "2025-08-21T15:28:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_main_comp.aep - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-21T19:45:00+02:00",
+          "last_seen": "2025-08-21T20:05:00+02:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-08-21T16:33:00+02:00",
+          "end": "2025-08-21T17:38:00+02:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "northwind_trade_show_scene.blend - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 3900,
+          "first_seen": "2025-08-21T16:33:00+02:00",
+          "last_seen": "2025-08-21T17:38:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-08-21T09:27:00+02:00",
+          "end": "2025-08-21T09:52:00+02:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2025-08-21T13:09:00+02:00",
+          "end": "2025-08-21T13:29:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_handoff.fig - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 1500,
+          "first_seen": "2025-08-21T09:27:00+02:00",
+          "last_seen": "2025-08-21T09:52:00+02:00"
+        },
+        {
+          "name": "cedar_e_commerce_ui_master.fig - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-21T13:09:00+02:00",
+          "last_seen": "2025-08-21T13:29:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2025-08-21T08:18:00+02:00",
+          "end": "2025-08-21T09:13:00+02:00",
+          "duration_seconds": 3300
+        },
+        {
+          "start": "2025-08-21T15:40:00+02:00",
+          "end": "2025-08-21T16:15:00+02:00",
+          "duration_seconds": 2100
+        },
+        {
+          "start": "2025-08-21T18:57:00+02:00",
+          "end": "2025-08-21T19:27:00+02:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_dieline.ai - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 3300,
+          "first_seen": "2025-08-21T08:18:00+02:00",
+          "last_seen": "2025-08-21T09:13:00+02:00"
+        },
+        {
+          "name": "cedar_e_commerce_vector.ai - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2100,
+          "first_seen": "2025-08-21T15:40:00+02:00",
+          "last_seen": "2025-08-21T16:15:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_vector.ai - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 1800,
+          "first_seen": "2025-08-21T18:57:00+02:00",
+          "last_seen": "2025-08-21T19:27:00+02:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-21T11:32:00+02:00",
+          "end": "2025-08-21T12:12:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_print.indd - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-21T11:32:00+02:00",
+          "last_seen": "2025-08-21T12:12:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8100,
+      "sessions": [
+        {
+          "start": "2025-08-21T10:44:00+02:00",
+          "end": "2025-08-21T11:24:00+02:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-08-21T13:47:00+02:00",
+          "end": "2025-08-21T14:32:00+02:00",
+          "duration_seconds": 2700
+        },
+        {
+          "start": "2025-08-21T17:53:00+02:00",
+          "end": "2025-08-21T18:43:00+02:00",
+          "duration_seconds": 3000
+        }
+      ],
+      "files": [
+        {
+          "name": "atlas_investor_deck_master.psd - Atlas BioLabs: Investor Deck Visual System",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-21T10:44:00+02:00",
+          "last_seen": "2025-08-21T11:24:00+02:00"
+        },
+        {
+          "name": "cedar_e_commerce_master.psd - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2700,
+          "first_seen": "2025-08-21T13:47:00+02:00",
+          "last_seen": "2025-08-21T14:32:00+02:00"
+        },
+        {
+          "name": "northwind_trade_show_retouch.psd - Northwind Beverages: Trade Show Booth Visuals",
+          "total_seconds": 3000,
+          "first_seen": "2025-08-21T17:53:00+02:00",
+          "last_seen": "2025-08-21T18:43:00+02:00"
+        }
+      ]
+    }
+  }
+}

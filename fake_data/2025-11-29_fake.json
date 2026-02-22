@@ -1,0 +1,100 @@
+{
+  "date": "2025-11-29",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-11-29T13:25:00+01:00",
+          "end": "2025-11-29T13:55:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_proof.pdf - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1800,
+          "first_seen": "2025-11-29T13:25:00+01:00",
+          "last_seen": "2025-11-29T13:55:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2025-11-29T09:49:00+01:00",
+          "end": "2025-11-29T10:54:00+01:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_camera.blend - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 3900,
+          "first_seen": "2025-11-29T09:49:00+01:00",
+          "last_seen": "2025-11-29T10:54:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-11-29T14:16:00+01:00",
+          "end": "2025-11-29T14:36:00+01:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_asset_selects.bridge - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 1200,
+          "first_seen": "2025-11-29T14:16:00+01:00",
+          "last_seen": "2025-11-29T14:36:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-11-29T11:56:00+01:00",
+          "end": "2025-11-29T13:06:00+01:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_dieline.ai - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 4200,
+          "first_seen": "2025-11-29T11:56:00+01:00",
+          "last_seen": "2025-11-29T13:06:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 2100,
+      "sessions": [
+        {
+          "start": "2025-11-29T11:11:00+01:00",
+          "end": "2025-11-29T11:46:00+01:00",
+          "duration_seconds": 2100
+        }
+      ],
+      "files": [
+        {
+          "name": "aurora_private_label_exports.psd - Aurora Retail Co.: Private Label Packaging Mockups",
+          "total_seconds": 2100,
+          "first_seen": "2025-11-29T11:11:00+01:00",
+          "last_seen": "2025-11-29T11:46:00+01:00"
+        }
+      ]
+    }
+  }
+}

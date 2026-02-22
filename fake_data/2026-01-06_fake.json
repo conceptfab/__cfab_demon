@@ -1,0 +1,182 @@
+{
+  "date": "2026-01-06",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2026-01-06T11:46:00+01:00",
+          "end": "2026-01-06T12:16:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2026-01-06T16:39:00+01:00",
+          "end": "2026-01-06T17:19:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_proof.pdf - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1800,
+          "first_seen": "2026-01-06T11:46:00+01:00",
+          "last_seen": "2026-01-06T12:16:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_proof.pdf - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2400,
+          "first_seen": "2026-01-06T16:39:00+01:00",
+          "last_seen": "2026-01-06T17:19:00+01:00"
+        }
+      ]
+    },
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2026-01-06T08:07:00+01:00",
+          "end": "2026-01-06T08:47:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_main_comp.aep - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 2400,
+          "first_seen": "2026-01-06T08:07:00+01:00",
+          "last_seen": "2026-01-06T08:47:00+01:00"
+        }
+      ]
+    },
+    "blender.exe": {
+      "display_name": "Blender",
+      "total_seconds": 3900,
+      "sessions": [
+        {
+          "start": "2026-01-06T10:35:00+01:00",
+          "end": "2026-01-06T11:40:00+01:00",
+          "duration_seconds": 3900
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_camera.blend - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 3900,
+          "first_seen": "2026-01-06T10:35:00+01:00",
+          "last_seen": "2026-01-06T11:40:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 7200,
+      "sessions": [
+        {
+          "start": "2026-01-06T14:13:00+01:00",
+          "end": "2026-01-06T14:38:00+01:00",
+          "duration_seconds": 1500
+        },
+        {
+          "start": "2026-01-06T14:56:00+01:00",
+          "end": "2026-01-06T16:31:00+01:00",
+          "duration_seconds": 5700
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_ui_master.fig - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 1500,
+          "first_seen": "2026-01-06T14:13:00+01:00",
+          "last_seen": "2026-01-06T14:38:00+01:00"
+        },
+        {
+          "name": "solstice_enrollment_landing_ui_master.fig - Solstice Education: Enrollment Campaign Landing Visuals",
+          "total_seconds": 5700,
+          "first_seen": "2026-01-06T14:56:00+01:00",
+          "last_seen": "2026-01-06T16:31:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 6300,
+      "sessions": [
+        {
+          "start": "2026-01-06T13:00:00+01:00",
+          "end": "2026-01-06T14:05:00+01:00",
+          "duration_seconds": 3900
+        },
+        {
+          "start": "2026-01-06T18:12:00+01:00",
+          "end": "2026-01-06T18:52:00+01:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_icons.ai - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 3900,
+          "first_seen": "2026-01-06T13:00:00+01:00",
+          "last_seen": "2026-01-06T14:05:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_vector.ai - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 2400,
+          "first_seen": "2026-01-06T18:12:00+01:00",
+          "last_seen": "2026-01-06T18:52:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 6000,
+      "sessions": [
+        {
+          "start": "2026-01-06T19:06:00+01:00",
+          "end": "2026-01-06T20:46:00+01:00",
+          "duration_seconds": 6000
+        }
+      ],
+      "files": [
+        {
+          "name": "solstice_annual_report_layout.indd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 6000,
+          "first_seen": "2026-01-06T19:06:00+01:00",
+          "last_seen": "2026-01-06T20:46:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 7500,
+      "sessions": [
+        {
+          "start": "2026-01-06T08:55:00+01:00",
+          "end": "2026-01-06T10:30:00+01:00",
+          "duration_seconds": 5700
+        },
+        {
+          "start": "2026-01-06T17:36:00+01:00",
+          "end": "2026-01-06T18:06:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_rooftop_amenity_master.psd - Meridian Properties: Rooftop Amenity 3D Visualization",
+          "total_seconds": 5700,
+          "first_seen": "2026-01-06T08:55:00+01:00",
+          "last_seen": "2026-01-06T10:30:00+01:00"
+        },
+        {
+          "name": "solstice_annual_report_retouch.psd - Solstice Education: Annual Report 2025 Layout",
+          "total_seconds": 1800,
+          "first_seen": "2026-01-06T17:36:00+01:00",
+          "last_seen": "2026-01-06T18:06:00+01:00"
+        }
+      ]
+    }
+  }
+}

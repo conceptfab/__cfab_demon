@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Szybki skrypt do testów developerskich - Cfab Demon
+Szybki skrypt do testów developerskich - TimeFlow Demon
 Minimalne kroki, bez czyszczenia, tryb debug.
 """
 
@@ -41,7 +41,7 @@ class DevRunner(CargoProjectBase):
         print("\n  >>> Uruchamianie DEMONA (Ctrl+C = stop) <<<")
         try:
             subprocess.run(
-                ["cargo", "run", "--bin", "cfab-demon"],
+                ["cargo", "run", "--bin", "timeflow-demon"],
                 cwd=self.project_dir,
                 check=True,
                 env=env,
@@ -56,7 +56,7 @@ class DevRunner(CargoProjectBase):
 
 def main():
     p = argparse.ArgumentParser(
-        description="Szybkie testy developerskie – Cfab Demon",
+        description="Szybkie testy developerskie – TimeFlow Demon",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Przykłady:
@@ -107,3 +107,4 @@ Przykłady:
 
 if __name__ == "__main__":
     main()
+

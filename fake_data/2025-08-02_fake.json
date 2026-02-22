@@ -1,0 +1,100 @@
+{
+  "date": "2025-08-02",
+  "apps": {
+    "afterfx.exe": {
+      "display_name": "Adobe After Effects",
+      "total_seconds": 2700,
+      "sessions": [
+        {
+          "start": "2025-08-02T16:12:00+02:00",
+          "end": "2025-08-02T16:57:00+02:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_variants.aep - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2700,
+          "first_seen": "2025-08-02T16:12:00+02:00",
+          "last_seen": "2025-08-02T16:57:00+02:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1200,
+      "sessions": [
+        {
+          "start": "2025-08-02T13:52:00+02:00",
+          "end": "2025-08-02T14:12:00+02:00",
+          "duration_seconds": 1200
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_asset_selects.bridge - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 1200,
+          "first_seen": "2025-08-02T13:52:00+02:00",
+          "last_seen": "2025-08-02T14:12:00+02:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-02T11:59:00+02:00",
+          "end": "2025-08-02T12:39:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_review_board.fig - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-02T11:59:00+02:00",
+          "last_seen": "2025-08-02T12:39:00+02:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 2400,
+      "sessions": [
+        {
+          "start": "2025-08-02T12:52:00+02:00",
+          "end": "2025-08-02T13:32:00+02:00",
+          "duration_seconds": 2400
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_dieline.ai - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 2400,
+          "first_seen": "2025-08-02T12:52:00+02:00",
+          "last_seen": "2025-08-02T13:32:00+02:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 5100,
+      "sessions": [
+        {
+          "start": "2025-08-02T14:32:00+02:00",
+          "end": "2025-08-02T15:57:00+02:00",
+          "duration_seconds": 5100
+        }
+      ],
+      "files": [
+        {
+          "name": "cedar_e_commerce_exports.psd - Cedar Peak Outdoor: E-commerce Banner Batch Q3",
+          "total_seconds": 5100,
+          "first_seen": "2025-08-02T14:32:00+02:00",
+          "last_seen": "2025-08-02T15:57:00+02:00"
+        }
+      ]
+    }
+  }
+}

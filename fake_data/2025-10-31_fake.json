@@ -1,0 +1,174 @@
+{
+  "date": "2025-10-31",
+  "apps": {
+    "acrobat.exe": {
+      "display_name": "Adobe Acrobat",
+      "total_seconds": 1800,
+      "sessions": [
+        {
+          "start": "2025-10-31T08:25:00+01:00",
+          "end": "2025-10-31T08:55:00+01:00",
+          "duration_seconds": 1800
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_comments.pdf - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-31T08:25:00+01:00",
+          "last_seen": "2025-10-31T08:55:00+01:00"
+        }
+      ]
+    },
+    "bridge.exe": {
+      "display_name": "Adobe Bridge",
+      "total_seconds": 1500,
+      "sessions": [
+        {
+          "start": "2025-10-31T13:49:00+01:00",
+          "end": "2025-10-31T14:14:00+01:00",
+          "duration_seconds": 1500
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_asset_selects.bridge - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 1500,
+          "first_seen": "2025-10-31T13:49:00+01:00",
+          "last_seen": "2025-10-31T14:14:00+01:00"
+        }
+      ]
+    },
+    "figma.exe": {
+      "display_name": "Figma",
+      "total_seconds": 4200,
+      "sessions": [
+        {
+          "start": "2025-10-31T16:49:00+01:00",
+          "end": "2025-10-31T17:59:00+01:00",
+          "duration_seconds": 4200
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_winter_key_ui_master.fig - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 4200,
+          "first_seen": "2025-10-31T16:49:00+01:00",
+          "last_seen": "2025-10-31T17:59:00+01:00"
+        }
+      ]
+    },
+    "illustrator.exe": {
+      "display_name": "Adobe Illustrator",
+      "total_seconds": 9000,
+      "sessions": [
+        {
+          "start": "2025-10-31T14:25:00+01:00",
+          "end": "2025-10-31T15:05:00+01:00",
+          "duration_seconds": 2400
+        },
+        {
+          "start": "2025-10-31T16:09:00+01:00",
+          "end": "2025-10-31T16:39:00+01:00",
+          "duration_seconds": 1800
+        },
+        {
+          "start": "2025-10-31T19:02:00+01:00",
+          "end": "2025-10-31T20:22:00+01:00",
+          "duration_seconds": 4800
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_winter_key_dieline.ai - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 1800,
+          "first_seen": "2025-10-31T16:09:00+01:00",
+          "last_seen": "2025-10-31T16:39:00+01:00"
+        },
+        {
+          "name": "meridian_tower_a_icons.ai - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 2400,
+          "first_seen": "2025-10-31T14:25:00+01:00",
+          "last_seen": "2025-10-31T15:05:00+01:00"
+        },
+        {
+          "name": "northwind_holiday_pos_vector.ai - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 4800,
+          "first_seen": "2025-10-31T19:02:00+01:00",
+          "last_seen": "2025-10-31T20:22:00+01:00"
+        }
+      ]
+    },
+    "indesign.exe": {
+      "display_name": "Adobe InDesign",
+      "total_seconds": 8100,
+      "sessions": [
+        {
+          "start": "2025-10-31T10:13:00+01:00",
+          "end": "2025-10-31T11:45:00+01:00",
+          "duration_seconds": 5520
+        },
+        {
+          "start": "2025-10-31T12:48:00+01:00",
+          "end": "2025-10-31T13:31:00+01:00",
+          "duration_seconds": 2580
+        }
+      ],
+      "files": [
+        {
+          "name": "meridian_tower_a_print.indd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 2580,
+          "first_seen": "2025-10-31T12:48:00+01:00",
+          "last_seen": "2025-10-31T13:31:00+01:00"
+        },
+        {
+          "name": "meridian_tower_a_spreads.indd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 5520,
+          "first_seen": "2025-10-31T10:13:00+01:00",
+          "last_seen": "2025-10-31T11:45:00+01:00"
+        }
+      ]
+    },
+    "photoshop.exe": {
+      "display_name": "Adobe Photoshop",
+      "total_seconds": 8700,
+      "sessions": [
+        {
+          "start": "2025-10-31T09:13:00+01:00",
+          "end": "2025-10-31T10:03:00+01:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-10-31T15:11:00+01:00",
+          "end": "2025-10-31T16:01:00+01:00",
+          "duration_seconds": 3000
+        },
+        {
+          "start": "2025-10-31T18:09:00+01:00",
+          "end": "2025-10-31T18:54:00+01:00",
+          "duration_seconds": 2700
+        }
+      ],
+      "files": [
+        {
+          "name": "harbor_winter_key_exports.psd - Harbor & Pine Hotels: Winter Campaign Key Visuals",
+          "total_seconds": 3000,
+          "first_seen": "2025-10-31T15:11:00+01:00",
+          "last_seen": "2025-10-31T16:01:00+01:00"
+        },
+        {
+          "name": "meridian_tower_a_retouch.psd - Meridian Properties: Tower A Leasing Brochure",
+          "total_seconds": 3000,
+          "first_seen": "2025-10-31T09:13:00+01:00",
+          "last_seen": "2025-10-31T10:03:00+01:00"
+        },
+        {
+          "name": "northwind_holiday_pos_exports.psd - Northwind Beverages: Holiday POS Display Set",
+          "total_seconds": 2700,
+          "first_seen": "2025-10-31T18:09:00+01:00",
+          "last_seen": "2025-10-31T18:54:00+01:00"
+        }
+      ]
+    }
+  }
+}

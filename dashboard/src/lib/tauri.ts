@@ -29,6 +29,7 @@ import type {
   FolderProjectCandidate,
   RefreshResult,
   TodayFileSignature,
+  DemoModeStatus,
   ManualSession,
   ManualSessionWithProject,
   ImportValidation,
@@ -276,6 +277,9 @@ export const clearAllData = () => invoke<void>("clear_all_data");
 export const exportDatabase = (path: string) =>
   invoke<void>("export_database", { path });
 export const getDataDir = () => invoke<string>("get_data_dir");
+export const getDemoModeStatus = () => invoke<DemoModeStatus>("get_demo_mode_status");
+export const setDemoMode = (enabled: boolean) =>
+  invoke<DemoModeStatus>("set_demo_mode", { enabled });
 
 // Data Management
 export const exportData = (
