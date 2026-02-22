@@ -2,6 +2,7 @@ export interface Project {
   id: number;
   name: string;
   color: string;
+  hourly_rate?: number | null;
   created_at: string;
   excluded_at?: string | null;
   assigned_folder_path?: string | null;
@@ -131,6 +132,30 @@ export interface TimelinePoint {
 export interface HourlyData {
   hour: number;
   seconds: number;
+}
+
+export interface EstimateSettings {
+  global_hourly_rate: number;
+}
+
+export interface EstimateProjectRow {
+  project_id: number;
+  project_name: string;
+  project_color: string;
+  seconds: number;
+  hours: number;
+  project_hourly_rate: number | null;
+  effective_hourly_rate: number;
+  estimated_value: number;
+  session_count: number;
+}
+
+export interface EstimateSummary {
+  total_seconds: number;
+  total_hours: number;
+  total_value: number;
+  projects_count: number;
+  overrides_count: number;
 }
 
 export interface DateRange {

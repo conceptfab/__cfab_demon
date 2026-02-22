@@ -54,6 +54,11 @@ pub fn run() {
             commands::get_dashboard_projects,
             commands::get_timeline,
             commands::get_hourly_breakdown,
+            commands::get_estimate_settings,
+            commands::update_global_hourly_rate,
+            commands::update_project_hourly_rate,
+            commands::get_project_estimates,
+            commands::get_estimates_summary,
 
             commands::get_applications,
             commands::get_app_timeline,

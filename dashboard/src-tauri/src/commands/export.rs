@@ -29,9 +29,9 @@ pub async fn export_data(
 
     // 2. Fetch Projects
     let project_query = if let Some(_) = project_id {
-        "SELECT id, name, color, created_at, excluded_at, assigned_folder_path, is_imported FROM projects WHERE id = ?1"
+        "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported FROM projects WHERE id = ?1"
     } else {
-        "SELECT id, name, color, created_at, excluded_at, assigned_folder_path, is_imported FROM projects"
+        "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported FROM projects"
     };
 
     let mut stmt = conn.prepare(project_query).map_err(|e| e.to_string())?;
@@ -41,10 +41,11 @@ pub async fn export_data(
                 id: row.get(0)?,
                 name: row.get(1)?,
                 color: row.get(2)?,
-                created_at: row.get(3)?,
-                excluded_at: row.get(4)?,
-                assigned_folder_path: row.get(5)?,
-                is_imported: row.get(6)?,
+                hourly_rate: row.get(3)?,
+                created_at: row.get(4)?,
+                excluded_at: row.get(5)?,
+                assigned_folder_path: row.get(6)?,
+                is_imported: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -56,10 +57,11 @@ pub async fn export_data(
                 id: row.get(0)?,
                 name: row.get(1)?,
                 color: row.get(2)?,
-                created_at: row.get(3)?,
-                excluded_at: row.get(4)?,
-                assigned_folder_path: row.get(5)?,
-                is_imported: row.get(6)?,
+                hourly_rate: row.get(3)?,
+                created_at: row.get(4)?,
+                excluded_at: row.get(5)?,
+                assigned_folder_path: row.get(6)?,
+                is_imported: row.get(7)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -266,7 +268,7 @@ pub async fn export_data(
         chrono::Local::now().format("%Y%m%d-%H%M%S")
     );
     let archive = ExportArchive {
-        version: "1.0".to_string(),
+        version: "1.1".to_string(),
         exported_at: chrono::Local::now().to_rfc3339(),
         machine_id,
         export_type: if project_id.is_some() {

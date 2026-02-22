@@ -50,6 +50,7 @@ pub struct Project {
     pub id: i64,
     pub name: String,
     pub color: String,
+    pub hourly_rate: Option<f64>,
     pub created_at: String,
     pub excluded_at: Option<String>,
     pub assigned_folder_path: Option<String>,
@@ -156,6 +157,33 @@ pub struct TimelinePoint {
 pub struct HourlyData {
     pub hour: i32,
     pub seconds: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateSettings {
+    pub global_hourly_rate: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateProjectRow {
+    pub project_id: i64,
+    pub project_name: String,
+    pub project_color: String,
+    pub seconds: i64,
+    pub hours: f64,
+    pub project_hourly_rate: Option<f64>,
+    pub effective_hourly_rate: f64,
+    pub estimated_value: f64,
+    pub session_count: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateSummary {
+    pub total_seconds: i64,
+    pub total_hours: f64,
+    pub total_value: f64,
+    pub projects_count: i64,
+    pub overrides_count: i64,
 }
 
 #[derive(Serialize)]

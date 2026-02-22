@@ -132,11 +132,20 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         let local_id = existing_projects_map.get(&p.name).copied();
 
         let id = if let Some(id) = local_id {
+            if let Some(rate) = p.hourly_rate {
+                tx.execute(
+                    "UPDATE projects
+                     SET hourly_rate = COALESCE(hourly_rate, ?1)
+                     WHERE id = ?2",
+                    rusqlite::params![rate, id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
             id
         } else {
             tx.execute(
-                "INSERT INTO projects (name, color, created_at, excluded_at, assigned_folder_path, is_imported) VALUES (?1, ?2, ?3, ?4, ?5, 1)",
-                rusqlite::params![p.name, p.color, p.created_at, p.excluded_at, p.assigned_folder_path]
+                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
+                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.assigned_folder_path]
             ).map_err(|e| e.to_string())?;
             summary.projects_created += 1;
             let new_id = tx.last_insert_rowid();

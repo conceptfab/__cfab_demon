@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     color TEXT NOT NULL DEFAULT '#38bdf8',
+    hourly_rate REAL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     excluded_at TEXT,
     assigned_folder_path TEXT,
@@ -93,6 +94,12 @@ CREATE TABLE IF NOT EXISTS assignment_model_time (
 );
 
 CREATE TABLE IF NOT EXISTS assignment_model_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS estimate_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -464,6 +471,30 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if cleaned > 0 {
         log::info!("Removed {} '(background)' pseudo-project(s)", cleaned);
     }
+
+    let has_projects_hourly_rate: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='hourly_rate'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_projects_hourly_rate {
+        log::info!("Migrating projects: adding hourly_rate");
+        db.execute("ALTER TABLE projects ADD COLUMN hourly_rate REAL", [])?;
+    }
+
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS estimate_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )",
+    )?;
+
+    // Seed default global hourly rate
+    db.execute(
+        "INSERT OR IGNORE INTO estimate_settings (key, value, updated_at) VALUES ('global_hourly_rate', '100', datetime('now'))",
+        [],
+    )?;
 
     Ok(())
 }

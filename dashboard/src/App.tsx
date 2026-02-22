@@ -16,6 +16,7 @@ import { loadSessionSettings } from "@/lib/user-settings";
 import { Dashboard } from "@/pages/Dashboard";
 
 const Projects = lazy(() => import("@/pages/Projects").then((m) => ({ default: m.Projects })));
+const Estimates = lazy(() => import("@/pages/Estimates").then((m) => ({ default: m.Estimates })));
 const Applications = lazy(() => import("@/pages/Applications").then((m) => ({ default: m.Applications })));
 const TimeAnalysis = lazy(() => import("@/pages/TimeAnalysis").then((m) => ({ default: m.TimeAnalysis })));
 const Sessions = lazy(() => import("@/pages/Sessions").then((m) => ({ default: m.Sessions })));
@@ -34,6 +35,8 @@ function PageRouter() {
         return <Dashboard />;
       case "projects":
         return <Projects />;
+      case "estimates":
+        return <Estimates />;
       case "applications":
         return <Applications />;
       case "analysis":

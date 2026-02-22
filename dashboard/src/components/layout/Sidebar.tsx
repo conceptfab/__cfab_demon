@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   FolderKanban,
+  CircleDollarSign,
   AppWindow,
   BarChart3,
   List,
@@ -18,6 +19,7 @@ import type { DaemonStatus } from "@/lib/db-types";
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "projects", label: "Projects", icon: FolderKanban },
+  { id: "estimates", label: "Estimates", icon: CircleDollarSign },
   { id: "applications", label: "Applications", icon: AppWindow },
   { id: "analysis", label: "Time Analysis", icon: BarChart3 },
   { id: "sessions", label: "Sessions", icon: List },

@@ -10,6 +10,9 @@ import type {
   ProjectTimeRow,
   TimelinePoint,
   HourlyData,
+  EstimateProjectRow,
+  EstimateSettings,
+  EstimateSummary,
   DateRange,
   AppWithStats,
   SessionWithApp,
@@ -116,6 +119,16 @@ export const getTimeline = (dateRange: DateRange) =>
   invoke<TimelinePoint[]>("get_timeline", { dateRange });
 export const getHourlyBreakdown = (dateRange: DateRange) =>
   invoke<HourlyData[]>("get_hourly_breakdown", { dateRange });
+export const getEstimateSettings = () =>
+  invoke<EstimateSettings>("get_estimate_settings");
+export const updateGlobalHourlyRate = (rate: number) =>
+  invoke<void>("update_global_hourly_rate", { rate });
+export const updateProjectHourlyRate = (projectId: number, rate: number | null) =>
+  invoke<void>("update_project_hourly_rate", { projectId, rate });
+export const getProjectEstimates = (dateRange: DateRange) =>
+  invoke<EstimateProjectRow[]>("get_project_estimates", { dateRange });
+export const getEstimatesSummary = (dateRange: DateRange) =>
+  invoke<EstimateSummary>("get_estimates_summary", { dateRange });
 
 // Applications
 export const getApplications = (dateRange?: DateRange) =>

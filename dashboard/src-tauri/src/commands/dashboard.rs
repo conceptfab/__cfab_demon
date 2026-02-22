@@ -516,14 +516,38 @@ mod tests {
             "CREATE TABLE sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL DEFAULT '',
+                end_time TEXT NOT NULL DEFAULT '',
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL,
+                project_id INTEGER,
                 is_hidden INTEGER DEFAULT 0
+            );
+            CREATE TABLE file_activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                file_name TEXT NOT NULL DEFAULT '',
+                total_seconds INTEGER NOT NULL DEFAULT 0,
+                first_seen TEXT NOT NULL DEFAULT '',
+                last_seen TEXT NOT NULL DEFAULT '',
+                project_id INTEGER
+            );
+            CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                color TEXT NOT NULL DEFAULT '#64748b'
             );
             CREATE TABLE manual_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '',
+                session_type TEXT NOT NULL DEFAULT 'other',
+                project_id INTEGER,
+                start_time TEXT NOT NULL DEFAULT '',
+                end_time TEXT NOT NULL DEFAULT '',
                 duration_seconds INTEGER NOT NULL,
-                date TEXT NOT NULL
+                date TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );",
         )
         .expect("schema");
@@ -534,18 +558,50 @@ mod tests {
     fn dashboard_counters_use_manual_session_days() {
         let conn = setup_conn();
         conn.execute(
-            "INSERT INTO manual_sessions (duration_seconds, date) VALUES (?1, ?2)",
-            rusqlite::params![3600i64, "2026-02-01"],
+            "INSERT INTO projects (id, name, color) VALUES (?1, ?2, ?3)",
+            rusqlite::params![1i64, "Manual", "#64748b"],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                "Work",
+                "other",
+                1i64,
+                "2026-02-01T09:00:00",
+                "2026-02-01T10:00:00",
+                3600i64,
+                "2026-02-01"
+            ],
         )
         .expect("insert ms1");
         conn.execute(
-            "INSERT INTO manual_sessions (duration_seconds, date) VALUES (?1, ?2)",
-            rusqlite::params![1800i64, "2026-02-01"],
+            "INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                "Work",
+                "other",
+                1i64,
+                "2026-02-01T10:30:00",
+                "2026-02-01T11:00:00",
+                1800i64,
+                "2026-02-01"
+            ],
         )
         .expect("insert ms2");
         conn.execute(
-            "INSERT INTO manual_sessions (duration_seconds, date) VALUES (?1, ?2)",
-            rusqlite::params![7200i64, "2026-02-03"],
+            "INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                "Work",
+                "other",
+                1i64,
+                "2026-02-03T09:00:00",
+                "2026-02-03T11:00:00",
+                7200i64,
+                "2026-02-03"
+            ],
         )
         .expect("insert ms3");
 

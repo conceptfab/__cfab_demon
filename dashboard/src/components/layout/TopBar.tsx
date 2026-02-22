@@ -3,6 +3,7 @@ import { useAppStore } from "@/store/app-store";
 const pageTitles: Record<string, string> = {
   dashboard: "Dashboard",
   projects: "Projects",
+  estimates: "Estimates",
   applications: "Applications",
   analysis: "Time Analysis",
   sessions: "Sessions",
