@@ -37,17 +37,24 @@ export function TopBar() {
       : syncIndicator.status === "syncing"
         ? "default"
         : "secondary";
+  const showSyncDetail = syncIndicator.status !== "disabled" && !!syncIndicator.detail;
 
   return (
     <header className="flex h-14 items-center justify-between gap-4 border-b px-6">
       <h1 className="text-lg font-semibold">{pageTitles[currentPage] ?? "Dashboard"}</h1>
       <div className="flex min-w-0 items-center gap-2">
-        <Badge variant={badgeVariant} className="whitespace-nowrap">
+        <Badge
+          variant={badgeVariant}
+          className="whitespace-nowrap"
+          title={syncIndicator.detail || undefined}
+        >
           {syncIndicator.label}
         </Badge>
-        <span className="hidden max-w-[24rem] truncate text-xs text-muted-foreground md:inline">
-          {syncIndicator.detail}
-        </span>
+        {showSyncDetail && (
+          <span className="hidden max-w-[24rem] truncate text-xs text-muted-foreground md:inline">
+            {syncIndicator.detail}
+          </span>
+        )}
       </div>
     </header>
   );

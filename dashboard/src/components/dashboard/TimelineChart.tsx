@@ -19,6 +19,7 @@ interface Props {
   projectColors?: Record<string, string>;
   granularity?: "hour" | "day";
   dateRange?: DateRange;
+  trimLeadingToFirstData?: boolean;
   title?: string;
   heightClassName?: string;
 }
@@ -30,6 +31,7 @@ export function TimelineChart({
   projectColors = {},
   granularity = "day",
   dateRange,
+  trimLeadingToFirstData = false,
   title = "Activity Timeline",
   heightClassName,
 }: Props) {
@@ -45,10 +47,21 @@ export function TimelineChart({
 
   const chartData = useMemo(() => {
     if (granularity === "day" && dateRange?.start && dateRange?.end) {
+      let fillStart = dateRange.start;
+      if (trimLeadingToFirstData && data.length > 0) {
+        const firstDataDate = data
+          .map((row) => row.date)
+          .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
+          .sort()[0];
+        if (firstDataDate && firstDataDate > fillStart) {
+          fillStart = firstDataDate;
+        }
+      }
+
       let days: Date[] = [];
       try {
         days = eachDayOfInterval({
-          start: parseISO(`${dateRange.start}T00:00:00`),
+          start: parseISO(`${fillStart}T00:00:00`),
           end: parseISO(`${dateRange.end}T00:00:00`),
         });
       } catch {
@@ -78,7 +91,7 @@ export function TimelineChart({
       }
       return out;
     });
-  }, [data, seriesKeys, granularity, dateRange]);
+  }, [data, seriesKeys, granularity, dateRange, trimLeadingToFirstData]);
 
   const isHourly = granularity === "hour";
   const daySpan = useMemo(() => {
@@ -194,7 +207,10 @@ export function TimelineChart({
                   content={renderTooltip}
                 />
                 {seriesKeys.map((key, idx) => {
-                  const color = projectColors[key] ?? PALETTE[idx % PALETTE.length];
+                  const color =
+                    key === "Other"
+                      ? "#64748b"
+                      : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
                   return (
                     <Bar
                       key={key}
@@ -231,7 +247,10 @@ export function TimelineChart({
                   content={renderTooltip}
                 />
                 {seriesKeys.map((key, idx) => {
-                  const color = projectColors[key] ?? PALETTE[idx % PALETTE.length];
+                  const color =
+                    key === "Other"
+                      ? "#64748b"
+                      : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
                   return (
                     <Bar
                       key={key}

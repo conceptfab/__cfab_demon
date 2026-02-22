@@ -94,15 +94,38 @@ fn prune_if_stale(conn: &rusqlite::Connection) -> Result<usize, String> {
     result
 }
 
+fn hsl_to_hex(h: f64, s: f64, l: f64) -> String {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let hp = (h / 60.0) % 6.0;
+    let x = c * (1.0 - ((hp % 2.0) - 1.0).abs());
+    let (r1, g1, b1) = if (0.0..1.0).contains(&hp) {
+        (c, x, 0.0)
+    } else if (1.0..2.0).contains(&hp) {
+        (x, c, 0.0)
+    } else if (2.0..3.0).contains(&hp) {
+        (0.0, c, x)
+    } else if (3.0..4.0).contains(&hp) {
+        (0.0, x, c)
+    } else if (4.0..5.0).contains(&hp) {
+        (x, 0.0, c)
+    } else {
+        (c, 0.0, x)
+    };
+    let m = l - c / 2.0;
+    let r = ((r1 + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+    let g = ((g1 + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+    let b = ((b1 + m) * 255.0).round().clamp(0.0, 255.0) as u8;
+    format!("#{:02x}{:02x}{:02x}", r, g, b)
+}
+
 pub(crate) fn project_color_for_name(name: &str) -> String {
-    let palette = [
-        "#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee",
-    ];
-    let idx = name
+    let hash = name
         .bytes()
-        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32)) as usize
-        % palette.len();
-    palette[idx].to_string()
+        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
+    let hue = (hash % 360) as f64;
+    let sat = 0.62 + ((hash >> 9) % 18) as f64 / 100.0; // 0.62..0.79
+    let light = 0.52 + ((hash >> 17) % 14) as f64 / 100.0; // 0.52..0.65
+    hsl_to_hex(hue, sat.min(0.82), light.min(0.68))
 }
 
 pub(crate) fn project_exists_by_name(conn: &rusqlite::Connection, name: &str) -> bool {

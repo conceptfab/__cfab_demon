@@ -188,6 +188,18 @@ export function Dashboard() {
     return { sessionCount: unassigned.length, appCount: apps.size, seconds };
   }, [todaySessions]);
   const timelineGranularity: "hour" | "day" = timePreset === "today" ? "hour" : "day";
+  const projectTimelineSeriesLimit = useMemo(() => {
+    switch (timePreset) {
+      case "all":
+        return 12;
+      case "month":
+        return 10;
+      case "week":
+        return 8;
+      default:
+        return 5;
+    }
+  }, [timePreset]);
 
   const handleAssignSession = useCallback(
     async (sessionId: number, projectId: number | null) => {
@@ -220,7 +232,7 @@ export function Dashboard() {
       getProjects(),
       getTopProjects(dateRange, 5),
       getDashboardProjects(dateRange),
-      getProjectTimeline(dateRange, 5, timelineGranularity),
+      getProjectTimeline(dateRange, projectTimelineSeriesLimit, timelineGranularity),
       timePreset === "today"
         ? getSessions({ dateRange, limit: 500, offset: 0 })
         : Promise.resolve([] as SessionWithApp[]),
@@ -259,7 +271,7 @@ export function Dashboard() {
         }
 
       });
-  }, [dateRange, refreshKey, timelineGranularity, timePreset]);
+  }, [dateRange, refreshKey, timelineGranularity, timePreset, projectTimelineSeriesLimit]);
 
   useEffect(() => {
     setWorkingHours(loadWorkingHoursSettings());
@@ -392,6 +404,7 @@ export function Dashboard() {
           projectColors={projectColorMap}
           granularity={timelineGranularity}
           dateRange={dateRange}
+          trimLeadingToFirstData={timePreset === "all"}
           heightClassName="h-[26rem]"
         />
       )}

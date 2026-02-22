@@ -24,6 +24,7 @@ import {
   getDetectedProjects,
   autoCreateProjectsFromDetection,
   resetProjectTime,
+  getDemoModeStatus,
 } from "@/lib/tauri";
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
 import { formatDuration, formatPathForDisplay } from "@/lib/utils";
@@ -48,6 +49,14 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function inferDetectedProjectName(fileName: string): string {
+  const trimmed = fileName.trim();
+  if (!trimmed) return fileName;
+  const parts = trimmed.split(" - ");
+  const candidate = parts[parts.length - 1]?.trim();
+  return candidate || trimmed;
+}
+
 export function Projects() {
   const { refreshKey, triggerRefresh } = useAppStore();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
@@ -64,6 +73,7 @@ export function Projects() {
   const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>([]);
   const [folderCandidates, setFolderCandidates] = useState<FolderProjectCandidate[]>([]);
   const [detectedProjects, setDetectedProjects] = useState<DetectedProject[]>([]);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [newFolderPath, setNewFolderPath] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -140,7 +150,8 @@ export function Projects() {
       getProjectFolders(),
       getFolderProjectCandidates(),
       getDetectedProjects({ start: "2020-01-01", end: "2100-01-01" }),
-    ]).then(([projectsRes, excludedRes, appsRes, foldersRes, candidatesRes, detectedRes]) => {
+      getDemoModeStatus(),
+    ]).then(([projectsRes, excludedRes, appsRes, foldersRes, candidatesRes, detectedRes, demoModeRes]) => {
       if (projectsRes.status === "fulfilled") setProjects(projectsRes.value);
       else console.error("Failed to load projects:", projectsRes.reason);
 
@@ -161,6 +172,9 @@ export function Projects() {
 
       if (detectedRes.status === "fulfilled") setDetectedProjects(detectedRes.value);
       else console.error("Failed to load detected projects:", detectedRes.reason);
+
+      if (demoModeRes.status === "fulfilled") setIsDemoMode(demoModeRes.value.enabled);
+      else console.error("Failed to load demo mode status:", demoModeRes.reason);
     });
   }, [refreshKey]);
 
@@ -344,6 +358,55 @@ export function Projects() {
     );
   }, [folderCandidates, projects, excludedProjects]);
   const hiddenRegisteredFolderCandidatesCount = folderCandidates.length - visibleFolderCandidates.length;
+
+  const detectedCandidatesView = useMemo(() => {
+    const existingNames = new Set(projects.map((p) => p.name.toLowerCase()));
+    const excludedNames = new Set(excludedProjects.map((p) => p.name.toLowerCase()));
+    const seenCandidateNames = new Set<string>();
+
+    const visible: Array<
+      DetectedProject & {
+        inferredProjectName: string;
+      }
+    > = [];
+    let hiddenExisting = 0;
+    let hiddenExcluded = 0;
+    let hiddenDuplicates = 0;
+
+    for (const d of detectedProjects) {
+      const inferredProjectName = inferDetectedProjectName(d.file_name);
+      const key = inferredProjectName.toLowerCase();
+
+      if (existingNames.has(key)) {
+        hiddenExisting += 1;
+        continue;
+      }
+      if (excludedNames.has(key)) {
+        hiddenExcluded += 1;
+        continue;
+      }
+      if (seenCandidateNames.has(key)) {
+        hiddenDuplicates += 1;
+        continue;
+      }
+
+      seenCandidateNames.add(key);
+      visible.push({ ...d, inferredProjectName });
+    }
+
+    const cap = isDemoMode ? 8 : visible.length;
+    const visibleCapped = visible.slice(0, cap);
+    const hiddenOverflow = Math.max(0, visible.length - visibleCapped.length);
+
+    return {
+      visible: visibleCapped,
+      hiddenExisting,
+      hiddenExcluded,
+      hiddenDuplicates,
+      hiddenOverflow,
+      totalCandidateCount: visible.length,
+    };
+  }, [detectedProjects, projects, excludedProjects, isDemoMode]);
 
   const projectsByFolder = useMemo(() => {
     const rootByProjectName = new Map<string, string>();
@@ -795,35 +858,64 @@ export function Projects() {
         </CardHeader>
         {sectionOpen.detected && (
         <CardContent className="space-y-3">
-          {detectedProjects.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No detected projects</p>
+          {detectedCandidatesView.visible.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {detectedProjects.length === 0
+                ? "No detected projects"
+                : "No candidate projects (detected items already match existing/excluded projects)."}
+            </p>
           ) : (
             <div className="max-h-52 space-y-1 overflow-y-auto">
-              {detectedProjects.map((d) => {
-                const exists = projects.some((p) => p.name.toLowerCase() === d.file_name.toLowerCase());
-                const excluded = excludedProjects.some((p) => p.name.toLowerCase() === d.file_name.toLowerCase());
+              {detectedCandidatesView.visible.map((d) => {
                 return (
                   <div key={d.file_name} className="flex items-center justify-between gap-2 text-xs py-1">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{d.file_name}</p>
+                      <p className="truncate font-medium">{d.inferredProjectName}</p>
                       <p className="truncate text-muted-foreground">
                         {d.occurrence_count} opens · {formatDuration(d.total_seconds)}
                       </p>
+                      {d.inferredProjectName !== d.file_name && (
+                        <p className="truncate text-muted-foreground/80" title={d.file_name}>
+                          from: {d.file_name}
+                        </p>
+                      )}
                     </div>
-                    {exists ? (
-                      <Badge variant="secondary">Exists</Badge>
-                    ) : excluded ? (
-                      <Badge variant="secondary">Excluded</Badge>
-                    ) : (
-                      <Badge variant="outline">Candidate</Badge>
-                    )}
+                    <Badge variant="outline">Candidate</Badge>
                   </div>
                 );
               })}
             </div>
           )}
+          {(detectedCandidatesView.hiddenExisting > 0 ||
+            detectedCandidatesView.hiddenExcluded > 0 ||
+            detectedCandidatesView.hiddenDuplicates > 0 ||
+            detectedCandidatesView.hiddenOverflow > 0) && (
+            <p className="text-xs text-muted-foreground">
+              Hidden:
+              {" "}
+              {detectedCandidatesView.hiddenExisting > 0 && `${detectedCandidatesView.hiddenExisting} existing`}
+              {detectedCandidatesView.hiddenExisting > 0 &&
+                (detectedCandidatesView.hiddenExcluded > 0 ||
+                  detectedCandidatesView.hiddenDuplicates > 0 ||
+                  detectedCandidatesView.hiddenOverflow > 0) &&
+                " · "}
+              {detectedCandidatesView.hiddenExcluded > 0 && `${detectedCandidatesView.hiddenExcluded} excluded`}
+              {detectedCandidatesView.hiddenExcluded > 0 &&
+                (detectedCandidatesView.hiddenDuplicates > 0 || detectedCandidatesView.hiddenOverflow > 0) &&
+                " · "}
+              {detectedCandidatesView.hiddenDuplicates > 0 && `${detectedCandidatesView.hiddenDuplicates} duplicate names`}
+              {detectedCandidatesView.hiddenDuplicates > 0 && detectedCandidatesView.hiddenOverflow > 0 && " · "}
+              {detectedCandidatesView.hiddenOverflow > 0 &&
+                `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? " (demo cap)" : ""}`}
+            </p>
+          )}
           <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={handleAutoCreateDetected} disabled={busy === "auto-detect"}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAutoCreateDetected}
+              disabled={busy === "auto-detect" || detectedCandidatesView.totalCandidateCount === 0}
+            >
               <Wand2 className="mr-1.5 h-3.5 w-3.5" />
               Auto-create detected projects
             </Button>

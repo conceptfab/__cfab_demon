@@ -419,10 +419,13 @@ pub async fn get_project_timeline(
         .take(limit)
         .map(|(name, _)| name)
         .collect();
+    let selected_set: std::collections::HashSet<&str> =
+        selected_projects.iter().map(|s| s.as_str()).collect();
 
     let mut output = Vec::with_capacity(bucket_project_seconds.len());
     for (bucket, sec_map) in bucket_project_seconds {
         let mut data: HashMap<String, i64> = HashMap::new();
+        let mut other_seconds = 0i64;
         for project_name in &selected_projects {
             if let Some(seconds) = sec_map.get(project_name) {
                 let rounded = seconds.round() as i64;
@@ -430,6 +433,18 @@ pub async fn get_project_timeline(
                     data.insert(project_name.clone(), rounded);
                 }
             }
+        }
+        for (project_name, seconds) in &sec_map {
+            if selected_set.contains(project_name.as_str()) {
+                continue;
+            }
+            let rounded = seconds.round() as i64;
+            if rounded > 0 {
+                other_seconds += rounded;
+            }
+        }
+        if other_seconds > 0 {
+            data.insert("Other".to_string(), other_seconds);
         }
         output.push(StackedBarData { date: bucket, data });
     }

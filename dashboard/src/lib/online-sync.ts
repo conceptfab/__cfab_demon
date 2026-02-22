@@ -8,8 +8,11 @@ export const ONLINE_SYNC_SETTINGS_CHANGED_EVENT = "timeflow:online-sync-settings
 const LEGACY_ONLINE_SYNC_SETTINGS_KEY = "cfab.settings.online-sync";
 const LEGACY_ONLINE_SYNC_STATE_KEY = "cfab.sync.state";
 const LEGACY_ONLINE_SYNC_SETTINGS_CHANGED_EVENT = "cfab:online-sync-settings-changed";
-export const DEFAULT_ONLINE_SYNC_SERVER_URL =
+const LEGACY_DEFAULT_ONLINE_SYNC_SERVER_URL = "https://cfabserver-production.up.railway.app";
+const PLACEHOLDER_TIMEFLOW_ONLINE_SYNC_SERVER_URL =
   "https://timeflowserver-production.up.railway.app";
+export const DEFAULT_ONLINE_SYNC_SERVER_URL =
+  LEGACY_DEFAULT_ONLINE_SYNC_SERVER_URL;
 
 export interface OnlineSyncSettings {
   enabled: boolean;
@@ -195,7 +198,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeServerUrl(input: unknown): string {
   if (typeof input !== "string") return "";
-  return input.trim().replace(/\/+$/, "");
+  const normalized = input.trim().replace(/\/+$/, "");
+  // Compatibility: early TimeFlow rebrand builds used a placeholder host before DNS/deploy was ready.
+  if (normalized === PLACEHOLDER_TIMEFLOW_ONLINE_SYNC_SERVER_URL) {
+    return LEGACY_DEFAULT_ONLINE_SYNC_SERVER_URL;
+  }
+  return normalized;
 }
 
 function normalizeApiToken(input: unknown): string {
