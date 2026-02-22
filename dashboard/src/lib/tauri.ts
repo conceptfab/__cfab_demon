@@ -33,6 +33,7 @@ import type {
   ManualSessionWithProject,
   ImportValidation,
   ImportSummary,
+  ExportArchive,
 } from "./db-types";
 
 function hasTauriRuntime(): boolean {
@@ -283,8 +284,17 @@ export const exportData = (
   dateEnd?: string
 ) => invoke<string>("export_data", { projectId, dateStart, dateEnd });
 
+export const exportDataArchive = (
+  projectId?: number,
+  dateStart?: string,
+  dateEnd?: string
+) => invoke<ExportArchive>("export_data_archive", { projectId, dateStart, dateEnd });
+
 export const validateImport = (archivePath: string) =>
   invoke<ImportValidation>("validate_import", { archivePath });
 
 export const importData = (archivePath: string) =>
   invoke<ImportSummary>("import_data", { archivePath });
+
+export const importDataArchive = (archive: ExportArchive) =>
+  invoke<ImportSummary>("import_data_archive", { archive });

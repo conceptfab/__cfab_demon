@@ -14,6 +14,16 @@ import {
   saveSessionSettings,
   type SessionSettings,
 } from "@/lib/user-settings";
+import {
+  DEFAULT_ONLINE_SYNC_SERVER_URL,
+  loadOnlineSyncState,
+  loadOnlineSyncSettings,
+  runOnlineSyncOnce,
+  saveOnlineSyncSettings,
+  type OnlineSyncSettings,
+  type OnlineSyncRunResult,
+  type OnlineSyncState,
+} from "@/lib/online-sync";
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
@@ -32,9 +42,17 @@ export function Settings() {
     loadWorkingHoursSettings()
   );
   const [sessionSettings, setSessionSettings] = useState<SessionSettings>(() => loadSessionSettings());
+  const [onlineSyncSettings, setOnlineSyncSettings] = useState<OnlineSyncSettings>(() =>
+    loadOnlineSyncSettings()
+  );
   const [workingHoursError, setWorkingHoursError] = useState<string | null>(null);
   const [savedSettings, setSavedSettings] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [manualSyncing, setManualSyncing] = useState(false);
+  const [manualSyncResult, setManualSyncResult] = useState<OnlineSyncRunResult | null>(null);
+  const [onlineSyncState, setOnlineSyncState] = useState<OnlineSyncState>(() =>
+    loadOnlineSyncState()
+  );
 
   const labelClassName = "text-sm font-medium text-muted-foreground";
   const compactSelectClassName =
@@ -76,9 +94,11 @@ export function Settings() {
       color: normalizedColor,
     });
     const savedSession = saveSessionSettings(sessionSettings);
+    const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
 
     setWorkingHours(savedWorking);
     setSessionSettings(savedSession);
+    setOnlineSyncSettings(savedOnlineSync);
     setWorkingHoursError(null);
     setSavedSettings(true);
     triggerRefresh();
@@ -113,6 +133,41 @@ export function Settings() {
       setClearing(false);
     }
   };
+
+  const handleSyncNow = async () => {
+    setManualSyncing(true);
+    setManualSyncResult(null);
+    try {
+      // Persist only online sync settings before running manual sync.
+      const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
+      setOnlineSyncSettings(savedOnlineSync);
+
+      const result = await runOnlineSyncOnce({ ignoreStartupToggle: true });
+      setManualSyncResult(result);
+      setOnlineSyncState(loadOnlineSyncState());
+
+      if (result.ok && result.action === "pull") {
+        triggerRefresh();
+      }
+    } catch (e) {
+      setManualSyncResult({
+        ok: false,
+        action: "none",
+        reason: "sync_failed",
+        serverRevision: onlineSyncState.serverRevision,
+        error: String(e),
+      });
+    } finally {
+      setManualSyncing(false);
+    }
+  };
+
+  const lastSyncLabel = onlineSyncState.lastSyncAt
+    ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
+    : "Never";
+  const shortHash = onlineSyncState.serverHash
+    ? `${onlineSyncState.serverHash.slice(0, 12)}...`
+    : "n/a";
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
@@ -275,6 +330,167 @@ export function Settings() {
               <TimerReset className="mr-2 h-4 w-4" />
               {rebuilding ? "Rebuilding..." : "Rebuild"}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold">Online Sync (MVP)</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Startup synchronization with remote server using snapshot push/pull.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label
+            htmlFor="onlineSyncEnabled"
+            className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Enable online sync</p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                Allows the dashboard to exchange data snapshots with the sync server.
+              </p>
+            </div>
+            <input
+              id="onlineSyncEnabled"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={onlineSyncSettings.enabled}
+              onChange={(e) => {
+                setOnlineSyncSettings((prev) => ({ ...prev, enabled: e.target.checked }));
+                setSavedSettings(false);
+              }}
+            />
+          </label>
+
+          <label
+            htmlFor="onlineSyncOnStartup"
+            className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Sync on startup</p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                Runs <code>status -&gt; pull/push</code> after local auto-import finishes.
+              </p>
+            </div>
+            <input
+              id="onlineSyncOnStartup"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={onlineSyncSettings.autoSyncOnStartup}
+              onChange={(e) => {
+                setOnlineSyncSettings((prev) => ({ ...prev, autoSyncOnStartup: e.target.checked }));
+                setSavedSettings(false);
+              }}
+            />
+          </label>
+
+          <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
+            <label className="grid gap-1.5 text-sm">
+              <span className={labelClassName}>Server URL</span>
+              <input
+                type="text"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                placeholder={DEFAULT_ONLINE_SYNC_SERVER_URL}
+                value={onlineSyncSettings.serverUrl}
+                onChange={(e) => {
+                  setOnlineSyncSettings((prev) => ({ ...prev, serverUrl: e.target.value }));
+                  setSavedSettings(false);
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => {
+                    setOnlineSyncSettings((prev) => ({
+                      ...prev,
+                      serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
+                    }));
+                    setSavedSettings(false);
+                  }}
+                >
+                  Use Railway Default
+                </Button>
+                <span className="text-xs text-muted-foreground break-all">
+                  {DEFAULT_ONLINE_SYNC_SERVER_URL}
+                </span>
+              </div>
+            </label>
+
+            <label className="grid gap-1.5 text-sm">
+              <span className={labelClassName}>User ID</span>
+              <input
+                type="text"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                placeholder="np. demo-user / email / UUID"
+                value={onlineSyncSettings.userId}
+                onChange={(e) => {
+                  setOnlineSyncSettings((prev) => ({ ...prev, userId: e.target.value }));
+                  setSavedSettings(false);
+                }}
+              />
+            </label>
+
+            <div className="grid gap-1.5 text-sm">
+              <span className={labelClassName}>Device ID</span>
+              <div className="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs break-all">
+                {onlineSyncSettings.deviceId || "(generated on save)"}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Generated automatically and used to identify this machine during sync.
+              </p>
+            </div>
+
+            <div className="grid gap-3 rounded-md border border-border/70 bg-background/20 p-3 sm:grid-cols-[1fr_auto] sm:items-start">
+              <div className="min-w-0 space-y-2">
+                <div>
+                  <p className="text-sm font-medium">Last Sync Status</p>
+                  <p className="text-xs text-muted-foreground">
+                    Last successful check/sync: {lastSyncLabel}
+                  </p>
+                </div>
+
+                <div className="grid gap-1 text-xs text-muted-foreground">
+                  <div>
+                    Server revision:{" "}
+                    <span className="font-mono text-foreground">
+                      {onlineSyncState.serverRevision}
+                    </span>
+                  </div>
+                  <div>
+                    Server hash:{" "}
+                    <span className="font-mono text-foreground break-all">{shortHash}</span>
+                  </div>
+                </div>
+
+                {manualSyncResult && (
+                  <div
+                    className={
+                      manualSyncResult.ok
+                        ? "text-xs text-emerald-400"
+                        : "text-xs text-destructive"
+                    }
+                  >
+                    {manualSyncResult.ok
+                      ? `Last manual sync: ${manualSyncResult.action} (${manualSyncResult.reason})`
+                      : `Last manual sync failed: ${manualSyncResult.error ?? manualSyncResult.reason}`}
+                  </div>
+                )}
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-fit"
+                onClick={handleSyncNow}
+                disabled={manualSyncing}
+              >
+                {manualSyncing ? "Syncing..." : "Sync now"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

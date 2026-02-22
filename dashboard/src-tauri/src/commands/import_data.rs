@@ -3,6 +3,7 @@ use super::types::{ExportArchive, ImportSummary, ImportValidation, SessionConfli
 use crate::db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 #[tauri::command]
@@ -286,6 +287,27 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     tx.commit().map_err(|e| e.to_string())?;
 
     Ok(summary)
+}
+
+#[tauri::command]
+pub async fn import_data_archive(app: AppHandle, archive: ExportArchive) -> Result<ImportSummary, String> {
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let temp_path = std::env::temp_dir().join(format!(
+        "cfab-sync-import-{}-{}.json",
+        std::process::id(),
+        timestamp_ms
+    ));
+
+    let json = serde_json::to_string(&archive).map_err(|e| e.to_string())?;
+    fs::write(&temp_path, json).map_err(|e| e.to_string())?;
+
+    let temp_path_string = temp_path.to_string_lossy().to_string();
+    let result = import_data(app, temp_path_string).await;
+    let _ = fs::remove_file(&temp_path);
+    result
 }
 
 fn merge_or_insert_session(

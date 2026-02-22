@@ -9,15 +9,14 @@ use std::collections::HashMap;
 use std::fs;
 use tauri::AppHandle;
 
-#[tauri::command]
-pub async fn export_data(
-    app: AppHandle,
+fn build_export_archive(
+    app: &AppHandle,
     project_id: Option<i64>,
     date_start: Option<String>,
     date_end: Option<String>,
-) -> Result<String, String> {
+) -> Result<(ExportArchive, String), String> {
     let (archive, default_name) = {
-        let conn = db::get_connection(&app)?;
+        let conn = db::get_connection(app)?;
 
     // 1. Resolve date range
     let start = date_start.unwrap_or_else(|| "2000-01-01".to_string());
@@ -294,7 +293,19 @@ pub async fn export_data(
     (archive, default_name)
     };
 
-    // 8. Save dialog
+    Ok((archive, default_name))
+}
+
+#[tauri::command]
+pub async fn export_data(
+    app: AppHandle,
+    project_id: Option<i64>,
+    date_start: Option<String>,
+    date_end: Option<String>,
+) -> Result<String, String> {
+    let (archive, default_name) = build_export_archive(&app, project_id, date_start, date_end)?;
+
+    // Save dialog
     let path = AsyncFileDialog::new()
         .set_file_name(&default_name)
         .add_filter("JSON", &["json"])
@@ -308,4 +319,15 @@ pub async fn export_data(
     } else {
         Err("Export cancelled".to_string())
     }
+}
+
+#[tauri::command]
+pub async fn export_data_archive(
+    app: AppHandle,
+    project_id: Option<i64>,
+    date_start: Option<String>,
+    date_end: Option<String>,
+) -> Result<ExportArchive, String> {
+    let (archive, _default_name) = build_export_archive(&app, project_id, date_start, date_end)?;
+    Ok(archive)
 }

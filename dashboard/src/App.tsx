@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense, useEffect } from "react";
+import { Component, lazy, Suspense, useEffect, useRef } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -12,6 +12,7 @@ import {
   syncProjectsFromFolders,
   rebuildSessions,
 } from "@/lib/tauri";
+import { runOnlineSyncOnce } from "@/lib/online-sync";
 import { loadSessionSettings } from "@/lib/user-settings";
 import { Dashboard } from "@/pages/Dashboard";
 
@@ -233,6 +234,45 @@ function AutoSessionRebuild() {
   return null;
 }
 
+function AutoOnlineSync() {
+  const autoImportDone = useAppStore((s) => s.autoImportDone);
+  const triggerRefresh = useAppStore((s) => s.triggerRefresh);
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (!autoImportDone || startedRef.current) return;
+    startedRef.current = true;
+
+    const run = async () => {
+      const result = await runOnlineSyncOnce();
+      if (result.skipped) {
+        if (result.reason !== "disabled") {
+          console.log(`Online sync skipped: ${result.reason}`);
+        }
+        return;
+      }
+
+      if (!result.ok) {
+        console.warn("Online sync failed:", result.error ?? result.reason);
+        return;
+      }
+
+      if (result.action === "pull") {
+        console.log("Online sync: pulled newer snapshot from server");
+        triggerRefresh();
+      } else if (result.action === "push") {
+        console.log("Online sync: pushed local snapshot to server");
+      } else if (result.action === "noop") {
+        console.log("Online sync: no changes to push");
+      }
+    };
+
+    void run();
+  }, [autoImportDone, triggerRefresh]);
+
+  return null;
+}
+
 class ErrorBoundary extends Component<
   { children: ReactNode },
   { error: Error | null }
@@ -277,6 +317,7 @@ export default function App() {
           <AutoRefresher />
           <AutoProjectSync />
           <AutoSessionRebuild />
+          <AutoOnlineSync />
           <MainLayout>
             <PageRouter />
           </MainLayout>

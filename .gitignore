@@ -12,6 +12,7 @@ venv/
 
 # Node (root level)
 node_modules/
+__cfab_server/
 
 # Logs
 *.log
