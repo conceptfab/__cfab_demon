@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { TimerReset } from "lucide-react";
+import { Eye, EyeOff, TimerReset } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { clearAllData, rebuildSessions } from "@/lib/tauri";
@@ -53,6 +53,7 @@ export function Settings() {
   const [onlineSyncState, setOnlineSyncState] = useState<OnlineSyncState>(() =>
     loadOnlineSyncState()
   );
+  const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
 
   const labelClassName = "text-sm font-medium text-muted-foreground";
   const compactSelectClassName =
@@ -386,6 +387,36 @@ export function Settings() {
             />
           </label>
 
+          <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Auto sync interval</p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                Periodic sync after app startup. Default is every 30 minutes.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={1440}
+                step={1}
+                className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                value={onlineSyncSettings.autoSyncIntervalMinutes}
+                onChange={(e) => {
+                  const nextValue = Number.parseInt(e.target.value, 10);
+                  setOnlineSyncSettings((prev) => ({
+                    ...prev,
+                    autoSyncIntervalMinutes: Number.isFinite(nextValue)
+                      ? Math.min(1440, Math.max(1, nextValue))
+                      : prev.autoSyncIntervalMinutes,
+                  }));
+                  setSavedSettings(false);
+                }}
+              />
+              <span className="text-sm text-muted-foreground">min</span>
+            </div>
+          </div>
+
           <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
             <label className="grid gap-1.5 text-sm">
               <span className={labelClassName}>Server URL</span>
@@ -436,19 +467,35 @@ export function Settings() {
 
             <label className="grid gap-1.5 text-sm">
               <span className={labelClassName}>API Token (Bearer)</span>
-              <input
-                type="password"
-                autoComplete="off"
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                placeholder="Token przypisany do User ID na serwerze"
-                value={onlineSyncSettings.apiToken}
-                onChange={(e) => {
-                  setOnlineSyncSettings((prev) => ({ ...prev, apiToken: e.target.value }));
-                  setSavedSettings(false);
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type={showOnlineSyncToken ? "text" : "password"}
+                  autoComplete="off"
+                  className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  placeholder="Wklej sam token (bez 'Bearer ' i bez cudzyslowow)"
+                  value={onlineSyncSettings.apiToken}
+                  onChange={(e) => {
+                    setOnlineSyncSettings((prev) => ({ ...prev, apiToken: e.target.value }));
+                    setSavedSettings(false);
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 w-10 px-0"
+                  onClick={() => setShowOnlineSyncToken((prev) => !prev)}
+                  aria-label={showOnlineSyncToken ? "Ukryj token" : "Pokaz token"}
+                  title={showOnlineSyncToken ? "Ukryj token" : "Pokaz token"}
+                >
+                  {showOnlineSyncToken ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
-                Required on Railway/production when sync server uses token auth.
+                Required on Railway/production. Wpisz sam token, aplikacja sama doda naglowek Bearer.
               </p>
             </label>
 

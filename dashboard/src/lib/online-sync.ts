@@ -3,12 +3,14 @@ import { exportDataArchive, importDataArchive } from "@/lib/tauri";
 
 const ONLINE_SYNC_SETTINGS_KEY = "cfab.settings.online-sync";
 const ONLINE_SYNC_STATE_KEY = "cfab.sync.state";
+export const ONLINE_SYNC_SETTINGS_CHANGED_EVENT = "cfab:online-sync-settings-changed";
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
   "https://cfabserver-production.up.railway.app";
 
 export interface OnlineSyncSettings {
   enabled: boolean;
   autoSyncOnStartup: boolean;
+  autoSyncIntervalMinutes: number;
   serverUrl: string;
   userId: string;
   apiToken: string;
@@ -85,6 +87,7 @@ interface SyncPullResponse {
 const DEFAULT_ONLINE_SYNC_SETTINGS: OnlineSyncSettings = {
   enabled: false,
   autoSyncOnStartup: true,
+  autoSyncIntervalMinutes: 30,
   serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
   userId: "",
   apiToken: "",
@@ -112,6 +115,31 @@ function normalizeServerUrl(input: unknown): string {
   return input.trim().replace(/\/+$/, "");
 }
 
+function normalizeApiToken(input: unknown): string {
+  if (typeof input !== "string") return "";
+  let value = input.trim();
+
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1).trim();
+  }
+
+  if (/^bearer\s+/i.test(value)) {
+    value = value.replace(/^bearer\s+/i, "").trim();
+  }
+
+  return value;
+}
+
+function normalizeAutoSyncIntervalMinutes(input: unknown): number {
+  if (typeof input !== "number" || !Number.isFinite(input)) {
+    return DEFAULT_ONLINE_SYNC_SETTINGS.autoSyncIntervalMinutes;
+  }
+  return Math.min(1440, Math.max(1, Math.round(input)));
+}
+
 function generateDeviceId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -133,6 +161,11 @@ function readJsonStorage<T>(key: string): Partial<T> | null {
 function writeJsonStorage<T>(key: string, value: T): void {
   if (!hasWindow()) return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function emitOnlineSyncSettingsChanged(): void {
+  if (!hasWindow()) return;
+  window.dispatchEvent(new CustomEvent(ONLINE_SYNC_SETTINGS_CHANGED_EVENT));
 }
 
 function shortHash(hash: string | null): string {
@@ -277,10 +310,11 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
       typeof parsed?.autoSyncOnStartup === "boolean"
         ? parsed.autoSyncOnStartup
         : DEFAULT_ONLINE_SYNC_SETTINGS.autoSyncOnStartup,
+    autoSyncIntervalMinutes: normalizeAutoSyncIntervalMinutes(parsed?.autoSyncIntervalMinutes),
     serverUrl:
       normalizeServerUrl(parsed?.serverUrl) || DEFAULT_ONLINE_SYNC_SETTINGS.serverUrl,
     userId: typeof parsed?.userId === "string" ? parsed.userId.trim() : "",
-    apiToken: typeof parsed?.apiToken === "string" ? parsed.apiToken.trim() : "",
+    apiToken: normalizeApiToken(parsed?.apiToken),
     deviceId,
     requestTimeoutMs:
       typeof parsed?.requestTimeoutMs === "number" && Number.isFinite(parsed.requestTimeoutMs)
@@ -298,13 +332,16 @@ export function saveOnlineSyncSettings(next: Partial<OnlineSyncSettings>): Onlin
   const merged: OnlineSyncSettings = {
     ...current,
     ...next,
+    autoSyncIntervalMinutes: normalizeAutoSyncIntervalMinutes(
+      next.autoSyncIntervalMinutes ?? current.autoSyncIntervalMinutes,
+    ),
     serverUrl:
       normalizeServerUrl(next.serverUrl ?? current.serverUrl) ||
       DEFAULT_ONLINE_SYNC_SETTINGS.serverUrl,
     userId: typeof (next.userId ?? current.userId) === "string" ? String(next.userId ?? current.userId).trim() : current.userId,
     apiToken:
       typeof (next.apiToken ?? current.apiToken) === "string"
-        ? String(next.apiToken ?? current.apiToken).trim()
+        ? normalizeApiToken(next.apiToken ?? current.apiToken)
         : current.apiToken,
     deviceId:
       typeof (next.deviceId ?? current.deviceId) === "string" && String(next.deviceId ?? current.deviceId).trim()
@@ -316,6 +353,7 @@ export function saveOnlineSyncSettings(next: Partial<OnlineSyncSettings>): Onlin
         : current.requestTimeoutMs,
   };
   writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, merged);
+  emitOnlineSyncSettingsChanged();
   refreshIndicatorFromStorage();
   return merged;
 }

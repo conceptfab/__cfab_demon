@@ -12,7 +12,11 @@ import {
   syncProjectsFromFolders,
   rebuildSessions,
 } from "@/lib/tauri";
-import { runOnlineSyncOnce } from "@/lib/online-sync";
+import {
+  ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
+  loadOnlineSyncSettings,
+  runOnlineSyncOnce,
+} from "@/lib/online-sync";
 import { loadSessionSettings } from "@/lib/user-settings";
 import { Dashboard } from "@/pages/Dashboard";
 
@@ -237,37 +241,116 @@ function AutoSessionRebuild() {
 function AutoOnlineSync() {
   const autoImportDone = useAppStore((s) => s.autoImportDone);
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
-  const startedRef = useRef(false);
+  const startupAttemptedRef = useRef(false);
+  const runningRef = useRef(false);
+  const timerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!autoImportDone || startedRef.current) return;
-    startedRef.current = true;
+    if (!autoImportDone) return;
 
-    const run = async () => {
-      const result = await runOnlineSyncOnce();
+    let disposed = false;
+    type SyncRunResult = Awaited<ReturnType<typeof runOnlineSyncOnce>>;
+
+    const clearTimer = () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
+    const handleResult = async (resultPromise: Promise<SyncRunResult>, source: "startup" | "interval") => {
+      if (runningRef.current) {
+        return;
+      }
+
+      runningRef.current = true;
+      let result: SyncRunResult;
+      try {
+        result = await resultPromise;
+      } finally {
+        runningRef.current = false;
+      }
+
+      if (disposed) return;
       if (result.skipped) {
         if (result.reason !== "disabled") {
-          console.log(`Online sync skipped: ${result.reason}`);
+          console.log(`Online sync (${source}) skipped: ${result.reason}`);
         }
         return;
       }
 
       if (!result.ok) {
-        console.warn("Online sync failed:", result.error ?? result.reason);
+        console.warn(`Online sync (${source}) failed:`, result.error ?? result.reason);
         return;
       }
 
       if (result.action === "pull") {
-        console.log("Online sync: pulled newer snapshot from server");
+        console.log(`Online sync (${source}): pulled newer snapshot from server`);
         triggerRefresh();
       } else if (result.action === "push") {
-        console.log("Online sync: pushed local snapshot to server");
+        console.log(`Online sync (${source}): pushed local snapshot to server`);
       } else if (result.action === "noop") {
-        console.log("Online sync: no changes to push");
+        console.log(`Online sync (${source}): no changes to push`);
       }
     };
 
-    void run();
+    const runOnce = async (source: "startup" | "interval") => {
+      try {
+        if (source === "startup") {
+          await handleResult(runOnlineSyncOnce(), source);
+          return;
+        }
+
+        await handleResult(runOnlineSyncOnce({ ignoreStartupToggle: true }), source);
+      } catch (error) {
+        runningRef.current = false;
+        if (!disposed) {
+          console.warn(`Online sync (${source}) failed:`, String(error));
+        }
+      }
+    };
+
+    const scheduleNextIntervalSync = () => {
+      clearTimer();
+      if (disposed) return;
+
+      const settings = loadOnlineSyncSettings();
+      if (!settings.enabled) {
+        return;
+      }
+
+      const delayMs = Math.max(1, settings.autoSyncIntervalMinutes) * 60_000;
+      timerRef.current = window.setTimeout(() => {
+        void (async () => {
+          await runOnce("interval");
+          scheduleNextIntervalSync();
+        })();
+      }, delayMs);
+    };
+
+    const bootstrap = async () => {
+      if (!startupAttemptedRef.current) {
+        startupAttemptedRef.current = true;
+        await runOnce("startup");
+      }
+      scheduleNextIntervalSync();
+    };
+
+    void bootstrap();
+
+    const reschedule = () => {
+      // Re-read settings after local changes and move the next tick to the new interval.
+      scheduleNextIntervalSync();
+    };
+    window.addEventListener("focus", reschedule);
+    window.addEventListener(ONLINE_SYNC_SETTINGS_CHANGED_EVENT, reschedule);
+
+    return () => {
+      disposed = true;
+      clearTimer();
+      window.removeEventListener("focus", reschedule);
+      window.removeEventListener(ONLINE_SYNC_SETTINGS_CHANGED_EVENT, reschedule);
+    };
   }, [autoImportDone, triggerRefresh]);
 
   return null;
