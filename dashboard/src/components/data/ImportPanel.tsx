@@ -8,7 +8,6 @@ import { useAppStore } from "@/store/app-store";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
-const labelClassName = "text-sm font-medium text-muted-foreground";
 
 export function ImportPanel() {
   const [archivePath, setArchivePath] = useState<string | null>(null);
@@ -72,16 +71,18 @@ export function ImportPanel() {
       </CardHeader>
       <CardContent className="space-y-6">
         {!validation && !summary && (
-          <div className="border-2 border-dashed rounded-lg p-12 text-center space-y-4 hover:bg-accent/50 transition-colors cursor-pointer" 
+          <div className="border border-dashed rounded-lg p-3 flex items-center gap-4 hover:bg-accent/40 transition-colors cursor-pointer" 
                onClick={selectFile}>
-            <div className="flex justify-center">
-              <FileJson className="h-12 w-12 text-muted-foreground opacity-50" />
+            <div className="bg-accent/50 p-2 rounded-md">
+              <FileJson className="h-5 w-5 text-muted-foreground" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">Click to pick a .json file</p>
-              <p className="text-xs text-muted-foreground mt-1">Supported formats: timeflow-export-*.json</p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Supported formats: timeflow-export-*.json</p>
             </div>
-            <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); selectFile(); }}>Select File</Button>
+            <Button variant="outline" size="sm" className="h-8" onClick={(e) => { e.stopPropagation(); selectFile(); }}>
+              Select File
+            </Button>
           </div>
         )}
 

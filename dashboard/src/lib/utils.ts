@@ -14,6 +14,14 @@ export function formatDuration(seconds: number): string {
   return `${s}s`;
 }
 
+export function formatDurationSlim(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  if (h > 0) return `${h}h`;
+  const m = Math.floor(seconds / 60);
+  if (m > 0) return `${m}m`;
+  return `${seconds}s`;
+}
+
 export function formatDurationLong(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
