@@ -236,14 +236,21 @@ The UI is consistently in English throughout.
 
 ---
 
-## 10. ARCHITECTURE NOTES
+## 10. ARCHITECTURE NOTES — DONE
 
 ### File size
-At 695 lines, `TimeAnalysis.tsx` is borderline for a single component. The three view modes (daily/weekly/monthly) with their data processing and rendering could be split into:
-- `TimeAnalysis.tsx` — toolbar, state, data fetching
-- `DailyView.tsx` — daily heatmap + bar chart
-- `WeeklyView.tsx` — weekly heatmap + bar chart
-- `MonthlyView.tsx` — calendar heatmap + bar chart
-- `useTimeAnalysisData.ts` — custom hook for data fetching/processing
+Original: 695 lines in a single file. Split into modular components:
 
-This would improve maintainability and reduce the cognitive load when modifying individual views.
+```
+components/time-analysis/
+  types.ts              — shared types (ProjectSlot, HourSlot, etc.) + helper functions
+  useTimeAnalysisData.ts — custom hook: state, fetching, all computed memos, export
+  DailyView.tsx          — DailyBarChart + DailyHeatmap components
+  WeeklyView.tsx         — WeeklyBarChart + WeeklyHeatmap components
+  MonthlyView.tsx        — MonthlyBarChart + MonthlyHeatmap components
+
+pages/
+  TimeAnalysis.tsx       — toolbar, pie chart, layout shell (~100 lines)
+```
+
+Each view component receives only the props it needs. The hook encapsulates all data logic.
