@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { MouseEvent } from "react";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -11,6 +12,7 @@ import {
   Power,
   Brain,
 } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
@@ -122,12 +124,26 @@ export function Sidebar() {
         .split(/\s+[·•]\s+/)
         .map((line) => line.trim())
         .filter(Boolean)
-    : [];
+      : [];
+
+  const handleSidebarDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    if (!hasTauriRuntime()) return;
+    void getCurrentWindow().startDragging().catch((error) => {
+      console.warn("Window dragging failed (permissions/capability?):", error);
+    });
+  };
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-56 flex-col border-r border-border/35 bg-background">
-      <div className="flex h-12 items-center border-b border-border/25 px-4">
-        <span className="text-sm font-semibold tracking-wide">TimeFlow</span>
+      <div
+        data-tauri-drag-region
+        className="flex h-12 select-none items-center border-b border-border/25 px-4"
+        onMouseDown={handleSidebarDragMouseDown}
+      >
+        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          TIMEFLOW
+        </span>
       </div>
 
       <nav className="flex-1 space-y-0.5 p-2">
@@ -191,5 +207,14 @@ export function Sidebar() {
       </div>
     </aside>
   );
+}
+
+function hasTauriRuntime(): boolean {
+  if (typeof window === "undefined") return false;
+  const win = window as Window & {
+    __TAURI__?: unknown;
+    __TAURI_INTERNALS__?: unknown;
+  };
+  return Boolean(win.__TAURI__ || win.__TAURI_INTERNALS__);
 }
 
