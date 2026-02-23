@@ -13,8 +13,8 @@ export type WeekDaySlot = {
   totalSeconds: number;
 };
 
-export type CalendarDay = { date: string; seconds: number; inMonth: boolean };
-export type CalendarWeek = { label: string; days: CalendarDay[] };
+export type CalendarDay = { date: string; seconds: number; inMonth: boolean; projects: ProjectSlot[] };
+export type CalendarWeek = { label: string; subLabel: string; days: CalendarDay[] };
 
 /** Parse StackedBarData[] into a date->hour->projects lookup */
 export function parseHourlyProjects(

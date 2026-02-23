@@ -1,5 +1,4 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_AXIS_COLOR,
@@ -15,41 +14,36 @@ interface DailyViewProps {
   dailyBarData: { data: Record<string, unknown>[]; projectNames: string[] };
   dailyTotalHours: number;
   stackedBarColorMap: Map<string, string>;
-  projectColors: Map<string, string>;
 }
 
 export function DailyBarChart({ dailyBarData, dailyTotalHours, stackedBarColorMap }: DailyViewProps) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">
-          {`Hourly Activity — ${dailyTotalHours.toFixed(1)}h total`}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dailyBarData.data}>
-              <XAxis dataKey="hour" stroke={CHART_AXIS_COLOR} fontSize={10} tickLine={false} axisLine={false} interval={2} />
-              <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
-              <Tooltip
-                contentStyle={TOOLTIP_CONTENT_STYLE}
-                labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
-                itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                formatter={(value, name) => [`${(Number(value) * 60).toFixed(0)}min`, name]}
-              />
-              {dailyBarData.projectNames.map((name) => (
-                <Bar key={name} dataKey={name} stackId="stack" fill={stackedBarColorMap.get(name) || PALETTE[0]} radius={[0, 0, 0, 0]} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col">
+      <h3 className="text-sm font-medium px-2 pb-4">
+        {`Hourly Activity — ${dailyTotalHours.toFixed(1)}h total`}
+      </h3>
+      <div className="h-64 px-2">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={dailyBarData.data}>
+            <XAxis dataKey="hour" stroke={CHART_AXIS_COLOR} fontSize={10} tickLine={false} axisLine={false} interval={2} />
+            <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
+            <Tooltip
+              contentStyle={TOOLTIP_CONTENT_STYLE}
+              labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+              itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
+              formatter={(value, name) => [`${(Number(value) * 60).toFixed(0)}min`, name]}
+            />
+            {dailyBarData.projectNames.map((name) => (
+              <Bar key={name} dataKey={name} stackId="stack" fill={stackedBarColorMap.get(name) || PALETTE[0]} radius={[0, 0, 0, 0]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
   );
 }
 
-export function DailyHeatmap({ dailyHourlyGrid, projectColors }: DailyViewProps) {
+export function DailyHeatmap({ dailyHourlyGrid }: DailyViewProps) {
   return (
     <div className="min-w-[600px]">
       {/* Hour labels */}
@@ -133,20 +127,6 @@ export function DailyHeatmap({ dailyHourlyGrid, projectColors }: DailyViewProps)
         ))}
       </div>
 
-      {/* Legend */}
-      {dailyHourlyGrid.allProjects.length > 0 && (
-        <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-3">
-          {dailyHourlyGrid.allProjects.map((name, i) => (
-            <div key={name} className="flex items-center gap-1.5 text-xs">
-              <div
-                className="h-2.5 w-2.5 rounded-sm"
-                style={{ backgroundColor: projectColors.get(name) || PALETTE[i % PALETTE.length] }}
-              />
-              <span className="text-muted-foreground">{name}</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

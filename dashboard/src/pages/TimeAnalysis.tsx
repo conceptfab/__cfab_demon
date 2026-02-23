@@ -1,6 +1,5 @@
-import { ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   TOOLTIP_CONTENT_STYLE,
@@ -19,7 +18,7 @@ export function TimeAnalysis() {
   return (
     <div className="space-y-6">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button variant={d.rangeMode === "daily" ? "default" : "ghost"} size="sm" onClick={() => d.setRangeMode("daily")}>Today</Button>
           <Button variant={d.rangeMode === "weekly" ? "default" : "ghost"} size="sm" onClick={() => d.setRangeMode("weekly")}>Week</Button>
@@ -33,9 +32,7 @@ export function TimeAnalysis() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={d.handleExport}>
-          <Download className="mr-2 h-4 w-4" /> Export CSV
-        </Button>
+
       </div>
 
       {/* Charts row */}
@@ -50,16 +47,24 @@ export function TimeAnalysis() {
         )}
 
         {/* Pie chart — Project Time Distribution */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Time Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64 flex items-center">
+        {/* Pie chart — Project Time Distribution */}
+        <div className="flex flex-col">
+          <h3 className="text-sm font-medium px-2 pb-4">Time Distribution</h3>
+          <div className="flex flex-row items-center justify-start gap-6 h-80 px-2 lg:pl-16">
+            <div className="flex-1 h-full max-w-[350px] -ml-24">
               {d.pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={d.pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2} dataKey="value">
+                    <Pie 
+                      data={d.pieData} 
+                      cx="50%" 
+                      cy="50%" 
+                      innerRadius={80} 
+                      outerRadius={125} 
+                      paddingAngle={2} 
+                      dataKey="value"
+                      stroke="none"
+                    >
                       {d.pieData.map((entry, i) => (
                         <Cell key={i} fill={entry.fill} />
                       ))}
@@ -76,30 +81,33 @@ export function TimeAnalysis() {
                 <p className="w-full text-center text-sm text-muted-foreground">No data</p>
               )}
             </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2.5 overflow-y-auto max-h-full pr-4 min-w-[200px]">
               {d.pieData.map((entry, i) => (
-                <div key={i} className="flex items-center gap-1 text-xs">
-                  <div className="h-2 w-2 rounded-full" style={{ backgroundColor: entry.fill }} />
-                  <span className="text-muted-foreground">{entry.name}</span>
+                <div key={i} className="flex items-center justify-between gap-4 text-[11px]">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: entry.fill }} />
+                    <span className="text-muted-foreground line-clamp-1 font-medium">{entry.name}</span>
+                  </div>
+                  <span className="text-muted-foreground/80 font-mono whitespace-nowrap">
+                    {formatDuration(entry.value)}
+                  </span>
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
 
       {/* Heatmap */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">
-            {d.rangeMode === "daily"
-              ? "Daily Project Timeline"
-              : d.rangeMode === "monthly"
-                ? "Monthly Calendar Heatmap"
-                : "Weekly Project Timeline"}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="flex flex-col">
+        <h3 className="text-sm font-medium px-2 pb-4">
+          {d.rangeMode === "daily"
+            ? "Daily Project Timeline"
+            : d.rangeMode === "monthly"
+              ? "Monthly Calendar Heatmap"
+              : "Weekly Project Timeline"}
+        </h3>
+        <div className="px-2">
           <div className="overflow-x-auto">
             {d.rangeMode === "daily" ? (
               <DailyHeatmap {...d} />
@@ -109,8 +117,8 @@ export function TimeAnalysis() {
               <WeeklyHeatmap {...d} />
             )}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

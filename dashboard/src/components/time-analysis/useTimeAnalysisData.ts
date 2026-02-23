@@ -4,11 +4,11 @@ import { getTimeline, getProjectTimeline, getProjects, getTopProjects } from "@/
 import {
   addDays, addMonths, subMonths, format, parseISO, subDays,
   startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
-  isBefore, isAfter,
+  isBefore, isAfter, getWeek,
 } from "date-fns";
 import type { DateRange, TimelinePoint, StackedBarData, ProjectTimeRow } from "@/lib/db-types";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
-import type { HourSlot, WeekDaySlot, CalendarWeek } from "./types";
+import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 
 export type RangeMode = "daily" | "weekly" | "monthly";
 
@@ -209,21 +209,44 @@ export function useTimeAnalysisData() {
     const timeMap = new Map<string, number>();
     for (const t of timeline) timeMap.set(t.date, t.seconds);
 
+    const projectPerRow = new Map<string, ProjectSlot[]>();
+    for (const row of hourlyProjects) {
+      const datePart = row.date.split("T")[0] || row.date;
+      const projects: ProjectSlot[] = [];
+      Object.entries(row).forEach(([name, val]) => {
+        if (name !== "date" && typeof val === "number" && val > 0) {
+          projects.push({
+            name,
+            seconds: val,
+            color: projectColors.get(name) || PALETTE[0],
+          });
+        }
+      });
+      projects.sort((a, b) => b.seconds - a.seconds);
+      projectPerRow.set(datePart, projects);
+    }
+
     let maxVal = 1;
     const weeks: CalendarWeek[] = weekStarts.map((ws) => {
       const we = endOfWeek(ws, { weekStartsOn: 1 });
-      const days: { date: string; seconds: number; inMonth: boolean }[] = [];
+      const days: CalendarDay[] = [];
       for (let d = ws; !isAfter(d, we); d = addDays(d, 1)) {
         const key = format(d, "yyyy-MM-dd");
         const sec = timeMap.get(key) || 0;
         const inMonth = !isBefore(d, mStart) && !isAfter(d, mEnd);
         if (sec > maxVal) maxVal = sec;
-        days.push({ date: key, seconds: sec, inMonth });
+        days.push({
+          date: key,
+          seconds: sec,
+          inMonth,
+          projects: projectPerRow.get(key) || [],
+        });
       }
-      return { label: format(ws, "MMM d"), days };
+      const weekNum = getWeek(ws, { weekStartsOn: 1 });
+      return { label: `W${weekNum}`, subLabel: format(ws, "MMM d"), days };
     });
     return { weeks, maxVal };
-  }, [rangeMode, activeDateRange, timeline]);
+  }, [rangeMode, activeDateRange, timeline, hourlyProjects, projectColors]);
 
   // Monthly total
   const monthTotalHours = useMemo(() => {
