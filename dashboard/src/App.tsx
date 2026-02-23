@@ -30,6 +30,7 @@ const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m
 const DaemonControl = lazy(() => import("@/pages/DaemonControl").then((m) => ({ default: m.DaemonControl })));
 const DataManagement = lazy(() => import("@/pages/Data").then((m) => ({ default: m.DataManagement })));
 const AIPage = lazy(() => import("@/pages/AI").then((m) => ({ default: m.AIPage })));
+const Help = lazy(() => import("@/pages/Help").then((m) => ({ default: m.Help })));
 
 function PageRouter() {
   const currentPage = useAppStore((s) => s.currentPage);
@@ -58,6 +59,8 @@ function PageRouter() {
         return <DaemonControl />;
       case "settings":
         return <Settings />;
+      case "help":
+        return <Help />;
       default:
         return <Dashboard />;
     }

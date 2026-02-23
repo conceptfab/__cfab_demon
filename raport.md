@@ -1,256 +1,313 @@
-# Time Analysis — Code Review Report
+# TimeFlow — Code Review Report
 
-## 1. HEATMAP — Strange Values — DONE
-
-### Root Cause (Critical Bug)
-
-The heatmaps display **project time proportions within each cell** rather than **actual registered work time** for a given time slot. The visual representation uses **percentage of the cell** (`proj.seconds / slot.totalSeconds * 100`) for each project's height, but the **opacity** is based on `proj.seconds / maxVal`. This creates confusing visual output:
-
-**Problem in Daily Heatmap** (line 501-509):
-```tsx
-// Height = percentage of cell (proportion within the hour)
-const pct = (proj.seconds / slot.totalSeconds) * 100;
-// Opacity = relative to max across all hours
-opacity: 0.7 + (proj.seconds / dailyHourlyGrid.maxVal) * 0.3,
-```
-
-If an hour has only 2 minutes of work, the bar fills 100% of the cell height — identical to an hour with 60 minutes of work. **The cell gives no visual indication of HOW MUCH time was registered**, only the project split within that slot.
-
-**Same problem in Weekly Heatmap** (line 651-659):
-```tsx
-const pct = (proj.seconds / slot.totalSeconds) * 100;
-opacity: 0.7 + (proj.seconds / weeklyHourlyGrid.maxVal) * 0.3,
-```
-
-### Suggested Fix
-
-The main timeline bar (lines 484-518, 634-668) should show **actual time fill** relative to the slot capacity (3600 seconds = 1 hour). Each cell should have:
-- **Total bar height** proportional to `slot.totalSeconds / 3600` (how much of the hour was used)
-- **Within that bar**, project segments proportional to their share
-
-Example fix for daily heatmap:
-```tsx
-// Overall fill percentage of the hour
-const fillPct = Math.min(100, (slot.totalSeconds / 3600) * 100);
-// Then inside the filled portion, split by project proportion
-```
-
-For the detailed rows (lines 522-553), the width calculation is correct (`proj.seconds / 3600 * 100`) — this view works properly.
-
-### Monthly Calendar Heatmap
-
-The monthly heatmap (lines 571-614) works correctly — it uses `day.seconds / monthCalendar.maxVal` for color intensity, which properly shows relative daily totals.
+**Date:** 2026-02-23
+**Scope:** Logic correctness, performance, optimizations, redundant code, missing translations (EN)
 
 ---
 
-## 2. TIME DISTRIBUTION — Shows Apps Instead of Projects — DONE
+## Table of Contents
 
-### Problem
-
-The pie chart "Time Distribution" (lines 96-104, 422-457) shows **applications** (`apps` = `AppWithStats[]`), not **projects**. The data comes from `getApplications()` which returns per-application stats.
-
-```tsx
-const pieData = useMemo(() => {
-  const sorted = [...apps].sort((a, b) => b.total_seconds - a.total_seconds).slice(0, 8);
-  return sorted.map((a, i) => ({
-    name: a.display_name,  // <-- application name, not project
-    value: a.total_seconds,
-    fill: a.color ?? CHART_COLORS[i % CHART_COLORS.length],
-  }));
-}, [apps]);
-```
-
-### Expected Behavior
-
-Time Distribution should show **project breakdown** (matching the heatmap legend colors). This way:
-- The pie chart shows project time distribution
-- The heatmap shows project time per hour/day
-- **One shared legend** (project colors) describes both visualizations
-
-### Suggested Fix
-
-Use project-level data instead of application data. Options:
-1. Use `getTopProjects(dateRange)` which returns `ProjectTimeRow[]` with `name`, `seconds`, `color`
-2. Or aggregate from `hourlyProjects` data which already has project breakdown
-
-```tsx
-// Option 1: Fetch project data
-const [projectTime, setProjectTime] = useState<ProjectTimeRow[]>([]);
-// In useEffect: getTopProjects(activeDateRange).then(setProjectTime)
-
-const pieData = useMemo(() => {
-  return projectTime.map((p, i) => ({
-    name: p.name,
-    value: p.seconds,
-    fill: p.color || CHART_COLORS[i % CHART_COLORS.length],
-  }));
-}, [projectTime]);
-```
+1. [Translation Issues (Polish → English)](#1-translation-issues-polish--english)
+2. [Logic & Correctness Issues](#2-logic--correctness-issues)
+3. [Performance Issues](#3-performance-issues)
+4. [Redundant / Dead Code](#4-redundant--dead-code)
+5. [Suggested Optimizations](#5-suggested-optimizations)
+6. [Summary Table](#6-summary-table)
 
 ---
 
-## 3. TODAY VIEW Assessment — DONE (minor fixes applied)
+## 1. Translation Issues (Polish → English)
 
-The **Daily view** ("Today") is indeed the most polished view. Analysis:
+All UI must be in English. The following Polish strings were found:
 
-### What works well:
-- Hourly stacked bar chart with project breakdown — clear and informative
-- Detailed rows per hour with proportional project bars — good UX
-- Project legend with consistent colors
-- Tooltip with minute breakdown (`value * 60` → minutes)
-- Hour labels (00-23) are clear
+### 1.1 CRITICAL — User-facing UI strings
 
-### Minor issues in Today view:
-1. **Bar chart interval** (line 370): `interval={1}` shows every other hour label. With 24 hours and narrow charts this may skip labels. Consider `interval={2}` or `interval="preserveStartEnd"`.
-2. **Tooltip formatter** has `as any` cast (line 383) — could be properly typed.
-3. **Detailed row width** (line 530): `Math.max(3, (proj.seconds / 3600) * 100)` — the minimum 3% is good for visibility, but can make very short activities appear larger than they are.
+| # | File | Line(s) | Polish Text | Suggested English |
+|---|------|---------|-------------|-------------------|
+| T1 | `dashboard/src/components/layout/Sidebar.tsx` | 46 | `"Pomoc"` (nav label) | `"Help"` |
+| T2 | `dashboard/src/components/layout/Sidebar.tsx` | 285 | `"Pomoc (F1)"` (tooltip) | `"Help (F1)"` |
+| T3 | `dashboard/src/pages/Settings.tsx` | 554 | `"np. demo-user / email / UUID"` | `"e.g. demo-user / email / UUID"` |
+| T4 | `dashboard/src/pages/Settings.tsx` | 570 | `"Wklej sam token (bez 'Bearer'...)"` | `"Paste the raw token (without 'Bearer' prefix and without quotes)"` |
+| T5 | `dashboard/src/pages/Settings.tsx` | 582-583 | `"Ukryj token"` / `"Pokaz token"` | `"Hide token"` / `"Show token"` |
+| T6 | `dashboard/src/pages/Settings.tsx` | 593 | `"Wpisz sam token, aplikacja sama doda..."` | `"Enter the raw token; the app will add the Bearer header automatically."` |
+| T7 | `src/tracker.rs` | 50-52 | `"Niezgodność wersji!\nDemon:..."` (MessageBox) | `"Version mismatch!\nDaemon:..."` |
+| T8 | `src/tracker.rs` | 59 | `"TimeFlow - Błąd wersji"` (MessageBox title) | `"TimeFlow - Version Error"` |
+| T9 | `src/single_instance.rs` | 50 | `"Inna instancja TimeFlow Demon już działa."` | `"Another instance of TimeFlow Demon is already running."` |
+
+### 1.2 IMPORTANT — Log messages & developer-facing strings
+
+| # | File | Line(s) | Polish Text |
+|---|------|---------|-------------|
+| T10 | `src/main.rs` | 23 | `"uruchamianie..."` |
+| T11 | `src/main.rs` | 27 | `"Nie można utworzyć katalogów aplikacji: {}"` |
+| T12 | `src/tracker.rs` | 83 | `"Wątek monitora uruchomiony"` |
+| T13 | `src/tracker.rs` | 164 | `"Brak monitorowanych aplikacji..."` |
+| T14 | `src/tracker.rs` | 210 | `"Zmiana daty: {}"` |
+| T15 | `src/tray.rs` | various | `"Zamykanie demona"`, `"Restart demona z menu tray"`, `"Uruchamianie Dashboard..."`, `"Demon uruchomiony..."`, `"Demon zatrzymany"`, `"Dashboard już działa"` |
+
+### 1.3 LOW — Python build scripts
+
+| # | File | Summary |
+|---|------|---------|
+| T16 | `build_all.py` | Docstrings, `argparse` help texts, `print()` messages — all in Polish |
+| T17 | `build_demon.py` | Docstrings, help texts, print messages — all in Polish |
+| T18 | `build_common.py` | Class and method docstrings in Polish |
+| T19 | `dashboard_build.py` | Comments and print messages in Polish |
+| T20 | `demon_dev.py` | Docstrings, help texts, print messages in Polish |
 
 ---
 
-## 4. WEEKLY VIEW Issues — DONE
+## 2. Logic & Correctness Issues
 
-### Problem: Bar chart is not stacked by project
-In weekly mode, the bar chart (lines 396-415) shows simple total-hours bars (single color). It should show **stacked project bars** like the daily view, since `hourlyProjects` data is already fetched for weekly mode (line 80).
+### 2.1 [CRITICAL] Sleep loop oversleeps ~1s per poll cycle
 
-### Suggested Fix
-Create a weekly stacked bar dataset (aggregate hourly data to daily by project) and render as stacked bars, matching the daily view pattern.
+**File:** `src/tracker.rs:340-352`
+
+The sleep chunk loop calculates `sleep_chunks = remain.as_secs_f32().ceil()` but always sleeps `Duration::from_secs(1)` per iteration — even in the final chunk. For `remain = 9.2s`, it sleeps 10 × 1s = 10s instead of 9.2s.
+
+**Fix:** Recalculate remaining time each iteration:
+```rust
+for _ in 0..sleep_chunks {
+    if stop_signal.load(Ordering::Relaxed) { break; }
+    let remaining_now = poll_interval.saturating_sub(last_tracking_tick.elapsed());
+    if remaining_now.is_zero() { break; }
+    thread::sleep(Duration::from_secs(1).min(remaining_now));
+}
+```
+
+### 2.2 [CRITICAL] `restore_database_from_file` copies WAL-mode DB without WAL/SHM files
+
+**File:** `dashboard/src-tauri/src/commands/database.rs:135-158`
+
+`fs::copy` on a WAL-mode SQLite database copies only the main `.db` file. Missing `-wal` and `-shm` files mean uncommitted WAL pages are lost, producing a silently corrupt backup.
+
+**Fix:** Use `VACUUM INTO` instead of `fs::copy`, or checkpoint the WAL before copying.
+
+### 2.3 [IMPORTANT] `get_session_count` uses different attribution logic than `get_sessions`
+
+**File:** `dashboard/src-tauri/src/commands/sessions.rs:329-351`
+
+`get_session_count` does a simple SQL `JOIN` with `OR`, while `get_sessions` uses Rust-side inference (`overlap_ms * 2 >= span_ms`). The two produce different counts for the same filters, causing mismatched pagination totals in the UI.
+
+**Fix:** Unify the attribution logic — either move inference into SQL or compute count in Rust after filtering.
+
+### 2.4 [IMPORTANT] `purge_unregistered_apps` runs outside the import transaction
+
+**File:** `dashboard/src-tauri/src/commands/import.rs:283-353`
+
+The purge runs after `tx.commit()`. If it fails midway, some apps lose `file_activities` but keep `sessions`, leaving an inconsistent state.
+
+**Fix:** Run the purge inside the same transaction as the import.
+
+### 2.5 [IMPORTANT] Daily file merge overwrites existing app data
+
+**File:** `dashboard/src-tauri/src/commands/import_data.rs:264-303`
+
+`existing_daily.apps.insert(exe, ...)` replaces the entire app entry. Local sessions added after the export was created are silently lost.
+
+**Fix:** Merge session lists instead of replacing them.
+
+### 2.6 [IMPORTANT] Missing null guard in `ManualSessionDialog`
+
+**File:** `dashboard/src/components/ManualSessionDialog.tsx:93-98`
+
+If `start.split("T")` doesn't produce two parts, `timeStr` is `undefined` and `.split(":")` throws a `TypeError`.
+
+**Fix:**
+```ts
+const parts = start.split("T");
+const dateStr = parts[0] ?? "";
+const timeStr = parts[1] ?? "00:00";
+```
+
+### 2.7 [IMPORTANT] `DEFAULT_ONLINE_SYNC_SERVER_URL` points to legacy `cfabserver` endpoint
+
+**File:** `dashboard/src/lib/online-sync.ts:11-15`
+
+The exported default URL is the old `cfabserver-production.up.railway.app`. New installations will silently use the old server. If the TimeFlow server is the intended default, this needs updating.
 
 ---
 
-## 5. LOGIC ISSUES — DONE
+## 3. Performance Issues
 
-### 5.1 Stale `today` value (line 37)
+### 3.1 [IMPORTANT] N+1 DB connections in session suggestion loop
+
+**File:** `dashboard/src-tauri/src/commands/sessions.rs:301-322`
+
+For every session without a project, `suggest_project_for_session` opens a new SQLite connection and runs several queries sequentially. For 50 sessions, this means 50+ sequential DB round-trips.
+
+**Fix:** Batch the suggestions — open one connection and process all sessions, or run in parallel with a connection pool.
+
+### 3.2 [IMPORTANT] `renderProjectCard` recreated every render
+
+**File:** `dashboard/src/pages/Projects.tsx:572`
+
+Declared as a plain function inside the component. Every render creates a new function object and forces all cards to re-render.
+
+**Fix:** Extract as a separate `<ProjectCard>` component outside `Projects`.
+
+### 3.3 [MINOR] `today` recomputed every render
+
+**File:** `dashboard/src/pages/Sessions.tsx:40`
+
+```ts
+const today = format(new Date(), "yyyy-MM-dd"); // every render
+```
+
+**Fix:** `const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);`
+
+### 3.4 [MINOR] `fetchStatus` missing from `useEffect` deps
+
+**File:** `dashboard/src/pages/AI.tsx:121-127`
+
+The function captures hook state but isn't listed in deps. Wrap in `useCallback` and add to deps.
+
+---
+
+## 4. Redundant / Dead Code
+
+### 4.1 Duplicate `if (result.files_imported > 0)` block
+
+**File:** `dashboard/src/App.tsx:87-94`
+
+The same condition is checked twice in a row. Merge into one block.
+
+### 4.2 `hasTauriRuntime` defined in 3 places
+
+**Files:**
+- `dashboard/src/lib/tauri.ts:43-49` (canonical)
+- `dashboard/src/components/layout/Sidebar.tsx:296-303` (copy)
+- `dashboard/src/components/layout/TopBar.tsx:110-117` (copy)
+
+**Fix:** Export from `lib/tauri.ts` and import in both layout components.
+
+### 4.3 Duplicate comment in `TimeAnalysis.tsx`
+
+**File:** `dashboard/src/pages/TimeAnalysis.tsx:49-50`
+
 ```tsx
-const today = format(new Date(), "yyyy-MM-dd");
+{/* Pie chart — Project Time Distribution */}
+{/* Pie chart — Project Time Distribution */}
 ```
-This is calculated on every render but is **not memoized** and **not in a ref**. For a component that might stay open across midnight, this will update on re-render but could cause subtle issues. Consider:
-```tsx
-const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
-```
-Or use a ref that updates on a timer if needed.
 
-### 5.2 `canShiftForward` comparison (line 38)
-```tsx
-const canShiftForward = anchorDate < today;
-```
-String comparison of dates works for `yyyy-MM-dd` format, so this is technically correct. But for monthly mode, the anchor is the first of the month, so `anchorDate < today` could allow shifting into the future month if today is not the last day. This actually works because `shiftDateRange` has a guard (`if (next > today) return`), but the button enabled/disabled state might be misleading.
+Remove the duplicate line.
 
-### 5.3 Export only exports timeline totals (lines 306-315)
-The CSV export only includes `Date,Hours` from the `timeline` data. For daily view, it exports a single row. It doesn't include project breakdown, which would be much more useful. Consider exporting:
-- Daily: hourly × project breakdown
-- Weekly: daily × project breakdown
-- Monthly: daily totals with project split
+### 4.4 `if let Some(_) = project_id` — dead pattern
 
-### 5.4 `activeDateRange` dependency on `today` (line 60)
-```tsx
-}, [rangeMode, anchorDate, today]);
-```
-Since `today` is recalculated on every render, this memo will recalculate every render. Either memoize `today` or remove it from the dependency (it's only a fallback for `anchorDate || today`, and `anchorDate` is always set).
+**File:** `dashboard/src-tauri/src/commands/export.rs:30`
 
-### 5.5 Type assertion in Promise.all (lines 84-86) — DONE
-Replaced `Promise<unknown>[]` with properly typed `Promise.all([...])` using individual typed promises. TypeScript now infers each element's type from `getTopProjects`, `getTimeline`, `getProjectTimeline`, `getProjects`. No more `as` casts.
+**Fix:** Replace with `if project_id.is_some()`.
+
+### 4.5 Duplicated `check_version_compatibility` in two crates
+
+**Files:**
+- `src/tracker.rs:25-38`
+- `dashboard/src-tauri/src/commands/daemon.rs:212-234`
+
+Same logic duplicated. Document or extract to shared module.
+
+### 4.6 Duplicated patch logic in Python scripts
+
+**Files:**
+- `dashboard/update_filter.py` (has reusable `update_file()`)
+- `dashboard/update_sessions_ts.py` (re-implements inline)
+
+**Fix:** Share the helper.
 
 ---
 
-## 6. PERFORMANCE OPTIMIZATIONS — DONE
+## 5. Suggested Optimizations
 
-### 6.1 Redundant data fetching
-`getApplications(activeDateRange)` is fetched for all modes but only used for the pie chart. If the pie chart switches to project data (as suggested in #2), this fetch can be removed entirely, reducing API calls.
+### 5.1 Export success — no user feedback
 
-### 6.2 Large useMemo computations
-`weeklyHourlyGrid` (lines 113-181) and `dailyHourlyGrid` (lines 184-235) contain near-identical logic for parsing `hourlyProjects`. This should be extracted into a shared utility function.
+**File:** `dashboard/src/components/data/ExportPanel.tsx:33-34`
 
-### 6.3 Unnecessary re-renders — DONE
-Combined `projectTime`, `timeline`, `hourlyProjects`, `projectColors` into single `data` state object. One `setData` call updates all at once — eliminates 3 extra re-renders per data fetch.
+After successful export, only `console.log` is called. The user receives no confirmation.
 
-### 6.4 `projectColors` fetched independently — DONE
-Moved `getProjects()` into the main `Promise.all`. All 4 API calls now run in parallel and resolve in a single state update.
+**Fix:** Show a toast notification with the saved file path.
 
----
+### 5.2 `loadMonitored` in useEffect deps but never called
 
-## 7. REDUNDANT / DEAD CODE — DONE
+**File:** `dashboard/src/pages/Applications.tsx:49`
 
-### 7.1 Unused imports
-- `CHART_GRID_COLOR` is imported (line 13, via chart-styles) but **never used** in this file.
+`loadMonitored` is listed as a dependency but is not invoked inside the effect. Remove from deps array.
 
-### 7.2 Duplicated project parsing logic
-`dailyHourlyGrid` and `weeklyHourlyGrid` both contain identical patterns:
-- Collecting project names from `hourlyProjects`
-- Building `projectColorMap`
-- Parsing `row.date.split("T")` to extract date/hour
-- Building `{ name, seconds, color }[]` arrays
+### 5.3 Array index used as React `key`
 
-This ~120 lines of duplicated logic should be extracted into a helper like:
-```tsx
-function parseHourlyProjectData(
-  hourlyProjects: StackedBarData[],
-  projectColors: Map<string, string>
-): { byDateHour: Map<string, Map<number, ProjectSlot[]>>, allProjects: string[] }
-```
+**Files:**
+- `dashboard/src/pages/ImportPage.tsx:47`
+- `dashboard/src/components/data/DataHistory.tsx:74`
 
-### 7.3 `CHART_COLORS` alias (line 24)
-```tsx
-const CHART_COLORS = TOKYO_NIGHT_CHART_PALETTE;
-```
-This alias adds no value. Use `TOKYO_NIGHT_CHART_PALETTE` directly or rename the import.
+Use `f.file_path` as key instead of array index.
 
-### 7.4 `apps` state may become unused
-If the pie chart switches to project data (recommendation #2), the `apps` state and `getApplications` call become entirely unused and should be removed.
+### 5.4 `catch (e: any)` — unsafe type annotations
 
----
+**File:** `dashboard/src/components/data/DatabaseManagement.tsx:103+`
 
-## 8. MISSING / INCORRECT TRANSLATIONS — OK (no issues)
+Multiple `catch (e: any)` blocks. Use `catch (e: unknown)` and `String(e)`.
 
-The entire UI is in English. No i18n framework is used in the project. All strings are hardcoded. This is consistent across the app, so there's no translation infrastructure to integrate with.
+### 5.5 `parseInt` without radix
 
-### Strings that ARE in English (correct):
-All UI strings are already in English. No Polish or other language strings found.
+**File:** `dashboard/src/components/data/DatabaseManagement.tsx:129`
 
-### Potential locale-sensitive formatting:
-- `format(d, "EEE")` → produces English day abbreviations (Mon, Tue...) — **correct** by default with date-fns
-- `format(d, "MMM d")` → English month abbreviations — **correct**
-- `WEEK_DAYS = ["Mon", "Tue", ...]` — hardcoded English — **correct**
+**Fix:** `parseInt(val, 10)`
 
-### No translation issues found.
-The UI is consistently in English throughout.
+### 5.6 Python: crash on missing APPDATA
+
+**Files:** `check_db_sizes.py`, `diag_db.py`, `query.py`, `test-query.py`
+
+`os.environ.get('APPDATA')` returns `None` → `os.path.join(None, ...)` throws `TypeError`.
+
+**Fix:** Add a `None` check with graceful error message.
+
+### 5.7 Python: hardcoded user-specific paths
+
+**File:** `get_stats.py:4-5, 32`
+
+Paths hardcoded with `C:\Users\micz\...`. Use `os.environ['APPDATA']` and `Path(__file__).parent`.
+
+### 5.8 Python: module-level `os.chdir()` side effect
+
+**File:** `dashboard_build.py:16`
+
+**Fix:** Pass `cwd=DASHBOARD` to `subprocess.run()` instead.
 
 ---
 
-## 9. SUGGESTED IMPROVEMENTS SUMMARY
+## 6. Summary Table
 
-| # | Priority | Area | Issue | Suggestion | Status |
-|---|----------|------|-------|------------|--------|
-| 1 | **Critical** | Heatmap | Cells show proportions, not actual time | Make cell fill proportional to `totalSeconds / 3600` | DONE |
-| 2 | **Critical** | Pie Chart | Shows apps instead of projects | Switch to `getTopProjects()` data source | DONE |
-| 3 | **High** | Weekly Bar | Not stacked by project | Add project stacking like daily view | DONE |
-| 4 | **High** | Shared Legend | Each view has its own legend | Pie + heatmap now both show projects with consistent colors | DONE |
-| 5 | **Medium** | Performance | `today` causes memo recalc every render | Memoized with `useMemo`, removed from `activeDateRange` deps | DONE |
-| 5.5 | **Medium** | Type Safety | `as` casts in `Promise.all` | Typed `Promise.all` with individual typed promises, no casts | DONE |
-| 6 | **Medium** | Code Quality | ~120 lines duplicated parsing logic | Extracted `parseHourlyProjects()` + `buildDaySlots()` helpers | DONE |
-| 6.3 | **Medium** | Performance | 4 separate `useState` → 4 re-renders | Combined into single `data` state object | DONE |
-| 6.4 | **Medium** | Performance | `projectColors` fetched separately | Merged into main `Promise.all` — all 4 API calls parallel | DONE |
-| 7 | **Medium** | Export | CSV only has daily totals | Daily/weekly export now includes project breakdown columns | DONE |
-| 8 | **Low** | Type Safety | `as any` cast on tooltip formatter | Removed cast, using `(value, name) =>` without explicit types | DONE |
-| 9 | **Low** | Dead Code | Unused `CHART_GRID_COLOR` import | Removed | DONE |
-| 10 | **Low** | Code Style | `CHART_COLORS` unnecessary alias | Renamed to `PALETTE` for brevity, used consistently | DONE |
+| # | Severity | Category | File | Description |
+|---|----------|----------|------|-------------|
+| T1-T9 | Critical | Translation | Various | Polish strings in user-facing UI (sidebar, settings, dialogs) |
+| T10-T20 | Low-Med | Translation | Various | Polish strings in logs and build scripts |
+| 2.1 | Critical | Logic | `src/tracker.rs` | Sleep loop oversleeps ~1s per cycle |
+| 2.2 | Critical | Logic | `commands/database.rs` | WAL-mode DB copy without WAL/SHM files |
+| 2.3 | Important | Logic | `commands/sessions.rs` | Mismatched count vs. list attribution logic |
+| 2.4 | Important | Logic | `commands/import.rs` | Purge outside transaction — inconsistent state on failure |
+| 2.5 | Important | Logic | `commands/import_data.rs` | Merge overwrites existing app data |
+| 2.6 | Important | Logic | `ManualSessionDialog.tsx` | Missing null guard on datetime split |
+| 2.7 | Important | Logic | `online-sync.ts` | Default sync URL points to legacy server |
+| 3.1 | Important | Performance | `commands/sessions.rs` | N+1 DB connections in suggestion loop |
+| 3.2 | Important | Performance | `Projects.tsx` | `renderProjectCard` recreated every render |
+| 3.3 | Minor | Performance | `Sessions.tsx` | `today` recomputed every render |
+| 3.4 | Minor | Performance | `AI.tsx` | `fetchStatus` missing from useEffect deps |
+| 4.1 | Minor | Redundant | `App.tsx` | Duplicate `if` block |
+| 4.2 | Important | Redundant | Sidebar/TopBar/tauri.ts | `hasTauriRuntime` defined 3 times |
+| 4.3 | Minor | Redundant | `TimeAnalysis.tsx` | Duplicate comment |
+| 4.4 | Minor | Redundant | `export.rs` | Dead `if let Some(_)` pattern |
+| 4.5 | Minor | Redundant | tracker.rs + daemon.rs | Duplicated version check function |
+| 5.1 | Important | UX | `ExportPanel.tsx` | No user feedback on export success |
+| 5.2 | Minor | Code Quality | `Applications.tsx` | Unused dep in useEffect |
+| 5.3 | Minor | Code Quality | ImportPage/DataHistory | Array index as React key |
+| 5.4 | Minor | Code Quality | `DatabaseManagement.tsx` | `catch (e: any)` unsafe types |
+| 5.5 | Minor | Code Quality | `DatabaseManagement.tsx` | `parseInt` without radix |
+| 5.6 | Important | Robustness | Python scripts | Crash on missing APPDATA |
+| 5.7 | Minor | Portability | `get_stats.py` | Hardcoded user-specific paths |
+| 5.8 | Minor | Code Quality | `dashboard_build.py` | Module-level `os.chdir()` |
 
 ---
 
-## 10. ARCHITECTURE NOTES — DONE
-
-### File size
-Original: 695 lines in a single file. Split into modular components:
-
-```
-components/time-analysis/
-  types.ts              — shared types (ProjectSlot, HourSlot, etc.) + helper functions
-  useTimeAnalysisData.ts — custom hook: state, fetching, all computed memos, export
-  DailyView.tsx          — DailyBarChart + DailyHeatmap components
-  WeeklyView.tsx         — WeeklyBarChart + WeeklyHeatmap components
-  MonthlyView.tsx        — MonthlyBarChart + MonthlyHeatmap components
-
-pages/
-  TimeAnalysis.tsx       — toolbar, pie chart, layout shell (~100 lines)
-```
-
-Each view component receives only the props it needs. The hook encapsulates all data logic.
+**Total issues found: 37**
+- Critical: 5 (3 translation + 2 logic)
+- Important: 15
+- Minor: 17

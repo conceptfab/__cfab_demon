@@ -43,6 +43,7 @@ const navItems = [
   { id: "ai", label: "AI & Model", icon: Brain },
   { id: "data", label: "Data", icon: Import },
   { id: "daemon", label: "Daemon", icon: Power },
+  { id: "help", label: "Pomoc", icon: HelpCircle },
 ];
 
 function StatusIndicator({
@@ -122,6 +123,17 @@ export function Sidebar() {
   useEffect(() => {
     return subscribeOnlineSyncIndicator(setSyncIndicator);
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F1") {
+        e.preventDefault();
+        setCurrentPage("help");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [setCurrentPage]);
 
   const daemonUnassigned = Math.max(0, status?.unassigned_sessions ?? 0);
   const unassignedSessions = todayUnassigned > 0 ? todayUnassigned : daemonUnassigned;
@@ -265,9 +277,12 @@ export function Sidebar() {
               <Settings className="h-4 w-4" />
             </button>
             <button
-              onClick={() => window.open("https://github.com/conceptfab/cfab-demon", "_blank")}
-              className="text-muted-foreground/30 transition-all hover:text-foreground"
-              title="Help"
+              onClick={() => setCurrentPage("help")}
+              className={cn(
+                "transition-all",
+                currentPage === "help" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+              )}
+              title="Pomoc (F1)"
             >
               <HelpCircle className="h-4 w-4" />
             </button>
