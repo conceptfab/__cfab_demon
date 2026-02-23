@@ -18,7 +18,7 @@ pub(crate) fn no_console(cmd: &mut Command) {
 #[cfg(not(windows))]
 pub(crate) fn no_console(_cmd: &mut Command) {}
 
-pub(crate) fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
+pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
     let base = std::path::PathBuf::from(&appdata).join("TimeFlow");
 

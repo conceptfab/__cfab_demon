@@ -178,6 +178,23 @@ pub async fn get_daemon_status(app: AppHandle) -> Result<DaemonStatus, String> {
     let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app);
     write_assignment_signal(unassigned_sessions);
 
+    let mut daemon_version = None;
+    if let Ok(exe) = find_daemon_exe() {
+        let mut v_cmd = Command::new(&exe);
+        no_console(&mut v_cmd);
+        if let Ok(output) = v_cmd.arg("--version").output() {
+            if output.status.success() {
+                daemon_version = Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            }
+        }
+    }
+
+    let is_compatible = if let Some(ref dv) = daemon_version {
+        check_version_compatibility(dv, crate::VERSION)
+    } else {
+        true // If we can't find daemon version, we'll assume it's okay or handle it in UI
+    };
+
     Ok(DaemonStatus {
         running,
         pid,
@@ -186,7 +203,34 @@ pub async fn get_daemon_status(app: AppHandle) -> Result<DaemonStatus, String> {
         needs_assignment: unassigned_sessions > 0,
         unassigned_sessions,
         unassigned_apps,
+        version: daemon_version,
+        dashboard_version: crate::VERSION.to_string(),
+        is_compatible,
     })
+}
+
+fn check_version_compatibility(v_demon: &str, v_dash: &str) -> bool {
+    let parse = |v: &str| -> Option<(i32, i32, i32)> {
+        let parts: Vec<&str> = v.split('.').collect();
+        if parts.len() != 3 {
+            return None;
+        }
+        Some((
+            parts[0].parse().ok()?,
+            parts[1].parse().ok()?,
+            parts[2].parse().ok()?,
+        ))
+    };
+
+    match (parse(v_demon), parse(v_dash)) {
+        (Some((maj1, min1, rel1)), Some((maj2, min2, rel2))) => {
+            if maj1 != maj2 || min1 != min2 {
+                return false;
+            }
+            (rel1 - rel2).abs() <= 3
+        }
+        _ => false,
+    }
 }
 
 #[tauri::command]

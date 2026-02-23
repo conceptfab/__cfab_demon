@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+pub const VERSION: &str = include_str!("../../../VERSION");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,6 +27,11 @@ pub fn run() {
                     format!("Database initialization failed: {}", e),
                 )
                 .into());
+            }
+
+            // Write version to file for daemon to check
+            if let Ok(data_dir) = commands::helpers::timeflow_data_dir() {
+                let _ = std::fs::write(std::path::PathBuf::from(data_dir).join("dashboard_version.txt"), VERSION);
             }
 
             Ok(())

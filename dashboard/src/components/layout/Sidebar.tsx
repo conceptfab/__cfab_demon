@@ -239,24 +239,39 @@ export function Sidebar() {
           )}
         </div>
 
-        <div className="flex items-center justify-between px-2.5 pt-1.5">
-          <button
-            onClick={() => setCurrentPage("settings")}
-            className={cn(
-              "transition-all",
-              currentPage === "settings" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+        <div className="flex items-center justify-between px-2.5 pt-1.5 border-t border-border/10">
+          <div className="flex flex-col">
+            <span className="text-[9px] text-muted-foreground/40 font-mono">
+              v{status?.dashboard_version || "?.?.?"}
+            </span>
+            {status?.version && (
+              <span className={cn(
+                "text-[9px] font-mono",
+                status.is_compatible ? "text-muted-foreground/25" : "text-destructive font-bold"
+              )} title={status.is_compatible ? "Daemon version" : "VERSION INCOMPATIBILITY!"}>
+                d{status.version} {!status.is_compatible && "⚠️"}
+              </span>
             )}
-            title="Settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => window.open("https://github.com/conceptfab/cfab-demon", "_blank")}
-            className="text-muted-foreground/30 transition-all hover:text-foreground"
-            title="Help"
-          >
-            <HelpCircle className="h-4 w-4" />
-          </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setCurrentPage("settings")}
+              className={cn(
+                "transition-all",
+                currentPage === "settings" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+              )}
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => window.open("https://github.com/conceptfab/cfab-demon", "_blank")}
+              className="text-muted-foreground/30 transition-all hover:text-foreground"
+              title="Help"
+            >
+              <HelpCircle className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

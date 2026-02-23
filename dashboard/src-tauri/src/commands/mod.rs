@@ -5,7 +5,7 @@ mod dashboard;
 mod database;
 mod estimates;
 mod export;
-mod helpers;
+pub mod helpers;
 mod import;
 mod import_data;
 mod manual_sessions;

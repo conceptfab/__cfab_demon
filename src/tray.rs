@@ -93,6 +93,20 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .build(&mut menu)
         .expect("Failed to create menu");
 
+    let mut menu_version = nwg::MenuItem::default();
+    nwg::MenuItem::builder()
+        .text(&format!("{} v{}", APP_NAME, crate::VERSION))
+        .disabled(true)
+        .parent(&menu)
+        .build(&mut menu_version)
+        .expect("Failed to create Version menu item");
+
+    let mut menu_sep = nwg::MenuSeparator::default();
+    nwg::MenuSeparator::builder()
+        .parent(&menu)
+        .build(&mut menu_sep)
+        .expect("Failed to create separator");
+
     let mut menu_exit = nwg::MenuItem::default();
     nwg::MenuItem::builder()
         .text("Exit")

@@ -291,6 +291,9 @@ pub struct DaemonStatus {
     pub needs_assignment: bool,
     pub unassigned_sessions: i64,
     pub unassigned_apps: i64,
+    pub version: Option<String>,
+    pub dashboard_version: String,
+    pub is_compatible: bool,
 }
 
 #[derive(Serialize)]

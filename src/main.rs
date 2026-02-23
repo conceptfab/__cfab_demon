@@ -15,6 +15,7 @@ mod tray;
 
 /// Nazwa aplikacji — jedna stała używana wszędzie
 pub const APP_NAME: &str = "TimeFlow Demon";
+pub const VERSION: &str = include_str!("../VERSION");
 
 fn main() {
     // Inicjalizacja logowania do pliku
@@ -24,6 +25,14 @@ fn main() {
     // Katalogi aplikacji — tworzone raz przy starcie
     if let Err(e) = config::ensure_app_dirs() {
         log::warn!("Nie można utworzyć katalogów aplikacji: {}", e);
+    }
+
+    // Obsługa argumentów linii komend
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--version" || arg == "-v") {
+        println!("{}", VERSION);
+        log::logger().flush();
+        return;
     }
 
     // Blokada pojedynczej instancji

@@ -45,6 +45,28 @@ Przyklady:
 
     start_time = time.time()
 
+    # --- Obsługa wersji ---
+    version_file = ROOT / "VERSION"
+    current_version = "0.0.0"
+    if version_file.exists():
+        current_version = version_file.read_text().strip()
+
+    print(f"\nAktualna wersja: {current_version}")
+    new_version = input(f"Podaj nową wersję (major.minor.release) [Enter aby zostawić {current_version}]: ").strip()
+    
+    if not new_version:
+        new_version = current_version
+    
+    # Walidacja formatu
+    import re
+    if not re.match(r"^\d+\.\d+\.\d+$", new_version):
+        print(f"BŁĄD: Nieprawidłowy format wersji: {new_version}. Oczekiwano major.minor.release")
+        sys.exit(1)
+        
+    version_file.write_text(new_version)
+    print(f"Ustawiono wersję: {new_version}")
+    # ----------------------
+
     DIST = ROOT / "dist"
     DIST.mkdir(parents=True, exist_ok=True)
 

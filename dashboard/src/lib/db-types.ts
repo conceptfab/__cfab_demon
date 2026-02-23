@@ -217,6 +217,9 @@ export interface DaemonStatus {
   needs_assignment: boolean;
   unassigned_sessions: number;
   unassigned_apps: number;
+  version?: string;
+  dashboard_version?: string;
+  is_compatible?: boolean;
 }
 
 export interface MonitoredApp {
