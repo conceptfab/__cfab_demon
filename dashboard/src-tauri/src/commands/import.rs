@@ -635,4 +635,3 @@ pub async fn get_detected_projects(
         .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
         .collect())
 }
-

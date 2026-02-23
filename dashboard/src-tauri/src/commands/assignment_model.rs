@@ -321,7 +321,8 @@ fn compute_raw_suggestion(
 
         let token_total = context.tokens.len() as f64;
         for (project_id, (sum_cnt, matches_cnt)) in token_stats {
-            let avg_log = (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+            let avg_log =
+                (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
             let score = 0.30 * avg_log;
             *candidate_scores.entry(project_id).or_insert(0.0) += score;
             *candidate_evidence.entry(project_id).or_insert(0) += 1;
@@ -406,7 +407,12 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
     let state = load_state_map(&conn)?;
 
     let mut status = AssignmentModelStatus {
-        mode: normalize_mode(state.get("mode").map(|v| v.as_str()).unwrap_or(DEFAULT_MODE)),
+        mode: normalize_mode(
+            state
+                .get("mode")
+                .map(|v| v.as_str())
+                .unwrap_or(DEFAULT_MODE),
+        ),
         min_confidence_suggest: parse_state_f64(
             &state,
             "min_confidence_suggest",
@@ -417,11 +423,7 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
             "min_confidence_auto",
             DEFAULT_MIN_CONFIDENCE_AUTO,
         ),
-        min_evidence_auto: parse_state_i64(
-            &state,
-            "min_evidence_auto",
-            DEFAULT_MIN_EVIDENCE_AUTO,
-        ),
+        min_evidence_auto: parse_state_i64(&state, "min_evidence_auto", DEFAULT_MIN_EVIDENCE_AUTO),
         last_train_at: parse_state_opt_string(&state, "last_train_at"),
         feedback_since_train: parse_state_i64(&state, "feedback_since_train", 0),
         is_training: parse_state_bool(&state, "is_training", false),
@@ -509,8 +511,8 @@ pub async fn set_assignment_model_cooldown(
         )
         .map_err(|e| e.to_string())?;
     } else {
-        let cooldown_until = (chrono::Local::now() + chrono::Duration::hours(clamped_hours))
-            .to_rfc3339();
+        let cooldown_until =
+            (chrono::Local::now() + chrono::Duration::hours(clamped_hours)).to_rfc3339();
         upsert_state(&conn, "cooldown_until", &cooldown_until)?;
     }
 
@@ -589,11 +591,18 @@ pub async fn train_assignment_model(
             }
         }
 
-        let app_samples: i64 = tx.query_row("SELECT COUNT(*) FROM assignment_model_app", [], |row| row.get(0))?;
+        let app_samples: i64 =
+            tx.query_row("SELECT COUNT(*) FROM assignment_model_app", [], |row| {
+                row.get(0)
+            })?;
         let time_samples: i64 =
-            tx.query_row("SELECT COUNT(*) FROM assignment_model_time", [], |row| row.get(0))?;
+            tx.query_row("SELECT COUNT(*) FROM assignment_model_time", [], |row| {
+                row.get(0)
+            })?;
         let token_samples: i64 =
-            tx.query_row("SELECT COUNT(*) FROM assignment_model_token", [], |row| row.get(0))?;
+            tx.query_row("SELECT COUNT(*) FROM assignment_model_token", [], |row| {
+                row.get(0)
+            })?;
 
         tx.commit()?;
         Ok(app_samples + time_samples + token_samples)
@@ -701,7 +710,7 @@ pub async fn run_auto_safe_assignment(
 
     let run_work = (|| -> Result<(), String> {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
-        
+
         for session_id in session_ids {
             result.scanned += 1;
 
@@ -743,7 +752,8 @@ pub async fn run_auto_safe_assignment(
             };
 
             if !meets_auto_safe_threshold(&status, &suggestion) {
-                let has_confidence_and_evidence = suggestion.confidence >= status.min_confidence_auto
+                let has_confidence_and_evidence = suggestion.confidence
+                    >= status.min_confidence_auto
                     && suggestion.evidence_count >= status.min_evidence_auto;
                 if has_confidence_and_evidence && suggestion.margin < AUTO_SAFE_MIN_MARGIN {
                     result.skipped_ambiguous += 1;
@@ -797,13 +807,7 @@ pub async fn run_auto_safe_assignment(
                    AND date = ?3
                    AND last_seen > ?4
                    AND first_seen < ?5",
-                rusqlite::params![
-                    suggestion.project_id,
-                    app_id,
-                    date,
-                    start_time,
-                    end_time
-                ],
+                rusqlite::params![suggestion.project_id, app_id, date, start_time, end_time],
             )
             .map_err(|e| e.to_string())?;
 
@@ -881,9 +885,7 @@ pub async fn run_auto_safe_assignment(
 }
 
 #[command]
-pub async fn rollback_last_auto_safe_run(
-    app: AppHandle,
-) -> Result<AutoSafeRollbackResult, String> {
+pub async fn rollback_last_auto_safe_run(app: AppHandle) -> Result<AutoSafeRollbackResult, String> {
     let mut conn = db::get_connection(&app)?;
 
     let run_id = conn

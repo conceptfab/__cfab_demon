@@ -202,10 +202,16 @@ pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), Stri
         [app_id],
     )
     .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM assignment_model_app WHERE app_id = ?1", [app_id])
-        .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM assignment_model_time WHERE app_id = ?1", [app_id])
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM assignment_model_app WHERE app_id = ?1",
+        [app_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM assignment_model_time WHERE app_id = ?1",
+        [app_id],
+    )
+    .map_err(|e| e.to_string())?;
 
     // Session-linked auto-run items are removed by FK cascade when sessions are deleted.
     tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
@@ -304,4 +310,3 @@ pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, 
 pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, String> {
     db::set_demo_mode(&app, enabled)
 }
-

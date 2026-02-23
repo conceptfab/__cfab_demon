@@ -30,7 +30,11 @@ pub(crate) fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
             }
             match std::fs::rename(&legacy, &base) {
                 Ok(_) => {
-                    log::info!("Migrated app data dir '{}' -> '{}'", legacy.display(), base.display());
+                    log::info!(
+                        "Migrated app data dir '{}' -> '{}'",
+                        legacy.display(),
+                        base.display()
+                    );
                     break;
                 }
                 Err(e) => {
@@ -48,4 +52,3 @@ pub(crate) fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
     std::fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(base)
 }
-

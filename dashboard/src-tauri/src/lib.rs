@@ -59,7 +59,6 @@ pub fn run() {
             commands::update_project_hourly_rate,
             commands::get_project_estimates,
             commands::get_estimates_summary,
-
             commands::get_applications,
             commands::get_app_timeline,
             commands::get_sessions,

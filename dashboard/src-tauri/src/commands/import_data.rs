@@ -16,18 +16,26 @@ pub async fn validate_import(
     let conn = db::get_connection(&app)?;
 
     let mut existing_projects: HashSet<String> = HashSet::new();
-    let mut stmt = conn.prepare_cached("SELECT name FROM projects")
+    let mut stmt = conn
+        .prepare_cached("SELECT name FROM projects")
         .map_err(|e| e.to_string())?;
-    for row in stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
+    for row in stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+    {
         if let Ok(name) = row {
             existing_projects.insert(name);
         }
     }
 
     let mut existing_apps: HashSet<String> = HashSet::new();
-    let mut stmt = conn.prepare_cached("SELECT executable_name FROM applications")
+    let mut stmt = conn
+        .prepare_cached("SELECT executable_name FROM applications")
         .map_err(|e| e.to_string())?;
-    for row in stmt.query_map([], |row| row.get::<_, String>(0)).map_err(|e| e.to_string())? {
+    for row in stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+    {
         if let Ok(exe) = row {
             existing_apps.insert(exe);
         }
@@ -120,8 +128,15 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     // 1. Map and Create Projects
     let mut existing_projects_map: HashMap<String, i64> = HashMap::new();
     {
-        let mut stmt = tx.prepare("SELECT name, id FROM projects").map_err(|e| e.to_string())?;
-        for row in stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))).map_err(|e| e.to_string())? {
+        let mut stmt = tx
+            .prepare("SELECT name, id FROM projects")
+            .map_err(|e| e.to_string())?;
+        for row in stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+        {
             if let Ok((name, id)) = row {
                 existing_projects_map.insert(name, id);
             }
@@ -159,8 +174,15 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     // 2. Map and Create Applications
     let mut existing_apps_map: HashMap<String, i64> = HashMap::new();
     {
-        let mut stmt = tx.prepare("SELECT executable_name, id FROM applications").map_err(|e| e.to_string())?;
-        for row in stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))).map_err(|e| e.to_string())? {
+        let mut stmt = tx
+            .prepare("SELECT executable_name, id FROM applications")
+            .map_err(|e| e.to_string())?;
+        for row in stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?
+        {
             if let Ok((exe, id)) = row {
                 existing_apps_map.insert(exe, id);
             }
@@ -291,7 +313,10 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
 }
 
 #[tauri::command]
-pub async fn import_data_archive(app: AppHandle, archive: ExportArchive) -> Result<ImportSummary, String> {
+pub async fn import_data_archive(
+    app: AppHandle,
+    archive: ExportArchive,
+) -> Result<ImportSummary, String> {
     let timestamp_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -392,7 +417,13 @@ fn merge_or_insert_session(
         "UPDATE sessions
          SET start_time = ?1, end_time = ?2, duration_seconds = ?3, rate_multiplier = ?4
          WHERE id = ?5",
-        rusqlite::params![merged_start, merged_end, duration, merged_rate_multiplier, keep_id],
+        rusqlite::params![
+            merged_start,
+            merged_end,
+            duration,
+            merged_rate_multiplier,
+            keep_id
+        ],
     )
     .map_err(|e| e.to_string())?;
 
@@ -538,4 +569,3 @@ mod tests {
         assert_eq!(duration, 9000);
     }
 }
-

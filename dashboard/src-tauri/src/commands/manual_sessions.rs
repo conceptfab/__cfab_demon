@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use super::projects::project_id_is_active;
 use super::types::{
     CreateManualSessionInput, ManualSession, ManualSessionFilters, ManualSessionWithProject,
 };
@@ -11,6 +12,9 @@ pub fn create_manual_session(
     input: CreateManualSessionInput,
 ) -> Result<ManualSession, String> {
     let conn = db::get_connection(&app)?;
+    if !project_id_is_active(&conn, input.project_id)? {
+        return Err("Cannot assign manual session to an excluded or missing project".to_string());
+    }
 
     // Parse start_time to compute date and duration
     let start_dt = chrono::NaiveDateTime::parse_from_str(&input.start_time, "%Y-%m-%dT%H:%M:%S")
@@ -128,6 +132,9 @@ pub fn update_manual_session(
     input: CreateManualSessionInput,
 ) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
+    if !project_id_is_active(&conn, input.project_id)? {
+        return Err("Cannot assign manual session to an excluded or missing project".to_string());
+    }
 
     let start_dt = chrono::NaiveDateTime::parse_from_str(&input.start_time, "%Y-%m-%dT%H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(&input.start_time, "%Y-%m-%dT%H:%M"))

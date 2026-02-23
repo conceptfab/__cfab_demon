@@ -75,7 +75,8 @@ pub async fn get_sessions(
             }
         }
 
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
 
         let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
         let mut explicit_pids: HashMap<i64, Option<i64>> = HashMap::new();
@@ -85,22 +86,25 @@ pub async fn get_sessions(
                 let explicit_pid: Option<i64> = row.get(8)?;
                 let explicit_pname: Option<String> = row.get(9)?;
                 let explicit_pcolor: Option<String> = row.get(10)?;
-                Ok((SessionWithApp {
-                    id,
-                    app_id: row.get(1)?,
-                    start_time: row.get(2)?,
-                    end_time: row.get(3)?,
-                    duration_seconds: row.get(4)?,
-                    rate_multiplier: row.get(5)?,
-                    app_name: row.get(6)?,
-                    executable_name: row.get(7)?,
-                    project_name: explicit_pname,
-                    project_color: explicit_pcolor,
-                    files: Vec::new(),
-                    suggested_project_id: None,
-                    suggested_project_name: None,
-                    suggested_confidence: None,
-                }, explicit_pid))
+                Ok((
+                    SessionWithApp {
+                        id,
+                        app_id: row.get(1)?,
+                        start_time: row.get(2)?,
+                        end_time: row.get(3)?,
+                        duration_seconds: row.get(4)?,
+                        rate_multiplier: row.get(5)?,
+                        app_name: row.get(6)?,
+                        executable_name: row.get(7)?,
+                        project_name: explicit_pname,
+                        project_color: explicit_pcolor,
+                        files: Vec::new(),
+                        suggested_project_id: None,
+                        suggested_project_name: None,
+                        suggested_confidence: None,
+                    },
+                    explicit_pid,
+                ))
             })
             .map_err(|e| e.to_string())?;
 
@@ -125,8 +129,10 @@ pub async fn get_sessions(
 
         let mut files_by_key: HashMap<(i64, String), Vec<FileActivity>> = HashMap::new();
         if !keys.is_empty() {
-            conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)")
-                .map_err(|e| e.to_string())?;
+            conn.execute_batch(
+                "CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)",
+            )
+            .map_err(|e| e.to_string())?;
             conn.execute_batch("DELETE FROM _fa_keys")
                 .map_err(|e| e.to_string())?;
 
@@ -280,7 +286,11 @@ pub async fn get_sessions(
 
         let mut needs_suggestion_batch: Vec<i64> = Vec::new();
         for session in &mut sessions {
-            if inferred_project_by_session.get(&session.id).unwrap_or(&None).is_none() {
+            if inferred_project_by_session
+                .get(&session.id)
+                .unwrap_or(&None)
+                .is_none()
+            {
                 needs_suggestion_batch.push(session.id);
             }
         }
@@ -289,7 +299,9 @@ pub async fn get_sessions(
 
     // Now call async outside of any SQLite statements
     for session_id in needs_suggestion {
-        if let Ok(Some(suggestion)) = crate::commands::suggest_project_for_session(app.clone(), session_id).await {
+        if let Ok(Some(suggestion)) =
+            crate::commands::suggest_project_for_session(app.clone(), session_id).await
+        {
             // Find session and update
             if let Some(session) = sessions.iter_mut().find(|s| s.id == session_id) {
                 session.suggested_project_id = Some(suggestion.project_id);
@@ -321,7 +333,7 @@ pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Resul
              JOIN applications a ON a.id = s.app_id
              LEFT JOIN file_activities fa ON fa.app_id = s.app_id AND fa.date = date(s.start_time)
              WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
-               AND (s.project_id = ?1 OR fa.project_id = ?1)"
+               AND (s.project_id = ?1 OR fa.project_id = ?1)",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(pid)];
         let mut idx = 2;
@@ -330,8 +342,10 @@ pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Resul
         temp_filters.project_id = None; // Already handled
         apply_session_filters(&temp_filters, &mut sql, &mut params, &mut idx);
 
-        let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-        let count: i64 = conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0))
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        let count: i64 = conn
+            .query_row(&sql, params_ref.as_slice(), |row| row.get(0))
             .map_err(|e| e.to_string())?;
         return Ok(count);
     }
@@ -350,10 +364,12 @@ pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Resul
 
     let params_ref: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
 
-    let count: i64 = conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0))
+    let count: i64 = conn
+        .query_row(&sql, params_ref.as_slice(), |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
-    Ok(count)}
+    Ok(count)
+}
 
 #[tauri::command]
 pub async fn assign_session_to_project(
@@ -446,7 +462,11 @@ pub async fn update_session_rate_multiplier(
             if v > 100.0 {
                 return Err("Multiplier must be <= 100".to_string());
             }
-            if (v - 1.0).abs() < 0.000_001 { 1.0 } else { v }
+            if (v - 1.0).abs() < 0.000_001 {
+                1.0
+            } else {
+                v
+            }
         }
     };
 
@@ -464,10 +484,7 @@ pub async fn update_session_rate_multiplier(
 }
 
 #[tauri::command]
-pub async fn delete_session(
-    app: AppHandle,
-    session_id: i64,
-) -> Result<(), String> {
+pub async fn delete_session(app: AppHandle, session_id: i64) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
     conn.execute(
         "UPDATE sessions SET is_hidden = 1 WHERE id = ?1",
@@ -478,10 +495,7 @@ pub async fn delete_session(
 }
 
 #[tauri::command]
-pub async fn rebuild_sessions(
-    app: AppHandle,
-    gap_fill_minutes: i64,
-) -> Result<i64, String> {
+pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i64, String> {
     let mut conn = db::get_connection(&app)?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -506,48 +520,60 @@ pub async fn rebuild_sessions(
              ORDER BY app_id, project_id, start_time ASC"
         ).map_err(|e| e.to_string())?;
 
-        let rows = stmt.query_map([], |row| {
-            let start_time: String = row.get(4)?;
-            let end_time: String = row.get(5)?;
-            
-            let parse_time_to_ms = |ts_str: &str| -> i64 {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
-                    return dt.timestamp_millis();
-                }
-                if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S") {
-                    return ndt.and_utc().timestamp_millis();
-                }
-                if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S") {
-                    return ndt.and_utc().timestamp_millis();
-                }
-                if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S.%f") {
-                    return ndt.and_utc().timestamp_millis();
-                }
-                if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S.%f") {
-                    return ndt.and_utc().timestamp_millis();
-                }
-                0
-            };
+        let rows = stmt
+            .query_map([], |row| {
+                let start_time: String = row.get(4)?;
+                let end_time: String = row.get(5)?;
 
-            let start_ms = parse_time_to_ms(&start_time);
-            let end_ms = parse_time_to_ms(&end_time);
+                let parse_time_to_ms = |ts_str: &str| -> i64 {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                        return dt.timestamp_millis();
+                    }
+                    if let Ok(ndt) =
+                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S")
+                    {
+                        return ndt.and_utc().timestamp_millis();
+                    }
+                    if let Ok(ndt) =
+                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S")
+                    {
+                        return ndt.and_utc().timestamp_millis();
+                    }
+                    if let Ok(ndt) =
+                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S.%f")
+                    {
+                        return ndt.and_utc().timestamp_millis();
+                    }
+                    if let Ok(ndt) =
+                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S.%f")
+                    {
+                        return ndt.and_utc().timestamp_millis();
+                    }
+                    0
+                };
 
-            Ok(SessionRow {
-                id: row.get(0)?,
-                app_id: row.get(1)?,
-                project_id: row.get(2)?,
-                rate_multiplier: row.get(3)?,
-                end_time,
-                start_ms,
-                end_ms,
-                original_end_ms: end_ms,
-                duration_seconds: row.get(7)?,
+                let start_ms = parse_time_to_ms(&start_time);
+                let end_ms = parse_time_to_ms(&end_time);
+
+                Ok(SessionRow {
+                    id: row.get(0)?,
+                    app_id: row.get(1)?,
+                    project_id: row.get(2)?,
+                    rate_multiplier: row.get(3)?,
+                    end_time,
+                    start_ms,
+                    end_ms,
+                    original_end_ms: end_ms,
+                    duration_seconds: row.get(7)?,
+                })
             })
-        }).map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-        rows.flatten().filter(|r| r.start_ms > 0 && r.end_ms > 0).collect()
+        rows.flatten()
+            .filter(|r| r.start_ms > 0 && r.end_ms > 0)
+            .collect()
     };
-    
+
     let gap_ms = gap_fill_minutes * 60 * 1000;
     let mut to_delete = Vec::new();
 
@@ -558,11 +584,11 @@ pub async fn rebuild_sessions(
             let curr_app_id = sessions[c_idx].app_id;
             let curr_proj_id = sessions[c_idx].project_id;
             let curr_end = sessions[c_idx].end_ms;
-            
-            if curr_app_id == sessions[i].app_id 
+
+            if curr_app_id == sessions[i].app_id
                 && curr_proj_id == sessions[i].project_id
                 && (sessions[c_idx].rate_multiplier - sessions[i].rate_multiplier).abs() < 0.000_001
-                && (sessions[i].start_ms - curr_end) <= gap_ms 
+                && (sessions[i].start_ms - curr_end) <= gap_ms
             {
                 let gap_duration = (sessions[i].start_ms - curr_end) / 1000;
                 let new_end = std::cmp::max(curr_end, sessions[i].end_ms);
@@ -579,38 +605,60 @@ pub async fn rebuild_sessions(
     }
 
     {
-        let mut update_stmt = tx.prepare(
-            "UPDATE sessions SET end_time = ?1, duration_seconds = ?2 WHERE id = ?3"
-        ).map_err(|e| e.to_string())?;
+        let mut update_stmt = tx
+            .prepare("UPDATE sessions SET end_time = ?1, duration_seconds = ?2 WHERE id = ?3")
+            .map_err(|e| e.to_string())?;
 
         for s in &sessions {
             if s.end_ms > s.original_end_ms {
                 // Parse original so we can format it back
-                let parse_to_datetime = |ts_str: &str| -> Option<chrono::DateTime<chrono::FixedOffset>> {
-                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
-                        return Some(dt);
-                    }
-                    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S") {
-                        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::FixedOffset::east_opt(0).unwrap()));
-                    }
-                    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S") {
-                        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::FixedOffset::east_opt(0).unwrap()));
-                    }
-                    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S.%f") {
-                        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::FixedOffset::east_opt(0).unwrap()));
-                    }
-                    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S.%f") {
-                        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::FixedOffset::east_opt(0).unwrap()));
-                    }
-                    None
-                };
+                let parse_to_datetime =
+                    |ts_str: &str| -> Option<chrono::DateTime<chrono::FixedOffset>> {
+                        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                            return Some(dt);
+                        }
+                        if let Ok(ndt) =
+                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S")
+                        {
+                            return Some(chrono::DateTime::from_naive_utc_and_offset(
+                                ndt,
+                                chrono::FixedOffset::east_opt(0).unwrap(),
+                            ));
+                        }
+                        if let Ok(ndt) =
+                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S")
+                        {
+                            return Some(chrono::DateTime::from_naive_utc_and_offset(
+                                ndt,
+                                chrono::FixedOffset::east_opt(0).unwrap(),
+                            ));
+                        }
+                        if let Ok(ndt) =
+                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S.%f")
+                        {
+                            return Some(chrono::DateTime::from_naive_utc_and_offset(
+                                ndt,
+                                chrono::FixedOffset::east_opt(0).unwrap(),
+                            ));
+                        }
+                        if let Ok(ndt) =
+                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S.%f")
+                        {
+                            return Some(chrono::DateTime::from_naive_utc_and_offset(
+                                ndt,
+                                chrono::FixedOffset::east_opt(0).unwrap(),
+                            ));
+                        }
+                        None
+                    };
 
                 if let Some(orig_end) = parse_to_datetime(&s.end_time) {
                     let added_ms = s.end_ms - s.original_end_ms;
                     let new_end = orig_end + chrono::Duration::milliseconds(added_ms);
                     let new_end_time = new_end.to_rfc3339();
 
-                    update_stmt.execute(rusqlite::params![new_end_time, s.duration_seconds, s.id])
+                    update_stmt
+                        .execute(rusqlite::params![new_end_time, s.duration_seconds, s.id])
                         .map_err(|e| e.to_string())?;
                 }
             }
@@ -618,7 +666,9 @@ pub async fn rebuild_sessions(
     }
 
     {
-        let mut delete_stmt = tx.prepare("DELETE FROM sessions WHERE id = ?1").map_err(|e| e.to_string())?;
+        let mut delete_stmt = tx
+            .prepare("DELETE FROM sessions WHERE id = ?1")
+            .map_err(|e| e.to_string())?;
         for id in &to_delete {
             delete_stmt.execute([id]).map_err(|e| e.to_string())?;
         }

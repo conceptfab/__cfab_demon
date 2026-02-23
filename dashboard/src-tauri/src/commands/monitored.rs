@@ -78,7 +78,10 @@ fn migrate_legacy_json_to_db_if_needed(conn: &rusqlite::Connection) -> Result<()
     }
 
     if inserted > 0 {
-        log::info!("Migrated {} monitored apps from monitored_apps.json to SQLite", inserted);
+        log::info!(
+            "Migrated {} monitored apps from monitored_apps.json to SQLite",
+            inserted
+        );
     }
 
     Ok(())
@@ -116,7 +119,9 @@ fn load_monitored_apps_from_conn(conn: &rusqlite::Connection) -> Result<Vec<Moni
     Ok(apps)
 }
 
-pub(crate) fn monitored_exe_name_set(conn: &rusqlite::Connection) -> Result<HashSet<String>, String> {
+pub(crate) fn monitored_exe_name_set(
+    conn: &rusqlite::Connection,
+) -> Result<HashSet<String>, String> {
     Ok(load_monitored_apps_from_conn(conn)?
         .into_iter()
         .map(|a| a.exe_name.trim().to_lowercase())
@@ -155,7 +160,10 @@ pub async fn add_monitored_app(
         )
         .map_err(|e| e.to_string())?;
     if inserted == 0 {
-        return Err(format!("{} is already monitored", exe_name.trim().to_lowercase()));
+        return Err(format!(
+            "{} is already monitored",
+            exe_name.trim().to_lowercase()
+        ));
     }
     Ok(())
 }
@@ -200,4 +208,3 @@ pub async fn rename_monitored_app(
     }
     Ok(())
 }
-

@@ -255,7 +255,8 @@ fn build_estimate_rows(
 
     let project_meta = query_project_meta(conn)?;
     let session_counts = query_project_session_counts(conn, date_range)?;
-    let multiplier_extra_seconds_by_project = query_project_multiplier_extra_seconds(conn, date_range)?;
+    let multiplier_extra_seconds_by_project =
+        query_project_multiplier_extra_seconds(conn, date_range)?;
 
     let mut rows: Vec<EstimateProjectRow> = Vec::new();
     for (project_name, seconds_f64) in totals {
@@ -264,7 +265,9 @@ fn build_estimate_rows(
         }
 
         let key = project_name.to_lowercase();
-        let Some((project_id, mapped_name, project_color, project_hourly_rate)) = project_meta.get(&key) else {
+        let Some((project_id, mapped_name, project_color, project_hourly_rate)) =
+            project_meta.get(&key)
+        else {
             log::warn!(
                 "Could not resolve project metadata for '{}' while building estimates",
                 project_name
@@ -275,11 +278,12 @@ fn build_estimate_rows(
         let seconds = seconds_f64.round() as i64;
         let hours = seconds_f64 / 3600.0;
         let effective_hourly_rate = project_hourly_rate.unwrap_or(global_hourly_rate);
-        let weighted_hours = hours + (multiplier_extra_seconds_by_project
-            .get(&key)
-            .copied()
-            .unwrap_or(0.0)
-            / 3600.0);
+        let weighted_hours = hours
+            + (multiplier_extra_seconds_by_project
+                .get(&key)
+                .copied()
+                .unwrap_or(0.0)
+                / 3600.0);
         let estimated_value = weighted_hours * effective_hourly_rate;
         let session_count = session_counts.get(&key).copied().unwrap_or(0);
 
@@ -299,7 +303,11 @@ fn build_estimate_rows(
     rows.sort_by(|a, b| {
         b.estimated_value
             .total_cmp(&a.estimated_value)
-            .then_with(|| a.project_name.to_lowercase().cmp(&b.project_name.to_lowercase()))
+            .then_with(|| {
+                a.project_name
+                    .to_lowercase()
+                    .cmp(&b.project_name.to_lowercase())
+            })
     });
 
     Ok(rows)

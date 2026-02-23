@@ -366,8 +366,6 @@ pub(crate) fn generate_color_for_app(name: &str) -> String {
     palette[idx].to_string()
 }
 
-
-
 #[tauri::command]
 pub async fn get_applications(
     app: AppHandle,

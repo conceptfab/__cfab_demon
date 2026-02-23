@@ -128,7 +128,15 @@ pub(crate) fn project_color_for_name(name: &str) -> String {
     hsl_to_hex(hue, sat.min(0.82), light.min(0.68))
 }
 
-pub(crate) fn project_exists_by_name(conn: &rusqlite::Connection, name: &str) -> bool {
+fn normalized_project_name_key(name: &str) -> Option<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    Some(trimmed.to_lowercase())
+}
+
+fn project_row_exists_by_name(conn: &rusqlite::Connection, name: &str) -> bool {
     conn.query_row(
         "SELECT COUNT(*) > 0 FROM projects WHERE lower(name) = lower(?1)",
         [name],
@@ -137,11 +145,47 @@ pub(crate) fn project_exists_by_name(conn: &rusqlite::Connection, name: &str) ->
     .unwrap_or(false)
 }
 
+pub(crate) fn project_name_is_blacklisted(conn: &rusqlite::Connection, name: &str) -> bool {
+    let Some(name_key) = normalized_project_name_key(name) else {
+        return false;
+    };
+    conn.query_row(
+        "SELECT COUNT(*) > 0 FROM project_name_blacklist WHERE name_key = ?1",
+        [name_key],
+        |row| row.get(0),
+    )
+    .unwrap_or(false)
+}
+
+pub(crate) fn project_id_is_active(
+    conn: &rusqlite::Connection,
+    project_id: i64,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1 AND excluded_at IS NULL",
+        [project_id],
+        |row| row.get(0),
+    )
+    .map_err(|e| e.to_string())
+}
+
+pub(crate) fn project_exists_by_name(conn: &rusqlite::Connection, name: &str) -> bool {
+    project_row_exists_by_name(conn, name) || project_name_is_blacklisted(conn, name)
+}
+
 pub(crate) fn create_project_if_missing(
     conn: &rusqlite::Connection,
     name: &str,
 ) -> Result<bool, String> {
-    if project_exists_by_name(conn, name) {
+    let name = name.trim();
+    if name.is_empty() {
+        return Ok(false);
+    }
+    if project_name_is_blacklisted(conn, name) {
+        log::info!("Skipping blacklisted project name '{}'", name);
+        return Ok(false);
+    }
+    if project_row_exists_by_name(conn, name) {
         return Ok(false);
     }
     conn.execute(
@@ -191,7 +235,7 @@ fn infer_project_name_from_file_title(
             return Some(candidate.to_string());
         }
     }
-    
+
     // If no other method worked, pass the full text as fallback
     // ensure_app_project_from_file_hint will check the extracted text first,
     // and if not, it will try the original.
@@ -210,14 +254,14 @@ pub(crate) fn ensure_app_project_from_file_hint(
     }
 
     let mut candidates = Vec::new();
-    
+
     // First the full string and path heuristics.
     candidates.push(file_name.trim().to_string());
     if let Some(inferred) = infer_project_name_from_file_title(file_name, project_roots) {
         candidates.push(inferred);
     }
-    
-    // Next, add EACH part after splitting by hyphen as a potential project name. 
+
+    // Next, add EACH part after splitting by hyphen as a potential project name.
     // If the window is e.g. "__timeflow_demon - Antigravity", we check both "__timeflow_demon" and "Antigravity".
     for part in file_name.split(" - ") {
         let trimmed = part.trim();
@@ -225,7 +269,7 @@ pub(crate) fn ensure_app_project_from_file_hint(
             candidates.push(trimmed.to_string());
         }
     }
-    
+
     // Also check alternative separators that the demon sometimes leaves
     for part in file_name.split(" | ") {
         let trimmed = part.trim();
@@ -236,7 +280,10 @@ pub(crate) fn ensure_app_project_from_file_hint(
 
     for candidate_name in candidates {
         let proj_id: Option<i64> = match conn.query_row(
-            "SELECT id FROM projects WHERE lower(name) = lower(?1)",
+            "SELECT id
+             FROM projects
+             WHERE lower(name) = lower(?1)
+               AND excluded_at IS NULL",
             [candidate_name.as_str()],
             |row| row.get(0),
         ) {
@@ -257,7 +304,7 @@ pub(crate) fn ensure_app_project_from_file_hint(
             return proj_id;
         }
     }
-    
+
     None
 }
 
@@ -414,6 +461,16 @@ pub async fn create_project(
     assigned_folder_path: Option<String>,
 ) -> Result<Project, String> {
     let conn = db::get_connection(&app)?;
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Project name is required".to_string());
+    }
+    if project_name_is_blacklisted(&conn, &name) {
+        return Err("Project name is on the excluded blacklist".to_string());
+    }
+    if project_row_exists_by_name(&conn, &name) {
+        return Err("Project already exists".to_string());
+    }
 
     let mut normalized_folder = None;
     if let Some(path) = assigned_folder_path {
@@ -426,7 +483,8 @@ pub async fn create_project(
                     conn.execute(
                         "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
                         rusqlite::params![norm, added_at],
-                    ).map_err(|e| e.to_string())?;
+                    )
+                    .map_err(|e| e.to_string())?;
                     normalized_folder = Some(norm);
                 }
             }
@@ -453,11 +511,7 @@ pub async fn create_project(
 }
 
 #[tauri::command]
-pub async fn update_project(
-    app: AppHandle,
-    id: i64,
-    color: String,
-) -> Result<(), String> {
+pub async fn update_project(app: AppHandle, id: i64, color: String) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
     let updated = conn
         .execute(
@@ -497,6 +551,21 @@ pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), String> {
 #[tauri::command]
 pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
+    let project_name: Option<String> = conn
+        .query_row("SELECT name FROM projects WHERE id = ?1", [id], |row| {
+            row.get(0)
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if let Some(name) = project_name {
+        if let Some(name_key) = normalized_project_name_key(&name) {
+            conn.execute(
+                "DELETE FROM project_name_blacklist WHERE name_key = ?1",
+                [name_key],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
     conn.execute("UPDATE projects SET excluded_at = NULL WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -527,13 +596,21 @@ pub async fn assign_app_to_project(
     project_id: Option<i64>,
 ) -> Result<(), String> {
     let mut conn = db::get_connection(&app)?;
-    
+    if let Some(pid) = project_id {
+        if !project_id_is_active(&conn, pid)? {
+            return Err("Cannot assign app to an excluded or missing project".to_string());
+        }
+    }
+
     // Fetch old project id for feedback loop
-    let old_project_id: Option<i64> = conn.query_row(
-        "SELECT project_id FROM applications WHERE id = ?1",
-        [app_id],
-        |row| row.get(0)
-    ).optional().map_err(|e: rusqlite::Error| e.to_string())?;
+    let old_project_id: Option<i64> = conn
+        .query_row(
+            "SELECT project_id FROM applications WHERE id = ?1",
+            [app_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e: rusqlite::Error| e.to_string())?;
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
     tx.execute(
@@ -681,6 +758,9 @@ pub async fn create_project_from_folder(
         .map(|n| n.to_string_lossy().to_string())
         .ok_or_else(|| "Cannot infer project name from folder".to_string())?;
     let conn = db::get_connection(&app)?;
+    if project_name_is_blacklisted(&conn, &name) {
+        return Err("Project name is on the excluded blacklist".to_string());
+    }
     if !create_project_if_missing(&conn, &name)? {
         return Err("Project already exists".to_string());
     }
@@ -836,4 +916,3 @@ mod tests {
         assert_eq!(folder_count, 0);
     }
 }
-

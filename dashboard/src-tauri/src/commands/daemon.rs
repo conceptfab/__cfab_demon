@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::process::Command;
 use tauri::AppHandle;
 
-use super::helpers::{timeflow_data_dir, no_console, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
+use super::helpers::{no_console, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
 use super::types::DaemonStatus;
 use crate::db;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
@@ -277,4 +277,3 @@ pub async fn restart_daemon() -> Result<(), String> {
         .map_err(|e| format!("Failed to start daemon: {}", e))?;
     Ok(())
 }
-

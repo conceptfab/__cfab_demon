@@ -15,6 +15,86 @@ CREATE TABLE IF NOT EXISTS projects (
     is_imported INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS project_name_blacklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    name_key TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_name_blacklist_name_key
+ON project_name_blacklist(name_key);
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_blacklist_block_insert
+BEFORE INSERT ON projects
+FOR EACH ROW
+WHEN NEW.excluded_at IS NULL
+ AND trim(NEW.name) <> ''
+ AND EXISTS (
+    SELECT 1
+    FROM project_name_blacklist b
+    WHERE b.name_key = lower(trim(NEW.name))
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'Project name is blacklisted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_blacklist_block_update
+BEFORE UPDATE OF name, excluded_at ON projects
+FOR EACH ROW
+WHEN NEW.excluded_at IS NULL
+ AND trim(NEW.name) <> ''
+ AND EXISTS (
+    SELECT 1
+    FROM project_name_blacklist b
+    WHERE b.name_key = lower(trim(NEW.name))
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'Project name is blacklisted');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_blacklist_sync_insert
+AFTER INSERT ON projects
+FOR EACH ROW
+WHEN NEW.excluded_at IS NOT NULL AND trim(NEW.name) <> ''
+BEGIN
+    INSERT OR IGNORE INTO project_name_blacklist (name, name_key, created_at)
+    VALUES (NEW.name, lower(trim(NEW.name)), COALESCE(NEW.excluded_at, datetime('now')));
+    UPDATE project_name_blacklist
+    SET name = NEW.name
+    WHERE name_key = lower(trim(NEW.name));
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_blacklist_sync_exclude
+AFTER UPDATE OF excluded_at ON projects
+FOR EACH ROW
+WHEN NEW.excluded_at IS NOT NULL AND trim(NEW.name) <> ''
+BEGIN
+    INSERT OR IGNORE INTO project_name_blacklist (name, name_key, created_at)
+    VALUES (NEW.name, lower(trim(NEW.name)), COALESCE(NEW.excluded_at, datetime('now')));
+    UPDATE project_name_blacklist
+    SET name = NEW.name
+    WHERE name_key = lower(trim(NEW.name));
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_blacklist_sync_restore
+AFTER UPDATE OF excluded_at ON projects
+FOR EACH ROW
+WHEN OLD.excluded_at IS NOT NULL AND NEW.excluded_at IS NULL AND trim(NEW.name) <> ''
+BEGIN
+    DELETE FROM project_name_blacklist
+    WHERE name_key = lower(trim(NEW.name));
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_blacklist_sync_delete
+AFTER DELETE ON projects
+FOR EACH ROW
+WHEN OLD.excluded_at IS NOT NULL AND trim(OLD.name) <> ''
+BEGIN
+    DELETE FROM project_name_blacklist
+    WHERE name_key = lower(trim(OLD.name));
+END;
+
 CREATE TABLE IF NOT EXISTS applications (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     executable_name TEXT NOT NULL UNIQUE,
@@ -398,6 +478,15 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         db.execute("ALTER TABLE projects ADD COLUMN excluded_at TEXT", [])?;
     }
 
+    // Backfill DB-level project blacklist from existing excluded projects.
+    db.execute(
+        "INSERT OR IGNORE INTO project_name_blacklist (name, name_key, created_at)
+         SELECT name, lower(trim(name)), COALESCE(excluded_at, datetime('now'))
+         FROM projects
+         WHERE excluded_at IS NOT NULL AND trim(name) <> ''",
+        [],
+    )?;
+
     // Check if file_activities has old schema (session_id column but no app_id column)
     let has_session_id: bool = db
         .prepare(
@@ -631,19 +720,23 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         "UPDATE file_activities SET project_id = NULL
          WHERE project_id IN (SELECT id FROM projects WHERE LOWER(name) = '(background)')",
         [],
-    ).ok();
-    
+    )
+    .ok();
+
     db.execute(
         "UPDATE sessions SET project_id = NULL
          WHERE project_id IN (SELECT id FROM projects WHERE LOWER(name) = '(background)')",
         [],
-    ).ok();
-    
-    let cleaned = db.execute(
-        "DELETE FROM projects WHERE LOWER(name) = '(background)'",
-        [],
-    ).unwrap_or(0);
-    
+    )
+    .ok();
+
+    let cleaned = db
+        .execute(
+            "DELETE FROM projects WHERE LOWER(name) = '(background)'",
+            [],
+        )
+        .unwrap_or(0);
+
     if cleaned > 0 {
         log::info!("Removed {} '(background)' pseudo-project(s)", cleaned);
     }
@@ -778,4 +871,3 @@ pub fn set_demo_mode(app: &AppHandle, enabled: bool) -> Result<DemoModeStatus, S
 
     get_demo_mode_status(app)
 }
-
