@@ -15,7 +15,6 @@ interface ContextMenu {
   session: SessionWithApp;
 }
 type RangeMode = "daily" | "weekly";
-const DEFAULT_RATE_MULTIPLIER = 2;
 
 function formatMultiplierLabel(multiplier?: number): string {
   const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
@@ -157,9 +156,9 @@ export function Sessions() {
   const handleCustomRateMultiplier = useCallback(async () => {
     if (!ctxMenu) return;
     const current = typeof ctxMenu.session.rate_multiplier === "number" ? ctxMenu.session.rate_multiplier : 1;
-    const suggested = current > 1 ? current : DEFAULT_RATE_MULTIPLIER;
+    const suggested = current > 1 ? current : 2;
     const raw = window.prompt(
-      "Set session rate multiplier (e.g. 1.5, 2, 3). Use 1 to reset:",
+      "Set session rate multiplier (> 0). Use 1 to reset:",
       String(suggested)
     );
     if (raw == null) return;
@@ -537,31 +536,13 @@ export function Sessions() {
               className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => void handleSetRateMultiplier(2)}
             >
-              $$$ x2 (default)
+              x2
             </button>
             <button
               className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(3)}
-            >
-              $$$ x3
-            </button>
-            <button
-              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(1.5)}
-            >
-              $$$ x1.5
-            </button>
-            <button
-              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(1)}
-            >
-              Reset x1
-            </button>
-            <button
-              className="col-span-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => void handleCustomRateMultiplier()}
             >
-              Custom multiplier...
+              Custom...
             </button>
           </div>
           <div className="h-px bg-border my-1" />

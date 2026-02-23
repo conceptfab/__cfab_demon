@@ -75,7 +75,7 @@ export function FileDropzone() {
         onDrop={handleDrop}
       >
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <Upload className={cn("mb-4 h-10 w-10", isDragging ? "text-primary" : "text-muted-foreground")} />
+          <Upload className={cn("mb-4 h-10 w-10", isDragging ? "text-foreground" : "text-muted-foreground")} />
           <p className="mb-2 text-sm font-medium">
             {isDragging ? "Drop files here" : "Drag & drop JSON files here"}
           </p>

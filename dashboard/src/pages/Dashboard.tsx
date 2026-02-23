@@ -6,7 +6,6 @@ import { ProjectDayTimeline } from "@/components/dashboard/ProjectDayTimeline";
 import { AllProjectsChart } from "@/components/dashboard/AllProjectsChart";
 import { TopAppsChart } from "@/components/dashboard/TopAppsChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store/app-store";
 import {
@@ -42,9 +41,9 @@ function AutoImportBanner() {
   if (!done) {
     return (
       <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="flex items-center gap-3 p-4">
-          <Archive className="h-5 w-5 text-primary animate-pulse" />
-          <span className="text-sm">Importing data from daemon...</span>
+        <CardContent className="flex items-center gap-2.5 p-3">
+          <Archive className="h-4 w-4 text-muted-foreground animate-pulse" />
+          <span className="text-xs">Importing data from daemon...</span>
         </CardContent>
       </Card>
     );
@@ -55,9 +54,9 @@ function AutoImportBanner() {
   if (result.errors.length > 0 && result.files_imported === 0) {
     return (
       <Card className="border-destructive/30 bg-destructive/5">
-        <CardContent className="flex items-center gap-3 p-4">
-          <Archive className="h-5 w-5 text-destructive" />
-          <span className="text-sm text-destructive">
+        <CardContent className="flex items-center gap-2.5 p-3">
+          <Archive className="icon-colored h-4 w-4 text-destructive" />
+          <span className="text-xs text-destructive">
             Auto-import failed: {result.errors[0]}
           </span>
         </CardContent>
@@ -69,14 +68,14 @@ function AutoImportBanner() {
 
   return (
     <Card className="border-emerald-500/30 bg-emerald-500/5">
-      <CardContent className="flex items-center gap-3 p-4">
-        <Archive className="h-5 w-5 text-emerald-400" />
-        <span className="text-sm text-emerald-300">
+      <CardContent className="flex items-center gap-2.5 p-3">
+        <Archive className="h-4 w-4 text-emerald-400" />
+        <span className="text-xs text-emerald-300">
           Auto-imported <strong>{result.files_imported}</strong> file(s) ({result.files_archived} archived).
           {result.files_skipped > 0 && ` ${result.files_skipped} already in database.`}
         </span>
         {result.errors.length > 0 && (
-          <span className="text-xs text-destructive ml-auto">
+          <span className="ml-auto text-[10px] text-destructive">
             {result.errors.length} error(s)
           </span>
         )}
@@ -91,7 +90,7 @@ function TopProjectsList({ projects, allProjectsList, dateRange, setSessionsFocu
 
   if (projects.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground py-4">
+      <p className="py-3 text-xs text-muted-foreground">
         No projects found.
       </p>
     );
@@ -100,11 +99,11 @@ function TopProjectsList({ projects, allProjectsList, dateRange, setSessionsFocu
   const maxSeconds = Math.max(1, ...projects.map((p) => p.seconds));
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-0.5">
       {projects.map((p, i) => (
         <div
           key={`${p.name}-${i}`}
-          className="space-y-1.5 cursor-pointer hover:bg-muted/50 p-2 -mx-2 rounded-md transition-colors"
+          className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
           onClick={() => {
             setSessionsFocusDate(dateRange.end);
             if (p.name === "Unassigned") {
@@ -121,8 +120,8 @@ function TopProjectsList({ projects, allProjectsList, dateRange, setSessionsFocu
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span className="text-sm font-medium truncate">{p.name}</span>
+                <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="truncate text-xs font-medium">{p.name}</span>
               </div>
               <div className="flex items-center gap-2 mt-0.5 ml-5.5">
                 <span className="text-[10px] text-muted-foreground">
@@ -133,11 +132,11 @@ function TopProjectsList({ projects, allProjectsList, dateRange, setSessionsFocu
                 </span>
               </div>
             </div>
-            <span className="font-mono text-sm text-muted-foreground whitespace-nowrap">
+            <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
               {formatDuration(p.seconds)}
             </span>
           </div>
-          <div className="h-1.5 rounded-full bg-secondary ml-5.5">
+          <div className="ml-5.5 h-1 rounded-full bg-secondary">
             <div
               className="h-full rounded-full transition-all"
               style={{ width: `${(p.seconds / maxSeconds) * 100}%`, backgroundColor: p.color }}
@@ -293,8 +292,8 @@ export function Dashboard() {
   }, [refreshKey]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-end gap-1.5">
         <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
           {refreshing ? "Refreshing..." : "Refresh"}
@@ -314,7 +313,7 @@ export function Dashboard() {
 
         {timePreset !== "all" && (
           <>
-            <div className="mx-1 h-5 w-px bg-border" />
+            <div className="mx-0.5 h-4 w-px bg-border" />
             <Button
               variant="ghost"
               size="icon"
@@ -324,7 +323,7 @@ export function Dashboard() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-xs text-muted-foreground min-w-[5rem] text-center">
+            <span className="min-w-[5rem] text-center text-[11px] text-muted-foreground">
               {dateRange.start === dateRange.end
                 ? format(parseISO(dateRange.start), "MMM d")
                 : `${format(parseISO(dateRange.start), "MMM d")} – ${format(parseISO(dateRange.end), "MMM d")}`}
@@ -348,9 +347,9 @@ export function Dashboard() {
 
       {timePreset === "today" && unassignedToday.sessionCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/10">
-          <CardContent className="flex flex-wrap items-center gap-3 p-4">
-            <AlertTriangle className="h-5 w-5 text-amber-300" />
-            <span className="text-sm text-amber-100">
+          <CardContent className="flex flex-wrap items-center gap-2.5 p-3">
+            <AlertTriangle className="icon-colored h-4 w-4 text-amber-300" />
+            <span className="text-xs text-amber-100">
               <strong>{unassignedToday.sessionCount}</strong> sessions (
               <strong>{formatDuration(unassignedToday.seconds)}</strong>) are unassigned across{" "}
               <strong>{unassignedToday.appCount}</strong> apps on{" "}
@@ -372,7 +371,7 @@ export function Dashboard() {
       )}
 
       {/* Metric cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Total Tracked"
           value={stats ? formatDuration(stats.total_seconds) : "—"}
@@ -421,20 +420,16 @@ export function Dashboard() {
           granularity={timelineGranularity}
           dateRange={dateRange}
           trimLeadingToFirstData={timePreset === "all"}
-          heightClassName="h-[26rem]"
+          heightClassName="h-[24rem]"
         />
       )}
 
       {/* Projects + Applications split (project-first) */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         {/* Projects column */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <FolderOpen className="h-4 w-4 text-violet-400" />
-              Top Projects
-              <Badge variant="secondary" className="ml-auto text-[10px]">max 5</Badge>
-            </CardTitle>
+            <CardTitle className="text-sm font-medium">Top 5 Projects</CardTitle>
           </CardHeader>
           <CardContent>
                   <TopProjectsList

@@ -68,7 +68,6 @@ const HATCH_STYLE: React.CSSProperties = {
   )`,
   pointerEvents: "none",
 };
-const DEFAULT_RATE_MULTIPLIER = 2;
 const SESSION_FRAGMENT_CLUSTER_GAP_MS = 60_000;
 
 function formatMultiplierLabel(multiplier?: number): string {
@@ -336,9 +335,9 @@ export function ProjectDayTimeline({
       ctxMenu.segment.mixedRateMultiplier
         ? 1
         : (typeof ctxMenu.segment.rateMultiplier === "number" ? ctxMenu.segment.rateMultiplier : 1);
-    const suggested = current > 1 ? current : DEFAULT_RATE_MULTIPLIER;
+    const suggested = current > 1 ? current : 2;
     const raw = window.prompt(
-      "Set session rate multiplier (e.g. 1.5, 2, 3). Use 1 to reset:",
+      "Set session rate multiplier (> 0). Use 1 to reset:",
       String(suggested)
     );
     if (raw == null) return;
@@ -721,31 +720,13 @@ export function ProjectDayTimeline({
                   className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
                   onClick={() => void handleSetRateMultiplier(2)}
                 >
-                  $$$ x2 (default)
+                  x2
                 </button>
                 <button
                   className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  onClick={() => void handleSetRateMultiplier(3)}
-                >
-                  $$$ x3
-                </button>
-                <button
-                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  onClick={() => void handleSetRateMultiplier(1.5)}
-                >
-                  $$$ x1.5
-                </button>
-                <button
-                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  onClick={() => void handleSetRateMultiplier(1)}
-                >
-                  Reset x1
-                </button>
-                <button
-                  className="col-span-2 rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
                   onClick={() => void handleCustomRateMultiplier()}
                 >
-                  Custom multiplier...
+                  Custom...
                 </button>
               </div>
             </>

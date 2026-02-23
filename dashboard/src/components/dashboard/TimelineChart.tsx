@@ -1,5 +1,13 @@
 import { useMemo } from "react";
-import { TOOLTIP_CONTENT_STYLE } from "@/lib/chart-styles";
+import {
+  TOOLTIP_CONTENT_STYLE,
+  TOKYO_NIGHT_CHART_PALETTE,
+  CHART_GRID_COLOR,
+  CHART_AXIS_COLOR,
+  CHART_MUTED_SERIES_COLOR,
+  CHART_TOOLTIP_TEXT_COLOR,
+  CHART_TOOLTIP_TITLE_COLOR,
+} from "@/lib/chart-styles";
 import {
   BarChart,
   Bar,
@@ -24,7 +32,7 @@ interface Props {
   heightClassName?: string;
 }
 
-const PALETTE = ["#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee", "#14b8a6", "#e879f9"];
+const PALETTE = TOKYO_NIGHT_CHART_PALETTE;
 
 export function TimelineChart({
   data,
@@ -135,7 +143,7 @@ export function TimelineChart({
     const items = payload
       .map((entry) => ({
         name: String(entry.name ?? ""),
-        color: entry.color ?? "#94a3b8",
+        color: entry.color ?? CHART_MUTED_SERIES_COLOR,
         value: Number(entry.value ?? 0),
       }))
       .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
@@ -145,7 +153,7 @@ export function TimelineChart({
 
     return (
       <div style={TOOLTIP_CONTENT_STYLE}>
-        <div style={{ color: "#f1f5f9", fontWeight: 600, marginBottom: 6 }}>
+        <div style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600, marginBottom: 6 }}>
           {xLabelFormatter(label)}
         </div>
         {items.map((item) => (
@@ -155,7 +163,7 @@ export function TimelineChart({
               display: "flex",
               alignItems: "center",
               gap: 8,
-              color: "#e2e8f0",
+              color: CHART_TOOLTIP_TEXT_COLOR,
               marginBottom: 2,
             }}
           >
@@ -186,18 +194,18 @@ export function TimelineChart({
           <ResponsiveContainer width="100%" height="100%">
             {isHourly ? (
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.45} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={xTickFormatter}
-                  stroke="#475569"
+                  stroke={CHART_AXIS_COLOR}
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                   interval={2}
                 />
                 <YAxis
-                  stroke="#475569"
+                  stroke={CHART_AXIS_COLOR}
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
@@ -209,7 +217,7 @@ export function TimelineChart({
                 {seriesKeys.map((key, idx) => {
                   const color =
                     key === "Other"
-                      ? "#64748b"
+                      ? CHART_MUTED_SERIES_COLOR
                       : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
                   return (
                     <Bar
@@ -225,18 +233,18 @@ export function TimelineChart({
               </BarChart>
             ) : (
               <BarChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.45} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={xTickFormatter}
-                  stroke="#475569"
+                  stroke={CHART_AXIS_COLOR}
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
                   minTickGap={18}
                 />
                 <YAxis
-                  stroke="#475569"
+                  stroke={CHART_AXIS_COLOR}
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
@@ -249,7 +257,7 @@ export function TimelineChart({
                 {seriesKeys.map((key, idx) => {
                   const color =
                     key === "Other"
-                      ? "#64748b"
+                      ? CHART_MUTED_SERIES_COLOR
                       : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
                   return (
                     <Bar

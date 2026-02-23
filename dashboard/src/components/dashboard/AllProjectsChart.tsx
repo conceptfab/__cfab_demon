@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import { TOOLTIP_CONTENT_STYLE } from "@/lib/chart-styles";
+import {
+  TOOLTIP_CONTENT_STYLE,
+  CHART_GRID_COLOR,
+  CHART_AXIS_COLOR,
+  CHART_TOOLTIP_TEXT_COLOR,
+  CHART_TOOLTIP_TITLE_COLOR,
+} from "@/lib/chart-styles";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,7 +59,7 @@ export function AllProjectsChart({ projects }: Props) {
           <div className="h-[11rem] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={sorted} margin={{ top: 8, right: 8, bottom: 8, left: 8 }} barCategoryGap="12%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.35} />
+                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.35} />
                 <XAxis
                   dataKey="name"
                   tick={false}
@@ -63,15 +69,15 @@ export function AllProjectsChart({ projects }: Props) {
                 />
                 <YAxis
                   tickFormatter={(v) => formatDuration(Number(v))}
-                  tick={{ fill: "#64748b", fontSize: 11 }}
+                  tick={{ fill: CHART_AXIS_COLOR, fontSize: 11 }}
                   tickLine={false}
                   axisLine={false}
                   width={70}
                 />
                 <Tooltip
                   contentStyle={TOOLTIP_CONTENT_STYLE}
-                  labelStyle={{ color: "#f1f5f9", fontWeight: 600, marginBottom: 4 }}
-                  itemStyle={{ color: "#e2e8f0" }}
+                  labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600, marginBottom: 4 }}
+                  itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                   formatter={(value) => [formatDuration(Number(value)), "Time"]}
                   labelFormatter={(label) => String(label)}
                 />

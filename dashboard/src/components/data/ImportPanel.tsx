@@ -91,7 +91,7 @@ export function ImportPanel() {
                 {validation.valid ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 ) : (
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTriangle className="icon-colored h-4 w-4 text-amber-500" />
                 )}
               </div>
               <div className="text-xs text-muted-foreground space-y-1">

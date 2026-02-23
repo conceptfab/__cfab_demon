@@ -1,10 +1,3 @@
-import { useEffect, useState } from "react";
-import { Badge } from "@/components/ui/badge";
-import {
-  getOnlineSyncIndicatorSnapshot,
-  subscribeOnlineSyncIndicator,
-  type OnlineSyncIndicatorSnapshot,
-} from "@/lib/online-sync";
 import { useAppStore } from "@/store/app-store";
 
 const pageTitles: Record<string, string> = {
@@ -23,39 +16,12 @@ const pageTitles: Record<string, string> = {
 
 export function TopBar() {
   const { currentPage } = useAppStore();
-  const [syncIndicator, setSyncIndicator] = useState<OnlineSyncIndicatorSnapshot>(() =>
-    getOnlineSyncIndicatorSnapshot()
-  );
-
-  useEffect(() => {
-    return subscribeOnlineSyncIndicator(setSyncIndicator);
-  }, []);
-
-  const badgeVariant =
-    syncIndicator.status === "error"
-      ? "destructive"
-      : syncIndicator.status === "syncing"
-        ? "default"
-        : "secondary";
-  const showSyncDetail = syncIndicator.status !== "disabled" && !!syncIndicator.detail;
 
   return (
-    <header className="flex h-14 items-center justify-between gap-4 border-b px-6">
-      <h1 className="text-lg font-semibold">{pageTitles[currentPage] ?? "Dashboard"}</h1>
-      <div className="flex min-w-0 items-center gap-2">
-        <Badge
-          variant={badgeVariant}
-          className="whitespace-nowrap"
-          title={syncIndicator.detail || undefined}
-        >
-          {syncIndicator.label}
-        </Badge>
-        {showSyncDetail && (
-          <span className="hidden max-w-[24rem] truncate text-xs text-muted-foreground md:inline">
-            {syncIndicator.detail}
-          </span>
-        )}
-      </div>
+    <header className="flex h-12 items-center gap-3 bg-background px-4">
+      <h1 className="text-sm font-medium tracking-wide text-foreground">
+        {pageTitles[currentPage] ?? "Dashboard"}
+      </h1>
     </header>
   );
 }

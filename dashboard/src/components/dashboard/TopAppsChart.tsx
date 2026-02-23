@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CHART_PRIMARY_COLOR } from "@/lib/chart-styles";
 import { formatDuration } from "@/lib/utils";
 
 interface Props {
@@ -29,7 +30,7 @@ export function TopAppsChart({ apps }: Props) {
                   className="h-full rounded-full transition-all"
                   style={{
                     width: `${(app.seconds / maxSeconds) * 100}%`,
-                    backgroundColor: app.color ?? "#38bdf8",
+                    backgroundColor: app.color ?? CHART_PRIMARY_COLOR,
                   }}
                 />
               </div>

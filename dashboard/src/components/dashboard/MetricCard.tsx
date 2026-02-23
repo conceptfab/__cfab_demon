@@ -12,16 +12,16 @@ interface MetricCardProps {
 
 export function MetricCard({ title, value, subtitle, icon: Icon, className }: MetricCardProps) {
   return (
-    <Card className={cn("", className)}>
-      <CardContent className="p-6">
+    <Card className={cn("border-border/70", className)}>
+      <CardContent className="p-4">
         <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-2xl font-semibold font-mono">{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+          <div className="space-y-0.5">
+            <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">{title}</p>
+            <p className="text-xl font-semibold tracking-tight font-mono">{value}</p>
+            {subtitle && <p className="text-[10px] text-muted-foreground">{subtitle}</p>}
           </div>
-          <div className="rounded-md bg-primary/10 p-2">
-            <Icon className="h-5 w-5 text-primary" />
+          <div className="rounded-md border border-border/80 bg-accent/35 p-1.5 text-muted-foreground">
+            <Icon className="h-4 w-4" />
           </div>
         </div>
       </CardContent>

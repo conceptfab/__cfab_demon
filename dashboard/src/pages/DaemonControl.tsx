@@ -235,7 +235,7 @@ export function DaemonControl() {
                 onClick={() => setAutoRefresh(!autoRefresh)}
                 className={`text-xs px-2 py-0.5 rounded ${
                   autoRefresh
-                    ? "bg-primary/10 text-primary"
+                    ? "bg-accent text-foreground"
                     : "bg-muted text-muted-foreground"
                 }`}
               >

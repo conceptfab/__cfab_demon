@@ -11,9 +11,15 @@ import {
   Power,
   Brain,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { getDaemonStatus, getSessionCount } from "@/lib/tauri";
+import {
+  getOnlineSyncIndicatorSnapshot,
+  subscribeOnlineSyncIndicator,
+  type OnlineSyncIndicatorSnapshot,
+} from "@/lib/online-sync";
 import type { DaemonStatus } from "@/lib/db-types";
 
 const navItems = [
@@ -41,13 +47,13 @@ function DaemonStatusIndicator({ status }: { status: DaemonStatus | null }) {
   return (
     <button
       onClick={() => setCurrentPage("daemon")}
-      className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-xs transition-colors hover:bg-accent"
+      className="flex w-full items-center gap-2 rounded-md border border-transparent px-2.5 py-1.5 text-[11px] transition-colors hover:border-border/60 hover:bg-accent/70"
       title={attentionTitle}
     >
       <span
         className={cn(
           "relative h-2 w-2 rounded-full",
-          running === true && "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]",
+          running === true && "bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.55)]",
           running === false && "bg-red-500",
           running === null && "bg-muted-foreground/40"
         )}
@@ -64,6 +70,9 @@ export function Sidebar() {
   const { currentPage, setCurrentPage } = useAppStore();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [todayUnassigned, setTodayUnassigned] = useState<number>(0);
+  const [syncIndicator, setSyncIndicator] = useState<OnlineSyncIndicatorSnapshot>(() =>
+    getOnlineSyncIndicatorSnapshot()
+  );
 
   useEffect(() => {
     const check = () => {
@@ -87,6 +96,10 @@ export function Sidebar() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    return subscribeOnlineSyncIndicator(setSyncIndicator);
+  }, []);
+
   const daemonUnassigned = Math.max(0, status?.unassigned_sessions ?? 0);
   const unassignedSessions = todayUnassigned > 0 ? todayUnassigned : daemonUnassigned;
   const unassignedApps = Math.max(0, status?.unassigned_apps ?? 0);
@@ -97,33 +110,45 @@ export function Sidebar() {
         ? `${unassignedSessions} unassigned sessions today`
         : `${unassignedSessions} unassigned sessions in ${unassignedApps} apps`
       : undefined;
+  const syncBadgeVariant =
+    syncIndicator.status === "error"
+      ? "destructive"
+      : syncIndicator.status === "syncing"
+        ? "default"
+        : "secondary";
+  const showSyncDetail = syncIndicator.status !== "disabled" && !!syncIndicator.detail;
+  const syncDetailLines = showSyncDetail
+    ? String(syncIndicator.detail)
+        .split(/\s+[·•]\s+/)
+        .map((line) => line.trim())
+        .filter(Boolean)
+    : [];
 
   return (
-    <aside className="fixed left-0 top-0 z-40 flex h-screen w-60 flex-col border-r bg-card">
-      <div className="flex h-14 items-center gap-2 border-b px-6">
-        <BarChart3 className="h-5 w-5 text-primary" />
-        <span className="text-lg font-semibold">TimeFlow</span>
+    <aside className="fixed left-0 top-0 z-40 flex h-screen w-56 flex-col border-r border-border/35 bg-background">
+      <div className="flex h-12 items-center border-b border-border/25 px-4">
+        <span className="text-sm font-semibold tracking-wide">TimeFlow</span>
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="flex-1 space-y-0.5 p-2">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setCurrentPage(item.id)}
             title={item.id === "sessions" ? sessionsAttentionTitle : undefined}
             className={cn(
-              "flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
               currentPage === item.id
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                ? "border-border/40 bg-accent/75 text-card-foreground"
+                : "border-transparent text-muted-foreground hover:border-border/35 hover:bg-accent/50 hover:text-accent-foreground"
             )}
           >
-            <span className="flex items-center gap-3">
-              <item.icon className="h-4 w-4" />
+            <span className="flex items-center gap-2.5">
+              <item.icon className="h-3.5 w-3.5" />
               <span>{item.label}</span>
             </span>
             {item.id === "sessions" && unassignedSessions > 0 && (
-              <span className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-semibold text-destructive">
+              <span className="rounded-sm border border-destructive/25 bg-destructive/10 px-1.5 py-0 text-[10px] font-medium text-destructive">
                 *{sessionsBadge}
               </span>
             )}
@@ -131,18 +156,36 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t p-3 space-y-1">
+      <div className="space-y-0.5 border-t border-border/25 p-2">
+        <div className="px-2.5 py-1.5">
+          <Badge
+            variant={syncBadgeVariant}
+            className="max-w-full whitespace-nowrap px-2 py-0.5 text-[10px]"
+            title={syncIndicator.detail || undefined}
+          >
+            {syncIndicator.label}
+          </Badge>
+          {showSyncDetail && (
+            <div className="mt-1 space-y-0.5 text-[10px] leading-4 text-muted-foreground" title={syncIndicator.detail || undefined}>
+              {(syncDetailLines.length > 0 ? syncDetailLines : [String(syncIndicator.detail)]).map((line, idx) => (
+                <p key={`${line}-${idx}`} className="break-all">
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
         <DaemonStatusIndicator status={status} />
         <button
           onClick={() => setCurrentPage("settings")}
           className={cn(
-            "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            "flex w-full items-center gap-2.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
             currentPage === "settings"
-              ? "bg-primary/10 text-primary"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              ? "border-border/40 bg-accent/75 text-card-foreground"
+              : "border-transparent text-muted-foreground hover:border-border/35 hover:bg-accent/50 hover:text-accent-foreground"
           )}
         >
-          <Settings className="h-4 w-4" />
+          <Settings className="h-3.5 w-3.5" />
           Settings
         </button>
       </div>

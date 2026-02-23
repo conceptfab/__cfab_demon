@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import { TOOLTIP_CONTENT_STYLE } from "@/lib/chart-styles";
+import {
+  TOOLTIP_CONTENT_STYLE,
+  CHART_AXIS_COLOR,
+  CHART_PRIMARY_COLOR,
+  CHART_TOOLTIP_TEXT_COLOR,
+  CHART_TOOLTIP_TITLE_COLOR,
+} from "@/lib/chart-styles";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HourlyData } from "@/lib/db-types";
@@ -33,14 +39,14 @@ export function HourlyBreakdown({ data }: Props) {
             <BarChart data={chartData}>
               <XAxis
                 dataKey="hour"
-                stroke="#475569"
+                stroke={CHART_AXIS_COLOR}
                 fontSize={11}
                 tickLine={false}
                 axisLine={false}
                 interval={2}
               />
               <YAxis
-                stroke="#475569"
+                stroke={CHART_AXIS_COLOR}
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
@@ -48,11 +54,11 @@ export function HourlyBreakdown({ data }: Props) {
               />
               <Tooltip
                 contentStyle={TOOLTIP_CONTENT_STYLE}
-                labelStyle={{ color: "#f1f5f9", fontWeight: 600 }}
-                itemStyle={{ color: "#e2e8f0" }}
+                labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+                itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                 formatter={(value) => [`${value} min`, "Time"]}
               />
-              <Bar dataKey="minutes" fill="#38bdf8" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="minutes" fill={CHART_PRIMARY_COLOR} radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

@@ -5,12 +5,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store/app-store";
 import { getHeatmap, getApplications, getTimeline } from "@/lib/tauri";
-import { TOOLTIP_CONTENT_STYLE } from "@/lib/chart-styles";
+import {
+  TOOLTIP_CONTENT_STYLE,
+  TOKYO_NIGHT_CHART_PALETTE,
+  CHART_AXIS_COLOR,
+  CHART_PRIMARY_COLOR,
+  CHART_TOOLTIP_TEXT_COLOR,
+  CHART_TOOLTIP_TITLE_COLOR,
+} from "@/lib/chart-styles";
 import { formatDuration } from "@/lib/utils";
 import { addDays, format, parseISO, subDays } from "date-fns";
 import type { DateRange, HeatmapCell, AppWithStats, TimelinePoint } from "@/lib/db-types";
 
-const CHART_COLORS = ["#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee"];
+const CHART_COLORS = TOKYO_NIGHT_CHART_PALETTE;
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 type RangeMode = "daily" | "weekly";
 
@@ -164,16 +171,16 @@ export function TimeAnalysis() {
                   <XAxis
                     dataKey="date"
                     tickFormatter={(v) => { try { return format(parseISO(v), "MMM d"); } catch { return v; } }}
-                    stroke="#475569" fontSize={11} tickLine={false} axisLine={false}
+                    stroke={CHART_AXIS_COLOR} fontSize={11} tickLine={false} axisLine={false}
                   />
-                  <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
+                  <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
                   <Tooltip
                     contentStyle={TOOLTIP_CONTENT_STYLE}
-                    labelStyle={{ color: "#f1f5f9", fontWeight: 600 }}
-                    itemStyle={{ color: "#e2e8f0" }}
+                    labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+                    itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                     formatter={(value) => [`${value}h`, "Time"]}
                   />
-                  <Bar dataKey="hours" fill="#38bdf8" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="hours" fill={CHART_PRIMARY_COLOR} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -197,8 +204,8 @@ export function TimeAnalysis() {
                     </Pie>
                     <Tooltip
                       contentStyle={TOOLTIP_CONTENT_STYLE}
-                      labelStyle={{ color: "#f1f5f9", fontWeight: 600 }}
-                      itemStyle={{ color: "#e2e8f0" }}
+                      labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+                      itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                       formatter={(value) => [formatDuration(value as number), "Time"]}
                     />
                   </PieChart>
@@ -245,8 +252,8 @@ export function TimeAnalysis() {
                           className="flex-1 h-5 rounded-sm"
                           style={{
                             backgroundColor: val > 0
-                              ? `rgba(56, 189, 248, ${0.1 + intensity * 0.9})`
-                              : "rgba(30, 41, 59, 0.5)",
+                              ? `rgba(122, 162, 247, ${0.12 + intensity * 0.88})`
+                              : "rgba(41, 46, 66, 0.45)",
                           }}
                           title={`${day} ${hi}:00 — ${formatDuration(val)}`}
                         />
