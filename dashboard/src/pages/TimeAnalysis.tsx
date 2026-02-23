@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store/app-store";
-import { getHeatmap, getApplications, getTimeline } from "@/lib/tauri";
+import { getApplications, getTimeline, getProjectTimeline, getProjects } from "@/lib/tauri";
 import {
   TOOLTIP_CONTENT_STYLE,
   TOKYO_NIGHT_CHART_PALETTE,
@@ -14,58 +14,86 @@ import {
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
 import { formatDuration } from "@/lib/utils";
-import { addDays, format, parseISO, subDays } from "date-fns";
-import type { DateRange, HeatmapCell, AppWithStats, TimelinePoint } from "@/lib/db-types";
+import {
+  addDays, addMonths, subMonths, format, parseISO, subDays,
+  startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
+  isBefore, isAfter,
+} from "date-fns";
+import type { DateRange, AppWithStats, TimelinePoint, StackedBarData } from "@/lib/db-types";
 
 const CHART_COLORS = TOKYO_NIGHT_CHART_PALETTE;
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-type RangeMode = "daily" | "weekly";
+const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+type RangeMode = "daily" | "weekly" | "monthly";
 
 export function TimeAnalysis() {
   const { refreshKey } = useAppStore();
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
-  const [heatmap, setHeatmap] = useState<HeatmapCell[]>([]);
+
   const [apps, setApps] = useState<AppWithStats[]>([]);
   const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
+  const [hourlyProjects, setHourlyProjects] = useState<StackedBarData[]>([]);
+  const [projectColors, setProjectColors] = useState<Map<string, string>>(new Map());
   const today = format(new Date(), "yyyy-MM-dd");
   const canShiftForward = anchorDate < today;
-  const shiftStepDays = rangeMode === "weekly" ? 7 : 1;
+
+  // Fetch project colors from DB
+  useEffect(() => {
+    getProjects().then((projects) => {
+      const map = new Map<string, string>();
+      for (const p of projects) map.set(p.name, p.color);
+      setProjectColors(map);
+    }).catch(console.error);
+  }, [refreshKey]);
 
   const activeDateRange = useMemo<DateRange>(() => {
     const selectedDay = anchorDate || today;
-    const selectedDateObj = parseISO(selectedDay);
-
+    const d = parseISO(selectedDay);
     switch (rangeMode) {
       case "daily":
         return { start: selectedDay, end: selectedDay };
       case "weekly":
-        return { start: format(subDays(selectedDateObj, 6), "yyyy-MM-dd"), end: selectedDay };
+        return { start: format(subDays(d, 6), "yyyy-MM-dd"), end: selectedDay };
+      case "monthly":
+        return { start: format(startOfMonth(d), "yyyy-MM-dd"), end: format(endOfMonth(d), "yyyy-MM-dd") };
     }
   }, [rangeMode, anchorDate, today]);
 
   const shiftDateRange = (direction: -1 | 1) => {
     const current = parseISO(anchorDate);
-    const next = format(addDays(current, direction * shiftStepDays), "yyyy-MM-dd");
+    let next: string;
+    if (rangeMode === "monthly") {
+      next = format(direction === 1 ? addMonths(current, 1) : subMonths(current, 1), "yyyy-MM-dd");
+    } else {
+      const step = rangeMode === "weekly" ? 7 : 1;
+      next = format(addDays(current, direction * step), "yyyy-MM-dd");
+    }
     if (next > today) return;
     setAnchorDate(next);
   };
 
   useEffect(() => {
-    Promise.all([
-      getHeatmap(activeDateRange),
+    const fetches: Promise<unknown>[] = [
       getApplications(activeDateRange),
       getTimeline(activeDateRange),
-    ])
-      .then(([heatmapRes, appsRes, timelineRes]) => {
-        setHeatmap(heatmapRes);
-        setApps(appsRes);
-        setTimeline(timelineRes);
+    ];
+    if (rangeMode === "daily" || rangeMode === "weekly") {
+      fetches.push(getProjectTimeline(activeDateRange, 10, "hour"));
+    }
+    Promise.all(fetches)
+      .then(([a, t, hp]) => {
+        setApps(a as AppWithStats[]);
+        setTimeline(t as TimelinePoint[]);
+        if ((rangeMode === "daily" || rangeMode === "weekly") && hp) {
+          setHourlyProjects(hp as StackedBarData[]);
+        } else {
+          setHourlyProjects([]);
+        }
       })
       .catch(console.error);
-  }, [activeDateRange, refreshKey]);
+  }, [activeDateRange, refreshKey, rangeMode]);
 
-  // Pie chart data - top apps
+  // Pie chart
   const pieData = useMemo(() => {
     const sorted = [...apps].sort((a, b) => b.total_seconds - a.total_seconds).slice(0, 8);
     return sorted.map((a, i) => ({
@@ -75,32 +103,209 @@ export function TimeAnalysis() {
     }));
   }, [apps]);
 
-  // Heatmap grid
-  const heatmapGrid = useMemo(() => {
-    const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
-    for (const cell of heatmap) {
-      if (cell.day >= 0 && cell.day < 7 && cell.hour >= 0 && cell.hour < 24) {
-        grid[cell.day][cell.hour] = cell.seconds;
+  // Weekly project heatmap: parse hourly project data grouped by day
+  type WeekDaySlot = {
+    dayLabel: string;
+    dateStr: string;
+    hours: { hour: number; projects: { name: string; seconds: number; color: string }[]; totalSeconds: number }[];
+    totalSeconds: number;
+  };
+  const weeklyHourlyGrid = useMemo(() => {
+    if (rangeMode !== "weekly") return { days: [] as WeekDaySlot[], allProjects: [] as string[], maxVal: 1 };
+
+    // Collect all project names
+    const projectSet = new Set<string>();
+    for (const row of hourlyProjects) {
+      for (const key of Object.keys(row)) {
+        if (key !== "date") projectSet.add(key);
       }
     }
-    const maxVal = Math.max(1, ...heatmap.map((c) => c.seconds));
-    return { grid, maxVal };
-  }, [heatmap]);
+    const allProjects = Array.from(projectSet);
+    const projectColorMap = new Map<string, string>();
+    allProjects.forEach((name, i) => {
+      projectColorMap.set(name, projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length]);
+    });
 
-  // Stacked bar data from timeline
+    // Group data by date + hour
+    const dayHourMap = new Map<string, Map<number, Map<string, number>>>();
+    for (const row of hourlyProjects) {
+      let datePart = "";
+      let hour = -1;
+      try {
+        const parts = row.date.split("T");
+        datePart = parts[0];
+        if (parts[1]) hour = parseInt(parts[1].substring(0, 2), 10);
+      } catch { /* ignore */ }
+      if (!datePart || hour < 0 || hour > 23) continue;
+
+      if (!dayHourMap.has(datePart)) dayHourMap.set(datePart, new Map());
+      const projMap = new Map<string, number>();
+      for (const [key, val] of Object.entries(row)) {
+        if (key === "date" || typeof val !== "number") continue;
+        projMap.set(key, val);
+      }
+      dayHourMap.get(datePart)!.set(hour, projMap);
+    }
+
+    // Build 7 days (Mon-Sun) from activeDateRange
+    let maxVal = 1;
+    const days: WeekDaySlot[] = [];
+    const startDate = parseISO(activeDateRange.start);
+    for (let di = 0; di < 7; di++) {
+      const d = addDays(startDate, di);
+      const dateStr = format(d, "yyyy-MM-dd");
+      const dayLabel = format(d, "EEE");
+      const hourData = dayHourMap.get(dateStr);
+      let dayTotal = 0;
+
+      const hours = Array.from({ length: 24 }, (_, h) => {
+        const projMap = hourData?.get(h);
+        const projects: { name: string; seconds: number; color: string }[] = [];
+        let totalSeconds = 0;
+        if (projMap) {
+          for (const [name, seconds] of projMap) {
+            projects.push({ name, seconds, color: projectColorMap.get(name) || CHART_COLORS[0] });
+            totalSeconds += seconds;
+          }
+          projects.sort((a, b) => b.seconds - a.seconds);
+        }
+        if (totalSeconds > maxVal) maxVal = totalSeconds;
+        dayTotal += totalSeconds;
+        return { hour: h, projects, totalSeconds };
+      });
+
+      days.push({ dayLabel, dateStr, hours, totalSeconds: dayTotal });
+    }
+
+    return { days, allProjects, maxVal };
+  }, [rangeMode, hourlyProjects, activeDateRange, projectColors]);
+
+  // Daily project heatmap: parse hourly project data
+  const dailyHourlyGrid = useMemo(() => {
+    type HourSlot = { hour: number; projects: { name: string; seconds: number; color: string }[]; totalSeconds: number };
+    if (rangeMode !== "daily") return { hours: [] as HourSlot[], allProjects: [] as string[], maxVal: 1 };
+
+    const projectSet = new Set<string>();
+    for (const row of hourlyProjects) {
+      for (const key of Object.keys(row)) {
+        if (key !== "date") projectSet.add(key);
+      }
+    }
+    const allProjects = Array.from(projectSet);
+    const projectColorMap = new Map<string, string>();
+    allProjects.forEach((name, i) => {
+      projectColorMap.set(name, projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length]);
+    });
+
+    // Build hour-indexed map
+    const hourMap = new Map<number, Map<string, number>>();
+    for (const row of hourlyProjects) {
+      let hour = -1;
+      try {
+        const timePart = row.date.split("T")[1];
+        if (timePart) hour = parseInt(timePart.substring(0, 2), 10);
+      } catch { /* ignore */ }
+      if (hour < 0 || hour > 23) continue;
+
+      const projMap = new Map<string, number>();
+      for (const [key, val] of Object.entries(row)) {
+        if (key === "date" || typeof val !== "number") continue;
+        projMap.set(key, val);
+      }
+      hourMap.set(hour, projMap);
+    }
+
+    let maxVal = 1;
+    const hours: HourSlot[] = Array.from({ length: 24 }, (_, h) => {
+      const projMap = hourMap.get(h);
+      const projects: { name: string; seconds: number; color: string }[] = [];
+      let totalSeconds = 0;
+      if (projMap) {
+        for (const [name, seconds] of projMap) {
+          projects.push({ name, seconds, color: projectColorMap.get(name) || CHART_COLORS[0] });
+          totalSeconds += seconds;
+        }
+        projects.sort((a, b) => b.seconds - a.seconds);
+      }
+      if (totalSeconds > maxVal) maxVal = totalSeconds;
+      return { hour: h, projects, totalSeconds };
+    });
+
+    return { hours, allProjects, maxVal };
+  }, [rangeMode, hourlyProjects, projectColors]);
+
+  // Bar data (non-daily)
   const barData = useMemo(() =>
-    timeline.map((t) => ({
-      date: t.date,
-      hours: +(t.seconds / 3600).toFixed(2),
-    })),
+    timeline.map((t) => ({ date: t.date, hours: +(t.seconds / 3600).toFixed(2) })),
     [timeline]
   );
 
+  // Daily hourly bar data: stacked by project per hour
+  const dailyBarData = useMemo(() => {
+    if (rangeMode !== "daily") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    const projectSet = new Set<string>();
+    const data = dailyHourlyGrid.hours.map((slot) => {
+      const row: Record<string, unknown> = { hour: `${slot.hour.toString().padStart(2, "0")}:00` };
+      for (const proj of slot.projects) {
+        const key = proj.name;
+        row[key] = +(proj.seconds / 3600).toFixed(3);
+        projectSet.add(key);
+      }
+      return row;
+    });
+    return { data, projectNames: Array.from(projectSet) };
+  }, [rangeMode, dailyHourlyGrid]);
+
+  // Project color map for daily stacked bar
+  const dailyProjectColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    dailyBarData.projectNames.forEach((name, i) => {
+      map.set(name, projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length]);
+    });
+    return map;
+  }, [dailyBarData.projectNames, projectColors]);
+
+  // Daily total hours
+  const dailyTotalHours = useMemo(() => {
+    if (rangeMode !== "daily") return 0;
+    return dailyHourlyGrid.hours.reduce((s, h) => s + h.totalSeconds, 0) / 3600;
+  }, [rangeMode, dailyHourlyGrid]);
+
+  // Monthly calendar heatmap
+  const monthCalendar = useMemo(() => {
+    if (rangeMode !== "monthly") return { weeks: [] as { label: string; days: { date: string; seconds: number; inMonth: boolean }[] }[], maxVal: 1 };
+    const mStart = parseISO(activeDateRange.start);
+    const mEnd = parseISO(activeDateRange.end);
+    const weekStarts = eachWeekOfInterval({ start: mStart, end: mEnd }, { weekStartsOn: 1 });
+
+    const timeMap = new Map<string, number>();
+    for (const t of timeline) timeMap.set(t.date, t.seconds);
+
+    let maxVal = 1;
+    const weeks = weekStarts.map((ws) => {
+      const we = endOfWeek(ws, { weekStartsOn: 1 });
+      const days: { date: string; seconds: number; inMonth: boolean }[] = [];
+      for (let d = ws; !isAfter(d, we); d = addDays(d, 1)) {
+        const key = format(d, "yyyy-MM-dd");
+        const sec = timeMap.get(key) || 0;
+        const inMonth = !isBefore(d, mStart) && !isAfter(d, mEnd);
+        if (sec > maxVal) maxVal = sec;
+        days.push({ date: key, seconds: sec, inMonth });
+      }
+      return { label: format(ws, "MMM d"), days };
+    });
+    return { weeks, maxVal };
+  }, [rangeMode, activeDateRange, timeline]);
+
+  // Monthly total
+  const monthTotalHours = useMemo(() => {
+    if (rangeMode !== "monthly") return 0;
+    return timeline.reduce((s, t) => s + t.seconds, 0) / 3600;
+  }, [rangeMode, timeline]);
+
   const handleExport = () => {
-    const header = "Date,Hours\n";
     const rows = timeline.map((t) => `${t.date},${(t.seconds / 3600).toFixed(2)}`).join("\n");
-    const csv = header + rows;
-    const blob = new Blob([csv], { type: "text/csv" });
+    const blob = new Blob(["Date,Hours\n" + rows], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -109,47 +314,26 @@ export function TimeAnalysis() {
     URL.revokeObjectURL(url);
   };
 
+  const dateLabel = useMemo(() => {
+    if (rangeMode === "monthly") return format(parseISO(activeDateRange.start), "MMMM yyyy");
+    if (activeDateRange.start === activeDateRange.end) return format(parseISO(activeDateRange.start), "EEE, MMM d");
+    return `${format(parseISO(activeDateRange.start), "MMM d")} – ${format(parseISO(activeDateRange.end), "MMM d")}`;
+  }, [rangeMode, activeDateRange]);
+
   return (
     <div className="space-y-6">
+      {/* Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={rangeMode === "daily" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setRangeMode("daily")}
-          >
-            Today
-          </Button>
-          <Button
-            variant={rangeMode === "weekly" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setRangeMode("weekly")}
-          >
-            Week
-          </Button>
+          <Button variant={rangeMode === "daily" ? "default" : "ghost"} size="sm" onClick={() => setRangeMode("daily")}>Today</Button>
+          <Button variant={rangeMode === "weekly" ? "default" : "ghost"} size="sm" onClick={() => setRangeMode("weekly")}>Week</Button>
+          <Button variant={rangeMode === "monthly" ? "default" : "ghost"} size="sm" onClick={() => setRangeMode("monthly")}>Month</Button>
           <div className="mx-1 h-5 w-px bg-border" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => shiftDateRange(-1)}
-            title="Previous period"
-          >
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftDateRange(-1)} title="Previous period">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="text-xs text-muted-foreground min-w-[5rem] text-center">
-            {activeDateRange.start === activeDateRange.end
-              ? format(parseISO(activeDateRange.start), "MMM d")
-              : `${format(parseISO(activeDateRange.start), "MMM d")} – ${format(parseISO(activeDateRange.end), "MMM d")}`}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => shiftDateRange(1)}
-            disabled={!canShiftForward}
-            title="Next period"
-          >
+          <span className="text-xs text-muted-foreground min-w-[5rem] text-center">{dateLabel}</span>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => shiftDateRange(1)} disabled={!canShiftForward} title="Next period">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -158,31 +342,78 @@ export function TimeAnalysis() {
         </Button>
       </div>
 
+      {/* Charts row */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Stacked bar chart */}
+        {/* Bar chart */}
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Daily Activity</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {rangeMode === "daily"
+                ? `Hourly Activity — ${dailyTotalHours.toFixed(1)}h total`
+                : rangeMode === "monthly"
+                  ? `Daily Activity — ${monthTotalHours.toFixed(1)}h total`
+                  : "Daily Activity"}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={barData}>
-                  <XAxis
-                    dataKey="date"
-                    tickFormatter={(v) => { try { return format(parseISO(v), "MMM d"); } catch { return v; } }}
-                    stroke={CHART_AXIS_COLOR} fontSize={11} tickLine={false} axisLine={false}
-                  />
-                  <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
-                  <Tooltip
-                    contentStyle={TOOLTIP_CONTENT_STYLE}
-                    labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
-                    itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                    formatter={(value) => [`${value}h`, "Time"]}
-                  />
-                  <Bar dataKey="hours" fill={CHART_PRIMARY_COLOR} radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {rangeMode === "daily" ? (
+                /* Daily: stacked bar per hour with project breakdown */
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dailyBarData.data}>
+                    <XAxis
+                      dataKey="hour"
+                      stroke={CHART_AXIS_COLOR}
+                      fontSize={10}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={1}
+                    />
+                    <YAxis
+                      stroke={CHART_AXIS_COLOR}
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(v) => `${v}h`}
+                    />
+                    <Tooltip
+                      contentStyle={TOOLTIP_CONTENT_STYLE}
+                      labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+                      itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
+                                            formatter={((value: number, name: string) => [`${(value * 60).toFixed(0)}min`, name]) as any}
+                    />
+                    {dailyBarData.projectNames.map((name) => (
+                      <Bar
+                        key={name}
+                        dataKey={name}
+                        stackId="hourStack"
+                        fill={dailyProjectColorMap.get(name) || CHART_COLORS[0]}
+                        radius={[0, 0, 0, 0]}
+                      />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                /* Weekly / Monthly: simple bar */
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={barData}>
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(v) => { try { return format(parseISO(v), rangeMode === "monthly" ? "d" : "MMM d"); } catch { return v; } }}
+                      stroke={CHART_AXIS_COLOR} fontSize={rangeMode === "monthly" ? 10 : 11} tickLine={false} axisLine={false}
+                    />
+                    <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
+                    <Tooltip
+                      contentStyle={TOOLTIP_CONTENT_STYLE}
+                      labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+                      itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
+                      formatter={(value) => [`${value}h`, "Time"]}
+                      labelFormatter={(v) => { try { return format(parseISO(v as string), "EEE, MMM d"); } catch { return v as string; } }}
+                    />
+                    <Bar dataKey="hours" fill={CHART_PRIMARY_COLOR} radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -229,40 +460,232 @@ export function TimeAnalysis() {
       {/* Heatmap */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Activity Heatmap (Day x Hour)</CardTitle>
+          <CardTitle className="text-sm font-medium">
+            {rangeMode === "daily"
+              ? "Daily Project Timeline"
+              : rangeMode === "monthly"
+                ? "Monthly Calendar Heatmap"
+                : "Weekly Project Timeline"}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <div className="min-w-[600px]">
-              <div className="flex text-xs text-muted-foreground mb-1 pl-10">
-                {Array.from({ length: 24 }, (_, i) => (
-                  <div key={i} className="flex-1 text-center">{i.toString().padStart(2, "0")}</div>
+            {rangeMode === "daily" ? (
+              /* Daily: hourly project timeline */
+              <div className="min-w-[600px]">
+                {/* Hour labels */}
+                <div className="flex text-xs text-muted-foreground mb-2">
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <div key={i} className="flex-1 text-center">{i.toString().padStart(2, "0")}</div>
+                  ))}
+                </div>
+
+                {/* Main timeline bar */}
+                <div className="flex gap-0.5 mb-3">
+                  {dailyHourlyGrid.hours.map((slot) => {
+                    const hasData = slot.totalSeconds > 0;
+                    return (
+                      <div
+                        key={slot.hour}
+                        className="flex-1 rounded-sm overflow-hidden"
+                        style={{ height: "32px", backgroundColor: "rgba(41, 46, 66, 0.45)" }}
+                        title={
+                          hasData
+                            ? `${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join("\n")}`
+                            : `${slot.hour}:00 — No activity`
+                        }
+                      >
+                        {hasData && (
+                          <div className="flex flex-col h-full w-full">
+                            {slot.projects.map((proj, pi) => {
+                              const pct = (proj.seconds / slot.totalSeconds) * 100;
+                              return (
+                                <div
+                                  key={pi}
+                                  style={{
+                                    height: `${pct}%`,
+                                    minHeight: slot.projects.length > 1 ? "2px" : undefined,
+                                    backgroundColor: proj.color,
+                                    opacity: 0.7 + (proj.seconds / dailyHourlyGrid.maxVal) * 0.3,
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Detailed rows per hour (only hours with data) */}
+                <div className="space-y-1 mt-4">
+                  {dailyHourlyGrid.hours.filter((s) => s.totalSeconds > 0).map((slot) => (
+                    <div key={slot.hour} className="flex items-center gap-2">
+                      <span className="w-12 text-xs text-muted-foreground text-right font-mono">
+                        {slot.hour.toString().padStart(2, "0")}:00
+                      </span>
+                      <div className="flex-1 flex gap-1 items-center h-6">
+                        {slot.projects.map((proj, pi) => {
+                          const pct = Math.max(3, (proj.seconds / 3600) * 100);
+                          return (
+                            <div
+                              key={pi}
+                              className="h-full rounded-sm flex items-center justify-center text-[10px] font-medium px-1 truncate"
+                              style={{
+                                width: `${pct}%`,
+                                minWidth: "24px",
+                                backgroundColor: proj.color,
+                                color: "#fff",
+                                opacity: 0.85,
+                              }}
+                              title={`${proj.name}: ${formatDuration(proj.seconds)}`}
+                            >
+                              {proj.seconds >= 120 ? proj.name : ""}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <span className="w-12 text-xs text-muted-foreground text-right">
+                        {formatDuration(slot.totalSeconds)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Legend */}
+                {dailyHourlyGrid.allProjects.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-3">
+                    {dailyHourlyGrid.allProjects.map((name, i) => (
+                      <div key={name} className="flex items-center gap-1.5 text-xs">
+                        <div
+                          className="h-2.5 w-2.5 rounded-sm"
+                          style={{ backgroundColor: projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length] }}
+                        />
+                        <span className="text-muted-foreground">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : rangeMode === "monthly" ? (
+              /* Monthly: calendar grid */
+              <div className="min-w-[400px]">
+                <div className="flex text-xs text-muted-foreground mb-1 pl-16">
+                  {WEEK_DAYS.map((d) => (
+                    <div key={d} className="flex-1 text-center">{d}</div>
+                  ))}
+                </div>
+                {monthCalendar.weeks.map((week, wi) => (
+                  <div key={wi} className="flex items-center gap-1 mb-1">
+                    <span className="w-14 text-xs text-muted-foreground text-right pr-1">{week.label}</span>
+                    <div className="flex flex-1 gap-1">
+                      {week.days.map((day, di) => {
+                        const intensity = day.seconds / monthCalendar.maxVal;
+                        const hrs = (day.seconds / 3600).toFixed(1);
+                        return (
+                          <div
+                            key={di}
+                            className="flex-1 h-10 rounded-md flex items-center justify-center text-xs font-medium"
+                            style={{
+                              backgroundColor: !day.inMonth
+                                ? "rgba(41, 46, 66, 0.2)"
+                                : day.seconds > 0
+                                  ? `rgba(122, 162, 247, ${0.15 + intensity * 0.85})`
+                                  : "rgba(41, 46, 66, 0.45)",
+                              color: !day.inMonth
+                                ? "rgba(123, 131, 148, 0.4)"
+                                : day.seconds > 0
+                                  ? (intensity > 0.5 ? "#fff" : "rgba(200, 210, 230, 0.9)")
+                                  : "rgba(123, 131, 148, 0.6)",
+                            }}
+                            title={`${format(parseISO(day.date), "EEE, MMM d")} — ${formatDuration(day.seconds)}`}
+                          >
+                            {format(parseISO(day.date), "d")}
+                            {day.inMonth && day.seconds > 0 && (
+                              <span className="ml-1 opacity-80">{hrs}h</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 ))}
               </div>
-              {DAYS.map((day, di) => (
-                <div key={di} className="flex items-center gap-1 mb-1">
-                  <span className="w-8 text-xs text-muted-foreground text-right">{day}</span>
-                  <div className="flex flex-1 gap-0.5">
-                    {Array.from({ length: 24 }, (_, hi) => {
-                      const val = heatmapGrid.grid[di][hi];
-                      const intensity = val / heatmapGrid.maxVal;
-                      return (
-                        <div
-                          key={hi}
-                          className="flex-1 h-5 rounded-sm"
-                          style={{
-                            backgroundColor: val > 0
-                              ? `rgba(122, 162, 247, ${0.12 + intensity * 0.88})`
-                              : "rgba(41, 46, 66, 0.45)",
-                          }}
-                          title={`${day} ${hi}:00 — ${formatDuration(val)}`}
-                        />
-                      );
-                    })}
-                  </div>
+            ) : (
+              /* Weekly: Day×Hour project timeline */
+              <div className="min-w-[600px]">
+                {/* Hour labels */}
+                <div className="flex text-xs text-muted-foreground mb-1 pl-24">
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <div key={i} className="flex-1 text-center">{i.toString().padStart(2, "0")}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
+
+                {/* Day rows */}
+                {weeklyHourlyGrid.days.map((day) => (
+                  <div key={day.dateStr} className="flex items-center gap-1 mb-1">
+                    <div className="w-22 flex flex-col items-end pr-1">
+                      <span className="text-xs text-muted-foreground font-medium">{day.dayLabel}</span>
+                      <span className="text-[10px] text-muted-foreground/60">
+                        {day.totalSeconds > 0 ? formatDuration(day.totalSeconds) : ""}
+                      </span>
+                    </div>
+                    <div className="flex flex-1 gap-0.5">
+                      {day.hours.map((slot) => {
+                        const hasData = slot.totalSeconds > 0;
+                        return (
+                          <div
+                            key={slot.hour}
+                            className="flex-1 rounded-sm overflow-hidden"
+                            style={{ height: "28px", backgroundColor: "rgba(41, 46, 66, 0.45)" }}
+                            title={
+                              hasData
+                                ? `${day.dayLabel} ${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join("\n")}`
+                                : `${day.dayLabel} ${slot.hour}:00 — No activity`
+                            }
+                          >
+                            {hasData && (
+                              <div className="flex flex-col h-full w-full">
+                                {slot.projects.map((proj, pi) => {
+                                  const pct = (proj.seconds / slot.totalSeconds) * 100;
+                                  return (
+                                    <div
+                                      key={pi}
+                                      style={{
+                                        height: `${pct}%`,
+                                        minHeight: slot.projects.length > 1 ? "2px" : undefined,
+                                        backgroundColor: proj.color,
+                                        opacity: 0.7 + (proj.seconds / weeklyHourlyGrid.maxVal) * 0.3,
+                                      }}
+                                    />
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Legend */}
+                {weeklyHourlyGrid.allProjects.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-border/50 flex flex-wrap gap-3">
+                    {weeklyHourlyGrid.allProjects.map((name, i) => (
+                      <div key={name} className="flex items-center gap-1.5 text-xs">
+                        <div
+                          className="h-2.5 w-2.5 rounded-sm"
+                          style={{ backgroundColor: projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length] }}
+                        />
+                        <span className="text-muted-foreground">{name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

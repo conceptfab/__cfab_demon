@@ -1,6 +1,9 @@
 Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku). Przygotuj szczegółowy raport.md
 
+
+
 - BACKUP DANYCH DO ZEWNETRZENGO FOLDERU - EXPORT-IMPORT BAZY
+- menadzer projektów -> od nowa -> automatyczna lista klientow, rozpoznawanie projektów, autonumeracja, drzewa folderów
 - Bug Hunter
 - bezpieczny generator tokenów
 - wyszukiwanie duplikatów projektów
@@ -8,9 +11,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawnoś
 - obsłuzone pliki JSON powinny byc archiwizowane do folderu 
 - eksport statystyk projektu - dni/sesje/podsumowanie => czytelny PDF
 - zakladka koszty -lista projektów z kosztami wyliczonymi na bazie roboczogodzin i stawki godzinowej
-
-- poprawki UI - usuniecie linni z wykresu
+- poprawki UI 
 - aplikacja ikona/kolor do ustawienia
 - nr version
-- podaj funkcje manadzera z pythona! - nowa zakładka!
 - nazwa aplikacji, nr version
