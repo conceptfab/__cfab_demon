@@ -310,3 +310,9 @@ export const importData = (archivePath: string) =>
 
 export const importDataArchive = (archive: ExportArchive) =>
   invoke<ImportSummary>("import_data_archive", { archive });
+
+// Sync log
+export const appendSyncLog = (lines: string[]) =>
+  invoke<void>("append_sync_log", { lines });
+export const getSyncLog = (tailLines?: number) =>
+  invoke<string>("get_sync_log", { tailLines });

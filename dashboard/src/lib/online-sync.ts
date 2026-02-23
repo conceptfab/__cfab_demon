@@ -1,5 +1,5 @@
 import type { ExportArchive, ImportSummary } from "@/lib/db-types";
-import { exportDataArchive, getDemoModeStatus, importDataArchive } from "@/lib/tauri";
+import { appendSyncLog, exportDataArchive, getDemoModeStatus, importDataArchive } from "@/lib/tauri";
 
 const ONLINE_SYNC_SETTINGS_KEY = "timeflow.settings.online-sync";
 const ONLINE_SYNC_STATE_KEY = "timeflow.sync.state";
@@ -23,6 +23,7 @@ export interface OnlineSyncSettings {
   apiToken: string;
   deviceId: string;
   requestTimeoutMs: number;
+  enableLogging: boolean;
 }
 
 export interface OnlineSyncPendingAck {
@@ -171,6 +172,7 @@ const DEFAULT_ONLINE_SYNC_SETTINGS: OnlineSyncSettings = {
   apiToken: "",
   deviceId: "",
   requestTimeoutMs: 15_000,
+  enableLogging: false,
 };
 
 const DEFAULT_ONLINE_SYNC_STATE: OnlineSyncState = {
@@ -622,6 +624,7 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
       typeof parsed?.requestTimeoutMs === "number" && Number.isFinite(parsed.requestTimeoutMs)
         ? Math.min(60_000, Math.max(3_000, Math.round(parsed.requestTimeoutMs)))
         : DEFAULT_ONLINE_SYNC_SETTINGS.requestTimeoutMs,
+    enableLogging: typeof parsed?.enableLogging === "boolean" ? parsed.enableLogging : DEFAULT_ONLINE_SYNC_SETTINGS.enableLogging,
   };
 
   // Persist generated device id even if sync is disabled, so the identifier is stable.
@@ -653,6 +656,9 @@ export function saveOnlineSyncSettings(next: Partial<OnlineSyncSettings>): Onlin
       typeof (next.requestTimeoutMs ?? current.requestTimeoutMs) === "number"
         ? Math.min(60_000, Math.max(3_000, Math.round(Number(next.requestTimeoutMs ?? current.requestTimeoutMs))))
         : current.requestTimeoutMs,
+    enableLogging: typeof (next.enableLogging ?? current.enableLogging) === "boolean" 
+      ? next.enableLogging ?? current.enableLogging 
+      : DEFAULT_ONLINE_SYNC_SETTINGS.enableLogging,
   };
   writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, merged);
   if (hasWindow()) {
@@ -887,6 +893,55 @@ function logSyncDiagnostic(
   console.info(`[online-sync] ${stage}`, details);
 }
 
+// ---------------------------------------------------------------------------
+// File-based sync logger
+// ---------------------------------------------------------------------------
+
+class SyncFileLogger {
+  private buffer: string[] = [];
+
+  log(level: "INFO" | "WARN" | "ERROR", message: string, details?: Record<string, unknown>): void {
+    const ts = new Date().toISOString();
+    let line = `[${ts}] [${level}] ${message}`;
+    if (details && Object.keys(details).length > 0) {
+      line += ` | ${JSON.stringify(details)}`;
+    }
+    this.buffer.push(line);
+    // Also keep console logging for dev tools
+    if (level === "ERROR") {
+      console.error(`[sync-log] ${message}`, details ?? "");
+    } else if (level === "WARN") {
+      console.warn(`[sync-log] ${message}`, details ?? "");
+    } else {
+      console.info(`[sync-log] ${message}`, details ?? "");
+    }
+  }
+
+  info(message: string, details?: Record<string, unknown>): void {
+    this.log("INFO", message, details);
+  }
+
+  warn(message: string, details?: Record<string, unknown>): void {
+    this.log("WARN", message, details);
+  }
+
+  error(message: string, details?: Record<string, unknown>): void {
+    this.log("ERROR", message, details);
+  }
+
+  async flush(): Promise<void> {
+    if (this.buffer.length === 0) return;
+    const lines = [...this.buffer];
+    this.buffer = [];
+    try {
+      await appendSyncLog(lines);
+    } catch {
+      // If file logging fails, don't break the sync flow.
+      console.warn("[sync-log] Failed to flush sync log to file");
+    }
+  }
+}
+
 async function isDemoModeSyncDisabled(): Promise<boolean> {
   try {
     const status = await getDemoModeStatus();
@@ -1031,8 +1086,12 @@ export async function runOnlineSyncOnce(
   options: RunOnlineSyncOptions = {},
 ): Promise<OnlineSyncRunResult> {
   const settings = loadOnlineSyncSettings();
+  const log = settings.enableLogging ? new SyncFileLogger() : null;
+
+  log?.info("Sync started", { ignoreStartupToggle: options.ignoreStartupToggle ?? false });
 
   if (!settings.enabled) {
+    log?.info("Sync skipped: disabled");
     const result: OnlineSyncRunResult = {
       ok: true,
       skipped: true,
@@ -1041,10 +1100,15 @@ export async function runOnlineSyncOnce(
       serverRevision: null,
     };
     updateIndicatorFromRunResult(result);
+    await log?.flush();
     return result;
   }
 
   if (!settings.serverUrl || !settings.userId) {
+    log?.warn("Sync skipped: missing config", {
+      hasServerUrl: Boolean(settings.serverUrl),
+      hasUserId: Boolean(settings.userId),
+    });
     const result: OnlineSyncRunResult = {
       ok: true,
       skipped: true,
@@ -1053,10 +1117,12 @@ export async function runOnlineSyncOnce(
       serverRevision: null,
     };
     updateIndicatorFromRunResult(result);
+    await log?.flush();
     return result;
   }
 
   if (await isDemoModeSyncDisabled()) {
+    log?.info("Sync skipped: demo mode");
     const state = loadOnlineSyncState(settings);
     const result: OnlineSyncRunResult = {
       ok: true,
@@ -1066,8 +1132,11 @@ export async function runOnlineSyncOnce(
       serverRevision: state.serverRevision,
     };
     updateIndicatorFromRunResult(result);
+    await log?.flush();
     return result;
   }
+
+  log?.info("Connecting to server", { serverUrl: settings.serverUrl, deviceId: settings.deviceId });
 
   emitOnlineSyncIndicatorSnapshot({
     ...getOnlineSyncIndicatorSnapshot(),
@@ -1081,7 +1150,14 @@ export async function runOnlineSyncOnce(
 
   try {
     // Retry durable ACK first, even if regular startup sync is disabled.
+    log?.info("Flushing pending ACK", { hasPendingAck: state.pendingAck !== null });
     const pendingAckResult = await flushPendingAck(settings, state);
+    log?.info("Pending ACK result", {
+      attempted: pendingAckResult.attempted,
+      accepted: pendingAckResult.accepted,
+      pendingRemains: pendingAckResult.pendingRemains,
+      reason: pendingAckResult.reason,
+    });
     state = loadOnlineSyncState(settings);
 
     if (!options.ignoreStartupToggle && !settings.autoSyncOnStartup) {
@@ -1090,6 +1166,7 @@ export async function runOnlineSyncOnce(
         saveOnlineSyncState(state, settings);
       }
 
+      log?.info("Sync skipped: startup sync disabled");
       const result: OnlineSyncRunResult = {
         ok: true,
         skipped: true,
@@ -1098,16 +1175,26 @@ export async function runOnlineSyncOnce(
         serverRevision: state.serverRevision,
       };
       updateIndicatorFromRunResult(result);
+      await log?.flush();
       return result;
     }
 
+    log?.info("Exporting local dataset");
     const local = await getLocalDatasetState(state);
+    log?.info("Local dataset state", {
+      exportOk: local.exportOk,
+      hasArchive: local.archive !== null,
+      revision: local.revision,
+      hash: local.payloadSha256?.substring(0, 12) ?? null,
+      exportError: local.exportError ?? null,
+    });
     if (local.exportOk) {
       state.localRevision = local.revision;
       state.localHash = local.payloadSha256;
       saveOnlineSyncState(state, settings);
     }
 
+    log?.info("Checking server status");
     const status = await postJson<SyncStatusResponse>(
       settings.serverUrl,
       "/api/sync/status",
@@ -1121,6 +1208,13 @@ export async function runOnlineSyncOnce(
       settings.apiToken,
     );
 
+    log?.info("Server status response", {
+      reason: status.reason,
+      shouldPull: status.shouldPull,
+      shouldPush: status.shouldPush,
+      serverRevision: status.serverRevision,
+    });
+
     logSyncDiagnostic("status", {
       reason: status.reason,
       shouldPull: status.shouldPull,
@@ -1133,12 +1227,16 @@ export async function runOnlineSyncOnce(
     saveOnlineSyncState(state, settings);
 
     if (status.reason === "server_snapshot_pruned") {
+      log?.warn("Server snapshot pruned, handling reseed");
       const result = await handleServerSnapshotPruned(settings, state, local, status);
+      log?.info("Sync finished (server_snapshot_pruned)", { ok: result.ok, reason: result.reason });
       updateIndicatorFromRunResult(result);
+      await log?.flush();
       return result;
     }
 
     if (status.shouldPull) {
+      log?.info("Pulling from server");
       const pull = await postJson<SyncPullResponse>(
         settings.serverUrl,
         "/api/sync/pull",
@@ -1151,6 +1249,12 @@ export async function runOnlineSyncOnce(
         settings.apiToken,
       );
 
+      log?.info("Pull response", {
+        reason: pull.reason,
+        hasUpdate: pull.hasUpdate,
+        revision: pull.revision,
+      });
+
       logSyncDiagnostic("pull", {
         reason: pull.reason,
         hasUpdate: pull.hasUpdate,
@@ -1158,17 +1262,27 @@ export async function runOnlineSyncOnce(
       });
 
       if (pull.reason === "server_snapshot_pruned") {
+        log?.warn("Pull returned server_snapshot_pruned, handling reseed");
         const result = await handleServerSnapshotPruned(settings, state, local, status);
+        log?.info("Sync finished (pull server_snapshot_pruned)", { ok: result.ok, reason: result.reason });
         updateIndicatorFromRunResult(result);
+        await log?.flush();
         return result;
       }
 
       if (pull.hasUpdate) {
         if (!pull.archive || pull.revision == null || !pull.payloadSha256) {
+          log?.error("Pull response incomplete");
           throw new Error("pull response incomplete");
         }
 
+        log?.info("Importing pulled archive", { revision: pull.revision });
         const importSummary = await importDataArchive(pull.archive);
+        log?.info("Import complete", {
+          sessions_imported: importSummary.sessions_imported,
+          sessions_merged: importSummary.sessions_merged,
+          projects_created: importSummary.projects_created,
+        });
 
         state.localRevision = pull.revision;
         state.localHash = pull.payloadSha256;
@@ -1183,7 +1297,12 @@ export async function runOnlineSyncOnce(
         };
         saveOnlineSyncState(state, settings);
 
+        log?.info("Flushing post-pull ACK");
         const ackResult = await flushPendingAck(settings, state);
+        log?.info("Post-pull ACK result", {
+          accepted: ackResult.accepted,
+          reason: ackResult.reason,
+        });
         state = loadOnlineSyncState(settings);
 
         if (ackResult.accepted) {
@@ -1201,7 +1320,9 @@ export async function runOnlineSyncOnce(
             ackReason: ackResult.reason,
             ackIsLatest: ackResult.response?.isLatest ?? null,
           };
+          log?.info("Sync finished: pull + ack accepted", { serverRevision: state.serverRevision });
           updateIndicatorFromRunResult(result);
+          await log?.flush();
           return result;
         }
 
@@ -1218,7 +1339,9 @@ export async function runOnlineSyncOnce(
           ackReason: ackResult.error ?? ackResult.reason,
           ackIsLatest: ackResult.response?.isLatest ?? null,
         };
+        log?.info("Sync finished: pull applied, ack pending", { ackPending, reason: result.reason });
         updateIndicatorFromRunResult(result);
+        await log?.flush();
         return result;
       }
 
@@ -1241,15 +1364,24 @@ export async function runOnlineSyncOnce(
         reason: pull.reason,
         serverRevision: pull.revision ?? status.serverRevision ?? null,
       };
+      log?.info("Sync finished: no update needed (pull path)", { reason: pull.reason });
       updateIndicatorFromRunResult(result);
+      await log?.flush();
       return result;
     }
 
     if (status.shouldPush) {
       if (!local.archive) {
+        log?.error("Local export unavailable for push", { exportError: local.exportError ?? null });
         throw new Error(local.exportError ?? "Local export unavailable for push");
       }
 
+      const pushPayloadSize = JSON.stringify(local.archive).length;
+      log?.info("Pushing to server", {
+        knownServerRevision: status.serverRevision ?? null,
+        payloadSizeKB: Math.round(pushPayloadSize / 1024),
+        timeoutMs: settings.requestTimeoutMs,
+      });
       const push = await postJson<SyncPushResponse>(
         settings.serverUrl,
         "/api/sync/push",
@@ -1264,8 +1396,11 @@ export async function runOnlineSyncOnce(
       );
 
       if (push.accepted === false) {
+        log?.error("Push rejected", { reason: push.reason });
         throw new Error(`push rejected: ${push.reason}`);
       }
+
+      log?.info("Push accepted", { revision: push.revision, noOp: push.noOp ?? false });
 
       state.localRevision = push.revision;
       state.localHash = push.payloadSha256;
@@ -1281,7 +1416,9 @@ export async function runOnlineSyncOnce(
         reason: push.reason,
         serverRevision: push.revision,
       };
+      log?.info("Sync finished: push", { action: result.action, reason: result.reason });
       updateIndicatorFromRunResult(result);
+      await log?.flush();
       return result;
     }
 
@@ -1301,19 +1438,31 @@ export async function runOnlineSyncOnce(
       reason: status.reason,
       serverRevision: status.serverRevision ?? null,
     };
+    log?.info("Sync finished: already in sync", { reason: status.reason });
     updateIndicatorFromRunResult(result);
+    await log?.flush();
     return result;
   } catch (error) {
     state = loadOnlineSyncState(settings);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorKind = error instanceof SyncHttpError ? error.kind : "unknown";
+    const errorStatus = error instanceof SyncHttpError ? error.status : null;
+    log?.error("Sync failed", {
+      error: errorMessage,
+      kind: errorKind,
+      httpStatus: errorStatus,
+      needsReseed: state.needsReseed,
+    });
     const result: OnlineSyncRunResult = {
       ok: false,
       action: "none",
       reason: "sync_failed",
       serverRevision: state.serverRevision,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
       needsReseed: state.needsReseed,
     };
     updateIndicatorFromRunResult(result);
+    await log?.flush();
     return result;
   }
 }

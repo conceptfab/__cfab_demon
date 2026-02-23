@@ -8,6 +8,8 @@ import { useAppStore } from "@/store/app-store";
 
 import { open } from "@tauri-apps/plugin-dialog";
 
+const labelClassName = "text-sm font-medium text-muted-foreground";
+
 export function ImportPanel() {
   const [archivePath, setArchivePath] = useState<string | null>(null);
   const [validation, setValidation] = useState<ImportValidation | null>(null);
@@ -85,13 +87,13 @@ export function ImportPanel() {
 
         {validation && !summary && (
           <div className="space-y-4">
-            <div className="p-4 bg-muted rounded-md space-y-2 border">
+            <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Validation Status</span>
                 {validation.valid ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 ) : (
-                  <AlertTriangle className="icon-colored h-4 w-4 text-amber-500" />
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
                 )}
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
@@ -102,21 +104,23 @@ export function ImportPanel() {
             </div>
 
             {validation.missing_projects.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs font-medium flex items-center gap-1">
-                  <Info className="h-3 w-3" /> New projects to be created:
-                </p>
-                <div className="text-[10px] bg-sky-500/10 text-sky-400 p-2 rounded max-h-24 overflow-y-auto">
-                  {validation.missing_projects.join(", ")}
+              <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium flex items-center gap-1">
+                    <Info className="h-3 w-3" /> New projects to be created:
+                  </p>
+                  <div className="text-[10px] bg-sky-500/10 text-sky-400 p-2 rounded max-h-24 overflow-y-auto">
+                    {validation.missing_projects.join(", ")}
+                  </div>
                 </div>
               </div>
             )}
 
-            <Button onClick={handleImport} disabled={importing} className="w-full gap-2 bg-orange-600 hover:bg-orange-500">
+            <Button onClick={handleImport} disabled={importing} className="w-full gap-2">
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Start Import"}
             </Button>
-            <Button variant="ghost" onClick={() => { setValidation(null); setArchivePath(null); }} className="w-full text-xs">
+            <Button variant="outline" onClick={() => { setValidation(null); setArchivePath(null); }} className="w-full">
               Cancel and select another file
             </Button>
           </div>
@@ -134,19 +138,19 @@ export function ImportPanel() {
             </div>
             
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="p-2 border rounded bg-card/50">
+              <div className="rounded-md border border-border/70 bg-background/35 p-2">
                 <p className="text-muted-foreground">Projects</p>
                 <p className="font-bold">{summary.projects_created} new</p>
               </div>
-              <div className="p-2 border rounded bg-card/50">
+              <div className="rounded-md border border-border/70 bg-background/35 p-2">
                 <p className="text-muted-foreground">Applications</p>
                 <p className="font-bold">{summary.apps_created} new</p>
               </div>
-              <div className="p-2 border rounded bg-card/50">
+              <div className="rounded-md border border-border/70 bg-background/35 p-2">
                 <p className="text-muted-foreground">Sessions</p>
                 <p className="font-bold">{summary.sessions_imported} added</p>
               </div>
-              <div className="p-2 border rounded bg-card/50">
+              <div className="rounded-md border border-border/70 bg-background/35 p-2">
                 <p className="text-muted-foreground">Merged</p>
                 <p className="font-bold">{summary.sessions_merged} sessions</p>
               </div>

@@ -245,7 +245,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     for ms in &archive.data.manual_sessions {
         if let Some(&local_pid) = project_mapping.get(&ms.project_id) {
             tx.execute(
-                "INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT OR IGNORE INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![ms.title, ms.session_type, local_pid, ms.start_time, ms.end_time, ms.duration_seconds, ms.date, ms.created_at]
             ).map_err(|e| e.to_string())?;
         }

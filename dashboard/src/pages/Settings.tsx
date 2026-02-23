@@ -410,7 +410,7 @@ export function Settings() {
 
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold">Online Sync (MVP)</CardTitle>
+          <CardTitle className="text-base font-semibold">Online Sync</CardTitle>
           <p className="text-sm text-muted-foreground">
             Startup synchronization with remote server using snapshot push/pull.
           </p>
@@ -489,6 +489,28 @@ export function Settings() {
               <span className="text-sm text-muted-foreground">min</span>
             </div>
           </div>
+
+          <label
+            htmlFor="onlineSyncLogging"
+            className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Enable sync logging</p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                Save detailed sync operations to log file for debugging.
+              </p>
+            </div>
+            <input
+              id="onlineSyncLogging"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={onlineSyncSettings.enableLogging}
+              onChange={(e) => {
+                setOnlineSyncSettings((prev) => ({ ...prev, enableLogging: e.target.checked }));
+                setSavedSettings(false);
+              }}
+            />
+          </label>
 
           <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
             <label className="grid gap-1.5 text-sm">

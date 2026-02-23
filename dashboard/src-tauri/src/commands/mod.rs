@@ -12,6 +12,7 @@ mod monitored;
 mod projects;
 mod sessions;
 mod settings;
+mod sync_log;
 mod types;
 
 // Re-export all public commands (required by tauri::generate_handler![])
@@ -28,3 +29,4 @@ pub use monitored::*;
 pub use projects::*;
 pub use sessions::*;
 pub use settings::*;
+pub use sync_log::*;
