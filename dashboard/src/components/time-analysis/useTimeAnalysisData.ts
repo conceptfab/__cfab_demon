@@ -54,9 +54,9 @@ export function useTimeAnalysisData() {
   };
 
   useEffect(() => {
-    const hpPromise = rangeMode !== "monthly"
-      ? getProjectTimeline(activeDateRange, 10, "hour")
-      : Promise.resolve<StackedBarData[]>([]);
+    const hpPromise = rangeMode === "monthly"
+      ? getProjectTimeline(activeDateRange, 10, "day")
+      : getProjectTimeline(activeDateRange, 10, "hour");
 
     Promise.all([
       getTopProjects(activeDateRange, 10),
@@ -112,11 +112,34 @@ export function useTimeAnalysisData() {
     return { hours: slots, allProjects: parsed.allProjects, maxVal };
   }, [rangeMode, parsed, anchorDate]);
 
-  // Bar data — monthly (simple bars)
-  const monthlyBarData = useMemo(() =>
-    timeline.map((t) => ({ date: t.date, hours: +(t.seconds / 3600).toFixed(2) })),
-    [timeline],
-  );
+  // Bar data — monthly (stacked by project per day)
+  const monthlyBarData = useMemo(() => {
+    if (rangeMode !== "monthly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    const projectSet = new Set<string>();
+    // hourlyProjects for monthly mode contains day-granularity rows
+    const perDay = new Map<string, Record<string, number>>();
+    for (const row of hourlyProjects) {
+      const datePart = row.date.split("T")[0] || row.date;
+      if (!perDay.has(datePart)) perDay.set(datePart, {});
+      const bucket = perDay.get(datePart)!;
+      for (const [key, val] of Object.entries(row)) {
+        if (key === "date" || typeof val !== "number") continue;
+        bucket[key] = (bucket[key] || 0) + val / 3600;
+        projectSet.add(key);
+      }
+    }
+    // Build rows sorted by date
+    const dates = Array.from(perDay.keys()).sort();
+    const data = dates.map((date) => {
+      const bucket = perDay.get(date)!;
+      const row: Record<string, unknown> = { date };
+      for (const [k, v] of Object.entries(bucket)) {
+        row[k] = +v.toFixed(3);
+      }
+      return row;
+    });
+    return { data, projectNames: Array.from(projectSet) };
+  }, [rangeMode, hourlyProjects]);
 
   // Daily hourly bar data: stacked by project per hour
   const dailyBarData = useMemo(() => {
@@ -152,13 +175,17 @@ export function useTimeAnalysisData() {
 
   // Project color map for stacked bars
   const stackedBarColorMap = useMemo(() => {
-    const names = rangeMode === "daily" ? dailyBarData.projectNames : weeklyBarData.projectNames;
+    const names = rangeMode === "daily"
+      ? dailyBarData.projectNames
+      : rangeMode === "weekly"
+        ? weeklyBarData.projectNames
+        : monthlyBarData.projectNames;
     const map = new Map<string, string>();
     names.forEach((name, i) => {
       map.set(name, projectColors.get(name) || PALETTE[i % PALETTE.length]);
     });
     return map;
-  }, [rangeMode, dailyBarData.projectNames, weeklyBarData.projectNames, projectColors]);
+  }, [rangeMode, dailyBarData.projectNames, weeklyBarData.projectNames, monthlyBarData.projectNames, projectColors]);
 
   // Daily total hours
   const dailyTotalHours = useMemo(() => {

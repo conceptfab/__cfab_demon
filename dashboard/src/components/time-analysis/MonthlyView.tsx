@@ -3,23 +3,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_AXIS_COLOR,
-  CHART_PRIMARY_COLOR,
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
 import { formatDuration } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
+import { PALETTE } from "./types";
 import type { CalendarWeek } from "./types";
 
 const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 interface MonthlyViewProps {
   monthCalendar: { weeks: CalendarWeek[]; maxVal: number };
-  monthlyBarData: { date: string; hours: number }[];
+  monthlyBarData: { data: Record<string, unknown>[]; projectNames: string[] };
   monthTotalHours: number;
+  stackedBarColorMap: Map<string, string>;
+  projectColors: Map<string, string>;
 }
 
-export function MonthlyBarChart({ monthlyBarData, monthTotalHours }: MonthlyViewProps) {
+export function MonthlyBarChart({ monthlyBarData, monthTotalHours, stackedBarColorMap }: MonthlyViewProps) {
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -30,7 +32,7 @@ export function MonthlyBarChart({ monthlyBarData, monthTotalHours }: MonthlyView
       <CardContent>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyBarData}>
+            <BarChart data={monthlyBarData.data}>
               <XAxis
                 dataKey="date"
                 tickFormatter={(v) => { try { return format(parseISO(v), "d"); } catch { return v; } }}
@@ -41,10 +43,12 @@ export function MonthlyBarChart({ monthlyBarData, monthTotalHours }: MonthlyView
                 contentStyle={TOOLTIP_CONTENT_STYLE}
                 labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
                 itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                formatter={(value) => [`${value}h`, "Time"]}
+                formatter={(value, name) => [`${Number(value).toFixed(1)}h`, name]}
                 labelFormatter={(v) => { try { return format(parseISO(v as string), "EEE, MMM d"); } catch { return v as string; } }}
               />
-              <Bar dataKey="hours" fill={CHART_PRIMARY_COLOR} radius={[2, 2, 0, 0]} />
+              {monthlyBarData.projectNames.map((name) => (
+                <Bar key={name} dataKey={name} stackId="stack" fill={stackedBarColorMap.get(name) || PALETTE[0]} radius={[0, 0, 0, 0]} />
+              ))}
             </BarChart>
           </ResponsiveContainer>
         </div>
