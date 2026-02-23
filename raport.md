@@ -147,17 +147,12 @@ The CSV export only includes `Date,Hours` from the `timeline` data. For daily vi
 ```
 Since `today` is recalculated on every render, this memo will recalculate every render. Either memoize `today` or remove it from the dependency (it's only a fallback for `anchorDate || today`, and `anchorDate` is always set).
 
-### 5.5 Type assertion in Promise.all (lines 84-86)
-```tsx
-.then(([a, t, hp]) => {
-  setApps(a as AppWithStats[]);
-  setTimeline(t as TimelinePoint[]);
-```
-These `as` casts bypass type safety. Consider using separate `Promise.all` with typed results or fetching individually.
+### 5.5 Type assertion in Promise.all (lines 84-86) — DONE
+Replaced `Promise<unknown>[]` with properly typed `Promise.all([...])` using individual typed promises. TypeScript now infers each element's type from `getTopProjects`, `getTimeline`, `getProjectTimeline`, `getProjects`. No more `as` casts.
 
 ---
 
-## 6. PERFORMANCE OPTIMIZATIONS — DONE (6.1, 6.2 applied; 6.3, 6.4 skipped as low-impact)
+## 6. PERFORMANCE OPTIMIZATIONS — DONE
 
 ### 6.1 Redundant data fetching
 `getApplications(activeDateRange)` is fetched for all modes but only used for the pie chart. If the pie chart switches to project data (as suggested in #2), this fetch can be removed entirely, reducing API calls.
@@ -165,19 +160,11 @@ These `as` casts bypass type safety. Consider using separate `Promise.all` with 
 ### 6.2 Large useMemo computations
 `weeklyHourlyGrid` (lines 113-181) and `dailyHourlyGrid` (lines 184-235) contain near-identical logic for parsing `hourlyProjects`. This should be extracted into a shared utility function.
 
-### 6.3 Unnecessary re-renders
-The component has 7 `useState` calls that each trigger re-renders independently. Consider combining related state:
-```tsx
-const [data, setData] = useState({
-  apps: [] as AppWithStats[],
-  timeline: [] as TimelinePoint[],
-  hourlyProjects: [] as StackedBarData[],
-});
-```
-This way a single `setData` call updates all three at once.
+### 6.3 Unnecessary re-renders — DONE
+Combined `projectTime`, `timeline`, `hourlyProjects`, `projectColors` into single `data` state object. One `setData` call updates all at once — eliminates 3 extra re-renders per data fetch.
 
-### 6.4 `projectColors` fetched independently
-`getProjects()` is called separately from the main data fetch (lines 41-47). This could be included in the `Promise.all` to parallelize.
+### 6.4 `projectColors` fetched independently — DONE
+Moved `getProjects()` into the main `Promise.all`. All 4 API calls now run in parallel and resolve in a single state update.
 
 ---
 
@@ -212,7 +199,7 @@ If the pie chart switches to project data (recommendation #2), the `apps` state 
 
 ---
 
-## 8. MISSING / INCORRECT TRANSLATIONS
+## 8. MISSING / INCORRECT TRANSLATIONS — OK (no issues)
 
 The entire UI is in English. No i18n framework is used in the project. All strings are hardcoded. This is consistent across the app, so there's no translation infrastructure to integrate with.
 
@@ -238,7 +225,10 @@ The UI is consistently in English throughout.
 | 3 | **High** | Weekly Bar | Not stacked by project | Add project stacking like daily view | DONE |
 | 4 | **High** | Shared Legend | Each view has its own legend | Pie + heatmap now both show projects with consistent colors | DONE |
 | 5 | **Medium** | Performance | `today` causes memo recalc every render | Memoized with `useMemo`, removed from `activeDateRange` deps | DONE |
+| 5.5 | **Medium** | Type Safety | `as` casts in `Promise.all` | Typed `Promise.all` with individual typed promises, no casts | DONE |
 | 6 | **Medium** | Code Quality | ~120 lines duplicated parsing logic | Extracted `parseHourlyProjects()` + `buildDaySlots()` helpers | DONE |
+| 6.3 | **Medium** | Performance | 4 separate `useState` → 4 re-renders | Combined into single `data` state object | DONE |
+| 6.4 | **Medium** | Performance | `projectColors` fetched separately | Merged into main `Promise.all` — all 4 API calls parallel | DONE |
 | 7 | **Medium** | Export | CSV only has daily totals | Daily/weekly export now includes project breakdown columns | DONE |
 | 8 | **Low** | Type Safety | `as any` cast on tooltip formatter | Removed cast, using `(value, name) =>` without explicit types | DONE |
 | 9 | **Low** | Dead Code | Unused `CHART_GRID_COLOR` import | Removed | DONE |

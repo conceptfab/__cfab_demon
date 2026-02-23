@@ -90,22 +90,16 @@ export function TimeAnalysis() {
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
 
-  const [projectTime, setProjectTime] = useState<ProjectTimeRow[]>([]);
-  const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
-  const [hourlyProjects, setHourlyProjects] = useState<StackedBarData[]>([]);
-  const [projectColors, setProjectColors] = useState<Map<string, string>>(new Map());
+  const [data, setData] = useState<{
+    projectTime: ProjectTimeRow[];
+    timeline: TimelinePoint[];
+    hourlyProjects: StackedBarData[];
+    projectColors: Map<string, string>;
+  }>({ projectTime: [], timeline: [], hourlyProjects: [], projectColors: new Map() });
+  const { projectTime, timeline, hourlyProjects, projectColors } = data;
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const canShiftForward = anchorDate < today;
-
-  // Fetch project colors from DB
-  useEffect(() => {
-    getProjects().then((projects) => {
-      const map = new Map<string, string>();
-      for (const p of projects) map.set(p.name, p.color);
-      setProjectColors(map);
-    }).catch(console.error);
-  }, [refreshKey]);
 
   const activeDateRange = useMemo<DateRange>(() => {
     const d = parseISO(anchorDate);
@@ -133,24 +127,20 @@ export function TimeAnalysis() {
   };
 
   useEffect(() => {
-    const fetches: Promise<unknown>[] = [
+    const hpPromise = rangeMode !== "monthly"
+      ? getProjectTimeline(activeDateRange, 10, "hour")
+      : Promise.resolve<StackedBarData[]>([]);
+
+    Promise.all([
       getTopProjects(activeDateRange, 10),
       getTimeline(activeDateRange),
-    ];
-    if (rangeMode === "daily" || rangeMode === "weekly") {
-      fetches.push(getProjectTimeline(activeDateRange, 10, "hour"));
-    }
-    Promise.all(fetches)
-      .then(([pt, t, hp]) => {
-        setProjectTime(pt as ProjectTimeRow[]);
-        setTimeline(t as TimelinePoint[]);
-        if ((rangeMode === "daily" || rangeMode === "weekly") && hp) {
-          setHourlyProjects(hp as StackedBarData[]);
-        } else {
-          setHourlyProjects([]);
-        }
-      })
-      .catch(console.error);
+      hpPromise,
+      getProjects(),
+    ]).then(([pt, tl, hp, projects]) => {
+      const colorMap = new Map<string, string>();
+      for (const p of projects) colorMap.set(p.name, p.color);
+      setData({ projectTime: pt, timeline: tl, hourlyProjects: hp, projectColors: colorMap });
+    }).catch(console.error);
   }, [activeDateRange, refreshKey, rangeMode]);
 
   // Parsed hourly project data (shared between daily & weekly)
