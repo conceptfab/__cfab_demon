@@ -4,7 +4,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store/app-store";
-import { getApplications, getTimeline, getProjectTimeline, getProjects } from "@/lib/tauri";
+import { getTimeline, getProjectTimeline, getProjects, getTopProjects } from "@/lib/tauri";
 import {
   TOOLTIP_CONTENT_STYLE,
   TOKYO_NIGHT_CHART_PALETTE,
@@ -19,22 +19,83 @@ import {
   startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
   isBefore, isAfter,
 } from "date-fns";
-import type { DateRange, AppWithStats, TimelinePoint, StackedBarData } from "@/lib/db-types";
+import type { DateRange, TimelinePoint, StackedBarData, ProjectTimeRow } from "@/lib/db-types";
 
-const CHART_COLORS = TOKYO_NIGHT_CHART_PALETTE;
+const PALETTE = TOKYO_NIGHT_CHART_PALETTE;
 const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 type RangeMode = "daily" | "weekly" | "monthly";
+
+/* ─── Shared types & helpers ─── */
+
+type ProjectSlot = { name: string; seconds: number; color: string };
+type HourSlot = { hour: number; projects: ProjectSlot[]; totalSeconds: number };
+
+/** Parse StackedBarData[] into a date->hour->projects lookup */
+function parseHourlyProjects(
+  rows: StackedBarData[],
+  projectColors: Map<string, string>,
+) {
+  const projectSet = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== "date") projectSet.add(key);
+    }
+  }
+  const allProjects = Array.from(projectSet);
+  const colorMap = new Map<string, string>();
+  allProjects.forEach((name, i) => {
+    colorMap.set(name, projectColors.get(name) || PALETTE[i % PALETTE.length]);
+  });
+
+  const byDateHour = new Map<string, Map<number, ProjectSlot[]>>();
+  for (const row of rows) {
+    let datePart = "";
+    let hour = -1;
+    try {
+      const parts = row.date.split("T");
+      datePart = parts[0];
+      if (parts[1]) hour = parseInt(parts[1].substring(0, 2), 10);
+    } catch { /* ignore */ }
+    if (!datePart || hour < 0 || hour > 23) continue;
+
+    if (!byDateHour.has(datePart)) byDateHour.set(datePart, new Map());
+    const projects: ProjectSlot[] = [];
+    for (const [key, val] of Object.entries(row)) {
+      if (key === "date" || typeof val !== "number") continue;
+      projects.push({ name: key, seconds: val, color: colorMap.get(key) || PALETTE[0] });
+    }
+    projects.sort((a, b) => b.seconds - a.seconds);
+    byDateHour.get(datePart)!.set(hour, projects);
+  }
+
+  return { byDateHour, allProjects, colorMap };
+}
+
+/** Build 24 HourSlots for a single day from the parsed lookup */
+function buildDaySlots(hourMap: Map<number, ProjectSlot[]> | undefined): { slots: HourSlot[]; maxVal: number } {
+  let maxVal = 1;
+  const slots: HourSlot[] = Array.from({ length: 24 }, (_, h) => {
+    const projects = hourMap?.get(h) ?? [];
+    const totalSeconds = projects.reduce((s, p) => s + p.seconds, 0);
+    if (totalSeconds > maxVal) maxVal = totalSeconds;
+    return { hour: h, projects, totalSeconds };
+  });
+  return { slots, maxVal };
+}
+
+/* ─── Component ─── */
 
 export function TimeAnalysis() {
   const { refreshKey } = useAppStore();
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
 
-  const [apps, setApps] = useState<AppWithStats[]>([]);
+  const [projectTime, setProjectTime] = useState<ProjectTimeRow[]>([]);
   const [timeline, setTimeline] = useState<TimelinePoint[]>([]);
   const [hourlyProjects, setHourlyProjects] = useState<StackedBarData[]>([]);
   const [projectColors, setProjectColors] = useState<Map<string, string>>(new Map());
-  const today = format(new Date(), "yyyy-MM-dd");
+
+  const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const canShiftForward = anchorDate < today;
 
   // Fetch project colors from DB
@@ -47,17 +108,16 @@ export function TimeAnalysis() {
   }, [refreshKey]);
 
   const activeDateRange = useMemo<DateRange>(() => {
-    const selectedDay = anchorDate || today;
-    const d = parseISO(selectedDay);
+    const d = parseISO(anchorDate);
     switch (rangeMode) {
       case "daily":
-        return { start: selectedDay, end: selectedDay };
+        return { start: anchorDate, end: anchorDate };
       case "weekly":
-        return { start: format(subDays(d, 6), "yyyy-MM-dd"), end: selectedDay };
+        return { start: format(subDays(d, 6), "yyyy-MM-dd"), end: anchorDate };
       case "monthly":
         return { start: format(startOfMonth(d), "yyyy-MM-dd"), end: format(endOfMonth(d), "yyyy-MM-dd") };
     }
-  }, [rangeMode, anchorDate, today]);
+  }, [rangeMode, anchorDate]);
 
   const shiftDateRange = (direction: -1 | 1) => {
     const current = parseISO(anchorDate);
@@ -74,15 +134,15 @@ export function TimeAnalysis() {
 
   useEffect(() => {
     const fetches: Promise<unknown>[] = [
-      getApplications(activeDateRange),
+      getTopProjects(activeDateRange, 10),
       getTimeline(activeDateRange),
     ];
     if (rangeMode === "daily" || rangeMode === "weekly") {
       fetches.push(getProjectTimeline(activeDateRange, 10, "hour"));
     }
     Promise.all(fetches)
-      .then(([a, t, hp]) => {
-        setApps(a as AppWithStats[]);
+      .then(([pt, t, hp]) => {
+        setProjectTime(pt as ProjectTimeRow[]);
         setTimeline(t as TimelinePoint[]);
         if ((rangeMode === "daily" || rangeMode === "weekly") && hp) {
           setHourlyProjects(hp as StackedBarData[]);
@@ -93,61 +153,31 @@ export function TimeAnalysis() {
       .catch(console.error);
   }, [activeDateRange, refreshKey, rangeMode]);
 
-  // Pie chart
-  const pieData = useMemo(() => {
-    const sorted = [...apps].sort((a, b) => b.total_seconds - a.total_seconds).slice(0, 8);
-    return sorted.map((a, i) => ({
-      name: a.display_name,
-      value: a.total_seconds,
-      fill: a.color ?? CHART_COLORS[i % CHART_COLORS.length],
-    }));
-  }, [apps]);
+  // Parsed hourly project data (shared between daily & weekly)
+  const parsed = useMemo(
+    () => parseHourlyProjects(hourlyProjects, projectColors),
+    [hourlyProjects, projectColors],
+  );
 
-  // Weekly project heatmap: parse hourly project data grouped by day
+  // Pie chart — project breakdown
+  const pieData = useMemo(() => {
+    return projectTime.map((p, i) => ({
+      name: p.name,
+      value: p.seconds,
+      fill: p.color || PALETTE[i % PALETTE.length],
+    }));
+  }, [projectTime]);
+
+  // Weekly heatmap grid
   type WeekDaySlot = {
     dayLabel: string;
     dateStr: string;
-    hours: { hour: number; projects: { name: string; seconds: number; color: string }[]; totalSeconds: number }[];
+    hours: HourSlot[];
     totalSeconds: number;
   };
   const weeklyHourlyGrid = useMemo(() => {
-    if (rangeMode !== "weekly") return { days: [] as WeekDaySlot[], allProjects: [] as string[], maxVal: 1 };
+    if (rangeMode !== "weekly") return { days: [] as WeekDaySlot[], allProjects: parsed.allProjects, maxVal: 1 };
 
-    // Collect all project names
-    const projectSet = new Set<string>();
-    for (const row of hourlyProjects) {
-      for (const key of Object.keys(row)) {
-        if (key !== "date") projectSet.add(key);
-      }
-    }
-    const allProjects = Array.from(projectSet);
-    const projectColorMap = new Map<string, string>();
-    allProjects.forEach((name, i) => {
-      projectColorMap.set(name, projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length]);
-    });
-
-    // Group data by date + hour
-    const dayHourMap = new Map<string, Map<number, Map<string, number>>>();
-    for (const row of hourlyProjects) {
-      let datePart = "";
-      let hour = -1;
-      try {
-        const parts = row.date.split("T");
-        datePart = parts[0];
-        if (parts[1]) hour = parseInt(parts[1].substring(0, 2), 10);
-      } catch { /* ignore */ }
-      if (!datePart || hour < 0 || hour > 23) continue;
-
-      if (!dayHourMap.has(datePart)) dayHourMap.set(datePart, new Map());
-      const projMap = new Map<string, number>();
-      for (const [key, val] of Object.entries(row)) {
-        if (key === "date" || typeof val !== "number") continue;
-        projMap.set(key, val);
-      }
-      dayHourMap.get(datePart)!.set(hour, projMap);
-    }
-
-    // Build 7 days (Mon-Sun) from activeDateRange
     let maxVal = 1;
     const days: WeekDaySlot[] = [];
     const startDate = parseISO(activeDateRange.start);
@@ -155,89 +185,26 @@ export function TimeAnalysis() {
       const d = addDays(startDate, di);
       const dateStr = format(d, "yyyy-MM-dd");
       const dayLabel = format(d, "EEE");
-      const hourData = dayHourMap.get(dateStr);
-      let dayTotal = 0;
-
-      const hours = Array.from({ length: 24 }, (_, h) => {
-        const projMap = hourData?.get(h);
-        const projects: { name: string; seconds: number; color: string }[] = [];
-        let totalSeconds = 0;
-        if (projMap) {
-          for (const [name, seconds] of projMap) {
-            projects.push({ name, seconds, color: projectColorMap.get(name) || CHART_COLORS[0] });
-            totalSeconds += seconds;
-          }
-          projects.sort((a, b) => b.seconds - a.seconds);
-        }
-        if (totalSeconds > maxVal) maxVal = totalSeconds;
-        dayTotal += totalSeconds;
-        return { hour: h, projects, totalSeconds };
-      });
-
-      days.push({ dayLabel, dateStr, hours, totalSeconds: dayTotal });
+      const { slots, maxVal: dayMax } = buildDaySlots(parsed.byDateHour.get(dateStr));
+      if (dayMax > maxVal) maxVal = dayMax;
+      const dayTotal = slots.reduce((s, h) => s + h.totalSeconds, 0);
+      days.push({ dayLabel, dateStr, hours: slots, totalSeconds: dayTotal });
     }
 
-    return { days, allProjects, maxVal };
-  }, [rangeMode, hourlyProjects, activeDateRange, projectColors]);
+    return { days, allProjects: parsed.allProjects, maxVal };
+  }, [rangeMode, parsed, activeDateRange]);
 
-  // Daily project heatmap: parse hourly project data
+  // Daily heatmap grid
   const dailyHourlyGrid = useMemo(() => {
-    type HourSlot = { hour: number; projects: { name: string; seconds: number; color: string }[]; totalSeconds: number };
-    if (rangeMode !== "daily") return { hours: [] as HourSlot[], allProjects: [] as string[], maxVal: 1 };
+    if (rangeMode !== "daily") return { hours: [] as HourSlot[], allProjects: parsed.allProjects, maxVal: 1 };
+    const { slots, maxVal } = buildDaySlots(parsed.byDateHour.get(anchorDate));
+    return { hours: slots, allProjects: parsed.allProjects, maxVal };
+  }, [rangeMode, parsed, anchorDate]);
 
-    const projectSet = new Set<string>();
-    for (const row of hourlyProjects) {
-      for (const key of Object.keys(row)) {
-        if (key !== "date") projectSet.add(key);
-      }
-    }
-    const allProjects = Array.from(projectSet);
-    const projectColorMap = new Map<string, string>();
-    allProjects.forEach((name, i) => {
-      projectColorMap.set(name, projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length]);
-    });
-
-    // Build hour-indexed map
-    const hourMap = new Map<number, Map<string, number>>();
-    for (const row of hourlyProjects) {
-      let hour = -1;
-      try {
-        const timePart = row.date.split("T")[1];
-        if (timePart) hour = parseInt(timePart.substring(0, 2), 10);
-      } catch { /* ignore */ }
-      if (hour < 0 || hour > 23) continue;
-
-      const projMap = new Map<string, number>();
-      for (const [key, val] of Object.entries(row)) {
-        if (key === "date" || typeof val !== "number") continue;
-        projMap.set(key, val);
-      }
-      hourMap.set(hour, projMap);
-    }
-
-    let maxVal = 1;
-    const hours: HourSlot[] = Array.from({ length: 24 }, (_, h) => {
-      const projMap = hourMap.get(h);
-      const projects: { name: string; seconds: number; color: string }[] = [];
-      let totalSeconds = 0;
-      if (projMap) {
-        for (const [name, seconds] of projMap) {
-          projects.push({ name, seconds, color: projectColorMap.get(name) || CHART_COLORS[0] });
-          totalSeconds += seconds;
-        }
-        projects.sort((a, b) => b.seconds - a.seconds);
-      }
-      if (totalSeconds > maxVal) maxVal = totalSeconds;
-      return { hour: h, projects, totalSeconds };
-    });
-
-    return { hours, allProjects, maxVal };
-  }, [rangeMode, hourlyProjects, projectColors]);
-
-  // Bar data (non-daily)
-  const barData = useMemo(() =>
+  // Bar data — monthly (simple bars)
+  const monthlyBarData = useMemo(() =>
     timeline.map((t) => ({ date: t.date, hours: +(t.seconds / 3600).toFixed(2) })),
-    [timeline]
+    [timeline],
   );
 
   // Daily hourly bar data: stacked by project per hour
@@ -247,29 +214,52 @@ export function TimeAnalysis() {
     const data = dailyHourlyGrid.hours.map((slot) => {
       const row: Record<string, unknown> = { hour: `${slot.hour.toString().padStart(2, "0")}:00` };
       for (const proj of slot.projects) {
-        const key = proj.name;
-        row[key] = +(proj.seconds / 3600).toFixed(3);
-        projectSet.add(key);
+        row[proj.name] = +(proj.seconds / 3600).toFixed(3);
+        projectSet.add(proj.name);
       }
       return row;
     });
     return { data, projectNames: Array.from(projectSet) };
   }, [rangeMode, dailyHourlyGrid]);
 
-  // Project color map for daily stacked bar
-  const dailyProjectColorMap = useMemo(() => {
+  // Weekly daily bar data: stacked by project per day
+  const weeklyBarData = useMemo(() => {
+    if (rangeMode !== "weekly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    const projectSet = new Set<string>();
+    const data = weeklyHourlyGrid.days.map((day) => {
+      const row: Record<string, unknown> = { date: day.dateStr };
+      for (const hourSlot of day.hours) {
+        for (const proj of hourSlot.projects) {
+          row[proj.name] = +((row[proj.name] as number || 0) + proj.seconds / 3600).toFixed(3);
+          projectSet.add(proj.name);
+        }
+      }
+      return row;
+    });
+    return { data, projectNames: Array.from(projectSet) };
+  }, [rangeMode, weeklyHourlyGrid]);
+
+  // Project color map for stacked bars
+  const stackedBarColorMap = useMemo(() => {
+    const names = rangeMode === "daily" ? dailyBarData.projectNames : weeklyBarData.projectNames;
     const map = new Map<string, string>();
-    dailyBarData.projectNames.forEach((name, i) => {
-      map.set(name, projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length]);
+    names.forEach((name, i) => {
+      map.set(name, projectColors.get(name) || PALETTE[i % PALETTE.length]);
     });
     return map;
-  }, [dailyBarData.projectNames, projectColors]);
+  }, [rangeMode, dailyBarData.projectNames, weeklyBarData.projectNames, projectColors]);
 
   // Daily total hours
   const dailyTotalHours = useMemo(() => {
     if (rangeMode !== "daily") return 0;
     return dailyHourlyGrid.hours.reduce((s, h) => s + h.totalSeconds, 0) / 3600;
   }, [rangeMode, dailyHourlyGrid]);
+
+  // Weekly total hours
+  const weeklyTotalHours = useMemo(() => {
+    if (rangeMode !== "weekly") return 0;
+    return weeklyHourlyGrid.days.reduce((s, d) => s + d.totalSeconds, 0) / 3600;
+  }, [rangeMode, weeklyHourlyGrid]);
 
   // Monthly calendar heatmap
   const monthCalendar = useMemo(() => {
@@ -304,8 +294,33 @@ export function TimeAnalysis() {
   }, [rangeMode, timeline]);
 
   const handleExport = () => {
-    const rows = timeline.map((t) => `${t.date},${(t.seconds / 3600).toFixed(2)}`).join("\n");
-    const blob = new Blob(["Date,Hours\n" + rows], { type: "text/csv" });
+    let csv: string;
+    if (rangeMode === "daily") {
+      const projects = dailyBarData.projectNames;
+      const header = `Hour,${projects.join(",")},Total`;
+      const rows = dailyBarData.data.map((row) => {
+        const hour = row.hour as string;
+        const vals = projects.map((p) => ((row[p] as number) || 0).toFixed(3));
+        const total = projects.reduce((s, p) => s + ((row[p] as number) || 0), 0).toFixed(2);
+        return `${hour},${vals.join(",")},${total}`;
+      });
+      csv = [header, ...rows].join("\n");
+    } else if (rangeMode === "weekly") {
+      const projects = weeklyBarData.projectNames;
+      const header = `Date,${projects.join(",")},Total`;
+      const rows = weeklyBarData.data.map((row) => {
+        const date = row.date as string;
+        const vals = projects.map((p) => ((row[p] as number) || 0).toFixed(3));
+        const total = projects.reduce((s, p) => s + ((row[p] as number) || 0), 0).toFixed(2);
+        return `${date},${vals.join(",")},${total}`;
+      });
+      csv = [header, ...rows].join("\n");
+    } else {
+      const header = "Date,Hours";
+      const rows = timeline.map((t) => `${t.date},${(t.seconds / 3600).toFixed(2)}`);
+      csv = [header, ...rows].join("\n");
+    }
+    const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -350,57 +365,60 @@ export function TimeAnalysis() {
             <CardTitle className="text-sm font-medium">
               {rangeMode === "daily"
                 ? `Hourly Activity — ${dailyTotalHours.toFixed(1)}h total`
-                : rangeMode === "monthly"
-                  ? `Daily Activity — ${monthTotalHours.toFixed(1)}h total`
-                  : "Daily Activity"}
+                : rangeMode === "weekly"
+                  ? `Daily Activity — ${weeklyTotalHours.toFixed(1)}h total`
+                  : `Daily Activity — ${monthTotalHours.toFixed(1)}h total`}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
               {rangeMode === "daily" ? (
-                /* Daily: stacked bar per hour with project breakdown */
+                /* Daily: stacked bar per hour */
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dailyBarData.data}>
-                    <XAxis
-                      dataKey="hour"
-                      stroke={CHART_AXIS_COLOR}
-                      fontSize={10}
-                      tickLine={false}
-                      axisLine={false}
-                      interval={1}
-                    />
-                    <YAxis
-                      stroke={CHART_AXIS_COLOR}
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => `${v}h`}
-                    />
+                    <XAxis dataKey="hour" stroke={CHART_AXIS_COLOR} fontSize={10} tickLine={false} axisLine={false} interval={2} />
+                    <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
                     <Tooltip
                       contentStyle={TOOLTIP_CONTENT_STYLE}
                       labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
                       itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                                            formatter={((value: number, name: string) => [`${(value * 60).toFixed(0)}min`, name]) as any}
+                      formatter={(value, name) => [`${(Number(value) * 60).toFixed(0)}min`, name]}
                     />
                     {dailyBarData.projectNames.map((name) => (
-                      <Bar
-                        key={name}
-                        dataKey={name}
-                        stackId="hourStack"
-                        fill={dailyProjectColorMap.get(name) || CHART_COLORS[0]}
-                        radius={[0, 0, 0, 0]}
-                      />
+                      <Bar key={name} dataKey={name} stackId="stack" fill={stackedBarColorMap.get(name) || PALETTE[0]} radius={[0, 0, 0, 0]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : rangeMode === "weekly" ? (
+                /* Weekly: stacked bar per day */
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={weeklyBarData.data}>
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(v) => { try { return format(parseISO(v), "MMM d"); } catch { return v; } }}
+                      stroke={CHART_AXIS_COLOR} fontSize={11} tickLine={false} axisLine={false}
+                    />
+                    <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
+                    <Tooltip
+                      contentStyle={TOOLTIP_CONTENT_STYLE}
+                      labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
+                      itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
+                      formatter={(value, name) => [`${Number(value).toFixed(1)}h`, name]}
+                      labelFormatter={(v) => { try { return format(parseISO(v as string), "EEE, MMM d"); } catch { return v as string; } }}
+                    />
+                    {weeklyBarData.projectNames.map((name) => (
+                      <Bar key={name} dataKey={name} stackId="stack" fill={stackedBarColorMap.get(name) || PALETTE[0]} radius={[0, 0, 0, 0]} />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                /* Weekly / Monthly: simple bar */
+                /* Monthly: simple bar */
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={barData}>
+                  <BarChart data={monthlyBarData}>
                     <XAxis
                       dataKey="date"
-                      tickFormatter={(v) => { try { return format(parseISO(v), rangeMode === "monthly" ? "d" : "MMM d"); } catch { return v; } }}
-                      stroke={CHART_AXIS_COLOR} fontSize={rangeMode === "monthly" ? 10 : 11} tickLine={false} axisLine={false}
+                      tickFormatter={(v) => { try { return format(parseISO(v), "d"); } catch { return v; } }}
+                      stroke={CHART_AXIS_COLOR} fontSize={10} tickLine={false} axisLine={false}
                     />
                     <YAxis stroke={CHART_AXIS_COLOR} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}h`} />
                     <Tooltip
@@ -418,7 +436,7 @@ export function TimeAnalysis() {
           </CardContent>
         </Card>
 
-        {/* Pie chart */}
+        {/* Pie chart — Project Time Distribution */}
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Time Distribution</CardTitle>
@@ -471,7 +489,7 @@ export function TimeAnalysis() {
         <CardContent>
           <div className="overflow-x-auto">
             {rangeMode === "daily" ? (
-              /* Daily: hourly project timeline */
+              /* ───── Daily: hourly project timeline ───── */
               <div className="min-w-[600px]">
                 {/* Hour labels */}
                 <div className="flex text-xs text-muted-foreground mb-2">
@@ -480,14 +498,15 @@ export function TimeAnalysis() {
                   ))}
                 </div>
 
-                {/* Main timeline bar */}
+                {/* Main timeline bar — height proportional to actual time */}
                 <div className="flex gap-0.5 mb-3">
                   {dailyHourlyGrid.hours.map((slot) => {
                     const hasData = slot.totalSeconds > 0;
+                    const fillPct = Math.min(100, (slot.totalSeconds / 3600) * 100);
                     return (
                       <div
                         key={slot.hour}
-                        className="flex-1 rounded-sm overflow-hidden"
+                        className="flex-1 rounded-sm overflow-hidden flex flex-col justify-end"
                         style={{ height: "32px", backgroundColor: "rgba(41, 46, 66, 0.45)" }}
                         title={
                           hasData
@@ -496,7 +515,7 @@ export function TimeAnalysis() {
                         }
                       >
                         {hasData && (
-                          <div className="flex flex-col h-full w-full">
+                          <div className="flex flex-col w-full" style={{ height: `${fillPct}%` }}>
                             {slot.projects.map((proj, pi) => {
                               const pct = (proj.seconds / slot.totalSeconds) * 100;
                               return (
@@ -506,7 +525,7 @@ export function TimeAnalysis() {
                                     height: `${pct}%`,
                                     minHeight: slot.projects.length > 1 ? "2px" : undefined,
                                     backgroundColor: proj.color,
-                                    opacity: 0.7 + (proj.seconds / dailyHourlyGrid.maxVal) * 0.3,
+                                    opacity: 0.85,
                                   }}
                                 />
                               );
@@ -560,7 +579,7 @@ export function TimeAnalysis() {
                       <div key={name} className="flex items-center gap-1.5 text-xs">
                         <div
                           className="h-2.5 w-2.5 rounded-sm"
-                          style={{ backgroundColor: projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length] }}
+                          style={{ backgroundColor: projectColors.get(name) || PALETTE[i % PALETTE.length] }}
                         />
                         <span className="text-muted-foreground">{name}</span>
                       </div>
@@ -569,7 +588,7 @@ export function TimeAnalysis() {
                 )}
               </div>
             ) : rangeMode === "monthly" ? (
-              /* Monthly: calendar grid */
+              /* ───── Monthly: calendar grid ───── */
               <div className="min-w-[400px]">
                 <div className="flex text-xs text-muted-foreground mb-1 pl-16">
                   {WEEK_DAYS.map((d) => (
@@ -613,7 +632,7 @@ export function TimeAnalysis() {
                 ))}
               </div>
             ) : (
-              /* Weekly: Day×Hour project timeline */
+              /* ───── Weekly: Day x Hour project timeline ───── */
               <div className="min-w-[600px]">
                 {/* Hour labels */}
                 <div className="flex text-xs text-muted-foreground mb-1 pl-24">
@@ -634,10 +653,11 @@ export function TimeAnalysis() {
                     <div className="flex flex-1 gap-0.5">
                       {day.hours.map((slot) => {
                         const hasData = slot.totalSeconds > 0;
+                        const fillPct = Math.min(100, (slot.totalSeconds / 3600) * 100);
                         return (
                           <div
                             key={slot.hour}
-                            className="flex-1 rounded-sm overflow-hidden"
+                            className="flex-1 rounded-sm overflow-hidden flex flex-col justify-end"
                             style={{ height: "28px", backgroundColor: "rgba(41, 46, 66, 0.45)" }}
                             title={
                               hasData
@@ -646,7 +666,7 @@ export function TimeAnalysis() {
                             }
                           >
                             {hasData && (
-                              <div className="flex flex-col h-full w-full">
+                              <div className="flex flex-col w-full" style={{ height: `${fillPct}%` }}>
                                 {slot.projects.map((proj, pi) => {
                                   const pct = (proj.seconds / slot.totalSeconds) * 100;
                                   return (
@@ -656,7 +676,7 @@ export function TimeAnalysis() {
                                         height: `${pct}%`,
                                         minHeight: slot.projects.length > 1 ? "2px" : undefined,
                                         backgroundColor: proj.color,
-                                        opacity: 0.7 + (proj.seconds / weeklyHourlyGrid.maxVal) * 0.3,
+                                        opacity: 0.85,
                                       }}
                                     />
                                   );
@@ -677,7 +697,7 @@ export function TimeAnalysis() {
                       <div key={name} className="flex items-center gap-1.5 text-xs">
                         <div
                           className="h-2.5 w-2.5 rounded-sm"
-                          style={{ backgroundColor: projectColors.get(name) || CHART_COLORS[i % CHART_COLORS.length] }}
+                          style={{ backgroundColor: projectColors.get(name) || PALETTE[i % PALETTE.length] }}
                         />
                         <span className="text-muted-foreground">{name}</span>
                       </div>

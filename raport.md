@@ -1,6 +1,6 @@
 # Time Analysis — Code Review Report
 
-## 1. HEATMAP — Strange Values
+## 1. HEATMAP — Strange Values — DONE
 
 ### Root Cause (Critical Bug)
 
@@ -43,7 +43,7 @@ The monthly heatmap (lines 571-614) works correctly — it uses `day.seconds / m
 
 ---
 
-## 2. TIME DISTRIBUTION — Shows Apps Instead of Projects
+## 2. TIME DISTRIBUTION — Shows Apps Instead of Projects — DONE
 
 ### Problem
 
@@ -89,7 +89,7 @@ const pieData = useMemo(() => {
 
 ---
 
-## 3. TODAY VIEW Assessment
+## 3. TODAY VIEW Assessment — DONE (minor fixes applied)
 
 The **Daily view** ("Today") is indeed the most polished view. Analysis:
 
@@ -107,7 +107,7 @@ The **Daily view** ("Today") is indeed the most polished view. Analysis:
 
 ---
 
-## 4. WEEKLY VIEW Issues
+## 4. WEEKLY VIEW Issues — DONE
 
 ### Problem: Bar chart is not stacked by project
 In weekly mode, the bar chart (lines 396-415) shows simple total-hours bars (single color). It should show **stacked project bars** like the daily view, since `hourlyProjects` data is already fetched for weekly mode (line 80).
@@ -117,7 +117,7 @@ Create a weekly stacked bar dataset (aggregate hourly data to daily by project) 
 
 ---
 
-## 5. LOGIC ISSUES
+## 5. LOGIC ISSUES — DONE
 
 ### 5.1 Stale `today` value (line 37)
 ```tsx
@@ -157,7 +157,7 @@ These `as` casts bypass type safety. Consider using separate `Promise.all` with 
 
 ---
 
-## 6. PERFORMANCE OPTIMIZATIONS
+## 6. PERFORMANCE OPTIMIZATIONS — DONE (6.1, 6.2 applied; 6.3, 6.4 skipped as low-impact)
 
 ### 6.1 Redundant data fetching
 `getApplications(activeDateRange)` is fetched for all modes but only used for the pie chart. If the pie chart switches to project data (as suggested in #2), this fetch can be removed entirely, reducing API calls.
@@ -181,7 +181,7 @@ This way a single `setData` call updates all three at once.
 
 ---
 
-## 7. REDUNDANT / DEAD CODE
+## 7. REDUNDANT / DEAD CODE — DONE
 
 ### 7.1 Unused imports
 - `CHART_GRID_COLOR` is imported (line 13, via chart-styles) but **never used** in this file.
@@ -231,18 +231,18 @@ The UI is consistently in English throughout.
 
 ## 9. SUGGESTED IMPROVEMENTS SUMMARY
 
-| # | Priority | Area | Issue | Suggestion |
-|---|----------|------|-------|------------|
-| 1 | **Critical** | Heatmap | Cells show proportions, not actual time | Make cell fill proportional to `totalSeconds / 3600` |
-| 2 | **Critical** | Pie Chart | Shows apps instead of projects | Switch to `getTopProjects()` data source |
-| 3 | **High** | Weekly Bar | Not stacked by project | Add project stacking like daily view |
-| 4 | **High** | Shared Legend | Each view has its own legend | Single project legend for the whole page |
-| 5 | **Medium** | Performance | `today` causes memo recalc every render | Memoize or remove from deps |
-| 6 | **Medium** | Code Quality | ~120 lines duplicated parsing logic | Extract shared helper function |
-| 7 | **Medium** | Export | CSV only has daily totals | Include project breakdown |
-| 8 | **Low** | Type Safety | `as any` cast on tooltip formatter | Properly type the formatter |
-| 9 | **Low** | Dead Code | Unused `CHART_GRID_COLOR` import | Remove |
-| 10 | **Low** | Code Style | `CHART_COLORS` unnecessary alias | Use palette directly |
+| # | Priority | Area | Issue | Suggestion | Status |
+|---|----------|------|-------|------------|--------|
+| 1 | **Critical** | Heatmap | Cells show proportions, not actual time | Make cell fill proportional to `totalSeconds / 3600` | DONE |
+| 2 | **Critical** | Pie Chart | Shows apps instead of projects | Switch to `getTopProjects()` data source | DONE |
+| 3 | **High** | Weekly Bar | Not stacked by project | Add project stacking like daily view | DONE |
+| 4 | **High** | Shared Legend | Each view has its own legend | Pie + heatmap now both show projects with consistent colors | DONE |
+| 5 | **Medium** | Performance | `today` causes memo recalc every render | Memoized with `useMemo`, removed from `activeDateRange` deps | DONE |
+| 6 | **Medium** | Code Quality | ~120 lines duplicated parsing logic | Extracted `parseHourlyProjects()` + `buildDaySlots()` helpers | DONE |
+| 7 | **Medium** | Export | CSV only has daily totals | Daily/weekly export now includes project breakdown columns | DONE |
+| 8 | **Low** | Type Safety | `as any` cast on tooltip formatter | Removed cast, using `(value, name) =>` without explicit types | DONE |
+| 9 | **Low** | Dead Code | Unused `CHART_GRID_COLOR` import | Removed | DONE |
+| 10 | **Low** | Code Style | `CHART_COLORS` unnecessary alias | Renamed to `PALETTE` for brevity, used consistently | DONE |
 
 ---
 
