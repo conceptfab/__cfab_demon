@@ -1,4 +1,4 @@
-// TimeFlow Demon - aplikacja tray daemon dla Windows z monitorem aplikacji
+// TimeFlow Demon - Windows tray daemon with application monitor
 #![windows_subsystem = "windows"]
 
 use std::ptr;
@@ -13,21 +13,21 @@ mod storage;
 mod tracker;
 mod tray;
 
-/// Nazwa aplikacji — jedna stała używana wszędzie
+/// Application name — single constant used everywhere
 pub const APP_NAME: &str = "TimeFlow Demon";
 pub const VERSION: &str = include_str!("../VERSION");
 
 fn main() {
-    // Inicjalizacja logowania do pliku
+    // Initialize file logging
     init_logging();
-    log::info!("{} - uruchamianie...", APP_NAME);
+    log::info!("{} - starting...", APP_NAME);
 
-    // Katalogi aplikacji — tworzone raz przy starcie
+    // Application directories — created once at startup
     if let Err(e) = config::ensure_app_dirs() {
-        log::warn!("Nie można utworzyć katalogów aplikacji: {}", e);
+        log::warn!("Failed to create application directories: {}", e);
     }
 
-    // Obsługa argumentów linii komend
+    // Handle command-line arguments
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--version" || arg == "-v") {
         println!("{}", VERSION);
@@ -35,7 +35,7 @@ fn main() {
         return;
     }
 
-    // Blokada pojedynczej instancji
+    // Single instance lock
     let _guard = match single_instance::try_acquire() {
         Ok(guard) => guard,
         Err(msg) => {
@@ -46,20 +46,20 @@ fn main() {
         }
     };
 
-    // Sygnał sterujący wątkiem monitora
+    // Monitor thread control signal
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    // Uruchomienie wątku monitorującego
+    // Start monitoring thread
     let monitor_handle = tracker::start(stop_signal.clone());
 
-    // Uruchomienie pętli zdarzeń z ikoną w tray
+    // Start tray icon event loop
     let tray_action = tray::run(stop_signal.clone());
 
-    // Po zamknięciu tray — czyste zatrzymanie wątku monitora
+    // After tray closes — cleanly stop monitor thread
     stop_signal.store(true, Ordering::SeqCst);
     let _ = monitor_handle.join();
 
-    log::info!("{} - zakończony", APP_NAME);
+    log::info!("{} - stopped", APP_NAME);
     log::logger().flush();
 
     if matches!(tray_action, tray::TrayExitAction::Restart) {
@@ -86,7 +86,7 @@ fn show_already_running_message(msg: &str) {
     }
 }
 
-/// Inicjalizuje logowanie do pliku w katalogu obok exe.
+/// Initialize file logging in the directory next to the exe.
 fn init_logging() {
     use std::fs;
 
@@ -95,7 +95,7 @@ fn init_logging() {
         .and_then(|p| p.parent().map(|d| d.join("timeflow_demon.log")))
         .unwrap_or_else(|| std::path::PathBuf::from("timeflow_demon.log"));
 
-    // Obcinamy plik logów jeśli > 1 MB
+    // Truncate log file if > 1 MB
     if log_path.exists() {
         if let Ok(meta) = fs::metadata(&log_path) {
             if meta.len() > 1_000_000 {
@@ -117,7 +117,7 @@ fn init_logging() {
     }
 }
 
-/// Minimalny logger do pliku z buforowaniem
+/// Minimal file logger with buffering
 struct FileLogger {
     writer: std::sync::Mutex<std::io::BufWriter<std::fs::File>>,
 }

@@ -551,7 +551,7 @@ export function Settings() {
               <input
                 type="text"
                 className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                placeholder="np. demo-user / email / UUID"
+                placeholder="e.g. demo-user / email / UUID"
                 value={onlineSyncSettings.userId}
                 onChange={(e) => {
                   setOnlineSyncSettings((prev) => ({ ...prev, userId: e.target.value }));
@@ -567,7 +567,7 @@ export function Settings() {
                   type={showOnlineSyncToken ? "text" : "password"}
                   autoComplete="off"
                   className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  placeholder="Wklej sam token (bez 'Bearer ' i bez cudzyslowow)"
+                  placeholder="Paste the raw token (without 'Bearer ' prefix and without quotes)"
                   value={onlineSyncSettings.apiToken}
                   onChange={(e) => {
                     setOnlineSyncSettings((prev) => ({ ...prev, apiToken: e.target.value }));
@@ -579,8 +579,8 @@ export function Settings() {
                   variant="outline"
                   className="h-9 w-10 px-0"
                   onClick={() => setShowOnlineSyncToken((prev) => !prev)}
-                  aria-label={showOnlineSyncToken ? "Ukryj token" : "Pokaz token"}
-                  title={showOnlineSyncToken ? "Ukryj token" : "Pokaz token"}
+                  aria-label={showOnlineSyncToken ? "Hide token" : "Show token"}
+                  title={showOnlineSyncToken ? "Hide token" : "Show token"}
                 >
                   {showOnlineSyncToken ? (
                     <EyeOff className="h-4 w-4" />
@@ -590,7 +590,7 @@ export function Settings() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Required on Railway/production. Wpisz sam token, aplikacja sama doda naglowek Bearer.
+                Enter the raw token; the app will add the Bearer header automatically.
               </p>
             </label>
 

@@ -18,7 +18,7 @@ import {
   stopDaemon,
   restartDaemon,
 } from "@/lib/tauri";
-import { formatPathForDisplay } from "@/lib/utils";
+import { formatPathForDisplay, cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
 
 export function DaemonControl() {
@@ -129,12 +129,21 @@ export function DaemonControl() {
                   </p>
                 )}
               </div>
-              <Badge
-                variant={status?.running ? "default" : "destructive"}
-                className="ml-auto"
-              >
-                {status?.running ? "Active" : "Inactive"}
-              </Badge>
+              <div className="ml-auto flex items-center gap-2">
+                {status?.version && (
+                  <span className={cn(
+                    "text-[10px] font-mono",
+                    status.is_compatible ? "text-muted-foreground/50" : "text-destructive font-bold"
+                  )} title={status.is_compatible ? "Daemon version" : "VERSION INCOMPATIBILITY!"}>
+                    v{status.version} {!status.is_compatible && "⚠️"}
+                  </span>
+                )}
+                <Badge
+                  variant={status?.running ? "default" : "destructive"}
+                >
+                  {status?.running ? "Active" : "Inactive"}
+                </Badge>
+              </div>
             </div>
 
             {status?.needs_assignment && (

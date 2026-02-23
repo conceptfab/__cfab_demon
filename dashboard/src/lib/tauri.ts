@@ -40,7 +40,7 @@ import type {
   BackupFile,
 } from "./db-types";
 
-function hasTauriRuntime(): boolean {
+export function hasTauriRuntime(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as Window & {
     __TAURI__?: unknown;

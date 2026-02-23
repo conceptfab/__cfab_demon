@@ -1,4 +1,4 @@
-// Moduł system tray - ikona w zasobniku systemowym z menu kontekstowym
+// System tray module - tray icon with context menu
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,7 +11,7 @@ use native_windows_gui as nwg;
 use crate::APP_NAME;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
 
-/// Sposób zakończenia pętli tray.
+/// Tray loop exit action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TrayExitAction {
     Exit,
@@ -43,9 +43,9 @@ fn build_tray_tip() -> String {
     }
 }
 
-/// Inicjalizuje i uruchamia pętlę zdarzeń z ikoną w tray.
-/// `stop_signal` — ustawiany na true przy zamknięciu.
-/// Zwraca informację, czy użytkownik poprosił o restart.
+/// Initializes and runs the tray icon event loop.
+/// `stop_signal` — set to true on shutdown.
+/// Returns whether the user requested a restart.
 pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     nwg::init().expect("Failed to initialize NWG");
 
@@ -171,18 +171,18 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 
             nwg::Event::OnMenuItemSelected => {
                 if handle == exit_handle {
-                    log::info!("Zamykanie demona");
+                    log::info!("Shutting down daemon");
                     stop_clone.store(true, Ordering::SeqCst);
                     nwg::stop_thread_dispatch();
                 } else if handle == restart_handle {
-                    log::info!("Restart demona z menu tray");
+                    log::info!("Restarting daemon from tray menu");
                     if let Ok(mut a) = action_clone.lock() {
                         *a = TrayExitAction::Restart;
                     }
                     stop_clone.store(true, Ordering::SeqCst);
                     nwg::stop_thread_dispatch();
                 } else if handle == dashboard_handle {
-                    log::info!("Uruchamianie Dashboard z menu tray");
+                    log::info!("Launching Dashboard from tray menu");
                     launch_dashboard();
                 }
             }
@@ -190,17 +190,17 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
             _ => {}
         });
 
-    log::info!("Demon uruchomiony - ikona w zasobniku systemowym");
+    log::info!("Daemon started - tray icon active");
 
     nwg::dispatch_thread_events();
 
-    // Ukryj ikonę tray przed wyjściem
+    // Hide tray icon before exiting
     tray.borrow().set_visibility(false);
 
     nwg::unbind_event_handler(&handler);
-    log::info!("Demon zatrzymany");
+    log::info!("Daemon stopped");
 
-    // Zwróć żądaną akcję wyjścia (Exit / Restart).
+    // Return the requested exit action (Exit / Restart).
     action.lock().map(|a| *a).unwrap_or(TrayExitAction::Exit)
 }
 
@@ -223,14 +223,14 @@ fn launch_dashboard() {
     use std::process::Command;
 
     if is_dashboard_running() {
-        log::info!("Dashboard już działa");
+        log::info!("Dashboard is already running");
         return;
     }
 
     let daemon_exe = match std::env::current_exe() {
         Ok(path) => path,
         Err(e) => {
-            log::error!("Nie można ustalić ścieżki exe: {}", e);
+            log::error!("Failed to determine exe path: {}", e);
             return;
         }
     };
@@ -238,12 +238,12 @@ fn launch_dashboard() {
     let daemon_dir = match daemon_exe.parent() {
         Some(dir) => dir,
         None => {
-            log::error!("Nie można ustalić katalogu exe");
+            log::error!("Failed to determine exe directory");
             return;
         }
     };
 
-    // Nazwy exe dashboardu (Tauri productName -> TimeFlow, Cargo -> timeflow-dashboard)
+    // Dashboard exe names (Tauri productName -> TimeFlow, Cargo -> timeflow-dashboard)
     let exe_names = [
         "timeflow-dashboard.exe",
         "TimeFlow.exe",
@@ -254,7 +254,7 @@ fn launch_dashboard() {
     for name in &exe_names {
         possible_paths.push(daemon_dir.join(name));
     }
-    // Lokalizacja deweloperska
+    // Development location
     for name in &exe_names {
         possible_paths.push(
             daemon_dir
@@ -270,11 +270,11 @@ fn launch_dashboard() {
 
     if let Some(path) = dashboard_exe {
         match Command::new(path).spawn() {
-            Ok(_) => log::info!("Dashboard uruchomiony: {:?}", path),
+            Ok(_) => log::info!("Dashboard started: {:?}", path),
             Err(e) => log::error!("Error starting Dashboard: {}", e),
         }
     } else {
-        log::error!("Nie znaleziono dashboard exe w {:?}", daemon_dir);
+        log::error!("Dashboard exe not found in {:?}", daemon_dir);
         show_error_message("Dashboard not found (timeflow-dashboard.exe).\nMake sure it is located in the same folder as timeflow-demon.exe.");
     }
 }

@@ -47,7 +47,6 @@ export function TimeAnalysis() {
         )}
 
         {/* Pie chart — Project Time Distribution */}
-        {/* Pie chart — Project Time Distribution */}
         <div className="flex flex-col">
           <h3 className="text-sm font-medium px-2 pb-4">Time Distribution</h3>
           <div className="flex flex-row items-center justify-start gap-6 h-80 px-2 lg:pl-16">

@@ -70,8 +70,8 @@ export function DataHistory() {
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
-                {imported.map((f, i) => (
-                  <div key={i} className="flex items-center justify-between text-[11px] p-2 rounded-md bg-accent/20 border border-border/10 hover:bg-accent/30 transition-colors group">
+                {imported.map((f) => (
+                  <div key={f.file_path} className="flex items-center justify-between text-[11px] p-2 rounded-md bg-accent/20 border border-border/10 hover:bg-accent/30 transition-colors group">
                     <div className="flex items-center gap-2 min-w-0">
                       <FileJson className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="truncate font-medium" title={f.file_path}>{f.file_path.split(/[/\\]/).pop()}</span>

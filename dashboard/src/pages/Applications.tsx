@@ -46,7 +46,7 @@ export function Applications() {
         setMonitoredError("Failed to load monitored applications");
       }
     });
-  }, [loadMonitored, refreshKey]);
+  }, [refreshKey]);
 
   const monitoredSet = useMemo(
     () => new Set(monitored.map((m) => m.exe_name)),

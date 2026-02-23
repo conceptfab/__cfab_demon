@@ -43,8 +43,8 @@ export function ImportPage() {
           </CardHeader>
           <CardContent>
             <div className="max-h-64 space-y-1 overflow-y-auto">
-              {imported.map((f, i) => (
-                <div key={i} className="flex items-center justify-between text-xs py-1">
+              {imported.map((f) => (
+                <div key={f.file_path} className="flex items-center justify-between text-xs py-1">
                   <span className="truncate text-muted-foreground">{f.file_path.split(/[/\\]/).pop()}</span>
                   <span className="font-mono text-muted-foreground">{f.records_count} sessions</span>
                 </div>

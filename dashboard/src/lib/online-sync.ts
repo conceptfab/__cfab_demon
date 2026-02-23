@@ -12,7 +12,7 @@ const LEGACY_DEFAULT_ONLINE_SYNC_SERVER_URL = "https://cfabserver-production.up.
 const PLACEHOLDER_TIMEFLOW_ONLINE_SYNC_SERVER_URL =
   "https://timeflowserver-production.up.railway.app";
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
-  LEGACY_DEFAULT_ONLINE_SYNC_SERVER_URL;
+  PLACEHOLDER_TIMEFLOW_ONLINE_SYNC_SERVER_URL;
 
 export interface OnlineSyncSettings {
   enabled: boolean;

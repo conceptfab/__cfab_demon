@@ -37,7 +37,7 @@ export function Sessions() {
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed");
   const ctxRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 100;
-  const today = format(new Date(), "yyyy-MM-dd");
+  const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const canShiftForward = anchorDate < today;
   const shiftStepDays = rangeMode === "weekly" ? 7 : 1;
 

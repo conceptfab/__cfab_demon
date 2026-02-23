@@ -1,4 +1,4 @@
-// Blokada pojedynczej instancji za pomocą Windows Named Mutex
+// Single instance lock via Windows Named Mutex
 
 use std::ptr;
 use winapi::um::synchapi::CreateMutexW;
@@ -9,7 +9,7 @@ use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
 
 const MUTEX_NAME: &str = "Global\\TimeFlowDemon_SingleInstance";
 
-/// RAII guard — mutex jest zwolniony przy dropie
+/// RAII guard — mutex is released on drop
 pub struct SingleInstanceGuard {
     handle: HANDLE,
 }
@@ -27,8 +27,8 @@ impl Drop for SingleInstanceGuard {
     }
 }
 
-/// Próbuje zająć mutex. Zwraca `Ok(guard)` jeśli to jedyna instancja,
-/// `Err(msg)` jeśli inna instancja już działa.
+/// Attempts to acquire the mutex. Returns `Ok(guard)` if this is the only instance,
+/// `Err(msg)` if another instance is already running.
 pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
     let wide_name: Vec<u16> = MUTEX_NAME.encode_utf16().chain(std::iter::once(0)).collect();
 
@@ -42,12 +42,12 @@ pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
             ));
         }
 
-        // SAFETY: GetLastError() jest bezpieczne tutaj — żadna funkcja WinAPI
-        // nie jest wywoływana między CreateMutexW a tym sprawdzeniem,
-        // więc last error code nie został nadpisany.
+        // SAFETY: GetLastError() is safe here — no WinAPI function
+        // is called between CreateMutexW and this check,
+        // so the last error code has not been overwritten.
         if GetLastError() == ERROR_ALREADY_EXISTS {
             CloseHandle(handle);
-            return Err("Inna instancja TimeFlow Demon już działa.".into());
+            return Err("Another instance of TimeFlow Demon is already running.".into());
         }
 
         Ok(SingleInstanceGuard { handle })

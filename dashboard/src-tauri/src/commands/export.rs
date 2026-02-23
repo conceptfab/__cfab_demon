@@ -27,7 +27,7 @@ fn build_export_archive(
         };
 
         // 2. Fetch Projects
-        let project_query = if let Some(_) = project_id {
+        let project_query = if project_id.is_some() {
             "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported FROM projects WHERE id = ?1"
         } else {
             "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported FROM projects"

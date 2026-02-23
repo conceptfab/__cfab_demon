@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getProjects, exportData } from "@/lib/tauri";
 import type { ProjectWithStats } from "@/lib/db-types";
+import { useToast } from "@/components/ui/toast-notification";
 
 const labelClassName = "text-sm font-medium text-muted-foreground";
 const compactSelectClassName =
@@ -18,6 +19,7 @@ export function ExportPanel() {
   const [allTime, setAllTime] = useState(true);
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [loading, setLoading] = useState(false);
+  const { showInfo, showError } = useToast();
 
   useEffect(() => {
     getProjects().then(setProjects).catch(console.error);
@@ -27,13 +29,13 @@ export function ExportPanel() {
     setLoading(true);
     try {
       const result = await exportData(
-        exportType === "single" ? parseInt(selectedProject) : undefined,
+        exportType === "single" ? parseInt(selectedProject, 10) : undefined,
         allTime ? undefined : dateStart,
         allTime ? undefined : dateEnd
       );
-      console.log("Export successful:", result);
+      showInfo(`Export saved: ${result}`);
     } catch (e) {
-      console.error("Export failed:", e);
+      showError(`Export failed: ${String(e)}`);
     } finally {
       setLoading(false);
     }

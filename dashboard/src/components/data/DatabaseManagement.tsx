@@ -100,11 +100,11 @@ export function DatabaseManagement() {
           await updateDatabaseSettings(newSettings);
           showInfo("Backup path updated");
           loadAll();
-        } catch (e: any) {
+        } catch (e: unknown) {
           showError(`Failed to save path: ${e}`);
         }
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
       showError("Failed to open directory picker");
     }
@@ -117,7 +117,7 @@ export function DatabaseManagement() {
     try {
       await updateDatabaseSettings(newSettings);
       loadAll();
-    } catch (e: any) {
+    } catch (e: unknown) {
       showError("Failed to update setting");
       // Rollback
       setSettings(settings);
@@ -126,7 +126,7 @@ export function DatabaseManagement() {
 
   const handleIntervalChange = (val: string) => {
     if (!settings) return;
-    const days = parseInt(val) || 1;
+    const days = parseInt(val, 10) || 1;
     setSettings({ ...settings, backup_interval_days: days });
   };
 
@@ -137,7 +137,7 @@ export function DatabaseManagement() {
       await updateDatabaseSettings(settings);
       showInfo("Interval updated");
       loadAll();
-    } catch (e: any) {
+    } catch (e: unknown) {
       showError("Failed to update interval");
     } finally {
       setSaving(false);
@@ -157,7 +157,7 @@ export function DatabaseManagement() {
           try {
             await restoreDatabaseFromFile(selected);
             showInfo("Database restored. Please restart the app.");
-          } catch (e: any) {
+          } catch (e: unknown) {
             showError(`Restore failed: ${e}`);
           } finally {
             setLoading(false);
@@ -268,7 +268,7 @@ export function DatabaseManagement() {
                     type="number" 
                     min="1" 
                     value={settings.backup_interval_days} 
-                    onChange={(e: any) => handleIntervalChange(e.target.value)}
+                    onChange={(e) => handleIntervalChange(e.target.value)}
                     className="h-8 text-[11px]" 
                   />
                   <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={saveInterval} disabled={saving}>

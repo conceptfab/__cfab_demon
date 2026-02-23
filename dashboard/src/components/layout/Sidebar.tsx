@@ -30,8 +30,19 @@ import {
   getSessionCount,
   getAssignmentModelStatus,
   getDatabaseSettings,
+  hasTauriRuntime,
 } from "@/lib/tauri";
 import type { DaemonStatus, AssignmentModelStatus, DatabaseSettings } from "@/lib/db-types";
+
+interface StatusIndicatorProps {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  statusText: string;
+  colorClass?: string;
+  onClick?: (e: MouseEvent) => void;
+  title?: string;
+  pulse?: boolean;
+}
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -43,7 +54,7 @@ const navItems = [
   { id: "ai", label: "AI & Model", icon: Brain },
   { id: "data", label: "Data", icon: Import },
   { id: "daemon", label: "Daemon", icon: Power },
-  { id: "help", label: "Pomoc", icon: HelpCircle },
+  { id: "help", label: "Help", icon: HelpCircle },
 ];
 
 function StatusIndicator({
@@ -252,16 +263,13 @@ export function Sidebar() {
         </div>
 
         <div className="flex items-center justify-between px-2.5 pt-1.5 border-t border-border/10">
-          <div className="flex flex-col">
+          <div className="flex items-center gap-1.5">
             <span className="text-[9px] text-muted-foreground/40 font-mono">
               v{status?.dashboard_version || "?.?.?"}
             </span>
-            {status?.version && (
-              <span className={cn(
-                "text-[9px] font-mono",
-                status.is_compatible ? "text-muted-foreground/25" : "text-destructive font-bold"
-              )} title={status.is_compatible ? "Daemon version" : "VERSION INCOMPATIBILITY!"}>
-                d{status.version} {!status.is_compatible && "⚠️"}
+            {status?.version && !status.is_compatible && (
+              <span className="text-[9px] font-mono text-destructive font-bold" title="VERSION INCOMPATIBILITY! Daemon: v{status.version}">
+                ⚠️
               </span>
             )}
           </div>
@@ -282,7 +290,7 @@ export function Sidebar() {
                 "transition-all",
                 currentPage === "help" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
               )}
-              title="Pomoc (F1)"
+              title="Help (F1)"
             >
               <HelpCircle className="h-4 w-4" />
             </button>
@@ -293,12 +301,4 @@ export function Sidebar() {
   );
 }
 
-function hasTauriRuntime(): boolean {
-  if (typeof window === "undefined") return false;
-  const win = window as Window & {
-    __TAURI__?: unknown;
-    __TAURI_INTERNALS__?: unknown;
-  };
-  return Boolean(win.__TAURI__ || win.__TAURI_INTERNALS__);
-}
 

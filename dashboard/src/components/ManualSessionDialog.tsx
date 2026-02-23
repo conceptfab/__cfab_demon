@@ -90,7 +90,9 @@ export function ManualSessionDialog({
       const start = defaultStartTime ? toLocalDatetimeValue(defaultStartTime) : toLocalDatetimeValue();
       setStartTime(start);
       // Default end = start + 1h (parse components to avoid UTC confusion)
-      const [dateStr, timeStr] = start.split("T");
+      const parts = start.split("T");
+      const dateStr = parts[0] ?? "";
+      const timeStr = parts[1] ?? "00:00";
       const [year, month, day] = dateStr.split("-").map(Number);
       const [hours, minutes] = timeStr.split(":").map(Number);
       const startDate = new Date(year, month - 1, day, hours + 1, minutes);

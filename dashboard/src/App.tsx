@@ -86,8 +86,6 @@ function AutoImporter() {
         setAutoImportDone(true, result);
         if (result.files_imported > 0) {
           triggerRefresh();
-        }
-        if (result.files_imported > 0) {
           console.log(
             `Auto-import: ${result.files_imported} files imported, ${result.files_archived} archived`
           );

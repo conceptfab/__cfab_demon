@@ -1,6 +1,6 @@
-// Moduł tracker — wątek monitorujący w tle
-// Budzi się co 10s, sprawdza foreground window + CPU usage w tle, agreguje dane.
-// Zapis do JSON co 5 minut. Absolutne minimum CPU/RAM.
+// Tracker module — background monitoring thread
+// Wakes every 10s, checks foreground window + CPU usage, aggregates data.
+// Saves to JSON every 5 minutes. Minimal CPU/RAM footprint.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -48,7 +48,7 @@ fn check_dashboard_compatibility() {
                 if !WARNING_SHOWN.load(Ordering::SeqCst) {
                     WARNING_SHOWN.store(true, Ordering::SeqCst);
                     let msg = format!(
-                        "Niezgodność wersji!\nDemon: {}\nDashboard: {}\n\nDuet może nie działać poprawnie.",
+                        "Version mismatch!\nDaemon: {}\nDashboard: {}\n\nThe combination may not work correctly.",
                         crate::VERSION, v_dash
                     );
                     log::error!("{}", msg);
@@ -56,7 +56,7 @@ fn check_dashboard_compatibility() {
                     // Show message box (non-blocking if possible, but here it's fine since it's a separate thread)
                     unsafe {
                         use std::ptr;
-                        let title: Vec<u16> = "TimeFlow - Błąd wersji".encode_utf16().chain(std::iter::once(0)).collect();
+                        let title: Vec<u16> = "TimeFlow - Version Error".encode_utf16().chain(std::iter::once(0)).collect();
                         let text: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
                         winapi::um::winuser::MessageBoxW(
                             ptr::null_mut(),
@@ -74,19 +74,19 @@ fn check_dashboard_compatibility() {
     }
 }
 
-/// Uruchamia wątek monitora. Zwraca JoinHandle.
-/// `stop_signal` — ustaw na true, aby zatrzymać wątek.
+/// Starts the monitor thread. Returns a JoinHandle.
+/// `stop_signal` — set to true to stop the thread.
 pub fn start(
     stop_signal: Arc<AtomicBool>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
-        log::info!("Wątek monitora uruchomiony");
+        log::info!("Monitor thread started");
         run_loop(stop_signal);
-        log::info!("Wątek monitora zatrzymany");
+        log::info!("Monitor thread stopped");
     })
 }
 
-/// Rejestruje aktywność aplikacji (dodaje czas, aktualizuje sesje i pliki).
+/// Records application activity (adds time, updates sessions and files).
 fn record_app_activity(
     exe_name: &str,
     file_name: &str,
@@ -112,7 +112,7 @@ fn record_app_activity(
 
     app_data.total_seconds += poll_interval.as_secs();
 
-    // Zarządzaj sesjami
+    // Manage sessions
     let last_active = active_sessions.get(exe_name).copied();
     let now_instant = Instant::now();
 
@@ -133,7 +133,7 @@ fn record_app_activity(
     }
     active_sessions.insert(exe_name.to_string(), now_instant);
 
-    // Aktualizuj pliki
+    // Update files
     if !file_name.is_empty() {
         let app_file_index = file_index_cache.entry(exe_name.to_string()).or_default();
 
@@ -161,7 +161,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut monitored: HashSet<String> = config::monitored_exe_names(&cfg);
     let mut monitor_all = monitored.is_empty();
     if monitor_all {
-        log::warn!("Brak monitorowanych aplikacji w configu - przejście w tryb monitorowania wszystkich okien");
+        log::warn!("No monitored applications in config - switching to monitor-all mode");
     }
     let iv = config::intervals(&cfg);
 
@@ -175,9 +175,9 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut last_tracking_tick = Instant::now();
     write_heartbeat();
 
-    // Stan aktywnej sesji per aplikacja
+    // Active session state per application
     let mut active_sessions: HashMap<String, Instant> = HashMap::new();
-    // Indeks nazw plików per aplikacja -> pozycja w wektorze files
+    // File name index per application -> position in files vector
     let mut file_index_cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
     for (exe_name, app_data) in &daily_data.apps {
         let file_map = file_index_cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
@@ -185,7 +185,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             file_map.insert(file_entry.name.clone(), idx);
         }
     }
-    // Stan CPU per aplikacja (dla detekcji aktywności w tle)
+    // CPU state per application (for background activity detection)
     let mut cpu_state: CpuState = HashMap::new();
 
     let mut poll_interval = Duration::from_secs(iv.poll_secs);
@@ -197,17 +197,17 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut cpu_thresh = iv.cpu_threshold;
 
     loop {
-        // Sprawdź sygnał zatrzymania
+        // Check stop signal
         if stop_signal.load(Ordering::Relaxed) {
-            // Końcowy zapis przed wyjściem
+            // Final save before exiting
             let _ = storage::save_daily(&mut daily_data);
             break;
         }
 
-        // Sprawdź zmianę daty (północ)
+        // Check for date change (midnight)
         let today = Local::now().date_naive();
         if today != current_date {
-            log::info!("Zmiana daty: {} → {}", current_date, today);
+            log::info!("Date changed: {} → {}", current_date, today);
             let _ = storage::save_daily(&mut daily_data);
             daily_data = storage::load_daily(today);
             current_date = today;
@@ -222,7 +222,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             cpu_state.clear();
         }
 
-        // Przeładuj konfigurację (dashboard może ją zmienić)
+        // Reload configuration (dashboard may have changed it)
         if last_config_reload.elapsed() >= config_reload_interval {
             cfg = config::load();
             check_dashboard_compatibility(); // Added check
@@ -239,14 +239,14 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             cpu_thresh = iv.cpu_threshold;
         }
 
-        // Oblicz rzeczywisty czas jaki minął od ostatniego odpytania (D-9, D-11)
+        // Calculate actual elapsed time since last poll (D-9, D-11)
         let now = Instant::now();
         let actual_elapsed = now.duration_since(last_tracking_tick);
         last_tracking_tick = now;
 
-        // Odpytaj foreground window
+        // Poll foreground window
         let foreground_exe = monitor::get_foreground_info(&mut pid_cache).and_then(|info| {
-            log::debug!("Wykryto okno: {} (PID: {}) [{}]", info.exe_name, info.pid, info.window_title);
+            log::debug!("Detected window: {} (PID: {}) [{}]", info.exe_name, info.pid, info.window_title);
             if monitor_all || monitored.contains(&info.exe_name) {
                 Some(info)
             } else {
@@ -254,10 +254,10 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             }
         });
 
-        // Zbierz nazwy aplikacji aktywnych na foreground w tym ticku
+        // Collect application names active in foreground this tick
         let mut recorded_this_tick: HashSet<String> = HashSet::new();
 
-        // Foreground tracking (jak dotychczas)
+        // Foreground tracking
         if let Some(ref info) = foreground_exe {
             let file_name = monitor::extract_file_from_title(&info.window_title);
             record_app_activity(
@@ -273,14 +273,14 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             recorded_this_tick.insert(info.exe_name.clone());
         }
 
-        // CPU-based background tracking (dla monitorowanych aplikacji NIE na foreground)
+        // CPU-based background tracking (for monitored apps NOT in foreground)
         // Build process snapshot once per tick (instead of 2N snapshots for N apps)
         if !monitor_all {
             let proc_snap = monitor::build_process_snapshot();
 
             for exe_name in &monitored {
                 if recorded_this_tick.contains(exe_name) {
-                    // Już zliczona przez foreground — tylko aktualizuj snapshot CPU
+                    // Already counted by foreground — just update CPU snapshot
                     let (_, snapshot) = monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), &proc_snap);
                     cpu_state.insert(exe_name.clone(), snapshot);
                     continue;
@@ -293,12 +293,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
 
                 if had_prev && cpu_fraction > cpu_thresh {
                     log::debug!(
-                        "CPU aktywność w tle: {} → {:.1}% (próg: {:.1}%)",
+                        "CPU background activity: {} → {:.1}% (threshold: {:.1}%)",
                         exe_name,
                         cpu_fraction * 100.0,
                         cpu_thresh * 100.0,
                     );
-                    // Rejestruj aktywność bez nazwy pliku (nie znamy tytułu okna w tle)
+                    // Record activity without file name (window title unknown in background)
                     record_app_activity(
                         exe_name,
                         "(background)",
@@ -313,15 +313,15 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             }
         }
 
-        // Heartbeat dla zewnętrznej diagnostyki "żywego" demona.
-        // Używamy minimum z poll_interval i 30s
+        // Heartbeat for external diagnostics of a "live" daemon.
+        // Use minimum of poll_interval and 30s
         let heartbeat_interval = std::cmp::min(poll_interval, Duration::from_secs(30));
         if last_heartbeat.elapsed() >= heartbeat_interval {
             write_heartbeat();
             last_heartbeat = Instant::now();
         }
 
-        // Zapis okresowy
+        // Periodic save
         if last_save.elapsed() >= save_interval {
             if let Err(e) = storage::save_daily(&mut daily_data) {
                 log::error!("Error saving daily data: {}", e);
@@ -330,13 +330,13 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             last_save = Instant::now();
         }
 
-        // Ewikcja starych wpisów cache PID
+        // Evict old PID cache entries
         if last_cache_evict.elapsed() >= cache_evict_interval {
             monitor::evict_old_pid_cache(&mut pid_cache, cache_max_age);
             last_cache_evict = Instant::now();
         }
 
-        // Śpij z wczesnym sprawdzeniem sygnału zatrzymania (D-10)
+        // Sleep with early stop signal check (D-10)
         // Check time remaining to the next scheduled tick
         let elapsed_since_tick = last_tracking_tick.elapsed();
         if elapsed_since_tick < poll_interval {
@@ -347,7 +347,11 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                 if stop_signal.load(Ordering::Relaxed) {
                     break;
                 }
-                thread::sleep(Duration::from_secs(1).min(remain));
+                let remaining_now = poll_interval.saturating_sub(last_tracking_tick.elapsed());
+                if remaining_now.is_zero() {
+                    break;
+                }
+                thread::sleep(Duration::from_secs(1).min(remaining_now));
             }
         }
     }

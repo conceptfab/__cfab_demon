@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { MouseEvent } from "react";
 import { Copy, Minus, Square, X } from "lucide-react";
+import { hasTauriRuntime } from "@/lib/tauri";
 
 export function TopBar() {
   const tauriRuntime = hasTauriRuntime();
@@ -105,13 +106,4 @@ export function TopBar() {
       )}
     </header>
   );
-}
-
-function hasTauriRuntime(): boolean {
-  if (typeof window === "undefined") return false;
-  const win = window as Window & {
-    __TAURI__?: unknown;
-    __TAURI_INTERNALS__?: unknown;
-  };
-  return Boolean(win.__TAURI__ || win.__TAURI_INTERNALS__);
 }
