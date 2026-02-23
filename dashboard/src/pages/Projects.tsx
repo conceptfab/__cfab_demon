@@ -58,6 +58,14 @@ function inferDetectedProjectName(fileName: string): string {
   return candidate || trimmed;
 }
 
+function normalizeProjectDuplicateKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, "")
+    .replace(/\s+/g, "");
+}
+
 export function Projects() {
   const { refreshKey, triggerRefresh } = useAppStore();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
@@ -484,10 +492,82 @@ export function Projects() {
     };
   }, [projects, projectFolders, folderCandidates]);
 
+  const duplicateProjectsView = useMemo(() => {
+    const groups = new Map<string, ProjectWithStats[]>();
+    const allTabProjects = [...projects, ...excludedProjects];
+
+    for (const project of allTabProjects) {
+      const key = normalizeProjectDuplicateKey(project.name);
+      if (!key) continue;
+      const list = groups.get(key);
+      if (list) {
+        list.push(project);
+      } else {
+        groups.set(key, [project]);
+      }
+    }
+
+    const byProjectId = new Map<
+      number,
+      {
+        groupSize: number;
+        normalizedKey: string;
+        groupNames: string[];
+      }
+    >();
+
+    let groupCount = 0;
+    let projectCount = 0;
+
+    for (const [normalizedKey, group] of groups.entries()) {
+      if (group.length < 2) continue;
+      groupCount += 1;
+      projectCount += group.length;
+
+      const groupNames = Array.from(
+        new Set(group.map((project) => project.name.trim()).filter(Boolean))
+      );
+
+      for (const project of group) {
+        byProjectId.set(project.id, {
+          groupSize: group.length,
+          normalizedKey,
+          groupNames,
+        });
+      }
+    }
+
+    return {
+      byProjectId,
+      groupCount,
+      projectCount,
+    };
+  }, [projects, excludedProjects]);
+
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectDialogId) ?? null,
     [projects, projectDialogId]
   );
+
+  const renderDuplicateMarker = (project: ProjectWithStats) => {
+    const info = duplicateProjectsView.byProjectId.get(project.id);
+    if (!info) return null;
+
+    const title =
+      info.groupNames.length > 1
+        ? `Possible duplicate (${info.groupSize}): ${info.groupNames.join(" | ")}`
+        : `Possible duplicate (${info.groupSize}) after normalizing "_" and "-"`;
+
+    return (
+      <span
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600 shrink-0"
+        title={title}
+        aria-label={title}
+      >
+        D
+      </span>
+    );
+  };
 
   const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => {
     const isDeleting = busy === `delete-project:${p.id}`;
@@ -529,6 +609,7 @@ export function Projects() {
           </div>
           <CardTitle className="text-base flex items-center gap-2">
             {p.name}
+            {renderDuplicateMarker(p)}
             {p.is_imported === 1 && (
               <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
                 Imported
@@ -627,9 +708,20 @@ export function Projects() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {projects.length} projects{excludedProjects.length > 0 ? ` (${excludedProjects.length} excluded)` : ""}
-        </p>
+        <div className="flex flex-col">
+          <p className="text-sm text-muted-foreground">
+            {projects.length} projects{excludedProjects.length > 0 ? ` (${excludedProjects.length} excluded)` : ""}
+          </p>
+          {duplicateProjectsView.groupCount > 0 && (
+            <p className="text-xs text-amber-600/90">
+              Marked with{" "}
+              <span className="mx-1 inline-flex h-4 w-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
+                D
+              </span>
+              = possible duplicate names in this tab ({duplicateProjectsView.projectCount} projects in {duplicateProjectsView.groupCount} groups)
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <div className="flex bg-secondary/50 p-1 rounded-md text-sm">
             <button
@@ -666,7 +758,10 @@ export function Projects() {
                         onClick={() => openEdit(p)}
                       >
                         <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="font-medium truncate text-sm" title={p.name}>{p.name}</span>
+                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                          <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
+                          {renderDuplicateMarker(p)}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -692,7 +787,10 @@ export function Projects() {
                       onClick={() => openEdit(p)}
                     >
                       <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                      <span className="font-medium truncate text-sm" title={p.name}>{p.name}</span>
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
+                        {renderDuplicateMarker(p)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -714,7 +812,10 @@ export function Projects() {
                 onClick={() => openEdit(p)}
               >
                 <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                <span className="font-medium truncate text-sm" title={p.name}>{p.name}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
+                  {renderDuplicateMarker(p)}
+                </span>
               </div>
             ))}
           </div>
@@ -758,7 +859,10 @@ export function Projects() {
               {excludedProjects.map((p) => (
                 <div key={p.id} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{p.name}</p>
+                    <p className="flex items-center gap-1.5 font-medium">
+                      <span className="min-w-0 truncate">{p.name}</span>
+                      {renderDuplicateMarker(p)}
+                    </p>
                     <p className="truncate text-muted-foreground">
                       Excluded{p.excluded_at ? `: ${p.excluded_at}` : ""}
                     </p>
