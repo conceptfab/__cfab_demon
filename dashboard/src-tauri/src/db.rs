@@ -259,6 +259,12 @@ CREATE INDEX IF NOT EXISTS idx_assignment_auto_runs_started ON assignment_auto_r
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_runs_rollback ON assignment_auto_runs(rolled_back_at);
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_run_items_run ON assignment_auto_run_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_run_items_session ON assignment_auto_run_items(session_id);
+
+CREATE TABLE IF NOT EXISTS system_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 "#;
 
 const PRIMARY_DB_FILE_NAME: &str = "timeflow_dashboard.db";
@@ -444,11 +450,115 @@ pub async fn initialize(app: &AppHandle) -> Result<(), String> {
 
     initialize_database_file(&path_str)?;
 
+    // Perform vacuum on startup if enabled
+    {
+        let db = rusqlite_open(&path_str).map_err(|e| e.to_string())?;
+        let vacuum_on_startup = get_system_setting_internal(&db, "vacuum_on_startup")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if vacuum_on_startup {
+            log::info!("Performing startup VACUUM...");
+            db.execute_batch("VACUUM;")
+                .map_err(|e| format!("Startup VACUUM failed: {}", e))?;
+        }
+
+        // Auto backup check
+        let backup_enabled = get_system_setting_internal(&db, "backup_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        if backup_enabled {
+            let backup_path = get_system_setting_internal(&db, "backup_path").unwrap_or_default();
+            if !backup_path.is_empty() {
+                let interval_days = get_system_setting_internal(&db, "backup_interval_days")
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .unwrap_or(7);
+                let last_backup = get_system_setting_internal(&db, "last_backup_at");
+                
+                let should_backup = match last_backup {
+                    Some(date_str) => {
+                        if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
+                            let diff = chrono::Local::now().signed_duration_since(last.with_timezone(&chrono::Local));
+                            diff.num_days() >= interval_days
+                        } else {
+                            true
+                        }
+                    },
+                    None => true,
+                };
+                
+                if should_backup {
+                    log::info!("Auto-backup is due. Performing backup...");
+                    if let Err(e) = perform_backup_internal(&db, &backup_path) {
+                        log::error!("Auto-backup failed: {}", e);
+                    } else {
+                        let now = chrono::Local::now().to_rfc3339();
+                        if let Err(e) = db.execute(
+                            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_backup_at', ?1, datetime('now'))",
+                            [now],
+                        ) {
+                             log::error!("Failed to update last_backup_at: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Store db path for later use
     app.manage(DbPath(Mutex::new(path_str)));
     app.manage(DemoModeFlag(Mutex::new(demo_mode)));
 
     Ok(())
+}
+
+fn get_system_setting_internal(db: &rusqlite::Connection, key: &str) -> Option<String> {
+    db.query_row(
+        "SELECT value FROM system_settings WHERE key = ?1",
+        [key],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
+pub fn get_system_setting(app: &AppHandle, key: &str) -> Result<Option<String>, String> {
+    let conn = get_connection(app)?;
+    Ok(get_system_setting_internal(&conn, key))
+}
+
+pub fn set_system_setting(app: &AppHandle, key: &str, value: &str) -> Result<(), String> {
+    log::info!("DB: set_system_setting: {} = {}", key, value);
+    let conn = get_connection(app)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+        [key, value],
+    )
+    .map_err(|e| {
+        log::error!("DB Error: failed to set {}: {}", key, e);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
+pub fn perform_backup_internal(db: &rusqlite::Connection, backup_dir: &str) -> Result<String, String> {
+    let dest_dir = std::path::Path::new(backup_dir);
+    if !dest_dir.exists() {
+        std::fs::create_dir_all(dest_dir).map_err(|e| format!("Failed to create backup directory: {}", e))?;
+    }
+    
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    let file_name = format!("timeflow_backup_{}.db", timestamp);
+    let dest_path = dest_dir.join(file_name);
+    
+    // Flush WAL
+    db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
+
+    let escaped_path = dest_path.to_string_lossy().replace('\'', "''");
+    let sql = format!("VACUUM INTO '{}'", escaped_path);
+    
+    db.execute_batch(&sql).map_err(|e| format!("Backup VACUUM INTO failed: {}", e))?;
+    
+    Ok(dest_path.to_string_lossy().to_string())
 }
 
 pub struct DbPath(pub Mutex<String>);
@@ -468,6 +578,15 @@ fn initialize_database_file(path_str: &str) -> Result<(), String> {
 }
 
 fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
+    // Ensure vital system tables exist
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );"
+    )?;
+
     let has_projects_excluded_at: bool = db
         .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='excluded_at'")?
         .query_row([], |row| row.get::<_, i64>(0))

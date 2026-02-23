@@ -59,7 +59,7 @@ export function ImportPanel() {
   };
 
   return (
-    <Card>
+    <Card className="border-border/40 bg-background/50 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Upload className="h-5 w-5 text-orange-500" />
@@ -117,7 +117,11 @@ export function ImportPanel() {
               </div>
             )}
 
-            <Button onClick={handleImport} disabled={importing} className="w-full gap-2">
+            <Button 
+              onClick={handleImport} 
+              disabled={importing} 
+              className="w-full gap-2 bg-orange-600 hover:bg-orange-700 text-white border-0 shadow-lg shadow-orange-950/20 transition-all duration-200"
+            >
               <Upload className="h-4 w-4" />
               {importing ? "Importing..." : "Start Import"}
             </Button>

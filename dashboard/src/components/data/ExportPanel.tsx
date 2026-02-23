@@ -40,7 +40,7 @@ export function ExportPanel() {
   };
 
   return (
-    <Card>
+    <Card className="border-border/40 bg-background/50 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Archive className="h-5 w-5 text-sky-500" />
@@ -145,7 +145,11 @@ export function ExportPanel() {
           </div>
         </div>
 
-        <Button onClick={handleExport} disabled={loading} className="w-full gap-2">
+        <Button 
+          onClick={handleExport} 
+          disabled={loading} 
+          className="w-full gap-2 bg-sky-600 hover:bg-sky-700 text-white border-0 shadow-lg shadow-sky-950/20 transition-all duration-200"
+        >
           <Download className="h-4 w-4" />
           {loading ? "Exporting..." : "Export Data"}
         </Button>

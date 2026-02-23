@@ -11,18 +11,27 @@ import {
   Import,
   Power,
   Brain,
+  HelpCircle,
+  RefreshCw,
+  Activity,
+  ShieldCheck,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
-import { getDaemonStatus, getSessionCount } from "@/lib/tauri";
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
+  runOnlineSyncOnce,
   type OnlineSyncIndicatorSnapshot,
 } from "@/lib/online-sync";
-import type { DaemonStatus } from "@/lib/db-types";
+import {
+  getDaemonStatus,
+  getSessionCount,
+  getAssignmentModelStatus,
+  getDatabaseSettings,
+} from "@/lib/tauri";
+import type { DaemonStatus, AssignmentModelStatus, DatabaseSettings } from "@/lib/db-types";
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -36,34 +45,42 @@ const navItems = [
   { id: "daemon", label: "Daemon", icon: Power },
 ];
 
-function DaemonStatusIndicator({ status }: { status: DaemonStatus | null }) {
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-
-  const running = status?.running ?? null;
-  const needsAssignment = status?.needs_assignment ?? false;
-  const statusText = running === true ? "running" : running === false ? "stopped" : "unknown";
-  const attentionTitle = needsAssignment
-    ? `${status?.unassigned_sessions ?? 0} unassigned sessions in ${status?.unassigned_apps ?? 0} apps`
-    : undefined;
-
+function StatusIndicator({
+  icon: Icon,
+  label,
+  statusText,
+  colorClass,
+  onClick,
+  title,
+  pulse,
+}: StatusIndicatorProps) {
   return (
     <button
-      onClick={() => setCurrentPage("daemon")}
-      className="flex w-full items-center gap-2 rounded-md border border-transparent px-2.5 py-1.5 text-[11px] transition-colors hover:border-border/60 hover:bg-accent/70"
-      title={attentionTitle}
+      onClick={onClick}
+      disabled={!onClick}
+      className={cn(
+        "group flex w-full items-center gap-2.5 rounded-md border border-transparent px-2.5 py-1 transition-all text-[11px] font-medium",
+        onClick ? "hover:bg-accent/40" : "cursor-default"
+      )}
+      title={title}
     >
-      <span
-        className={cn(
-          "relative h-2 w-2 rounded-full",
-          running === true && "bg-emerald-500 shadow-[0_0_4px_rgba(16,185,129,0.55)]",
-          running === false && "bg-red-500",
-          running === null && "bg-muted-foreground/40"
+      <div className="relative shrink-0">
+        <Icon className={cn("h-3.5 w-3.5", colorClass || "text-muted-foreground/70")} />
+        {pulse && (
+          <span className="absolute -right-0.5 -top-0.5 flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+          </span>
         )}
-      >
-      </span>
-      <span className="text-muted-foreground">
-        Daemon: {statusText}
-      </span>
+      </div>
+      <div className="flex min-w-0 flex-col items-start gap-0.5 leading-none">
+        <span className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground/45">
+          {label}
+        </span>
+        <span className="truncate text-[10px] text-muted-foreground group-hover:text-foreground/90">
+          {statusText}
+        </span>
+      </div>
     </button>
   );
 }
@@ -71,6 +88,8 @@ function DaemonStatusIndicator({ status }: { status: DaemonStatus | null }) {
 export function Sidebar() {
   const { currentPage, setCurrentPage } = useAppStore();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
+  const [aiStatus, setAiStatus] = useState<AssignmentModelStatus | null>(null);
+  const [dbSettings, setDbSettings] = useState<DatabaseSettings | null>(null);
   const [todayUnassigned, setTodayUnassigned] = useState<number>(0);
   const [syncIndicator, setSyncIndicator] = useState<OnlineSyncIndicatorSnapshot>(() =>
     getOnlineSyncIndicatorSnapshot()
@@ -80,17 +99,19 @@ export function Sidebar() {
     const check = () => {
       const now = new Date();
       const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-      Promise.allSettled([
+      void Promise.allSettled([
         getDaemonStatus(),
+        getAssignmentModelStatus(),
+        getDatabaseSettings(),
         getSessionCount({
           dateRange: { start: localDate, end: localDate },
           unassigned: true,
         }),
-      ]).then(([statusRes, countRes]) => {
-        if (statusRes.status === "fulfilled") setStatus(statusRes.value);
-        else setStatus(null);
+      ]).then(([daemonRes, aiRes, dbRes, countRes]) => {
+        if (daemonRes.status === "fulfilled") setStatus(daemonRes.value);
+        if (aiRes.status === "fulfilled") setAiStatus(aiRes.value);
+        if (dbRes.status === "fulfilled") setDbSettings(dbRes.value);
         if (countRes.status === "fulfilled") setTodayUnassigned(Math.max(0, countRes.value));
-        else setTodayUnassigned(0);
       });
     };
     check();
@@ -112,20 +133,6 @@ export function Sidebar() {
         ? `${unassignedSessions} unassigned sessions today`
         : `${unassignedSessions} unassigned sessions in ${unassignedApps} apps`
       : undefined;
-  const syncBadgeVariant =
-    syncIndicator.status === "error"
-      ? "destructive"
-      : syncIndicator.status === "syncing"
-        ? "default"
-        : "secondary";
-  const showSyncDetail = syncIndicator.status !== "disabled" && !!syncIndicator.detail;
-  const syncDetailLines = showSyncDetail
-    ? String(syncIndicator.detail)
-        .split(/\s+[·•]\s+/)
-        .map((line) => line.trim())
-        .filter(Boolean)
-      : [];
-
   const handleSidebarDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     if (!hasTauriRuntime()) return;
@@ -172,38 +179,85 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="space-y-0.5 border-t border-border/25 p-2">
-        <div className="px-2.5 py-1.5">
-          <Badge
-            variant={syncBadgeVariant}
-            className="max-w-full whitespace-nowrap px-2 py-0.5 text-[10px]"
-            title={syncIndicator.detail || undefined}
-          >
-            {syncIndicator.label}
-          </Badge>
-          {showSyncDetail && (
-            <div className="mt-1 space-y-0.5 text-[10px] leading-4 text-muted-foreground" title={syncIndicator.detail || undefined}>
-              {(syncDetailLines.length > 0 ? syncDetailLines : [String(syncIndicator.detail)]).map((line, idx) => (
-                <p key={`${line}-${idx}`} className="break-all">
-                  {line}
-                </p>
-              ))}
-            </div>
+      <div className="space-y-1 p-2 pb-5">
+        <div className="space-y-0.5">
+          <StatusIndicator
+            icon={Power}
+            label="Daemon"
+            statusText={status?.running ? "Running" : "Stopped"}
+            colorClass={status?.running ? "text-emerald-500" : "text-red-400"}
+            onClick={() => setCurrentPage("daemon")}
+            title={status?.needs_assignment ? `${status.unassigned_sessions} unassigned` : undefined}
+          />
+
+          <StatusIndicator
+            icon={RefreshCw}
+            label="Sync"
+            statusText={syncIndicator.label}
+            colorClass={syncIndicator.status === "error" ? "text-red-400" : syncIndicator.status === "syncing" ? "text-sky-400" : "text-emerald-500/70"}
+            pulse={syncIndicator.status === "syncing"}
+            onClick={() => { void runOnlineSyncOnce(); }}
+            title={syncIndicator.detail}
+          />
+
+          <StatusIndicator
+            icon={Brain}
+            label="AI Mode"
+            statusText={aiStatus?.mode?.replace("_", " ") ?? "off"}
+            colorClass={aiStatus?.mode !== "off" ? "text-purple-400" : "text-muted-foreground/40"}
+            onClick={() => setCurrentPage("ai")}
+            pulse={!aiStatus?.is_training && (aiStatus?.feedback_since_train ?? 0) > 0}
+          />
+
+          {aiStatus?.is_training ? (
+            <StatusIndicator
+              icon={Activity}
+              label="AI"
+              statusText="Training"
+              colorClass="text-amber-500"
+              pulse
+              onClick={() => setCurrentPage("ai")}
+            />
+          ) : (aiStatus?.feedback_since_train ?? 0) > 0 ? (
+            <StatusIndicator
+              icon={Activity}
+              label="AI"
+              statusText="New Data"
+              colorClass="text-sky-400"
+              onClick={() => setCurrentPage("ai")}
+              title={`${aiStatus?.feedback_since_train} new assignments since last training`}
+            />
+          ) : dbSettings?.backup_enabled && (
+            <StatusIndicator
+              icon={ShieldCheck}
+              label="Backup"
+              statusText="Safe"
+              colorClass="text-emerald-500/80"
+              onClick={() => setCurrentPage("settings")}
+              title={`Last backup: ${dbSettings.last_backup_at ? new Date(dbSettings.last_backup_at).toLocaleDateString() : 'Never'}`}
+            />
           )}
         </div>
-        <DaemonStatusIndicator status={status} />
-        <button
-          onClick={() => setCurrentPage("settings")}
-          className={cn(
-            "flex w-full items-center gap-2.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
-            currentPage === "settings"
-              ? "border-border/40 bg-accent/75 text-card-foreground"
-              : "border-transparent text-muted-foreground hover:border-border/35 hover:bg-accent/50 hover:text-accent-foreground"
-          )}
-        >
-          <Settings className="h-3.5 w-3.5" />
-          Settings
-        </button>
+
+        <div className="flex items-center justify-between px-2.5 pt-1.5">
+          <button
+            onClick={() => setCurrentPage("settings")}
+            className={cn(
+              "transition-all",
+              currentPage === "settings" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+            )}
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => window.open("https://github.com/conceptfab/cfab-demon", "_blank")}
+            className="text-muted-foreground/30 transition-all hover:text-foreground"
+            title="Help"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );

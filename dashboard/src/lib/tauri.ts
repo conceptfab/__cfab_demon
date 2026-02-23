@@ -35,6 +35,9 @@ import type {
   ImportValidation,
   ImportSummary,
   ExportArchive,
+  DbInfo,
+  DatabaseSettings,
+  BackupFile,
 } from "./db-types";
 
 function hasTauriRuntime(): boolean {
@@ -316,3 +319,30 @@ export const appendSyncLog = (lines: string[]) =>
   invoke<void>("append_sync_log", { lines });
 export const getSyncLog = (tailLines?: number) =>
   invoke<string>("get_sync_log", { tailLines });
+
+// Database Management
+export const getDbInfo = () => invoke<DbInfo>("get_db_info");
+
+export const vacuumDatabase = () => invoke<void>("vacuum_database");
+
+export const getDatabaseSettings = () =>
+  invoke<DatabaseSettings>("get_database_settings");
+
+export const updateDatabaseSettings = (settings: DatabaseSettings) =>
+  invoke<void>("update_database_settings", { 
+    vacuumOnStartup: settings.vacuum_on_startup,
+    backupEnabled: settings.backup_enabled,
+    backupPath: settings.backup_path,
+    backupIntervalDays: settings.backup_interval_days
+  });
+
+export const performManualBackup = () =>
+  invoke<string>("perform_manual_backup");
+
+export const openDbFolder = () => invoke<void>("open_db_folder");
+
+export const restoreDatabaseFromFile = (path: string) =>
+  invoke<void>("restore_database_from_file", { path });
+
+export const getBackupFiles = () =>
+  invoke<BackupFile[]>("get_backup_files");

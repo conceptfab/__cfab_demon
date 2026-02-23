@@ -321,3 +321,23 @@ export interface ImportSummary {
   sessions_merged: number;
   daily_files_imported: number;
 }
+
+export interface DbInfo {
+  path: string;
+  size_bytes: number;
+}
+
+export interface DatabaseSettings {
+  vacuum_on_startup: boolean;
+  backup_enabled: boolean;
+  backup_path: string;
+  backup_interval_days: number;
+  last_backup_at: string | null;
+}
+
+export interface BackupFile {
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified_at: string;
+}
