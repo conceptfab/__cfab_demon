@@ -19,6 +19,7 @@ interface Props {
   projects?: ProjectWithStats[];
   onAssignSession?: (sessionIds: number[], projectId: number | null) => void | Promise<void>;
   onUpdateSessionRateMultiplier?: (sessionIds: number[], multiplier: number | null) => void | Promise<void>;
+  onUpdateSessionComment?: (sessionId: number, comment: string | null) => void | Promise<void>;
   onAddManualSession?: (startTime?: string) => void;
   onEditManualSession?: (session: ManualSessionWithProject) => void;
 }
@@ -38,6 +39,7 @@ interface SegmentData {
   isManual?: boolean;
   manualTitle?: string;
   manualSession?: ManualSessionWithProject;
+  comment?: string | null;
 }
 
 interface TimelineRow {
@@ -229,6 +231,7 @@ export function ProjectDayTimeline({
   projects,
   onAssignSession,
   onUpdateSessionRateMultiplier,
+  onUpdateSessionComment,
   onAddManualSession,
   onEditManualSession,
 }: Props) {
@@ -349,6 +352,25 @@ export function ProjectDayTimeline({
     }
     await handleSetRateMultiplier(parsed);
   }, [ctxMenu, handleSetRateMultiplier]);
+
+  const handleEditComment = useCallback(async () => {
+    if (!ctxMenu || ctxMenu.type !== "assign" || !onUpdateSessionComment) return;
+    const sessionIds = getSegmentSessionIds(ctxMenu.segment);
+    if (sessionIds.length !== 1) return;
+    const current = ctxMenu.segment.comment ?? "";
+    const raw = window.prompt(
+      "Komentarz do sesji (zostaw puste aby usunąć):",
+      current
+    );
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    try {
+      await onUpdateSessionComment(sessionIds[0], trimmed || null);
+    } catch (err) {
+      console.error("Failed to update session comment:", err);
+    }
+    setCtxMenu(null);
+  }, [ctxMenu, onUpdateSessionComment]);
 
   const handleOpenClusterDetails = useCallback(() => {
     if (!ctxMenu || ctxMenu.type !== "assign") return;
@@ -486,6 +508,7 @@ export function ProjectDayTimeline({
         appName: item.s.app_name,
         appId: item.s.app_id,
         rateMultiplier: item.s.rate_multiplier ?? 1,
+        comment: item.s.comment,
       });
     }
 
@@ -729,6 +752,18 @@ export function ProjectDayTimeline({
                   Custom...
                 </button>
               </div>
+            </>
+          )}
+          {onUpdateSessionComment && !ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) === 1 && (
+            <>
+              <div className="h-px bg-border my-1" />
+              <button
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                onClick={() => void handleEditComment()}
+              >
+                <span className="h-4 w-4 shrink-0 text-center text-muted-foreground">💬</span>
+                <span>{ctxMenu.segment.comment ? "Edytuj komentarz" : "Dodaj komentarz"}</span>
+              </button>
             </>
           )}
           {onAssignSession && (

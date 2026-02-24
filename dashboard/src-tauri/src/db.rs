@@ -930,6 +930,16 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         [],
     )?;
 
+    let has_sessions_comment: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='comment'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_sessions_comment {
+        log::info!("Migrating sessions: adding comment");
+        db.execute("ALTER TABLE sessions ADD COLUMN comment TEXT", [])?;
+    }
+
     Ok(())
 }
 

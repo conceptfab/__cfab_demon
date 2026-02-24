@@ -104,6 +104,7 @@ pub struct SessionWithApp {
     pub suggested_confidence: Option<f64>,
     /// true when the most recent assignment_feedback for this session has source = 'auto_accept'
     pub ai_assigned: bool,
+    pub comment: Option<String>,
 }
 
 #[derive(Serialize, Clone)]

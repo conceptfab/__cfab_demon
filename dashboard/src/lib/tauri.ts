@@ -103,6 +103,8 @@ export const deleteSession = (sessionId: number) =>
   invoke<void>("delete_session", { sessionId });
 export const updateSessionRateMultiplier = (sessionId: number, multiplier: number | null) =>
   invoke<void>("update_session_rate_multiplier", { sessionId, multiplier });
+export const updateSessionComment = (sessionId: number, comment: string | null) =>
+  invoke<void>("update_session_comment", { sessionId, comment });
 export const getProjectFolders = () => invoke<ProjectFolder[]>("get_project_folders");
 export const addProjectFolder = (path: string) =>
   invoke<void>("add_project_folder", { path });

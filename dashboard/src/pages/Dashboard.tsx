@@ -19,6 +19,7 @@ import {
   assignSessionToProject,
   getManualSessions,
   updateSessionRateMultiplier,
+  updateSessionComment,
 } from "@/lib/tauri";
 import { formatDuration } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
@@ -227,6 +228,20 @@ export function Dashboard() {
     [triggerRefresh]
   );
 
+  const handleUpdateSessionComment = useCallback(
+    async (sessionId: number, comment: string | null) => {
+      try {
+        await updateSessionComment(sessionId, comment);
+        setTodaySessions((prev) =>
+          prev.map((s) => s.id === sessionId ? { ...s, comment } : s)
+        );
+      } catch (err) {
+        console.error("Failed to update session comment:", err);
+      }
+    },
+    []
+  );
+
   const handleRefresh = async () => {
     if (refreshing) return;
     setRefreshing(true);
@@ -404,6 +419,7 @@ export function Dashboard() {
           projects={projectsList}
           onAssignSession={handleAssignSession}
           onUpdateSessionRateMultiplier={handleUpdateSessionRateMultiplier}
+          onUpdateSessionComment={handleUpdateSessionComment}
           onAddManualSession={(startTime) => {
             setSessionDialogStartTime(startTime);
             setSessionDialogOpen(true);

@@ -46,11 +46,11 @@ interface StatusIndicatorProps {
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "sessions", label: "Sessions", icon: List },
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "estimates", label: "Estimates", icon: CircleDollarSign },
   { id: "applications", label: "Applications", icon: AppWindow },
   { id: "analysis", label: "Time Analysis", icon: BarChart3 },
-  { id: "sessions", label: "Sessions", icon: List },
   { id: "ai", label: "AI & Model", icon: Brain },
   { id: "data", label: "Data", icon: Import },
   { id: "daemon", label: "Daemon", icon: Power },

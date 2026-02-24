@@ -50,7 +50,8 @@ pub async fn get_sessions(
             "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
                     a.display_name, a.executable_name, s.project_id, p.name, p.color,
-                    CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END
+                    CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
+                    s.comment
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
              LEFT JOIN projects p ON p.id = s.project_id
@@ -93,6 +94,7 @@ pub async fn get_sessions(
                 let explicit_pname: Option<String> = row.get(9)?;
                 let explicit_pcolor: Option<String> = row.get(10)?;
                 let ai_assigned_flag: i64 = row.get(11).unwrap_or(0);
+                let comment: Option<String> = row.get(12)?;
                 Ok((
                     SessionWithApp {
                         id,
@@ -110,6 +112,7 @@ pub async fn get_sessions(
                         suggested_project_name: None,
                         suggested_confidence: None,
                         ai_assigned: ai_assigned_flag != 0,
+                        comment,
                     },
                     explicit_pid,
                 ))
@@ -499,6 +502,29 @@ pub async fn delete_session(app: AppHandle, session_id: i64) -> Result<(), Strin
         [session_id],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_session_comment(
+    app: AppHandle,
+    session_id: i64,
+    comment: Option<String>,
+) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    let normalized = comment.and_then(|c| {
+        let trimmed = c.trim().to_string();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    });
+    let updated = conn
+        .execute(
+            "UPDATE sessions SET comment = ?1 WHERE id = ?2",
+            rusqlite::params![normalized, session_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if updated == 0 {
+        return Err("Session not found".to_string());
+    }
     Ok(())
 }
 

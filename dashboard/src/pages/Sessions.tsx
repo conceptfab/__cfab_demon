@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Trash2, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Trash2, Sparkles, MessageSquare } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getSessions, getProjects, assignSessionToProject, deleteSession, updateSessionRateMultiplier } from "@/lib/tauri";
+import { getSessions, getProjects, assignSessionToProject, deleteSession, updateSessionRateMultiplier, updateSessionComment } from "@/lib/tauri";
 import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { addDays, format, parseISO, subDays } from "date-fns";
@@ -170,6 +170,28 @@ export function Sessions() {
     }
     await handleSetRateMultiplier(parsed);
   }, [ctxMenu, handleSetRateMultiplier]);
+
+  const handleEditComment = useCallback(async () => {
+    if (!ctxMenu) return;
+    const current = ctxMenu.session.comment ?? "";
+    const raw = window.prompt(
+      "Komentarz do sesji (zostaw puste aby usunąć):",
+      current
+    );
+    if (raw == null) return;
+    const trimmed = raw.trim();
+    try {
+      await updateSessionComment(ctxMenu.session.id, trimmed || null);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === ctxMenu.session.id ? { ...s, comment: trimmed || null } : s
+        )
+      );
+    } catch (err) {
+      console.error("Failed to update session comment:", err);
+    }
+    setCtxMenu(null);
+  }, [ctxMenu]);
 
   const handleAcceptSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
@@ -417,6 +439,11 @@ export function Sessions() {
                                 $$$ {formatMultiplierLabel(s.rate_multiplier)}
                               </Badge>
                             )}
+                            {s.comment && (
+                              <span title={s.comment} className="shrink-0">
+                                <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground">
                             {formatDate(s.start_time)} &middot; {formatTime(s.start_time)} – {formatTime(s.end_time)}
@@ -489,6 +516,13 @@ export function Sessions() {
                         )}
                       </div>
 
+                      {expanded.has(s.id) && s.comment && (
+                        <div className="mt-2 ml-9 flex items-start gap-1.5 rounded-md bg-sky-500/10 border border-sky-500/20 px-2.5 py-2">
+                          <MessageSquare className="h-3.5 w-3.5 text-sky-400 mt-0.5 shrink-0" />
+                          <p className="text-xs text-sky-200 whitespace-pre-wrap">{s.comment}</p>
+                        </div>
+                      )}
+
                       {expanded.has(s.id) && s.files.length > 0 && (
                         <div className="mt-3 ml-9 space-y-1">
                           <p className="text-[11px] text-muted-foreground">
@@ -553,6 +587,14 @@ export function Sessions() {
               Custom...
             </button>
           </div>
+          <div className="h-px bg-border my-1" />
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+            onClick={() => void handleEditComment()}
+          >
+            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>{ctxMenu.session.comment ? "Edytuj komentarz" : "Dodaj komentarz"}</span>
+          </button>
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
             Assign to project

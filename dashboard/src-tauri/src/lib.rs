@@ -114,6 +114,7 @@ pub fn run() {
             commands::import_data_archive,
             commands::update_app_color,
             commands::update_session_rate_multiplier,
+            commands::update_session_comment,
             commands::rebuild_sessions,
             commands::get_assignment_model_status,
             commands::set_assignment_mode,

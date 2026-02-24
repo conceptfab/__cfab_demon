@@ -4,7 +4,9 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawnoś
 
 <!-- - AI w 95% trafia, czy nie mozna dodac automatycznego dodawania sesji do projektu? z ioknką AI. Tylko sesje poniżej danego - ustalanego progu maja być w poczekalni. Cały proces ma być elementem trenigu modelu. -->
 
-- możliwość dodania komentarza do sesji pod prawym przyciskie myszy - np. co było robione, jakie były problemy, co zostało zrobione, co zostało do zrobienia
+<!-- - możliwość dodania komentarza do sesji pod prawym przyciskie myszy - np. co było robione, jakie były problemy, co zostało zrobione, co zostało do zrobienia -->
+
+- AI - testy
 
 - jesli jakis projekt miał sesje o podwyższonym mnożniku miala - w estymacjach musi to być zaznaczone - musi być link do sesji.
 
