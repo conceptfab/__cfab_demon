@@ -121,6 +121,7 @@ pub fn run() {
             commands::train_assignment_model,
             commands::run_auto_safe_assignment,
             commands::rollback_last_auto_safe_run,
+            commands::auto_run_if_needed,
             commands::append_sync_log,
             commands::get_sync_log,
             commands::get_db_info,

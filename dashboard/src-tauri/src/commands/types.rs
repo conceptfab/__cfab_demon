@@ -102,6 +102,8 @@ pub struct SessionWithApp {
     pub suggested_project_id: Option<i64>,
     pub suggested_project_name: Option<String>,
     pub suggested_confidence: Option<f64>,
+    /// true when the most recent assignment_feedback for this session has source = 'auto_accept'
+    pub ai_assigned: bool,
 }
 
 #[derive(Serialize, Clone)]

@@ -209,6 +209,9 @@ export const runAutoSafeAssignment = (
 export const rollbackLastAutoSafeRun = () =>
   invoke<AutoSafeRollbackResult>("rollback_last_auto_safe_run");
 
+export const autoRunIfNeeded = () =>
+  invoke<AutoSafeRunResult | null>("auto_run_if_needed");
+
 // Analysis
 export const getHeatmap = (dateRange: DateRange) =>
   invoke<HeatmapCell[]>("get_heatmap", { dateRange });

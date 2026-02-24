@@ -7,6 +7,7 @@ import { useAppStore } from "@/store/app-store";
 import {
   autoCreateProjectsFromDetection,
   autoImportFromDataDir,
+  autoRunIfNeeded,
   getTodayFileSignature,
   refreshToday,
   syncProjectsFromFolders,
@@ -239,6 +240,27 @@ function AutoSessionRebuild() {
   return null;
 }
 
+function AutoAiAssignment() {
+  const { autoImportDone, triggerRefresh } = useAppStore();
+
+  useEffect(() => {
+    if (!autoImportDone) return;
+
+    autoRunIfNeeded()
+      .then((result) => {
+        if (result && result.assigned > 0) {
+          console.log(`AI auto-assignment: assigned ${result.assigned} / ${result.scanned} sessions`);
+          triggerRefresh();
+        }
+      })
+      .catch((e) => {
+        console.warn("AI auto-assignment failed:", e);
+      });
+  }, [autoImportDone, triggerRefresh]);
+
+  return null;
+}
+
 function AutoOnlineSync() {
   const autoImportDone = useAppStore((s) => s.autoImportDone);
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
@@ -398,6 +420,7 @@ export default function App() {
       <ToastProvider>
         <TooltipProvider>
           <AutoImporter />
+          <AutoAiAssignment />
           <AutoRefresher />
           <AutoProjectSync />
           <AutoSessionRebuild />

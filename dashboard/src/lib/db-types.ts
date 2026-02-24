@@ -71,6 +71,8 @@ export interface SessionWithApp extends Session {
   suggested_project_id?: number;
   suggested_project_name?: string;
   suggested_confidence?: number;
+  /** true when the most recent assignment for this session was made by AI auto-safe */
+  ai_assigned?: boolean;
 }
 
 export type AssignmentMode = "off" | "suggest" | "auto_safe";

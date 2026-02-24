@@ -1021,3 +1021,25 @@ pub async fn rollback_last_auto_safe_run(app: AppHandle) -> Result<AutoSafeRollb
         skipped,
     })
 }
+
+/// Automatically run auto-safe assignment if mode is set to auto_safe.
+/// Called on app startup (after import) so new sessions are assigned without manual intervention.
+/// Returns None when mode is not auto_safe or no unassigned sessions were found.
+#[command]
+pub async fn auto_run_if_needed(app: AppHandle) -> Result<Option<AutoSafeRunResult>, String> {
+    let mode = {
+        let conn = db::get_connection(&app)?;
+        let state = load_state_map(&conn)?;
+        parse_state_opt_string(&state, "mode").unwrap_or_else(|| DEFAULT_MODE.to_string())
+    };
+
+    if mode != "auto_safe" {
+        return Ok(None);
+    }
+
+    let result = run_auto_safe_assignment(app, None, None).await?;
+    if result.assigned == 0 && result.scanned == 0 {
+        return Ok(None);
+    }
+    Ok(Some(result))
+}

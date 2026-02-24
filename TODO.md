@@ -2,9 +2,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawnoś
 
 - przygotowanie do dynamicznego rozwoju aplikacji
 
-- AI w 95% trafia, czy nie mozna dodac automatycznego dodawania sesji do projektu? z ioknką AI. Tylko sesje poniżej danego - ustalanego progu maja być w poczekalni. Cały proces ma być elementem trenigu modelu.
-
-- mrożenie projektów
+<!-- - AI w 95% trafia, czy nie mozna dodac automatycznego dodawania sesji do projektu? z ioknką AI. Tylko sesje poniżej danego - ustalanego progu maja być w poczekalni. Cały proces ma być elementem trenigu modelu. -->
 
 - możliwość dodania komentarza do sesji pod prawym przyciskie myszy - np. co było robione, jakie były problemy, co zostało zrobione, co zostało do zrobienia
 

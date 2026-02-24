@@ -49,10 +49,16 @@ pub async fn get_sessions(
         let mut sql = String::from(
             "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
-                    a.display_name, a.executable_name, s.project_id, p.name, p.color
+                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
              LEFT JOIN projects p ON p.id = s.project_id
+             LEFT JOIN (
+                 SELECT session_id, source
+                 FROM assignment_feedback
+                 WHERE id IN (SELECT MAX(id) FROM assignment_feedback GROUP BY session_id)
+             ) af_last ON af_last.session_id = s.id
              WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -86,6 +92,7 @@ pub async fn get_sessions(
                 let explicit_pid: Option<i64> = row.get(8)?;
                 let explicit_pname: Option<String> = row.get(9)?;
                 let explicit_pcolor: Option<String> = row.get(10)?;
+                let ai_assigned_flag: i64 = row.get(11).unwrap_or(0);
                 Ok((
                     SessionWithApp {
                         id,
@@ -102,6 +109,7 @@ pub async fn get_sessions(
                         suggested_project_id: None,
                         suggested_project_name: None,
                         suggested_confidence: None,
+                        ai_assigned: ai_assigned_flag != 0,
                     },
                     explicit_pid,
                 ))

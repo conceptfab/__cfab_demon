@@ -423,6 +423,14 @@ export function Sessions() {
                           </p>
                         </div>
                         <span className="font-mono text-sm">{formatDuration(s.duration_seconds)}</span>
+                        {s.ai_assigned && s.project_name !== null && (
+                          <span
+                            className="inline-flex items-center rounded border border-violet-500/30 bg-violet-500/10 px-1.5 py-0.5 shrink-0"
+                            title="Auto-assigned by AI"
+                          >
+                            <Sparkles className="h-3 w-3 text-violet-400" />
+                          </span>
+                        )}
                         {s.project_name === null && (
                           <div className="flex items-center gap-1 shrink-0">
                             {s.suggested_project_id !== undefined &&
