@@ -109,7 +109,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             <DialogTitle className="text-xl font-semibold tracking-tight">BugHunter</DialogTitle>
           </div>
           <DialogDescription className="text-sm text-muted-foreground">
-            Zgłoś błąd lub sugestię bezpośrednio do admina.
+            Znalazłeś błąd lub masz pomysł? Daj znać.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,10 +134,10 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Opis problemu</Label>
+              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Szczegóły zgłoszenia</Label>
               <textarea
                 id="message"
-                placeholder="Co się stało? Jakie kroki podjąłeś? Zaraz to naprawimy..."
+                placeholder="Opisz błąd lub swój pomysł... Zaraz się tym zajmiemy."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="flex min-h-[140px] w-full rounded-md border border-border/40 bg-secondary/20 px-3 py-2 text-[13px] shadow-sm placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-colors"

@@ -22,8 +22,8 @@ pub async fn send_bug_report(
     
     // --- KONFIGURACJA SMTP ---
     let smtp_server = "host372606.hostido.net.pl"; 
-    let smtp_user = "bug-hunter@conceptfab.com"; 
-    let smtp_pass = "bpJovGAyaGcrYJRj-ps3Y."; // DOPISANO KROPKĘ (HASŁO POTWIERDZONE)
+    let smtp_user = "timeflow@conceptfab.com"; 
+    let smtp_pass = "PsWfYpstR96HUgScQvFZ"; 
     let recipient = "michal@conceptfab.com";
     // -------------------------
 
@@ -58,11 +58,11 @@ pub async fn send_bug_report(
     let tls_parameters = TlsParameters::new(smtp_server.to_string())
         .map_err(|e| format!("TLS configuration error: {}", e))?;
 
-    // Wracamy na 465 (SSL) + dodajemy jawne mechanizmy logowania
+    // Przełączamy na 587 (STARTTLS)
     let mailer: AsyncSmtpTransport<Tokio1Executor> = AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_server)
         .map_err(|e| format!("SMTP configuration error: {}", e))?
-        .port(465)
-        .tls(Tls::Wrapper(tls_parameters))
+        .port(587)
+        .tls(Tls::Required(tls_parameters))
         .credentials(creds)
         .authentication(vec![Mechanism::Login, Mechanism::Plain])
         .build();
