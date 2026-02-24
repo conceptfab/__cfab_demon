@@ -8,7 +8,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 
 
-
+TODO ??
 copyright CONCEPTFAB
 
 

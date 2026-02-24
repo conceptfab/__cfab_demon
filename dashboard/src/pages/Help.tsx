@@ -1,4 +1,6 @@
 import { useState } from "react";
+import logo from "@/assets/logo.png";
+import cfab from "@/assets/cfab.png";
 import {
   LayoutDashboard,
   List,
@@ -35,14 +37,23 @@ export function Help() {
     <div className="flex h-full flex-col p-8 space-y-8 overflow-y-auto max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/10 pb-6">
         <div className="space-y-2">
-          <h1 className="text-3xl font-light tracking-[0.1em]">
+          <h1 className="text-3xl font-light tracking-[0.1em] flex items-center gap-3">
             {t("Witaj w", "Welcome to")}{" "}
-            <span className="font-semibold tracking-[0.2em]">TIMEFLOW</span>
-            <span className="ml-2 font-[100] text-sm text-muted-foreground/40 tracking-normal antialiased">
+            <div className="flex items-center gap-4 ml-1">
+              <img src={logo} alt="TIMEFLOW" className="h-11 w-11 object-contain" />
+              <span className="font-semibold tracking-[0.2em]">TIMEFLOW</span>
+            </div>
+            <span className="ml-2 font-medium text-sm text-muted-foreground/70 tracking-normal antialiased self-end mb-1">
               β v0.1.32
             </span>
           </h1>
-
+          <div className="text-[11px] text-muted-foreground/70 tracking-wide ml-1 mt-1 flex items-center gap-2">
+            <span className="uppercase font-extralight tracking-[0.15em]">
+              {t("Pomysł / kreacja / realizacja", "Concept / creation / execution")}
+            </span>
+            <img src={cfab} alt="CONCEPTFAB" className="h-9 w-auto object-contain" />
+            <span className="font-light">{t("Wszystkie prawa zastrzeżone", "All rights reserved")}</span>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -58,7 +69,7 @@ export function Help() {
         </div>
       </div>
 
-      <Card className="border-primary/20 bg-primary/5">
+      <Card className="border-none bg-transparent shadow-none">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Info className="h-5 w-5 text-primary" />
@@ -129,7 +140,7 @@ export function Help() {
             </div>
           </div>
         </CardContent>
-        <div className="border-t border-primary/10 p-4">
+        <div className="border-t border-border/10 p-4 pl-0">
           <Button
             variant="ghost"
             className="w-full justify-between group hover:bg-primary/5 text-primary"
@@ -153,9 +164,9 @@ export function Help() {
           value={activeTab}
           onValueChange={setActiveTab}
           orientation="vertical"
-          className="flex flex-col md:flex-row gap-8 items-start"
+          className="flex flex-col md:flex-row gap-0 items-start"
         >
-          <TabsList className="flex flex-col h-auto bg-transparent p-0 gap-1 w-full md:w-56 shrink-0">
+          <TabsList className="flex flex-col h-auto bg-transparent p-0 gap-1 w-full md:w-56 shrink-0 border-r border-border/10 pr-6">
             <HelpTabTrigger
               value="dashboard"
               icon={<LayoutDashboard className="h-3.5 w-3.5" />}
@@ -208,7 +219,7 @@ export function Help() {
             />
           </TabsList>
 
-          <div className="flex-1 min-w-0 w-full">
+          <div className="flex-1 min-w-0 w-full pl-10">
             <TabsContent value="dashboard" className="m-0 focus-visible:outline-none">
               <SectionHelp
                 icon={<LayoutDashboard className="h-6 w-6" />}
@@ -248,7 +259,6 @@ export function Help() {
                     "Refresh button synchronizing data directly from the running Daemon."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -291,7 +301,6 @@ export function Help() {
                     "Sorting and filtering by application, project, date, and duration."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -334,7 +343,6 @@ export function Help() {
                     "Exclude – remove projects from view without permanently deleting them from the database."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -373,7 +381,6 @@ export function Help() {
                     "Ability to compare time value spent on different task groups."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -408,7 +415,6 @@ export function Help() {
                     "Directly assign an entire application to a specific project."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -443,7 +449,6 @@ export function Help() {
                     "Timeline Project View – detailed timeline broken down by specific tasks."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -486,7 +491,6 @@ export function Help() {
                     "100% Privacy – The ML engine runs locally in Rust, doesn't use external APIs (like ChatGPT), and requires no internet."
                   )
                 ]}
-                t={t}
               >
                 <div className="text-sm space-y-4 text-foreground/90 leading-relaxed">
                   <p>
@@ -605,7 +609,6 @@ export function Help() {
                     "Backup & Database – access to SQLite database maintenance tools."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -640,7 +643,6 @@ export function Help() {
                     "Version Insight – information on the compatibility of Daemon and Dashboard versions."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
 
@@ -679,16 +681,12 @@ export function Help() {
                     "Emergency Clear – option to completely clear the database and settings."
                   )
                 ]}
-                t={t}
               />
             </TabsContent>
           </div>
         </Tabs>
       </div>
 
-      <div className="pt-12 text-center text-[10px] text-muted-foreground/30 font-mono tracking-widest uppercase">
-        {t("F1 - Skrót do tej strony", "F1 - Shortcut to this page")}
-      </div>
     </div>
   );
 }
@@ -706,9 +704,9 @@ function HelpTabTrigger({
     <TabsTrigger
       value={value}
       className={cn(
-        "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-all group",
-        "data-[state=active]:border-border/40 data-[state=active]:bg-accent/75 data-[state=active]:text-card-foreground data-[state=active]:shadow-sm",
-        "data-[state=inactive]:border-transparent data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:border-border/35 data-[state=inactive]:hover:bg-accent/50 data-[state=inactive]:hover:text-accent-foreground"
+        "flex w-full items-center justify-between px-3 py-2 text-xs font-medium transition-all group rounded-l-lg",
+        "data-[state=active]:bg-primary/10 data-[state=active]:text-primary",
+        "data-[state=inactive]:text-muted-foreground data-[state=inactive]:hover:bg-accent/30 data-[state=inactive]:hover:text-accent-foreground"
       )}
     >
       <span className="flex items-center gap-2.5">
@@ -725,7 +723,6 @@ function SectionHelp({
   description,
   features,
   footer,
-  t,
   children
 }: {
   icon: React.ReactNode;
@@ -733,12 +730,11 @@ function SectionHelp({
   description: string;
   features: string[];
   footer: string;
-  t: (pl: string, en: string) => string;
   children?: React.ReactNode;
 }) {
   return (
-    <Card className="border-none bg-muted/20 shadow-none">
-      <CardHeader className="flex flex-row items-center gap-4 pb-4">
+    <Card className="border-none bg-transparent shadow-none">
+      <CardHeader className="flex flex-row items-center gap-4 pb-4 px-0">
         <div className="p-3 rounded-xl bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20">
           {icon}
         </div>
@@ -751,7 +747,7 @@ function SectionHelp({
           </p>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 px-0">
         {children}
 
         <div className="mt-8">
