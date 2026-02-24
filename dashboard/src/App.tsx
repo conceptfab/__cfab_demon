@@ -241,12 +241,13 @@ function AutoSessionRebuild() {
 }
 
 function AutoAiAssignment() {
-  const { autoImportDone, triggerRefresh } = useAppStore();
+  const { autoImportDone, refreshKey, triggerRefresh } = useAppStore();
 
   useEffect(() => {
     if (!autoImportDone) return;
 
-    autoRunIfNeeded()
+    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+    autoRunIfNeeded(minDuration)
       .then((result) => {
         if (result && result.assigned > 0) {
           console.log(`AI auto-assignment: assigned ${result.assigned} / ${result.scanned} sessions`);
@@ -256,7 +257,7 @@ function AutoAiAssignment() {
       .catch((e) => {
         console.warn("AI auto-assignment failed:", e);
       });
-  }, [autoImportDone, triggerRefresh]);
+  }, [autoImportDone, refreshKey, triggerRefresh]);
 
   return null;
 }

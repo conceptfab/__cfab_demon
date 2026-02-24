@@ -201,18 +201,20 @@ export const trainAssignmentModel = (force = false) =>
 
 export const runAutoSafeAssignment = (
   limit?: number,
-  dateRange?: DateRange
+  dateRange?: DateRange,
+  minDuration?: number
 ) =>
   invoke<AutoSafeRunResult>("run_auto_safe_assignment", {
     limit,
     dateRange,
+    minDuration,
   });
 
 export const rollbackLastAutoSafeRun = () =>
   invoke<AutoSafeRollbackResult>("rollback_last_auto_safe_run");
 
-export const autoRunIfNeeded = () =>
-  invoke<AutoSafeRunResult | null>("auto_run_if_needed");
+export const autoRunIfNeeded = (minDuration?: number) =>
+  invoke<AutoSafeRunResult | null>("auto_run_if_needed", { minDuration });
 
 // Analysis
 export const getHeatmap = (dateRange: DateRange) =>

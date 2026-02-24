@@ -371,6 +371,7 @@ fn fetch_unassigned_session_ids(
     conn: &rusqlite::Connection,
     limit: i64,
     date_range: Option<DateRange>,
+    min_duration: Option<i64>,
 ) -> Result<Vec<i64>, String> {
     let mut sql = String::from(
         "SELECT id
@@ -379,6 +380,14 @@ fn fetch_unassigned_session_ids(
     );
     let mut params: Vec<Box<dyn ToSql>> = Vec::new();
     let mut idx = 1;
+
+    if let Some(min_dur) = min_duration {
+        if min_dur > 0 {
+            sql.push_str(&format!(" AND duration_seconds > ?{}", idx));
+            params.push(Box::new(min_dur));
+            idx += 1;
+        }
+    }
 
     if let Some(dr) = date_range {
         sql.push_str(&format!(" AND date >= ?{}", idx));
@@ -669,6 +678,7 @@ pub async fn run_auto_safe_assignment(
     app: AppHandle,
     limit: Option<i64>,
     date_range: Option<DateRange>,
+    min_duration: Option<i64>,
 ) -> Result<AutoSafeRunResult, String> {
     let status = get_assignment_model_status(app.clone()).await?;
     if status.mode != "auto_safe" {
@@ -677,7 +687,7 @@ pub async fn run_auto_safe_assignment(
 
     let mut conn = db::get_connection(&app)?;
     let effective_limit = clamp_i64(limit.unwrap_or(500), 1, 10_000);
-    let session_ids = fetch_unassigned_session_ids(&conn, effective_limit, date_range)?;
+    let session_ids = fetch_unassigned_session_ids(&conn, effective_limit, date_range, min_duration)?;
 
     conn.execute(
         "INSERT INTO assignment_auto_runs (
@@ -1026,7 +1036,10 @@ pub async fn rollback_last_auto_safe_run(app: AppHandle) -> Result<AutoSafeRollb
 /// Called on app startup (after import) so new sessions are assigned without manual intervention.
 /// Returns None when mode is not auto_safe or no unassigned sessions were found.
 #[command]
-pub async fn auto_run_if_needed(app: AppHandle) -> Result<Option<AutoSafeRunResult>, String> {
+pub async fn auto_run_if_needed(
+    app: AppHandle,
+    min_duration: Option<i64>,
+) -> Result<Option<AutoSafeRunResult>, String> {
     let mode = {
         let conn = db::get_connection(&app)?;
         let state = load_state_map(&conn)?;
@@ -1037,7 +1050,7 @@ pub async fn auto_run_if_needed(app: AppHandle) -> Result<Option<AutoSafeRunResu
         return Ok(None);
     }
 
-    let result = run_auto_safe_assignment(app, None, None).await?;
+    let result = run_auto_safe_assignment(app, None, None, min_duration).await?;
     if result.assigned == 0 && result.scanned == 0 {
         return Ok(None);
     }

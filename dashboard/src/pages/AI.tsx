@@ -13,6 +13,7 @@ import {
   trainAssignmentModel,
 } from "@/lib/tauri";
 import type { AssignmentMode, AssignmentModelStatus } from "@/lib/db-types";
+import { loadSessionSettings } from "@/lib/user-settings";
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -166,8 +167,11 @@ export function AIPage() {
 
     setRunningAuto(true);
     try {
+      const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
       const result = await runAutoSafeAssignment(
-        Math.round(clampNumber(autoLimit, 1, 10_000))
+        Math.round(clampNumber(autoLimit, 1, 10_000)),
+        undefined,
+        minDuration
       );
       showInfo(
         `Auto-safe completed. Assigned ${result.assigned} / ${result.scanned} scanned sessions.`
