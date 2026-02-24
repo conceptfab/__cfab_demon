@@ -177,10 +177,13 @@ pub struct EstimateProjectRow {
     pub project_color: String,
     pub seconds: i64,
     pub hours: f64,
+    pub weighted_hours: f64,
     pub project_hourly_rate: Option<f64>,
     pub effective_hourly_rate: f64,
     pub estimated_value: f64,
     pub session_count: i64,
+    pub multiplied_session_count: i64,
+    pub multiplier_extra_seconds: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

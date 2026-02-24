@@ -154,10 +154,15 @@ fn query_project_session_counts(
     Ok(out)
 }
 
+struct MultiplierInfo {
+    extra_seconds: f64,
+    session_count: i64,
+}
+
 fn query_project_multiplier_extra_seconds(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
-) -> Result<HashMap<String, f64>, String> {
+) -> Result<HashMap<String, MultiplierInfo>, String> {
     let mut stmt = conn
         .prepare_cached(
             "WITH session_project_overlap AS (
@@ -225,20 +230,32 @@ fn query_project_multiplier_extra_seconds(
                 JOIN projects p ON p.id = ms.project_id
                 WHERE ms.date >= ?1 AND ms.date <= ?2
             )
-            SELECT project_name, SUM(extra_seconds) as extra_seconds
+            SELECT project_name,
+                   SUM(extra_seconds) as extra_seconds,
+                   SUM(CASE WHEN extra_seconds > 0.0 THEN 1 ELSE 0 END) as multiplied_count
             FROM combined
             GROUP BY project_name",
         )
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
         })
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
     for row in rows.filter_map(|r| r.ok()) {
-        out.insert(row.0.to_lowercase(), row.1);
+        out.insert(
+            row.0.to_lowercase(),
+            MultiplierInfo {
+                extra_seconds: row.1,
+                session_count: row.2,
+            },
+        );
     }
     Ok(out)
 }
@@ -278,14 +295,12 @@ fn build_estimate_rows(
         let seconds = seconds_f64.round() as i64;
         let hours = seconds_f64 / 3600.0;
         let effective_hourly_rate = project_hourly_rate.unwrap_or(global_hourly_rate);
-        let weighted_hours = hours
-            + (multiplier_extra_seconds_by_project
-                .get(&key)
-                .copied()
-                .unwrap_or(0.0)
-                / 3600.0);
+        let mult_info = multiplier_extra_seconds_by_project.get(&key);
+        let extra_secs = mult_info.map(|m| m.extra_seconds).unwrap_or(0.0);
+        let weighted_hours = hours + (extra_secs / 3600.0);
         let estimated_value = weighted_hours * effective_hourly_rate;
         let session_count = session_counts.get(&key).copied().unwrap_or(0);
+        let multiplied_session_count = mult_info.map(|m| m.session_count).unwrap_or(0);
 
         rows.push(EstimateProjectRow {
             project_id: *project_id,
@@ -293,10 +308,13 @@ fn build_estimate_rows(
             project_color: project_color.clone(),
             seconds,
             hours,
+            weighted_hours,
             project_hourly_rate: *project_hourly_rate,
             effective_hourly_rate,
             estimated_value,
             session_count,
+            multiplied_session_count,
+            multiplier_extra_seconds: extra_secs,
         });
     }
 

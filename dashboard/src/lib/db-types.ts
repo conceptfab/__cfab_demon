@@ -149,10 +149,13 @@ export interface EstimateProjectRow {
   project_color: string;
   seconds: number;
   hours: number;
+  weighted_hours: number;
   project_hourly_rate: number | null;
   effective_hourly_rate: number;
   estimated_value: number;
   session_count: number;
+  multiplied_session_count: number;
+  multiplier_extra_seconds: number;
 }
 
 export interface EstimateSummary {

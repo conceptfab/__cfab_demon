@@ -14,9 +14,9 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawnoś
 
 - AI - testy
 
-- jesli jakis projekt miał sesje o podwyższonym mnożniku - w estymacjach musi to być zaznaczone - musi być link do tej/tych sesji.
+<!-- - jesli jakis projekt miał sesje o podwyższonym mnożniku - w estymacjach musi to być zaznaczone - musi być link do tej/tych sesji. -->
 
--trzeba zmienic scheamt synchronizacji - dane wysłane wymagają ręcznego przyporządkowania za każdym razem. jeśli uzytkownik już przyporządkował dane, to wysłane dane powinny być automatycznie przyporządkowywane do tego samego projektu.
+-trzeba zmienic schemat synchronizacji - dane wysłane wymagają ręcznego przyporządkowania za każdym razem. jeśli uzytkownik już przyporządkował dane, to wysłane dane powinny być automatycznie przyporządkowywane do tego samego projektu.
 
 - menadzer projektów -> od nowa -> automatyczna lista klientow, rozpoznawanie projektów, autonumeracja, drzewa folderów
 - Bug Hunter

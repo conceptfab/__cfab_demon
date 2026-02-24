@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Save,
   SlidersHorizontal,
+  TrendingUp,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,6 +57,8 @@ export function Estimates() {
     canShiftForward,
     triggerRefresh,
     setCurrentPage,
+    setSessionsFocusDate,
+    setSessionsFocusProject,
   } = useAppStore();
 
   const [settings, setSettings] = useState<EstimateSettings | null>(null);
@@ -334,10 +337,11 @@ export function Estimates() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="min-w-[980px] space-y-2">
-                <div className="grid grid-cols-[minmax(220px,1.5fr)_90px_120px_130px_130px_260px] gap-2 px-2 text-xs text-muted-foreground">
+              <div className="min-w-[1080px] space-y-2">
+                <div className="grid grid-cols-[minmax(220px,1.5fr)_90px_90px_120px_130px_130px_260px] gap-2 px-2 text-xs text-muted-foreground">
                   <span>Project</span>
                   <span className="text-right">Hours</span>
+                  <span className="text-right">Billable</span>
                   <span className="text-right">Sessions</span>
                   <span className="text-right">Effective Rate</span>
                   <span className="text-right">Value</span>
@@ -350,7 +354,7 @@ export function Estimates() {
                   return (
                     <div
                       key={row.project_id}
-                      className="grid grid-cols-[minmax(220px,1.5fr)_90px_120px_130px_130px_260px] gap-2 rounded-md border p-2"
+                      className="grid grid-cols-[minmax(220px,1.5fr)_90px_90px_120px_130px_130px_260px] gap-2 rounded-md border p-2"
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <span
@@ -360,10 +364,33 @@ export function Estimates() {
                         <span className="truncate text-sm font-medium" title={row.project_name}>
                           {row.project_name}
                         </span>
+                        {row.multiplied_session_count > 0 && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0"
+                            title={`${row.multiplied_session_count} session(s) with rate multiplier — click to view`}
+                            onClick={() => {
+                              setSessionsFocusDate(dateRange.end);
+                              setSessionsFocusProject(row.project_id);
+                              setCurrentPage("sessions");
+                            }}
+                          >
+                            <TrendingUp className="h-3 w-3" />
+                            {row.multiplied_session_count} boosted
+                          </button>
+                        )}
                       </div>
 
                       <span className="text-right font-mono text-sm">
                         {decimal.format(row.hours)}
+                      </span>
+
+                      <span className="text-right font-mono text-sm" title={row.weighted_hours !== row.hours ? `Includes ${decimal.format(row.multiplier_extra_seconds / 3600)} bonus hours from rate multipliers` : undefined}>
+                        {row.weighted_hours !== row.hours ? (
+                          <span className="text-emerald-400">{decimal.format(row.weighted_hours)}</span>
+                        ) : (
+                          decimal.format(row.weighted_hours)
+                        )}
                       </span>
 
                       <span className="text-right font-mono text-sm">
