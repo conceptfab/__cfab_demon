@@ -13,6 +13,17 @@ FINAL_NAME = "timeflow-dashboard.exe"
 
 
 def main():
+    # Zaladuj .env do srodowiska (dla makra option_env! w Rust)
+    env_file = ROOT / ".env"
+    if env_file.exists():
+        print(f"   Laduje zmienne z {env_file}")
+        with open(env_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ[k.strip()] = v.strip()
+
     os.chdir(DASHBOARD)
     result = subprocess.run("npm run tauri build", shell=True)
     if result.returncode != 0:

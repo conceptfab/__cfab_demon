@@ -21,9 +21,11 @@ pub async fn send_bug_report(
 ) -> Result<BugReportResponse, String> {
     
     // --- KONFIGURACJA SMTP ---
+    // Dane pobierane podczas kompilacji ze zmiennych środowiskowych.
+    // Jeśli ich braknie w środowisku builda, zostaną użyte wartości domyślne/REPLACE_ME.
     let smtp_server = "host372606.hostido.net.pl"; 
-    let smtp_user = "timeflow@conceptfab.com"; 
-    let smtp_pass = "PsWfYpstR96HUgScQvFZ"; 
+    let smtp_user = option_env!("SMTP_USER").unwrap_or("timeflow@conceptfab.com"); 
+    let smtp_pass = option_env!("SMTP_PASS").unwrap_or("REPLACE_ME"); 
     let recipient = "michal@conceptfab.com";
     // -------------------------
 
