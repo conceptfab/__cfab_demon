@@ -14,7 +14,7 @@ mod tracker;
 mod tray;
 
 /// Application name — single constant used everywhere
-pub const APP_NAME: &str = "TimeFlow Demon";
+pub const APP_NAME: &str = "TIMEFLOW Demon";
 pub const VERSION: &str = include_str!("../VERSION");
 
 fn main() {

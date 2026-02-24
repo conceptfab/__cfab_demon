@@ -109,6 +109,7 @@ export function saveFreezeSettings(next: FreezeSettings): FreezeSettings {
 export interface SessionSettings {
   gapFillMinutes: number;
   rebuildOnStartup: boolean;
+  minSessionDurationSeconds: number;
 }
 
 const SESSION_STORAGE_KEY = "timeflow.settings.sessions";
@@ -117,6 +118,7 @@ const LEGACY_SESSION_STORAGE_KEY = "cfab.settings.sessions";
 export const DEFAULT_SESSION_SETTINGS: SessionSettings = {
   gapFillMinutes: 5,
   rebuildOnStartup: false,
+  minSessionDurationSeconds: 10,
 };
 
 function normalizeGapFillMinutes(value: unknown): number {
@@ -124,6 +126,13 @@ function normalizeGapFillMinutes(value: unknown): number {
     return DEFAULT_SESSION_SETTINGS.gapFillMinutes;
   }
   return Math.min(30, Math.max(0, Math.round(value)));
+}
+
+function normalizeMinSessionDuration(value: unknown): number {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return DEFAULT_SESSION_SETTINGS.minSessionDurationSeconds;
+  }
+  return Math.min(300, Math.max(0, Math.round(value)));
 }
 
 export function loadSessionSettings(): SessionSettings {
@@ -137,6 +146,7 @@ export function loadSessionSettings(): SessionSettings {
     return {
       gapFillMinutes: normalizeGapFillMinutes(parsed.gapFillMinutes),
       rebuildOnStartup: typeof parsed.rebuildOnStartup === "boolean" ? parsed.rebuildOnStartup : DEFAULT_SESSION_SETTINGS.rebuildOnStartup,
+      minSessionDurationSeconds: normalizeMinSessionDuration(parsed.minSessionDurationSeconds),
     };
   } catch {
     return { ...DEFAULT_SESSION_SETTINGS };
@@ -147,6 +157,7 @@ export function saveSessionSettings(next: SessionSettings): SessionSettings {
   const normalized: SessionSettings = {
     gapFillMinutes: normalizeGapFillMinutes(next.gapFillMinutes),
     rebuildOnStartup: !!next.rebuildOnStartup,
+    minSessionDurationSeconds: normalizeMinSessionDuration(next.minSessionDurationSeconds),
   };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalized));

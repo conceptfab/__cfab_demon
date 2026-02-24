@@ -9,12 +9,12 @@ import {
   List,
   Settings,
   Import,
-  Power,
   Brain,
-  HelpCircle,
   RefreshCw,
   Activity,
   ShieldCheck,
+  Cpu,
+  HelpCircle,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,7 @@ import {
   hasTauriRuntime,
 } from "@/lib/tauri";
 import type { DaemonStatus, AssignmentModelStatus, DatabaseSettings } from "@/lib/db-types";
+import { loadSessionSettings } from "@/lib/user-settings";
 
 interface StatusIndicatorProps {
   icon: React.ComponentType<{ className?: string }>;
@@ -53,8 +54,8 @@ const navItems = [
   { id: "analysis", label: "Time Analysis", icon: BarChart3 },
   { id: "ai", label: "AI & Model", icon: Brain },
   { id: "data", label: "Data", icon: Import },
-  { id: "daemon", label: "Daemon", icon: Power },
-  { id: "help", label: "Help", icon: HelpCircle },
+  { id: "daemon", label: "Daemon", icon: Cpu },
+
 ];
 
 function StatusIndicator({
@@ -118,6 +119,7 @@ export function Sidebar() {
         getSessionCount({
           dateRange: { start: localDate, end: localDate },
           unassigned: true,
+          minDuration: loadSessionSettings().minSessionDurationSeconds || undefined,
         }),
       ]).then(([daemonRes, aiRes, dbRes, countRes]) => {
         if (daemonRes.status === "fulfilled") setStatus(daemonRes.value);
@@ -205,7 +207,7 @@ export function Sidebar() {
       <div className="space-y-1 p-2 pb-5">
         <div className="space-y-0.5">
           <StatusIndicator
-            icon={Power}
+            icon={Cpu}
             label="Daemon"
             statusText={status?.running ? "Running" : "Stopped"}
             colorClass={status?.running ? "text-emerald-500" : "text-red-400"}
@@ -275,16 +277,6 @@ export function Sidebar() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setCurrentPage("settings")}
-              className={cn(
-                "transition-all",
-                currentPage === "settings" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
-              )}
-              title="Settings"
-            >
-              <Settings className="h-4 w-4" />
-            </button>
-            <button
               onClick={() => setCurrentPage("help")}
               className={cn(
                 "transition-all",
@@ -293,6 +285,16 @@ export function Sidebar() {
               title="Help (F1)"
             >
               <HelpCircle className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setCurrentPage("settings")}
+              className={cn(
+                "transition-all",
+                currentPage === "settings" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+              )}
+              title="Settings"
+            >
+              <Settings className="h-4 w-4" />
             </button>
           </div>
         </div>

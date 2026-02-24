@@ -8,6 +8,7 @@ import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { addDays, format, parseISO, subDays } from "date-fns";
 import type { DateRange, SessionWithApp, ProjectWithStats } from "@/lib/db-types";
+import { loadSessionSettings } from "@/lib/user-settings";
 
 interface ContextMenu {
   x: number;
@@ -37,6 +38,10 @@ export function Sessions() {
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed");
   const ctxRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 100;
+  const minDuration = useMemo(() => {
+    const s = loadSessionSettings();
+    return s.minSessionDurationSeconds > 0 ? s.minSessionDurationSeconds : undefined;
+  }, [refreshKey]);
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const canShiftForward = anchorDate < today;
   const shiftStepDays = rangeMode === "weekly" ? 7 : 1;
@@ -74,19 +79,20 @@ export function Sessions() {
   }, [sessionsFocusDate, clearSessionsFocusDate, sessionsFocusProject, setSessionsFocusProject]);
 
   useEffect(() => {
-    getSessions({ 
-      dateRange: activeDateRange, 
-      limit: PAGE_SIZE, 
+    getSessions({
+      dateRange: activeDateRange,
+      limit: PAGE_SIZE,
       offset: 0,
       projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
-      unassigned: activeProjectId === "unassigned" ? true : undefined
+      unassigned: activeProjectId === "unassigned" ? true : undefined,
+      minDuration,
     })
       .then((data) => {
         setSessions(data);
         setHasMore(data.length >= PAGE_SIZE);
       })
       .catch(console.error);
-  }, [activeDateRange, refreshKey, activeProjectId]);
+  }, [activeDateRange, refreshKey, activeProjectId, minDuration]);
 
   useEffect(() => {
     setDismissedSuggestions(new Set());
@@ -246,12 +252,13 @@ export function Sessions() {
   );
 
   const loadMore = () => {
-    getSessions({ 
-      dateRange: activeDateRange, 
-      limit: PAGE_SIZE, 
+    getSessions({
+      dateRange: activeDateRange,
+      limit: PAGE_SIZE,
       offset: sessions.length,
       projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
-      unassigned: activeProjectId === "unassigned" ? true : undefined
+      unassigned: activeProjectId === "unassigned" ? true : undefined,
+      minDuration,
     })
       .then((data) => {
         setSessions((prev) => [...prev, ...data]);

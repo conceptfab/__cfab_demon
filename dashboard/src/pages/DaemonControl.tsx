@@ -3,7 +3,7 @@ import {
   Play,
   Square,
   RotateCcw,
-  Power,
+  Cpu,
   ScrollText,
   RefreshCw,
 } from "lucide-react";
@@ -98,7 +98,7 @@ export function DaemonControl() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Power className="h-4 w-4" />
+              <Cpu className="h-4 w-4" />
               Daemon Status
               <Button
                 variant="ghost"

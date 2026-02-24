@@ -633,9 +633,15 @@ export function Projects() {
           <CardTitle className="text-base flex items-center gap-2">
             {p.name}
             {p.frozen_at && (
-              <span title={`Frozen since ${p.frozen_at.slice(0, 10)} — not shown in session assignment lists`}>
-                <Snowflake className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-              </span>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
+                onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
+              >
+                <Snowflake className="h-3.5 w-3.5 shrink-0" />
+                <span className="text-[10px]">Frozen</span>
+              </button>
             )}
             {renderDuplicateMarker(p)}
             {p.is_imported === 1 && (
@@ -812,9 +818,14 @@ export function Projects() {
                         <span className="flex min-w-0 flex-1 items-center gap-1.5">
                           <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
                           {p.frozen_at && (
-                            <span title={`Frozen since ${p.frozen_at.slice(0, 10)}`}>
-                              <Snowflake className="h-3 w-3 text-blue-400 shrink-0" />
-                            </span>
+                            <button
+                              type="button"
+                              className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                              title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
+                              onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
+                            >
+                              <Snowflake className="h-3 w-3 shrink-0" />
+                            </button>
                           )}
                           {renderDuplicateMarker(p)}
                         </span>

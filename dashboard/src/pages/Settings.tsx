@@ -377,6 +377,36 @@ export function Settings() {
             </div>
           </div>
 
+          <div className="rounded-md border border-border/70 bg-background/35 p-3">
+            <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto]">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Skip short sessions</p>
+                <p className="text-xs leading-5 break-words text-muted-foreground">
+                  Sessions shorter than or equal to this duration will be hidden from the list.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={300}
+                  step={1}
+                  aria-label="Minimum session duration in seconds"
+                  className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  value={sessionSettings.minSessionDurationSeconds}
+                  onChange={(e) => {
+                    const val = Number.parseInt(e.target.value, 10);
+                    if (!Number.isNaN(val)) {
+                      setSessionSettings((prev) => ({ ...prev, minSessionDurationSeconds: val }));
+                      setSavedSettings(false);
+                    }
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">sec</span>
+              </div>
+            </div>
+          </div>
+
           <label
             htmlFor="rebuildOnStartup"
             className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"

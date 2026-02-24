@@ -201,7 +201,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function normalizeServerUrl(input: unknown): string {
   if (typeof input !== "string") return "";
   const normalized = input.trim().replace(/\/+$/, "");
-  // Compatibility: early TimeFlow rebrand builds used a placeholder host before DNS/deploy was ready.
+  // Compatibility: early TIMEFLOW rebrand builds used a placeholder host before DNS/deploy was ready.
   if (normalized === PLACEHOLDER_TIMEFLOW_ONLINE_SYNC_SERVER_URL) {
     return LEGACY_DEFAULT_ONLINE_SYNC_SERVER_URL;
   }

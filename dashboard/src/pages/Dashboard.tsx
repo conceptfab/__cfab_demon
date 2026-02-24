@@ -24,7 +24,7 @@ import {
 import { formatDuration } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
-import { loadWorkingHoursSettings, type WorkingHoursSettings } from "@/lib/user-settings";
+import { loadWorkingHoursSettings, loadSessionSettings, type WorkingHoursSettings } from "@/lib/user-settings";
 import type {
   DashboardStats,
   ManualSessionWithProject,
@@ -263,7 +263,7 @@ export function Dashboard() {
       getDashboardProjects(dateRange),
       getProjectTimeline(dateRange, projectTimelineSeriesLimit, timelineGranularity),
       timePreset === "today"
-        ? getSessions({ dateRange, limit: 500, offset: 0 })
+        ? getSessions({ dateRange, limit: 500, offset: 0, minDuration: loadSessionSettings().minSessionDurationSeconds || undefined })
         : Promise.resolve([] as SessionWithApp[]),
       timePreset === "today"
         ? getManualSessions({ dateRange })
