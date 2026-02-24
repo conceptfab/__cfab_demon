@@ -176,7 +176,10 @@ pub async fn get_daemon_status(app: AppHandle) -> Result<DaemonStatus, String> {
         .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
         .unwrap_or(false);
     let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app);
-    write_assignment_signal(unassigned_sessions);
+    // Only signal unassigned count when daemon is running.
+    // When daemon is stopped, clear the file so the tray icon
+    // doesn't show stale attention.
+    write_assignment_signal(if running { unassigned_sessions } else { 0 });
 
     let mut daemon_version = None;
     if let Ok(exe) = find_daemon_exe() {

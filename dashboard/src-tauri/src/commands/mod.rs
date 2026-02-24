@@ -1,5 +1,6 @@
 mod analysis;
 mod assignment_model;
+mod bughunter;
 mod daemon;
 mod dashboard;
 mod database;
@@ -19,6 +20,7 @@ mod types;
 // Re-export all public commands (required by tauri::generate_handler![])
 pub use analysis::*;
 pub use assignment_model::*;
+pub use bughunter::*;
 pub use daemon::*;
 pub use dashboard::*;
 pub use database::*;

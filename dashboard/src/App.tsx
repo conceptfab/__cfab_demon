@@ -8,6 +8,7 @@ import {
   autoCreateProjectsFromDetection,
   autoImportFromDataDir,
   autoRunIfNeeded,
+  applyDeterministicAssignment,
   getTodayFileSignature,
   refreshToday,
   syncProjectsFromFolders,
@@ -31,6 +32,7 @@ const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m
 const DaemonControl = lazy(() => import("@/pages/DaemonControl").then((m) => ({ default: m.DaemonControl })));
 const DataManagement = lazy(() => import("@/pages/Data").then((m) => ({ default: m.DataManagement })));
 const AIPage = lazy(() => import("@/pages/AI").then((m) => ({ default: m.AIPage })));
+const QuickStart = lazy(() => import("@/pages/QuickStart").then((m) => ({ default: m.QuickStart })));
 const Help = lazy(() => import("@/pages/Help").then((m) => ({ default: m.Help })));
 
 function PageRouter() {
@@ -62,6 +64,8 @@ function PageRouter() {
         return <Settings />;
       case "help":
         return <Help />;
+      case "quickstart":
+        return <QuickStart />;
       default:
         return <Dashboard />;
     }
@@ -246,17 +250,40 @@ function AutoAiAssignment() {
   useEffect(() => {
     if (!autoImportDone) return;
 
-    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
-    autoRunIfNeeded(minDuration)
-      .then((result) => {
+    const run = async () => {
+      let needsRefresh = false;
+
+      // Layer 2: Deterministic rules (100% consistent app→project mapping)
+      try {
+        const det = await applyDeterministicAssignment();
+        if (det.sessions_assigned > 0) {
+          console.log(
+            `Deterministic assignment: ${det.sessions_assigned} sessions assigned (${det.apps_with_rules} app rules)`
+          );
+          needsRefresh = true;
+        }
+      } catch (e) {
+        console.warn("Deterministic assignment failed:", e);
+      }
+
+      // Layer 3: ML auto-safe assignment
+      try {
+        const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+        const result = await autoRunIfNeeded(minDuration);
         if (result && result.assigned > 0) {
           console.log(`AI auto-assignment: assigned ${result.assigned} / ${result.scanned} sessions`);
-          triggerRefresh();
+          needsRefresh = true;
         }
-      })
-      .catch((e) => {
+      } catch (e) {
         console.warn("AI auto-assignment failed:", e);
-      });
+      }
+
+      if (needsRefresh) {
+        triggerRefresh();
+      }
+    };
+
+    run();
   }, [autoImportDone, refreshKey, triggerRefresh]);
 
   return null;

@@ -1,3 +1,4 @@
+import { AppWindow } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CHART_PRIMARY_COLOR } from "@/lib/chart-styles";
 import { formatDuration } from "@/lib/utils";
@@ -7,7 +8,7 @@ interface Props {
 }
 
 export function TopAppsChart({ apps }: Props) {
-  const maxSeconds = apps.length > 0 ? apps[0].seconds : 1;
+  const maxSeconds = apps.length > 0 ? Math.max(...apps.map(a => a.seconds)) : 1;
 
   return (
     <Card>
@@ -15,17 +16,27 @@ export function TopAppsChart({ apps }: Props) {
         <CardTitle className="text-sm font-medium">Top Applications</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-3">
+        <div className="space-y-0.5">
           {apps.length === 0 && (
-            <p className="text-sm text-muted-foreground">No data yet. Import some JSON files.</p>
+            <p className="py-3 text-xs text-muted-foreground text-center">No data yet.</p>
           )}
           {apps.map((app, i) => (
-            <div key={i} className="space-y-1">
-              <div className="flex items-center justify-between text-sm">
-                <span className="truncate">{app.name}</span>
-                <span className="font-mono text-muted-foreground">{formatDuration(app.seconds)}</span>
+            <div
+              key={`${app.name}-${i}`}
+              className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <AppWindow className="h-3 w-3 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-xs font-medium">{app.name}</span>
+                  </div>
+                </div>
+                <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
+                  {formatDuration(app.seconds)}
+                </span>
               </div>
-              <div className="h-2 rounded-full bg-secondary">
+              <div className="ml-5.5 h-1 rounded-full bg-secondary/30">
                 <div
                   className="h-full rounded-full transition-all"
                   style={{

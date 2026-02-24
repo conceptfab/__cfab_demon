@@ -38,6 +38,7 @@ import type {
   DbInfo,
   DatabaseSettings,
   BackupFile,
+  DeterministicResult,
 } from "./db-types";
 
 export function hasTauriRuntime(): boolean {
@@ -215,6 +216,11 @@ export const rollbackLastAutoSafeRun = () =>
 
 export const autoRunIfNeeded = (minDuration?: number) =>
   invoke<AutoSafeRunResult | null>("auto_run_if_needed", { minDuration });
+
+export const applyDeterministicAssignment = (minHistory?: number) =>
+  invoke<DeterministicResult>("apply_deterministic_assignment", {
+    minHistory: minHistory ?? null,
+  });
 
 // Analysis
 export const getHeatmap = (dateRange: DateRange) =>

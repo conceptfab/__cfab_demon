@@ -14,11 +14,14 @@ import {
   Activity,
   ShieldCheck,
   Cpu,
+  Rocket,
   HelpCircle,
+  Bug,
 } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { BugHunter } from "./BugHunter";
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
@@ -99,19 +102,23 @@ function StatusIndicator({
 }
 
 export function Sidebar() {
-  const { currentPage, setCurrentPage } = useAppStore();
+  const { currentPage, setCurrentPage, helpTab, setHelpTab, firstRun } = useAppStore();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [aiStatus, setAiStatus] = useState<AssignmentModelStatus | null>(null);
   const [dbSettings, setDbSettings] = useState<DatabaseSettings | null>(null);
   const [todayUnassigned, setTodayUnassigned] = useState<number>(0);
+  const [allUnassigned, setAllUnassigned] = useState<number>(0);
   const [syncIndicator, setSyncIndicator] = useState<OnlineSyncIndicatorSnapshot>(() =>
     getOnlineSyncIndicatorSnapshot()
   );
+
+  const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
 
   useEffect(() => {
     const check = () => {
       const now = new Date();
       const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
       void Promise.allSettled([
         getDaemonStatus(),
         getAssignmentModelStatus(),
@@ -119,13 +126,20 @@ export function Sidebar() {
         getSessionCount({
           dateRange: { start: localDate, end: localDate },
           unassigned: true,
-          minDuration: loadSessionSettings().minSessionDurationSeconds || undefined,
+          minDuration,
         }),
-      ]).then(([daemonRes, aiRes, dbRes, countRes]) => {
+        // All-time unassigned count with same minDuration filter
+        // so badge matches what Sessions page actually shows
+        getSessionCount({
+          unassigned: true,
+          minDuration,
+        }),
+      ]).then(([daemonRes, aiRes, dbRes, todayCountRes, allCountRes]) => {
         if (daemonRes.status === "fulfilled") setStatus(daemonRes.value);
         if (aiRes.status === "fulfilled") setAiStatus(aiRes.value);
         if (dbRes.status === "fulfilled") setDbSettings(dbRes.value);
-        if (countRes.status === "fulfilled") setTodayUnassigned(Math.max(0, countRes.value));
+        if (todayCountRes.status === "fulfilled") setTodayUnassigned(Math.max(0, todayCountRes.value));
+        if (allCountRes.status === "fulfilled") setAllUnassigned(Math.max(0, allCountRes.value));
       });
     };
     check();
@@ -148,15 +162,15 @@ export function Sidebar() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [setCurrentPage]);
 
-  const daemonUnassigned = Math.max(0, status?.unassigned_sessions ?? 0);
-  const unassignedSessions = todayUnassigned > 0 ? todayUnassigned : daemonUnassigned;
-  const unassignedApps = Math.max(0, status?.unassigned_apps ?? 0);
+  // Use all-time unassigned count (with minDuration applied) so badge
+  // matches what Sessions page can actually display.
+  const unassignedSessions = todayUnassigned > 0 ? todayUnassigned : allUnassigned;
   const sessionsBadge = unassignedSessions > 99 ? "99+" : String(unassignedSessions);
   const sessionsAttentionTitle =
     unassignedSessions > 0
       ? todayUnassigned > 0
         ? `${unassignedSessions} unassigned sessions today`
-        : `${unassignedSessions} unassigned sessions in ${unassignedApps} apps`
+        : `${unassignedSessions} unassigned sessions (all dates)`
       : undefined;
   const handleSidebarDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -212,7 +226,7 @@ export function Sidebar() {
             statusText={status?.running ? "Running" : "Stopped"}
             colorClass={status?.running ? "text-emerald-500" : "text-red-400"}
             onClick={() => setCurrentPage("daemon")}
-            title={status?.needs_assignment ? `${status.unassigned_sessions} unassigned` : undefined}
+            title={allUnassigned > 0 ? `${allUnassigned} unassigned` : undefined}
           />
 
           <StatusIndicator
@@ -277,10 +291,43 @@ export function Sidebar() {
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setCurrentPage("help")}
+              onClick={() => setIsBugHunterOpen(true)}
+              className={cn(
+                "transition-all text-muted-foreground/30 hover:text-destructive active:scale-90"
+              )}
+              title="BugHunter - zgłoś błąd"
+            >
+              <Bug className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                setCurrentPage("quickstart");
+              }}
+              className={cn(
+                "relative transition-all",
+                currentPage === "quickstart" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-primary"
+              )}
+              title="Quick Start"
+            >
+              <Rocket className={cn(
+                "h-4 w-4",
+                firstRun && "animate-bounce text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.8)]"
+              )} />
+              {firstRun && (
+                <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setHelpTab("dashboard");
+                setCurrentPage("help");
+              }}
               className={cn(
                 "transition-all",
-                currentPage === "help" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+                currentPage === "help" && helpTab !== "quickstart" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
               )}
               title="Help (F1)"
             >
@@ -299,6 +346,11 @@ export function Sidebar() {
           </div>
         </div>
       </div>
+      <BugHunter
+        isOpen={isBugHunterOpen}
+        onClose={() => setIsBugHunterOpen(false)}
+        version={status?.dashboard_version || "?.?.?"}
+      />
     </aside>
   );
 }

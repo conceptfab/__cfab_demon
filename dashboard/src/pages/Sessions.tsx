@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Trash2, Sparkles, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Trash2, Sparkles, MessageSquare, CircleDollarSign } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,9 +87,13 @@ export function Sessions() {
     }
   }, [sessionsFocusDate, clearSessionsFocusDate, sessionsFocusProject, setSessionsFocusProject]);
 
+  // When filtering to "unassigned", skip dateRange so ALL unassigned sessions
+  // are visible (the daemon badge counts across all dates, not just today/week).
+  const effectiveDateRange = activeProjectId === "unassigned" ? undefined : activeDateRange;
+
   useEffect(() => {
     getSessions({
-      dateRange: activeDateRange,
+      dateRange: effectiveDateRange,
       limit: PAGE_SIZE,
       offset: 0,
       projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
@@ -101,7 +105,7 @@ export function Sessions() {
         setHasMore(data.length >= PAGE_SIZE);
       })
       .catch(console.error);
-  }, [activeDateRange, refreshKey, activeProjectId, minDuration]);
+  }, [effectiveDateRange, refreshKey, activeProjectId, minDuration]);
 
   useEffect(() => {
     setDismissedSuggestions(new Set());
@@ -110,6 +114,26 @@ export function Sessions() {
   useEffect(() => {
     getProjects().then(setProjects).catch(console.error);
   }, [refreshKey]);
+
+  // Auto-refresh sessions every 15 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      getSessions({
+        dateRange: effectiveDateRange,
+        limit: PAGE_SIZE,
+        offset: 0,
+        projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
+        unassigned: activeProjectId === "unassigned" ? true : undefined,
+        minDuration,
+      })
+        .then((data) => {
+          setSessions(data);
+          setHasMore(data.length >= PAGE_SIZE);
+        })
+        .catch(console.error);
+    }, 15_000);
+    return () => clearInterval(interval);
+  }, [effectiveDateRange, activeProjectId, minDuration]);
 
   // Close context menu on click outside or Escape
   useEffect(() => {
@@ -270,7 +294,7 @@ export function Sessions() {
 
   const loadMore = () => {
     getSessions({
-      dateRange: activeDateRange,
+      dateRange: effectiveDateRange,
       limit: PAGE_SIZE,
       offset: sessions.length,
       projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
@@ -306,17 +330,18 @@ export function Sessions() {
   const groupedByProject = useMemo(() => {
     const groups = new Map<
       string,
-      { projectName: string; projectColor: string; totalSeconds: number; sessions: SessionWithApp[] }
+      { projectName: string; projectColor: string; totalSeconds: number; boostedCount: number; sessions: SessionWithApp[] }
     >();
     for (const session of sessions) {
       const projectName = session.project_name ?? "Unassigned";
       const projectColor = session.project_color ?? "#64748b";
       const key = projectName.toLowerCase();
       if (!groups.has(key)) {
-        groups.set(key, { projectName, projectColor, totalSeconds: 0, sessions: [] });
+        groups.set(key, { projectName, projectColor, totalSeconds: 0, boostedCount: 0, sessions: [] });
       }
       const group = groups.get(key)!;
       group.totalSeconds += session.duration_seconds;
+      if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
       group.sessions.push(session);
     }
     return Array.from(groups.values()).sort((a, b) => {
@@ -333,6 +358,7 @@ export function Sessions() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {sessions.length} sessions in {groupedByProject.length} projects
+          {activeProjectId === "unassigned" && <span className="text-amber-300 ml-1">(all dates)</span>}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -440,6 +466,15 @@ export function Sessions() {
                     <Badge variant="secondary" className="text-xs">
                       {group.sessions.length} sessions
                     </Badge>
+                    {group.boostedCount > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300"
+                        title={`${group.boostedCount} session(s) with rate multiplier`}
+                      >
+                        <CircleDollarSign className="h-3 w-3" />
+                        {group.boostedCount} boosted
+                      </span>
+                    )}
                   </div>
                   <span className="font-mono text-sm">{formatDuration(group.totalSeconds)}</span>
                 </div>
@@ -593,19 +628,46 @@ export function Sessions() {
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
             Session actions ({ctxMenu.session.app_name})
           </div>
+          {ctxMenu.session.suggested_project_id !== undefined && ctxMenu.session.suggested_project_name && ctxMenu.session.project_name === null && (
+            <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
+                <span className="text-[11px] text-sky-200">
+                  AI sugeruje: <span className="font-medium">{ctxMenu.session.suggested_project_name}</span>
+                  {ctxMenu.session.suggested_confidence !== undefined && (
+                    <span className="ml-1 opacity-75">({((ctxMenu.session.suggested_confidence) * 100).toFixed(0)}%)</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 mt-1.5">
+                <button
+                  className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
+                  onClick={() => void handleAcceptSuggestion(ctxMenu.session, { stopPropagation: () => {} } as React.MouseEvent)}
+                >
+                  Accept
+                </button>
+                <button
+                  className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
+                  onClick={() => void handleRejectSuggestion(ctxMenu.session, { stopPropagation: () => {} } as React.MouseEvent)}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          )}
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
             Rate multiplier (default x2): <span className="font-mono">{formatMultiplierLabel(ctxMenu.session.rate_multiplier)}</span>
           </div>
-          <div className="grid grid-cols-2 gap-1 px-1 pb-1">
+          <div className="flex gap-1.5 px-1.5 pb-1.5">
             <button
-              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
               onClick={() => void handleSetRateMultiplier(2)}
             >
-              x2
+              Boost x2
             </button>
             <button
-              className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
               onClick={() => void handleCustomRateMultiplier()}
             >
               Custom...

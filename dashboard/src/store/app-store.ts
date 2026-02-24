@@ -9,6 +9,8 @@ interface AppState {
   // Navigation
   currentPage: string;
   setCurrentPage: (page: string) => void;
+  helpTab: string;
+  setHelpTab: (tab: string) => void;
   sessionsFocusDate: string | null;
   setSessionsFocusDate: (date: string | null) => void;
   clearSessionsFocusDate: () => void;
@@ -31,6 +33,10 @@ interface AppState {
   autoImportDone: boolean;
   autoImportResult: AutoImportResult | null;
   setAutoImportDone: (done: boolean, result?: AutoImportResult | null) => void;
+
+  // First run state
+  firstRun: boolean;
+  setFirstRun: (firstRun: boolean) => void;
 }
 
 function presetToRange(preset: TimePreset): DateRange {
@@ -70,6 +76,8 @@ function inferPreset(range: DateRange): TimePreset {
 export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>((set, get) => ({
   currentPage: "dashboard",
   setCurrentPage: (page) => set({ currentPage: page }),
+  helpTab: "quickstart",
+  setHelpTab: (tab) => set({ helpTab: tab }),
   sessionsFocusDate: null,
   setSessionsFocusDate: (date) => set({ sessionsFocusDate: date }),
   clearSessionsFocusDate: () => set({ sessionsFocusDate: null }),
@@ -136,4 +144,10 @@ export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>((
   autoImportResult: null,
   setAutoImportDone: (done, result) =>
     set({ autoImportDone: done, autoImportResult: result ?? null }),
+
+  firstRun: localStorage.getItem("timeflow_first_run") !== "false",
+  setFirstRun: (firstRun) => {
+    localStorage.setItem("timeflow_first_run", firstRun ? "true" : "false");
+    set({ firstRun });
+  },
 }));

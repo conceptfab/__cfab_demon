@@ -59,6 +59,13 @@ pub struct AutoSafeRollbackResult {
     pub skipped: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeterministicResult {
+    pub apps_with_rules: i64,
+    pub sessions_assigned: i64,
+    pub sessions_skipped: i64,
+}
+
 #[derive(Debug)]
 struct SessionContext {
     app_id: i64,
@@ -1029,6 +1036,148 @@ pub async fn rollback_last_auto_safe_run(app: AppHandle) -> Result<AutoSafeRollb
         run_id,
         reverted,
         skipped,
+    })
+}
+
+/// Layer 2: Deterministic assignment based on historical consistency.
+/// For apps where 100% of previously assigned sessions point to the same project,
+/// automatically assign unassigned sessions to that project.
+#[command]
+pub async fn apply_deterministic_assignment(
+    app: AppHandle,
+    min_history: Option<i64>,
+) -> Result<DeterministicResult, String> {
+    let mut conn = db::get_connection(&app)?;
+    let min_sessions = min_history.unwrap_or(5).max(1);
+
+    // Find apps where ALL assigned sessions (duration > 10s) map to exactly one project
+    let app_rules: Vec<(i64, i64)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT app_id, project_id
+                 FROM (
+                     SELECT app_id, project_id, COUNT(*) as cnt,
+                            COUNT(DISTINCT project_id) as distinct_projects
+                     FROM sessions
+                     WHERE project_id IS NOT NULL AND duration_seconds > 10
+                     GROUP BY app_id
+                     HAVING distinct_projects = 1 AND cnt >= ?1
+                 )",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![min_sessions], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    let apps_with_rules = app_rules.len() as i64;
+    let mut sessions_assigned: i64 = 0;
+    let mut sessions_skipped: i64 = 0;
+
+    if app_rules.is_empty() {
+        return Ok(DeterministicResult {
+            apps_with_rules: 0,
+            sessions_assigned: 0,
+            sessions_skipped: 0,
+        });
+    }
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    for (app_id, project_id) in &app_rules {
+        // Verify the target project still exists and is not excluded/frozen
+        let project_valid: bool = tx
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1 AND is_excluded = 0",
+                rusqlite::params![project_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !project_valid {
+            continue;
+        }
+
+        // Get unassigned sessions for this app
+        let session_ids: Vec<(i64, String, String, String)> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT id, date, start_time, end_time
+                     FROM sessions
+                     WHERE app_id = ?1 AND project_id IS NULL AND duration_seconds > 10",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![app_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        for (session_id, date, start_time, end_time) in &session_ids {
+            let updated = tx
+                .execute(
+                    "UPDATE sessions SET project_id = ?1 WHERE id = ?2 AND project_id IS NULL",
+                    rusqlite::params![project_id, session_id],
+                )
+                .map_err(|e| e.to_string())?;
+
+            if updated == 0 {
+                sessions_skipped += 1;
+                continue;
+            }
+
+            // Sync file_activities for the same time range
+            tx.execute(
+                "UPDATE file_activities
+                 SET project_id = ?1
+                 WHERE app_id = ?2
+                   AND date = ?3
+                   AND last_seen > ?4
+                   AND first_seen < ?5
+                   AND project_id IS NULL",
+                rusqlite::params![project_id, app_id, date, start_time, end_time],
+            )
+            .map_err(|e| e.to_string())?;
+
+            // Record feedback for ML training
+            tx.execute(
+                "INSERT INTO assignment_feedback (
+                    suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
+                 ) VALUES (NULL, ?1, ?2, NULL, ?3, 'deterministic_rule', datetime('now'))",
+                rusqlite::params![session_id, app_id, project_id],
+            )
+            .map_err(|e| e.to_string())?;
+            increment_feedback_counter(&tx);
+
+            sessions_assigned += 1;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    if sessions_assigned > 0 {
+        log::info!(
+            "Deterministic assignment: {} apps with rules, {} sessions assigned, {} skipped",
+            apps_with_rules,
+            sessions_assigned,
+            sessions_skipped
+        );
+    }
+
+    Ok(DeterministicResult {
+        apps_with_rules,
+        sessions_assigned,
+        sessions_skipped,
     })
 }
 

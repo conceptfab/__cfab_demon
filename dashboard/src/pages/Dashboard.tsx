@@ -32,7 +32,6 @@ import type {
   ProjectWithStats,
   SessionWithApp,
   StackedBarData,
-  DateRange,
 } from "@/lib/db-types";
 
 function AutoImportBanner() {
@@ -85,69 +84,7 @@ function AutoImportBanner() {
   );
 }
 
-function TopProjectsList({ projects, allProjectsList, dateRange, setSessionsFocusDate }: { projects: ProjectTimeRow[], allProjectsList: ProjectWithStats[], dateRange: DateRange, setSessionsFocusDate: (date: string | null) => void }) {
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  const setSessionsFocusProject = useAppStore((s) => s.setSessionsFocusProject);
-
-  if (projects.length === 0) {
-    return (
-      <p className="py-3 text-xs text-muted-foreground">
-        No projects found.
-      </p>
-    );
-  }
-
-  const maxSeconds = Math.max(1, ...projects.map((p) => p.seconds));
-
-  return (
-    <div className="space-y-0.5">
-      {projects.map((p, i) => (
-        <div
-          key={`${p.name}-${i}`}
-          className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
-          onClick={() => {
-            setSessionsFocusDate(dateRange.end);
-            if (p.name === "Unassigned") {
-              setSessionsFocusProject("unassigned");
-            } else {
-              const prj = allProjectsList.find(x => x.name === p.name);
-              if (prj) setSessionsFocusProject(prj.id);
-              else setSessionsFocusProject(null);
-            }
-            setCurrentPage("sessions");
-          }}
-          title={`Click to view sessions for ${p.name}`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <span className="truncate text-xs font-medium">{p.name}</span>
-              </div>
-              <div className="flex items-center gap-2 mt-0.5 ml-5.5">
-                <span className="text-[10px] text-muted-foreground">
-                  {p.session_count} sessions
-                </span>
-                <span className="text-[10px] text-muted-foreground">
-                  {p.app_count} apps
-                </span>
-              </div>
-            </div>
-            <span className="whitespace-nowrap font-mono text-xs text-muted-foreground">
-              {formatDuration(p.seconds)}
-            </span>
-          </div>
-          <div className="ml-5.5 h-1 rounded-full bg-secondary">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${(p.seconds / maxSeconds) * 100}%`, backgroundColor: p.color }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
+import { TopProjectsList } from "@/components/dashboard/TopProjectsList";
 
 export function Dashboard() {
   const {
@@ -187,6 +124,16 @@ export function Dashboard() {
     const apps = new Set(unassigned.map((s) => s.app_id));
     const seconds = unassigned.reduce((sum, s) => sum + s.duration_seconds, 0);
     return { sessionCount: unassigned.length, appCount: apps.size, seconds };
+  }, [todaySessions]);
+  const boostedByProject = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of todaySessions) {
+      if ((s.rate_multiplier ?? 1) > 1.000_001) {
+        const key = (s.project_name ?? "unassigned").toLowerCase();
+        map.set(key, (map.get(key) ?? 0) + 1);
+      }
+    }
+    return map;
   }, [todaySessions]);
   const timelineGranularity: "hour" | "day" = timePreset === "today" ? "hour" : "day";
   const projectTimelineSeriesLimit = useMemo(() => {
@@ -453,6 +400,7 @@ export function Dashboard() {
                     allProjectsList={projectsList}
                     dateRange={dateRange}
                     setSessionsFocusDate={setSessionsFocusDate}
+                    boostedByProject={boostedByProject}
                   />
           </CardContent>
         </Card>

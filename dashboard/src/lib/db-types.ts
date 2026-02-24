@@ -112,6 +112,12 @@ export interface AutoSafeRollbackResult {
   skipped: number;
 }
 
+export interface DeterministicResult {
+  apps_with_rules: number;
+  sessions_assigned: number;
+  sessions_skipped: number;
+}
+
 export interface DashboardStats {
   total_seconds: number;
   app_count: number;

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   Play,
   Square,
@@ -13,16 +13,19 @@ import { Button } from "@/components/ui/button";
 import {
   getDaemonStatus,
   getDaemonLogs,
+  getSessionCount,
   setAutostartEnabled,
   startDaemon,
   stopDaemon,
   restartDaemon,
 } from "@/lib/tauri";
+import { loadSessionSettings } from "@/lib/user-settings";
 import { formatPathForDisplay, cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
 
 export function DaemonControl() {
   const [status, setStatus] = useState<DaemonStatus | null>(null);
+  const [filteredUnassigned, setFilteredUnassigned] = useState<number>(0);
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -31,6 +34,10 @@ export function DaemonControl() {
 
   const refreshStatus = useCallback(() => {
     getDaemonStatus().then(setStatus).catch(console.error);
+    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+    getSessionCount({ unassigned: true, minDuration })
+      .then((n) => setFilteredUnassigned(Math.max(0, n)))
+      .catch(console.error);
   }, []);
 
   const refreshLogs = useCallback(() => {
@@ -146,11 +153,11 @@ export function DaemonControl() {
               </div>
             </div>
 
-            {status?.needs_assignment && (
+            {filteredUnassigned > 0 && (
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                 <span className="font-semibold mr-1">*</span>
                 <span>
-                  {status.unassigned_sessions} unassigned sessions in {status.unassigned_apps} apps.
+                  {filteredUnassigned} unassigned sessions.
                   Assign them in Sessions/Timeline.
                 </span>
               </div>

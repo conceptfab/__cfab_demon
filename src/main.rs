@@ -18,21 +18,21 @@ pub const APP_NAME: &str = "TIMEFLOW Demon";
 pub const VERSION: &str = include_str!("../VERSION");
 
 fn main() {
-    // Initialize file logging
+    // Handle command-line arguments (fast path, no logging needed)
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--version" || arg == "-v") {
+        println!("{}", VERSION);
+        return;
+    }
+
+    // Initialize file logging for actual daemon run
     init_logging();
     log::info!("{} - starting...", APP_NAME);
+    log::logger().flush();
 
     // Application directories — created once at startup
     if let Err(e) = config::ensure_app_dirs() {
         log::warn!("Failed to create application directories: {}", e);
-    }
-
-    // Handle command-line arguments
-    let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|arg| arg == "--version" || arg == "-v") {
-        println!("{}", VERSION);
-        log::logger().flush();
-        return;
     }
 
     // Single instance lock

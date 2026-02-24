@@ -166,9 +166,18 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 return 0;
             }
         };
+    let mut app_project_stmt = match tx.prepare_cached(
+        "SELECT project_id FROM applications WHERE id = ?1",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to prepare app project select: {}", e);
+            return 0;
+        }
+    };
     let mut session_stmt = match tx.prepare_cached(
-        "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(app_id, start_time) DO UPDATE SET
            end_time = excluded.end_time,
            duration_seconds = excluded.duration_seconds,
@@ -213,6 +222,12 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
             Err(_) => continue,
         };
 
+        // Layer 1: inherit project_id from application if assigned
+        let app_project_id: Option<i64> = app_project_stmt
+            .query_row([app_id], |row| row.get(0))
+            .ok()
+            .flatten();
+
         for session in &app_data.sessions {
             let date = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&session.start) {
                 dt.format("%Y-%m-%d").to_string()
@@ -230,7 +245,8 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 session.start,
                 session.end,
                 session.duration_seconds,
-                date
+                date,
+                app_project_id
             ]) {
                 log::warn!(
                     "Failed to upsert session for app_id {} start {}: {}",
@@ -271,6 +287,7 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
 
     drop(app_insert_stmt);
     drop(app_select_stmt);
+    drop(app_project_stmt);
     drop(session_stmt);
     drop(file_stmt);
 

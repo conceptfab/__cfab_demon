@@ -37,6 +37,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::send_bug_report,
             commands::import_json_files,
             commands::check_file_imported,
             commands::get_imported_files,
@@ -123,6 +124,7 @@ pub fn run() {
             commands::run_auto_safe_assignment,
             commands::rollback_last_auto_safe_run,
             commands::auto_run_if_needed,
+            commands::apply_deterministic_assignment,
             commands::append_sync_log,
             commands::get_sync_log,
             commands::get_db_info,

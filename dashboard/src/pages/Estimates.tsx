@@ -7,7 +7,6 @@ import {
   FolderOpen,
   Save,
   SlidersHorizontal,
-  TrendingUp,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -375,7 +374,7 @@ export function Estimates() {
                               setCurrentPage("sessions");
                             }}
                           >
-                            <TrendingUp className="h-3 w-3" />
+                            <CircleDollarSign className="h-3 w-3" />
                             {row.multiplied_session_count} boosted
                           </button>
                         )}

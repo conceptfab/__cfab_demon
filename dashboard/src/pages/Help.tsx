@@ -13,17 +13,21 @@ import {
   Settings,
   Info,
   ChevronRight,
-  Languages
+  Languages,
+  Rocket,
+  ArrowRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { useAppStore } from "@/store/app-store";
 
 type Language = "pl" | "en";
 
 export function Help() {
-  const [lang, setLang] = useState<Language>("en");
+  const [lang, setLang] = useState<Language>("pl");
+  const { helpTab: activeTab, setHelpTab: setActiveTab, setCurrentPage } = useAppStore();
 
   const t = (pl: string, en: string) => (lang === "pl" ? pl : en);
 
@@ -34,24 +38,24 @@ export function Help() {
           <h1 className="text-3xl font-light tracking-[0.1em]">
             {t("Witaj w", "Welcome to")}{" "}
             <span className="font-semibold tracking-[0.2em]">TIMEFLOW</span>
+            <span className="ml-2 font-[100] text-sm text-muted-foreground/40 tracking-normal antialiased">
+              β v0.1.32
+            </span>
           </h1>
-          <p className="text-muted-foreground">
-            {t(
-              "Twoje centrum przejrzystości i efektywności pracy.",
-              "Your center for clarity and work efficiency."
-            )}
-          </p>
+
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setLang(lang === "pl" ? "en" : "pl")}
-          className="w-fit flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border-primary/20 hover:bg-primary/5 transition-colors"
-        >
-          <Languages className="h-3.5 w-3.5" />
-          {lang === "pl" ? "ENGLISH VERSION" : "POLSKA WERSJA"}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setLang(lang === "pl" ? "en" : "pl")}
+            className="w-fit flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border-primary/20 hover:bg-primary/5 transition-colors"
+          >
+            <Languages className="h-3.5 w-3.5" />
+            {lang === "pl" ? "ENGLISH VERSION" : "POLSKA WERSJA"}
+          </Button>
+        </div>
       </div>
 
       <Card className="border-primary/20 bg-primary/5">
@@ -62,8 +66,8 @@ export function Help() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p>
-            <strong>TIMEFLOW</strong>{" "}
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            <strong className="text-foreground font-semibold">TIMEFLOW</strong>{" "}
             {t(
               "to zaawansowany ekosystem do monitorowania czasu pracy, który działa dyskretnie w tle, pozwalając Ci skupić się na tym, co naprawdę ważne.",
               "is an advanced time tracking ecosystem that works discreetly in the background, letting you focus on what really matters."
@@ -94,8 +98,8 @@ export function Help() {
               </h4>
               <p className="text-xs text-muted-foreground">
                 {t(
-                  "Wykorzystujemy uczenie maszynowe (AI) do nauki Twoich nawyków i automatycznego porządkowania sesji.",
-                  "We use machine learning (AI) to learn your habits and automatically organize sessions."
+                  "Lokalny silnik uczenia maszynowego (ML) uczy się Twoich nawyków bez wysyłania danych do chmury.",
+                  "A local machine learning (ML) engine learns your habits without sending any data to the cloud."
                 )}
               </p>
             </div>
@@ -125,6 +129,19 @@ export function Help() {
             </div>
           </div>
         </CardContent>
+        <div className="border-t border-primary/10 p-4">
+          <Button
+            variant="ghost"
+            className="w-full justify-between group hover:bg-primary/5 text-primary"
+            onClick={() => setCurrentPage("quickstart")}
+          >
+            <span className="flex items-center gap-2">
+              <Rocket className="h-4 w-4" />
+              {t("Uruchom samouczek Szybki Start", "Launch Quick Start Tutorial")}
+            </span>
+            <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+          </Button>
+        </div>
       </Card>
 
       <div className="space-y-4 pt-4">
@@ -133,7 +150,8 @@ export function Help() {
         </h2>
 
         <Tabs
-          defaultValue="dashboard"
+          value={activeTab}
+          onValueChange={setActiveTab}
           orientation="vertical"
           className="flex flex-col md:flex-row gap-8 items-start"
         >
@@ -141,52 +159,52 @@ export function Help() {
             <HelpTabTrigger
               value="dashboard"
               icon={<LayoutDashboard className="h-3.5 w-3.5" />}
-              label="DASHBOARD"
+              label="Dashboard"
             />
             <HelpTabTrigger
               value="sessions"
               icon={<List className="h-3.5 w-3.5" />}
-              label={t("SESJE", "SESSIONS")}
+              label="Sessions"
             />
             <HelpTabTrigger
               value="projects"
               icon={<FolderKanban className="h-3.5 w-3.5" />}
-              label={t("PROJEKTY", "PROJECTS")}
+              label="Projects"
             />
             <HelpTabTrigger
               value="estimates"
               icon={<CircleDollarSign className="h-3.5 w-3.5" />}
-              label={t("WYCENY", "ESTIMATES")}
+              label="Estimates"
             />
             <HelpTabTrigger
               value="apps"
               icon={<AppWindow className="h-3.5 w-3.5" />}
-              label={t("APLIKACJE", "APPLICATIONS")}
+              label="Applications"
             />
             <HelpTabTrigger
               value="analysis"
               icon={<BarChart3 className="h-3.5 w-3.5" />}
-              label={t("ANALIZA CZASU", "TIME ANALYSIS")}
+              label="Time Analysis"
             />
             <HelpTabTrigger
               value="ai"
               icon={<Brain className="h-3.5 w-3.5" />}
-              label="AI & MODEL"
+              label="AI & Model"
             />
             <HelpTabTrigger
               value="data"
               icon={<Import className="h-3.5 w-3.5" />}
-              label={t("DANE", "DATA")}
+              label="Data"
             />
             <HelpTabTrigger
               value="daemon"
               icon={<Cpu className="h-3.5 w-3.5" />}
-              label="DAEMON"
+              label="Daemon"
             />
             <HelpTabTrigger
               value="settings"
               icon={<Settings className="h-3.5 w-3.5" />}
-              label={t("USTAWIENIA", "SETTINGS")}
+              label="Settings"
             />
           </TabsList>
 
@@ -230,6 +248,7 @@ export function Help() {
                     "Refresh button synchronizing data directly from the running Daemon."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -248,8 +267,8 @@ export function Help() {
                     "Adding comments and notes – right-click a session to create a description."
                   ),
                   t(
-                    "Mnożniki stawek (Multiplier) – definiuj stawki x1.5, x2, x3 lub własne dla pracy o wyższej wartości.",
-                    "Rate multipliers – define rates like x1.5, x2, x3 or custom for higher-value work."
+                    "Mnożniki stawek (Multiplier) – definiuj stawki x2 lub własne dla pracy o wyższej wartości.",
+                    "Rate multipliers – define rate x2 or custom for higher-value work."
                   ),
                   t(
                     "AI Suggestions – przeglądaj i zatwierdzaj (lub odrzucaj) sugestie projektów wygenerowane przez AI.",
@@ -272,6 +291,7 @@ export function Help() {
                     "Sorting and filtering by application, project, date, and duration."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -314,6 +334,7 @@ export function Help() {
                     "Exclude – remove projects from view without permanently deleting them from the database."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -352,6 +373,7 @@ export function Help() {
                     "Ability to compare time value spent on different task groups."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -386,6 +408,7 @@ export function Help() {
                     "Directly assign an entire application to a specific project."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -420,16 +443,17 @@ export function Help() {
                     "Timeline Project View – detailed timeline broken down by specific tasks."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
             <TabsContent value="ai" className="m-0 focus-visible:outline-none">
               <SectionHelp
                 icon={<Brain className="h-6 w-6" />}
-                title="AI & MODEL"
+                title="AI & Model"
                 description={t(
-                  "Automatyzacja procesów porządkowania danych przy użyciu uczenia maszynowego.",
-                  "Automation of data organization processes using machine learning."
+                  "Autorski, lokalny silnik ML (Rust) analizujący kontekst aplikacji, pory dnia oraz tokeny z nazw plików i okien. Działa w 100% offline.",
+                  "Proprietary local ML engine (Rust) analyzing app context, time of day, and file/window tokens. Works 100% offline."
                 )}
                 footer={t("Kluczowe funkcjonalności", "Key Functionalities")}
                 features={[
@@ -456,9 +480,98 @@ export function Help() {
                   t(
                     "Tryby: Off (tylko ręczne), Suggest (podpowiedzi AI), Auto-Safe (automatyzacja).",
                     "Modes: Off (manual only), Suggest (AI hints), Auto-Safe (automation)."
+                  ),
+                  t(
+                    "Prywatność 100% – Silnik ML działa lokalnie w Rust, nie korzysta z zewnętrznych API (jak ChatGPT) i nie wymaga internetu.",
+                    "100% Privacy – The ML engine runs locally in Rust, doesn't use external APIs (like ChatGPT), and requires no internet."
                   )
                 ]}
-              />
+                t={t}
+              >
+                <div className="text-sm space-y-4 text-foreground/90 leading-relaxed">
+                  <p>
+                    {t(
+                      "W aplikacji TIMEFLOW zastosowano autorski, lokalny model uczenia maszynowego (Local ML) typu klasyfikacyjnego, napisanego w języku Rust. Nie jest to zewnętrzne AI (jak ChatGPT), lecz algorytm działający w 100% na Twoim komputerze, co zapewnia pełną prywatność.",
+                      "TIMEFLOW uses a proprietary, local machine learning model (Local ML) for classification, written in Rust. It's not an external AI (like ChatGPT), but an algorithm running 100% on your computer, ensuring full privacy."
+                    )}
+                  </p>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
+                      {t("1. Na czym się uczy?", "1. What does it learn from?")}
+                    </h4>
+                    <p>
+                      {t(
+                        "Model analizuje Twoje historyczne, ręczne przypisania sesji do projektów. Podczas „treningu” buduje tablice statystyczne oparte na trzech głównych filarach:",
+                        "The model analyzes your historical, manual session assignments to projects. During 'training', it builds statistical tables based on three main pillars:"
+                      )}
+                    </p>
+                    <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
+                      <li>
+                        <strong>{t("Kontekst aplikacji", "Application context")}:</strong>{" "}
+                        {t("Które programy przypisujesz do których projektów.", "Which programs you assign to which projects.")}
+                      </li>
+                      <li>
+                        <strong>{t("Kontekst czasowy", "Time context")}:</strong>{" "}
+                        {t("Pora dnia i dzień tygodnia (Twoje nawyki pracy).", "Time of day and day of the week (your work habits).")}
+                      </li>
+                      <li>
+                        <strong>{t("Analiza tokenów", "Token analysis")}:</strong>{" "}
+                        {t("Słowa kluczowe wyciągane z nazw plików i okien (najsilniejszy sygnał).", "Keywords extracted from file names and windows (the strongest signal).")}
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
+                      {t("2. Algorytm decyzyjny", "2. Decision algorithm")}
+                    </h4>
+                    <p>
+                      {t(
+                        "Model nie zgaduje „na ślepo” – dla każdej nieprzypisanej sesji wylicza:",
+                        "The model doesn't guess 'blindly' – for each unassigned session it calculates:"
+                      )}
+                    </p>
+                    <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
+                      <li>
+                        <strong>{t("Confidence (Ufność)", "Confidence")}:</strong>{" "}
+                        {t("Wartość od 0 do 1 określaną przez funkcję sigmoidalną.", "A value from 0 to 1 determined by a sigmoid function.")}
+                      </li>
+                      <li>
+                        <strong>{t("Evidence Count", "Evidence Count")}:</strong>{" "}
+                        {t("Liczba historycznych „dowodów” potwierdzających decyzję.", "The number of historical 'proofs' confirming the decision.")}
+                      </li>
+                      <li>
+                        <strong>{t("Margin", "Margin")}:</strong>{" "}
+                        {t("Różnica między najlepszym a drugim dopasowaniem (chroni przed błędami).", "The difference between the best and second match (protects against errors).")}
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
+                      {t("3. Tryby pracy", "3. Operating modes")}
+                    </h4>
+                    <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
+                      <li>
+                        <strong>Suggest:</strong>{" "}
+                        {t("Podpowiada projekt w menu (wymaga >60% pewności).", "Suggests a project in the menu (requires >60% confidence).")}
+                      </li>
+                      <li>
+                        <strong>Auto-Safe:</strong>{" "}
+                        {t("Samodzielnie przypisuje sesje (wymaga >85% pewności i silnych dowodów).", "Automatically assigns sessions (requires >85% confidence and strong evidence).")}
+                      </li>
+                    </ul>
+                  </div>
+
+                  <p className="text-xs italic text-muted-foreground pt-2 border-t border-border/10">
+                    {t(
+                      "Wszystkie dane modelu są przechowywane w Twojej lokalnej bazie SQLite (assignment_model_state itp.), więc system staje się mądrzejszy z każdą Twoją korektą.",
+                      "All model data is stored in your local SQLite database (assignment_model_state, etc.), so the system gets smarter with each of your corrections."
+                    )}
+                  </p>
+                </div>
+              </SectionHelp>
             </TabsContent>
 
             <TabsContent value="data" className="m-0 focus-visible:outline-none">
@@ -492,6 +605,7 @@ export function Help() {
                     "Backup & Database – access to SQLite database maintenance tools."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -526,6 +640,7 @@ export function Help() {
                     "Version Insight – information on the compatibility of Daemon and Dashboard versions."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
 
@@ -564,6 +679,7 @@ export function Help() {
                     "Emergency Clear – option to completely clear the database and settings."
                   )
                 ]}
+                t={t}
               />
             </TabsContent>
           </div>
@@ -603,19 +719,22 @@ function HelpTabTrigger({
     </TabsTrigger>
   );
 }
-
 function SectionHelp({
   icon,
   title,
   description,
   features,
-  footer
+  footer,
+  t,
+  children
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
   features: string[];
   footer: string;
+  t: (pl: string, en: string) => string;
+  children?: React.ReactNode;
 }) {
   return (
     <Card className="border-none bg-muted/20 shadow-none">
@@ -632,18 +751,22 @@ function SectionHelp({
           </p>
         </div>
       </CardHeader>
-      <CardContent>
-        <h4 className="text-[10px] font-bold mb-4 uppercase tracking-[0.15em] text-muted-foreground/60 border-b border-border/10 pb-2">
-          {footer}
-        </h4>
-        <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
-          {features.map((f, i) => (
-            <li key={i} className="flex items-start gap-3 text-sm group">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary transition-colors" />
-              <span className="text-foreground/80 leading-snug">{f}</span>
-            </li>
-          ))}
-        </ul>
+      <CardContent className="space-y-6">
+        {children}
+
+        <div className="mt-8">
+          <h4 className="text-[10px] font-bold mb-4 uppercase tracking-[0.15em] text-muted-foreground/60 border-b border-border/10 pb-2">
+            {footer}
+          </h4>
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
+            {features.map((f, i) => (
+              <li key={i} className="flex items-start gap-3 text-sm group">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary transition-colors" />
+                <span className="text-foreground/80 leading-snug">{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </CardContent>
     </Card>
   );

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, CircleDollarSign } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -44,6 +44,8 @@ interface SegmentData {
   comment?: string | null;
   hasSuggestion?: boolean;
   suggestedProjectName?: string;
+  suggestedProjectId?: number;
+  suggestedConfidence?: number;
 }
 
 interface TimelineRow {
@@ -51,6 +53,7 @@ interface TimelineRow {
   color: string;
   totalSeconds: number;
   isUnassigned: boolean;
+  boostedCount: number;
   segments: SegmentData[];
 }
 
@@ -190,7 +193,7 @@ function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
       ...prev,
       sessionIds: [...prevIds, ...nextIds],
       sessionId: prevIds[0] ?? prev.sessionId,
-      fragmentCount: (prev.fragmentCount ?? prevIds.length ?? 1) + (segment.fragmentCount ?? nextIds.length ?? 1),
+      fragmentCount: (prev.fragmentCount ?? 1) + (segment.fragmentCount ?? 1),
       fragments: mergedFragments,
       appNames,
       appName: appLabel,
@@ -199,6 +202,9 @@ function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
       rateMultiplier: mergedRate,
       mixedRateMultiplier,
       hasSuggestion: Boolean(prev.hasSuggestion) || Boolean(segment.hasSuggestion),
+      suggestedProjectName: (prev.suggestedConfidence ?? 0) >= (segment.suggestedConfidence ?? 0) ? (prev.suggestedProjectName || segment.suggestedProjectName) : (segment.suggestedProjectName || prev.suggestedProjectName),
+      suggestedProjectId: (prev.suggestedConfidence ?? 0) >= (segment.suggestedConfidence ?? 0) ? (prev.suggestedProjectId ?? segment.suggestedProjectId) : (segment.suggestedProjectId ?? prev.suggestedProjectId),
+      suggestedConfidence: Math.max(prev.suggestedConfidence ?? 0, segment.suggestedConfidence ?? 0),
     };
   }
 
@@ -519,11 +525,19 @@ export function ProjectDayTimeline({
           color: projectColor,
           totalSeconds: 0,
           isUnassigned,
+          boostedCount: 0,
           segments: [],
         });
       }
       const row = byProject.get(key)!;
       row.totalSeconds += item.s.duration_seconds;
+      if ((item.s.rate_multiplier ?? 1) > 1.000_001) row.boostedCount++;
+      const suggestedProject = projects?.find(p => p.id === item.s.suggested_project_id);
+      const suggestedName = item.s.suggested_project_name && item.s.suggested_project_name !== "?" 
+        ? item.s.suggested_project_name 
+        : suggestedProject?.name || "Unknown";
+      const hasValidSuggestion = item.s.suggested_project_id !== undefined;
+
       row.segments.push({
         sessionId: item.s.id,
         startMs: item.startMs,
@@ -532,8 +546,10 @@ export function ProjectDayTimeline({
         appId: item.s.app_id,
         rateMultiplier: item.s.rate_multiplier ?? 1,
         comment: item.s.comment,
-        hasSuggestion: item.s.suggested_project_id !== undefined,
-        suggestedProjectName: item.s.suggested_project_name,
+        hasSuggestion: hasValidSuggestion,
+        suggestedProjectName: suggestedName,
+        suggestedProjectId: item.s.suggested_project_id,
+        suggestedConfidence: item.s.suggested_confidence,
       });
     }
 
@@ -547,6 +563,7 @@ export function ProjectDayTimeline({
           color: item.ms.project_color,
           totalSeconds: 0,
           isUnassigned: false,
+          boostedCount: 0,
           segments: [],
         });
       }
@@ -618,11 +635,16 @@ export function ProjectDayTimeline({
             {model.rows.map((row) => (
               <div key={row.name} className="grid grid-cols-[170px_1fr_90px] items-center gap-3">
                 <div
-                  className={`truncate text-xs ${row.isUnassigned ? "text-amber-300" : "text-muted-foreground"}`}
+                  className={`flex items-center gap-1 text-xs ${row.isUnassigned ? "text-amber-300" : "text-muted-foreground"}`}
                   title={row.name}
                 >
-                  <span className="inline-block h-2.5 w-2.5 rounded-full mr-2" style={{ backgroundColor: row.color }} />
-                  {row.name}
+                  <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                  <span className="truncate">{row.name}</span>
+                  {row.boostedCount > 0 && (
+                    <span className="shrink-0" title={`${row.boostedCount} boosted session(s)`}>
+                      <CircleDollarSign className="h-3 w-3 text-emerald-400" />
+                    </span>
+                  )}
                 </div>
                 <div
                   className="relative h-7 rounded-md border border-border/60 bg-secondary/20 overflow-hidden"
@@ -662,8 +684,8 @@ export function ProjectDayTimeline({
                     const titleRate = hasBoostedRate || segment.mixedRateMultiplier
                       ? ` • $$$ ${multiplierLabel}`
                       : "";
-                    const titleSuggestion = segment.hasSuggestion && !segment.isManual
-                      ? ` • AI: ${segment.suggestedProjectName ?? "?"} (kliknij PPM aby przypisać)`
+                    const titleSuggestion = segment.hasSuggestion && !segment.isManual && segment.suggestedProjectName
+                      ? ` • AI Suggests: ${segment.suggestedProjectName}${segment.suggestedConfidence !== undefined ? ` (${(segment.suggestedConfidence * 100).toFixed(0)}%)` : ""} (Right-click to assign)`
                       : "";
                     return (
                       <div
@@ -744,11 +766,44 @@ export function ProjectDayTimeline({
             ) : null}
           </div>
           {ctxMenu.segment.hasSuggestion && !ctxMenu.segment.isManual && (
-            <div className="mx-1 mb-1 flex items-center gap-1.5 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
-              <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
-              <span className="text-[11px] text-sky-200">
-                AI sugeruje: <span className="font-medium">{ctxMenu.segment.suggestedProjectName ?? "?"}</span>
-              </span>
+            <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
+                <span className="text-[11px] text-sky-200">
+                  AI sugeruje: <span className="font-medium">{ctxMenu.segment.suggestedProjectName || "Unknown"}</span>
+                  {ctxMenu.segment.suggestedConfidence !== undefined && (
+                    <span className="ml-1 opacity-75">({((ctxMenu.segment.suggestedConfidence) * 100).toFixed(0)}%)</span>
+                  )}
+                </span>
+              </div>
+              {onAssignSession && ctxMenu.segment.suggestedProjectId !== undefined && (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <button
+                    className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
+                    onClick={() => {
+                      const sessionIds = getSegmentSessionIds(ctxMenu.segment);
+                      if (sessionIds.length > 0 && ctxMenu.segment.suggestedProjectId !== undefined) {
+                        void onAssignSession(sessionIds, ctxMenu.segment.suggestedProjectId);
+                      }
+                      setCtxMenu(null);
+                    }}
+                  >
+                    Accept
+                  </button>
+                  <button
+                    className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
+                    onClick={() => {
+                      const sessionIds = getSegmentSessionIds(ctxMenu.segment);
+                      if (sessionIds.length > 0) {
+                        void onAssignSession(sessionIds, null);
+                      }
+                      setCtxMenu(null);
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
+              )}
             </div>
           )}
           <div className="h-px bg-border my-1" />
@@ -779,15 +834,15 @@ export function ProjectDayTimeline({
                     : formatMultiplierLabel(ctxMenu.segment.rateMultiplier)}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-1 px-1 pb-1">
+              <div className="flex gap-1.5 px-1.5 pb-1.5">
                 <button
-                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
                   onClick={() => void handleSetRateMultiplier(2)}
                 >
-                  x2
+                  Boost x2
                 </button>
                 <button
-                  className="rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
                   onClick={() => void handleCustomRateMultiplier()}
                 >
                   Custom...
