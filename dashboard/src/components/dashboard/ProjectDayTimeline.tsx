@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -40,6 +41,8 @@ interface SegmentData {
   manualTitle?: string;
   manualSession?: ManualSessionWithProject;
   comment?: string | null;
+  hasSuggestion?: boolean;
+  suggestedProjectName?: string;
 }
 
 interface TimelineRow {
@@ -187,6 +190,7 @@ function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
       endMs: Math.max(prev.endMs, segment.endMs),
       rateMultiplier: mergedRate,
       mixedRateMultiplier,
+      hasSuggestion: Boolean(prev.hasSuggestion) || Boolean(segment.hasSuggestion),
     };
   }
 
@@ -261,12 +265,14 @@ export function ProjectDayTimeline({
     (e: React.MouseEvent, segment: SegmentData, rowName: string, rowColor: string) => {
       const canAssign = Boolean(onAssignSession && projects?.length);
       const canSetMultiplier = Boolean(onUpdateSessionRateMultiplier);
-      if (!canAssign && !canSetMultiplier) return;
+      const canComment = Boolean(onUpdateSessionComment);
+      const hasSuggestion = Boolean(segment.hasSuggestion);
+      if (!canAssign && !canSetMultiplier && !canComment && !hasSuggestion) return;
       e.preventDefault();
       e.stopPropagation();
       setCtxMenu({ type: "assign", x: e.clientX, y: e.clientY, segment, rowName, rowColor });
     },
-    [onAssignSession, onUpdateSessionRateMultiplier, projects]
+    [onAssignSession, onUpdateSessionRateMultiplier, onUpdateSessionComment, projects]
   );
 
   const handleTimelineContextMenu = useCallback(
@@ -509,6 +515,8 @@ export function ProjectDayTimeline({
         appId: item.s.app_id,
         rateMultiplier: item.s.rate_multiplier ?? 1,
         comment: item.s.comment,
+        hasSuggestion: item.s.suggested_project_id !== undefined,
+        suggestedProjectName: item.s.suggested_project_name,
       });
     }
 
@@ -637,6 +645,9 @@ export function ProjectDayTimeline({
                     const titleRate = hasBoostedRate || segment.mixedRateMultiplier
                       ? ` • $$$ ${multiplierLabel}`
                       : "";
+                    const titleSuggestion = segment.hasSuggestion && !segment.isManual
+                      ? ` • AI: ${segment.suggestedProjectName ?? "?"} (kliknij PPM aby przypisać)`
+                      : "";
                     return (
                       <div
                         key={`${row.name}-${idx}-${segment.startMs}`}
@@ -647,7 +658,7 @@ export function ProjectDayTimeline({
                           backgroundColor: row.color,
                           opacity: 0.9,
                         }}
-                        title={`${titleBase}: ${fmtHourMinute(segment.startMs)} - ${fmtHourMinute(segment.endMs)}${titleFragments}${titleRate}`}
+                        title={`${titleBase}: ${fmtHourMinute(segment.startMs)} - ${fmtHourMinute(segment.endMs)}${titleFragments}${titleRate}${titleSuggestion}`}
                         onContextMenu={
                           !segment.isManual
                             ? (e) => handleSegmentContextMenu(e, segment, row.name, row.color)
@@ -658,6 +669,11 @@ export function ProjectDayTimeline({
                       >
                         {segment.isManual && (
                           <div className="absolute inset-0 rounded-sm" style={HATCH_STYLE} />
+                        )}
+                        {segment.hasSuggestion && !segment.isManual && (
+                          <div className="pointer-events-none absolute left-0.5 top-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
+                            <Sparkles className="h-2.5 w-2.5 text-sky-300" />
+                          </div>
                         )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
                           <div className="pointer-events-none absolute right-0.5 top-0.5 rounded bg-black/35 px-1 py-[1px] text-[9px] font-semibold leading-none text-emerald-100 shadow-sm">
@@ -710,6 +726,14 @@ export function ProjectDayTimeline({
               </span>
             ) : null}
           </div>
+          {ctxMenu.segment.hasSuggestion && !ctxMenu.segment.isManual && (
+            <div className="mx-1 mb-1 flex items-center gap-1.5 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
+              <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
+              <span className="text-[11px] text-sky-200">
+                AI sugeruje: <span className="font-medium">{ctxMenu.segment.suggestedProjectName ?? "?"}</span>
+              </span>
+            </div>
+          )}
           <div className="h-px bg-border my-1" />
           <button
             className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-between rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"

@@ -1,6 +1,6 @@
-Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku). Przygotuj szczegółowy raport.md
+Aplikacja działa poprawnie, ale przeanalizuj kod projektem pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku). Przygotuj aplikacje do dynamicznego rozwoju. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 
-- przygotowanie do dynamicznego rozwoju aplikacji
+<!-- - przygotowanie do dynamicznego rozwoju aplikacji -->
 
 <!-- - AI w 95% trafia, czy nie mozna dodac automatycznego dodawania sesji do projektu? z ioknką AI. Tylko sesje poniżej danego - ustalanego progu maja być w poczekalni. Cały proces ma być elementem trenigu modelu. -->
 
