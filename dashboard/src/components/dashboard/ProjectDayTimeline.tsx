@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PromptModal } from "@/components/ui/prompt-modal";
 import { formatDuration } from "@/lib/utils";
 import {
   normalizeHexColor,
@@ -61,6 +62,13 @@ interface ClusterDetailsState {
   rowName: string;
   rowColor: string;
   segment: SegmentData;
+}
+
+interface PromptConfig {
+  title: string;
+  initialValue: string;
+  onConfirm: (val: string) => void;
+  description?: string;
 }
 
 const HATCH_STYLE: React.CSSProperties = {
@@ -241,6 +249,7 @@ export function ProjectDayTimeline({
 }: Props) {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
+  const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -345,18 +354,22 @@ export function ProjectDayTimeline({
         ? 1
         : (typeof ctxMenu.segment.rateMultiplier === "number" ? ctxMenu.segment.rateMultiplier : 1);
     const suggested = current > 1 ? current : 2;
-    const raw = window.prompt(
-      "Set session rate multiplier (> 0). Use 1 to reset:",
-      String(suggested)
-    );
-    if (raw == null) return;
-    const normalizedRaw = raw.trim().replace(",", ".");
-    const parsed = Number(normalizedRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      window.alert("Multiplier must be a positive number.");
-      return;
-    }
-    await handleSetRateMultiplier(parsed);
+
+    setPromptConfig({
+      title: "Set session rate multiplier",
+      description: "Set multiplier (> 0). Use 1 to reset.",
+      initialValue: String(suggested),
+      onConfirm: async (raw) => {
+        const normalizedRaw = raw.trim().replace(",", ".");
+        const parsed = Number(normalizedRaw);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          window.alert("Multiplier must be a positive number.");
+          return;
+        }
+        await handleSetRateMultiplier(parsed);
+      }
+    });
+    setCtxMenu(null);
   }, [ctxMenu, handleSetRateMultiplier]);
 
   const handleEditComment = useCallback(async () => {
@@ -364,17 +377,21 @@ export function ProjectDayTimeline({
     const sessionIds = getSegmentSessionIds(ctxMenu.segment);
     if (sessionIds.length !== 1) return;
     const current = ctxMenu.segment.comment ?? "";
-    const raw = window.prompt(
-      "Komentarz do sesji (zostaw puste aby usunąć):",
-      current
-    );
-    if (raw == null) return;
-    const trimmed = raw.trim();
-    try {
-      await onUpdateSessionComment(sessionIds[0], trimmed || null);
-    } catch (err) {
-      console.error("Failed to update session comment:", err);
-    }
+    const sessionId = sessionIds[0];
+
+    setPromptConfig({
+      title: "Komentarz do sesji",
+      description: "(zostaw puste aby usunąć)",
+      initialValue: current,
+      onConfirm: async (raw) => {
+        const trimmed = raw.trim();
+        try {
+          await onUpdateSessionComment(sessionId, trimmed || null);
+        } catch (err) {
+          console.error("Failed to update session comment:", err);
+        }
+      }
+    });
     setCtxMenu(null);
   }, [ctxMenu, onUpdateSessionComment]);
 
@@ -959,6 +976,14 @@ export function ProjectDayTimeline({
           </button>
         </div>
       )}
+      <PromptModal
+        open={promptConfig !== null}
+        onOpenChange={(open) => !open && setPromptConfig(null)}
+        title={promptConfig?.title ?? ""}
+        description={promptConfig?.description}
+        initialValue={promptConfig?.initialValue ?? ""}
+        onConfirm={promptConfig?.onConfirm ?? (() => {})}
+      />
     </Card>
   );
 }

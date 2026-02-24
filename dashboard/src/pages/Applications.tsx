@@ -4,9 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getApplications, getMonitoredApps, addMonitoredApp, removeMonitoredApp, renameMonitoredApp, resetAppTime, updateAppColor, deleteAppAndData, renameApplication } from "@/lib/tauri";
+import { PromptModal } from "@/components/ui/prompt-modal";
 import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import type { AppWithStats, MonitoredApp } from "@/lib/db-types";
+
+interface PromptConfig {
+  title: string;
+  initialValue: string;
+  onConfirm: (val: string) => void;
+  description?: string;
+}
 
 type SortKey = "display_name" | "total_seconds" | "session_count" | "last_used";
 
@@ -17,6 +25,7 @@ export function Applications() {
   const [sortKey, setSortKey] = useState<SortKey>("total_seconds");
   const [sortAsc, setSortAsc] = useState(false);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
+  const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
 
   // Monitored apps state
   const [monitored, setMonitored] = useState<MonitoredApp[]>([]);
@@ -76,22 +85,26 @@ export function Applications() {
 
   const handleRenameMonitoredApp = async (app: MonitoredApp) => {
     const current = app.display_name || app.exe_name;
-    const next = window.prompt("Rename monitored application:", current);
-    if (next == null) return;
-    const trimmed = next.trim();
-    if (!trimmed) {
-      window.alert("Application name cannot be empty.");
-      return;
-    }
-    if (trimmed === current) return;
+    setPromptConfig({
+      title: "Rename monitored application",
+      initialValue: current,
+      onConfirm: async (next) => {
+        const trimmed = next.trim();
+        if (!trimmed) {
+          window.alert("Application name cannot be empty.");
+          return;
+        }
+        if (trimmed === current) return;
 
-    try {
-      await renameMonitoredApp(app.exe_name, trimmed);
-      loadMonitored();
-    } catch (e) {
-      console.error("Failed to rename monitored app:", e);
-      window.alert(`Failed to rename monitored app: ${String(e)}`);
-    }
+        try {
+          await renameMonitoredApp(app.exe_name, trimmed);
+          loadMonitored();
+        } catch (e) {
+          console.error("Failed to rename monitored app:", e);
+          window.alert(`Failed to rename monitored app: ${String(e)}`);
+        }
+      }
+    });
   };
 
   const filtered = useMemo(() => {
@@ -126,22 +139,27 @@ export function Applications() {
 
   const handleRenameApp = async (app: AppWithStats) => {
     const current = app.display_name || app.executable_name;
-    const next = window.prompt("Rename application (display name):", current);
-    if (next == null) return;
-    const trimmed = next.trim();
-    if (!trimmed) {
-      window.alert("Application name cannot be empty.");
-      return;
-    }
-    if (trimmed === current) return;
+    setPromptConfig({
+      title: "Rename application",
+      description: "(display name)",
+      initialValue: current,
+      onConfirm: async (next) => {
+        const trimmed = next.trim();
+        if (!trimmed) {
+          window.alert("Application name cannot be empty.");
+          return;
+        }
+        if (trimmed === current) return;
 
-    try {
-      await renameApplication(app.id, trimmed);
-      triggerRefresh();
-    } catch (e) {
-      console.error("Failed to rename application:", e);
-      window.alert(`Failed to rename application: ${String(e)}`);
-    }
+        try {
+          await renameApplication(app.id, trimmed);
+          triggerRefresh();
+        } catch (e) {
+          console.error("Failed to rename application:", e);
+          window.alert(`Failed to rename application: ${String(e)}`);
+        }
+      }
+    });
   };
 
   const handleDeleteApp = async (app: AppWithStats) => {
@@ -388,6 +406,14 @@ export function Applications() {
           </table>
         </CardContent>
       </Card>
+      <PromptModal
+        open={promptConfig !== null}
+        onOpenChange={(open) => !open && setPromptConfig(null)}
+        title={promptConfig?.title ?? ""}
+        description={promptConfig?.description}
+        initialValue={promptConfig?.initialValue ?? ""}
+        onConfirm={promptConfig?.onConfirm ?? (() => {})}
+      />
     </div>
   );
 }

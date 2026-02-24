@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getSessions, getProjects, assignSessionToProject, deleteSession, updateSessionRateMultiplier, updateSessionComment } from "@/lib/tauri";
+import { PromptModal } from "@/components/ui/prompt-modal";
 import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { addDays, format, parseISO, subDays } from "date-fns";
@@ -14,6 +15,13 @@ interface ContextMenu {
   x: number;
   y: number;
   session: SessionWithApp;
+}
+
+interface PromptConfig {
+  title: string;
+  initialValue: string;
+  onConfirm: (val: string) => void;
+  description?: string;
 }
 type RangeMode = "daily" | "weekly";
 
@@ -36,6 +44,7 @@ export function Sessions() {
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed");
+  const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 100;
   const minDuration = useMemo(() => {
@@ -163,39 +172,47 @@ export function Sessions() {
     if (!ctxMenu) return;
     const current = typeof ctxMenu.session.rate_multiplier === "number" ? ctxMenu.session.rate_multiplier : 1;
     const suggested = current > 1 ? current : 2;
-    const raw = window.prompt(
-      "Set session rate multiplier (> 0). Use 1 to reset:",
-      String(suggested)
-    );
-    if (raw == null) return;
-    const normalizedRaw = raw.trim().replace(",", ".");
-    const parsed = Number(normalizedRaw);
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      window.alert("Multiplier must be a positive number.");
-      return;
-    }
-    await handleSetRateMultiplier(parsed);
+    
+    setPromptConfig({
+      title: "Set session rate multiplier",
+      description: "Set multiplier (> 0). Use 1 to reset.",
+      initialValue: String(suggested),
+      onConfirm: async (raw) => {
+        const normalizedRaw = raw.trim().replace(",", ".");
+        const parsed = Number(normalizedRaw);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          window.alert("Multiplier must be a positive number.");
+          return;
+        }
+        await handleSetRateMultiplier(parsed);
+      }
+    });
+    setCtxMenu(null);
   }, [ctxMenu, handleSetRateMultiplier]);
 
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu) return;
     const current = ctxMenu.session.comment ?? "";
-    const raw = window.prompt(
-      "Komentarz do sesji (zostaw puste aby usunąć):",
-      current
-    );
-    if (raw == null) return;
-    const trimmed = raw.trim();
-    try {
-      await updateSessionComment(ctxMenu.session.id, trimmed || null);
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === ctxMenu.session.id ? { ...s, comment: trimmed || null } : s
-        )
-      );
-    } catch (err) {
-      console.error("Failed to update session comment:", err);
-    }
+    const sessionId = ctxMenu.session.id;
+
+    setPromptConfig({
+      title: "Komentarz do sesji",
+      description: "(zostaw puste aby usunąć)",
+      initialValue: current,
+      onConfirm: async (raw) => {
+        const trimmed = raw.trim();
+        try {
+          await updateSessionComment(sessionId, trimmed || null);
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.id === sessionId ? { ...s, comment: trimmed || null } : s
+            )
+          );
+        } catch (err) {
+          console.error("Failed to update session comment:", err);
+        }
+      }
+    });
     setCtxMenu(null);
   }, [ctxMenu]);
 
@@ -636,6 +653,15 @@ export function Sessions() {
           </div>
         </div>
       )}
+      {/* Prompt modal replacement for window.prompt */}
+      <PromptModal
+        open={promptConfig !== null}
+        onOpenChange={(open) => !open && setPromptConfig(null)}
+        title={promptConfig?.title ?? ""}
+        description={promptConfig?.description}
+        initialValue={promptConfig?.initialValue ?? ""}
+        onConfirm={promptConfig?.onConfirm ?? (() => {})}
+      />
     </div>
   );
 }
