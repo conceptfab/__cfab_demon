@@ -28,9 +28,9 @@ fn build_export_archive(
 
         // 2. Fetch Projects
         let project_query = if project_id.is_some() {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported FROM projects WHERE id = ?1"
+            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at FROM projects WHERE id = ?1"
         } else {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported FROM projects"
+            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at FROM projects"
         };
 
         let mut stmt = conn.prepare(project_query).map_err(|e| e.to_string())?;
@@ -45,6 +45,7 @@ fn build_export_archive(
                     excluded_at: row.get(5)?,
                     assigned_folder_path: row.get(6)?,
                     is_imported: row.get(7)?,
+                    frozen_at: row.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -61,6 +62,7 @@ fn build_export_archive(
                     excluded_at: row.get(5)?,
                     assigned_folder_path: row.get(6)?,
                     is_imported: row.get(7)?,
+                    frozen_at: row.get(8)?,
                 })
             })
             .map_err(|e| e.to_string())?

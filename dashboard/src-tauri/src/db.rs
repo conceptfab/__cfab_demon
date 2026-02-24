@@ -906,6 +906,16 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         db.execute("ALTER TABLE projects ADD COLUMN hourly_rate REAL", [])?;
     }
 
+    let has_projects_frozen_at: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='frozen_at'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_projects_frozen_at {
+        log::info!("Migrating projects: adding frozen_at");
+        db.execute("ALTER TABLE projects ADD COLUMN frozen_at TEXT", [])?;
+    }
+
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS estimate_settings (
             key TEXT PRIMARY KEY,

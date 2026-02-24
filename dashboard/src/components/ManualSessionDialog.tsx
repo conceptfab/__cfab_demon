@@ -201,7 +201,7 @@ export function ManualSessionDialog({
                 <SelectValue placeholder="Select a project" />
               </SelectTrigger>
               <SelectContent>
-                {projects.map((p) => (
+                {projects.filter((p) => !p.frozen_at).map((p) => (
                   <SelectItem key={p.id} value={String(p.id)}>
                     <div className="flex items-center gap-2">
                       <div

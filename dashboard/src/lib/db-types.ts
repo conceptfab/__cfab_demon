@@ -5,6 +5,7 @@ export interface Project {
   hourly_rate?: number | null;
   created_at: string;
   excluded_at?: string | null;
+  frozen_at?: string | null;
   assigned_folder_path?: string | null;
   is_imported: number;
 }

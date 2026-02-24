@@ -53,6 +53,7 @@ pub struct Project {
     pub hourly_rate: Option<f64>,
     pub created_at: String,
     pub excluded_at: Option<String>,
+    pub frozen_at: Option<String>,
     pub assigned_folder_path: Option<String>,
     pub is_imported: i64,
 }
@@ -64,6 +65,7 @@ pub struct ProjectWithStats {
     pub color: String,
     pub created_at: String,
     pub excluded_at: Option<String>,
+    pub frozen_at: Option<String>,
     pub total_seconds: i64,
     pub app_count: i64,
     pub last_activity: Option<String>,

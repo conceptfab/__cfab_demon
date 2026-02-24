@@ -350,7 +350,8 @@ fn query_projects_with_stats(
                 (SELECT MAX(ms.end_time)
                  FROM manual_sessions ms
                  WHERE ms.project_id = p.id) as last_manual_activity,
-                p.assigned_folder_path
+                p.assigned_folder_path,
+                p.frozen_at
          FROM projects p
          LEFT JOIN applications a ON a.project_id = p.id
          WHERE {}
@@ -381,6 +382,7 @@ fn query_projects_with_stats(
                 app_count: row.get(5)?,
                 last_activity,
                 assigned_folder_path: row.get(8)?,
+                frozen_at: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -438,6 +440,88 @@ pub(crate) fn collect_project_subfolders(roots: &[ProjectFolder]) -> Vec<(String
 }
 
 // ==================== Tauri Commands ====================
+
+#[tauri::command]
+pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    conn.execute(
+        "UPDATE projects SET frozen_at = datetime('now') WHERE id = ?1 AND excluded_at IS NULL",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    conn.execute(
+        "UPDATE projects SET frozen_at = NULL WHERE id = ?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct AutoFreezeResult {
+    pub frozen_count: i64,
+    pub unfrozen_count: i64,
+}
+
+#[tauri::command]
+pub async fn auto_freeze_projects(
+    app: AppHandle,
+    threshold_days: Option<i64>,
+) -> Result<AutoFreezeResult, String> {
+    let days = threshold_days.unwrap_or(14).max(1);
+    let conn = db::get_connection(&app)?;
+
+    // Freeze projects inactive longer than threshold (no sessions or manual sessions in N days)
+    let frozen = conn
+        .execute(
+            "UPDATE projects
+             SET frozen_at = datetime('now')
+             WHERE excluded_at IS NULL
+               AND frozen_at IS NULL
+               AND id NOT IN (
+                   SELECT DISTINCT p.id FROM projects p
+                   JOIN applications a ON a.project_id = p.id
+                   JOIN sessions s ON s.app_id = a.id
+                   WHERE s.end_time >= datetime('now', '-' || ?1 || ' days')
+                   UNION
+                   SELECT DISTINCT project_id FROM manual_sessions
+                   WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+               )",
+            [days],
+        )
+        .map_err(|e| e.to_string())? as i64;
+
+    // Unfreeze projects that regained activity within the threshold
+    let unfrozen = conn
+        .execute(
+            "UPDATE projects
+             SET frozen_at = NULL
+             WHERE frozen_at IS NOT NULL
+               AND excluded_at IS NULL
+               AND id IN (
+                   SELECT DISTINCT p.id FROM projects p
+                   JOIN applications a ON a.project_id = p.id
+                   JOIN sessions s ON s.app_id = a.id
+                   WHERE s.end_time >= datetime('now', '-' || ?1 || ' days')
+                   UNION
+                   SELECT DISTINCT project_id FROM manual_sessions
+                   WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+               )",
+            [days],
+        )
+        .map_err(|e| e.to_string())? as i64;
+
+    Ok(AutoFreezeResult {
+        frozen_count: frozen,
+        unfrozen_count: unfrozen,
+    })
+}
 
 #[tauri::command]
 pub async fn get_projects(app: AppHandle) -> Result<Vec<ProjectWithStats>, String> {
@@ -505,6 +589,7 @@ pub async fn create_project(
         hourly_rate: None,
         created_at: chrono::Local::now().to_rfc3339(),
         excluded_at: None,
+        frozen_at: None,
         assigned_folder_path: normalized_folder,
         is_imported: 0,
     })
@@ -779,6 +864,7 @@ pub async fn create_project_from_folder(
         hourly_rate: None,
         created_at: chrono::Local::now().to_rfc3339(),
         excluded_at: None,
+        frozen_at: None,
         assigned_folder_path: None,
         is_imported: 0,
     })

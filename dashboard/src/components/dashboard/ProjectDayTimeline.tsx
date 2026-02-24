@@ -745,8 +745,8 @@ export function ProjectDayTimeline({
                   <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
                   <span className="truncate">Unassigned</span>
                 </button>
-                {projects && projects.length > 0 ? (
-                  projects.map((p) => (
+                {projects && projects.filter((p) => !p.frozen_at).length > 0 ? (
+                  projects.filter((p) => !p.frozen_at).map((p) => (
                     <button
                       key={p.id}
                       className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"

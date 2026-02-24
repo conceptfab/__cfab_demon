@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, CircleOff, TimerReset, RefreshCw, Wand2, ChevronDown, ChevronRight, CalendarPlus, Trash2 } from "lucide-react";
+import { Plus, CircleOff, TimerReset, RefreshCw, Wand2, ChevronDown, ChevronRight, CalendarPlus, Trash2, Snowflake, Flame } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,9 @@ import {
   excludeProject,
   restoreProject,
   deleteProject,
+  freezeProject,
+  unfreezeProject,
+  autoFreezeProjects,
   getApplications,
   assignAppToProject,
   getProjectFolders,
@@ -30,6 +33,7 @@ import {
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
 import { formatDuration, formatPathForDisplay } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
+import { loadFreezeSettings } from "@/lib/user-settings";
 import type {
   ProjectWithStats,
   AppWithStats,
@@ -152,6 +156,15 @@ export function Projects() {
   };
 
   useEffect(() => {
+    const { thresholdDays } = loadFreezeSettings();
+    autoFreezeProjects(thresholdDays).then(({ frozen_count, unfrozen_count }) => {
+      if (frozen_count > 0 || unfrozen_count > 0) {
+        triggerRefresh();
+      }
+    }).catch(() => {/* ignore — feature not yet compiled */});
+  }, []);
+
+  useEffect(() => {
     Promise.allSettled([
       getProjects(),
       getExcludedProjects(),
@@ -224,6 +237,16 @@ export function Projects() {
 
   const handleRestore = async (id: number) => {
     await restoreProject(id);
+    triggerRefresh();
+  };
+
+  const handleFreeze = async (id: number) => {
+    await freezeProject(id);
+    triggerRefresh();
+  };
+
+  const handleUnfreeze = async (id: number) => {
+    await unfreezeProject(id);
     triggerRefresh();
   };
 
@@ -609,6 +632,11 @@ export function Projects() {
           </div>
           <CardTitle className="text-base flex items-center gap-2">
             {p.name}
+            {p.frozen_at && (
+              <span title={`Frozen since ${p.frozen_at.slice(0, 10)} — not shown in session assignment lists`}>
+                <Snowflake className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+              </span>
+            )}
             {renderDuplicateMarker(p)}
             {p.is_imported === 1 && (
               <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
@@ -628,6 +656,29 @@ export function Projects() {
           >
             <TimerReset className="h-3.5 w-3.5" />
           </Button>
+          {p.frozen_at ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-blue-400"
+              onClick={() => handleUnfreeze(p.id)}
+              title="Unfreeze project"
+              disabled={isDeleting}
+            >
+              <Flame className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => handleFreeze(p.id)}
+              title="Freeze project"
+              disabled={isDeleting}
+            >
+              <Snowflake className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -760,6 +811,11 @@ export function Projects() {
                         <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
                         <span className="flex min-w-0 flex-1 items-center gap-1.5">
                           <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
+                          {p.frozen_at && (
+                            <span title={`Frozen since ${p.frozen_at.slice(0, 10)}`}>
+                              <Snowflake className="h-3 w-3 text-blue-400 shrink-0" />
+                            </span>
+                          )}
                           {renderDuplicateMarker(p)}
                         </span>
                       </div>

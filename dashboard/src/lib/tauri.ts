@@ -86,6 +86,14 @@ export const restoreProject = (id: number) =>
   invoke<void>("restore_project", { id });
 export const deleteProject = (id: number) =>
   invoke<void>("delete_project", { id });
+export const freezeProject = (id: number) =>
+  invoke<void>("freeze_project", { id });
+export const unfreezeProject = (id: number) =>
+  invoke<void>("unfreeze_project", { id });
+export const autoFreezeProjects = (thresholdDays?: number) =>
+  invoke<{ frozen_count: number; unfrozen_count: number }>("auto_freeze_projects", {
+    thresholdDays: thresholdDays ?? null,
+  });
 export const assignAppToProject = (appId: number, projectId: number | null) =>
   invoke<void>("assign_app_to_project", { appId, projectId });
 export function assignSessionToProject(sessionId: number, projectId: number | null, source?: string) {

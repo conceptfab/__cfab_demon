@@ -14,6 +14,9 @@ import {
   loadSessionSettings,
   saveSessionSettings,
   type SessionSettings,
+  loadFreezeSettings,
+  saveFreezeSettings,
+  type FreezeSettings,
 } from "@/lib/user-settings";
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
@@ -46,6 +49,7 @@ export function Settings() {
   const [onlineSyncSettings, setOnlineSyncSettings] = useState<OnlineSyncSettings>(() =>
     loadOnlineSyncSettings()
   );
+  const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() => loadFreezeSettings());
   const [workingHoursError, setWorkingHoursError] = useState<string | null>(null);
   const [savedSettings, setSavedSettings] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
@@ -129,10 +133,12 @@ export function Settings() {
     });
     const savedSession = saveSessionSettings(sessionSettings);
     const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
+    const savedFreeze = saveFreezeSettings(freezeSettings);
 
     setWorkingHours(savedWorking);
     setSessionSettings(savedSession);
     setOnlineSyncSettings(savedOnlineSync);
+    setFreezeSettings(savedFreeze);
     setWorkingHoursError(null);
     setSavedSettings(true);
     triggerRefresh();
@@ -686,6 +692,46 @@ export function Settings() {
                     ? "Sync disabled in demo"
                     : "Sync now"}
               </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold">Project Freezing</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Projects inactive for a set period are automatically frozen and hidden from session assignment lists.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border border-border/70 bg-background/35 p-3">
+            <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto]">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Inactivity threshold</p>
+                <p className="text-xs leading-5 break-words text-muted-foreground">
+                  Number of days without activity after which a project is automatically frozen.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  step={1}
+                  aria-label="Freeze threshold in days"
+                  className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  value={freezeSettings.thresholdDays}
+                  onChange={(e) => {
+                    const val = Number.parseInt(e.target.value, 10);
+                    if (!Number.isNaN(val)) {
+                      setFreezeSettings((prev) => ({ ...prev, thresholdDays: val }));
+                      setSavedSettings(false);
+                    }
+                  }}
+                />
+                <span className="text-sm text-muted-foreground">days</span>
+              </div>
             </div>
           </div>
         </CardContent>

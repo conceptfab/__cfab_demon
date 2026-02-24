@@ -65,6 +65,47 @@ export function saveWorkingHoursSettings(next: WorkingHoursSettings): WorkingHou
   return normalized;
 }
 
+export interface FreezeSettings {
+  thresholdDays: number;
+}
+
+const FREEZE_STORAGE_KEY = "timeflow.settings.freeze";
+
+export const DEFAULT_FREEZE_SETTINGS: FreezeSettings = {
+  thresholdDays: 14,
+};
+
+function normalizeThresholdDays(value: unknown): number {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return DEFAULT_FREEZE_SETTINGS.thresholdDays;
+  }
+  return Math.min(365, Math.max(1, Math.round(value)));
+}
+
+export function loadFreezeSettings(): FreezeSettings {
+  if (typeof window === "undefined") return { ...DEFAULT_FREEZE_SETTINGS };
+  try {
+    const raw = window.localStorage.getItem(FREEZE_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_FREEZE_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<FreezeSettings>;
+    return {
+      thresholdDays: normalizeThresholdDays(parsed.thresholdDays),
+    };
+  } catch {
+    return { ...DEFAULT_FREEZE_SETTINGS };
+  }
+}
+
+export function saveFreezeSettings(next: FreezeSettings): FreezeSettings {
+  const normalized: FreezeSettings = {
+    thresholdDays: normalizeThresholdDays(next.thresholdDays),
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(FREEZE_STORAGE_KEY, JSON.stringify(normalized));
+  }
+  return normalized;
+}
+
 export interface SessionSettings {
   gapFillMinutes: number;
   rebuildOnStartup: boolean;
