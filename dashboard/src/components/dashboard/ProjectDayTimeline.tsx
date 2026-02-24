@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, CircleDollarSign } from "lucide-react";
+import { Sparkles, CircleDollarSign, MessageSquare } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -381,13 +381,15 @@ export function ProjectDayTimeline({
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu || ctxMenu.type !== "assign" || !onUpdateSessionComment) return;
     const sessionIds = getSegmentSessionIds(ctxMenu.segment);
-    if (sessionIds.length !== 1) return;
+    if (sessionIds.length === 0) return;
     const current = ctxMenu.segment.comment ?? "";
     const sessionId = sessionIds[0];
 
     setPromptConfig({
-      title: "Komentarz do sesji",
-      description: "(zostaw puste aby usunąć)",
+      title: "Session comment",
+      description: sessionIds.length > 1
+        ? `(applies to first session of ${sessionIds.length}; leave empty to remove)`
+        : "(leave empty to remove)",
       initialValue: current,
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
@@ -536,7 +538,7 @@ export function ProjectDayTimeline({
       const suggestedName = item.s.suggested_project_name && item.s.suggested_project_name !== "?" 
         ? item.s.suggested_project_name 
         : suggestedProject?.name || "Unknown";
-      const hasValidSuggestion = item.s.suggested_project_id !== undefined;
+      const hasValidSuggestion = item.s.suggested_project_id != null;
 
       row.segments.push({
         sessionId: item.s.id,
@@ -685,7 +687,7 @@ export function ProjectDayTimeline({
                       ? ` • $$$ ${multiplierLabel}`
                       : "";
                     const titleSuggestion = segment.hasSuggestion && !segment.isManual && segment.suggestedProjectName
-                      ? ` • AI Suggests: ${segment.suggestedProjectName}${segment.suggestedConfidence !== undefined ? ` (${(segment.suggestedConfidence * 100).toFixed(0)}%)` : ""} (Right-click to assign)`
+                      ? ` • AI Suggests: ${segment.suggestedProjectName}${segment.suggestedConfidence != null ? ` (${(segment.suggestedConfidence * 100).toFixed(0)}%)` : ""} (Right-click to assign)`
                       : "";
                     return (
                       <div
@@ -712,6 +714,11 @@ export function ProjectDayTimeline({
                         {segment.hasSuggestion && !segment.isManual && (
                           <div className="pointer-events-none absolute left-0.5 top-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
                             <Sparkles className="h-2.5 w-2.5 text-sky-300" />
+                          </div>
+                        )}
+                        {segment.comment && (
+                          <div className="pointer-events-none absolute left-0.5 bottom-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
+                            <MessageSquare className="h-2.5 w-2.5 text-amber-300" />
                           </div>
                         )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
@@ -770,13 +777,13 @@ export function ProjectDayTimeline({
               <div className="flex items-center gap-1.5">
                 <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
                 <span className="text-[11px] text-sky-200">
-                  AI sugeruje: <span className="font-medium">{ctxMenu.segment.suggestedProjectName || "Unknown"}</span>
-                  {ctxMenu.segment.suggestedConfidence !== undefined && (
+                  AI suggests: <span className="font-medium">{ctxMenu.segment.suggestedProjectName || "Unknown"}</span>
+                  {ctxMenu.segment.suggestedConfidence != null && (
                     <span className="ml-1 opacity-75">({((ctxMenu.segment.suggestedConfidence) * 100).toFixed(0)}%)</span>
                   )}
                 </span>
               </div>
-              {onAssignSession && ctxMenu.segment.suggestedProjectId !== undefined && (
+              {onAssignSession && ctxMenu.segment.suggestedProjectId != null && (
                 <div className="flex items-center gap-1 mt-1.5">
                   <button
                     className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
@@ -811,7 +818,7 @@ export function ProjectDayTimeline({
             className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-between rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
             onClick={handleOpenClusterDetails}
           >
-            <span>Detale sesji</span>
+            <span>Session details</span>
             {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
               <span className="font-mono text-[10px] opacity-80">
                 {(ctxMenu.segment.fragmentCount ?? 1)}
@@ -850,7 +857,7 @@ export function ProjectDayTimeline({
               </div>
             </>
           )}
-          {onUpdateSessionComment && !ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) === 1 && (
+          {onUpdateSessionComment && !ctxMenu.segment.isManual && (
             <>
               <div className="h-px bg-border my-1" />
               <button
@@ -858,7 +865,7 @@ export function ProjectDayTimeline({
                 onClick={() => void handleEditComment()}
               >
                 <span className="h-4 w-4 shrink-0 text-center text-muted-foreground">💬</span>
-                <span>{ctxMenu.segment.comment ? "Edytuj komentarz" : "Dodaj komentarz"}</span>
+                <span>{ctxMenu.segment.comment ? "Edit comment" : "Add comment"}</span>
               </button>
             </>
           )}

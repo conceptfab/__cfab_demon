@@ -519,7 +519,7 @@ export function Sessions() {
                         )}
                         {s.project_name === null && (
                           <div className="flex items-center gap-1 shrink-0">
-                            {s.suggested_project_id !== undefined &&
+                            {s.suggested_project_id != null &&
                             s.suggested_project_name &&
                             !dismissedSuggestions.has(s.id) ? (
                               <div className="flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1">
