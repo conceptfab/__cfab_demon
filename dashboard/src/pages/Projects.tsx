@@ -12,7 +12,8 @@ import {
   ChevronDown,
   ChevronRight,
   Snowflake,
-  Maximize2
+  Maximize2,
+  CircleDollarSign
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -766,7 +767,7 @@ export function Projects() {
               <p className="text-2xl font-black text-emerald-400 leading-none flex items-center gap-x-3">
                 <span>
                   {formatDuration(p.total_seconds)}
-                  <span className="ml-2">
+                  <span className="ml-2 text-[0.6em] font-[200] opacity-80">
                     / {formatMoney(estimates[p.id] || 0, currencyCode)}
                   </span>
                 </span>
@@ -774,7 +775,7 @@ export function Projects() {
                 <span className="flex items-center gap-2">
                   {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
                     <span title={`Boosted sessions: ${extraInfo.db_stats.manual_session_count}`}>
-                      <Flame className="h-5 w-5 text-amber-400 fill-amber-400/20" />
+                      <CircleDollarSign className="h-5 w-5 text-emerald-400 fill-emerald-500/10" />
                     </span>
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (

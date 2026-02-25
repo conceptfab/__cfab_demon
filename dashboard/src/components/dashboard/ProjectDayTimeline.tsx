@@ -684,7 +684,7 @@ export function ProjectDayTimeline({
                       ? ` • ${fragmentCount} sessions`
                       : "";
                     const titleRate = hasBoostedRate || segment.mixedRateMultiplier
-                      ? ` • $$$ ${multiplierLabel}`
+                      ? ` • ($) ${multiplierLabel}`
                       : "";
                     const titleSuggestion = segment.hasSuggestion && !segment.isManual && segment.suggestedProjectName
                       ? ` • AI Suggests: ${segment.suggestedProjectName}${segment.suggestedConfidence != null ? ` (${(segment.suggestedConfidence * 100).toFixed(0)}%)` : ""} (Right-click to assign)`
@@ -722,8 +722,8 @@ export function ProjectDayTimeline({
                           </div>
                         )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
-                          <div className="pointer-events-none absolute right-0.5 top-0.5 rounded bg-black/35 px-1 py-[1px] text-[9px] font-semibold leading-none text-emerald-100 shadow-sm">
-                            $$$
+                          <div className="pointer-events-none absolute right-0.5 top-0.5 flex items-center justify-center rounded bg-black/35 p-[1px] shadow-sm">
+                            <CircleDollarSign className="h-3 w-3 text-emerald-400" />
                           </div>
                         )}
                       </div>
@@ -972,8 +972,9 @@ export function ProjectDayTimeline({
                     </Badge>
                   ))}
                   {clusterDetailsSummary.boostedCount > 0 && (
-                    <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300">
-                      $$$ on {clusterDetailsSummary.boostedCount}/{clusterDetailsSummary.fragments.length}
+                    <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300 gap-1 flex items-center">
+                      <CircleDollarSign className="h-2.5 w-2.5" />
+                      <span>{clusterDetailsSummary.boostedCount}/{clusterDetailsSummary.fragments.length}</span>
                     </Badge>
                   )}
                 </div>
@@ -1001,8 +1002,9 @@ export function ProjectDayTimeline({
                           <div className="flex items-center gap-2">
                             <span className="truncate font-medium">{f.appName}</span>
                             {(multiplierValue > 1.000_001) && (
-                              <Badge variant="outline" className="h-4 text-[10px] border-emerald-500/40 text-emerald-300">
-                                $$$ {formatMultiplierLabel(multiplierValue)}
+                              <Badge variant="outline" className="h-4 text-[10px] border-emerald-500/40 text-emerald-300 gap-1 flex items-center">
+                                <CircleDollarSign className="h-2.5 w-2.5" />
+                                <span>{formatMultiplierLabel(multiplierValue)}</span>
                               </Badge>
                             )}
                           </div>
