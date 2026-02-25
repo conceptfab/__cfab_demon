@@ -18,7 +18,7 @@ import { useAppStore } from "@/store/app-store";
 type Language = "pl" | "en";
 
 export function QuickStart() {
-  const [lang, setLang] = useState<Language>("pl");
+  const [lang, setLang] = useState<Language>("en");
   const { setCurrentPage, setFirstRun } = useAppStore();
 
   const handleStart = () => {

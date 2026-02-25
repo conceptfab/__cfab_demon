@@ -40,7 +40,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
     const newAttachments: AttachedFile[] = [];
     for (let i = 0; i < files.length; i++) {
         if (files[i].size > MAX_FILE_SIZE) {
-            alert(`Plik ${files[i].name} jest za duży (max 5MB)`);
+            alert(`File ${files[i].name} is too large (max 5MB)`);
             continue;
         }
         newAttachments.push({
@@ -91,7 +91,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
       }, 2000);
     } catch (error) {
       console.error("BugHunter failed to send:", error);
-      alert(`Błąd wysyłki: ${error}`);
+      alert(`Sending failed: ${error}`);
       setIsSending(false);
     }
   };
@@ -109,7 +109,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             <DialogTitle className="text-xl font-semibold tracking-tight">BugHunter</DialogTitle>
           </div>
           <DialogDescription className="text-sm text-muted-foreground">
-            Znalazłeś błąd lub masz pomysł? Daj znać.
+            Found a bug or have an idea? Let us know.
           </DialogDescription>
         </DialogHeader>
 
@@ -118,15 +118,15 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
               <Check className="h-6 w-6 stroke-[3px]" />
             </div>
-            <p className="text-sm font-medium text-emerald-300">Zgłoszenie zostało wysłane!</p>
+            <p className="text-sm font-medium text-emerald-300">Report has been sent!</p>
           </div>
         ) : (
           <div className="space-y-4 pt-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="subject" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Temat (wersja {version})</Label>
+              <Label htmlFor="subject" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Subject (version {version})</Label>
               <Input
                 id="subject"
-                placeholder="Krótki opis błędu..."
+                placeholder="Short description of the bug..."
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="bg-secondary/20 border-border/40 text-[13px] h-9"
@@ -134,10 +134,10 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Szczegóły zgłoszenia</Label>
+              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Report details</Label>
               <textarea
                 id="message"
-                placeholder="Opisz błąd lub swój pomysł... Zaraz się tym zajmiemy."
+                placeholder="Describe the bug or your idea... We'll get right on it."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="flex min-h-[140px] w-full rounded-md border border-border/40 bg-secondary/20 px-3 py-2 text-[13px] shadow-sm placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-colors"
@@ -147,13 +147,13 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Załączniki (max 5MB/plik)</Label>
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Attachments (max 5MB/file)</Label>
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-1.5 text-[10px] text-sky-400 hover:text-sky-300 transition-colors font-semibold"
                 >
                     <Paperclip className="h-3 w-3" />
-                    DODAJ PLIKI
+                    ADD FILES
                 </button>
               </div>
               <input
@@ -190,7 +190,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                 onClick={onClose}
                 className="text-xs text-muted-foreground hover:text-foreground h-9 px-4"
               >
-                Anuluj
+                Cancel
               </Button>
               <Button
                 onClick={handleSend}
@@ -202,7 +202,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                 ) : (
                   <Send className="h-3.5 w-3.5" />
                 )}
-                {isSending ? "Wysyłanie..." : "Wyślij zgłoszenie"}
+                {isSending ? "Sending..." : "Send report"}
               </Button>
             </div>
           </div>

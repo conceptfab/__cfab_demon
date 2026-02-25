@@ -295,7 +295,7 @@ export function Sidebar() {
               className={cn(
                 "transition-all text-muted-foreground/30 hover:text-destructive active:scale-90"
               )}
-              title="BugHunter - zgłoś błąd"
+              title="BugHunter - report a bug"
             >
               <Bug className="h-4 w-4" />
             </button>

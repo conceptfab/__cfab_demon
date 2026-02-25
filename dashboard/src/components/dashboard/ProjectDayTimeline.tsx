@@ -923,7 +923,7 @@ export function ProjectDayTimeline({
                     className="inline-block h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: clusterDetails.rowColor }}
                   />
-                  <span className="truncate">Detale sesji</span>
+                  <span className="truncate">Session details</span>
                 </DialogTitle>
               </DialogHeader>
 

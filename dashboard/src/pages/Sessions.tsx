@@ -391,8 +391,8 @@ export function Sessions() {
     const sessionId = ctxMenu.session.id;
 
     setPromptConfig({
-      title: "Komentarz do sesji",
-      description: "(zostaw puste aby usunąć)",
+      title: "Session comment",
+      description: "(leave empty to remove)",
       initialValue: current,
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
@@ -664,7 +664,7 @@ export function Sessions() {
               <div className="flex items-center gap-1.5">
                 <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
                 <span className="text-[11px] text-sky-200">
-                  AI sugeruje: <span className="font-medium">{ctxMenu.session.suggested_project_name}</span>
+                  AI suggests: <span className="font-medium">{ctxMenu.session.suggested_project_name}</span>
                   {ctxMenu.session.suggested_confidence !== undefined && (
                     <span className="ml-1 opacity-75">({((ctxMenu.session.suggested_confidence) * 100).toFixed(0)}%)</span>
                   )}
@@ -710,7 +710,7 @@ export function Sessions() {
             onClick={() => void handleEditComment()}
           >
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span>{ctxMenu.session.comment ? "Edytuj komentarz" : "Dodaj komentarz"}</span>
+            <span>{ctxMenu.session.comment ? "Edit comment" : "Add comment"}</span>
           </button>
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
@@ -756,76 +756,7 @@ export function Sessions() {
         onConfirm={promptConfig?.onConfirm ?? (() => { })}
       />
 
-      {/* Context menu for assigning session to a project */}
-      {ctxMenu && (
-        <div
-          ref={ctxRef}
-          className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
-        >
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            Session actions ({ctxMenu.session.app_name})
-          </div>
-          <div className="h-px bg-border my-1" />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            Rate multiplier (default x2): <span className="font-mono">{formatMultiplierLabel(ctxMenu.session.rate_multiplier)}</span>
-          </div>
-          <div className="flex gap-1.5 px-1.5 pb-1.5">
-            <button
-              className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(2)}
-            >
-              Boost x2
-            </button>
-            <button
-              className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
-              onClick={() => void handleCustomRateMultiplier()}
-            >
-              Custom...
-            </button>
-          </div>
-          <div className="h-px bg-border my-1" />
-          <button
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-            onClick={() => void handleEditComment()}
-          >
-            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span>{ctxMenu.session.comment ? "Edytuj komentarz" : "Dodaj komentarz"}</span>
-          </button>
-          <div className="h-px bg-border my-1" />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            Assign to project
-          </div>
-          <div className="max-h-[58vh] overflow-y-auto pr-1">
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => handleAssign(null, "manual_session_unassign")}
-            >
-              <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-              <span className="truncate">Unassigned</span>
-            </button>
-            {projects.filter((p) => !p.frozen_at).length === 0 ? (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                No projects available
-              </div>
-            ) : (
-              projects.filter((p) => !p.frozen_at).map((p) => (
-                <button
-                  key={p.id}
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  onClick={() => handleAssign(p.id, "manual_session_change")}
-                >
-                  <div
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: p.color }}
-                  />
-                  <span className="truncate">{p.name}</span>
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

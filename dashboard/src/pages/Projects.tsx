@@ -340,7 +340,7 @@ export function Projects() {
   };
 
   const handleCompactProject = async (id: number) => {
-    if (!window.confirm("Kompaktować dane tego projektu? To usunie szczegółową historię plików (file activities), ale zachowa sesje i całkowity czas. Tej operacji nie można cofnąć.")) {
+    if (!window.confirm("Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This operation cannot be undone.")) {
       return;
     }
     setBusy(`compact-project:${id}`);
@@ -822,9 +822,9 @@ export function Projects() {
           {options?.inDialog && (
             <div className="mt-4 space-y-4 border-t pt-4 animate-in fade-in duration-500 text-sm">
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top 3 Aplikacje</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top 3 Applications</p>
                 {loadingExtra ? (
-                  <p className="text-xs text-muted-foreground italic">Ładowanie...</p>
+                  <p className="text-xs text-muted-foreground italic">Loading...</p>
                 ) : (
                   <div className="space-y-1.5">
                     {extraInfo?.top_apps.map((app, i) => (
@@ -834,7 +834,7 @@ export function Projects() {
                         <span className="font-mono text-emerald-400 shrink-0">{formatDuration(app.seconds)}</span>
                       </div>
                     ))}
-                    {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">Brak danych</p>}
+                    {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">No data</p>}
                     
                     <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
@@ -857,7 +857,7 @@ export function Projects() {
 
               <div className="rounded-lg bg-secondary/30 p-3 space-y-2">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center justify-between">
-                  Statystyki bazy danych
+                  Database Statistics
                   {extraInfo && (
                     <span className="text-[10px] lowercase font-normal opacity-70">
                       ~{(extraInfo.db_stats.estimated_size_bytes / 1024).toFixed(1)} KB
@@ -865,23 +865,23 @@ export function Projects() {
                   )}
                 </p>
                 {loadingExtra ? (
-                  <p className="text-center py-2 text-xs text-muted-foreground">Ładowanie statystyk...</p>
+                  <p className="text-center py-2 text-xs text-muted-foreground">Loading statistics...</p>
                 ) : (
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Sesje:</span>
+                      <span className="text-muted-foreground">Sessions:</span>
                       <span className="font-medium">{extraInfo?.db_stats.session_count || 0}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Pliki:</span>
+                      <span className="text-muted-foreground">Files:</span>
                       <span className="font-medium">{extraInfo?.db_stats.file_activity_count || 0}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Ręczne:</span>
+                      <span className="text-muted-foreground">Manual:</span>
                       <span className="font-medium">{extraInfo?.db_stats.manual_session_count || 0}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Komentarze:</span>
+                      <span className="text-muted-foreground">Comments:</span>
                       <span className="font-medium">{extraInfo?.db_stats.comment_count || 0}</span>
                     </div>
                   </div>
@@ -895,7 +895,7 @@ export function Projects() {
                     onClick={() => handleCompactProject(p.id)}
                     disabled={loadingExtra || !extraInfo || extraInfo.db_stats.file_activity_count === 0 || !!busy}
                   >
-                    {busy === `compact-project:${p.id}` ? "Kompaktowanie..." : "Kompaktuj dane projektu"}
+                    {busy === `compact-project:${p.id}` ? "Compacting..." : "Compact project data"}
                   </Button>
                 </div>
               </div>
