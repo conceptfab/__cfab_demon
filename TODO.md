@@ -1,4 +1,5 @@
 # TIMEFLOW - Project Rules
+
 - **KAŻDA NOWA FUNKCJA** musi zostać dopisana do panelu pomocy (`Help.tsx`).
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
@@ -6,11 +7,12 @@
 
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku (pomoc i quick start są wyjątkiem). Przeanalizuj kod i logikę odpowiedzialną za AI, bo mam wątpliwości co do jej poprawności. Wszystkie zachowania AI muszą być precyzyjnie komunikowane by zachowaniu uzytkownika było elementem treningu. Sprawdz czygoś nie warto poprawic w jej rdzeniu i założeniach.Przygotuj aplikacje do dynamicznego rozwoju. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 
+Kompaktowanie bazy projektu - statystyki
 
+Synchronizacja komentarzy
+Widoczniejsza ikona komentarza
 
 TODO ??
-copyright CONCEPTFAB
-
 
 - AI - testy
 
@@ -25,4 +27,3 @@ copyright CONCEPTFAB
 - zakladka koszty -lista projektów z kosztami wyliczonymi na bazie roboczogodzin i stawki godzinowej
 - aplikacja ikona/kolor do ustawienia
 - nr version
-
