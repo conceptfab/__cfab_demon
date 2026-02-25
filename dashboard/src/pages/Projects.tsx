@@ -13,7 +13,11 @@ import {
   ChevronRight,
   Snowflake,
   Maximize2,
-  CircleDollarSign
+  CircleDollarSign,
+  Type,
+  Clock,
+  Trophy,
+  Folders
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -120,6 +124,16 @@ export function Projects() {
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(false);
   const [estimates, setEstimates] = useState<Record<number, number>>({});
+
+  const SORT_STORAGE_KEY = "timeflow-dashboard-projects-sort";
+  const [sortBy, setSortBy] = useState(() => {
+    return localStorage.getItem(SORT_STORAGE_KEY) || "name-asc";
+  });
+
+  const FOLDERS_STORAGE_KEY = "timeflow-dashboard-projects-use-folders";
+  const [useFolders, setUseFolders] = useState(() => {
+    return localStorage.getItem(FOLDERS_STORAGE_KEY) !== "false";
+  });
 
   const SECTION_STORAGE_KEY = "timeflow-dashboard-projects-section-open";
   const LEGACY_SECTION_STORAGE_KEY = "cfab-dashboard-projects-section-open";
@@ -480,6 +494,51 @@ export function Projects() {
     }
   };
 
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      const valA = estimates[a.id] || 0;
+      const valB = estimates[b.id] || 0;
+
+      switch (sortBy) {
+        case "name-asc": return a.name.localeCompare(b.name);
+        case "name-desc": return b.name.localeCompare(a.name);
+        case "time-asc": return a.total_seconds - b.total_seconds;
+        case "time-desc": return b.total_seconds - a.total_seconds;
+        case "value-asc": return valA - valB;
+        case "value-desc": return valB - valA;
+        default: return 0;
+      }
+    });
+  }, [projects, sortBy, estimates]);
+
+  const sortedExcludedProjects = useMemo(() => {
+    return [...excludedProjects].sort((a, b) => {
+      const valA = estimates[a.id] || 0;
+      const valB = estimates[b.id] || 0;
+
+      switch (sortBy) {
+        case "name-asc": return a.name.localeCompare(b.name);
+        case "name-desc": return b.name.localeCompare(a.name);
+        case "time-asc": return a.total_seconds - b.total_seconds;
+        case "time-desc": return b.total_seconds - a.total_seconds;
+        case "value-asc": return valA - valB;
+        case "value-desc": return valB - valA;
+        default: return 0;
+      }
+    });
+  }, [excludedProjects, sortBy, estimates]);
+
+  const handleSortChange = (val: string) => {
+    setSortBy(val);
+    localStorage.setItem(SORT_STORAGE_KEY, val);
+  };
+
+  const toggleFolders = () => {
+    const next = !useFolders;
+    setUseFolders(next);
+    localStorage.setItem(FOLDERS_STORAGE_KEY, String(next));
+  };
+
   const visibleFolderCandidates = useMemo(() => {
     const existingProjectNames = new Set(
       [...projects, ...excludedProjects].map((project) => project.name.toLowerCase()),
@@ -560,7 +619,7 @@ export function Projects() {
     }
 
     const outside: ProjectWithStats[] = [];
-    for (const project of projects) {
+    for (const project of sortedProjects) {
       // 1. Exact match by candidate name
       const root = rootByProjectName.get(project.name.toLowerCase());
       if (root && grouped.has(root)) {
@@ -584,7 +643,7 @@ export function Projects() {
       })),
       outside,
     };
-  }, [projects, projectFolders, folderCandidates]);
+  }, [sortedProjects, projectFolders, folderCandidates]);
 
   const duplicateProjectsView = useMemo(() => {
     const groups = new Map<string, ProjectWithStats[]>();
@@ -663,6 +722,51 @@ export function Projects() {
     );
   };
 
+  const renderProjectList = (projectList: ProjectWithStats[]) => {
+    if (projectList.length === 0) return null;
+
+    if (viewMode === "compact") {
+      return (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
+          {projectList.map((p) => (
+            <div
+              key={p.id}
+              className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
+              onClick={() => openEdit(p)}
+            >
+              <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
+                {p.frozen_at && (
+                  <button
+                    type="button"
+                    className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                    title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
+                    onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
+                  >
+                    <Snowflake className="h-3 w-3 shrink-0" />
+                  </button>
+                )}
+                {renderDuplicateMarker(p)}
+                {hotProjectIds.includes(p.id) && (
+                  <span title="Hot project - top 5 by time" className="shrink-0">
+                    <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
+                  </span>
+                )}
+              </span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {projectList.map((p) => renderProjectCard(p))}
+      </div>
+    );
+  };
+
   const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => {
     const isDeleting = busy === `delete-project:${p.id}`;
     return (
@@ -709,11 +813,6 @@ export function Projects() {
                 <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
                   Imported
                 </Badge>
-              )}
-              {hotProjectIds.includes(p.id) && (
-                <span title="Hot project - top 5 by time">
-                  <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
-                </span>
               )}
             </CardTitle>
           </div>
@@ -773,14 +872,19 @@ export function Projects() {
                 </span>
                 
                 <span className="flex items-center gap-2">
+                  {hotProjectIds.includes(p.id) && (
+                    <span title="Hot project - top 5 by time">
+                      <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />
+                    </span>
+                  )}
                   {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
                     <span title={`Boosted sessions: ${extraInfo.db_stats.manual_session_count}`}>
-                      <CircleDollarSign className="h-5 w-5 text-emerald-400 fill-emerald-500/10" />
+                      <Flame className="h-4 w-4 text-orange-500 fill-orange-500/10" />
                     </span>
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (
                     <span title={`Comments: ${extraInfo.db_stats.comment_count}`}>
-                      <MessageSquare className="h-5 w-5 text-blue-400 fill-blue-400/20" />
+                      <MessageSquare className="h-4 w-4 text-blue-400 fill-blue-400/20" />
                     </span>
                   )}
                 </span>
@@ -943,6 +1047,46 @@ export function Projects() {
           )}
         </div>
         <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 bg-secondary/40 p-1 rounded-md border border-border/40">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleSortChange(sortBy === "name-asc" ? "name-desc" : "name-asc")}
+              className={`h-7 w-8 p-0 ${sortBy.startsWith("name") ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              title="ABC (toggle direction)"
+            >
+              <Type className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleSortChange(sortBy === "value-desc" ? "value-asc" : "value-desc")}
+              className={`h-7 w-8 p-0 ${sortBy.startsWith("value") ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              title="Value (toggle direction)"
+            >
+              <CircleDollarSign className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleSortChange(sortBy === "time-desc" ? "time-asc" : "time-desc")}
+              className={`h-7 w-8 p-0 ${sortBy.startsWith("time") ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              title="Time (toggle direction)"
+            >
+              <Clock className="h-4 w-4" />
+            </Button>
+            <div className="w-[1px] h-4 bg-border/40 mx-0.5" />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleFolders}
+              className={`h-7 w-8 p-0 ${useFolders ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              title="Toggle folder grouping"
+            >
+              <Folders className="h-4 w-4" />
+            </Button>
+          </div>
+
           <div className="flex bg-secondary/50 p-1 rounded-md text-sm">
             <button
               onClick={() => setViewMode("detailed")}
@@ -963,48 +1107,13 @@ export function Projects() {
         </div>
       </div>
 
-      {projectFolders.length > 0 ? (
+      {useFolders && projectFolders.length > 0 ? (
         <div className="space-y-5">
           {projectsByFolder.sections.map((section) => (
             <div key={section.rootPath} className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground" title={formatPathForDisplay(section.rootPath)}>{formatPathForDisplay(section.rootPath)}</p>
               {section.projects.length > 0 ? (
-                viewMode === "compact" ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-                    {section.projects.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
-                        onClick={() => openEdit(p)}
-                      >
-                        <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                        <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
-                          {p.frozen_at && (
-                            <button
-                              type="button"
-                              className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                              title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
-                              onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
-                            >
-                              <Snowflake className="h-3 w-3 shrink-0" />
-                            </button>
-                          )}
-                          {renderDuplicateMarker(p)}
-                          {hotProjectIds.includes(p.id) && (
-                            <span title="Hot project - top 5 by time" className="shrink-0">
-                              <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {section.projects.map((p) => renderProjectCard(p))}
-                  </div>
-                )
+                renderProjectList(section.projects)
               ) : (
                 <p className="text-xs text-muted-foreground">No projects for this folder</p>
               )}
@@ -1013,62 +1122,12 @@ export function Projects() {
           {projectsByFolder.outside.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">Other projects</p>
-              {viewMode === "compact" ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-                  {projectsByFolder.outside.map((p) => (
-                    <div
-                      key={p.id}
-                      className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
-                      onClick={() => openEdit(p)}
-                    >
-                      <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
-                        {renderDuplicateMarker(p)}
-                        {hotProjectIds.includes(p.id) && (
-                          <span title="Hot project - top 5 by time" className="shrink-0">
-                            <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {projectsByFolder.outside.map((p) => renderProjectCard(p))}
-                </div>
-              )}
+              {renderProjectList(projectsByFolder.outside)}
             </div>
           )}
         </div>
       ) : (
-        viewMode === "compact" ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-            {projects.map((p) => (
-              <div
-                key={p.id}
-                className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
-                onClick={() => openEdit(p)}
-              >
-                <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
-                <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
-                  {renderDuplicateMarker(p)}
-                  {hotProjectIds.includes(p.id) && (
-                    <span title="Hot project - top 5 by time" className="shrink-0">
-                      <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
-                    </span>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {projects.map((p) => renderProjectCard(p))}
-          </div>
-        )
+        renderProjectList(sortedProjects)
       )}
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1097,11 +1156,11 @@ export function Projects() {
         </CardHeader>
         {sectionOpen.excluded && (
           <CardContent>
-            {excludedProjects.length === 0 ? (
+            {sortedExcludedProjects.length === 0 ? (
               <p className="text-xs text-muted-foreground">No excluded projects</p>
             ) : (
               <div className="space-y-2">
-                {excludedProjects.map((p) => (
+                {sortedExcludedProjects.map((p) => (
                   <div key={p.id} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs">
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 font-medium">
