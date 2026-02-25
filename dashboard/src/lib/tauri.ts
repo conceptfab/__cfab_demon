@@ -243,7 +243,7 @@ export const getDetectedProjects = (dateRange: DateRange) =>
   invoke<DetectedProject[]>("get_detected_projects", { dateRange });
 
 // Daemon Control
-export const getDaemonStatus = () => invoke<DaemonStatus>("get_daemon_status");
+export const getDaemonStatus = (minDuration?: number) => invoke<DaemonStatus>("get_daemon_status", { minDuration });
 export const getDaemonLogs = (tailLines?: number) =>
   invoke<string>("get_daemon_logs", { tailLines });
 export const getAutostartEnabled = () => invoke<boolean>("get_autostart_enabled");
@@ -350,7 +350,7 @@ export const getDatabaseSettings = () =>
   invoke<DatabaseSettings>("get_database_settings");
 
 export const updateDatabaseSettings = (settings: DatabaseSettings) =>
-  invoke<void>("update_database_settings", { 
+  invoke<void>("update_database_settings", {
     vacuumOnStartup: settings.vacuum_on_startup,
     backupEnabled: settings.backup_enabled,
     backupPath: settings.backup_path,

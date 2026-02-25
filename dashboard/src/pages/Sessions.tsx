@@ -196,7 +196,7 @@ export function Sessions() {
     if (!ctxMenu) return;
     const current = typeof ctxMenu.session.rate_multiplier === "number" ? ctxMenu.session.rate_multiplier : 1;
     const suggested = current > 1 ? current : 2;
-    
+
     setPromptConfig({
       title: "Set session rate multiplier",
       description: "Set multiplier (> 0). Use 1 to reset.",
@@ -232,6 +232,7 @@ export function Sessions() {
               s.id === sessionId ? { ...s, comment: trimmed || null } : s
             )
           );
+          triggerRefresh();
         } catch (err) {
           console.error("Failed to update session comment:", err);
         }
@@ -276,11 +277,11 @@ export function Sessions() {
           prev.map((item) =>
             item.id === session.id
               ? {
-                  ...item,
-                  suggested_project_id: undefined,
-                  suggested_project_name: undefined,
-                  suggested_confidence: undefined,
-                }
+                ...item,
+                suggested_project_id: undefined,
+                suggested_project_name: undefined,
+                suggested_confidence: undefined,
+              }
               : item
           )
         );
@@ -416,19 +417,19 @@ export function Sessions() {
             </button>
           </div>
         </div>
-          {activeProjectId !== null && (
-            <div className="mx-1 h-5 w-px bg-border flex items-center gap-2" />
-          )}
-          {activeProjectId !== null && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setActiveProjectId(null)}
-              className="text-xs text-muted-foreground"
-            >
-              Clear filter
-            </Button>
-          )}
+        {activeProjectId !== null && (
+          <div className="mx-1 h-5 w-px bg-border flex items-center gap-2" />
+        )}
+        {activeProjectId !== null && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setActiveProjectId(null)}
+            className="text-xs text-muted-foreground"
+          >
+            Clear filter
+          </Button>
+        )}
       </div>
 
       {unassignedGroup && viewMode === "detailed" && (
@@ -499,8 +500,8 @@ export function Sessions() {
                               </Badge>
                             )}
                             {s.comment && (
-                              <span title={s.comment} className="shrink-0">
-                                <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
+                              <span title={s.comment} className="shrink-0 flex items-center justify-center rounded bg-amber-500/10 p-0.5 border border-amber-500/20 shadow-sm ml-1">
+                                <MessageSquare className="h-4 w-4 text-amber-500 fill-amber-500/20" />
                               </span>
                             )}
                           </div>
@@ -520,8 +521,8 @@ export function Sessions() {
                         {s.project_name === null && (
                           <div className="flex items-center gap-1 shrink-0">
                             {s.suggested_project_id != null &&
-                            s.suggested_project_name &&
-                            !dismissedSuggestions.has(s.id) ? (
+                              s.suggested_project_name &&
+                              !dismissedSuggestions.has(s.id) ? (
                               <div className="flex items-center gap-1 rounded-md border border-sky-500/30 bg-sky-500/10 px-2 py-1">
                                 <span
                                   className="flex items-center gap-1 text-[11px] text-sky-200"
@@ -576,9 +577,9 @@ export function Sessions() {
                       </div>
 
                       {expanded.has(s.id) && s.comment && (
-                        <div className="mt-2 ml-9 flex items-start gap-1.5 rounded-md bg-sky-500/10 border border-sky-500/20 px-2.5 py-2">
-                          <MessageSquare className="h-3.5 w-3.5 text-sky-400 mt-0.5 shrink-0" />
-                          <p className="text-xs text-sky-200 whitespace-pre-wrap">{s.comment}</p>
+                        <div className="mt-2 ml-9 flex items-start gap-1.5 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-2">
+                          <MessageSquare className="h-4 w-4 text-amber-500 fill-amber-500/20 mt-0.5 shrink-0" />
+                          <p className="text-xs text-amber-200/90 whitespace-pre-wrap">{s.comment}</p>
                         </div>
                       )}
 
@@ -608,14 +609,14 @@ export function Sessions() {
             </div>
           )}
 
-        {hasMore && (
-          <div className="flex justify-center pt-2">
-            <Button variant="outline" onClick={loadMore}>
-              Load more
-            </Button>
-          </div>
-        )}
-      </div>
+          {hasMore && (
+            <div className="flex justify-center pt-2">
+              <Button variant="outline" onClick={loadMore}>
+                Load more
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Context menu for assigning session to a project */}
@@ -642,13 +643,13 @@ export function Sessions() {
               <div className="flex items-center gap-1 mt-1.5">
                 <button
                   className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
-                  onClick={() => void handleAcceptSuggestion(ctxMenu.session, { stopPropagation: () => {} } as React.MouseEvent)}
+                  onClick={() => void handleAcceptSuggestion(ctxMenu.session, { stopPropagation: () => { } } as React.MouseEvent)}
                 >
                   Accept
                 </button>
                 <button
                   className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
-                  onClick={() => void handleRejectSuggestion(ctxMenu.session, { stopPropagation: () => {} } as React.MouseEvent)}
+                  onClick={() => void handleRejectSuggestion(ctxMenu.session, { stopPropagation: () => { } } as React.MouseEvent)}
                 >
                   Reject
                 </button>
@@ -722,7 +723,7 @@ export function Sessions() {
         title={promptConfig?.title ?? ""}
         description={promptConfig?.description}
         initialValue={promptConfig?.initialValue ?? ""}
-        onConfirm={promptConfig?.onConfirm ?? (() => {})}
+        onConfirm={promptConfig?.onConfirm ?? (() => { })}
       />
     </div>
   );

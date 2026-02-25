@@ -182,6 +182,7 @@ export function Dashboard() {
         setTodaySessions((prev) =>
           prev.map((s) => s.id === sessionId ? { ...s, comment } : s)
         );
+        triggerRefresh();
       } catch (err) {
         console.error("Failed to update session comment:", err);
       }
@@ -395,13 +396,13 @@ export function Dashboard() {
             <CardTitle className="text-sm font-medium">Top 5 Projects</CardTitle>
           </CardHeader>
           <CardContent>
-                  <TopProjectsList
-                    projects={topProjects}
-                    allProjectsList={projectsList}
-                    dateRange={dateRange}
-                    setSessionsFocusDate={setSessionsFocusDate}
-                    boostedByProject={boostedByProject}
-                  />
+            <TopProjectsList
+              projects={topProjects}
+              allProjectsList={projectsList}
+              dateRange={dateRange}
+              setSessionsFocusDate={setSessionsFocusDate}
+              boostedByProject={boostedByProject}
+            />
           </CardContent>
         </Card>
 

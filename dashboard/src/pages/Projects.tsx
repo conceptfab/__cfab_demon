@@ -161,8 +161,15 @@ export function Projects() {
       if (frozen_count > 0 || unfrozen_count > 0) {
         triggerRefresh();
       }
-    }).catch(() => {/* ignore — feature not yet compiled */});
+    }).catch(() => {/* ignore — feature not yet compiled */ });
   }, []);
+
+  const hotProjectIds = useMemo(() => {
+    return [...projects]
+      .sort((a, b) => b.total_seconds - a.total_seconds)
+      .slice(0, 5)
+      .map((p) => p.id);
+  }, [projects]);
 
   useEffect(() => {
     Promise.allSettled([
@@ -595,171 +602,165 @@ export function Projects() {
   const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => {
     const isDeleting = busy === `delete-project:${p.id}`;
     return (
-    <Card key={p.id}>
-      <CardHeader
-        className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? "pr-10" : ""}`}
-      >
-        <div className="flex items-center gap-2">
-          <div className="relative group">
-            <div
-              className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-              style={{ backgroundColor: p.color }}
-              onClick={() => setEditingColorId(editingColorId === p.id ? null : p.id)}
-              title="Change color"
-            />
-            {editingColorId === p.id && (
-              <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
-                <input
-                  type="color"
-                  defaultValue={p.color}
-                  className="w-16 h-8 border border-border rounded cursor-pointer"
-                  onChange={(e) => handleUpdateProjectColor(p.id, e.target.value)}
-                  title="Choose color"
-                />
-                <div className="mt-2 flex gap-1">
-                  {COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
-                      style={{ backgroundColor: c }}
-                      onClick={() => handleUpdateProjectColor(p.id, c)}
-                      title={c}
-                    />
-                  ))}
+      <Card key={p.id}>
+        <CardHeader
+          className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? "pr-10" : ""}`}
+        >
+          <div className="flex items-center gap-2">
+            <div className="relative group">
+              <div
+                className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+                style={{ backgroundColor: p.color }}
+                onClick={() => setEditingColorId(editingColorId === p.id ? null : p.id)}
+                title="Change color"
+              />
+              {editingColorId === p.id && (
+                <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
+                  <input
+                    type="color"
+                    defaultValue={p.color}
+                    className="w-16 h-8 border border-border rounded cursor-pointer"
+                    onChange={(e) => handleUpdateProjectColor(p.id, e.target.value)}
+                    title="Choose color"
+                  />
+                  <div className="mt-2 flex gap-1">
+                    {COLORS.map((c) => (
+                      <button
+                        key={c}
+                        className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
+                        style={{ backgroundColor: c }}
+                        onClick={() => handleUpdateProjectColor(p.id, c)}
+                        title={c}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
+            <CardTitle className="text-base flex items-center gap-2">
+              {p.name}
+              {p.frozen_at && (
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                  title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
+                  onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
+                >
+                  <Snowflake className="h-3.5 w-3.5 shrink-0" />
+                  <span className="text-[10px]">Frozen</span>
+                </button>
+              )}
+              {renderDuplicateMarker(p)}
+              {p.is_imported === 1 && (
+                <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
+                  Imported
+                </Badge>
+              )}
+              {hotProjectIds.includes(p.id) && (
+                <span title="Hot project - top 5 by time">
+                  <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
+                </span>
+              )}
+            </CardTitle>
           </div>
-          <CardTitle className="text-base flex items-center gap-2">
-            {p.name}
-            {p.frozen_at && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
-                onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
+          <div className={`flex gap-1 ${options?.inDialog ? "mr-8" : ""}`}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => handleResetProjectTime(p.id)}
+              title="Reset time"
+              disabled={isDeleting}
+            >
+              <TimerReset className="h-3.5 w-3.5" />
+            </Button>
+            {!p.frozen_at && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground"
+                onClick={() => handleFreeze(p.id)}
+                title="Freeze project"
+                disabled={isDeleting}
               >
-                <Snowflake className="h-3.5 w-3.5 shrink-0" />
-                <span className="text-[10px]">Frozen</span>
-              </button>
+                <Snowflake className="h-3.5 w-3.5" />
+              </Button>
             )}
-            {renderDuplicateMarker(p)}
-            {p.is_imported === 1 && (
-              <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
-                Imported
-              </Badge>
-            )}
-          </CardTitle>
-        </div>
-        <div className={`flex gap-1 ${options?.inDialog ? "mr-8" : ""}`}>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => handleResetProjectTime(p.id)}
-            title="Reset time"
-            disabled={isDeleting}
-          >
-            <TimerReset className="h-3.5 w-3.5" />
-          </Button>
-          {p.frozen_at ? (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-blue-400"
-              onClick={() => handleUnfreeze(p.id)}
-              title="Unfreeze project"
+              className="h-7 w-7 text-destructive"
+              onClick={() => handleExclude(p.id)}
+              title="Exclude project"
               disabled={isDeleting}
             >
-              <Flame className="h-3.5 w-3.5" />
+              <CircleOff className="h-3.5 w-3.5" />
             </Button>
-          ) : (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-muted-foreground"
-              onClick={() => handleFreeze(p.id)}
-              title="Freeze project"
+              className="h-7 w-7 text-destructive"
+              onClick={() => void handleDeleteProject(p)}
+              title="Delete project permanently"
               disabled={isDeleting}
             >
-              <Snowflake className="h-3.5 w-3.5" />
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div>
+              <p className="text-muted-foreground">Total time</p>
+              <p className="font-mono font-medium">{formatDuration(p.total_seconds)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Apps</p>
+              <p className="font-medium">{p.app_count}</p>
+            </div>
+          </div>
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              onClick={() => setAssignOpen(assignOpen === p.id ? null : p.id)}
+              disabled={isDeleting}
+            >
+              Manage Apps
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSessionDialogProjectId(p.id);
+                setSessionDialogOpen(true);
+              }}
+              title="Add manual session"
+              disabled={isDeleting}
+            >
+              <CalendarPlus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          {assignOpen === p.id && (
+            <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
+              {apps.map((app) => (
+                <label key={app.id} className="flex items-center gap-2 rounded p-1 text-sm hover:bg-accent">
+                  <input
+                    type="checkbox"
+                    checked={app.project_id === p.id}
+                    onChange={() => handleAssign(app.id, app.project_id === p.id ? null : p.id)}
+                    className="accent-primary"
+                    disabled={isDeleting}
+                  />
+                  <span className="truncate">{app.display_name}</span>
+                </label>
+              ))}
+            </div>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive"
-            onClick={() => handleExclude(p.id)}
-            title="Exclude project"
-            disabled={isDeleting}
-          >
-            <CircleOff className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive"
-            onClick={() => void handleDeleteProject(p)}
-            title="Delete project permanently"
-            disabled={isDeleting}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div>
-            <p className="text-muted-foreground">Total time</p>
-            <p className="font-mono font-medium">{formatDuration(p.total_seconds)}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Apps</p>
-            <p className="font-medium">{p.app_count}</p>
-          </div>
-        </div>
-        <div className="mt-3 flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-1"
-            onClick={() => setAssignOpen(assignOpen === p.id ? null : p.id)}
-            disabled={isDeleting}
-          >
-            Manage Apps
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setSessionDialogProjectId(p.id);
-              setSessionDialogOpen(true);
-            }}
-            title="Add manual session"
-            disabled={isDeleting}
-          >
-            <CalendarPlus className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-        {assignOpen === p.id && (
-          <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
-            {apps.map((app) => (
-              <label key={app.id} className="flex items-center gap-2 rounded p-1 text-sm hover:bg-accent">
-                <input
-                  type="checkbox"
-                  checked={app.project_id === p.id}
-                  onChange={() => handleAssign(app.id, app.project_id === p.id ? null : p.id)}
-                  className="accent-primary"
-                  disabled={isDeleting}
-                />
-                <span className="truncate">{app.display_name}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
   };
 
   return (
@@ -809,8 +810,8 @@ export function Projects() {
                 viewMode === "compact" ? (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                     {section.projects.map((p) => (
-                      <div 
-                        key={p.id} 
+                      <div
+                        key={p.id}
                         className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
                         onClick={() => openEdit(p)}
                       >
@@ -828,6 +829,11 @@ export function Projects() {
                             </button>
                           )}
                           {renderDuplicateMarker(p)}
+                          {hotProjectIds.includes(p.id) && (
+                            <span title="Hot project - top 5 by time" className="shrink-0">
+                              <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
+                            </span>
+                          )}
                         </span>
                       </div>
                     ))}
@@ -848,8 +854,8 @@ export function Projects() {
               {viewMode === "compact" ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
                   {projectsByFolder.outside.map((p) => (
-                    <div 
-                      key={p.id} 
+                    <div
+                      key={p.id}
                       className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
                       onClick={() => openEdit(p)}
                     >
@@ -857,6 +863,11 @@ export function Projects() {
                       <span className="flex min-w-0 flex-1 items-center gap-1.5">
                         <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
                         {renderDuplicateMarker(p)}
+                        {hotProjectIds.includes(p.id) && (
+                          <span title="Hot project - top 5 by time" className="shrink-0">
+                            <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
+                          </span>
+                        )}
                       </span>
                     </div>
                   ))}
@@ -873,8 +884,8 @@ export function Projects() {
         viewMode === "compact" ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
             {projects.map((p) => (
-              <div 
-                key={p.id} 
+              <div
+                key={p.id}
                 className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
                 onClick={() => openEdit(p)}
               >
@@ -882,6 +893,11 @@ export function Projects() {
                 <span className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
                   {renderDuplicateMarker(p)}
+                  {hotProjectIds.includes(p.id) && (
+                    <span title="Hot project - top 5 by time" className="shrink-0">
+                      <Flame className="h-3.5 w-3.5 text-red-500 fill-red-500/20" />
+                    </span>
+                  )}
                 </span>
               </div>
             ))}
@@ -918,40 +934,40 @@ export function Projects() {
           </div>
         </CardHeader>
         {sectionOpen.excluded && (
-        <CardContent>
-          {excludedProjects.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No excluded projects</p>
-          ) : (
-            <div className="space-y-2">
-              {excludedProjects.map((p) => (
-                <div key={p.id} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs">
-                  <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 font-medium">
-                      <span className="min-w-0 truncate">{p.name}</span>
-                      {renderDuplicateMarker(p)}
-                    </p>
-                    <p className="truncate text-muted-foreground">
-                      Excluded{p.excluded_at ? `: ${p.excluded_at}` : ""}
-                    </p>
+          <CardContent>
+            {excludedProjects.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No excluded projects</p>
+            ) : (
+              <div className="space-y-2">
+                {excludedProjects.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs">
+                    <div className="min-w-0">
+                      <p className="flex items-center gap-1.5 font-medium">
+                        <span className="min-w-0 truncate">{p.name}</span>
+                        {renderDuplicateMarker(p)}
+                      </p>
+                      <p className="truncate text-muted-foreground">
+                        Excluded{p.excluded_at ? `: ${p.excluded_at}` : ""}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => handleRestore(p.id)}>
+                      Restore
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-destructive"
+                      onClick={() => void handleDeleteProject(p)}
+                      disabled={busy === `delete-project:${p.id}`}
+                      title="Delete project permanently"
+                    >
+                      Delete
+                    </Button>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => handleRestore(p.id)}>
-                    Restore
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={() => void handleDeleteProject(p)}
-                    disabled={busy === `delete-project:${p.id}`}
-                    title="Delete project permanently"
-                  >
-                    Delete
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
+                ))}
+              </div>
+            )}
+          </CardContent>
         )}
       </Card>
 
@@ -970,67 +986,67 @@ export function Projects() {
           </div>
         </CardHeader>
         {sectionOpen.folders && (
-        <CardContent className="space-y-3">
-          <div className="flex gap-2">
-            <input
-              className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              value={newFolderPath}
-              onChange={(e) => {
-                setNewFolderPath(e.target.value);
-                setFolderError(null);
-                setFolderInfo(null);
-              }}
-              placeholder="C:\\projects\\clients"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleAddFolder();
-                }
-              }}
-            />
-            <Button size="sm" variant="outline" onClick={handleBrowseFolder} disabled={busy === "add-folder"}>
-              Browse...
-            </Button>
-            <Button size="sm" onClick={handleAddFolder} disabled={busy === "add-folder"}>
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add
-            </Button>
-          </div>
-          {folderError && (
-            <p className="text-xs text-destructive">{folderError}</p>
-          )}
-          {folderInfo && !folderError && (
-            <p className="text-xs text-emerald-400">{folderInfo}</p>
-          )}
-
-          {projectFolders.length > 0 ? (
-            <div className="space-y-1">
-              {projectFolders.map((f) => (
-                <div key={f.path} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="truncate text-muted-foreground" title={formatPathForDisplay(f.path)}>{formatPathForDisplay(f.path)}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive"
-                    onClick={() => handleRemoveFolder(f.path)}
-                    disabled={busy === `remove-folder:${f.path}`}
-                    title="Remove folder"
-                  >
-                    <CircleOff className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
+          <CardContent className="space-y-3">
+            <div className="flex gap-2">
+              <input
+                className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                value={newFolderPath}
+                onChange={(e) => {
+                  setNewFolderPath(e.target.value);
+                  setFolderError(null);
+                  setFolderInfo(null);
+                }}
+                placeholder="C:\\projects\\clients"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleAddFolder();
+                  }
+                }}
+              />
+              <Button size="sm" variant="outline" onClick={handleBrowseFolder} disabled={busy === "add-folder"}>
+                Browse...
+              </Button>
+              <Button size="sm" onClick={handleAddFolder} disabled={busy === "add-folder"}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add
+              </Button>
             </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No folders configured</p>
-          )}
+            {folderError && (
+              <p className="text-xs text-destructive">{folderError}</p>
+            )}
+            {folderInfo && !folderError && (
+              <p className="text-xs text-emerald-400">{folderInfo}</p>
+            )}
 
-          <div className="flex justify-end">
-            <Button variant="outline" size="sm" onClick={handleSyncFolders} disabled={busy === "sync-folders"}>
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              Sync subfolders as projects
-            </Button>
-          </div>
-        </CardContent>
+            {projectFolders.length > 0 ? (
+              <div className="space-y-1">
+                {projectFolders.map((f) => (
+                  <div key={f.path} className="flex items-center justify-between gap-2 text-xs">
+                    <span className="truncate text-muted-foreground" title={formatPathForDisplay(f.path)}>{formatPathForDisplay(f.path)}</span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      onClick={() => handleRemoveFolder(f.path)}
+                      disabled={busy === `remove-folder:${f.path}`}
+                      title="Remove folder"
+                    >
+                      <CircleOff className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No folders configured</p>
+            )}
+
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={handleSyncFolders} disabled={busy === "sync-folders"}>
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                Sync subfolders as projects
+              </Button>
+            </div>
+          </CardContent>
         )}
       </Card>
 
@@ -1049,36 +1065,36 @@ export function Projects() {
           </div>
         </CardHeader>
         {sectionOpen.candidates && (
-        <CardContent>
-          {visibleFolderCandidates.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No subfolder candidates found</p>
-          ) : (
-            <div className="max-h-52 space-y-1 overflow-y-auto">
-              {visibleFolderCandidates.map((c) => (
-                <div key={c.folder_path} className="flex items-center justify-between gap-2 text-xs py-1">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{c.name}</p>
-                    <p className="truncate text-muted-foreground" title={formatPathForDisplay(c.folder_path)}>{formatPathForDisplay(c.folder_path)}</p>
+          <CardContent>
+            {visibleFolderCandidates.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No subfolder candidates found</p>
+            ) : (
+              <div className="max-h-52 space-y-1 overflow-y-auto">
+                {visibleFolderCandidates.map((c) => (
+                  <div key={c.folder_path} className="flex items-center justify-between gap-2 text-xs py-1">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{c.name}</p>
+                      <p className="truncate text-muted-foreground" title={formatPathForDisplay(c.folder_path)}>{formatPathForDisplay(c.folder_path)}</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCreateFromFolder(c.folder_path)}
+                      disabled={busy === `create-folder:${c.folder_path}`}
+                    >
+                      <Plus className="mr-1 h-3 w-3" />
+                      Create
+                    </Button>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleCreateFromFolder(c.folder_path)}
-                    disabled={busy === `create-folder:${c.folder_path}`}
-                  >
-                    <Plus className="mr-1 h-3 w-3" />
-                    Create
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
-          {hiddenRegisteredFolderCandidatesCount > 0 && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Hidden already registered folders: {hiddenRegisteredFolderCandidatesCount}
-            </p>
-          )}
-        </CardContent>
+                ))}
+              </div>
+            )}
+            {hiddenRegisteredFolderCandidatesCount > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Hidden already registered folders: {hiddenRegisteredFolderCandidatesCount}
+              </p>
+            )}
+          </CardContent>
         )}
       </Card>
 
@@ -1097,70 +1113,70 @@ export function Projects() {
           </div>
         </CardHeader>
         {sectionOpen.detected && (
-        <CardContent className="space-y-3">
-          {detectedCandidatesView.visible.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {detectedProjects.length === 0
-                ? "No detected projects"
-                : "No candidate projects (detected items already match existing/excluded projects)."}
-            </p>
-          ) : (
-            <div className="max-h-52 space-y-1 overflow-y-auto">
-              {detectedCandidatesView.visible.map((d) => {
-                return (
-                  <div key={d.file_name} className="flex items-center justify-between gap-2 text-xs py-1">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{d.inferredProjectName}</p>
-                      <p className="truncate text-muted-foreground">
-                        {d.occurrence_count} opens · {formatDuration(d.total_seconds)}
-                      </p>
-                      {d.inferredProjectName !== d.file_name && (
-                        <p className="truncate text-muted-foreground/80" title={d.file_name}>
-                          from: {d.file_name}
+          <CardContent className="space-y-3">
+            {detectedCandidatesView.visible.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {detectedProjects.length === 0
+                  ? "No detected projects"
+                  : "No candidate projects (detected items already match existing/excluded projects)."}
+              </p>
+            ) : (
+              <div className="max-h-52 space-y-1 overflow-y-auto">
+                {detectedCandidatesView.visible.map((d) => {
+                  return (
+                    <div key={d.file_name} className="flex items-center justify-between gap-2 text-xs py-1">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{d.inferredProjectName}</p>
+                        <p className="truncate text-muted-foreground">
+                          {d.occurrence_count} opens · {formatDuration(d.total_seconds)}
                         </p>
-                      )}
+                        {d.inferredProjectName !== d.file_name && (
+                          <p className="truncate text-muted-foreground/80" title={d.file_name}>
+                            from: {d.file_name}
+                          </p>
+                        )}
+                      </div>
+                      <Badge variant="outline">Candidate</Badge>
                     </div>
-                    <Badge variant="outline">Candidate</Badge>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
+            )}
+            {(detectedCandidatesView.hiddenExisting > 0 ||
+              detectedCandidatesView.hiddenExcluded > 0 ||
+              detectedCandidatesView.hiddenDuplicates > 0 ||
+              detectedCandidatesView.hiddenOverflow > 0) && (
+                <p className="text-xs text-muted-foreground">
+                  Hidden:
+                  {" "}
+                  {detectedCandidatesView.hiddenExisting > 0 && `${detectedCandidatesView.hiddenExisting} existing`}
+                  {detectedCandidatesView.hiddenExisting > 0 &&
+                    (detectedCandidatesView.hiddenExcluded > 0 ||
+                      detectedCandidatesView.hiddenDuplicates > 0 ||
+                      detectedCandidatesView.hiddenOverflow > 0) &&
+                    " · "}
+                  {detectedCandidatesView.hiddenExcluded > 0 && `${detectedCandidatesView.hiddenExcluded} excluded`}
+                  {detectedCandidatesView.hiddenExcluded > 0 &&
+                    (detectedCandidatesView.hiddenDuplicates > 0 || detectedCandidatesView.hiddenOverflow > 0) &&
+                    " · "}
+                  {detectedCandidatesView.hiddenDuplicates > 0 && `${detectedCandidatesView.hiddenDuplicates} duplicate names`}
+                  {detectedCandidatesView.hiddenDuplicates > 0 && detectedCandidatesView.hiddenOverflow > 0 && " · "}
+                  {detectedCandidatesView.hiddenOverflow > 0 &&
+                    `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? " (demo cap)" : ""}`}
+                </p>
+              )}
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAutoCreateDetected}
+                disabled={busy === "auto-detect" || detectedCandidatesView.totalCandidateCount === 0}
+              >
+                <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                Auto-create detected projects
+              </Button>
             </div>
-          )}
-          {(detectedCandidatesView.hiddenExisting > 0 ||
-            detectedCandidatesView.hiddenExcluded > 0 ||
-            detectedCandidatesView.hiddenDuplicates > 0 ||
-            detectedCandidatesView.hiddenOverflow > 0) && (
-            <p className="text-xs text-muted-foreground">
-              Hidden:
-              {" "}
-              {detectedCandidatesView.hiddenExisting > 0 && `${detectedCandidatesView.hiddenExisting} existing`}
-              {detectedCandidatesView.hiddenExisting > 0 &&
-                (detectedCandidatesView.hiddenExcluded > 0 ||
-                  detectedCandidatesView.hiddenDuplicates > 0 ||
-                  detectedCandidatesView.hiddenOverflow > 0) &&
-                " · "}
-              {detectedCandidatesView.hiddenExcluded > 0 && `${detectedCandidatesView.hiddenExcluded} excluded`}
-              {detectedCandidatesView.hiddenExcluded > 0 &&
-                (detectedCandidatesView.hiddenDuplicates > 0 || detectedCandidatesView.hiddenOverflow > 0) &&
-                " · "}
-              {detectedCandidatesView.hiddenDuplicates > 0 && `${detectedCandidatesView.hiddenDuplicates} duplicate names`}
-              {detectedCandidatesView.hiddenDuplicates > 0 && detectedCandidatesView.hiddenOverflow > 0 && " · "}
-              {detectedCandidatesView.hiddenOverflow > 0 &&
-                `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? " (demo cap)" : ""}`}
-            </p>
-          )}
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAutoCreateDetected}
-              disabled={busy === "auto-detect" || detectedCandidatesView.totalCandidateCount === 0}
-            >
-              <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-              Auto-create detected projects
-            </Button>
-          </div>
-        </CardContent>
+          </CardContent>
         )}
       </Card>
 

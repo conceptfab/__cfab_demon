@@ -207,9 +207,6 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
 
     for (exe_name, app_data) in &daily.apps {
         let exe_lower = exe_name.to_lowercase();
-        if filter_enabled && !monitored_exes.contains(&exe_lower) {
-            continue;
-        }
 
         if let Err(e) = app_insert_stmt.execute(rusqlite::params![exe_name, app_data.display_name])
         {
@@ -227,6 +224,10 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
             .query_row([app_id], |row| row.get(0))
             .ok()
             .flatten();
+
+        if filter_enabled && !monitored_exes.contains(&exe_lower) && app_project_id.is_some() {
+            continue;
+        }
 
         for session in &app_data.sessions {
             let date = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&session.start) {

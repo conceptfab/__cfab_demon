@@ -230,9 +230,9 @@ function hexToRgba(hex: string, alpha: number): string {
   const expanded =
     color.length === 3
       ? color
-          .split("")
-          .map((ch) => `${ch}${ch}`)
-          .join("")
+        .split("")
+        .map((ch) => `${ch}${ch}`)
+        .join("")
       : color;
   const r = Number.parseInt(expanded.slice(0, 2), 16);
   const g = Number.parseInt(expanded.slice(2, 4), 16);
@@ -464,25 +464,25 @@ export function ProjectDayTimeline({
 
     const workingRangeRaw =
       workingStartMinutes !== null &&
-      workingEndMinutes !== null &&
-      workingEndMinutes > workingStartMinutes
+        workingEndMinutes !== null &&
+        workingEndMinutes > workingStartMinutes
         ? (() => {
-            const base = new Date(rawStart);
-            const dayStart = new Date(
-              base.getFullYear(),
-              base.getMonth(),
-              base.getDate(),
-              0,
-              0,
-              0,
-              0
-            ).getTime();
-            return {
-              startMs: dayStart + workingStartMinutes * 60_000,
-              endMs: dayStart + workingEndMinutes * 60_000,
-              label: `${workingHours?.start ?? "09:00"} - ${workingHours?.end ?? "17:00"}`,
-            };
-          })()
+          const base = new Date(rawStart);
+          const dayStart = new Date(
+            base.getFullYear(),
+            base.getMonth(),
+            base.getDate(),
+            0,
+            0,
+            0,
+            0
+          ).getTime();
+          return {
+            startMs: dayStart + workingStartMinutes * 60_000,
+            endMs: dayStart + workingEndMinutes * 60_000,
+            label: `${workingHours?.start ?? "09:00"} - ${workingHours?.end ?? "17:00"}`,
+          };
+        })()
         : null;
 
     const alignedStart = workingRangeRaw
@@ -500,18 +500,18 @@ export function ProjectDayTimeline({
 
     const workingRange = workingRangeRaw
       ? (() => {
-          const left = ((workingRangeRaw.startMs - rangeStart) / rangeSpan) * 100;
-          const right = ((workingRangeRaw.endMs - rangeStart) / rangeSpan) * 100;
-          const leftClamped = Math.max(0, Math.min(100, left));
-          const rightClamped = Math.max(0, Math.min(100, right));
-          if (rightClamped <= leftClamped) return null;
-          return {
-            leftPct: leftClamped,
-            widthPct: rightClamped - leftClamped,
-            label: workingRangeRaw.label,
-            color: workingColor,
-          };
-        })()
+        const left = ((workingRangeRaw.startMs - rangeStart) / rangeSpan) * 100;
+        const right = ((workingRangeRaw.endMs - rangeStart) / rangeSpan) * 100;
+        const leftClamped = Math.max(0, Math.min(100, left));
+        const rightClamped = Math.max(0, Math.min(100, right));
+        if (rightClamped <= leftClamped) return null;
+        return {
+          leftPct: leftClamped,
+          widthPct: rightClamped - leftClamped,
+          label: workingRangeRaw.label,
+          color: workingColor,
+        };
+      })()
       : null;
 
     const byProject = new Map<string, TimelineRow>();
@@ -535,8 +535,8 @@ export function ProjectDayTimeline({
       row.totalSeconds += item.s.duration_seconds;
       if ((item.s.rate_multiplier ?? 1) > 1.000_001) row.boostedCount++;
       const suggestedProject = projects?.find(p => p.id === item.s.suggested_project_id);
-      const suggestedName = item.s.suggested_project_name && item.s.suggested_project_name !== "?" 
-        ? item.s.suggested_project_name 
+      const suggestedName = item.s.suggested_project_name && item.s.suggested_project_name !== "?"
+        ? item.s.suggested_project_name
         : suggestedProject?.name || "Unknown";
       const hasValidSuggestion = item.s.suggested_project_id != null;
 
@@ -717,8 +717,8 @@ export function ProjectDayTimeline({
                           </div>
                         )}
                         {segment.comment && (
-                          <div className="pointer-events-none absolute left-0.5 bottom-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
-                            <MessageSquare className="h-2.5 w-2.5 text-amber-300" />
+                          <div className="pointer-events-none absolute left-0.5 bottom-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm border border-amber-500/30">
+                            <MessageSquare className="h-3 w-3 text-amber-500 fill-amber-500/20" />
                           </div>
                         )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
@@ -1044,7 +1044,7 @@ export function ProjectDayTimeline({
         title={promptConfig?.title ?? ""}
         description={promptConfig?.description}
         initialValue={promptConfig?.initialValue ?? ""}
-        onConfirm={promptConfig?.onConfirm ?? (() => {})}
+        onConfirm={promptConfig?.onConfirm ?? (() => { })}
       />
     </Card>
   );

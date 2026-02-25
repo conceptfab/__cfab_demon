@@ -98,7 +98,7 @@ fn read_last_n_lines(path: &std::path::Path, n: usize) -> Result<String, String>
     Ok(lines[start..].join("\n"))
 }
 
-fn query_unassigned_counts(app: &AppHandle) -> (i64, i64) {
+fn query_unassigned_counts(app: &AppHandle, min_duration_sec: i64) -> (i64, i64) {
     let conn = match db::get_connection(app) {
         Ok(conn) => conn,
         Err(e) => {
@@ -113,8 +113,9 @@ fn query_unassigned_counts(app: &AppHandle) -> (i64, i64) {
             COUNT(DISTINCT s.app_id) as unassigned_apps
          FROM sessions s
          WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
-           AND s.project_id IS NULL",
-        [],
+           AND s.project_id IS NULL
+           AND s.duration_seconds >= ?1",
+        [min_duration_sec],
         |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
     )
     .unwrap_or((0, 0))
@@ -140,7 +141,7 @@ fn write_assignment_signal(unassigned_sessions: i64) {
 }
 
 #[tauri::command]
-pub async fn get_daemon_status(app: AppHandle) -> Result<DaemonStatus, String> {
+pub async fn get_daemon_status(app: AppHandle, min_duration: Option<i64>) -> Result<DaemonStatus, String> {
     let mut cmd = Command::new("tasklist");
     no_console(&mut cmd);
     let output = cmd
@@ -175,11 +176,14 @@ pub async fn get_daemon_status(app: AppHandle) -> Result<DaemonStatus, String> {
     let autostart = startup_dir()
         .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
         .unwrap_or(false);
-    let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app);
-    // Only signal unassigned count when daemon is running.
-    // When daemon is stopped, clear the file so the tray icon
-    // doesn't show stale attention.
-    write_assignment_signal(if running { unassigned_sessions } else { 0 });
+    let min_dur = min_duration.unwrap_or(0);
+    let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app, min_dur);
+    // Only clear the signal file if the count dropped to 0 or daemon is not running.
+    // This avoids clobbering positive raw counts written by the daemon,
+    // as per refinement in problems.md (point 77).
+    if !running || unassigned_sessions == 0 {
+        write_assignment_signal(0);
+    }
 
     let mut daemon_version = None;
     if let Ok(exe) = find_daemon_exe() {
