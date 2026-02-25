@@ -39,6 +39,7 @@ import type {
   DatabaseSettings,
   BackupFile,
   DeterministicResult,
+  ProjectExtraInfo,
 } from "./db-types";
 
 export function hasTauriRuntime(): boolean {
@@ -100,6 +101,10 @@ export const assignAppToProject = (appId: number, projectId: number | null) =>
 export function assignSessionToProject(sessionId: number, projectId: number | null, source?: string) {
   return invoke("assign_session_to_project", { sessionId, projectId, source });
 }
+export const getProjectExtraInfo = (id: number) =>
+  invoke<ProjectExtraInfo>("get_project_extra_info", { id });
+export const compactProjectData = (id: number) =>
+  invoke<void>("compact_project_data", { id });
 export const deleteSession = (sessionId: number) =>
   invoke<void>("delete_session", { sessionId });
 export const updateSessionRateMultiplier = (sessionId: number, multiplier: number | null) =>

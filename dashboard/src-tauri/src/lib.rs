@@ -50,6 +50,8 @@ pub fn run() {
             commands::delete_project,
             commands::freeze_project,
             commands::unfreeze_project,
+            commands::get_project_extra_info,
+            commands::compact_project_data,
             commands::auto_freeze_projects,
             commands::assign_app_to_project,
             commands::get_project_folders,

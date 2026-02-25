@@ -29,6 +29,8 @@ import {
   autoCreateProjectsFromDetection,
   resetProjectTime,
   getDemoModeStatus,
+  getProjectExtraInfo,
+  compactProjectData,
 } from "@/lib/tauri";
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
 import { formatDuration, formatPathForDisplay } from "@/lib/utils";
@@ -40,6 +42,7 @@ import type {
   ProjectFolder,
   FolderProjectCandidate,
   DetectedProject,
+  ProjectExtraInfo,
 } from "@/lib/db-types";
 
 const COLORS = ["#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee"];
@@ -94,6 +97,8 @@ export function Projects() {
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogProjectId, setSessionDialogProjectId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("compact");
+  const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
+  const [loadingExtra, setLoadingExtra] = useState(false);
 
   const SECTION_STORAGE_KEY = "timeflow-dashboard-projects-section-open";
   const LEGACY_SECTION_STORAGE_KEY = "cfab-dashboard-projects-section-open";
@@ -207,6 +212,18 @@ export function Projects() {
     });
   }, [refreshKey]);
 
+  useEffect(() => {
+    if (projectDialogId === null) {
+      setExtraInfo(null);
+      return;
+    }
+    setLoadingExtra(true);
+    getProjectExtraInfo(projectDialogId)
+      .then(setExtraInfo)
+      .catch(console.error)
+      .finally(() => setLoadingExtra(false));
+  }, [projectDialogId]);
+
   const handleUpdateProjectColor = async (projectId: number, color: string) => {
     await updateProject(projectId, color);
     setEditingColorId(null);
@@ -291,6 +308,25 @@ export function Projects() {
     }
     await resetProjectTime(id);
     triggerRefresh();
+  };
+
+  const handleCompactProject = async (id: number) => {
+    if (!window.confirm("Kompaktować dane tego projektu? To usunie szczegółową historię plików (file activities), ale zachowa sesje i całkowity czas. Tej operacji nie można cofnąć.")) {
+      return;
+    }
+    setBusy(`compact-project:${id}`);
+    try {
+      await compactProjectData(id);
+      triggerRefresh();
+      // Refresh extra info too
+      const info = await getProjectExtraInfo(id);
+      setExtraInfo(info);
+    } catch (e) {
+      console.error("Failed to compact project data:", e);
+      window.alert(`Failed to compact project data: ${getErrorMessage(e, "Unknown error")}`);
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handleAssign = async (appId: number, projectId: number | null) => {
@@ -742,6 +778,84 @@ export function Projects() {
               <CalendarPlus className="h-3.5 w-3.5" />
             </Button>
           </div>
+
+          {options?.inDialog && (
+            <div className="mt-4 space-y-4 border-t pt-4 animate-in fade-in duration-500">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Aktualna wartość</p>
+                  <p className="text-2xl font-bold text-emerald-400">
+                    {loadingExtra ? "..." : (extraInfo ? `${extraInfo.current_value.toFixed(2)}` : "0.00")}
+                    <span className="text-sm font-normal text-muted-foreground ml-1">PLN</span>
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top 3 Aplikacje</p>
+                  {loadingExtra ? (
+                    <p className="text-xs text-muted-foreground italic">Ładowanie...</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {extraInfo?.top_apps.map((app, i) => (
+                        <div key={i} className="flex items-center gap-2 text-xs">
+                          <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: app.color || "#64748b" }} />
+                          <span className="truncate flex-1">{app.name}</span>
+                          <span className="font-mono text-muted-foreground">{formatDuration(app.seconds)}</span>
+                        </div>
+                      ))}
+                      {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">Brak danych</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-secondary/30 p-3 space-y-2">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center justify-between">
+                  Statystyki bazy danych
+                  {extraInfo && (
+                    <span className="text-[10px] lowercase font-normal opacity-70">
+                      ~{(extraInfo.db_stats.estimated_size_bytes / 1024).toFixed(1)} KB
+                    </span>
+                  )}
+                </p>
+                {loadingExtra ? (
+                  <p className="text-center py-2 text-xs text-muted-foreground">Ładowanie statystyk...</p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Sesje:</span>
+                      <span className="font-medium">{extraInfo?.db_stats.session_count || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Pliki:</span>
+                      <span className="font-medium">{extraInfo?.db_stats.file_activity_count || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Ręczne:</span>
+                      <span className="font-medium">{extraInfo?.db_stats.manual_session_count || 0}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Komentarze:</span>
+                      <span className="font-medium">{extraInfo?.db_stats.comment_count || 0}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="w-full text-xs h-8 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
+                    onClick={() => handleCompactProject(p.id)}
+                    disabled={loadingExtra || !extraInfo || extraInfo.db_stats.file_activity_count === 0 || !!busy}
+                  >
+                    {busy === `compact-project:${p.id}` ? "Kompaktowanie..." : "Kompaktuj dane projektu"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {assignOpen === p.id && (
             <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
               {apps.map((app) => (

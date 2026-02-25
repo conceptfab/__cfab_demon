@@ -191,6 +191,20 @@ export interface ProjectWithStats extends Project {
   assigned_folder_path?: string | null;
 }
 
+export interface ProjectDbStats {
+  session_count: number;
+  file_activity_count: number;
+  manual_session_count: number;
+  comment_count: number;
+  estimated_size_bytes: number;
+}
+
+export interface ProjectExtraInfo {
+  current_value: number;
+  db_stats: ProjectDbStats;
+  top_apps: { name: string; seconds: number; color: string | null }[];
+}
+
 export interface ProjectFolder {
   path: string;
   added_at: string;

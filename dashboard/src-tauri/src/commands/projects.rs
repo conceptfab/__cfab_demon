@@ -3,7 +3,10 @@ use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
 use super::helpers::{LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
-use super::types::{DateRange, FolderProjectCandidate, Project, ProjectFolder, ProjectWithStats};
+use super::types::{
+    DateRange, FolderProjectCandidate, Project, ProjectDbStats, ProjectExtraInfo, ProjectFolder,
+    ProjectWithStats, TopApp,
+};
 use crate::db;
 use rusqlite::OptionalExtension;
 
@@ -948,6 +951,154 @@ pub async fn auto_create_projects_from_detection(
         }
     }
     Ok(created)
+}
+#[tauri::command]
+pub async fn get_project_extra_info(app: AppHandle, id: i64) -> Result<ProjectExtraInfo, String> {
+    let conn = db::get_connection(&app)?;
+
+    // 1. Get project info (name, hourly_rate)
+    let (name, hourly_rate): (String, Option<f64>) = conn
+        .query_row(
+            "SELECT name, hourly_rate FROM projects WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Project not found: {}", e))?;
+
+    // 2. Get global hourly rate
+    let global_rate_str: Option<String> = conn
+        .query_row(
+            "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let global_rate = global_rate_str
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(100.0);
+
+    let effective_rate = hourly_rate.unwrap_or(global_rate);
+
+    // 3. Compute current value (total for project)
+    // We need total seconds + extra seconds from multipliers
+    let (total_seconds, extra_seconds): (f64, f64) = conn
+        .query_row(
+            "SELECT 
+            SUM(duration_seconds),
+            SUM(duration_seconds * (CASE WHEN rate_multiplier > 1 THEN rate_multiplier - 1 ELSE 0 END))
+         FROM sessions s
+         JOIN applications a ON a.id = s.app_id
+         WHERE a.project_id = ?1",
+            [id],
+            |row| {
+                Ok((
+                    row.get::<_, Option<f64>>(0)?.unwrap_or(0.0),
+                    row.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
+                ))
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Add manual sessions duration
+    let manual_seconds: f64 = conn
+        .query_row(
+            "SELECT SUM(duration_seconds) FROM manual_sessions WHERE project_id = ?1",
+            [id],
+            |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let final_weighted_hours = (total_seconds + extra_seconds + manual_seconds) / 3600.0;
+    let current_value = final_weighted_hours * effective_rate;
+
+    // 4. DB Stats
+    let session_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sessions s JOIN applications a ON a.id = s.app_id WHERE a.project_id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let file_activity_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM file_activities WHERE project_id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let manual_session_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM manual_sessions WHERE project_id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let comment_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sessions s JOIN applications a ON a.id = s.app_id WHERE a.project_id = ?1 AND comment IS NOT NULL AND comment <> ''",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Estimating size: sessions ~150b, file_activities ~150b, manual ~150b, comments +100b
+    let estimated_size_bytes = (session_count * 150)
+        + (file_activity_count * 150)
+        + (manual_session_count * 150)
+        + (comment_count * 100);
+
+    // 5. Top 3 apps
+    let mut stmt = conn
+        .prepare(
+            "SELECT a.display_name, SUM(s.duration_seconds) as total, a.color
+         FROM sessions s
+         JOIN applications a ON a.id = s.app_id
+         WHERE a.project_id = ?1
+         GROUP BY a.id
+         ORDER BY total DESC
+         LIMIT 3",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let top_apps = stmt
+        .query_map([id], |row| {
+            Ok(TopApp {
+                name: row.get(0)?,
+                seconds: row.get(1)?,
+                color: row.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(ProjectExtraInfo {
+        current_value,
+        db_stats: ProjectDbStats {
+            session_count,
+            file_activity_count,
+            manual_session_count,
+            comment_count,
+            estimated_size_bytes,
+        },
+        top_apps,
+    })
+}
+
+#[tauri::command]
+pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+
+    // Delete file activities for this project
+    conn.execute("DELETE FROM file_activities WHERE project_id = ?1", [id])
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -145,6 +145,22 @@ pub struct TopProject {
 }
 
 #[derive(Serialize)]
+pub struct ProjectDbStats {
+    pub session_count: i64,
+    pub file_activity_count: i64,
+    pub manual_session_count: i64,
+    pub comment_count: i64,
+    pub estimated_size_bytes: i64,
+}
+
+#[derive(Serialize)]
+pub struct ProjectExtraInfo {
+    pub current_value: f64,
+    pub db_stats: ProjectDbStats,
+    pub top_apps: Vec<TopApp>,
+}
+
+#[derive(Serialize)]
 pub struct ProjectTimeRow {
     pub name: String,
     pub seconds: i64,
