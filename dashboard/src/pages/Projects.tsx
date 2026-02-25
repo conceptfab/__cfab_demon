@@ -53,7 +53,7 @@ import {
   getProjectEstimates,
 } from "@/lib/tauri";
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
-import { formatDuration, formatPathForDisplay, formatMoney } from "@/lib/utils";
+import { formatDuration, formatPathForDisplay, formatMoney, cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { loadFreezeSettings } from "@/lib/user-settings";
 import type {
@@ -91,6 +91,35 @@ function normalizeProjectDuplicateKey(name: string): string {
     .toLowerCase()
     .replace(/[_-]+/g, "")
     .replace(/\s+/g, "");
+}
+
+function renderDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  const unitClass = "text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline";
+
+  if (h > 0) {
+    return (
+      <span className="flex items-baseline gap-x-1">
+        <span>{h}<span className={unitClass}>h</span></span>
+        <span>{m}<span className={unitClass}>m</span></span>
+      </span>
+    );
+  }
+  if (m > 0) {
+    return (
+      <span className="flex items-baseline gap-x-1">
+        <span>{m}<span className={unitClass}>m</span></span>
+        <span>{s}<span className={unitClass}>s</span></span>
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-baseline">
+      {s}<span className={unitClass}>s</span>
+    </span>
+  );
 }
 
 export function Projects() {
@@ -736,7 +765,14 @@ export function Projects() {
             >
               <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate text-sm font-medium" title={p.name}>{p.name}</span>
+                <span className={cn(
+                  "min-w-0 flex-1 truncate font-medium",
+                  p.name.length > 40 ? "text-[11px]" : 
+                  p.name.length > 25 ? "text-xs" : 
+                  "text-sm"
+                )} title={p.name}>
+                  {p.name}
+                </span>
                 {p.frozen_at && (
                   <button
                     type="button"
@@ -805,7 +841,12 @@ export function Projects() {
                 </div>
               )}
             </div>
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className={cn(
+              "flex items-center gap-2",
+              p.name.length > 50 ? "text-xs leading-tight" : 
+              p.name.length > 30 ? "text-sm" : 
+              "text-base"
+            )}>
               {p.name}
 
               {renderDuplicateMarker(p)}
@@ -863,15 +904,14 @@ export function Projects() {
           <div className="flex items-end justify-between gap-4">
             <div className="space-y-1">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">TOTAL TIME / VALUE</p>
-              <p className="text-2xl font-black text-emerald-400 leading-none flex items-center gap-x-3">
-                <span>
-                  {formatDuration(p.total_seconds)}
-                  <span className="ml-2 text-[0.6em] font-[200] opacity-80">
-                    / {formatMoney(estimates[p.id] || 0, currencyCode)}
-                  </span>
+              <p className="text-xl font-[200] text-emerald-400 leading-none flex items-baseline gap-x-1">
+                {renderDuration(p.total_seconds)}
+                <span className="text-[1.0em] font-[600] opacity-30">/</span>
+                <span className="text-[0.8em] font-[200] opacity-90">
+                  {formatMoney(estimates[p.id] || 0, currencyCode)}
                 </span>
                 
-                <span className="flex items-center gap-2">
+                <span className="ml-1 flex items-center gap-2">
                   {hotProjectIds.includes(p.id) && (
                     <span title="Hot project - top 5 by time">
                       <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />
