@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
@@ -314,6 +315,7 @@ pub(crate) fn ensure_app_project_from_file_hint(
 fn query_projects_with_stats(
     conn: &rusqlite::Connection,
     excluded: bool,
+    date_range: Option<&DateRange>,
 ) -> Result<Vec<ProjectWithStats>, String> {
     let filter = if excluded {
         "p.excluded_at IS NOT NULL"
@@ -334,10 +336,22 @@ fn query_projects_with_stats(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut totals_ci: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    if let (Some(start), Some(end)) = (min_date, max_date) {
+    let mut all_time_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut period_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+
+    // 1. Always compute All-Time totals
+    if let (Some(start), Some(end)) = (min_date.clone(), max_date.clone()) {
         let (_, totals) = compute_project_activity_unique(conn, &DateRange { start, end }, false)?;
-        totals_ci = totals
+        all_time_totals = totals
+            .into_iter()
+            .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
+            .collect();
+    }
+
+    // 2. Compute Period totals if date_range is provided
+    if let Some(range) = date_range {
+        let (_, totals) = compute_project_activity_unique(conn, range, false)?;
+        period_totals = totals
             .into_iter()
             .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
             .collect();
@@ -381,7 +395,8 @@ fn query_projects_with_stats(
                 color: row.get(2)?,
                 created_at: row.get::<_, String>(3).unwrap_or_default(),
                 excluded_at: row.get(4)?,
-                total_seconds: *totals_ci.get(&key).unwrap_or(&0),
+                total_seconds: *all_time_totals.get(&key).unwrap_or(&0),
+                period_seconds: if date_range.is_some() { Some(*period_totals.get(&key).unwrap_or(&0)) } else { None },
                 app_count: row.get(5)?,
                 last_activity,
                 assigned_folder_path: row.get(8)?,
@@ -527,17 +542,23 @@ pub async fn auto_freeze_projects(
 }
 
 #[tauri::command]
-pub async fn get_projects(app: AppHandle) -> Result<Vec<ProjectWithStats>, String> {
+pub async fn get_projects(
+    app: AppHandle,
+    date_range: Option<DateRange>,
+) -> Result<Vec<ProjectWithStats>, String> {
     let conn = db::get_connection(&app)?;
     prune_if_stale(&conn)?;
-    query_projects_with_stats(&conn, false)
+    query_projects_with_stats(&conn, false, date_range.as_ref())
 }
 
 #[tauri::command]
-pub async fn get_excluded_projects(app: AppHandle) -> Result<Vec<ProjectWithStats>, String> {
+pub async fn get_excluded_projects(
+    app: AppHandle,
+    date_range: Option<DateRange>,
+) -> Result<Vec<ProjectWithStats>, String> {
     let conn = db::get_connection(&app)?;
     prune_if_stale(&conn)?;
-    query_projects_with_stats(&conn, true)
+    query_projects_with_stats(&conn, true, date_range.as_ref())
 }
 
 #[tauri::command]
@@ -953,7 +974,11 @@ pub async fn auto_create_projects_from_detection(
     Ok(created)
 }
 #[tauri::command]
-pub async fn get_project_extra_info(app: AppHandle, id: i64) -> Result<ProjectExtraInfo, String> {
+pub async fn get_project_extra_info(
+    app: AppHandle,
+    id: i64,
+    date_range: DateRange,
+) -> Result<ProjectExtraInfo, String> {
     let conn = db::get_connection(&app)?;
 
     // 1. Get project info (name, hourly_rate)
@@ -981,42 +1006,107 @@ pub async fn get_project_extra_info(app: AppHandle, id: i64) -> Result<ProjectEx
 
     let effective_rate = hourly_rate.unwrap_or(global_rate);
 
-    // 3. Compute current value (total for project)
-    // We need total seconds + extra seconds from multipliers
-    let (total_seconds, extra_seconds): (f64, f64) = conn
+    // 3. Compute values
+    // To match estimates.rs exactly, we need use the same logic for determining which sessions belong to a project.
+    
+    let (min_date, max_date): (Option<String>, Option<String>) = conn
         .query_row(
-            "SELECT 
-            SUM(duration_seconds),
-            SUM(duration_seconds * (CASE WHEN rate_multiplier > 1 THEN rate_multiplier - 1 ELSE 0 END))
-         FROM sessions s
-         JOIN applications a ON a.id = s.app_id
-         WHERE a.project_id = ?1",
-            [id],
-            |row| {
-                Ok((
-                    row.get::<_, Option<f64>>(0)?.unwrap_or(0.0),
-                    row.get::<_, Option<f64>>(1)?.unwrap_or(0.0),
-                ))
-            },
+            "SELECT MIN(d), MAX(d)
+             FROM (
+                 SELECT date as d FROM sessions
+                 UNION ALL
+                 SELECT date as d FROM manual_sessions
+             )",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
 
-    // Add manual sessions duration
-    let manual_seconds: f64 = conn
-        .query_row(
-            "SELECT SUM(duration_seconds) FROM manual_sessions WHERE project_id = ?1",
-            [id],
-            |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0)),
-        )
-        .map_err(|e| e.to_string())?;
+    // Helper to get weighted extra seconds for a date range and SPECIFIC project ID
+    let get_extra_secs = |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
+        conn.query_row(
+            "WITH session_project_overlap AS (
+                SELECT s.id as session_id,
+                       fa.project_id as project_id,
+                       SUM(
+                           MAX(
+                               0,
+                               MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
+                               MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
+                           )
+                       ) as overlap_seconds,
+                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
+                FROM sessions s
+                JOIN file_activities fa
+                  ON fa.app_id = s.app_id
+                 AND fa.date = s.date
+                 AND fa.project_id IS NOT NULL
+                 AND fa.last_seen > s.start_time
+                 AND fa.first_seen < s.end_time
+                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+                GROUP BY s.id, fa.project_id
+            ),
+            ranked_overlap AS (
+                SELECT session_id, project_id, overlap_seconds, span_seconds,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY session_id
+                           ORDER BY overlap_seconds DESC, project_id ASC
+                       ) as rn,
+                       COUNT(*) OVER (PARTITION BY session_id) as project_count
+                FROM session_project_overlap
+            ),
+            session_projects AS (
+                SELECT s.id,
+                       CASE
+                           WHEN s.project_id IS NOT NULL THEN s.project_id
+                           WHEN ro.project_count = 1
+                            AND ro.overlap_seconds * 2 >= ro.span_seconds
+                           THEN ro.project_id
+                           ELSE NULL
+                       END as project_id,
+                       CAST(s.duration_seconds AS REAL) as duration_seconds,
+                       CASE
+                           WHEN s.rate_multiplier IS NULL OR s.rate_multiplier <= 0 THEN 1.0
+                           ELSE s.rate_multiplier
+                       END as rate_multiplier
+                FROM sessions s
+                LEFT JOIN ranked_overlap ro
+                  ON ro.session_id = s.id
+                 AND ro.rn = 1
+                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+            )
+            SELECT SUM(CASE 
+                        WHEN sp.rate_multiplier <= 1.0 THEN 0.0 
+                        ELSE (sp.duration_seconds * (sp.rate_multiplier - 1.0)) 
+                       END)
+            FROM session_projects sp
+            WHERE sp.project_id = ?3",
+            rusqlite::params![start, end, p_id],
+            |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
+        ).map_err(|e| e.to_string())
+    };
 
-    let final_weighted_hours = (total_seconds + extra_seconds + manual_seconds) / 3600.0;
-    let current_value = final_weighted_hours * effective_rate;
+    // Calculate All-Time (Global) Value
+    let mut current_value = 0.0;
+    if let (Some(start), Some(end)) = (min_date, max_date) {
+        let (_, totals_raw) = compute_project_activity_unique(&conn, &DateRange { start: start.clone(), end: end.clone() }, false)?;
+        let totals: HashMap<String, f64> = totals_raw.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
+        let clock_seconds = totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
+        let extra_seconds = get_extra_secs(&conn, &start, &end, id)?;
+        current_value = ((clock_seconds + extra_seconds) / 3600.0) * effective_rate;
+    }
+
+    // Calculate Period Value (for the selected range)
+    let (_, period_totals_raw) = compute_project_activity_unique(&conn, &date_range, false)?;
+    let period_totals: HashMap<String, f64> = period_totals_raw.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
+    let period_clock_seconds = period_totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
+    let period_extra_seconds = get_extra_secs(&conn, &date_range.start, &date_range.end, id)?;
+    let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
 
     // 4. DB Stats
     let session_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM sessions s JOIN applications a ON a.id = s.app_id WHERE a.project_id = ?1",
+            "SELECT COUNT(*) FROM sessions s LEFT JOIN applications a ON a.id = s.app_id WHERE a.project_id = ?1 OR s.project_id = ?1",
             [id],
             |row| row.get(0),
         )
@@ -1040,7 +1130,50 @@ pub async fn get_project_extra_info(app: AppHandle, id: i64) -> Result<ProjectEx
 
     let comment_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM sessions s JOIN applications a ON a.id = s.app_id WHERE a.project_id = ?1 AND comment IS NOT NULL AND comment <> ''",
+            "WITH session_project_overlap AS (
+                SELECT s.id as session_id,
+                       fa.project_id as project_id,
+                       MAX(
+                           0,
+                           MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
+                           MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
+                       ) as overlap_seconds,
+                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
+                FROM sessions s
+                JOIN file_activities fa
+                  ON fa.app_id = s.app_id
+                 AND fa.date = s.date
+                 AND fa.project_id IS NOT NULL
+                 AND fa.last_seen > s.start_time
+                 AND fa.first_seen < s.end_time
+                WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
+                GROUP BY s.id, fa.project_id
+            ),
+            ranked_overlap AS (
+                SELECT session_id, project_id, overlap_seconds, span_seconds,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY session_id
+                           ORDER BY overlap_seconds DESC, project_id ASC
+                       ) as rn,
+                       COUNT(*) OVER (PARTITION BY session_id) as project_count
+                FROM session_project_overlap
+            ),
+            session_projects AS (
+                SELECT s.id, s.comment,
+                       CASE
+                           WHEN s.project_id IS NOT NULL THEN s.project_id
+                           WHEN ro.project_count = 1
+                            AND ro.overlap_seconds * 2 >= ro.span_seconds
+                           THEN ro.project_id
+                           ELSE NULL
+                       END as project_id
+                FROM sessions s
+                LEFT JOIN ranked_overlap ro
+                  ON ro.session_id = s.id
+                 AND ro.rn = 1
+                WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
+            )
+            SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?1 AND comment IS NOT NULL AND comment <> ''",
             [id],
             |row| row.get(0),
         )
@@ -1057,9 +1190,9 @@ pub async fn get_project_extra_info(app: AppHandle, id: i64) -> Result<ProjectEx
         .prepare(
             "SELECT a.display_name, SUM(s.duration_seconds) as total, a.color
          FROM sessions s
-         JOIN applications a ON a.id = s.app_id
-         WHERE a.project_id = ?1
-         GROUP BY a.id
+         LEFT JOIN applications a ON a.id = s.app_id
+         WHERE a.project_id = ?1 OR s.project_id = ?1
+         GROUP BY COALESCE(a.display_name, 'Unknown App')
          ORDER BY total DESC
          LIMIT 3",
         )
@@ -1079,6 +1212,7 @@ pub async fn get_project_extra_info(app: AppHandle, id: i64) -> Result<ProjectEx
 
     Ok(ProjectExtraInfo {
         current_value,
+        period_value,
         db_stats: ProjectDbStats {
             session_count,
             file_activity_count,

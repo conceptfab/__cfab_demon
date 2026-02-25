@@ -75,9 +75,10 @@ export const deleteArchiveFile = (fileName: string) =>
   invoke<void>("delete_archive_file", { fileName });
 
 // Projects
-export const getProjects = () => invoke<ProjectWithStats[]>("get_projects");
-export const getExcludedProjects = () =>
-  invoke<ProjectWithStats[]>("get_excluded_projects");
+export const getProjects = (dateRange?: DateRange) =>
+  invoke<ProjectWithStats[]>("get_projects", { dateRange });
+export const getExcludedProjects = (dateRange?: DateRange) =>
+  invoke<ProjectWithStats[]>("get_excluded_projects", { dateRange });
 export const createProject = (name: string, color: string, assignedFolderPath: string | null) =>
   invoke<Project>("create_project", { name, color, assignedFolderPath });
 export const updateProject = (id: number, color: string) =>
@@ -101,8 +102,8 @@ export const assignAppToProject = (appId: number, projectId: number | null) =>
 export function assignSessionToProject(sessionId: number, projectId: number | null, source?: string) {
   return invoke("assign_session_to_project", { sessionId, projectId, source });
 }
-export const getProjectExtraInfo = (id: number) =>
-  invoke<ProjectExtraInfo>("get_project_extra_info", { id });
+export const getProjectExtraInfo = (id: number, dateRange: DateRange) =>
+  invoke<ProjectExtraInfo>("get_project_extra_info", { id, dateRange });
 export const compactProjectData = (id: number) =>
   invoke<void>("compact_project_data", { id });
 export const deleteSession = (sessionId: number) =>

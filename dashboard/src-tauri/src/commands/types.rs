@@ -67,6 +67,7 @@ pub struct ProjectWithStats {
     pub excluded_at: Option<String>,
     pub frozen_at: Option<String>,
     pub total_seconds: i64,
+    pub period_seconds: Option<i64>,
     pub app_count: i64,
     pub last_activity: Option<String>,
     pub assigned_folder_path: Option<String>,
@@ -156,6 +157,7 @@ pub struct ProjectDbStats {
 #[derive(Serialize)]
 pub struct ProjectExtraInfo {
     pub current_value: f64,
+    pub period_value: f64,
     pub db_stats: ProjectDbStats,
     pub top_apps: Vec<TopApp>,
 }

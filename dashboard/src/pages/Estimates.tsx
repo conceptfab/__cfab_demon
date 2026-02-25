@@ -58,6 +58,7 @@ export function Estimates() {
     setCurrentPage,
     setSessionsFocusDate,
     setSessionsFocusProject,
+    currencyCode,
   } = useAppStore();
 
   const [settings, setSettings] = useState<EstimateSettings | null>(null);
@@ -77,10 +78,10 @@ export function Estimates() {
     () =>
       new Intl.NumberFormat(undefined, {
         style: "currency",
-        currency: "USD",
+        currency: currencyCode,
         maximumFractionDigits: 2,
       }),
-    []
+    [currencyCode]
   );
   const decimal = useMemo(
     () =>

@@ -77,3 +77,26 @@
     background: #565f89;
   }
 }
+
+@layer utilities {
+  @keyframes shine {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  .animate-shine {
+    background: linear-gradient(
+      90deg,
+      #059669 0%,
+      #10b981 25%,
+      #6ee7b7 50%,
+      #10b981 75%,
+      #059669 100%
+    );
+    background-size: 200% auto;
+    animation: shine 2s linear infinite;
+    color: white !important;
+    font-weight: 900 !important;
+    border: none !important;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+  }
+}

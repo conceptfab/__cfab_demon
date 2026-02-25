@@ -1,5 +1,24 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, CircleOff, TimerReset, RefreshCw, Wand2, ChevronDown, ChevronRight, CalendarPlus, Trash2, Snowflake, Flame } from "lucide-react";
+import { 
+  Folder, 
+  Plus, 
+  MoreHorizontal, 
+  Trash2, 
+  FileBox, 
+  ExternalLink, 
+  RefreshCw, 
+  Settings, 
+  CalendarPlus,
+  Flame,
+  MessageSquare,
+  CircleOff,
+  TimerReset,
+  Wand2,
+  ChevronDown,
+  ChevronRight,
+  Snowflake,
+  Maximize2
+} from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,9 +50,10 @@ import {
   getDemoModeStatus,
   getProjectExtraInfo,
   compactProjectData,
+  getProjectEstimates,
 } from "@/lib/tauri";
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
-import { formatDuration, formatPathForDisplay } from "@/lib/utils";
+import { formatDuration, formatPathForDisplay, formatMoney } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { loadFreezeSettings } from "@/lib/user-settings";
 import type {
@@ -74,7 +94,11 @@ function normalizeProjectDuplicateKey(name: string): string {
 }
 
 export function Projects() {
-  const { refreshKey, triggerRefresh } = useAppStore();
+  const {
+    refreshKey,
+    triggerRefresh,
+    currencyCode,
+  } = useAppStore();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>([]);
   const [apps, setApps] = useState<AppWithStats[]>([]);
@@ -99,6 +123,7 @@ export function Projects() {
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("compact");
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(false);
+  const [estimates, setEstimates] = useState<Record<number, number>>({});
 
   const SECTION_STORAGE_KEY = "timeflow-dashboard-projects-section-open";
   const LEGACY_SECTION_STORAGE_KEY = "cfab-dashboard-projects-section-open";
@@ -209,6 +234,14 @@ export function Projects() {
 
       if (demoModeRes.status === "fulfilled") setIsDemoMode(demoModeRes.value.enabled);
       else console.error("Failed to load demo mode status:", demoModeRes.reason);
+
+      getProjectEstimates({ start: "2020-01-01", end: "2100-01-01" }).then((res) => {
+        const map: Record<number, number> = {};
+        res.forEach((r) => {
+          map[r.project_id] = r.estimated_value;
+        });
+        setEstimates(map);
+      }).catch(console.error);
     });
   }, [refreshKey]);
 
@@ -218,7 +251,7 @@ export function Projects() {
       return;
     }
     setLoadingExtra(true);
-    getProjectExtraInfo(projectDialogId)
+    getProjectExtraInfo(projectDialogId, { start: "2020-01-01", end: "2100-01-01" })
       .then(setExtraInfo)
       .catch(console.error)
       .finally(() => setLoadingExtra(false));
@@ -318,8 +351,7 @@ export function Projects() {
     try {
       await compactProjectData(id);
       triggerRefresh();
-      // Refresh extra info too
-      const info = await getProjectExtraInfo(id);
+      const info = await getProjectExtraInfo(id, { start: "2020-01-01", end: "2100-01-01" });
       setExtraInfo(info);
     } catch (e) {
       console.error("Failed to compact project data:", e);
@@ -675,17 +707,7 @@ export function Projects() {
             </div>
             <CardTitle className="text-base flex items-center gap-2">
               {p.name}
-              {p.frozen_at && (
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                  title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
-                  onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
-                >
-                  <Snowflake className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-[10px]">Frozen</span>
-                </button>
-              )}
+
               {renderDuplicateMarker(p)}
               {p.is_imported === 1 && (
                 <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
@@ -710,18 +732,16 @@ export function Projects() {
             >
               <TimerReset className="h-3.5 w-3.5" />
             </Button>
-            {!p.frozen_at && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground"
-                onClick={() => handleFreeze(p.id)}
-                title="Freeze project"
-                disabled={isDeleting}
-              >
-                <Snowflake className="h-3.5 w-3.5" />
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 ${p.frozen_at ? "text-blue-400 bg-blue-500/10" : "text-muted-foreground"}`}
+              onClick={() => p.frozen_at ? handleUnfreeze(p.id) : handleFreeze(p.id)}
+              title={p.frozen_at ? `Frozen since ${p.frozen_at.slice(0, 10)} - click to unfreeze` : "Freeze project"}
+              disabled={isDeleting}
+            >
+              <Snowflake className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -745,68 +765,94 @@ export function Projects() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            <div>
-              <p className="text-muted-foreground">Total time</p>
-              <p className="font-mono font-medium">{formatDuration(p.total_seconds)}</p>
+          <div className="flex items-end justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">TOTAL TIME / VALUE</p>
+              <p className="text-2xl font-black text-emerald-400 leading-none flex items-center gap-x-3">
+                <span>
+                  {formatDuration(p.total_seconds)}
+                  <span className="ml-2">
+                    / {formatMoney(estimates[p.id] || 0, currencyCode)}
+                  </span>
+                </span>
+                
+                <span className="flex items-center gap-2">
+                  {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
+                    <Flame className="h-5 w-5 text-amber-400 fill-amber-400/20" title={`Boosted sessions: ${extraInfo.db_stats.manual_session_count}`} />
+                  )}
+                  {extraInfo && extraInfo.db_stats.comment_count > 0 && (
+                    <MessageSquare className="h-5 w-5 text-blue-400 fill-blue-400/20" title={`Comments: ${extraInfo.db_stats.comment_count}`} />
+                  )}
+                </span>
+              </p>
             </div>
-            <div>
-              <p className="text-muted-foreground">Apps</p>
-              <p className="font-medium">{p.app_count}</p>
+
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSessionDialogProjectId(p.id);
+                  setSessionDialogOpen(true);
+                }}
+                title="Add manual session"
+                className="shrink-0 h-9 w-9"
+                disabled={isDeleting}
+              >
+                <CalendarPlus className="h-4 w-4" />
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setProjectDialogId(p.id);
+                }}
+                title="Project details"
+                className="shrink-0 h-9 w-9"
+                disabled={isDeleting}
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
             </div>
-          </div>
-          <div className="mt-3 flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setAssignOpen(assignOpen === p.id ? null : p.id)}
-              disabled={isDeleting}
-            >
-              Manage Apps
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSessionDialogProjectId(p.id);
-                setSessionDialogOpen(true);
-              }}
-              title="Add manual session"
-              disabled={isDeleting}
-            >
-              <CalendarPlus className="h-3.5 w-3.5" />
-            </Button>
           </div>
 
           {options?.inDialog && (
-            <div className="mt-4 space-y-4 border-t pt-4 animate-in fade-in duration-500">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Aktualna wartość</p>
-                  <p className="text-2xl font-bold text-emerald-400">
-                    {loadingExtra ? "..." : (extraInfo ? `${extraInfo.current_value.toFixed(2)}` : "0.00")}
-                    <span className="text-sm font-normal text-muted-foreground ml-1">PLN</span>
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top 3 Aplikacje</p>
-                  {loadingExtra ? (
-                    <p className="text-xs text-muted-foreground italic">Ładowanie...</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {extraInfo?.top_apps.map((app, i) => (
-                        <div key={i} className="flex items-center gap-2 text-xs">
-                          <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: app.color || "#64748b" }} />
-                          <span className="truncate flex-1">{app.name}</span>
-                          <span className="font-mono text-muted-foreground">{formatDuration(app.seconds)}</span>
-                        </div>
-                      ))}
-                      {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">Brak danych</p>}
+            <div className="mt-4 space-y-4 border-t pt-4 animate-in fade-in duration-500 text-sm">
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top 3 Aplikacje</p>
+                {loadingExtra ? (
+                  <p className="text-xs text-muted-foreground italic">Ładowanie...</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {extraInfo?.top_apps.map((app, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: app.color || "#64748b" }} />
+                        <span className="truncate flex-1">{app.name}</span>
+                        <span className="font-mono text-emerald-400 shrink-0">{formatDuration(app.seconds)}</span>
+                      </div>
+                    ))}
+                    {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">Brak danych</p>}
+                    
+                    <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">Apps Linked:</span>
+                        <span className="text-xs font-bold text-emerald-400">{p.app_count}</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-1/2 text-[11px] h-7"
+                        onClick={() => setAssignOpen(assignOpen === p.id ? null : p.id)}
+                        disabled={isDeleting}
+                      >
+                        Manage Apps
+                      </Button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-lg bg-secondary/30 p-3 space-y-2">
@@ -821,7 +867,7 @@ export function Projects() {
                 {loadingExtra ? (
                   <p className="text-center py-2 text-xs text-muted-foreground">Ładowanie statystyk...</p>
                 ) : (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Sesje:</span>
                       <span className="font-medium">{extraInfo?.db_stats.session_count || 0}</span>
@@ -845,7 +891,7 @@ export function Projects() {
                   <Button
                     variant="secondary"
                     size="sm"
-                    className="w-full text-xs h-8 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
+                    className="w-full text-[10px] h-7 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
                     onClick={() => handleCompactProject(p.id)}
                     disabled={loadingExtra || !extraInfo || extraInfo.db_stats.file_activity_count === 0 || !!busy}
                   >
@@ -855,6 +901,8 @@ export function Projects() {
               </div>
             </div>
           )}
+
+
 
           {assignOpen === p.id && (
             <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
@@ -878,7 +926,7 @@ export function Projects() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex flex-col">
           <p className="text-sm text-muted-foreground">

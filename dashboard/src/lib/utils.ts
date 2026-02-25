@@ -47,3 +47,11 @@ export function formatPathForDisplay(path: string): string {
   }
   return s;
 }
+
+export function formatMoney(value: number, currencyCode: string): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currencyCode,
+    maximumFractionDigits: 2,
+  }).format(value);
+}

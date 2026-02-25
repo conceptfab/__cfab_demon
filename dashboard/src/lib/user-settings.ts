@@ -164,4 +164,36 @@ export function saveSessionSettings(next: SessionSettings): SessionSettings {
   }
   return normalized;
 }
+export interface CurrencySettings {
+  code: string;
+}
 
+const CURRENCY_STORAGE_KEY = "timeflow.settings.currency";
+
+export const DEFAULT_CURRENCY_SETTINGS: CurrencySettings = {
+  code: "PLN",
+};
+
+export function loadCurrencySettings(): CurrencySettings {
+  if (typeof window === "undefined") return { ...DEFAULT_CURRENCY_SETTINGS };
+  try {
+    const raw = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_CURRENCY_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<CurrencySettings>;
+    return {
+      code: parsed.code && ["USD", "EUR", "PLN"].includes(parsed.code) ? parsed.code : DEFAULT_CURRENCY_SETTINGS.code,
+    };
+  } catch {
+    return { ...DEFAULT_CURRENCY_SETTINGS };
+  }
+}
+
+export function saveCurrencySettings(next: CurrencySettings): CurrencySettings {
+  const normalized: CurrencySettings = {
+    code: ["USD", "EUR", "PLN"].includes(next.code) ? next.code : DEFAULT_CURRENCY_SETTINGS.code,
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(CURRENCY_STORAGE_KEY, JSON.stringify(normalized));
+  }
+  return normalized;
+}

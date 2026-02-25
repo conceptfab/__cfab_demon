@@ -37,6 +37,10 @@ interface AppState {
   // First run state
   firstRun: boolean;
   setFirstRun: (firstRun: boolean) => void;
+
+  // Currency
+  currencyCode: string;
+  setCurrencyCode: (code: string) => void;
 }
 
 function presetToRange(preset: TimePreset): DateRange {
@@ -150,4 +154,16 @@ export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>((
     localStorage.setItem("timeflow_first_run", firstRun ? "true" : "false");
     set({ firstRun });
   },
+
+  currencyCode: (() => {
+    try {
+      const raw = localStorage.getItem("timeflow.settings.currency");
+      if (!raw) return "PLN";
+      const parsed = JSON.parse(raw);
+      return parsed.code || "PLN";
+    } catch {
+      return "PLN";
+    }
+  })(),
+  setCurrencyCode: (code) => set({ currencyCode: code }),
 }));

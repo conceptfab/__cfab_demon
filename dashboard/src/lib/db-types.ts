@@ -186,6 +186,7 @@ export interface ImportResult {
 
 export interface ProjectWithStats extends Project {
   total_seconds: number;
+  period_seconds?: number | null;
   app_count: number;
   last_activity: string | null;
   assigned_folder_path?: string | null;
@@ -201,6 +202,7 @@ export interface ProjectDbStats {
 
 export interface ProjectExtraInfo {
   current_value: number;
+  period_value: number;
   db_stats: ProjectDbStats;
   top_apps: { name: string; seconds: number; color: string | null }[];
 }

@@ -17,6 +17,9 @@ import {
   loadFreezeSettings,
   saveFreezeSettings,
   type FreezeSettings,
+  loadCurrencySettings,
+  saveCurrencySettings,
+  type CurrencySettings,
 } from "@/lib/user-settings";
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
@@ -40,7 +43,9 @@ function splitTime(value: string): [string, string] {
 
 export function Settings() {
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
+  const setCurrencyCode = useAppStore((s) => s.setCurrencyCode);
   const [clearing, setClearing] = useState(false);
+  const [showSavedToast, setShowSavedToast] = useState(false);
   const [clearArmed, setClearArmed] = useState(false);
   const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
     loadWorkingHoursSettings()
@@ -50,8 +55,11 @@ export function Settings() {
     loadOnlineSyncSettings()
   );
   const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() => loadFreezeSettings());
+  const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(() =>
+    loadCurrencySettings()
+  );
   const [workingHoursError, setWorkingHoursError] = useState<string | null>(null);
-  const [savedSettings, setSavedSettings] = useState(false);
+  const [savedSettings, setSavedSettings] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
   const [manualSyncResult, setManualSyncResult] = useState<OnlineSyncRunResult | null>(null);
@@ -134,13 +142,18 @@ export function Settings() {
     const savedSession = saveSessionSettings(sessionSettings);
     const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
     const savedFreeze = saveFreezeSettings(freezeSettings);
+    const savedCurrency = saveCurrencySettings(currencySettings);
 
     setWorkingHours(savedWorking);
     setSessionSettings(savedSession);
     setOnlineSyncSettings(savedOnlineSync);
     setFreezeSettings(savedFreeze);
+    setCurrencySettings(savedCurrency);
+    setCurrencyCode(savedCurrency.code);
     setWorkingHoursError(null);
     setSavedSettings(true);
+    setShowSavedToast(true);
+    setTimeout(() => setShowSavedToast(false), 3000);
     triggerRefresh();
   };
 
@@ -335,6 +348,43 @@ export function Settings() {
           </div>
 
           {workingHoursError && <p className="text-sm text-destructive">{workingHoursError}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold">Currency</CardTitle>
+          <p className="text-sm text-muted-foreground">Select preferred currency for project values.</p>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border border-border/70 bg-background/35 p-3">
+            <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
+              <label className={labelClassName}>Active Currency</label>
+              <div className="flex items-center gap-2">
+                {[
+                  { code: "PLN", symbol: "zł" },
+                  { code: "USD", symbol: "$" },
+                  { code: "EUR", symbol: "€" },
+                ].map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => {
+                      setCurrencySettings({ code: item.code });
+                      setSavedSettings(false);
+                    }}
+                    className={`h-8 px-4 rounded-md text-sm font-medium transition-all ${
+                      currencySettings.code === item.code
+                        ? "bg-primary text-primary-foreground shadow-sm scale-105"
+                        : "bg-background border border-input hover:bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {item.code} <span className="opacity-50 text-[10px] ml-1">({item.symbol})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -896,11 +946,23 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-emerald-400">{savedSettings ? "Settings saved." : ""}</div>
-        <Button className="h-9 min-w-[10rem]" onClick={handleSaveSettings}>
-          Save Settings
-        </Button>
+      <div className="h-20" /> {/* Spacer for floating button */}
+
+      <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
+        {showSavedToast && (
+          <div className="rounded-full bg-emerald-500/20 px-3 py-1.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/40 shadow-xl animate-in fade-in zoom-in slide-in-from-bottom-2 duration-300">
+            ✓ Saved
+          </div>
+        )}
+        
+        {!savedSettings && (
+          <Button 
+            className="h-8 min-w-[7rem] rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 animate-shine text-white border-none font-black text-[10px] uppercase tracking-wider"
+            onClick={handleSaveSettings}
+          >
+            SAVE CHANGES !
+          </Button>
+        )}
       </div>
     </div>
   );
