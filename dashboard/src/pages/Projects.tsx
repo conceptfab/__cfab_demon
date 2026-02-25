@@ -1,13 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { 
-  Folder, 
   Plus, 
-  MoreHorizontal, 
   Trash2, 
-  FileBox, 
-  ExternalLink, 
   RefreshCw, 
-  Settings, 
   CalendarPlus,
   Flame,
   MessageSquare,
@@ -778,10 +773,14 @@ export function Projects() {
                 
                 <span className="flex items-center gap-2">
                   {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
-                    <Flame className="h-5 w-5 text-amber-400 fill-amber-400/20" title={`Boosted sessions: ${extraInfo.db_stats.manual_session_count}`} />
+                    <span title={`Boosted sessions: ${extraInfo.db_stats.manual_session_count}`}>
+                      <Flame className="h-5 w-5 text-amber-400 fill-amber-400/20" />
+                    </span>
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (
-                    <MessageSquare className="h-5 w-5 text-blue-400 fill-blue-400/20" title={`Comments: ${extraInfo.db_stats.comment_count}`} />
+                    <span title={`Comments: ${extraInfo.db_stats.comment_count}`}>
+                      <MessageSquare className="h-5 w-5 text-blue-400 fill-blue-400/20" />
+                    </span>
                   )}
                 </span>
               </p>

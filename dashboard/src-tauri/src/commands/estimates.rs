@@ -129,12 +129,12 @@ fn query_project_session_counts(
             combined AS (
                 SELECT COALESCE(p.name, 'Unassigned') as project_name, 1 as session_count
                 FROM session_projects sp
-                LEFT JOIN projects p ON p.id = sp.project_id
+                LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
                 UNION ALL
                 SELECT p.name as project_name, 1 as session_count
                 FROM manual_sessions ms
                 JOIN projects p ON p.id = ms.project_id
-                WHERE ms.date >= ?1 AND ms.date <= ?2
+                WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
             )
             SELECT project_name, SUM(session_count) as session_count
             FROM combined
@@ -222,13 +222,13 @@ fn query_project_multiplier_extra_seconds(
                            ELSE (sp.duration_seconds * (sp.rate_multiplier - 1.0))
                        END as extra_seconds
                 FROM session_projects sp
-                LEFT JOIN projects p ON p.id = sp.project_id
+                LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
                 UNION ALL
                 SELECT p.name as project_name,
                        0.0 as extra_seconds
                 FROM manual_sessions ms
                 JOIN projects p ON p.id = ms.project_id
-                WHERE ms.date >= ?1 AND ms.date <= ?2
+                WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
             )
             SELECT project_name,
                    SUM(extra_seconds) as extra_seconds,
@@ -265,7 +265,7 @@ fn build_estimate_rows(
     date_range: &DateRange,
 ) -> Result<Vec<EstimateProjectRow>, String> {
     let global_hourly_rate = get_global_hourly_rate(conn)?;
-    let (_, totals) = compute_project_activity_unique(conn, date_range, false)?;
+    let (_, totals) = compute_project_activity_unique(conn, date_range, false, true)?;
     if totals.is_empty() {
         return Ok(Vec::new());
     }

@@ -78,6 +78,7 @@ pub(crate) fn compute_project_activity_unique(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
     hourly: bool,
+    active_only: bool,
 ) -> Result<(BTreeMap<String, HashMap<String, f64>>, HashMap<String, f64>), String> {
     let bucket_kind = if hourly {
         BucketKind::Hour
@@ -154,17 +155,17 @@ pub(crate) fn compute_project_activity_unique(
              )
              SELECT sp.start_time, sp.end_time, COALESCE(p.name, 'Unassigned') as project_name
              FROM session_projects sp
-             LEFT JOIN projects p ON p.id = sp.project_id
+             LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
              UNION ALL
              SELECT ms.start_time, ms.end_time, p.name as project_name
              FROM manual_sessions ms
              JOIN projects p ON p.id = ms.project_id
-             WHERE ms.date >= ?1 AND ms.date <= ?2",
+             WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
+        .query_map(rusqlite::params![date_range.start, date_range.end, active_only as i32], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -406,7 +407,7 @@ pub async fn get_project_timeline(
     let limit = limit.unwrap_or(8).clamp(1, 20) as usize;
     let hourly = matches!(granularity.as_deref(), Some("hour"));
     let (bucket_project_seconds, total_by_project) =
-        compute_project_activity_unique(&conn, &date_range, hourly)?;
+        compute_project_activity_unique(&conn, &date_range, hourly, true)?;
 
     if bucket_project_seconds.is_empty() {
         return Ok(Vec::new());
