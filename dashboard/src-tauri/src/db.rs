@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     excluded_at TEXT,
     assigned_folder_path TEXT,
-    is_imported INTEGER DEFAULT 0
+    is_imported INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS project_name_blacklist (
@@ -259,6 +260,65 @@ CREATE INDEX IF NOT EXISTS idx_assignment_auto_runs_started ON assignment_auto_r
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_runs_rollback ON assignment_auto_runs(rolled_back_at);
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_run_items_run ON assignment_auto_run_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_run_items_session ON assignment_auto_run_items(session_id);
+
+CREATE TABLE IF NOT EXISTS manual_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    session_type TEXT NOT NULL,
+    project_id INTEGER NOT NULL,
+    app_id INTEGER,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    duration_seconds INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    UNIQUE(project_id, start_time, title)
+);
+
+CREATE TABLE IF NOT EXISTS tombstones (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    table_name TEXT NOT NULL,
+    record_id INTEGER,
+    record_uuid TEXT, -- For future proofing if we move to UUIDs
+    deleted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    sync_key TEXT -- app_id + start_time or project name
+);
+
+CREATE INDEX IF NOT EXISTS idx_tombstones_sync_key ON tombstones(sync_key);
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_tombstone
+AFTER DELETE ON projects
+FOR EACH ROW
+BEGIN
+    INSERT INTO tombstones (table_name, record_id, sync_key)
+    VALUES ('projects', OLD.id, OLD.name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_manual_sessions_tombstone
+AFTER DELETE ON manual_sessions
+FOR EACH ROW
+BEGIN
+    INSERT INTO tombstones (table_name, record_id, sync_key)
+    VALUES ('manual_sessions', OLD.id, OLD.project_id || '|' || OLD.start_time || '|' || OLD.title);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_projects_updated_at
+AFTER UPDATE ON projects
+FOR EACH ROW
+WHEN NEW.updated_at IS OLD.updated_at
+BEGIN
+    UPDATE projects SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_manual_sessions_updated_at
+AFTER UPDATE ON manual_sessions
+FOR EACH ROW
+WHEN NEW.updated_at IS OLD.updated_at
+BEGIN
+    UPDATE manual_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
 
 CREATE TABLE IF NOT EXISTS system_settings (
     key TEXT PRIMARY KEY,
@@ -951,6 +1011,28 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if !has_manual_sessions_app_id {
         log::info!("Migrating manual_sessions: adding app_id");
         db.execute("ALTER TABLE manual_sessions ADD COLUMN app_id INTEGER", [])?;
+    }
+
+    let has_projects_updated_at: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='updated_at'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_projects_updated_at {
+        log::info!("Migrating projects: adding updated_at");
+        db.execute("ALTER TABLE projects ADD COLUMN updated_at TIMESTAMP DEFAULT '2000-01-01 00:00:00'", [])?;
+        db.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP", [])?;
+    }
+
+    let has_manual_sessions_updated_at: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='updated_at'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_manual_sessions_updated_at {
+        log::info!("Migrating manual_sessions: adding updated_at");
+        db.execute("ALTER TABLE manual_sessions ADD COLUMN updated_at TIMESTAMP DEFAULT '2000-01-01 00:00:00'", [])?;
+        db.execute("UPDATE manual_sessions SET updated_at = CURRENT_TIMESTAMP", [])?;
     }
 
     Ok(())

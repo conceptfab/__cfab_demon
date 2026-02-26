@@ -50,7 +50,7 @@ pub fn create_manual_session(
     let id = conn.last_insert_rowid();
 
     conn.query_row(
-        "SELECT id, title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at
+        "SELECT id, title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at, updated_at
          FROM manual_sessions WHERE id = ?1",
         [id],
         |row| {
@@ -65,6 +65,7 @@ pub fn create_manual_session(
                 duration_seconds: row.get(7)?,
                 date: row.get(8)?,
                 created_at: row.get(9)?,
+                updated_at: row.get(10)?,
             })
         },
     )

@@ -376,3 +376,7 @@ export const restoreDatabaseFromFile = (path: string) =>
 
 export const getBackupFiles = () =>
   invoke<BackupFile[]>("get_backup_files");
+
+export const getSyncDir = () => invoke<string | null>("get_sync_dir");
+export const setSyncDir = (path: string | null) => invoke<void>("set_sync_dir", { path });
+export const performAutomaticSync = () => invoke<string>("perform_automatic_sync");

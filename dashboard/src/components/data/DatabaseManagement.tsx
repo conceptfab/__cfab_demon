@@ -11,7 +11,9 @@ import {
   Save, 
   Clock, 
   ShieldCheck,
-  FileUp
+  FileUp,
+  Cloud,
+  RefreshCw
 } from "lucide-react";
 import { 
   getDbInfo, 
@@ -20,7 +22,10 @@ import {
   updateDatabaseSettings, 
   openDbFolder,
   performManualBackup,
-  restoreDatabaseFromFile
+  restoreDatabaseFromFile,
+  getSyncDir,
+  setSyncDir,
+  performAutomaticSync
 } from "@/lib/tauri";
 import type { DbInfo, DatabaseSettings } from "@/lib/db-types";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -31,14 +36,18 @@ export function DatabaseManagement() {
   const [settings, setSettings] = useState<DatabaseSettings | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncDir, setSyncDirLocal] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   const { showError, showInfo } = useToast();
 
   const loadAll = async () => {
     try {
       const dbInfo = await getDbInfo();
       const dbSettings = await getDatabaseSettings();
+      const currentSyncDir = await getSyncDir();
       setInfo(dbInfo);
       setSettings(dbSettings);
+      setSyncDirLocal(currentSyncDir);
     } catch (e) {
       console.error("Failed to load database management data:", e);
     }
@@ -169,6 +178,53 @@ export function DatabaseManagement() {
     }
   };
 
+  const handleBrowseSyncDir = async () => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: "Select Cloud Synchronization Directory (e.g. OneDrive, Dropbox)"
+      });
+      if (selected && typeof selected === "string") {
+        await setSyncDir(selected);
+        setSyncDirLocal(selected);
+        showInfo("Sync directory updated");
+      }
+    } catch (e) {
+      showError(`Failed to set sync directory: ${e}`);
+    }
+  };
+
+  const handleClearSyncDir = async () => {
+    if (confirm("Disable cloud synchronization?")) {
+      try {
+        await setSyncDir(null);
+        setSyncDirLocal(null);
+        showInfo("Cloud sync disabled");
+      } catch (e) {
+        showError(`Failed to disable sync: ${e}`);
+      }
+    }
+  };
+
+  const handleManualSync = async () => {
+    if (!syncDir) return;
+    setIsSyncing(true);
+    try {
+      const result = await performAutomaticSync();
+      if (result.includes("successfully")) {
+        showInfo("Synchronizacja zakończona pomyślnie");
+        loadAll();
+      } else {
+        showInfo(result);
+      }
+    } catch (e) {
+      showError(`Synchronizacja nie powiodła się: ${e}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes === 0) return "0 B";
     const k = 1024;
@@ -296,6 +352,62 @@ export function DatabaseManagement() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="overflow-hidden border-border/40 bg-background/50 backdrop-blur-sm border-blue-500/20">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Cloud className="h-4 w-4 text-blue-400" />
+            Chmura i Synchronizacja
+          </CardTitle>
+          <CardDescription className="text-xs">Ustaw wspólny folder (np. OneDrive), aby synchronizować dane między urządzeniami</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-[10px] uppercase font-semibold text-muted-foreground">Folder Synchronizacji</Label>
+            <div className="flex gap-2">
+              <Input 
+                readOnly 
+                value={syncDir || "Nie skonfigurowano"} 
+                className="h-9 text-[11px] bg-background/30 flex-1"
+              />
+              <Button variant="outline" size="sm" className="h-9 px-4" onClick={handleBrowseSyncDir}>
+                Zmień Folder
+              </Button>
+              {syncDir && (
+                <Button variant="ghost" size="sm" className="h-9 px-3 text-destructive hover:text-destructive hover:bg-destructive/10" onClick={handleClearSyncDir}>
+                  Wyłącz
+                </Button>
+              )}
+              {syncDir && (
+                <Button 
+                  variant="default" 
+                  size="sm" 
+                  className="h-9 px-4 bg-blue-600 hover:bg-blue-700 gap-2" 
+                  onClick={handleManualSync}
+                  disabled={isSyncing}
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Synchronizuj Teraz
+                </Button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-blue-500/5 border border-blue-500/10 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <div className="bg-blue-500/20 p-2 rounded-full mt-0.5">
+                <RefreshCw className={`h-4 w-4 text-blue-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-semibold">Automatyczna Synchronizacja</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  Gdy ustawisz folder, aplikacja będzie automatycznie eksportować Twoje zmiany i pobierać aktualizacje od innych członków zespołu lub z Twoich innych urządzeń.
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

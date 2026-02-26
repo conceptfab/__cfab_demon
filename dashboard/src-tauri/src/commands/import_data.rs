@@ -142,26 +142,61 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
             }
         }
     }
+    
+    // 0. Handle Tombstones
+    for t in &archive.data.tombstones {
+        match t.table_name.as_str() {
+            "projects" => {
+                if let Some(ref name) = t.sync_key {
+                    tx.execute("DELETE FROM projects WHERE name = ?1", [name]).ok();
+                }
+            },
+            "manual_sessions" => {
+                 if let Some(ref key) = t.sync_key {
+                     // key is "pid|start_time|title"
+                     let parts: Vec<&str> = key.split('|').collect();
+                     if parts.len() == 3 {
+                         let start_time = parts[1];
+                         let title = parts[2];
+                         // We don't have local PID here easily, but we can match by start_time and title globally 
+                         // or better: just ignore if we can't match exactly.
+                         // But if it's a manual session, (start_time, title) is pretty unique for a user.
+                         tx.execute("DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2", [start_time, title]).ok();
+                     }
+                 }
+            },
+             _ => {}
+        }
+    }
 
     let mut project_mapping = HashMap::new(); // archive_id -> local_id
     for p in &archive.data.projects {
         let local_id = existing_projects_map.get(&p.name).copied();
 
         let id = if let Some(id) = local_id {
-            if let Some(rate) = p.hourly_rate {
+            // Upsert: Aktualizuj istniejący projekt o dane z importu (kolor, stawkę, folder, status zamrożenia)
+            // Rozstrzygnij konflikt za pomocą updated_at
+            let local_updated_at: String = tx.query_row("SELECT updated_at FROM projects WHERE id = ?1", [id], |row| row.get(0)).unwrap_or_default();
+            
+            if p.updated_at > local_updated_at {
                 tx.execute(
-                    "UPDATE projects
-                     SET hourly_rate = COALESCE(hourly_rate, ?1)
-                     WHERE id = ?2",
-                    rusqlite::params![rate, id],
+                    "UPDATE projects 
+                     SET color = ?1, 
+                         hourly_rate = COALESCE(?2, hourly_rate),
+                         assigned_folder_path = COALESCE(?3, assigned_folder_path),
+                         frozen_at = COALESCE(?4, frozen_at),
+                         excluded_at = COALESCE(?5, excluded_at),
+                         updated_at = ?6
+                     WHERE id = ?7",
+                    rusqlite::params![p.color, p.hourly_rate, p.assigned_folder_path, p.frozen_at, p.excluded_at, p.updated_at, id],
                 )
                 .map_err(|e| e.to_string())?;
             }
             id
         } else {
             tx.execute(
-                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
-                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.assigned_folder_path]
+                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)",
+                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.assigned_folder_path, p.frozen_at, p.updated_at]
             ).map_err(|e| e.to_string())?;
             summary.projects_created += 1;
             let new_id = tx.last_insert_rowid();
@@ -231,6 +266,8 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                 duration_seconds: s.duration_seconds,
                 rate_multiplier: s.rate_multiplier,
                 date: s.date.clone(),
+                comment: s.comment.clone(),
+                is_hidden: s.is_hidden,
             };
 
             let merged = merge_or_insert_session(&tx, local_app_id, &incoming)?;
@@ -244,10 +281,33 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     // 4. Manual Sessions
     for ms in &archive.data.manual_sessions {
         if let Some(&local_pid) = project_mapping.get(&ms.project_id) {
-            tx.execute(
-                "INSERT OR IGNORE INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                rusqlite::params![ms.title, ms.session_type, local_pid, ms.start_time, ms.end_time, ms.duration_seconds, ms.date, ms.created_at]
-            ).map_err(|e| e.to_string())?;
+            // Fetch local updated_at if exists
+            let local_status: Option<(i64, String)> = tx.query_row(
+                "SELECT id, updated_at FROM manual_sessions WHERE project_id = ?1 AND start_time = ?2 AND title = ?3",
+                rusqlite::params![local_pid, ms.start_time, ms.title],
+                |row| Ok((row.get(0)?, row.get(1)?))
+            ).optional().map_err(|e| e.to_string())?;
+
+            if let Some((local_id, local_updated_at)) = local_status {
+                if ms.updated_at > local_updated_at {
+                    tx.execute(
+                        "UPDATE manual_sessions SET 
+                            session_type = ?1, 
+                            end_time = ?2, 
+                            duration_seconds = ?3, 
+                            updated_at = ?4,
+                            app_id = ?5
+                         WHERE id = ?6",
+                        rusqlite::params![ms.session_type, ms.end_time, ms.duration_seconds, ms.updated_at, ms.app_id, local_id]
+                    ).map_err(|e| e.to_string())?;
+                }
+            } else {
+                tx.execute(
+                    "INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at, updated_at) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    rusqlite::params![ms.title, ms.session_type, local_pid, ms.app_id, ms.start_time, ms.end_time, ms.duration_seconds, ms.date, ms.created_at, ms.updated_at]
+                ).map_err(|e| e.to_string())?;
+            }
         }
     }
 
@@ -344,6 +404,8 @@ fn merge_or_insert_session(
     let mut merged_start = incoming.start_time.clone();
     let mut merged_end = incoming.end_time.clone();
     let mut merged_rate_multiplier = incoming.rate_multiplier.max(1.0);
+    let mut merged_comment = incoming.comment.clone().unwrap_or_default();
+    let mut merged_is_hidden = incoming.is_hidden;
     let mut overlap_ids: HashSet<i64> = HashSet::new();
 
     // Expand interval until closure: if merged range touches more sessions,
@@ -352,7 +414,7 @@ fn merge_or_insert_session(
         let mut stmt = tx
             .prepare(
                 "SELECT id, start_time, end_time
-                        , COALESCE(rate_multiplier, 1.0)
+                        , COALESCE(rate_multiplier, 1.0), comment, is_hidden
                  FROM sessions
                  WHERE app_id = ?1 AND date = ?2
                    AND start_time <= ?3
@@ -369,6 +431,8 @@ fn merge_or_insert_session(
                         row.get::<_, String>(1)?,
                         row.get::<_, String>(2)?,
                         row.get::<_, f64>(3)?,
+                        row.get::<_, Option<String>>(4)?,
+                        row.get::<_, i64>(5)? != 0,
                     ))
                 },
             )
@@ -376,13 +440,20 @@ fn merge_or_insert_session(
 
         let prev_count = overlap_ids.len();
         for row in rows {
-            let (id, start, end, rate_multiplier) = row.map_err(|e| e.to_string())?;
+            let (id, start, end, rate_multiplier, comment, is_hidden) = row.map_err(|e| e.to_string())?;
             overlap_ids.insert(id);
             merged_start = min_timestamp(&merged_start, &start);
             merged_end = max_timestamp(&merged_end, &end);
             if rate_multiplier.is_finite() && rate_multiplier > merged_rate_multiplier {
                 merged_rate_multiplier = rate_multiplier;
             }
+            if let Some(c) = comment {
+                if !merged_comment.contains(&c) {
+                    if !merged_comment.is_empty() { merged_comment.push_str(" | "); }
+                    merged_comment.push_str(&c);
+                }
+            }
+            if is_hidden { merged_is_hidden = true; }
         }
 
         if overlap_ids.len() == prev_count {
@@ -392,15 +463,17 @@ fn merge_or_insert_session(
 
     if overlap_ids.is_empty() {
         tx.execute(
-            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, comment, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             rusqlite::params![
                 local_app_id,
                 incoming.start_time,
                 incoming.end_time,
                 incoming.duration_seconds,
                 incoming.date,
-                merged_rate_multiplier
+                merged_rate_multiplier,
+                incoming.comment,
+                incoming.is_hidden
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -413,15 +486,19 @@ fn merge_or_insert_session(
         .ok_or_else(|| "Internal error: overlap set unexpectedly empty".to_string())?;
     let duration = calculate_duration(&merged_start, &merged_end);
 
+    let final_comment = if merged_comment.is_empty() { None } else { Some(merged_comment) };
+
     tx.execute(
         "UPDATE sessions
-         SET start_time = ?1, end_time = ?2, duration_seconds = ?3, rate_multiplier = ?4
-         WHERE id = ?5",
+         SET start_time = ?1, end_time = ?2, duration_seconds = ?3, rate_multiplier = ?4, comment = ?5, is_hidden = ?6
+         WHERE id = ?7",
         rusqlite::params![
             merged_start,
             merged_end,
             duration,
             merged_rate_multiplier,
+            final_comment,
+            merged_is_hidden,
             keep_id
         ],
     )

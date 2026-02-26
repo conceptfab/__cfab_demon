@@ -13,6 +13,7 @@ import {
   refreshToday,
   syncProjectsFromFolders,
   rebuildSessions,
+  performAutomaticSync,
 } from "@/lib/tauri";
 import {
   ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
@@ -410,6 +411,32 @@ function AutoOnlineSync() {
   return null;
 }
 
+function AutoCloudFolderSync() {
+  const { autoImportDone, triggerRefresh } = useAppStore();
+  const syncAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (!autoImportDone) return;
+    if (syncAttemptedRef.current) return;
+    
+    const run = async () => {
+       syncAttemptedRef.current = true;
+       try {
+         const result = await performAutomaticSync();
+         if (result && result.includes("successfully")) {
+            console.log("Cloud Folder Sync:", result);
+            triggerRefresh();
+         }
+       } catch (e) {
+         console.warn("Cloud Folder Sync failed:", e);
+       }
+    };
+    run();
+  }, [autoImportDone, triggerRefresh]);
+
+  return null;
+}
+
 class ErrorBoundary extends Component<
   { children: ReactNode },
   { error: Error | null }
@@ -456,6 +483,7 @@ export default function App() {
           <AutoProjectSync />
           <AutoSessionRebuild />
           <AutoOnlineSync />
+          <AutoCloudFolderSync />
           <MainLayout>
             <PageRouter />
           </MainLayout>

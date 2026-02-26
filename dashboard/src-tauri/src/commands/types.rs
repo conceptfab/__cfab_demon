@@ -56,6 +56,7 @@ pub struct Project {
     pub frozen_at: Option<String>,
     pub assigned_folder_path: Option<String>,
     pub is_imported: i64,
+    pub updated_at: String,
 }
 
 #[derive(Serialize)]
@@ -353,6 +354,7 @@ pub struct ManualSession {
     pub duration_seconds: i64,
     pub date: String,
     pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Serialize)]
@@ -416,6 +418,16 @@ pub struct ExportData {
     pub sessions: Vec<SessionRow>,
     pub manual_sessions: Vec<ManualSession>,
     pub daily_files: HashMap<String, DailyData>,
+    pub tombstones: Vec<Tombstone>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Tombstone {
+    pub table_name: String,
+    pub record_id: Option<i64>,
+    pub record_uuid: Option<String>,
+    pub deleted_at: String,
+    pub sync_key: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -437,6 +449,9 @@ pub struct SessionRow {
     #[serde(default = "default_rate_multiplier")]
     pub rate_multiplier: f64,
     pub date: String,
+    pub comment: Option<String>,
+    #[serde(default)]
+    pub is_hidden: bool,
 }
 
 fn default_rate_multiplier() -> f64 {

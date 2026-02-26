@@ -616,6 +616,7 @@ pub async fn create_project(
         frozen_at: None,
         assigned_folder_path: normalized_folder,
         is_imported: 0,
+        updated_at: chrono::Local::now().to_rfc3339(),
     })
 }
 
@@ -889,8 +890,9 @@ pub async fn create_project_from_folder(
         created_at: chrono::Local::now().to_rfc3339(),
         excluded_at: None,
         frozen_at: None,
-        assigned_folder_path: None,
+        assigned_folder_path: Some(folder_path),
         is_imported: 0,
+        updated_at: chrono::Local::now().to_rfc3339(),
     })
 }
 

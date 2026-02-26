@@ -28,9 +28,9 @@ fn build_export_archive(
 
         // 2. Fetch Projects
         let project_query = if project_id.is_some() {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at FROM projects WHERE id = ?1"
+            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, updated_at FROM projects WHERE id = ?1"
         } else {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at FROM projects"
+            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, updated_at FROM projects"
         };
 
         let mut stmt = conn.prepare(project_query).map_err(|e| e.to_string())?;
@@ -46,6 +46,7 @@ fn build_export_archive(
                     assigned_folder_path: row.get(6)?,
                     is_imported: row.get(7)?,
                     frozen_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -63,6 +64,7 @@ fn build_export_archive(
                     assigned_folder_path: row.get(6)?,
                     is_imported: row.get(7)?,
                     frozen_at: row.get(8)?,
+                    updated_at: row.get(9)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -147,7 +149,7 @@ fn build_export_archive(
             let mut stmt = conn
                 .prepare(
                     "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds, s.date
-                        , COALESCE(s.rate_multiplier, 1.0)
+                        , COALESCE(s.rate_multiplier, 1.0), s.comment, s.is_hidden
                  FROM sessions s
                  INNER JOIN _export_app_ids e ON e.id = s.app_id
                  WHERE s.date >= ?1 AND s.date <= ?2",
@@ -163,6 +165,8 @@ fn build_export_archive(
                         duration_seconds: row.get(4)?,
                         date: row.get(5)?,
                         rate_multiplier: row.get(6)?,
+                        comment: row.get(7)?,
+                        is_hidden: row.get::<_, i64>(8)? != 0,
                     })
                 })
                 .map_err(|e| e.to_string())?;
@@ -178,7 +182,7 @@ fn build_export_archive(
             let mut stmt = conn
             .prepare(
                 "SELECT ms.id, ms.title, ms.session_type, ms.project_id, ms.app_id, ms.start_time, ms.end_time,
-                        ms.duration_seconds, ms.date, ms.created_at
+                        ms.duration_seconds, ms.date, ms.created_at, ms.updated_at
                  FROM manual_sessions ms
                  INNER JOIN _export_project_ids e ON e.id = ms.project_id
                  WHERE ms.date >= ?1 AND ms.date <= ?2",
@@ -197,12 +201,42 @@ fn build_export_archive(
                         duration_seconds: row.get(7)?,
                         date: row.get(8)?,
                         created_at: row.get(9)?,
+                        updated_at: row.get(10)?,
                     })
                 })
                 .map_err(|e| e.to_string())?;
 
             for ms in ms_rows {
                 manual_sessions.push(ms.map_err(|e| e.to_string())?);
+            }
+        }
+
+        // 5.5 Fetch Tombstones
+        let mut tombstones = Vec::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT table_name, record_id, record_uuid, deleted_at, sync_key
+                     FROM tombstones
+                     WHERE deleted_at >= ?1",
+                )
+                .map_err(|e| e.to_string())?;
+            // We export tombstones from a broad range to ensure they are picked up.
+            // In a real scenario, we might want to filter by date or strictly since last sync.
+            let t_rows = stmt
+                .query_map([&start], |row| {
+                    Ok(crate::commands::types::Tombstone {
+                        table_name: row.get(0)?,
+                        record_id: row.get(1)?,
+                        record_uuid: row.get(2)?,
+                        deleted_at: row.get(3)?,
+                        sync_key: row.get(4)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+
+            for t in t_rows {
+                tombstones.push(t.map_err(|e| e.to_string())?);
             }
         }
 
@@ -293,6 +327,7 @@ fn build_export_archive(
                 sessions,
                 manual_sessions,
                 daily_files,
+                tombstones,
             },
         };
         (archive, default_name)

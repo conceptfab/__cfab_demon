@@ -4,11 +4,17 @@
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
 ---
-Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku (pomoc i quick start są wyjątkiem). Przeanalizuj kod i logikę odpowiedzialną za AI, bo mam wątpliwości co do jej poprawności. Wszystkie zachowania AI muszą być precyzyjnie komunikowane by zachowaniu uzytkownika było elementem treningu. Sprawdz czygoś nie warto poprawic w jej rdzeniu i założeniach.Przygotuj aplikacje do dynamicznego rozwoju. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
+Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku (pomoc i quick start są wyjątkiem). Przeanalizuj kod i logikę odpowiedzialną za AI, bo mam wątpliwości co do jej poprawności. Wszystkie zachowania AI muszą być precyzyjnie komunikowane by zachowaniu uzytkownika było elementem treningu. Sprawdz czygoś nie warto poprawic w jej rdzeniu i założeniach. Przygotuj aplikacje do dynamicznego rozwoju - podziel ją na moduły umożliwiające łatwe aktualizacje. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 
 TODO ??
-- kolejność projektów w panelu: alfabetycznie, wartości, czasu pracy - wszystkie wartości rosnąco i malejąco
 - AI - testy
+- sprawdzić logikę nowego systemy synchronizacji - mam wątpliwość/dowody czy działa. 
+<!-- Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem.  -->
+- dodac szyforwanie danych - np tokem
+- zweryfikować poprzednią metodę i rozstrzygnąć czy jest potrzebne - jeśli to usunąć stary system/kod z aplikacji.
+- ProjectPage - musi byc możliwość edycji istniejących manualnych sesji
+- przy dodawaniu boosta konieczny jest komentarz
+- po odmrożeniu projektu, przyporządkowania mu sesji - projekt zostaje zamrożony i AI nie przypisuje go do nowych sesji
 
 - implementacja i18n
 
