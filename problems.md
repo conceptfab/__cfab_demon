@@ -1,4 +1,7 @@
 # Znane Problemy
 
-- Projekty dodane do listy exclude nadal pojawiają się na liście projektów. (Dlaczego?)
-  - **Wyjaśnienie**: Funkcje statystyczne używane na Dashboardzie (`compute_project_activity_unique` oraz `query_project_counts`) nie filtrowały projektów po kolumnie `excluded_at`. W rezultacie, o ile w głównym spisie projektów (sidebar) projekt znikał, o tyle w sekcjach "Top Projects" czy na wykresach nadal był widoczny, jeśli miał zarejestrowany czas.
+Jest problem z aktualizacja danych => czy w ogóle synchronizowana jest baza danych? nie przenoszą się zmiany w sesjach, komentarze, dodanie czy usniecie sesji. Trzeba to naprawić. aktualizacje dziennych sesji to jedno, ale globalny problem to baza danych - możemy zacząć od startowej-aktualnej bazy, którą wgram na oba stanowiska, ale trzeba dodać mechanizm wymiany i aktualizacji zmian w bazie by na obu jednostkach były identyczne bazy danych. Zdiagnozuj problem, zweryfikuj kod i zaproponuj rozwiązanie i zapisz je w planie implementacji.md
+
+
+Problemy ProjectaPage:
+brak wyraźnego oznaczenia sesji manualnych w Activity Over Time (Karta projektu), na wykresie = brak oznaczenie boostowanych sesji, boost się nie dodaje(na całej stronie!), brak ikony komentarza po dodaniu komentarza na wykresie. przy manualnej sesji pod prawym klawiszem ma być opcja edytuj manualną sesję! - jest dodaj!. Funkcja dodaj manualną sesje ma działac w obszarze po za istniejącymi sesjami!!!!!!!!!!!!!!! okno z detali sesji ma być takie jak wywoływane przez to polecenie w dashboardzie. po najechaniu na sesje zaznaczony jest cały słupek dzienny, powinna być aktywana strefa sesji-słupek sesji. w pozostałej przestrzeni musi być możliwość dodania sesji manualnej!!!!!!! Lista Detailed Session List ma pokazywac "wszystkie sesje" od początku realizacji projektu. Sesje na tej liście muszą być wyróznione ikoną pióra!

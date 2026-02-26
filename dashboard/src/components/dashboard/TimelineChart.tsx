@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   TOOLTIP_CONTENT_STYLE,
   TOKYO_NIGHT_CHART_PALETTE,
@@ -30,6 +30,8 @@ interface Props {
   trimLeadingToFirstData?: boolean;
   title?: string;
   heightClassName?: string;
+  onBarClick?: (date: string) => void;
+  onBarContextMenu?: (date: string, x: number, y: number) => void;
 }
 
 const PALETTE = TOKYO_NIGHT_CHART_PALETTE;
@@ -42,7 +44,10 @@ export function TimelineChart({
   trimLeadingToFirstData = false,
   title = "Activity Timeline",
   heightClassName,
+  onBarClick,
+  onBarContextMenu,
 }: Props) {
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const seriesKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const row of data) {
@@ -157,7 +162,7 @@ export function TimelineChart({
     if (items.length === 0 && (!comments || comments.length === 0)) return null;
 
     return (
-      <div style={TOOLTIP_CONTENT_STYLE}>
+      <div style={{ ...TOOLTIP_CONTENT_STYLE, pointerEvents: "none" }}>
         <div style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600, marginBottom: 6 }}>
           {xLabelFormatter(label)}
         </div>
@@ -204,10 +209,33 @@ export function TimelineChart({
         <CardTitle className="text-sm font-medium">{title}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className={heightClassName ?? (isHourly ? "h-64" : "h-56")}>
+        <div 
+          className={(heightClassName ?? (isHourly ? "h-64" : "h-56")) + " outline-none focus:outline-none focus:ring-0"}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (hoveredDate && onBarContextMenu) {
+                onBarContextMenu(hoveredDate, e.clientX, e.clientY);
+            }
+          }}
+        >
           <ResponsiveContainer width="100%" height="100%">
             {isHourly ? (
-              <BarChart data={chartData}>
+              <BarChart 
+                data={chartData}
+                onMouseMove={(state: any) => {
+                    const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
+                    if (date) setHoveredDate(date);
+                }}
+                onMouseLeave={() => setHoveredDate(null)}
+                onClick={(state: any) => {
+                  if (state && state.activePayload && state.activePayload.length > 0) {
+                    const date = state.activePayload[0].payload.date;
+                    if (date) onBarClick?.(date);
+                  }
+                }}
+                accessibilityLayer={false}
+                tabIndex={-1}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
@@ -227,6 +255,7 @@ export function TimelineChart({
                 />
                 <Tooltip
                   content={renderTooltip}
+                  cursor={false}
                 />
                 {seriesKeys.map((key, idx) => {
                   const color =
@@ -241,12 +270,26 @@ export function TimelineChart({
                       stackId="projects"
                       fill={color}
                       radius={[2, 2, 0, 0]}
+                      style={{ cursor: onBarClick ? "pointer" : "default" }}
                     />
                   );
                 })}
               </BarChart>
             ) : (
-              <BarChart data={chartData}>
+              <BarChart 
+                data={chartData}
+                onMouseMove={(state: any) => {
+                    const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
+                    if (date) setHoveredDate(date);
+                }}
+                onMouseLeave={() => setHoveredDate(null)}
+                onClick={(state: any) => {
+                  const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
+                  if (date) onBarClick?.(date);
+                }}
+                accessibilityLayer={false}
+                tabIndex={-1}
+              >
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
@@ -280,7 +323,8 @@ export function TimelineChart({
                       name={key}
                       stackId="projects"
                       fill={color}
-                      radius={[2, 2, 0, 0]}
+                      radius={[4, 4, 0, 0]}
+                      style={{ cursor: onBarClick ? "pointer" : "default" }}
                     />
                   );
                 })}

@@ -99,4 +99,28 @@
     border: none !important;
     box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
   }
+
+  /* Ensure Recharts bars are interactive */
+  .recharts-bar-rectangle {
+    cursor: pointer !important;
+    pointer-events: auto !important;
+  }
+
+  /* Kill Recharts white focus border - ABSOLUTE KILLER VERSION */
+  .recharts-wrapper, 
+  .recharts-wrapper svg, 
+  .recharts-surface, 
+  .recharts-layer, 
+  .recharts-rectangle,
+  .recharts-accessibility-layer {
+    outline: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+  }
+
+  /* Universal focus kill for chart area */
+  .recharts-wrapper *:focus {
+    outline: none !important;
+  }
 }

@@ -66,20 +66,32 @@ pub async fn get_sessions(
         let mut idx = 1;
         let project_filter = filters.project_id;
 
+        if let Some(pid) = project_filter {
+            sql.push_str(&format!(
+                " AND (s.project_id = ?{} OR (s.project_id IS NULL AND EXISTS (
+                    SELECT 1 FROM file_activities fa 
+                    WHERE fa.app_id = s.app_id 
+                    AND fa.date = s.date 
+                    AND fa.project_id = ?{}
+                )))",
+                idx, idx
+            ));
+            params.push(Box::new(pid));
+            idx += 1;
+        }
+
         apply_session_filters(&filters, &mut sql, &mut params, &mut idx);
 
         sql.push_str(" ORDER BY s.start_time DESC");
 
-        if project_filter.is_none() {
-            if let Some(limit) = filters.limit {
-                sql.push_str(&format!(" LIMIT ?{}", idx));
-                params.push(Box::new(limit));
-                idx += 1;
-            }
-            if let Some(offset) = filters.offset {
-                sql.push_str(&format!(" OFFSET ?{}", idx));
-                params.push(Box::new(offset));
-            }
+        if let Some(limit) = filters.limit {
+            sql.push_str(&format!(" LIMIT ?{}", idx));
+            params.push(Box::new(limit));
+            idx += 1;
+        }
+        if let Some(offset) = filters.offset {
+            sql.push_str(&format!(" OFFSET ?{}", idx));
+            params.push(Box::new(offset));
         }
 
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =
@@ -285,14 +297,6 @@ pub async fn get_sessions(
                     Some(Some(inferred_pid)) if *inferred_pid == pid
                 )
             });
-
-            let offset = filters.offset.unwrap_or(0).max(0) as usize;
-            if offset > 0 {
-                sessions = sessions.into_iter().skip(offset).collect();
-            }
-            if let Some(limit) = filters.limit {
-                sessions.truncate(limit.max(0) as usize);
-            }
         }
 
         let mut needs_suggestion_batch: Vec<i64> = Vec::new();
