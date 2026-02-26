@@ -344,6 +344,7 @@ pub struct ManualSession {
     pub title: String,
     pub session_type: String,
     pub project_id: i64,
+    pub app_id: Option<i64>,
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,
@@ -357,6 +358,7 @@ pub struct ManualSessionWithProject {
     pub title: String,
     pub session_type: String,
     pub project_id: i64,
+    pub app_id: Option<i64>,
     pub project_name: String,
     pub project_color: String,
     pub start_time: String,
@@ -370,6 +372,7 @@ pub struct CreateManualSessionInput {
     pub title: String,
     pub session_type: String,
     pub project_id: i64,
+    pub app_id: Option<i64>,
     pub start_time: String,
     pub end_time: String,
 }

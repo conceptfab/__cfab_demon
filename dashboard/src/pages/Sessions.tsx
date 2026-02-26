@@ -3,9 +3,9 @@ import { ChevronLeft, ChevronRight, Trash2, Sparkles, MessageSquare, CircleDolla
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { getSessions, getProjects, assignSessionToProject, deleteSession, updateSessionRateMultiplier, updateSessionComment, getManualSessions, updateManualSession, deleteManualSession } from "@/lib/tauri";
+import { getSessions, getProjects, assignSessionToProject, deleteSession, updateSessionRateMultiplier, updateSessionComment } from "@/lib/tauri";
 import { PromptModal } from "@/components/ui/prompt-modal";
-import { formatDuration, parseRangeInput } from "@/lib/utils";
+import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { addDays, format, parseISO, subDays } from "date-fns";
 import type { DateRange, SessionWithApp, ProjectWithStats } from "@/lib/db-types";
@@ -14,8 +14,7 @@ import { loadSessionSettings } from "@/lib/user-settings";
 interface ContextMenu {
   x: number;
   y: number;
-  session?: SessionWithApp;
-  manualSession?: any;
+  session: SessionWithApp;
 }
 
 interface PromptConfig {
@@ -246,72 +245,6 @@ export function Sessions() {
     );
   };
 
-  const ManualSessionRow = ({
-    session: s,
-    handleContextMenu,
-    isCompact
-  }: {
-    session: any;
-    handleContextMenu: (e: React.MouseEvent, s: any) => void;
-    isCompact?: boolean;
-  }) => {
-    const durationSec = s.duration_seconds;
-    const startTime = s.start_time;
-    const endTime = s.end_time;
-
-    if (isCompact) {
-      return (
-        <div
-          className="group relative rounded border border-transparent hover:border-border/30 hover:bg-secondary/10 transition-all p-1.5 bg-secondary/5 cursor-context-menu mb-0.5"
-          onContextMenu={(e) => handleContextMenu(e, s)}
-        >
-          <div className="grid grid-cols-[140px_1fr] gap-x-3 text-orange-400">
-            <div className="flex border-r border-border/5 pr-2 items-center justify-between">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-bold text-[11px] truncate max-w-[80px]">
-                  [M] {s.title}
-                </span>
-              </div>
-              <span className="font-mono text-[10px] font-bold opacity-60">{formatDuration(durationSec)}</span>
-            </div>
-            <div className="flex items-center text-[9px] opacity-40 italic">
-               Manual session for {s.project_name}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div
-        className="group relative rounded-xl border transition-all p-4 cursor-context-menu mb-4 border-orange-500/20 bg-orange-500/5"
-        onContextMenu={(e) => handleContextMenu(e, s)}
-      >
-        <div className="flex items-center justify-between mb-1.5 h-6">
-          <div className="flex items-center gap-2">
-            <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] h-4">MANUAL</Badge>
-            <span className="font-bold text-[14px] text-orange-400">{s.title}</span>
-          </div>
-          <div className="text-[10px] text-orange-400/60 font-medium">
-             Project: {s.project_name}
-          </div>
-        </div>
-        <div className="grid grid-cols-[140px_1fr] gap-x-4 border-t border-border/5 pt-1.5">
-          <div className="flex flex-col text-[10px] text-orange-400/40 font-medium leading-tight border-r border-border/5 pr-2">
-            <p className="opacity-60">{formatDate(startTime)}</p>
-            <p>{formatTime(startTime)} – {formatTime(endTime)}</p>
-            <div className="mt-1 font-mono text-[11px] font-bold text-orange-400/60 leading-none">
-              {formatDuration(durationSec)}
-            </div>
-          </div>
-          <div className="text-[11px] text-orange-400/50 italic flex items-center">
-             This is a manually added session. Right-click to change time or edit details.
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   useEffect(() => {
     if (!sessionsFocusDate && sessionsFocusProject === null) return;
     if (sessionsFocusDate) {
@@ -330,37 +263,19 @@ export function Sessions() {
   const effectiveDateRange = activeProjectId === "unassigned" ? undefined : activeDateRange;
 
   useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const [monitored, manual] = await Promise.all([
-          getSessions({
-            dateRange: effectiveDateRange,
-            limit: PAGE_SIZE,
-            offset: 0,
-            projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
-            unassigned: activeProjectId === "unassigned" ? true : undefined,
-            minDuration,
-          }),
-          getManualSessions({
-            dateRange: effectiveDateRange,
-            projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
-          })
-        ]);
-
-        // Transform manual sessions to look enough like SessionWithApp for sorting? 
-        // Or just store them separately. Let's merge for the display list.
-        const combined = [
-          ...monitored.map(s => ({ ...s, isManual: false })),
-          ...manual.map(m => ({ ...m, isManual: true, start_time: m.start_time, end_time: m.end_time }))
-        ].sort((a, b) => b.start_time.localeCompare(a.start_time));
-
-        setSessions(combined as any);
-        setHasMore(monitored.length >= PAGE_SIZE);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchAll();
+    getSessions({
+      dateRange: effectiveDateRange,
+      limit: PAGE_SIZE,
+      offset: 0,
+      projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
+      unassigned: activeProjectId === "unassigned" ? true : undefined,
+      minDuration,
+    })
+      .then((data) => {
+        setSessions(data);
+        setHasMore(data.length >= PAGE_SIZE);
+      })
+      .catch(console.error);
   }, [effectiveDateRange, refreshKey, activeProjectId, minDuration]);
 
   useEffect(() => {
@@ -373,31 +288,20 @@ export function Sessions() {
 
   // Auto-refresh sessions every 15 seconds
   useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const [monitored, manual] = await Promise.all([
-          getSessions({
-            dateRange: effectiveDateRange,
-            limit: PAGE_SIZE,
-            offset: 0,
-            projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
-            unassigned: activeProjectId === "unassigned" ? true : undefined,
-            minDuration,
-          }),
-          getManualSessions({
-            dateRange: effectiveDateRange,
-            projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
-          })
-        ]);
-        const combined = [
-          ...monitored.map(s => ({ ...s, isManual: false })),
-          ...manual.map(m => ({ ...m, isManual: true, start_time: m.start_time, end_time: m.end_time }))
-        ].sort((a, b) => b.start_time.localeCompare(a.start_time));
-
-        setSessions(combined as any);
-      } catch (err) {
-        console.error(err);
-      }
+    const interval = setInterval(() => {
+      getSessions({
+        dateRange: effectiveDateRange,
+        limit: PAGE_SIZE,
+        offset: 0,
+        projectId: activeProjectId === "unassigned" ? undefined : (activeProjectId ?? undefined),
+        unassigned: activeProjectId === "unassigned" ? true : undefined,
+        minDuration,
+      })
+        .then((data) => {
+          setSessions(data);
+          setHasMore(data.length >= PAGE_SIZE);
+        })
+        .catch(console.error);
     }, 15_000);
     return () => clearInterval(interval);
   }, [effectiveDateRange, activeProjectId, minDuration]);
@@ -423,49 +327,12 @@ export function Sessions() {
 
 
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent, session: any) => {
+    (e: React.MouseEvent, session: SessionWithApp) => {
       e.preventDefault();
-      if (session.isManual) {
-        setCtxMenu({ x: e.clientX, y: e.clientY, manualSession: session });
-      } else {
-        setCtxMenu({ x: e.clientX, y: e.clientY, session });
-      }
+      setCtxMenu({ x: e.clientX, y: e.clientY, session });
     },
     []
   );
-
-  const handleQuickTimeChange = useCallback(async () => {
-    if (!ctxMenu || !ctxMenu.manualSession) return;
-    const s = ctxMenu.manualSession;
-    const startStr = formatTime(s.start_time);
-    const endStr = formatTime(s.end_time);
-
-    setPromptConfig({
-      title: "Quick change time",
-      description: "Enter new range (e.g. 10:00 - 12:30)",
-      initialValue: `${startStr} - ${endStr}`,
-      onConfirm: async (val) => {
-        const range = parseRangeInput(val, s.start_time);
-        if (!range) {
-          window.alert("Invalid format. Use HH:MM - HH:MM");
-          return;
-        }
-        try {
-          await updateManualSession(s.id, {
-            title: s.title,
-            session_type: s.session_type,
-            project_id: s.project_id,
-            start_time: range.start.toISOString(),
-            end_time: range.end.toISOString(),
-          });
-          triggerRefresh();
-        } catch (err) {
-          window.alert(`Save Error: ${String(err)}`);
-        }
-      }
-    });
-    setCtxMenu(null);
-  }, [ctxMenu, triggerRefresh]);
 
   const handleAssign = useCallback(
     async (projectId: number | null, source?: string) => {
@@ -756,19 +623,12 @@ export function Sessions() {
                   <span className="font-mono text-base font-bold text-foreground/70">{formatDuration(group.totalSeconds)}</span>
                 </div>
                 <div className="space-y-1">
-                  {group.sessions.map((s: any) => (
-                    s.isManual ? (
-                      <ManualSessionRow 
-                        key={`manual-${s.id}`} session={s} handleContextMenu={handleContextMenu} isCompact={viewMode === "compact"}
-                      />
-                    ) : (
-                      <SessionRow 
-                        key={s.id} session={s} dismissedSuggestions={dismissedSuggestions}
-                        handleAcceptSuggestion={handleAcceptSuggestion} handleRejectSuggestion={handleRejectSuggestion}
-                        deleteSession={deleteSession} triggerRefresh={triggerRefresh} handleContextMenu={handleContextMenu}
-                        isCompact={viewMode === "compact"}
-                      />
-                    )
+                  {group.sessions.map((s) => (
+                    <SessionRow 
+                      key={s.id} session={s} dismissedSuggestions={dismissedSuggestions}
+                      handleAcceptSuggestion={handleAcceptSuggestion} handleRejectSuggestion={handleRejectSuggestion}
+                      deleteSession={deleteSession} triggerRefresh={triggerRefresh} handleContextMenu={handleContextMenu}
+                    />
                   ))}
                 </div>
               </CardContent>
@@ -789,130 +649,101 @@ export function Sessions() {
         </div>
       )}
 
-      {/* Context menu for session actions */}
+      {/* Context menu for assigning session to a project */}
       {ctxMenu && (
         <div
           ref={ctxRef}
           className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
-          {ctxMenu.manualSession ? (
-            <>
-              <div className="px-2 py-1.5 text-xs font-semibold text-orange-400">
-                Manual Session: {ctxMenu.manualSession.title}
+          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+            Session actions ({ctxMenu.session.app_name})
+          </div>
+          {ctxMenu.session.suggested_project_id !== undefined && ctxMenu.session.suggested_project_name && ctxMenu.session.project_name === null && (
+            <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
+                <span className="text-[11px] text-sky-200">
+                  AI suggests: <span className="font-medium">{ctxMenu.session.suggested_project_name}</span>
+                  {ctxMenu.session.suggested_confidence !== undefined && (
+                    <span className="ml-1 opacity-75">({((ctxMenu.session.suggested_confidence) * 100).toFixed(0)}%)</span>
+                  )}
+                </span>
               </div>
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                onClick={handleQuickTimeChange}
-              >
-                Change time...
-              </button>
-              <div className="h-px bg-border my-1" />
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10 cursor-pointer"
-                onClick={async () => {
-                  if (confirm("Delete this manual session?")) {
-                    await deleteManualSession(ctxMenu.manualSession.id);
-                    triggerRefresh();
-                    setCtxMenu(null);
-                  }
-                }}
-              >
-                Delete Session
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                Session actions ({ctxMenu.session?.app_name})
-              </div>
-              {ctxMenu.session?.suggested_project_id !== undefined && ctxMenu.session?.suggested_project_name && ctxMenu.session?.project_name === null && (
-                <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
-                    <span className="text-[11px] text-sky-200">
-                      AI suggests: <span className="font-medium">{ctxMenu.session.suggested_project_name}</span>
-                      {ctxMenu.session.suggested_confidence !== undefined && (
-                        <span className="ml-1 opacity-75">({((ctxMenu.session.suggested_confidence) * 100).toFixed(0)}%)</span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1 mt-1.5">
-                    <button
-                      className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
-                      onClick={() => void handleAcceptSuggestion(ctxMenu.session!, { stopPropagation: () => { } } as React.MouseEvent)}
-                    >
-                      Accept
-                    </button>
-                    <button
-                      className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
-                      onClick={() => void handleRejectSuggestion(ctxMenu.session!, { stopPropagation: () => { } } as React.MouseEvent)}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="h-px bg-border my-1" />
-              <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                Rate multiplier (default x2): <span className="font-mono">{formatMultiplierLabel(ctxMenu.session?.rate_multiplier)}</span>
-              </div>
-              <div className="flex gap-1.5 px-1.5 pb-1.5">
+              <div className="flex items-center gap-1 mt-1.5">
                 <button
-                  className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
-                  onClick={() => void handleSetRateMultiplier(2)}
+                  className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
+                  onClick={() => void handleAcceptSuggestion(ctxMenu.session, { stopPropagation: () => { } } as React.MouseEvent)}
                 >
-                  Boost x2
+                  Accept
                 </button>
                 <button
-                  className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
-                  onClick={() => void handleCustomRateMultiplier()}
+                  className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
+                  onClick={() => void handleRejectSuggestion(ctxMenu.session, { stopPropagation: () => { } } as React.MouseEvent)}
                 >
-                  Custom...
+                  Reject
                 </button>
               </div>
-              <div className="h-px bg-border my-1" />
-              <button
-                className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                onClick={() => void handleEditComment()}
-              >
-                <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span>{ctxMenu.session?.comment ? "Edit comment" : "Add comment"}</span>
-              </button>
-              <div className="h-px bg-border my-1" />
-              <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                Assign to project
-              </div>
-              <div className="max-h-[58vh] overflow-y-auto pr-1">
-                <button
-                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                  onClick={() => handleAssign(null, "manual_session_unassign")}
-                >
-                  <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-                  <span className="truncate">Unassigned</span>
-                </button>
-                {projects.filter((p) => !p.frozen_at).length === 0 ? (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                    No projects available
-                  </div>
-                ) : (
-                  projects.filter((p) => !p.frozen_at).map((p) => (
-                    <button
-                      key={p.id}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                      onClick={() => handleAssign(p.id, "manual_session_change")}
-                    >
-                      <div
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      <span className="truncate">{p.name}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
+            </div>
           )}
+          <div className="h-px bg-border my-1" />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">
+            Rate multiplier (default x2): <span className="font-mono">{formatMultiplierLabel(ctxMenu.session.rate_multiplier)}</span>
+          </div>
+          <div className="flex gap-1.5 px-1.5 pb-1.5">
+            <button
+              className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
+              onClick={() => void handleSetRateMultiplier(2)}
+            >
+              Boost x2
+            </button>
+            <button
+              className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
+              onClick={() => void handleCustomRateMultiplier()}
+            >
+              Custom...
+            </button>
+          </div>
+          <div className="h-px bg-border my-1" />
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+            onClick={() => void handleEditComment()}
+          >
+            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>{ctxMenu.session.comment ? "Edit comment" : "Add comment"}</span>
+          </button>
+          <div className="h-px bg-border my-1" />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">
+            Assign to project
+          </div>
+          <div className="max-h-[58vh] overflow-y-auto pr-1">
+            <button
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={() => handleAssign(null, "manual_session_unassign")}
+            >
+              <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
+              <span className="truncate">Unassigned</span>
+            </button>
+            {projects.filter((p) => !p.frozen_at).length === 0 ? (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                No projects available
+              </div>
+            ) : (
+              projects.filter((p) => !p.frozen_at).map((p) => (
+                <button
+                  key={p.id}
+                  className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  onClick={() => handleAssign(p.id, "manual_session_change")}
+                >
+                  <div
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: p.color }}
+                  />
+                  <span className="truncate">{p.name}</span>
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
 

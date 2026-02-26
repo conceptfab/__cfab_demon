@@ -34,6 +34,7 @@ const DataManagement = lazy(() => import("@/pages/Data").then((m) => ({ default:
 const AIPage = lazy(() => import("@/pages/AI").then((m) => ({ default: m.AIPage })));
 const QuickStart = lazy(() => import("@/pages/QuickStart").then((m) => ({ default: m.QuickStart })));
 const Help = lazy(() => import("@/pages/Help").then((m) => ({ default: m.Help })));
+const ProjectPage = lazy(() => import("@/pages/ProjectPage").then((m) => ({ default: m.ProjectPage })));
 
 function PageRouter() {
   const currentPage = useAppStore((s) => s.currentPage);
@@ -66,6 +67,8 @@ function PageRouter() {
         return <Help />;
       case "quickstart":
         return <QuickStart />;
+      case "project-card":
+        return <ProjectPage />;
       default:
         return <Dashboard />;
     }

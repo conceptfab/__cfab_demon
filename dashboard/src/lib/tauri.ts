@@ -236,9 +236,10 @@ export const getStackedTimeline = (dateRange: DateRange, limit: number) =>
 export const getProjectTimeline = (
   dateRange: DateRange,
   limit = 8,
-  granularity: "hour" | "day" = "day"
+  granularity: "hour" | "day" = "day",
+  projectId?: number
 ) =>
-  invoke<StackedBarData[]>("get_project_timeline", { dateRange, limit, granularity });
+  invoke<StackedBarData[]>("get_project_timeline", { dateRange, limit, granularity, id: projectId });
 
 // Auto-import
 export const autoImportFromDataDir = () =>
@@ -287,6 +288,7 @@ export const createManualSession = (input: {
   title: string;
   session_type: string;
   project_id: number;
+  app_id?: number | null;
   start_time: string;
   end_time: string;
 }) => invoke<ManualSession>("create_manual_session", { input });
@@ -302,6 +304,7 @@ export const updateManualSession = (
     title: string;
     session_type: string;
     project_id: number;
+    app_id?: number | null;
     start_time: string;
     end_time: string;
   }

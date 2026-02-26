@@ -228,7 +228,8 @@ export interface HeatmapCell {
 
 export interface StackedBarData {
   date: string;
-  [appName: string]: string | number;
+  comments?: string[];
+  [appName: string]: string | number | string[] | undefined;
 }
 
 export interface AutoImportResult {
@@ -291,6 +292,7 @@ export interface ManualSession {
   title: string;
   session_type: string;
   project_id: number;
+  app_id?: number | null;
   start_time: string;
   end_time: string;
   duration_seconds: number;
@@ -303,6 +305,7 @@ export interface ManualSessionWithProject {
   title: string;
   session_type: string;
   project_id: number;
+  app_id?: number | null;
   project_name: string;
   project_color: string;
   start_time: string;

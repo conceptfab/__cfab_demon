@@ -16,6 +16,8 @@ interface AppState {
   clearSessionsFocusDate: () => void;
   sessionsFocusProject: number | "unassigned" | null;
   setSessionsFocusProject: (projectId: number | "unassigned" | null) => void;
+  projectPageId: number | null;
+  setProjectPageId: (id: number | null) => void;
 
   // Date range
   dateRange: DateRange;
@@ -87,6 +89,8 @@ export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>((
   clearSessionsFocusDate: () => set({ sessionsFocusDate: null }),
   sessionsFocusProject: null,
   setSessionsFocusProject: (projectId) => set({ sessionsFocusProject: projectId }),
+  projectPageId: null,
+  setProjectPageId: (id) => set({ projectPageId: id }),
 
   dateRange: presetToRange("today"),
   timePreset: "today",

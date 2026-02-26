@@ -47,7 +47,7 @@ export function TimelineChart({
     const keys = new Set<string>();
     for (const row of data) {
       for (const key of Object.keys(row)) {
-        if (key !== "date") keys.add(key);
+        if (key !== "date" && key !== "comments") keys.add(key);
       }
     }
     return Array.from(keys);
@@ -81,22 +81,24 @@ export function TimelineChart({
         return days.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
           const row = byDate.get(dateKey);
-          const out: Record<string, string | number> = { date: dateKey };
+          const out: Record<string, string | number | string[] | undefined> = { date: dateKey };
           for (const key of seriesKeys) {
             const val = row?.[key];
             out[key] = typeof val === "number" ? val : 0;
           }
+          out.comments = row?.comments;
           return out;
         });
       }
     }
 
     return data.map((row) => {
-      const out: Record<string, string | number> = { date: row.date };
+      const out: Record<string, string | number | string[] | undefined> = { date: row.date };
       for (const key of seriesKeys) {
         const val = row[key];
         out[key] = typeof val === "number" ? val : 0;
       }
+      out.comments = row.comments;
       return out;
     });
   }, [data, seriesKeys, granularity, dateRange, trimLeadingToFirstData]);
@@ -136,7 +138,7 @@ export function TimelineChart({
     const { active, label, payload } = (props ?? {}) as {
       active?: boolean;
       label?: unknown;
-      payload?: Array<{ name?: string; color?: string; value?: number | string }>;
+      payload?: Array<{ name?: string; color?: string; value?: number | string; payload: StackedBarData }>;
     };
     if (!active || !payload || payload.length === 0) return null;
 
@@ -149,7 +151,10 @@ export function TimelineChart({
       .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
       .sort((a, b) => b.value - a.value);
 
-    if (items.length === 0) return null;
+    const row = payload[0]?.payload;
+    const comments = row?.comments;
+
+    if (items.length === 0 && (!comments || comments.length === 0)) return null;
 
     return (
       <div style={TOOLTIP_CONTENT_STYLE}>
@@ -180,6 +185,15 @@ export function TimelineChart({
             <span style={{ marginLeft: "auto" }}>{formatDuration(item.value)}</span>
           </div>
         ))}
+        {comments && comments.length > 0 && (
+          <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px dashed ${CHART_GRID_COLOR}` }}>
+            {comments.map((c, i) => (
+              <div key={i} style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontSize: 11, fontStyle: "italic", marginBottom: 2 }}>
+                “{c}”
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };

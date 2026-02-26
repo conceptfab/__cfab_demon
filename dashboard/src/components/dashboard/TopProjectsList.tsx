@@ -1,4 +1,4 @@
-import { FolderOpen, CircleDollarSign } from "lucide-react";
+import { FolderOpen, Flame, MousePointerClick } from "lucide-react";
 import { formatDuration } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import type { ProjectTimeRow, ProjectWithStats, DateRange } from "@/lib/db-types";
@@ -9,6 +9,7 @@ interface TopProjectsListProps {
   dateRange: DateRange;
   setSessionsFocusDate: (date: string | null) => void;
   boostedByProject?: Map<string, number>;
+  manualCountsByProject?: Map<string, number>;
 }
 
 export function TopProjectsList({
@@ -17,6 +18,7 @@ export function TopProjectsList({
   dateRange,
   setSessionsFocusDate,
   boostedByProject,
+  manualCountsByProject,
 }: TopProjectsListProps) {
   const setCurrentPage = useAppStore((s) => s.setCurrentPage);
   const setSessionsFocusProject = useAppStore((s) => s.setSessionsFocusProject);
@@ -65,12 +67,23 @@ export function TopProjectsList({
                 </span>
                 {(() => {
                   const boosted = boostedByProject?.get(p.name.toLowerCase()) ?? 0;
-                  return boosted > 0 ? (
-                    <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-300" title={`${boosted} session(s) with rate multiplier`}>
-                      <CircleDollarSign className="h-3 w-3" />
-                      {boosted} boosted
-                    </span>
-                  ) : null;
+                  const manual = manualCountsByProject?.get(p.name.toLowerCase()) ?? 0;
+                  return (
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      {manual > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-sky-400" title={`${manual} manual session(s)`}>
+                          <MousePointerClick className="h-2.5 w-2.5" />
+                          {manual}
+                        </span>
+                      )}
+                      {boosted > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400" title={`${boosted} boosted session(s)`}>
+                          <Flame className="h-2.5 w-2.5" />
+                          {boosted}
+                        </span>
+                      )}
+                    </div>
+                  );
                 })()}
               </div>
             </div>

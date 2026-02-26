@@ -32,12 +32,13 @@ pub fn create_manual_session(
     let date = start_dt.format("%Y-%m-%d").to_string();
 
     conn.execute(
-        "INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         rusqlite::params![
             input.title,
             input.session_type,
             input.project_id,
+            input.app_id,
             input.start_time,
             input.end_time,
             duration_seconds,
@@ -49,7 +50,7 @@ pub fn create_manual_session(
     let id = conn.last_insert_rowid();
 
     conn.query_row(
-        "SELECT id, title, session_type, project_id, start_time, end_time, duration_seconds, date, created_at
+        "SELECT id, title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at
          FROM manual_sessions WHERE id = ?1",
         [id],
         |row| {
@@ -58,11 +59,12 @@ pub fn create_manual_session(
                 title: row.get(1)?,
                 session_type: row.get(2)?,
                 project_id: row.get(3)?,
-                start_time: row.get(4)?,
-                end_time: row.get(5)?,
-                duration_seconds: row.get(6)?,
-                date: row.get(7)?,
-                created_at: row.get(8)?,
+                app_id: row.get(4)?,
+                start_time: row.get(5)?,
+                end_time: row.get(6)?,
+                duration_seconds: row.get(7)?,
+                date: row.get(8)?,
+                created_at: row.get(9)?,
             })
         },
     )
@@ -77,7 +79,7 @@ pub fn get_manual_sessions(
     let conn = db::get_connection(&app)?;
 
     let mut sql = String::from(
-        "SELECT ms.id, ms.title, ms.session_type, ms.project_id, p.name, p.color,
+        "SELECT ms.id, ms.title, ms.session_type, ms.project_id, ms.app_id, p.name, p.color,
                 ms.start_time, ms.end_time, ms.duration_seconds, ms.date
          FROM manual_sessions ms
          JOIN projects p ON p.id = ms.project_id
@@ -108,12 +110,13 @@ pub fn get_manual_sessions(
                 title: row.get(1)?,
                 session_type: row.get(2)?,
                 project_id: row.get(3)?,
-                project_name: row.get(4)?,
-                project_color: row.get(5)?,
-                start_time: row.get(6)?,
-                end_time: row.get(7)?,
-                duration_seconds: row.get(8)?,
-                date: row.get(9)?,
+                app_id: row.get(4)?,
+                project_name: row.get(5)?,
+                project_color: row.get(6)?,
+                start_time: row.get(7)?,
+                end_time: row.get(8)?,
+                duration_seconds: row.get(9)?,
+                date: row.get(10)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -151,8 +154,8 @@ pub fn update_manual_session(
     let date = start_dt.format("%Y-%m-%d").to_string();
 
     conn.execute(
-        "UPDATE manual_sessions SET title=?1, session_type=?2, project_id=?3, start_time=?4, end_time=?5, duration_seconds=?6, date=?7 WHERE id=?8",
-        rusqlite::params![input.title, input.session_type, input.project_id, input.start_time, input.end_time, duration_seconds, date, id],
+        "UPDATE manual_sessions SET title=?1, session_type=?2, project_id=?3, app_id=?4, start_time=?5, end_time=?6, duration_seconds=?7, date=?8 WHERE id=?9",
+        rusqlite::params![input.title, input.session_type, input.project_id, input.app_id, input.start_time, input.end_time, duration_seconds, date, id],
     )
     .map_err(|e| format!("Failed to update manual session: {}", e))?;
 

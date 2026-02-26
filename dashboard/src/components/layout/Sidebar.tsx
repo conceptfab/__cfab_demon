@@ -200,7 +200,7 @@ export function Sidebar() {
             title={item.id === "sessions" ? sessionsAttentionTitle : undefined}
             className={cn(
               "flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors",
-              currentPage === item.id
+              currentPage === item.id || (item.id === "projects" && currentPage === "project-card")
                 ? "border-border/40 bg-accent/75 text-card-foreground"
                 : "border-transparent text-muted-foreground hover:border-border/35 hover:bg-accent/50 hover:text-accent-foreground"
             )}

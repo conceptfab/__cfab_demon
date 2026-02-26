@@ -18,7 +18,6 @@ import {
   refreshToday,
   assignSessionToProject,
   getManualSessions,
-  updateManualSession,
   updateSessionRateMultiplier,
   updateSessionComment,
 } from "@/lib/tauri";
@@ -136,6 +135,15 @@ export function Dashboard() {
     }
     return map;
   }, [todaySessions]);
+
+  const manualCountsByProject = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const ms of manualSessions) {
+      const key = (ms.project_name ?? "unassigned").toLowerCase();
+      map.set(key, (map.get(key) ?? 0) + 1);
+    }
+    return map;
+  }, [manualSessions]);
   const timelineGranularity: "hour" | "day" = timePreset === "today" ? "hour" : "day";
   const projectTimelineSeriesLimit = useMemo(() => {
     switch (timePreset) {
@@ -263,6 +271,7 @@ export function Dashboard() {
           {refreshing ? "Refreshing..." : "Refresh"}
         </Button>
 
+
         {(["today", "week", "month", "all"] as const).map((preset) => (
           <Button
             key={preset}
@@ -377,15 +386,6 @@ export function Dashboard() {
             setEditingManualSession(session);
             setSessionDialogOpen(true);
           }}
-          onUpdateManualSession={async (id, input) => {
-            try {
-              await updateManualSession(id, input);
-              triggerRefresh();
-            } catch (err) {
-              console.error("Failed to update manual session:", err);
-              window.alert(`Failed to update manual session: ${String(err)}`);
-            }
-          }}
         />
       ) : (
         <TimelineChart
@@ -412,6 +412,7 @@ export function Dashboard() {
               dateRange={dateRange}
               setSessionsFocusDate={setSessionsFocusDate}
               boostedByProject={boostedByProject}
+              manualCountsByProject={manualCountsByProject}
             />
           </CardContent>
         </Card>

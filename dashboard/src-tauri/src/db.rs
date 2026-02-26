@@ -669,14 +669,17 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
                 title TEXT NOT NULL,
                 session_type TEXT NOT NULL DEFAULT 'other',
                 project_id INTEGER NOT NULL,
+                app_id INTEGER,
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                FOREIGN KEY (app_id) REFERENCES applications(id) ON DELETE SET NULL
             );
             CREATE INDEX IF NOT EXISTS idx_manual_sessions_project_id ON manual_sessions(project_id);
+            CREATE INDEX IF NOT EXISTS idx_manual_sessions_app_id ON manual_sessions(app_id);
             CREATE INDEX IF NOT EXISTS idx_manual_sessions_date ON manual_sessions(date);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_manual_sessions_unique ON manual_sessions(project_id, start_time, title);",
         )?;
@@ -938,6 +941,16 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     if !has_sessions_comment {
         log::info!("Migrating sessions: adding comment");
         db.execute("ALTER TABLE sessions ADD COLUMN comment TEXT", [])?;
+    }
+
+    let has_manual_sessions_app_id: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='app_id'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_manual_sessions_app_id {
+        log::info!("Migrating manual_sessions: adding app_id");
+        db.execute("ALTER TABLE manual_sessions ADD COLUMN app_id INTEGER", [])?;
     }
 
     Ok(())

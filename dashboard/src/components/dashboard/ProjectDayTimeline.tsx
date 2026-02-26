@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, CircleDollarSign, MessageSquare } from "lucide-react";
+import { Sparkles, Flame, MessageSquare, MousePointerClick } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -24,7 +24,6 @@ interface Props {
   onUpdateSessionComment?: (sessionId: number, comment: string | null) => void | Promise<void>;
   onAddManualSession?: (startTime?: string) => void;
   onEditManualSession?: (session: ManualSessionWithProject) => void;
-  onUpdateManualSession?: (id: number, input: { title: string; session_type: string; project_id: number; start_time: string; end_time: string; }) => Promise<void>;
 }
 
 interface SegmentData {
@@ -86,27 +85,6 @@ const HATCH_STYLE: React.CSSProperties = {
   pointerEvents: "none",
 };
 const SESSION_FRAGMENT_CLUSTER_GAP_MS = 60_000;
-
-function parseRangeInput(input: string, baseDate: Date): { start: Date; end: Date } | null {
-  const parts = input.split(/[-–—]/).map(p => p.trim());
-  if (parts.length !== 2) return null;
-
-  const parseTime = (timeStr: string) => {
-    const match = timeStr.match(/^(\d{1,2})[:.]?(\d{2})?$/);
-    if (!match) return null;
-    const h = parseInt(match[1], 10);
-    const m = match[2] ? parseInt(match[2], 10) : 0;
-    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
-    const d = new Date(baseDate);
-    d.setHours(h, m, 0, 0);
-    return d;
-  };
-
-  const start = parseTime(parts[0]);
-  const end = parseTime(parts[1]);
-  if (!start || !end || end <= start) return null;
-  return { start, end };
-}
 
 function formatMultiplierLabel(multiplier?: number): string {
   const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
@@ -274,7 +252,6 @@ export function ProjectDayTimeline({
   onUpdateSessionComment,
   onAddManualSession,
   onEditManualSession,
-  onUpdateManualSession,
 }: Props) {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
@@ -425,33 +402,6 @@ export function ProjectDayTimeline({
     });
     setCtxMenu(null);
   }, [ctxMenu, onUpdateSessionComment]);
-
-  const handleQuickTimeChange = useCallback(() => {
-    if (!ctxMenu || ctxMenu.type !== "timeline" || !ctxMenu.editSession || !onUpdateManualSession) return;
-    const session = ctxMenu.editSession;
-    const initial = `${fmtHourMinute(new Date(session.start_time).getTime())} - ${fmtHourMinute(new Date(session.end_time).getTime())}`;
-
-    setCtxMenu(null);
-    setPromptConfig({
-      title: "Change Session Time",
-      description: "Enter new time range (e.g. 10:30 - 12:00)",
-      initialValue: initial,
-      onConfirm: (val) => {
-        const range = parseRangeInput(val, new Date(session.start_time));
-        if (!range) {
-          window.alert("Invalid time range format. Use HH:MM - HH:MM");
-          return;
-        }
-        void onUpdateManualSession(session.id, {
-          title: session.title,
-          session_type: session.session_type,
-          project_id: session.project_id,
-          start_time: range.start.toISOString(),
-          end_time: range.end.toISOString(),
-        });
-      }
-    });
-  }, [ctxMenu, onUpdateManualSession]);
 
   const handleOpenClusterDetails = useCallback(() => {
     if (!ctxMenu || ctxMenu.type !== "assign") return;
@@ -694,7 +644,7 @@ export function ProjectDayTimeline({
                   <span className="truncate">{row.name}</span>
                   {row.boostedCount > 0 && (
                     <span className="shrink-0" title={`${row.boostedCount} boosted session(s)`}>
-                      <CircleDollarSign className="h-3 w-3 text-emerald-400" />
+                      <Flame className="h-3 w-3 text-emerald-400" />
                     </span>
                   )}
                 </div>
@@ -771,9 +721,14 @@ export function ProjectDayTimeline({
                             <MessageSquare className="h-3 w-3 text-amber-500 fill-amber-500/20" />
                           </div>
                         )}
+                        {segment.isManual && (
+                          <div className="pointer-events-none absolute left-0.5 top-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
+                            <MousePointerClick className="h-2.5 w-2.5 text-sky-300" />
+                          </div>
+                        )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
                           <div className="pointer-events-none absolute right-0.5 top-0.5 flex items-center justify-center rounded bg-black/35 p-[1px] shadow-sm">
-                            <CircleDollarSign className="h-3 w-3 text-emerald-400" />
+                            <Flame className="h-3 w-3 text-emerald-400" />
                           </div>
                         )}
                       </div>
@@ -1023,7 +978,7 @@ export function ProjectDayTimeline({
                   ))}
                   {clusterDetailsSummary.boostedCount > 0 && (
                     <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300 gap-1 flex items-center">
-                      <CircleDollarSign className="h-2.5 w-2.5" />
+                      <Flame className="h-2.5 w-2.5" />
                       <span>{clusterDetailsSummary.boostedCount}/{clusterDetailsSummary.fragments.length}</span>
                     </Badge>
                   )}
@@ -1053,7 +1008,7 @@ export function ProjectDayTimeline({
                             <span className="truncate font-medium">{f.appName}</span>
                             {(multiplierValue > 1.000_001) && (
                               <Badge variant="outline" className="h-4 text-[10px] border-emerald-500/40 text-emerald-300 gap-1 flex items-center">
-                                <CircleDollarSign className="h-2.5 w-2.5" />
+                                <Flame className="h-2.5 w-2.5" />
                                 <span>{formatMultiplierLabel(multiplierValue)}</span>
                               </Badge>
                             )}
@@ -1088,14 +1043,6 @@ export function ProjectDayTimeline({
           >
             {ctxMenu.editSession ? "Edit/Delete Session" : `Add Session (${fmtHourMinute(ctxMenu.timeMs)})`}
           </button>
-          {ctxMenu.editSession && onUpdateManualSession && (
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={handleQuickTimeChange}
-            >
-              Change time...
-            </button>
-          )}
         </div>
       )}
       <PromptModal

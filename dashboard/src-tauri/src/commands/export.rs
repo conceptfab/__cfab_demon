@@ -177,7 +177,7 @@ fn build_export_archive(
         if !project_ids.is_empty() {
             let mut stmt = conn
             .prepare(
-                "SELECT ms.id, ms.title, ms.session_type, ms.project_id, ms.start_time, ms.end_time,
+                "SELECT ms.id, ms.title, ms.session_type, ms.project_id, ms.app_id, ms.start_time, ms.end_time,
                         ms.duration_seconds, ms.date, ms.created_at
                  FROM manual_sessions ms
                  INNER JOIN _export_project_ids e ON e.id = ms.project_id
@@ -191,11 +191,12 @@ fn build_export_archive(
                         title: row.get(1)?,
                         session_type: row.get(2)?,
                         project_id: row.get(3)?,
-                        start_time: row.get(4)?,
-                        end_time: row.get(5)?,
-                        duration_seconds: row.get(6)?,
-                        date: row.get(7)?,
-                        created_at: row.get(8)?,
+                        app_id: row.get(4)?,
+                        start_time: row.get(5)?,
+                        end_time: row.get(6)?,
+                        duration_seconds: row.get(7)?,
+                        date: row.get(8)?,
+                        created_at: row.get(9)?,
                     })
                 })
                 .map_err(|e| e.to_string())?;

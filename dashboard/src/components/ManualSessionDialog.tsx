@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createManualSession, updateManualSession, deleteManualSession } from "@/lib/tauri";
-import type { ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
+import { createManualSession, updateManualSession, deleteManualSession, getApplications } from "@/lib/tauri";
+import type { ProjectWithStats, ManualSessionWithProject, AppWithStats } from "@/lib/db-types";
 
 interface Props {
   open: boolean;
@@ -60,9 +60,11 @@ export function ManualSessionDialog({
   const [title, setTitle] = useState("");
   const [sessionType, setSessionType] = useState("meeting");
   const [projectId, setProjectId] = useState<number | null>(null);
+  const [appId, setAppId] = useState<number | null>(null);
+  const [apps, setApps] = useState<AppWithStats[]>([]);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
-  const [syncDates, setSyncDates] = useState(true);
+  const [allowMultiDay, setAllowMultiDay] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,12 +84,18 @@ export function ManualSessionDialog({
       setTitle(editSession.title);
       setSessionType(editSession.session_type);
       setProjectId(editSession.project_id);
+      setAppId(editSession.app_id ?? null);
       setStartTime(toLocalDatetimeValue(editSession.start_time));
       setEndTime(toLocalDatetimeValue(editSession.end_time));
+      // Check if start and end dates are different
+      const startDay = editSession.start_time.split("T")[0];
+      const endDay = editSession.end_time.split("T")[0];
+      setAllowMultiDay(startDay !== endDay);
     } else {
       setTitle("");
       setSessionType("meeting");
       setProjectId(defaultProjectId ?? projects[0]?.id ?? null);
+      setAppId(null);
       const start = defaultStartTime ? toLocalDatetimeValue(defaultStartTime) : toLocalDatetimeValue();
       setStartTime(start);
       // Default end = start + 1h (parse components to avoid UTC confusion)
@@ -97,19 +105,37 @@ export function ManualSessionDialog({
       const [year, month, day] = dateStr.split("-").map(Number);
       const [hours, minutes] = timeStr.split(":").map(Number);
       const startDate = new Date(year, month - 1, day, hours + 1, minutes);
-      const endStr = `${String(startDate.getFullYear()).padStart(4, "0")}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}T${String(startDate.getHours()).padStart(2, "0")}:${String(startDate.getMinutes()).padStart(2, "0")}`;
+      const endStr = `${String(startDate.getFullYear()).padStart(4, "0")}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}T${String(startDate.getHours()).padStart(2, "0")}:${String(startDate.getHours()).padStart(2, "0")}`;
       setEndTime(endStr);
+      setAllowMultiDay(false);
     }
     setError(null);
+
+    // Fetch applications
+    getApplications().then(setApps).catch(console.error);
   }, [open, editSession, defaultProjectId, defaultStartTime, projects, initializedId]);
 
-  const handleStartTimeChange = (newStart: string) => {
-    setStartTime(newStart);
-    if (syncDates && newStart) {
-      const newStartDatePart = newStart.split("T")[0];
-      const currentEndTimePart = endTime.split("T")[1] || "00:00";
-      if (newStartDatePart) {
-        setEndTime(`${newStartDatePart}T${currentEndTimePart}`);
+  const handleStartTimeChange = (newStartTime: string) => {
+    setStartTime(newStartTime);
+    if (!allowMultiDay) {
+      const parts = newStartTime.split("T");
+      if (parts.length === 2) {
+        const newDate = parts[0];
+        const endParts = endTime.split("T");
+        if (endParts.length === 2) {
+          setEndTime(`${newDate}T${endParts[1]}`);
+        }
+      }
+    }
+  };
+
+  const handleAllowMultiDayChange = (checked: boolean) => {
+    setAllowMultiDay(checked);
+    if (!checked) {
+      const startParts = startTime.split("T");
+      const endParts = endTime.split("T");
+      if (startParts.length === 2 && endParts.length === 2) {
+        setEndTime(`${startParts[0]}T${endParts[1]}`);
       }
     }
   };
@@ -153,6 +179,7 @@ export function ManualSessionDialog({
         title: title.trim(),
         session_type: sessionType,
         project_id: projectId,
+        app_id: appId,
         start_time: startTime,
         end_time: endTime,
       };
@@ -228,6 +255,26 @@ export function ManualSessionDialog({
             </Select>
           </div>
 
+          <div>
+            <label className="text-sm font-medium">Application</label>
+            <Select
+              value={appId ? String(appId) : "none"}
+              onValueChange={(v) => setAppId(v === "none" ? null : Number(v))}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Manual Session (no app)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Manual Session (no app)</SelectItem>
+                {apps.map((a) => (
+                  <SelectItem key={a.id} value={String(a.id)}>
+                    {a.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-sm font-medium">Start</label>
@@ -249,18 +296,15 @@ export function ManualSessionDialog({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
-              id="sync-dates"
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-              checked={syncDates}
-              onChange={(e) => setSyncDates(e.target.checked)}
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={allowMultiDay}
+              onChange={(e) => handleAllowMultiDayChange(e.target.checked)}
             />
-            <label htmlFor="sync-dates" className="text-xs text-muted-foreground cursor-pointer select-none">
-              Auto-sync end date to same day
-            </label>
-          </div>
+            <span className="text-sm font-medium">Przedłuż sesję na kolejne dni</span>
+          </label>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 

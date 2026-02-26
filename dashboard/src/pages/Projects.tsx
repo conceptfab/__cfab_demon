@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { 
-  Plus, 
-  Trash2, 
-  RefreshCw, 
+import {
+  Plus,
+  Trash2,
+  RefreshCw,
   CalendarPlus,
-  Flame,
   MessageSquare,
   CircleOff,
   TimerReset,
@@ -12,13 +11,15 @@ import {
   ChevronDown,
   ChevronRight,
   Snowflake,
-  Maximize2,
+  LayoutDashboard,
   CircleDollarSign,
   Type,
   Clock,
   Trophy,
-  Folders
-} from 'lucide-react';
+  Folders,
+  Save,
+  MousePointerClick,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +128,8 @@ export function Projects() {
     refreshKey,
     triggerRefresh,
     currencyCode,
+    setProjectPageId,
+    setCurrentPage,
   } = useAppStore();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>([]);
@@ -149,7 +152,10 @@ export function Projects() {
   const [folderInfo, setFolderInfo] = useState<string | null>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogProjectId, setSessionDialogProjectId] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"detailed" | "compact">("compact");
+  const VIEW_MODE_STORAGE_KEY = "timeflow-dashboard-projects-view-mode";
+  const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
+    return (localStorage.getItem(VIEW_MODE_STORAGE_KEY) as "detailed" | "compact") || "compact";
+  });
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(false);
   const [estimates, setEstimates] = useState<Record<number, number>>({});
@@ -565,7 +571,14 @@ export function Projects() {
   const toggleFolders = () => {
     const next = !useFolders;
     setUseFolders(next);
-    localStorage.setItem(FOLDERS_STORAGE_KEY, String(next));
+  };
+
+  const handleSaveDefaults = () => {
+    localStorage.setItem(SORT_STORAGE_KEY, sortBy);
+    localStorage.setItem(FOLDERS_STORAGE_KEY, String(useFolders));
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    setFolderInfo("View settings saved as default");
+    setTimeout(() => setFolderInfo(null), 3000);
   };
 
   const visibleFolderCandidates = useMemo(() => {
@@ -767,9 +780,9 @@ export function Projects() {
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 <span className={cn(
                   "min-w-0 flex-1 truncate font-medium",
-                  p.name.length > 40 ? "text-[11px]" : 
-                  p.name.length > 25 ? "text-xs" : 
-                  "text-sm"
+                  p.name.length > 40 ? "text-[11px]" :
+                    p.name.length > 25 ? "text-xs" :
+                      "text-sm"
                 )} title={p.name}>
                   {p.name}
                 </span>
@@ -843,9 +856,9 @@ export function Projects() {
             </div>
             <CardTitle className={cn(
               "flex items-center gap-2",
-              p.name.length > 50 ? "text-xs leading-tight" : 
-              p.name.length > 30 ? "text-sm" : 
-              "text-base"
+              p.name.length > 50 ? "text-xs leading-tight" :
+                p.name.length > 30 ? "text-sm" :
+                  "text-base"
             )}>
               {p.name}
 
@@ -910,7 +923,7 @@ export function Projects() {
                 <span className="text-[0.8em] font-[200] opacity-90">
                   {formatMoney(estimates[p.id] || 0, currencyCode)}
                 </span>
-                
+
                 <span className="ml-1 flex items-center gap-2">
                   {hotProjectIds.includes(p.id) && (
                     <span title="Hot project - top 5 by time">
@@ -918,8 +931,8 @@ export function Projects() {
                     </span>
                   )}
                   {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
-                    <span title={`Boosted sessions: ${extraInfo.db_stats.manual_session_count}`}>
-                      <Flame className="h-4 w-4 text-orange-500 fill-orange-500/10" />
+                    <span title={`Manual sessions: ${extraInfo.db_stats.manual_session_count}`}>
+                      <MousePointerClick className="h-4 w-4 text-sky-400 fill-sky-400/10" />
                     </span>
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (
@@ -952,13 +965,14 @@ export function Projects() {
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setProjectDialogId(p.id);
+                  setProjectPageId(p.id);
+                  setCurrentPage("project-card");
                 }}
-                title="Project details"
+                title="Karta projektu"
                 className="shrink-0 h-9 w-9"
                 disabled={isDeleting}
               >
-                <Maximize2 className="h-4 w-4" />
+                <LayoutDashboard className="h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -979,7 +993,7 @@ export function Projects() {
                       </div>
                     ))}
                     {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">No data</p>}
-                    
+
                     <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">Apps Linked:</span>
@@ -1141,6 +1155,11 @@ export function Projects() {
               Compact
             </button>
           </div>
+
+          <Button variant="ghost" size="icon" onClick={handleSaveDefaults} title="Zapisz widok jako domyślny">
+            <Save className="h-4 w-4" />
+          </Button>
+
           <Button size="sm" onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> New Project
           </Button>
