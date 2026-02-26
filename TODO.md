@@ -15,7 +15,7 @@ TODO ??
 - ProjectPage - musi byc możliwość edycji istniejących manualnych sesji-w tym momencie pojawia się okno do tworzenia nowej sesji
 - co to Has manual 1s???
 - przy dodawaniu boosta konieczny jest komentarz
-- po odmrożeniu projektu, przyporządkowania mu sesji - projekt zostaje zamrożony i AI nie przypisuje go do nowych sesji
+- po odmrożeniu projektu, przyporządkowania mu sesji - projekt zostaje zamrożony i AI nie przypisuje go do nowych sesji - projekt sie zamraza po zmianie zakladki! - musi byc mechanizm sprawdzajacy dlaczego został odmrożony - jeśli pojawił na dashboardzie jako aktualny projekt, jego licznik musi zostac zresetowany
 - po kliknieciu prawym przyciskiem na projekt w dowolnym miejscu UI powinno pojawic sie menu kontekstowe z opcją: przejdz do karty projektu
 
 
