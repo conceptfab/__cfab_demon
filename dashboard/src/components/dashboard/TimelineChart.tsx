@@ -57,7 +57,7 @@ export function TimelineChart({
     const keys = new Set<string>();
     for (const row of data) {
       for (const key of Object.keys(row)) {
-        if (key !== "date" && key !== "comments") keys.add(key);
+        if (key !== "date" && key !== "comments" && key !== "has_boost" && key !== "has_manual") keys.add(key);
       }
     }
     return Array.from(keys);
@@ -282,8 +282,7 @@ export function TimelineChart({
           }}
         >
           <ResponsiveContainer width="100%" height="100%">
-            {isHourly ? (
-              <BarChart 
+            <BarChart 
                 data={chartData}
                 onMouseMove={(state: any) => {
                     const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
@@ -291,14 +290,17 @@ export function TimelineChart({
                 }}
                 onMouseLeave={() => setHoveredDate(null)}
                 onClick={(state: any) => {
-                  if (state && state.activePayload && state.activePayload.length > 0) {
-                    const date = state.activePayload[0].payload.date;
-                    if (date) onBarClick?.(date);
-                  }
+                  const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
+                  if (date) onBarClick?.(date);
                 }}
                 accessibilityLayer={false}
                 tabIndex={-1}
               >
+                <defs>
+                  <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                    <rect width="2" height="4" fill="rgba(255,255,255,0.15)" />
+                  </pattern>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
@@ -307,7 +309,8 @@ export function TimelineChart({
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
-                  interval={2}
+                  interval={isHourly ? 2 : undefined}
+                  minTickGap={isHourly ? undefined : 18}
                   height={50}
                 />
                 <YAxis
@@ -316,6 +319,7 @@ export function TimelineChart({
                   tickLine={false}
                   axisLine={false}
                   tickFormatter={(v) => formatDuration(Number(v))}
+                  domain={isHourly ? undefined : [0, (dataMax: number) => Math.max(86_400, Number(dataMax || 0))]}
                 />
                 <Tooltip
                   content={renderTooltip}
@@ -333,68 +337,19 @@ export function TimelineChart({
                       name={key}
                       stackId="projects"
                       fill={color}
-                      radius={[2, 2, 0, 0]}
-                      style={{ 
-                        cursor: onBarClick ? "pointer" : "default",
-                        filter: hoveredDate === null || hoveredDate === key ? 'none' : 'grayscale(0.4) opacity(0.6)', // Added filter
-                        transition: 'all 0.2s ease' // Added transition
+                      radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}
+                      shape={(props: any) => {
+                          const { x, y, width, height, fill, payload, radius } = props;
+                          if (!height || height <= 0) return null;
+                          return (
+                              <g>
+                                  <rect x={x} y={y} width={width} height={height} fill={fill} rx={radius?.[0] || 0} />
+                                  {payload?.has_manual && (
+                                      <rect x={x} y={y} width={width} height={height} fill="url(#hatch)" rx={radius?.[0] || 0} style={{ pointerEvents: 'none' }} />
+                                  )}
+                              </g>
+                          );
                       }}
-                      onMouseEnter={() => setHoveredDate(key)} // Changed from key + idx to key
-                      onMouseLeave={() => setHoveredDate(null)} // Added onMouseLeave
-                    />
-                  );
-                })}
-              </BarChart>
-            ) : (
-              <BarChart 
-                data={chartData}
-                onMouseMove={(state: any) => {
-                    const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
-                    if (date) setHoveredDate(date);
-                }}
-                onMouseLeave={() => setHoveredDate(null)}
-                onClick={(state: any) => {
-                  const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
-                  if (date) onBarClick?.(date);
-                }}
-                accessibilityLayer={false}
-                tabIndex={-1}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
-                <XAxis
-                  dataKey="date"
-                  tick={renderCustomAxisTick}
-                  stroke={CHART_AXIS_COLOR}
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  minTickGap={18}
-                  height={50} // Increase height to accommodate icons
-                />
-                <YAxis
-                  stroke={CHART_AXIS_COLOR}
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => formatDuration(Number(v))}
-                  domain={[0, (dataMax: number) => Math.max(86_400, Number(dataMax || 0))]}
-                />
-                <Tooltip
-                  content={renderTooltip}
-                />
-                {seriesKeys.map((key, idx) => {
-                  const color =
-                    key === "Other"
-                      ? CHART_MUTED_SERIES_COLOR
-                      : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
-                  return (
-                    <Bar
-                      key={key}
-                      dataKey={key}
-                      name={key}
-                      stackId="projects"
-                      fill={color}
-                      radius={[4, 4, 0, 0]}
                       style={{ 
                         cursor: onBarClick ? "pointer" : "default",
                         filter: hoveredDate === null || hoveredDate === key ? 'none' : 'grayscale(0.4) opacity(0.6)',
@@ -406,7 +361,6 @@ export function TimelineChart({
                   );
                 })}
               </BarChart>
-            )}
           </ResponsiveContainer>
         </div>
       </CardContent>

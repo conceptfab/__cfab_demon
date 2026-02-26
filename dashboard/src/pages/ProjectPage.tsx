@@ -39,6 +39,7 @@ import {
     updateSessionRateMultiplier,
     assignSessionToProject,
     deleteSession,
+    deleteManualSession,
 } from "@/lib/tauri";
 import { formatDuration, formatMoney, cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
@@ -211,12 +212,15 @@ export function ProjectPage() {
             }
         });
 
+        const manualByDate = new Set(manualSessions.map(ms => ms.start_time.substring(0, 10)));
+
         return timelineData.map(row => {
             const comments = commentsByDate.get(row.date);
             return {
                 ...row,
                 [project.name]: row[project.name] || 0,
-                comments: comments ? Array.from(comments) : undefined
+                comments: comments ? Array.from(comments) : undefined,
+                has_manual: row.has_manual || manualByDate.has(row.date)
             };
         });
     }, [timelineData, project, recentSessions, manualSessions]);
@@ -296,10 +300,15 @@ export function ProjectPage() {
     };
 
 
-    const handleBulkUnassign = async (sessions: SessionWithApp[]) => {
-        if (!window.confirm(`Unassign ${sessions.length} sessions from this project?`)) return;
+    const handleBulkUnassign = async (sessions: (SessionWithApp & { isManual?: boolean })[]) => {
+        const autoSessions = sessions.filter(s => !s.isManual);
+        if (autoSessions.length === 0) {
+            window.alert("Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.");
+            return;
+        }
+        if (!window.confirm(`Unassign ${autoSessions.length} automatic sessions from this project?`)) return;
         try {
-            await Promise.all(sessions.map(s => assignSessionToProject(s.id, null, "bulk_unassign")));
+            await Promise.all(autoSessions.map(s => assignSessionToProject(s.id, null, "bulk_unassign")));
             triggerRefresh();
         } catch (err) {
             console.error(err);
@@ -307,14 +316,15 @@ export function ProjectPage() {
         setCtxMenu(null);
     };
 
-    const handleBulkDelete = async (sessions: SessionWithApp[]) => {
+    const handleBulkDelete = async (sessions: (SessionWithApp & { isManual?: boolean })[]) => {
         if (!window.confirm(`Permanently delete ${sessions.length} sessions?`)) return;
         try {
-            await Promise.all(sessions.map(s => deleteSession(s.id)));
+            await Promise.all(sessions.map(s => s.isManual ? deleteManualSession(s.id) : deleteSession(s.id)));
             triggerRefresh();
         } catch (err) {
             console.error(err);
         }
+        setCtxMenu({} as any); // Close menu
         setCtxMenu(null);
     };
 
@@ -547,7 +557,19 @@ export function ProjectPage() {
                         setSessionDialogOpen(true);
                     }}
                     onBarContextMenu={(date, x, y) => {
-                        const daySessions = recentSessions.filter(s => s.start_time.startsWith(date));
+                        const dayLogSessions = recentSessions.filter(s => s.start_time.startsWith(date)).map(s => ({ ...s, isManual: false }));
+                        const dayManualSessions = manualSessions.filter(s => s.start_time.startsWith(date)).map(m => ({
+                            ...m,
+                            app_name: "Manual Session",
+                            executable_name: "manual",
+                            project_id: m.project_id,
+                            project_name: m.project_name,
+                            project_color: m.project_color,
+                            comment: m.title,
+                            files: [],
+                            isManual: true
+                        } as any));
+                        const daySessions = [...dayLogSessions, ...dayManualSessions];
                         setCtxMenu({
                             type: 'chart',
                             x,
@@ -566,7 +588,7 @@ export function ProjectPage() {
                                 <MousePointerClick className="h-4 w-4 text-sky-400" />
                                 Manual Sessions
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => { setSessionDialogDate(undefined); setSessionDialogOpen(true); }} className="h-6 text-[10px] font-bold text-sky-400 hover:bg-sky-400/10">
+                            <Button variant="ghost" size="sm" onClick={() => { setEditManualSession(null); setSessionDialogDate(undefined); setSessionDialogOpen(true); }} className="h-6 text-[10px] font-bold text-sky-400 hover:bg-sky-400/10">
                                 + Add Manual
                             </Button>
                         </CardTitle>
@@ -574,7 +596,14 @@ export function ProjectPage() {
                         <CardContent>
                             <div className="space-y-3">
                                 {manualSessions.map((ms) => (
-                                    <div key={ms.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/40">
+                                    <div 
+                                        key={ms.id} 
+                                        className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/40 cursor-pointer hover:bg-secondary/30 transition-colors"
+                                        onClick={() => {
+                                            setEditManualSession(ms);
+                                            setSessionDialogOpen(true);
+                                        }}
+                                    >
                                         <div className="space-y-1">
                                             <p className="text-sm font-medium">{ms.title}</p>
                                             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
@@ -688,12 +717,10 @@ export function ProjectPage() {
                                                         <td className="px-4 py-3 group/comment">
                                                             <div
                                                                 className="flex items-center gap-2 text-sky-200 italic truncate max-w-xs cursor-pointer hover:text-sky-100 transition-colors"
-                                                                onClick={() => {
+                                                                 onClick={() => {
                                                                     if (isManual) {
-                                                                        // Manual sessions use title/dialog for editing
-                                                                        setSessionDialogDate(undefined);
+                                                                        setEditManualSession(s as any);
                                                                         setSessionDialogOpen(true);
-                                                                        // We need to set the session for editing - I'll fix this in next chunk
                                                                     } else {
                                                                         handleEditCommentForSession(s);
                                                                     }
@@ -813,19 +840,61 @@ export function ProjectPage() {
                             <button
                                 className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
                                 onClick={() => {
-                                    if ((ctxMenu.sessions[0] as any).isManual) {
-                                        setEditManualSession(ctxMenu.sessions[0] as any);
-                                        setSessionDialogOpen(true);
-                                    } else {
-                                        setSessionDialogDate(ctxMenu.date);
-                                        setSessionDialogOpen(true);
-                                    }
+                                    setSessionDialogDate(ctxMenu.date);
+                                    setEditManualSession(null);
+                                    setSessionDialogOpen(true);
                                     setCtxMenu(null);
                                 }}
                             >
-                                <PenLine className="h-3.5 w-3.5 text-emerald-400" />
-                                <span>{(ctxMenu.sessions[0] as any).isManual ? "Edit manual session" : "Add manual session"}</span>
+                                <Plus className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>Add manual session</span>
                             </button>
+
+                            {(() => {
+                                const manuals = ctxMenu.sessions.filter(s => (s as any).isManual);
+                                if (manuals.length === 0) return null;
+                                return (
+                                    <>
+                                        <div className="h-px bg-white/5 my-1" />
+                                        {manuals.length === 1 ? (
+                                            <button
+                                                className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 cursor-pointer transition-colors border border-emerald-500/20"
+                                                onClick={() => {
+                                                    setEditManualSession(manuals[0] as any);
+                                                    setSessionDialogOpen(true);
+                                                    setCtxMenu(null);
+                                                }}
+                                            >
+                                                <PenLine className="h-3.5 w-3.5" />
+                                                <span className="font-bold uppercase tracking-tight">Edit Manual Session: {manuals[0].comment || "Time log"}</span>
+                                            </button>
+                                        ) : (
+                                            <>
+                                                <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-emerald-400/50 font-bold">
+                                                    Manual Sessions (click to edit)
+                                                </div>
+                                                {manuals.map(ms => (
+                                                    <button
+                                                        key={ms.id}
+                                                        className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors group/ms"
+                                                        onClick={() => {
+                                                            setEditManualSession(ms as any);
+                                                            setSessionDialogOpen(true);
+                                                            setCtxMenu(null);
+                                                        }}
+                                                    >
+                                                        <PenLine className="h-3.5 w-3.5 text-emerald-400" />
+                                                        <div className="flex flex-col items-start leading-none truncate">
+                                                            <span className="font-medium">Edit: {ms.comment || "Manual Session"}</span>
+                                                            <span className="text-[9px] text-muted-foreground mt-0.5">{formatDuration(ms.duration_seconds)} manual record</span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </>
                     ) : (
                         <>
@@ -837,6 +906,7 @@ export function ProjectPage() {
                                 className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-all active:scale-95"
                                 onClick={() => {
                                     setSessionDialogDate(ctxMenu.date);
+                                    setEditManualSession(null);
                                     setSessionDialogOpen(true);
                                     setCtxMenu(null);
                                 }}
