@@ -8,13 +8,16 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 - AI - testy
-- sprawdzić logikę nowego systemy synchronizacji - mam wątpliwość/dowody czy działa. 
+- sprawdzić logikę nowego systemy synchronizacji - mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem.
 <!-- Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem.  -->
 - dodac szyforwanie danych - np tokem
 - zweryfikować poprzednią metodę i rozstrzygnąć czy jest potrzebne - jeśli to usunąć stary system/kod z aplikacji.
-- ProjectPage - musi byc możliwość edycji istniejących manualnych sesji
+- ProjectPage - musi byc możliwość edycji istniejących manualnych sesji-w tym momencie pojawia się okno do tworzenia nowej sesji
 - przy dodawaniu boosta konieczny jest komentarz
 - po odmrożeniu projektu, przyporządkowania mu sesji - projekt zostaje zamrożony i AI nie przypisuje go do nowych sesji
+- po kliknieciu prawym przyciskiem na projekt w dowolnym miejscu UI powinno pojawic sie menu kontekstowe z opcją: przejdz do karty projektu
+
+
 
 - implementacja i18n
 
