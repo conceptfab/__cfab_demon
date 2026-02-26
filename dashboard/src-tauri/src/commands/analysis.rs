@@ -18,12 +18,18 @@ struct IntervalRow {
     start: DateTime<Local>,
     end: DateTime<Local>,
     project_name: String,
+    multiplier: f64,
+    is_manual: bool,
+    comment: Option<String>,
 }
 
 struct BucketPiece {
     start_ms: i64,
     end_ms: i64,
     project_name: String,
+    multiplier: f64,
+    is_manual: bool,
+    comment: Option<String>,
 }
 
 fn local_from_naive(naive: NaiveDateTime) -> Option<DateTime<Local>> {
@@ -79,7 +85,13 @@ pub(crate) fn compute_project_activity_unique(
     date_range: &DateRange,
     hourly: bool,
     active_only: bool,
-) -> Result<(BTreeMap<String, HashMap<String, f64>>, HashMap<String, f64>), String> {
+    project_id_filter: Option<i64>,
+) -> Result<(
+    BTreeMap<String, HashMap<String, f64>>,
+    HashMap<String, f64>,
+    HashMap<String, (bool, bool)>,
+    HashMap<String, Vec<String>>,
+), String> {
     let bucket_kind = if hourly {
         BucketKind::Hour
     } else {
@@ -146,30 +158,37 @@ pub(crate) fn compute_project_activity_unique(
                              AND ro.overlap_seconds * 2 >= ro.span_seconds
                             THEN ro.project_id
                             ELSE NULL
-                        END as project_id
-                 FROM sessions s
-                 LEFT JOIN ranked_overlap ro
-                   ON ro.session_id = s.id
-                  AND ro.rn = 1
-                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-             )
-             SELECT sp.start_time, sp.end_time, COALESCE(p.name, 'Unassigned') as project_name
-             FROM session_projects sp
-             LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
-             UNION ALL
-             SELECT ms.start_time, ms.end_time, p.name as project_name
-             FROM manual_sessions ms
-             JOIN projects p ON p.id = ms.project_id
-             WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)",
+                        END as project_id,
+                         COALESCE(s.rate_multiplier, 1.0) as multiplier,
+                         s.comment
+                  FROM sessions s
+                  LEFT JOIN ranked_overlap ro
+                    ON ro.session_id = s.id
+                   AND ro.rn = 1
+                  WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+              )
+              SELECT sp.start_time, sp.end_time, COALESCE(p.name, 'Unassigned') as project_name, sp.multiplier, 0 as is_manual, sp.project_id, sp.comment
+              FROM session_projects sp
+              LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
+              WHERE ?4 IS NULL OR sp.project_id = ?4
+              UNION ALL
+              SELECT ms.start_time, ms.end_time, p.name as project_name, 1.0 as multiplier, 1 as is_manual, ms.project_id, ms.title as comment
+              FROM manual_sessions ms
+              JOIN projects p ON p.id = ms.project_id
+              WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)
+                AND (?4 IS NULL OR ms.project_id = ?4)",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![date_range.start, date_range.end, active_only as i32], |row| {
+        .query_map(rusqlite::params![date_range.start, date_range.end, active_only as i32, project_id_filter], |row| {
             Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
+                row.get::<_, String>(0)?, // start_time
+                row.get::<_, String>(1)?, // end_time
+                row.get::<_, String>(2)?, // project_name
+                row.get::<_, f64>(3)?,    // multiplier
+                row.get::<_, i32>(4)?,    // is_manual
+                row.get::<_, Option<String>>(6)?, // comment
             ))
         })
         .map_err(|e| e.to_string())?;
@@ -194,11 +213,14 @@ pub(crate) fn compute_project_activity_unique(
             start,
             end,
             project_name,
+            multiplier: row.3,
+            is_manual: row.4 != 0,
+            comment: row.5,
         });
     }
 
     if intervals.is_empty() {
-        return Ok((BTreeMap::new(), HashMap::new()));
+        return Ok((BTreeMap::new(), HashMap::new(), HashMap::new(), HashMap::new()));
     }
 
     let mut bucket_pieces: BTreeMap<String, Vec<BucketPiece>> = BTreeMap::new();
@@ -237,6 +259,9 @@ pub(crate) fn compute_project_activity_unique(
                     start_ms: piece_start.timestamp_millis(),
                     end_ms: piece_end.timestamp_millis(),
                     project_name: interval.project_name.clone(),
+                    multiplier: interval.multiplier,
+                    is_manual: interval.is_manual,
+                    comment: interval.comment.clone(),
                 });
             piece_start = piece_end;
         }
@@ -244,26 +269,47 @@ pub(crate) fn compute_project_activity_unique(
 
     let mut bucket_project_seconds: BTreeMap<String, HashMap<String, f64>> = BTreeMap::new();
     let mut total_by_project: HashMap<String, f64> = HashMap::new();
+    let mut bucket_flags: HashMap<String, (bool, bool)> = HashMap::new();
+    let mut bucket_comments: HashMap<String, Vec<String>> = HashMap::new();
 
-    for (bucket, pieces) in bucket_pieces {
-        if pieces.is_empty() {
+    for (bucket, slices) in bucket_pieces {
+        if slices.is_empty() {
             continue;
         }
 
-        let mut events: Vec<(i64, i32, String)> = Vec::with_capacity(pieces.len() * 2);
-        for piece in pieces {
-            if piece.end_ms <= piece.start_ms {
+        let mut has_boost = false;
+        let mut has_manual = false;
+        let mut comments = Vec::new();
+        for s in &slices {
+            if s.multiplier > 1.000_001 { has_boost = true; }
+            if s.is_manual { has_manual = true; }
+            if let Some(c) = &s.comment {
+                if !c.trim().is_empty() {
+                    comments.push(c.clone());
+                }
+            }
+        }
+        bucket_flags.insert(bucket.clone(), (has_boost, has_manual));
+        if !comments.is_empty() {
+            comments.sort();
+            comments.dedup();
+            bucket_comments.insert(bucket.clone(), comments);
+        }
+
+        let mut events: Vec<(i64, i32, String, f64)> = Vec::with_capacity(slices.len() * 2);
+        for slice in slices {
+            if slice.end_ms <= slice.start_ms {
                 continue;
             }
-            events.push((piece.start_ms, 1, piece.project_name.clone()));
-            events.push((piece.end_ms, -1, piece.project_name));
+            events.push((slice.start_ms, 1, slice.project_name.clone(), slice.multiplier));
+            events.push((slice.end_ms, -1, slice.project_name, slice.multiplier));
         }
         if events.is_empty() {
             continue;
         }
         events.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
-        let mut active: HashMap<String, i32> = HashMap::new();
+        let mut active: HashMap<String, (i32, f64)> = HashMap::new();
         let mut i = 0usize;
         let mut prev_ms = events[0].0;
         let mut seconds_for_bucket: HashMap<String, f64> = HashMap::new();
@@ -272,15 +318,17 @@ pub(crate) fn compute_project_activity_unique(
             let current_ms = events[i].0;
             if current_ms > prev_ms && !active.is_empty() {
                 let delta_seconds = (current_ms - prev_ms) as f64 / 1000.0;
-                let active_names: Vec<String> = active
+                let active_items: Vec<(String, f64)> = active
                     .iter()
-                    .filter_map(|(name, count)| if *count > 0 { Some(name.clone()) } else { None })
+                    .filter_map(|(name, (count, mult))| if *count > 0 { Some((name.clone(), *mult)) } else { None })
                     .collect();
-                if !active_names.is_empty() {
-                    let share = delta_seconds / active_names.len() as f64;
-                    for name in active_names {
-                        *seconds_for_bucket.entry(name.clone()).or_insert(0.0) += share;
-                        *total_by_project.entry(name).or_insert(0.0) += share;
+                
+                if !active_items.is_empty() {
+                    let share = delta_seconds / active_items.len() as f64;
+                    for (name, mult) in active_items {
+                        let weighted_share = share * mult;
+                        *seconds_for_bucket.entry(name.clone()).or_insert(0.0) += weighted_share;
+                        *total_by_project.entry(name).or_insert(0.0) += weighted_share;
                     }
                 }
             }
@@ -288,9 +336,11 @@ pub(crate) fn compute_project_activity_unique(
             while i < events.len() && events[i].0 == current_ms {
                 let delta = events[i].1;
                 let name = events[i].2.clone();
-                let entry = active.entry(name.clone()).or_insert(0);
-                *entry += delta;
-                if *entry <= 0 {
+                let mult = events[i].3;
+                let entry = active.entry(name.clone()).or_insert((0, 1.0));
+                entry.0 += delta;
+                entry.1 = mult; // Simplified: last mult wins if multiple sessions of same project overlap
+                if entry.0 <= 0 {
                     active.remove(&name);
                 }
                 i += 1;
@@ -303,7 +353,12 @@ pub(crate) fn compute_project_activity_unique(
         }
     }
 
-    Ok((bucket_project_seconds, total_by_project))
+    Ok((
+        bucket_project_seconds,
+        total_by_project,
+        bucket_flags,
+        bucket_comments,
+    ))
 }
 
 #[tauri::command]
@@ -317,12 +372,12 @@ pub async fn get_heatmap(
         .prepare_cached(
             "SELECT CAST(strftime('%w', date) AS INTEGER) as day_of_week,
                     CAST(SUBSTR(start_time, 12, 2) AS INTEGER) as hour,
-                    SUM(duration_seconds)
+                    SUM(val)
              FROM (
-                 SELECT date, start_time, duration_seconds FROM sessions
+                 SELECT date, start_time, duration_seconds * COALESCE(rate_multiplier, 1.0) as val FROM sessions
                  WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
                  UNION ALL
-                 SELECT date, start_time, duration_seconds FROM manual_sessions
+                 SELECT date, start_time, duration_seconds as val FROM manual_sessions
                  WHERE date >= ?1 AND date <= ?2
              )
              GROUP BY day_of_week, hour
@@ -335,7 +390,7 @@ pub async fn get_heatmap(
             Ok(HeatmapCell {
                 day: row.get(0)?,
                 hour: row.get(1)?,
-                seconds: row.get(2)?,
+                seconds: (row.get::<_, f64>(2)?).round() as i64,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -354,13 +409,13 @@ pub async fn get_stacked_timeline(
     let conn = db::get_connection(&app)?;
     let mut stmt = conn
         .prepare_cached(
-            "SELECT s.date, a.display_name, SUM(s.duration_seconds)
+            "SELECT s.date, a.display_name, SUM(s.duration_seconds * COALESCE(s.rate_multiplier, 1.0))
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
              WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              AND a.id IN (
                 SELECT app_id FROM sessions
-                WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
+                WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR iS_hidden = 0)
                 GROUP BY app_id
                 ORDER BY SUM(duration_seconds) DESC
                 LIMIT ?3
@@ -377,7 +432,7 @@ pub async fn get_stacked_timeline(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
+                    row.get::<_, f64>(2)?,
                 ))
             },
         )
@@ -387,12 +442,12 @@ pub async fn get_stacked_timeline(
         std::collections::BTreeMap::new();
 
     for row in rows.filter_map(|r| r.ok()) {
-        date_map.entry(row.0).or_default().insert(row.1, row.2);
+        date_map.entry(row.0).or_default().insert(row.1, row.2.round() as i64);
     }
 
     Ok(date_map
         .into_iter()
-        .map(|(date, data)| StackedBarData { date, data })
+        .map(|(date, data)| StackedBarData { date, data, has_boost: false, has_manual: false, comments: Vec::new() })
         .collect())
 }
 
@@ -402,12 +457,13 @@ pub async fn get_project_timeline(
     date_range: DateRange,
     limit: Option<i64>,
     granularity: Option<String>,
+    id: Option<i64>,
 ) -> Result<Vec<StackedBarData>, String> {
     let conn = db::get_connection(&app)?;
-    let limit = limit.unwrap_or(8).clamp(1, 20) as usize;
+    let limit = limit.unwrap_or(8).clamp(1, 200) as usize;
     let hourly = matches!(granularity.as_deref(), Some("hour"));
-    let (bucket_project_seconds, total_by_project) =
-        compute_project_activity_unique(&conn, &date_range, hourly, true)?;
+    let (bucket_project_seconds, total_by_project, bucket_flags, bucket_comments) =
+        compute_project_activity_unique(&conn, &date_range, hourly, true, id)?;
 
     if bucket_project_seconds.is_empty() {
         return Ok(Vec::new());
@@ -447,7 +503,9 @@ pub async fn get_project_timeline(
         if other_seconds > 0 {
             data.insert("Other".to_string(), other_seconds);
         }
-        output.push(StackedBarData { date: bucket, data });
+        let (has_boost, has_manual) = bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
+        let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
+        output.push(StackedBarData { date: bucket, data, has_boost, has_manual, comments });
     }
 
     Ok(output)

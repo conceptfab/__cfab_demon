@@ -265,7 +265,7 @@ fn build_estimate_rows(
     date_range: &DateRange,
 ) -> Result<Vec<EstimateProjectRow>, String> {
     let global_hourly_rate = get_global_hourly_rate(conn)?;
-    let (_, totals) = compute_project_activity_unique(conn, date_range, false, true)?;
+    let (_, totals, _, _) = compute_project_activity_unique(conn, date_range, false, true, None)?;
     if totals.is_empty() {
         return Ok(Vec::new());
     }

@@ -58,7 +58,7 @@ pub async fn get_dashboard_stats(
         })
         .collect();
 
-    let (_, project_totals) = compute_project_activity_unique(&conn, &date_range, false, true)?;
+    let (_, project_totals, _, _) = compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     let project_colors = query_project_color_map(&conn)?;
     let top_project = project_totals
         .into_iter()
@@ -91,7 +91,7 @@ fn query_dashboard_counters(
         start: start.to_string(),
         end: end.to_string(),
     };
-    let (_, totals) = compute_project_activity_unique(conn, &date_range, false, true)?;
+    let (_, totals, _, _) = compute_project_activity_unique(conn, &date_range, false, true, None)?;
     let total_seconds = totals.values().copied().sum::<f64>().round() as i64;
 
     let (app_count, session_count, day_count): (i64, i64, i64) = conn
@@ -235,7 +235,7 @@ pub async fn get_top_projects(
 ) -> Result<Vec<ProjectTimeRow>, String> {
     let conn = db::get_connection(&app)?;
     let limit = limit.unwrap_or(8).clamp(1, 50) as usize;
-    let (_, totals) = compute_project_activity_unique(&conn, &date_range, false, true)?;
+    let (_, totals, _, _) = compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     if totals.is_empty() {
         return Ok(Vec::new());
     }
@@ -271,7 +271,7 @@ pub async fn get_dashboard_projects(
     date_range: DateRange,
 ) -> Result<Vec<ProjectTimeRow>, String> {
     let conn = db::get_connection(&app)?;
-    let (_, totals) = compute_project_activity_unique(&conn, &date_range, false, true)?;
+    let (_, totals, _, _) = compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     let totals_ci: HashMap<String, f64> = totals
         .into_iter()
         .map(|(name, secs)| (name.to_lowercase(), secs))
@@ -315,7 +315,7 @@ pub async fn get_timeline(
     date_range: DateRange,
 ) -> Result<Vec<TimelinePoint>, String> {
     let conn = db::get_connection(&app)?;
-    let (bucket_map, _) = compute_project_activity_unique(&conn, &date_range, false, true)?;
+    let (bucket_map, _, _, _) = compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     let mut out = Vec::with_capacity(bucket_map.len());
     for (date, project_seconds) in bucket_map {
         let seconds = project_seconds.values().copied().sum::<f64>().round() as i64;
@@ -330,7 +330,7 @@ pub async fn get_hourly_breakdown(
     date_range: DateRange,
 ) -> Result<Vec<HourlyData>, String> {
     let conn = db::get_connection(&app)?;
-    let (bucket_map, _) = compute_project_activity_unique(&conn, &date_range, true, true)?;
+    let (bucket_map, _, _, _) = compute_project_activity_unique(&conn, &date_range, true, true, None)?;
 
     let mut totals_by_hour = [0f64; 24];
     for (bucket, project_seconds) in bucket_map {

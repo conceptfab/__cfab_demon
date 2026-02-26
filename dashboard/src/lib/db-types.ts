@@ -228,8 +228,10 @@ export interface HeatmapCell {
 
 export interface StackedBarData {
   date: string;
+  has_boost?: boolean;
+  has_manual?: boolean;
   comments?: string[];
-  [appName: string]: string | number | string[] | undefined;
+  [appName: string]: string | number | string[] | boolean | undefined;
 }
 
 export interface AutoImportResult {

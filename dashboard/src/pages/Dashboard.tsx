@@ -218,7 +218,7 @@ export function Dashboard() {
       getProjects(),
       getTopProjects(dateRange, 5),
       getDashboardProjects(dateRange),
-      getProjectTimeline(dateRange, projectTimelineSeriesLimit, timelineGranularity),
+      getProjectTimeline(dateRange, projectTimelineSeriesLimit, timelineGranularity, undefined),
       timePreset === "today"
         ? getSessions({ dateRange, limit: 500, offset: 0, minDuration: loadSessionSettings().minSessionDurationSeconds || undefined })
         : Promise.resolve([] as SessionWithApp[]),

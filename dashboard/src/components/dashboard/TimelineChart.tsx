@@ -1,5 +1,10 @@
 import { useMemo, useState } from "react";
 import {
+  Flame,
+  PenLine,
+  MessageSquare,
+} from "lucide-react";
+import {
   TOOLTIP_CONTENT_STYLE,
   TOKYO_NIGHT_CHART_PALETTE,
   CHART_GRID_COLOR,
@@ -86,24 +91,28 @@ export function TimelineChart({
         return days.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
           const row = byDate.get(dateKey);
-          const out: Record<string, string | number | string[] | undefined> = { date: dateKey };
+          const out: Record<string, string | number | string[] | boolean | undefined> = { date: dateKey };
           for (const key of seriesKeys) {
             const val = row?.[key];
             out[key] = typeof val === "number" ? val : 0;
           }
           out.comments = row?.comments;
+          out.has_boost = row?.has_boost;
+          out.has_manual = row?.has_manual;
           return out;
         });
       }
     }
 
     return data.map((row) => {
-      const out: Record<string, string | number | string[] | undefined> = { date: row.date };
+      const out: Record<string, string | number | string[] | boolean | undefined> = { date: row.date };
       for (const key of seriesKeys) {
         const val = row[key];
         out[key] = typeof val === "number" ? val : 0;
       }
       out.comments = row.comments;
+      out.has_boost = row.has_boost;
+      out.has_manual = row.has_manual;
       return out;
     });
   }, [data, seriesKeys, granularity, dateRange, trimLeadingToFirstData]);
@@ -199,7 +208,61 @@ export function TimelineChart({
             ))}
           </div>
         )}
+        {row?.has_boost && (
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, color: '#f87171', fontSize: 10, fontWeight: 700 }}>
+            <Flame className="h-3 w-3" />
+            BOOSTED ACTIVITY
+          </div>
+        )}
+        {row?.has_manual && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#34d399', fontSize: 10, fontWeight: 700 }}>
+            <PenLine className="h-3 w-3" />
+            MANUAL DATA INCLUDED
+          </div>
+        )}
       </div>
+    );
+  };
+
+  const renderCustomAxisTick = (props: any) => {
+    const { x, y, payload } = props;
+    const dateKey = payload.value;
+    const row = chartData.find(d => d.date === dateKey);
+    if (!row) return null;
+
+    const hasComments = Array.isArray(row.comments) && row.comments.length > 0;
+    const hasBoost = row.has_boost;
+    const hasManual = row.has_manual;
+
+    return (
+      <g transform={`translate(${x}, ${y})`}>
+        <text 
+          x={0} 
+          y={10} 
+          dy={4} 
+          textAnchor="middle" 
+          fill={CHART_AXIS_COLOR} 
+          fontSize={12}
+        >
+          {xTickFormatter(dateKey)}
+        </text>
+        
+        {(hasComments || hasBoost || hasManual) && (
+          <foreignObject x="-40" y={22} width="80" height="20" style={{ pointerEvents: 'none' }}>
+            <div className="flex items-center justify-center gap-1.5 overflow-visible">
+              {hasBoost && (
+                <Flame size={12} className="text-red-400 fill-red-400/20 drop-shadow-sm" />
+              )}
+              {hasComments && (
+                <MessageSquare size={12} className="text-sky-400 fill-sky-400/30 drop-shadow-sm" />
+              )}
+              {hasManual && (
+                <PenLine size={12} className="text-emerald-400 drop-shadow-sm" />
+              )}
+            </div>
+          </foreignObject>
+        )}
+      </g>
     );
   };
 
@@ -239,12 +302,13 @@ export function TimelineChart({
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
-                  tickFormatter={xTickFormatter}
+                  tick={renderCustomAxisTick}
                   stroke={CHART_AXIS_COLOR}
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                   interval={2}
+                  height={50}
                 />
                 <YAxis
                   stroke={CHART_AXIS_COLOR}
@@ -270,7 +334,13 @@ export function TimelineChart({
                       stackId="projects"
                       fill={color}
                       radius={[2, 2, 0, 0]}
-                      style={{ cursor: onBarClick ? "pointer" : "default" }}
+                      style={{ 
+                        cursor: onBarClick ? "pointer" : "default",
+                        filter: hoveredDate === null || hoveredDate === key ? 'none' : 'grayscale(0.4) opacity(0.6)', // Added filter
+                        transition: 'all 0.2s ease' // Added transition
+                      }}
+                      onMouseEnter={() => setHoveredDate(key)} // Changed from key + idx to key
+                      onMouseLeave={() => setHoveredDate(null)} // Added onMouseLeave
                     />
                   );
                 })}
@@ -293,12 +363,13 @@ export function TimelineChart({
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
-                  tickFormatter={xTickFormatter}
+                  tick={renderCustomAxisTick}
                   stroke={CHART_AXIS_COLOR}
                   fontSize={12}
                   tickLine={false}
                   axisLine={false}
                   minTickGap={18}
+                  height={50} // Increase height to accommodate icons
                 />
                 <YAxis
                   stroke={CHART_AXIS_COLOR}
@@ -324,7 +395,13 @@ export function TimelineChart({
                       stackId="projects"
                       fill={color}
                       radius={[4, 4, 0, 0]}
-                      style={{ cursor: onBarClick ? "pointer" : "default" }}
+                      style={{ 
+                        cursor: onBarClick ? "pointer" : "default",
+                        filter: hoveredDate === null || hoveredDate === key ? 'none' : 'grayscale(0.4) opacity(0.6)',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={() => setHoveredDate(key)}
+                      onMouseLeave={() => setHoveredDate(null)}
                     />
                   );
                 })}

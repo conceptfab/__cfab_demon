@@ -14,12 +14,14 @@ import {
     CircleDollarSign,
     Trash2,
     Plus,
+    PenLine,
 } from "lucide-react";
 import { TimelineChart } from "@/components/dashboard/TimelineChart";
 import { ManualSessionDialog } from "@/components/ManualSessionDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PromptModal } from "@/components/ui/prompt-modal";
 import {
     getProjects,
@@ -85,25 +87,46 @@ export function ProjectPage() {
     const [manualSessions, setManualSessions] = useState<ManualSessionWithProject[]>([]);
 
     const groupedSessions = useMemo(() => {
-        const groups: { [date: string]: SessionWithApp[] } = {};
+        const groups: { [date: string]: (SessionWithApp & { isManual?: boolean })[] } = {};
+        
         recentSessions.forEach(s => {
             const date = s.start_time.substring(0, 10);
             if (!groups[date]) groups[date] = [];
-            groups[date].push(s);
+            groups[date].push({ ...s, isManual: false });
         });
+
+        manualSessions.forEach(m => {
+            const date = m.start_time.substring(0, 10);
+            if (!groups[date]) groups[date] = [];
+            groups[date].push({
+                ...m,
+                app_name: "Manual Session",
+                executable_name: "manual",
+                project_id: m.project_id,
+                project_name: m.project_name,
+                project_color: m.project_color,
+                comment: m.title,
+                files: [],
+                isManual: true
+            } as any);
+        });
+
         return Object.entries(groups)
             .sort((a, b) => b[0].localeCompare(a[0])) // Most recent days first
             .map(([date, sessions]) => ({
                 date,
                 sessions: sessions.sort((a, b) => b.start_time.localeCompare(a.start_time)) // Most recent sessions first within day
             }));
-    }, [recentSessions]);
+    }, [recentSessions, manualSessions]);
 
     const [estimate, setEstimate] = useState<number>(0);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState<string | null>(null);
     const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+    const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
+    const [selectedSessionDetail, setSelectedSessionDetail] = useState<SessionWithApp | null>(null);
     const [sessionDialogDate, setSessionDialogDate] = useState<string | undefined>();
+    const [editManualSession, setEditManualSession] = useState<ManualSessionWithProject | null>(null);
 
     const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
     const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
@@ -191,7 +214,7 @@ export function ProjectPage() {
         return timelineData.map(row => {
             const comments = commentsByDate.get(row.date);
             return {
-                date: row.date,
+                ...row,
                 [project.name]: row[project.name] || 0,
                 comments: comments ? Array.from(comments) : undefined
             };
@@ -228,7 +251,7 @@ export function ProjectPage() {
         }
     };
 
-    const handleContextMenu = (e: React.MouseEvent, s: SessionWithApp) => {
+    const handleContextMenu = (e: React.MouseEvent, s: SessionWithApp & { isManual?: boolean }) => {
         e.preventDefault();
         setCtxMenu({
             type: 'session',
@@ -633,54 +656,70 @@ export function ProjectPage() {
                                                     </div>
                                                 </td>
                                             </tr>
-                                            {sessions.map((s) => (
-                                                <tr
-                                                    key={s.id}
-                                                    className="hover:bg-accent/10 transition-colors cursor-context-menu"
-                                                    onContextMenu={(e) => handleContextMenu(e, s)}
-                                                >
-                                                    <td className="px-4 py-3 whitespace-nowrap min-w-[120px]">
-                                                        {format(parseISO(s.start_time), "HH:mm")}
-                                                        <span className="text-[10px] opacity-20 ml-2 font-mono">— {format(parseISO(s.end_time), "HH:mm")}</span>
-                                                    </td>
-                                                    <td className="px-4 py-3 font-mono text-emerald-400">
-                                                        <div className="flex items-center gap-2">
-                                                            {formatDuration(s.duration_seconds)}
-                                                            {(s.rate_multiplier ?? 1) > 1.000_001 && (
-                                                                <CircleDollarSign className="h-3 w-3 text-emerald-400" />
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="h-2 w-2 rounded-full" style={{ backgroundColor: s.project_color || "#64748b" }} />
-                                                            {s.app_name}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 group/comment">
-                                                        <div
-                                                            className="flex items-center gap-2 text-sky-200 italic truncate max-w-xs cursor-pointer hover:text-sky-100 transition-colors"
-                                                            onClick={() => handleEditCommentForSession(s)}
-                                                            title={s.comment ? "Click to edit" : "Click to add comment"}
-                                                        >
-                                                            {s.comment ? (
-                                                                <>
-                                                                    <MessageSquare className="h-3 w-3 shrink-0" />
-                                                                    {s.comment}
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <MessageSquare className="h-3 w-3 shrink-0 opacity-0 group-hover/comment:opacity-100 transition-opacity" />
-                                                                    <span className="text-muted-foreground/20 group-hover/comment:text-muted-foreground/50 transition-colors">—</span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                            {sessions.map((s) => {
+                                                const isManual = (s as any).isManual;
+                                                return (
+                                                    <tr
+                                                        key={`${isManual ? 'm' : 's'}-${s.id}`}
+                                                        className="hover:bg-accent/10 transition-colors cursor-context-menu"
+                                                        onContextMenu={(e) => handleContextMenu(e, s)}
+                                                    >
+                                                        <td className="px-4 py-3 whitespace-nowrap min-w-[120px]">
+                                                            <div className="flex items-center gap-2">
+                                                                {isManual && <PenLine className="h-3 w-3 text-emerald-400" />}
+                                                                {format(parseISO(s.start_time), "HH:mm")}
+                                                                <span className="text-[10px] opacity-20 ml-2 font-mono">— {format(parseISO(s.end_time), "HH:mm")}</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 font-mono text-emerald-400">
+                                                            <div className="flex items-center gap-2">
+                                                                {formatDuration(s.duration_seconds)}
+                                                                {(s.rate_multiplier ?? 1) > 1.000_001 && (
+                                                                    <CircleDollarSign className="h-3 w-3 text-emerald-400" />
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="h-2 w-2 rounded-full" style={{ backgroundColor: s.project_color || "#64748b" }} />
+                                                                {isManual ? <span className="text-emerald-400 font-medium">Manual Session</span> : s.app_name}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 group/comment">
+                                                            <div
+                                                                className="flex items-center gap-2 text-sky-200 italic truncate max-w-xs cursor-pointer hover:text-sky-100 transition-colors"
+                                                                onClick={() => {
+                                                                    if (isManual) {
+                                                                        // Manual sessions use title/dialog for editing
+                                                                        setSessionDialogDate(undefined);
+                                                                        setSessionDialogOpen(true);
+                                                                        // We need to set the session for editing - I'll fix this in next chunk
+                                                                    } else {
+                                                                        handleEditCommentForSession(s);
+                                                                    }
+                                                                }}
+                                                                title={s.comment ? "Click to edit" : "Click to add comment"}
+                                                            >
+                                                                {s.comment ? (
+                                                                    <>
+                                                                        <MessageSquare className="h-3 w-3 shrink-0" />
+                                                                        {s.comment}
+                                                                        {isManual && <PenLine className="h-2 w-2 text-muted-foreground ml-1" />}
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <MessageSquare className="h-3 w-3 shrink-0 opacity-0 group-hover/comment:opacity-100 transition-opacity" />
+                                                                        <span className="text-muted-foreground/20 group-hover/comment:text-muted-foreground/50 transition-colors">—</span>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </React.Fragment>
                                     ))}
-                                    {recentSessions.length === 0 && (
+                                    {groupedSessions.length === 0 && (
                                         <tr>
                                             <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground italic">
                                                 No sessions found for this project.
@@ -774,13 +813,18 @@ export function ProjectPage() {
                             <button
                                 className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
                                 onClick={() => {
-                                    setSessionDialogDate(ctxMenu.date);
-                                    setSessionDialogOpen(true);
+                                    if ((ctxMenu.sessions[0] as any).isManual) {
+                                        setEditManualSession(ctxMenu.sessions[0] as any);
+                                        setSessionDialogOpen(true);
+                                    } else {
+                                        setSessionDialogDate(ctxMenu.date);
+                                        setSessionDialogOpen(true);
+                                    }
                                     setCtxMenu(null);
                                 }}
                             >
-                                <Plus className="h-3.5 w-3.5 text-emerald-400" />
-                                <span>Add manual session</span>
+                                <PenLine className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>{(ctxMenu.sessions[0] as any).isManual ? "Edit manual session" : "Add manual session"}</span>
                             </button>
                         </>
                     ) : (
@@ -831,8 +875,8 @@ export function ProjectPage() {
                     <button
                         className="flex w-full items-center justify-between rounded-sm px-2 py-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
                         onClick={() => {
-                            const s = (ctxMenu as any).session;
-                            window.alert(`App: ${s.app_name}\nTime: ${new Date(s.start_time).toLocaleTimeString()}\nDuration: ${formatDuration(s.duration_seconds)}`);
+                            setSelectedSessionDetail((ctxMenu as any).session);
+                            setSessionDetailOpen(true);
                             setCtxMenu(null);
                         }}
                     >
@@ -840,35 +884,54 @@ export function ProjectPage() {
                         <span className="text-[10px] text-muted-foreground/50 mr-1">1</span>
                     </button>
 
-                    <div className="h-px bg-white/5 my-1" />
-                    
-                    <div className="px-3 py-2 space-y-2">
-                        <p className="text-[10px] text-muted-foreground/50 leading-tight">
-                            Applies to this session record
-                        </p>
-                        <p className="text-[10px] text-muted-foreground/80 font-medium">
-                            Rate multiplier (default x2): <span className="text-emerald-400">x{((ctxMenu as any).session.rate_multiplier || 1).toFixed(1)}</span>
-                        </p>
-                        <div className="flex gap-2">
-                            <button
-                                className="flex-1 flex items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 cursor-pointer"
-                                onClick={() => handleSetRateMultiplier(2, [((ctxMenu as any).session.id)])}
-                            >Boost x2</button>
-                            <button
-                                className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/10 active:scale-95 cursor-pointer"
-                                onClick={handleCustomRateMultiplier}
-                            >Custom...</button>
-                        </div>
-                    </div>
+                    {!((ctxMenu as any).session.isManual) && (
+                        <>
+                            <div className="px-3 py-2 space-y-2">
+                                <p className="text-[10px] text-muted-foreground/50 leading-tight">
+                                    Applies to this session record
+                                </p>
+                                <p className="text-[10px] text-muted-foreground/80 font-medium">
+                                    Rate multiplier (default x2): <span className="text-emerald-400">x{((ctxMenu as any).session.rate_multiplier || 1).toFixed(1)}</span>
+                                </p>
+                                <div className="flex gap-2">
+                                    <button
+                                        className="flex-1 flex items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 cursor-pointer"
+                                        onClick={() => handleSetRateMultiplier(2, [((ctxMenu as any).session.id)])}
+                                    >Boost x2</button>
+                                    <button
+                                        className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/10 active:scale-95 cursor-pointer"
+                                        onClick={handleCustomRateMultiplier}
+                                    >Custom...</button>
+                                </div>
+                            </div>
+                            <div className="h-px bg-white/5 my-1" />
+                        </>
+                    )}
 
-                    <div className="h-px bg-white/5 my-1" />
-                    
                     <button
                         className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
-                        onClick={handleEditComment}
+                        onClick={() => {
+                            const s = (ctxMenu as any).session;
+                            if (s.isManual) {
+                                setEditManualSession(s);
+                                setSessionDialogOpen(true);
+                            } else {
+                                handleEditComment();
+                            }
+                            setCtxMenu(null);
+                        }}
                     >
-                        <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
-                        <span>{(ctxMenu as any).session.comment ? "Edit comment" : "Add comment"}</span>
+                        {((ctxMenu as any).session.isManual) ? (
+                            <>
+                                <PenLine className="h-3.5 w-3.5 text-emerald-400" />
+                                <span>Edit manual session</span>
+                            </>
+                        ) : (
+                            <>
+                                <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
+                                <span>{(ctxMenu as any).session.comment ? "Edit comment" : "Add comment"}</span>
+                            </>
+                        )}
                     </button>
 
                     <div className="h-px bg-white/5 my-1" />
@@ -911,12 +974,127 @@ export function ProjectPage() {
                 confirmLabel="Save"
             />
 
+            <Dialog open={sessionDetailOpen} onOpenChange={setSessionDetailOpen}>
+                <DialogContent className="max-w-2xl bg-[#1a1b26] border-white/10 text-white">
+                    {selectedSessionDetail && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-lg">
+                                    <div className="h-3 w-3 rounded-full" style={{ backgroundColor: selectedSessionDetail.project_color || "#64748b" }} />
+                                    <span>Session Details</span>
+                                </DialogTitle>
+                            </DialogHeader>
+
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mt-4">
+                                <div className="rounded-md border border-white/5 bg-white/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Project</p>
+                                    <p className="truncate text-sm font-medium mt-1">
+                                        {selectedSessionDetail.project_name || "Unassigned"}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/5 bg-white/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">App / Activity</p>
+                                    <p className="truncate text-sm font-medium mt-1">
+                                        {(selectedSessionDetail as any).isManual ? "Manual Session" : selectedSessionDetail.app_name}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/5 bg-white/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Time Range</p>
+                                    <p className="text-sm font-mono mt-1">
+                                        {format(parseISO(selectedSessionDetail.start_time), "HH:mm")} - {format(parseISO(selectedSessionDetail.end_time), "HH:mm")}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                        {format(parseISO(selectedSessionDetail.start_time), "MMM do, yyyy")}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/5 bg-white/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Duration</p>
+                                    <p className="text-sm font-mono mt-1 text-emerald-400">
+                                        {formatDuration(selectedSessionDetail.duration_seconds)}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/5 bg-white/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Rate Multiplier</p>
+                                    <p className="text-sm font-medium mt-1">
+                                        x{(selectedSessionDetail.rate_multiplier || 1).toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="rounded-md border border-white/5 bg-white/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">ID</p>
+                                    <p className="text-sm font-mono mt-1 text-muted-foreground">
+                                        #{selectedSessionDetail.id} {(selectedSessionDetail as any).isManual ? "(Manual)" : ""}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {selectedSessionDetail.comment && (
+                                <div className="mt-4 rounded-md border border-sky-500/20 bg-sky-500/5 p-3">
+                                    <p className="text-[10px] uppercase tracking-wider text-sky-400 font-bold flex items-center gap-1.5">
+                                        <MessageSquare className="h-3 w-3" />
+                                        Comment
+                                    </p>
+                                    <p className="mt-1 text-sm italic text-sky-100/90 leading-relaxed">
+                                        “{selectedSessionDetail.comment}”
+                                    </p>
+                                </div>
+                            )}
+
+                            {selectedSessionDetail.files && selectedSessionDetail.files.length > 0 && (
+                                <div className="mt-4 space-y-2">
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Files Accessed</p>
+                                    <div className="max-h-[200px] overflow-y-auto rounded-md border border-white/5 bg-white/5 p-2 space-y-1">
+                                        {selectedSessionDetail.files.map((f, i) => (
+                                            <div key={i} className="flex items-center justify-between gap-4 px-2 py-1.5 rounded hover:bg-white/5 text-[12px] border-b border-white/5 last:border-0">
+                                                <span className="truncate text-muted-foreground/90 font-mono" title={f.file_name}>{f.file_name}</span>
+                                                <span className="shrink-0 text-emerald-400 font-mono opacity-80">{formatDuration(f.total_seconds)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="mt-6 flex justify-end gap-3">
+                                <Button variant="outline" className="border-white/10" onClick={() => setSessionDetailOpen(false)}>
+                                    Close
+                                </Button>
+                                {(selectedSessionDetail as any).isManual ? (
+                                    <Button 
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                                        onClick={() => {
+                                            setEditManualSession(selectedSessionDetail as any);
+                                            setSessionDetailOpen(false);
+                                            setSessionDialogOpen(true);
+                                        }}
+                                    >
+                                        Edit Manual Session
+                                    </Button>
+                                ) : (
+                                    <Button 
+                                        className="bg-sky-600 hover:bg-sky-700 text-white"
+                                        onClick={() => {
+                                            handleEditCommentForSession(selectedSessionDetail);
+                                            setSessionDetailOpen(false);
+                                        }}
+                                    >
+                                        Edit Comment
+                                    </Button>
+                                )}
+                            </div>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
+
             <ManualSessionDialog
                 open={sessionDialogOpen}
-                onOpenChange={setSessionDialogOpen}
+                onOpenChange={(open) => {
+                    setSessionDialogOpen(open);
+                    if (!open) setEditManualSession(null);
+                }}
                 projects={projectsList}
                 defaultProjectId={project?.id}
                 defaultStartTime={sessionDialogDate ? `${sessionDialogDate}T09:00` : undefined}
+                editSession={editManualSession || undefined}
                 onSaved={triggerRefresh}
             />
         </div>

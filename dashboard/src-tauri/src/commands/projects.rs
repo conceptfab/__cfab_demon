@@ -341,7 +341,7 @@ fn query_projects_with_stats(
 
     // 1. Always compute All-Time totals
     if let (Some(start), Some(end)) = (min_date.clone(), max_date.clone()) {
-        let (_, totals) = compute_project_activity_unique(conn, &DateRange { start, end }, false, false)?;
+        let (_, totals, _, _) = compute_project_activity_unique(conn, &DateRange { start, end }, false, false, None)?;
         all_time_totals = totals
             .into_iter()
             .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
@@ -350,7 +350,7 @@ fn query_projects_with_stats(
 
     // 2. Compute Period totals if date_range is provided
     if let Some(range) = date_range {
-        let (_, totals) = compute_project_activity_unique(conn, range, false, false)?;
+        let (_, totals, _, _) = compute_project_activity_unique(conn, range, false, false, None)?;
         period_totals = totals
             .into_iter()
             .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
@@ -1089,7 +1089,7 @@ pub async fn get_project_extra_info(
     // Calculate All-Time (Global) Value
     let mut current_value = 0.0;
     if let (Some(start), Some(end)) = (min_date, max_date) {
-        let (_, totals_raw) = compute_project_activity_unique(&conn, &DateRange { start: start.clone(), end: end.clone() }, false, false)?;
+        let (_, totals_raw, _, _) = compute_project_activity_unique(&conn, &DateRange { start: start.clone(), end: end.clone() }, false, false, None)?;
         let totals: HashMap<String, f64> = totals_raw.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
         let clock_seconds = totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
         let extra_seconds = get_extra_secs(&conn, &start, &end, id)?;
@@ -1097,7 +1097,7 @@ pub async fn get_project_extra_info(
     }
 
     // Calculate Period Value (for the selected range)
-    let (_, period_totals_raw) = compute_project_activity_unique(&conn, &date_range, false, false)?;
+    let (_, period_totals_raw, _, _) = compute_project_activity_unique(&conn, &date_range, false, false, None)?;
     let period_totals: HashMap<String, f64> = period_totals_raw.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
     let period_clock_seconds = period_totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
     let period_extra_seconds = get_extra_secs(&conn, &date_range.start, &date_range.end, id)?;

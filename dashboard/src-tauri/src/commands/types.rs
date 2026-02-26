@@ -223,6 +223,9 @@ pub struct HeatmapCell {
 #[derive(Serialize)]
 pub struct StackedBarData {
     pub date: String,
+    pub has_boost: bool,
+    pub has_manual: bool,
+    pub comments: Vec<String>,
     #[serde(flatten)]
     pub data: HashMap<String, i64>,
 }
