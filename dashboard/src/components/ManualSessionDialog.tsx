@@ -62,6 +62,7 @@ export function ManualSessionDialog({
   const [projectId, setProjectId] = useState<number | null>(null);
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
+  const [syncDates, setSyncDates] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -101,6 +102,17 @@ export function ManualSessionDialog({
     }
     setError(null);
   }, [open, editSession, defaultProjectId, defaultStartTime, projects, initializedId]);
+
+  const handleStartTimeChange = (newStart: string) => {
+    setStartTime(newStart);
+    if (syncDates && newStart) {
+      const newStartDatePart = newStart.split("T")[0];
+      const currentEndTimePart = endTime.split("T")[1] || "00:00";
+      if (newStartDatePart) {
+        setEndTime(`${newStartDatePart}T${currentEndTimePart}`);
+      }
+    }
+  };
 
   const handleDelete = async () => {
     if (!editSession || !confirm("Are you sure you want to delete this session?")) return;
@@ -223,7 +235,7 @@ export function ManualSessionDialog({
                 type="datetime-local"
                 className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
+                onChange={(e) => handleStartTimeChange(e.target.value)}
               />
             </div>
             <div>
@@ -235,6 +247,19 @@ export function ManualSessionDialog({
                 onChange={(e) => setEndTime(e.target.value)}
               />
             </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="sync-dates"
+              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+              checked={syncDates}
+              onChange={(e) => setSyncDates(e.target.checked)}
+            />
+            <label htmlFor="sync-dates" className="text-xs text-muted-foreground cursor-pointer select-none">
+              Auto-sync end date to same day
+            </label>
           </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}

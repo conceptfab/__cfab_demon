@@ -24,6 +24,7 @@ interface Props {
   onUpdateSessionComment?: (sessionId: number, comment: string | null) => void | Promise<void>;
   onAddManualSession?: (startTime?: string) => void;
   onEditManualSession?: (session: ManualSessionWithProject) => void;
+  onUpdateManualSession?: (id: number, input: { title: string; session_type: string; project_id: number; start_time: string; end_time: string; }) => Promise<void>;
 }
 
 interface SegmentData {
@@ -85,6 +86,27 @@ const HATCH_STYLE: React.CSSProperties = {
   pointerEvents: "none",
 };
 const SESSION_FRAGMENT_CLUSTER_GAP_MS = 60_000;
+
+function parseRangeInput(input: string, baseDate: Date): { start: Date; end: Date } | null {
+  const parts = input.split(/[-–—]/).map(p => p.trim());
+  if (parts.length !== 2) return null;
+
+  const parseTime = (timeStr: string) => {
+    const match = timeStr.match(/^(\d{1,2})[:.]?(\d{2})?$/);
+    if (!match) return null;
+    const h = parseInt(match[1], 10);
+    const m = match[2] ? parseInt(match[2], 10) : 0;
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    const d = new Date(baseDate);
+    d.setHours(h, m, 0, 0);
+    return d;
+  };
+
+  const start = parseTime(parts[0]);
+  const end = parseTime(parts[1]);
+  if (!start || !end || end <= start) return null;
+  return { start, end };
+}
 
 function formatMultiplierLabel(multiplier?: number): string {
   const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
@@ -252,6 +274,7 @@ export function ProjectDayTimeline({
   onUpdateSessionComment,
   onAddManualSession,
   onEditManualSession,
+  onUpdateManualSession,
 }: Props) {
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
@@ -402,6 +425,33 @@ export function ProjectDayTimeline({
     });
     setCtxMenu(null);
   }, [ctxMenu, onUpdateSessionComment]);
+
+  const handleQuickTimeChange = useCallback(() => {
+    if (!ctxMenu || ctxMenu.type !== "timeline" || !ctxMenu.editSession || !onUpdateManualSession) return;
+    const session = ctxMenu.editSession;
+    const initial = `${fmtHourMinute(new Date(session.start_time).getTime())} - ${fmtHourMinute(new Date(session.end_time).getTime())}`;
+
+    setCtxMenu(null);
+    setPromptConfig({
+      title: "Change Session Time",
+      description: "Enter new time range (e.g. 10:30 - 12:00)",
+      initialValue: initial,
+      onConfirm: (val) => {
+        const range = parseRangeInput(val, new Date(session.start_time));
+        if (!range) {
+          window.alert("Invalid time range format. Use HH:MM - HH:MM");
+          return;
+        }
+        void onUpdateManualSession(session.id, {
+          title: session.title,
+          session_type: session.session_type,
+          project_id: session.project_id,
+          start_time: range.start.toISOString(),
+          end_time: range.end.toISOString(),
+        });
+      }
+    });
+  }, [ctxMenu, onUpdateManualSession]);
 
   const handleOpenClusterDetails = useCallback(() => {
     if (!ctxMenu || ctxMenu.type !== "assign") return;
@@ -1038,6 +1088,14 @@ export function ProjectDayTimeline({
           >
             {ctxMenu.editSession ? "Edit/Delete Session" : `Add Session (${fmtHourMinute(ctxMenu.timeMs)})`}
           </button>
+          {ctxMenu.editSession && onUpdateManualSession && (
+            <button
+              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+              onClick={handleQuickTimeChange}
+            >
+              Change time...
+            </button>
+          )}
         </div>
       )}
       <PromptModal

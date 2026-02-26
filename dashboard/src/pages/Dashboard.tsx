@@ -18,6 +18,7 @@ import {
   refreshToday,
   assignSessionToProject,
   getManualSessions,
+  updateManualSession,
   updateSessionRateMultiplier,
   updateSessionComment,
 } from "@/lib/tauri";
@@ -375,6 +376,15 @@ export function Dashboard() {
           onEditManualSession={(session) => {
             setEditingManualSession(session);
             setSessionDialogOpen(true);
+          }}
+          onUpdateManualSession={async (id, input) => {
+            try {
+              await updateManualSession(id, input);
+              triggerRefresh();
+            } catch (err) {
+              console.error("Failed to update manual session:", err);
+              window.alert(`Failed to update manual session: ${String(err)}`);
+            }
           }}
         />
       ) : (
