@@ -122,20 +122,20 @@ export const updateSessionComment = (sessionId: number, comment: string | null) 
   invokeMutation<void>("update_session_comment", { sessionId, comment });
 export const getProjectFolders = () => invoke<ProjectFolder[]>("get_project_folders");
 export const addProjectFolder = (path: string) =>
-  invoke<void>("add_project_folder", { path });
+  invokeMutation<void>("add_project_folder", { path });
 export const removeProjectFolder = (path: string) =>
-  invoke<void>("remove_project_folder", { path });
+  invokeMutation<void>("remove_project_folder", { path });
 export const getFolderProjectCandidates = () =>
   invoke<FolderProjectCandidate[]>("get_folder_project_candidates");
 export const createProjectFromFolder = (folderPath: string) =>
-  invoke<Project>("create_project_from_folder", { folderPath });
+  invokeMutation<Project>("create_project_from_folder", { folderPath });
 export const syncProjectsFromFolders = () =>
-  invoke<number>("sync_projects_from_folders");
+  invokeMutation<number>("sync_projects_from_folders");
 export const autoCreateProjectsFromDetection = (
   dateRange: DateRange,
   minOccurrences = 2
 ) =>
-  invoke<number>("auto_create_projects_from_detection", {
+  invokeMutation<number>("auto_create_projects_from_detection", {
     dateRange,
     minOccurrences,
   });
@@ -190,7 +190,7 @@ export const getSessionCount = (filters: {
 }) => invoke<number>("get_session_count", { filters });
 
 export const rebuildSessions = (gapFillMinutes: number) =>
-  invoke<number>("rebuild_sessions", { gapFillMinutes });
+  invokeMutation<number>("rebuild_sessions", { gapFillMinutes });
 
 export const getAssignmentModelStatus = () =>
   invoke<AssignmentModelStatus>("get_assignment_model_status");
@@ -219,14 +219,14 @@ export const runAutoSafeAssignment = (
   dateRange?: DateRange,
   minDuration?: number
 ) =>
-  invoke<AutoSafeRunResult>("run_auto_safe_assignment", {
+  invokeMutation<AutoSafeRunResult>("run_auto_safe_assignment", {
     limit,
     dateRange,
     minDuration,
   });
 
 export const rollbackLastAutoSafeRun = () =>
-  invoke<AutoSafeRollbackResult>("rollback_last_auto_safe_run");
+  invokeMutation<AutoSafeRollbackResult>("rollback_last_auto_safe_run");
 
 export const autoRunIfNeeded = (minDuration?: number) =>
   invoke<AutoSafeRunResult | null>("auto_run_if_needed", { minDuration });
@@ -283,13 +283,13 @@ export const refreshToday = () =>
 export const getTodayFileSignature = () =>
   invoke<TodayFileSignature>("get_today_file_signature");
 export const resetAppTime = (appId: number) =>
-  invoke<void>("reset_app_time", { appId });
+  invokeMutation<void>("reset_app_time", { appId });
 export const renameApplication = (appId: number, displayName: string) =>
-  invoke<void>("rename_application", { appId, displayName });
+  invokeMutation<void>("rename_application", { appId, displayName });
 export const deleteAppAndData = (appId: number) =>
-  invoke<void>("delete_app_and_data", { appId });
+  invokeMutation<void>("delete_app_and_data", { appId });
 export const resetProjectTime = (projectId: number) =>
-  invoke<void>("reset_project_time", { projectId });
+  invokeMutation<void>("reset_project_time", { projectId });
 
 // Manual Sessions
 export const createManualSession = (input: {
@@ -322,7 +322,7 @@ export const deleteManualSession = (id: number) =>
   invokeMutation<void>("delete_manual_session", { id });
 
 // Settings
-export const clearAllData = () => invoke<void>("clear_all_data");
+export const clearAllData = () => invokeMutation<void>("clear_all_data");
 export const exportDatabase = (path: string) =>
   invoke<void>("export_database", { path });
 export const getDataDir = () => invoke<string>("get_data_dir");
@@ -380,7 +380,7 @@ export const performManualBackup = () =>
 export const openDbFolder = () => invoke<void>("open_db_folder");
 
 export const restoreDatabaseFromFile = (path: string) =>
-  invoke<void>("restore_database_from_file", { path });
+  invokeMutation<void>("restore_database_from_file", { path });
 
 export const getBackupFiles = () =>
   invoke<BackupFile[]>("get_backup_files");

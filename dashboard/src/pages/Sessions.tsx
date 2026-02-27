@@ -17,6 +17,22 @@ interface ContextMenu {
   session: SessionWithApp;
 }
 
+interface ProjectHeaderMenu {
+  x: number;
+  y: number;
+  projectId: number | null;
+  projectName: string;
+}
+
+interface GroupedProject {
+  projectId: number | null;
+  projectName: string;
+  projectColor: string;
+  totalSeconds: number;
+  boostedCount: number;
+  sessions: SessionWithApp[];
+}
+
 interface PromptConfig {
   title: string;
   initialValue: string;
@@ -31,7 +47,16 @@ function formatMultiplierLabel(multiplier?: number): string {
 }
 
 export function Sessions() {
-  const { refreshKey, triggerRefresh, sessionsFocusDate, clearSessionsFocusDate, sessionsFocusProject, setSessionsFocusProject } = useAppStore();
+  const {
+    refreshKey,
+    triggerRefresh,
+    sessionsFocusDate,
+    clearSessionsFocusDate,
+    sessionsFocusProject,
+    setSessionsFocusProject,
+    setProjectPageId,
+    setCurrentPage,
+  } = useAppStore();
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(
     () => sessionsFocusDate ?? format(new Date(), "yyyy-MM-dd")
@@ -42,9 +67,11 @@ export function Sessions() {
   const [hasMore, setHasMore] = useState(false);
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
+  const [projectCtxMenu, setProjectCtxMenu] = useState<ProjectHeaderMenu | null>(null);
   const [viewMode, setViewMode] = useState<"detailed" | "compact">("detailed");
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
+  const projectCtxRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 100;
   const minDuration = useMemo(() => {
     const s = loadSessionSettings();
@@ -306,16 +333,19 @@ export function Sessions() {
     return () => clearInterval(interval);
   }, [effectiveDateRange, activeProjectId, minDuration]);
 
-  // Close context menu on click outside or Escape
+  // Close context menus on click outside or Escape
   useEffect(() => {
-    if (!ctxMenu) return;
+    if (!ctxMenu && !projectCtxMenu) return;
     const handleClick = (e: MouseEvent) => {
-      if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) {
-        setCtxMenu(null);
-      }
+      const target = e.target as Node;
+      if (ctxRef.current && !ctxRef.current.contains(target)) setCtxMenu(null);
+      if (projectCtxRef.current && !projectCtxRef.current.contains(target)) setProjectCtxMenu(null);
     };
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setCtxMenu(null);
+      if (e.key === "Escape") {
+        setCtxMenu(null);
+        setProjectCtxMenu(null);
+      }
     };
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
@@ -323,16 +353,25 @@ export function Sessions() {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
     };
-  }, [ctxMenu]);
+  }, [ctxMenu, projectCtxMenu]);
 
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, session: SessionWithApp) => {
       e.preventDefault();
+      e.stopPropagation();
+      setProjectCtxMenu(null);
       setCtxMenu({ x: e.clientX, y: e.clientY, session });
     },
     []
   );
+
+  const handleProjectContextMenu = useCallback((e: React.MouseEvent, projectId: number | null, projectName: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu(null);
+    setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName });
+  }, []);
 
   const handleAssign = useCallback(
     async (projectId: number | null, source?: string) => {
@@ -533,10 +572,7 @@ export function Sessions() {
   };
 
   const groupedByProject = useMemo(() => {
-    const groups = new Map<
-      string,
-      { projectId: number | null; projectName: string; projectColor: string; totalSeconds: number; boostedCount: number; sessions: SessionWithApp[] }
-    >();
+    const groups = new Map<string, GroupedProject>();
     for (const session of sessions) {
       const projectName = session.project_name ?? "Unassigned";
       const projectId = session.project_id;
@@ -546,6 +582,9 @@ export function Sessions() {
         groups.set(key, { projectId, projectName, projectColor, totalSeconds: 0, boostedCount: 0, sessions: [] });
       }
       const group = groups.get(key)!;
+      if (group.projectId == null && typeof session.project_id === "number" && session.project_id > 0) {
+        group.projectId = session.project_id;
+      }
       group.totalSeconds += session.duration_seconds;
       if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
       group.sessions.push(session);
@@ -558,6 +597,30 @@ export function Sessions() {
     });
   }, [sessions]);
   const unassignedGroup = groupedByProject.find((g) => g.projectName.toLowerCase() === "unassigned");
+  const resolveGroupProjectId = useCallback(
+    (group: GroupedProject) => {
+      if (group.projectName.toLowerCase() === "unassigned") return null;
+      if (typeof group.projectId === "number" && group.projectId > 0) return group.projectId;
+
+      const explicitId = group.sessions.find(
+        (s) => typeof s.project_id === "number" && s.project_id > 0
+      )?.project_id;
+      if (typeof explicitId === "number" && explicitId > 0) return explicitId;
+
+      const suggestedId = group.sessions.find(
+        (s) =>
+          typeof s.suggested_project_id === "number" &&
+          s.suggested_project_id > 0 &&
+          (s.suggested_project_name ?? "").trim().toLowerCase() === group.projectName.toLowerCase()
+      )?.suggested_project_id;
+      if (typeof suggestedId === "number" && suggestedId > 0) return suggestedId;
+
+      const normalizedGroupName = group.projectName.trim().toLowerCase();
+      const byName = projects.find((p) => p.name.trim().toLowerCase() === normalizedGroupName);
+      return byName?.id ?? null;
+    },
+    [projects]
+  );
 
   return (
     <div className="space-y-4">
@@ -619,14 +682,17 @@ export function Sessions() {
 
       {viewMode === "compact" ? (
         <div className="space-y-6">
-          {groupedByProject.map((group) => (
+          {groupedByProject.map((group) => {
+            const projectMenuId = resolveGroupProjectId(group);
+            return (
             <div key={group.projectName} className="space-y-1">
               {/* Project Header - Exactly as in screenshot 125 */}
               <div
-                data-project-id={group.projectId ?? undefined}
-                data-project-name={group.projectId != null ? group.projectName : undefined}
+                data-project-id={projectMenuId ?? undefined}
+                data-project-name={projectMenuId != null ? group.projectName : undefined}
                 className="flex items-center justify-between gap-4 px-2 py-1 leading-none group/hdr cursor-pointer"
-                onClick={() => setActiveProjectId(group.projectName === "Unassigned" ? "unassigned" : group.projectId)}
+                onClick={() => setActiveProjectId(group.projectName === "Unassigned" ? "unassigned" : projectMenuId)}
+                onContextMenu={(e) => handleProjectContextMenu(e, projectMenuId, group.projectName)}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="h-2.5 w-2.5 rounded-full shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.3)]" style={{ backgroundColor: group.projectColor }} />
@@ -656,17 +722,20 @@ export function Sessions() {
                 ))}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedByProject.map((group) => (
+          {groupedByProject.map((group) => {
+            const projectMenuId = resolveGroupProjectId(group);
+            return (
             <Card key={group.projectName} className="border-border/30 overflow-hidden bg-background/50 backdrop-blur-sm">
               <CardContent className="p-3 space-y-3">
                 <div
-                  data-project-id={group.projectId ?? undefined}
-                  data-project-name={group.projectId != null ? group.projectName : undefined}
+                  data-project-id={projectMenuId ?? undefined}
+                  data-project-name={projectMenuId != null ? group.projectName : undefined}
                   className="flex items-center justify-between gap-2 border-b border-border/5 pb-2"
+                  onContextMenu={(e) => handleProjectContextMenu(e, projectMenuId, group.projectName)}
                 >
                   <div className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.4)]" style={{ backgroundColor: group.projectColor }} />
@@ -686,7 +755,7 @@ export function Sessions() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
       )}
 
@@ -797,6 +866,31 @@ export function Sessions() {
               ))
             )}
           </div>
+        </div>
+      )}
+
+      {projectCtxMenu && (
+        <div
+          ref={projectCtxRef}
+          className="fixed z-[130] min-w-[240px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+          style={{ left: projectCtxMenu.x, top: projectCtxMenu.y }}
+        >
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">
+            Project: <span className="font-medium text-foreground">{projectCtxMenu.projectName}</span>
+          </div>
+          <button
+            type="button"
+            disabled={projectCtxMenu.projectId == null}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => {
+              if (projectCtxMenu.projectId == null) return;
+              setProjectPageId(projectCtxMenu.projectId);
+              setCurrentPage("project-card");
+              setProjectCtxMenu(null);
+            }}
+          >
+            {projectCtxMenu.projectId == null ? "Brak powiazanej karty projektu" : "Przejdz do karty projektu"}
+          </button>
         </div>
       )}
 

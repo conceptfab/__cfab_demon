@@ -30,9 +30,15 @@ export function ProjectContextMenu() {
   useEffect(() => {
     const handleContextMenu = (event: MouseEvent) => {
       const target = event.target;
-      if (!(target instanceof Element)) return;
+      const targetElement =
+        target instanceof Element
+          ? target
+          : target instanceof Node
+            ? target.parentElement
+            : null;
+      if (!targetElement) return;
 
-      const holder = target.closest<HTMLElement>("[data-project-id]");
+      const holder = targetElement.closest<HTMLElement>("[data-project-id]");
       if (!holder) return;
 
       const rawProjectId = holder.dataset.projectId;

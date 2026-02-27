@@ -9,10 +9,14 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 TODO ??
 
 - AI - testy
-- sprawdzić logikę systemu synchronizacji - mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem. Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem. BAzy danych maja byc aktualizowane i zmiany w sesjach.
+- sprawdzić logikę systemu synchronizacji w @__client @__server- mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem. Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem. BAzy danych maja byc aktualizowane i zmiany w sesjach.
 
 - dodac szyforwanie danych - np tokenem
-- zweryfikować poprzednią metodę i rozstrzygnąć czy jest potrzebne - jeśli to usunąć stary system/kod z aplikacji.
+- 
+
+
+- koszty dodatkowe w ramach projektu
+<!-- - zweryfikować poprzednią metodę i rozstrzygnąć czy jest potrzebne - jeśli to usunąć stary system/kod z aplikacji. -->
 
 <!-- - ProjectPage - musi byc możliwość edycji istniejących manualnych sesji-w tym momencie pojawia się okno do tworzenia nowej sesji -->
 

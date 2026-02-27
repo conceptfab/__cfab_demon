@@ -267,6 +267,7 @@ function AutoAiAssignment() {
           console.log(
             `Deterministic assignment: ${det.sessions_assigned} sessions assigned (${det.apps_with_rules} app rules)`
           );
+          emitLocalDataChanged("deterministic_assignment");
           needsRefresh = true;
         }
       } catch (e) {
@@ -279,6 +280,7 @@ function AutoAiAssignment() {
         const result = await autoRunIfNeeded(minDuration);
         if (result && result.assigned > 0) {
           console.log(`AI auto-assignment: assigned ${result.assigned} / ${result.scanned} sessions`);
+          emitLocalDataChanged("ai_auto_assignment");
           needsRefresh = true;
         }
       } catch (e) {
@@ -302,6 +304,7 @@ function AutoOnlineSync() {
   const startupAttemptedRef = useRef(false);
   const runningRef = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const pollTimerRef = useRef<number | null>(null);
   const localChangeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -309,7 +312,7 @@ function AutoOnlineSync() {
 
     let disposed = false;
     type SyncRunResult = Awaited<ReturnType<typeof runOnlineSyncOnce>>;
-    type SyncSource = "startup" | "interval" | "local_change";
+    type SyncSource = "startup" | "interval" | "poll" | "local_change";
 
     const clearTimer = () => {
       if (timerRef.current !== null) {
@@ -322,6 +325,12 @@ function AutoOnlineSync() {
       if (localChangeTimerRef.current !== null) {
         window.clearTimeout(localChangeTimerRef.current);
         localChangeTimerRef.current = null;
+      }
+    };
+    const clearPollTimer = () => {
+      if (pollTimerRef.current !== null) {
+        window.clearTimeout(pollTimerRef.current);
+        pollTimerRef.current = null;
       }
     };
 
@@ -395,6 +404,24 @@ function AutoOnlineSync() {
       }, delayMs);
     };
 
+    const schedulePollSync = () => {
+      clearPollTimer();
+      if (disposed) return;
+
+      const settings = loadOnlineSyncSettings();
+      if (!settings.enabled) {
+        return;
+      }
+
+      const delayMs = 20_000;
+      pollTimerRef.current = window.setTimeout(() => {
+        void (async () => {
+          await runOnce("poll");
+          schedulePollSync();
+        })();
+      }, delayMs);
+    };
+
     const scheduleLocalChangeSync = () => {
       clearLocalChangeTimer();
       if (disposed) return;
@@ -413,6 +440,7 @@ function AutoOnlineSync() {
         await runOnce("startup");
       }
       scheduleNextIntervalSync();
+      schedulePollSync();
     };
 
     void bootstrap();
@@ -420,6 +448,7 @@ function AutoOnlineSync() {
     const reschedule = () => {
       // Re-read settings after local changes and move the next tick to the new interval.
       scheduleNextIntervalSync();
+      schedulePollSync();
     };
     const syncAfterLocalChange = () => {
       scheduleLocalChangeSync();
@@ -431,6 +460,7 @@ function AutoOnlineSync() {
     return () => {
       disposed = true;
       clearTimer();
+      clearPollTimer();
       clearLocalChangeTimer();
       window.removeEventListener("focus", reschedule);
       window.removeEventListener(ONLINE_SYNC_SETTINGS_CHANGED_EVENT, reschedule);

@@ -3,6 +3,7 @@ use super::types::{ExportArchive, ImportSummary, ImportValidation, SessionConfli
 use crate::db;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
@@ -411,6 +412,31 @@ pub async fn import_data_archive(
     app: AppHandle,
     archive: ExportArchive,
 ) -> Result<ImportSummary, String> {
+    let backup_path = create_sync_restore_backup(&app)?;
+
+    // Online sync pull should converge to exactly the server snapshot.
+    // Replace synchronized tables first to avoid legacy merge conflicts
+    // (e.g. stale boosts/comments/manual-session duplicates).
+    {
+        let conn = db::get_connection(&app)?;
+        conn.execute_batch(
+            "DELETE FROM file_activities;
+             DELETE FROM sessions;
+             DELETE FROM manual_sessions;
+             DELETE FROM applications;
+             DELETE FROM projects;
+             DELETE FROM assignment_auto_run_items;
+             DELETE FROM assignment_auto_runs;
+             DELETE FROM assignment_feedback;
+             DELETE FROM assignment_suggestions;
+             DELETE FROM assignment_model_app;
+             DELETE FROM assignment_model_token;
+             DELETE FROM assignment_model_time;
+             DELETE FROM assignment_model_state;",
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
     let timestamp_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| e.to_string())?
@@ -425,9 +451,28 @@ pub async fn import_data_archive(
     fs::write(&temp_path, json).map_err(|e| e.to_string())?;
 
     let temp_path_string = temp_path.to_string_lossy().to_string();
-    let result = import_data(app, temp_path_string).await;
+    let result = import_data(app.clone(), temp_path_string).await;
     let _ = fs::remove_file(&temp_path);
-    result
+    match result {
+        Ok(summary) => {
+            let _ = fs::remove_file(&backup_path);
+            Ok(summary)
+        }
+        Err(import_error) => {
+            let restore_result = restore_db_from_backup(&app, &backup_path);
+            let _ = fs::remove_file(&backup_path);
+            match restore_result {
+                Ok(()) => Err(format!(
+                    "Sync import failed and was rolled back to pre-import state: {}",
+                    import_error
+                )),
+                Err(restore_error) => Err(format!(
+                    "Sync import failed and rollback failed. import_error={}, restore_error={}",
+                    import_error, restore_error
+                )),
+            }
+        }
+    }
 }
 
 fn merge_or_insert_session(
@@ -617,6 +662,81 @@ fn calculate_duration(start: &str, end: &str) -> i64 {
 }
 
 use rusqlite::OptionalExtension;
+
+fn create_sync_restore_backup(app: &AppHandle) -> Result<PathBuf, String> {
+    let status = db::get_demo_mode_status(app)?;
+    let active_db_path = PathBuf::from(status.active_db_path);
+    let parent = active_db_path
+        .parent()
+        .ok_or_else(|| "Cannot resolve active database directory".to_string())?;
+
+    // Flush WAL into the main file so a plain file copy is consistent.
+    {
+        let conn = db::get_connection(app)?;
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(|e| format!("Failed WAL checkpoint before sync backup: {}", e))?;
+    }
+
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let backup_path = parent.join(format!(
+        "timeflow-sync-restore-{}-{}.db",
+        std::process::id(),
+        ts
+    ));
+
+    fs::copy(&active_db_path, &backup_path).map_err(|e| {
+        format!(
+            "Failed to create sync restore backup '{}' -> '{}': {}",
+            active_db_path.display(),
+            backup_path.display(),
+            e
+        )
+    })?;
+
+    Ok(backup_path)
+}
+
+fn restore_db_from_backup(app: &AppHandle, backup_path: &PathBuf) -> Result<(), String> {
+    let status = db::get_demo_mode_status(app)?;
+    let active_db_path = PathBuf::from(status.active_db_path);
+    let wal_path = PathBuf::from(format!("{}-wal", active_db_path.to_string_lossy()));
+    let shm_path = PathBuf::from(format!("{}-shm", active_db_path.to_string_lossy()));
+
+    if wal_path.exists() {
+        let _ = fs::remove_file(&wal_path);
+    }
+    if shm_path.exists() {
+        let _ = fs::remove_file(&shm_path);
+    }
+    if active_db_path.exists() {
+        fs::remove_file(&active_db_path).map_err(|e| {
+            format!(
+                "Failed to remove active database '{}' before restore: {}",
+                active_db_path.display(),
+                e
+            )
+        })?;
+    }
+
+    fs::copy(backup_path, &active_db_path).map_err(|e| {
+        format!(
+            "Failed to restore database from '{}' to '{}': {}",
+            backup_path.display(),
+            active_db_path.display(),
+            e
+        )
+    })?;
+
+    // Re-open once to recreate sidecars and verify DB is usable.
+    let conn = db::get_connection(app)?;
+    conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);")
+        .map_err(|e| format!("Database restored but verification failed: {}", e))?;
+
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
