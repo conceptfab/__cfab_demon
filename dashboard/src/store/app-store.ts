@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { StoreApi, UseBoundStore } from "zustand";
 import { format, subDays, addDays, addMonths, startOfMonth, endOfMonth, parseISO, min as minDate } from "date-fns";
 import type { AutoImportResult, DateRange } from "@/lib/db-types";
+import { loadCurrencySettings } from "@/lib/user-settings";
 
 type TimePreset = "today" | "week" | "month" | "all";
 
@@ -159,15 +160,6 @@ export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>((
     set({ firstRun });
   },
 
-  currencyCode: (() => {
-    try {
-      const raw = localStorage.getItem("timeflow.settings.currency");
-      if (!raw) return "PLN";
-      const parsed = JSON.parse(raw);
-      return parsed.code || "PLN";
-    } catch {
-      return "PLN";
-    }
-  })(),
+  currencyCode: loadCurrencySettings().code,
   setCurrencyCode: (code) => set({ currencyCode: code }),
 }));

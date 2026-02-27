@@ -677,6 +677,10 @@ export function Help() {
                     "Demo Mode – switch to a demo database (test without affecting real data)."
                   ),
                   t(
+                    "Auto Optimize DB – harmonogram automatycznej optymalizacji SQLite oraz ręczne uruchamianie optymalizacji.",
+                    "Auto Optimize DB – schedule automatic SQLite optimization and run optimization manually."
+                  ),
+                  t(
                     "Emergency Clear – opcja całkowitego wyczyszczenia bazy danych i ustawień.",
                     "Emergency Clear – option to completely clear the database and settings."
                   )

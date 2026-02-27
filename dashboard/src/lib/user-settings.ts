@@ -7,6 +7,20 @@ export interface WorkingHoursSettings {
 const WORKING_HOURS_STORAGE_KEY = "timeflow.settings.working-hours";
 const LEGACY_WORKING_HOURS_STORAGE_KEY = "cfab.settings.working-hours";
 
+function loadRawSetting(primaryKey: string, legacyKey?: string): string | null {
+  if (typeof window === "undefined") return null;
+  const primary = window.localStorage.getItem(primaryKey);
+  if (primary !== null) return primary;
+  if (!legacyKey) return null;
+  return window.localStorage.getItem(legacyKey);
+}
+
+function migrateLegacySetting(primaryKey: string, legacyKey: string, value: string): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(primaryKey, value);
+  window.localStorage.removeItem(legacyKey);
+}
+
 export const DEFAULT_WORKING_HOURS: WorkingHoursSettings = {
   start: "09:00",
   end: "17:00",
@@ -46,10 +60,14 @@ function normalizeWorkingHours(input: Partial<WorkingHoursSettings>): WorkingHou
 export function loadWorkingHoursSettings(): WorkingHoursSettings {
   if (typeof window === "undefined") return { ...DEFAULT_WORKING_HOURS };
   try {
-    const raw =
-      window.localStorage.getItem(WORKING_HOURS_STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_WORKING_HOURS_STORAGE_KEY);
+    const raw = loadRawSetting(WORKING_HOURS_STORAGE_KEY, LEGACY_WORKING_HOURS_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_WORKING_HOURS };
+    if (
+      window.localStorage.getItem(WORKING_HOURS_STORAGE_KEY) === null &&
+      window.localStorage.getItem(LEGACY_WORKING_HOURS_STORAGE_KEY) !== null
+    ) {
+      migrateLegacySetting(WORKING_HOURS_STORAGE_KEY, LEGACY_WORKING_HOURS_STORAGE_KEY, raw);
+    }
     const parsed = JSON.parse(raw) as Partial<WorkingHoursSettings>;
     return normalizeWorkingHours(parsed ?? {});
   } catch {
@@ -61,6 +79,7 @@ export function saveWorkingHoursSettings(next: WorkingHoursSettings): WorkingHou
   const normalized = normalizeWorkingHours(next);
   if (typeof window !== "undefined") {
     window.localStorage.setItem(WORKING_HOURS_STORAGE_KEY, JSON.stringify(normalized));
+    window.localStorage.removeItem(LEGACY_WORKING_HOURS_STORAGE_KEY);
   }
   return normalized;
 }
@@ -70,6 +89,7 @@ export interface FreezeSettings {
 }
 
 const FREEZE_STORAGE_KEY = "timeflow.settings.freeze";
+const LEGACY_FREEZE_STORAGE_KEY = "cfab.settings.freeze";
 
 export const DEFAULT_FREEZE_SETTINGS: FreezeSettings = {
   thresholdDays: 14,
@@ -85,8 +105,14 @@ function normalizeThresholdDays(value: unknown): number {
 export function loadFreezeSettings(): FreezeSettings {
   if (typeof window === "undefined") return { ...DEFAULT_FREEZE_SETTINGS };
   try {
-    const raw = window.localStorage.getItem(FREEZE_STORAGE_KEY);
+    const raw = loadRawSetting(FREEZE_STORAGE_KEY, LEGACY_FREEZE_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_FREEZE_SETTINGS };
+    if (
+      window.localStorage.getItem(FREEZE_STORAGE_KEY) === null &&
+      window.localStorage.getItem(LEGACY_FREEZE_STORAGE_KEY) !== null
+    ) {
+      migrateLegacySetting(FREEZE_STORAGE_KEY, LEGACY_FREEZE_STORAGE_KEY, raw);
+    }
     const parsed = JSON.parse(raw) as Partial<FreezeSettings>;
     return {
       thresholdDays: normalizeThresholdDays(parsed.thresholdDays),
@@ -102,6 +128,7 @@ export function saveFreezeSettings(next: FreezeSettings): FreezeSettings {
   };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(FREEZE_STORAGE_KEY, JSON.stringify(normalized));
+    window.localStorage.removeItem(LEGACY_FREEZE_STORAGE_KEY);
   }
   return normalized;
 }
@@ -138,10 +165,14 @@ function normalizeMinSessionDuration(value: unknown): number {
 export function loadSessionSettings(): SessionSettings {
   if (typeof window === "undefined") return { ...DEFAULT_SESSION_SETTINGS };
   try {
-    const raw =
-      window.localStorage.getItem(SESSION_STORAGE_KEY) ??
-      window.localStorage.getItem(LEGACY_SESSION_STORAGE_KEY);
+    const raw = loadRawSetting(SESSION_STORAGE_KEY, LEGACY_SESSION_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SESSION_SETTINGS };
+    if (
+      window.localStorage.getItem(SESSION_STORAGE_KEY) === null &&
+      window.localStorage.getItem(LEGACY_SESSION_STORAGE_KEY) !== null
+    ) {
+      migrateLegacySetting(SESSION_STORAGE_KEY, LEGACY_SESSION_STORAGE_KEY, raw);
+    }
     const parsed = JSON.parse(raw);
     return {
       gapFillMinutes: normalizeGapFillMinutes(parsed.gapFillMinutes),
@@ -161,6 +192,7 @@ export function saveSessionSettings(next: SessionSettings): SessionSettings {
   };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalized));
+    window.localStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
   }
   return normalized;
 }
@@ -169,6 +201,7 @@ export interface CurrencySettings {
 }
 
 const CURRENCY_STORAGE_KEY = "timeflow.settings.currency";
+const LEGACY_CURRENCY_STORAGE_KEY = "cfab.settings.currency";
 
 export const DEFAULT_CURRENCY_SETTINGS: CurrencySettings = {
   code: "PLN",
@@ -177,8 +210,14 @@ export const DEFAULT_CURRENCY_SETTINGS: CurrencySettings = {
 export function loadCurrencySettings(): CurrencySettings {
   if (typeof window === "undefined") return { ...DEFAULT_CURRENCY_SETTINGS };
   try {
-    const raw = window.localStorage.getItem(CURRENCY_STORAGE_KEY);
+    const raw = loadRawSetting(CURRENCY_STORAGE_KEY, LEGACY_CURRENCY_STORAGE_KEY);
     if (!raw) return { ...DEFAULT_CURRENCY_SETTINGS };
+    if (
+      window.localStorage.getItem(CURRENCY_STORAGE_KEY) === null &&
+      window.localStorage.getItem(LEGACY_CURRENCY_STORAGE_KEY) !== null
+    ) {
+      migrateLegacySetting(CURRENCY_STORAGE_KEY, LEGACY_CURRENCY_STORAGE_KEY, raw);
+    }
     const parsed = JSON.parse(raw) as Partial<CurrencySettings>;
     return {
       code: parsed.code && ["USD", "EUR", "PLN"].includes(parsed.code) ? parsed.code : DEFAULT_CURRENCY_SETTINGS.code,
@@ -194,6 +233,7 @@ export function saveCurrencySettings(next: CurrencySettings): CurrencySettings {
   };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(CURRENCY_STORAGE_KEY, JSON.stringify(normalized));
+    window.localStorage.removeItem(LEGACY_CURRENCY_STORAGE_KEY);
   }
   return normalized;
 }

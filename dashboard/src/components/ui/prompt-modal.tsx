@@ -1,13 +1,13 @@
-import * as React from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import * as React from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 
 interface PromptModalProps {
   open: boolean;
@@ -27,8 +27,8 @@ export function PromptModal({
   description,
   initialValue,
   onConfirm,
-  confirmLabel = "OK",
-  cancelLabel = "Anuluj",
+  confirmLabel = 'OK',
+  cancelLabel = 'Cancel',
 }: PromptModalProps) {
   const [value, setValue] = React.useState(initialValue);
   const inputRef = React.useRef<HTMLInputElement>(null);

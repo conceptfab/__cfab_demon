@@ -26,6 +26,9 @@ pub struct DatabaseSettings {
     pub backup_path: String,
     pub backup_interval_days: i32,
     pub last_backup_at: Option<String>,
+    pub auto_optimize_enabled: bool,
+    pub auto_optimize_interval_hours: i32,
+    pub last_optimize_at: Option<String>,
 }
 
 #[tauri::command]
@@ -67,8 +70,18 @@ pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, S
         
     let last_backup_at = db::get_system_setting(&app, "last_backup_at")?;
 
-    log::info!("Loaded database settings: vacuum={}, backup={}, path={}, interval={}", 
-        vacuum_on_startup, backup_enabled, backup_path, backup_interval_days);
+    let auto_optimize_enabled = db::get_system_setting(&app, "auto_optimize_enabled")?
+        .map(|v| v == "true")
+        .unwrap_or(true);
+
+    let auto_optimize_interval_hours = db::get_system_setting(&app, "auto_optimize_interval_hours")?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(24);
+
+    let last_optimize_at = db::get_system_setting(&app, "last_optimize_at")?;
+
+    log::info!("Loaded database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
+        vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, auto_optimize_interval_hours);
         
     Ok(DatabaseSettings {
         vacuum_on_startup,
@@ -76,6 +89,9 @@ pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, S
         backup_path,
         backup_interval_days,
         last_backup_at,
+        auto_optimize_enabled,
+        auto_optimize_interval_hours,
+        last_optimize_at,
     })
 }
 
@@ -86,15 +102,30 @@ pub async fn update_database_settings(
     backup_enabled: bool,
     backup_path: String,
     backup_interval_days: i32,
+    auto_optimize_enabled: bool,
+    auto_optimize_interval_hours: i32,
 ) -> Result<(), String> {
-    log::info!("Updating database settings: vacuum={}, backup={}, path={}, interval={}", 
-        vacuum_on_startup, backup_enabled, backup_path, backup_interval_days);
+    let normalized_auto_optimize_interval_hours = auto_optimize_interval_hours.clamp(1, 24 * 30);
+    log::info!("Updating database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
+        vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, normalized_auto_optimize_interval_hours);
     
     db::set_system_setting(&app, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
     db::set_system_setting(&app, "backup_enabled", &backup_enabled.to_string())?;
     db::set_system_setting(&app, "backup_path", &backup_path)?;
     db::set_system_setting(&app, "backup_interval_days", &backup_interval_days.to_string())?;
+    db::set_system_setting(&app, "auto_optimize_enabled", &auto_optimize_enabled.to_string())?;
+    db::set_system_setting(
+        &app,
+        "auto_optimize_interval_hours",
+        &normalized_auto_optimize_interval_hours.to_string(),
+    )?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn optimize_database(app: AppHandle) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+    db::optimize_database_internal(&conn)
 }
 
 #[tauri::command]

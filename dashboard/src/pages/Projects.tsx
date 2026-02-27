@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
 import {
   Plus,
   Trash2,
@@ -19,13 +19,18 @@ import {
   Folders,
   Save,
   MousePointerClick,
-} from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { open } from "@tauri-apps/plugin-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   getProjects,
   getExcludedProjects,
@@ -52,11 +57,16 @@ import {
   getProjectExtraInfo,
   compactProjectData,
   getProjectEstimates,
-} from "@/lib/tauri";
-import { ManualSessionDialog } from "@/components/ManualSessionDialog";
-import { formatDuration, formatPathForDisplay, formatMoney, cn } from "@/lib/utils";
-import { useAppStore } from "@/store/app-store";
-import { loadFreezeSettings } from "@/lib/user-settings";
+} from '@/lib/tauri';
+import { ManualSessionDialog } from '@/components/ManualSessionDialog';
+import {
+  formatDuration,
+  formatPathForDisplay,
+  formatMoney,
+  cn,
+} from '@/lib/utils';
+import { useAppStore } from '@/store/app-store';
+import { loadFreezeSettings } from '@/lib/user-settings';
 import type {
   ProjectWithStats,
   AppWithStats,
@@ -64,15 +74,24 @@ import type {
   FolderProjectCandidate,
   DetectedProject,
   ProjectExtraInfo,
-} from "@/lib/db-types";
+} from '@/lib/db-types';
 
-const COLORS = ["#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee"];
+const COLORS = [
+  '#38bdf8',
+  '#a78bfa',
+  '#34d399',
+  '#fb923c',
+  '#f87171',
+  '#fbbf24',
+  '#818cf8',
+  '#22d3ee',
+];
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  if (typeof error === "string" && error) {
+  if (typeof error === 'string' && error) {
     return error;
   }
   return fallback;
@@ -81,44 +100,53 @@ function getErrorMessage(error: unknown, fallback: string): string {
 function inferDetectedProjectName(fileName: string): string {
   const trimmed = fileName.trim();
   if (!trimmed) return fileName;
-  const parts = trimmed.split(" - ");
+  const parts = trimmed.split(' - ');
   const candidate = parts[parts.length - 1]?.trim();
   return candidate || trimmed;
 }
 
 function normalizeProjectDuplicateKey(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, "")
-    .replace(/\s+/g, "");
+  return name.trim().toLowerCase().replace(/[_-]+/g, '').replace(/\s+/g, '');
 }
 
 function renderDuration(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
-  const unitClass = "text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline";
+  const unitClass = 'text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline';
 
   if (h > 0) {
     return (
       <span className="flex items-baseline gap-x-1">
-        <span>{h}<span className={unitClass}>h</span></span>
-        <span>{m}<span className={unitClass}>m</span></span>
+        <span>
+          {h}
+          <span className={unitClass}>h</span>
+        </span>
+        <span>
+          {m}
+          <span className={unitClass}>m</span>
+        </span>
       </span>
     );
   }
   if (m > 0) {
     return (
       <span className="flex items-baseline gap-x-1">
-        <span>{m}<span className={unitClass}>m</span></span>
-        <span>{s}<span className={unitClass}>s</span></span>
+        <span>
+          {m}
+          <span className={unitClass}>m</span>
+        </span>
+        <span>
+          {s}
+          <span className={unitClass}>s</span>
+        </span>
       </span>
     );
   }
   return (
     <span className="flex items-baseline">
-      {s}<span className={unitClass}>s</span>
+      {s}
+      <span className={unitClass}>s</span>
     </span>
   );
 }
@@ -132,46 +160,59 @@ export function Projects() {
     setCurrentPage,
   } = useAppStore();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
-  const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>([]);
+  const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>(
+    [],
+  );
   const [apps, setApps] = useState<AppWithStats[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [projectDialogId, setProjectDialogId] = useState<number | null>(null);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
-  const [name, setName] = useState("");
+  const [name, setName] = useState('');
   const [color, setColor] = useState(COLORS[0]);
-  const [projectFolderPath, setProjectFolderPath] = useState("");
-  const [createProjectError, setCreateProjectError] = useState<string | null>(null);
+  const [projectFolderPath, setProjectFolderPath] = useState('');
+  const [createProjectError, setCreateProjectError] = useState<string | null>(
+    null,
+  );
   const [assignOpen, setAssignOpen] = useState<number | null>(null);
   const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>([]);
-  const [folderCandidates, setFolderCandidates] = useState<FolderProjectCandidate[]>([]);
-  const [detectedProjects, setDetectedProjects] = useState<DetectedProject[]>([]);
+  const [folderCandidates, setFolderCandidates] = useState<
+    FolderProjectCandidate[]
+  >([]);
+  const [detectedProjects, setDetectedProjects] = useState<DetectedProject[]>(
+    [],
+  );
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [newFolderPath, setNewFolderPath] = useState("");
+  const [newFolderPath, setNewFolderPath] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [folderError, setFolderError] = useState<string | null>(null);
   const [folderInfo, setFolderInfo] = useState<string | null>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
-  const [sessionDialogProjectId, setSessionDialogProjectId] = useState<number | null>(null);
-  const VIEW_MODE_STORAGE_KEY = "timeflow-dashboard-projects-view-mode";
-  const [viewMode, setViewMode] = useState<"detailed" | "compact">(() => {
-    return (localStorage.getItem(VIEW_MODE_STORAGE_KEY) as "detailed" | "compact") || "compact";
+  const [sessionDialogProjectId, setSessionDialogProjectId] = useState<
+    number | null
+  >(null);
+  const VIEW_MODE_STORAGE_KEY = 'timeflow-dashboard-projects-view-mode';
+  const [viewMode, setViewMode] = useState<'detailed' | 'compact'>(() => {
+    return (
+      (localStorage.getItem(VIEW_MODE_STORAGE_KEY) as 'detailed' | 'compact') ||
+      'compact'
+    );
   });
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(false);
   const [estimates, setEstimates] = useState<Record<number, number>>({});
 
-  const SORT_STORAGE_KEY = "timeflow-dashboard-projects-sort";
+  const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
   const [sortBy, setSortBy] = useState(() => {
-    return localStorage.getItem(SORT_STORAGE_KEY) || "name-asc";
+    return localStorage.getItem(SORT_STORAGE_KEY) || 'name-asc';
   });
 
-  const FOLDERS_STORAGE_KEY = "timeflow-dashboard-projects-use-folders";
+  const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
   const [useFolders, setUseFolders] = useState(() => {
-    return localStorage.getItem(FOLDERS_STORAGE_KEY) !== "false";
+    return localStorage.getItem(FOLDERS_STORAGE_KEY) !== 'false';
   });
 
-  const SECTION_STORAGE_KEY = "timeflow-dashboard-projects-section-open";
-  const LEGACY_SECTION_STORAGE_KEY = "cfab-dashboard-projects-section-open";
+  const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
+  const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
   const defaultSectionOpen = {
     excluded: true,
     folders: true,
@@ -191,7 +232,8 @@ export function Projects() {
         candidates: parsed.candidates ?? defaultSectionOpen.candidates,
         detected: parsed.detected ?? defaultSectionOpen.detected,
       };
-      const allClosed = !next.excluded && !next.folders && !next.candidates && !next.detected;
+      const allClosed =
+        !next.excluded && !next.folders && !next.candidates && !next.detected;
       return allClosed ? defaultSectionOpen : next;
     } catch {
       return defaultSectionOpen;
@@ -203,7 +245,7 @@ export function Projects() {
       localStorage.setItem(SECTION_STORAGE_KEY, JSON.stringify(next));
       localStorage.removeItem(LEGACY_SECTION_STORAGE_KEY);
     } catch (error) {
-      console.debug("Failed to persist sections state:", error);
+      console.debug('Failed to persist sections state:', error);
     }
   };
 
@@ -232,11 +274,15 @@ export function Projects() {
 
   useEffect(() => {
     const { thresholdDays } = loadFreezeSettings();
-    autoFreezeProjects(thresholdDays).then(({ frozen_count, unfrozen_count }) => {
-      if (frozen_count > 0 || unfrozen_count > 0) {
-        triggerRefresh();
-      }
-    }).catch(() => {/* ignore — feature not yet compiled */ });
+    autoFreezeProjects(thresholdDays)
+      .then(({ frozen_count, unfrozen_count }) => {
+        if (frozen_count > 0 || unfrozen_count > 0) {
+          triggerRefresh();
+        }
+      })
+      .catch(() => {
+        /* ignore — feature not yet compiled */
+      });
   }, []);
 
   const hotProjectIds = useMemo(() => {
@@ -253,41 +299,71 @@ export function Projects() {
       getApplications(),
       getProjectFolders(),
       getFolderProjectCandidates(),
-      getDetectedProjects({ start: "2020-01-01", end: "2100-01-01" }),
+      getDetectedProjects({ start: '2020-01-01', end: '2100-01-01' }),
       getDemoModeStatus(),
-    ]).then(([projectsRes, excludedRes, appsRes, foldersRes, candidatesRes, detectedRes, demoModeRes]) => {
-      if (projectsRes.status === "fulfilled") setProjects(projectsRes.value);
-      else console.error("Failed to load projects:", projectsRes.reason);
+    ]).then(
+      ([
+        projectsRes,
+        excludedRes,
+        appsRes,
+        foldersRes,
+        candidatesRes,
+        detectedRes,
+        demoModeRes,
+      ]) => {
+        if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
+        else console.error('Failed to load projects:', projectsRes.reason);
 
-      if (excludedRes.status === "fulfilled") setExcludedProjects(excludedRes.value);
-      else console.error("Failed to load excluded projects:", excludedRes.reason);
+        if (excludedRes.status === 'fulfilled')
+          setExcludedProjects(excludedRes.value);
+        else
+          console.error(
+            'Failed to load excluded projects:',
+            excludedRes.reason,
+          );
 
-      if (appsRes.status === "fulfilled") setApps(appsRes.value);
-      else console.error("Failed to load applications:", appsRes.reason);
+        if (appsRes.status === 'fulfilled') setApps(appsRes.value);
+        else console.error('Failed to load applications:', appsRes.reason);
 
-      if (foldersRes.status === "fulfilled") setProjectFolders(foldersRes.value);
-      else {
-        console.error("Failed to load project folders:", foldersRes.reason);
-        setFolderError("Failed to load project folders");
-      }
+        if (foldersRes.status === 'fulfilled')
+          setProjectFolders(foldersRes.value);
+        else {
+          console.error('Failed to load project folders:', foldersRes.reason);
+          setFolderError('Failed to load project folders');
+        }
 
-      if (candidatesRes.status === "fulfilled") setFolderCandidates(candidatesRes.value);
-      else console.error("Failed to load folder candidates:", candidatesRes.reason);
+        if (candidatesRes.status === 'fulfilled')
+          setFolderCandidates(candidatesRes.value);
+        else
+          console.error(
+            'Failed to load folder candidates:',
+            candidatesRes.reason,
+          );
 
-      if (detectedRes.status === "fulfilled") setDetectedProjects(detectedRes.value);
-      else console.error("Failed to load detected projects:", detectedRes.reason);
+        if (detectedRes.status === 'fulfilled')
+          setDetectedProjects(detectedRes.value);
+        else
+          console.error(
+            'Failed to load detected projects:',
+            detectedRes.reason,
+          );
 
-      if (demoModeRes.status === "fulfilled") setIsDemoMode(demoModeRes.value.enabled);
-      else console.error("Failed to load demo mode status:", demoModeRes.reason);
+        if (demoModeRes.status === 'fulfilled')
+          setIsDemoMode(demoModeRes.value.enabled);
+        else
+          console.error('Failed to load demo mode status:', demoModeRes.reason);
 
-      getProjectEstimates({ start: "2020-01-01", end: "2100-01-01" }).then((res) => {
-        const map: Record<number, number> = {};
-        res.forEach((r) => {
-          map[r.project_id] = r.estimated_value;
-        });
-        setEstimates(map);
-      }).catch(console.error);
-    });
+        getProjectEstimates({ start: '2020-01-01', end: '2100-01-01' })
+          .then((res) => {
+            const map: Record<number, number> = {};
+            res.forEach((r) => {
+              map[r.project_id] = r.estimated_value;
+            });
+            setEstimates(map);
+          })
+          .catch(console.error);
+      },
+    );
   }, [refreshKey]);
 
   useEffect(() => {
@@ -296,7 +372,10 @@ export function Projects() {
       return;
     }
     setLoadingExtra(true);
-    getProjectExtraInfo(projectDialogId, { start: "2020-01-01", end: "2100-01-01" })
+    getProjectExtraInfo(projectDialogId, {
+      start: '2020-01-01',
+      end: '2100-01-01',
+    })
       .then(setExtraInfo)
       .catch(console.error)
       .finally(() => setLoadingExtra(false));
@@ -310,27 +389,29 @@ export function Projects() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setCreateProjectError("Project name is required.");
+      setCreateProjectError('Project name is required.');
       return;
     }
     if (!projectFolderPath.trim()) {
-      setCreateProjectError("Project folder is required to identify tracked files.");
+      setCreateProjectError(
+        'Project folder is required to identify tracked files.',
+      );
       return;
     }
     setCreateProjectError(null);
     try {
       await createProject(name.trim(), color, projectFolderPath.trim());
       setCreateDialogOpen(false);
-      setName("");
-      setProjectFolderPath("");
+      setName('');
+      setProjectFolderPath('');
       triggerRefresh();
     } catch (e) {
-      setCreateProjectError(getErrorMessage(e, "Failed to create project"));
+      setCreateProjectError(getErrorMessage(e, 'Failed to create project'));
     }
   };
 
   const handleExclude = async (id: number) => {
-    if (!window.confirm("Exclude this project? It can be restored later.")) {
+    if (!window.confirm('Exclude this project? It can be restored later.')) {
       return;
     }
     await excludeProject(id);
@@ -356,11 +437,11 @@ export function Projects() {
     const projectLabel = project.name.trim() || `#${project.id}`;
     const confirmed = window.confirm(
       `Delete project permanently?\n\n${projectLabel}\n\n` +
-      `This will:\n` +
-      `- remove the project record\n` +
-      `- unassign linked apps/sessions/file activities\n` +
-      `- delete manual sessions assigned to this project\n\n` +
-      `This cannot be undone.`
+        `This will:\n` +
+        `- remove the project record\n` +
+        `- unassign linked apps/sessions/file activities\n` +
+        `- delete manual sessions assigned to this project\n\n` +
+        `This cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -373,15 +454,21 @@ export function Projects() {
       setEditingColorId((prev) => (prev === project.id ? null : prev));
       triggerRefresh();
     } catch (e) {
-      console.error("Failed to delete project:", e);
-      window.alert(`Failed to delete project "${projectLabel}": ${getErrorMessage(e, "Unknown error")}`);
+      console.error('Failed to delete project:', e);
+      window.alert(
+        `Failed to delete project "${projectLabel}": ${getErrorMessage(e, 'Unknown error')}`,
+      );
     } finally {
       setBusy((prev) => (prev === busyKey ? null : prev));
     }
   };
 
   const handleResetProjectTime = async (id: number) => {
-    if (!window.confirm("Reset tracked time for this project? This cannot be undone.")) {
+    if (
+      !window.confirm(
+        'Reset tracked time for this project? This cannot be undone.',
+      )
+    ) {
       return;
     }
     await resetProjectTime(id);
@@ -389,18 +476,27 @@ export function Projects() {
   };
 
   const handleCompactProject = async (id: number) => {
-    if (!window.confirm("Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This operation cannot be undone.")) {
+    if (
+      !window.confirm(
+        "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This operation cannot be undone.",
+      )
+    ) {
       return;
     }
     setBusy(`compact-project:${id}`);
     try {
       await compactProjectData(id);
       triggerRefresh();
-      const info = await getProjectExtraInfo(id, { start: "2020-01-01", end: "2100-01-01" });
+      const info = await getProjectExtraInfo(id, {
+        start: '2020-01-01',
+        end: '2100-01-01',
+      });
       setExtraInfo(info);
     } catch (e) {
-      console.error("Failed to compact project data:", e);
-      window.alert(`Failed to compact project data: ${getErrorMessage(e, "Unknown error")}`);
+      console.error('Failed to compact project data:', e);
+      window.alert(
+        `Failed to compact project data: ${getErrorMessage(e, 'Unknown error')}`,
+      );
     } finally {
       setBusy(null);
     }
@@ -412,8 +508,8 @@ export function Projects() {
   };
 
   const openCreate = () => {
-    setName("");
-    setProjectFolderPath("");
+    setName('');
+    setProjectFolderPath('');
     setCreateProjectError(null);
     setColor(COLORS[projects.length % COLORS.length]);
     setCreateDialogOpen(true);
@@ -424,14 +520,14 @@ export function Projects() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Select Assigned Project Folder",
+        title: 'Select Assigned Project Folder',
       });
-      if (selected && typeof selected === "string") {
+      if (selected && typeof selected === 'string') {
         setProjectFolderPath(selected);
         setCreateProjectError(null);
       }
     } catch (e) {
-      console.error("Failed to open folder dialog:", e);
+      console.error('Failed to open folder dialog:', e);
     }
   };
 
@@ -443,19 +539,19 @@ export function Projects() {
   const handleAddFolder = async () => {
     const path = newFolderPath.trim();
     if (!path) {
-      setFolderError("Please enter a folder path");
+      setFolderError('Please enter a folder path');
       return;
     }
-    setBusy("add-folder");
+    setBusy('add-folder');
     setFolderError(null);
     setFolderInfo(null);
     try {
       await addProjectFolder(path);
-      setNewFolderPath("");
-      setFolderInfo("Folder saved");
+      setNewFolderPath('');
+      setFolderInfo('Folder saved');
       triggerRefresh();
     } catch (error: unknown) {
-      setFolderError(getErrorMessage(error, "Failed to add folder"));
+      setFolderError(getErrorMessage(error, 'Failed to add folder'));
       console.error(error);
     } finally {
       setBusy(null);
@@ -467,19 +563,23 @@ export function Projects() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Select Project Folder",
+        title: 'Select Project Folder',
       });
-      if (selected && typeof selected === "string") {
+      if (selected && typeof selected === 'string') {
         setNewFolderPath(selected);
         setFolderError(null);
       }
     } catch (e) {
-      console.error("Failed to open folder dialog:", e);
+      console.error('Failed to open folder dialog:', e);
     }
   };
 
   const handleRemoveFolder = async (path: string) => {
-    if (!window.confirm(`Remove folder from project roots?\n\n${formatPathForDisplay(path)}`)) {
+    if (
+      !window.confirm(
+        `Remove folder from project roots?\n\n${formatPathForDisplay(path)}`,
+      )
+    ) {
       return;
     }
     setBusy(`remove-folder:${path}`);
@@ -506,7 +606,7 @@ export function Projects() {
   };
 
   const handleSyncFolders = async () => {
-    setBusy("sync-folders");
+    setBusy('sync-folders');
     try {
       await syncProjectsFromFolders();
       triggerRefresh();
@@ -518,9 +618,12 @@ export function Projects() {
   };
 
   const handleAutoCreateDetected = async () => {
-    setBusy("auto-detect");
+    setBusy('auto-detect');
     try {
-      await autoCreateProjectsFromDetection({ start: "2020-01-01", end: "2100-01-01" }, 2);
+      await autoCreateProjectsFromDetection(
+        { start: '2020-01-01', end: '2100-01-01' },
+        2,
+      );
       triggerRefresh();
     } catch (e) {
       console.error(e);
@@ -535,13 +638,20 @@ export function Projects() {
       const valB = estimates[b.id] || 0;
 
       switch (sortBy) {
-        case "name-asc": return a.name.localeCompare(b.name);
-        case "name-desc": return b.name.localeCompare(a.name);
-        case "time-asc": return a.total_seconds - b.total_seconds;
-        case "time-desc": return b.total_seconds - a.total_seconds;
-        case "value-asc": return valA - valB;
-        case "value-desc": return valB - valA;
-        default: return 0;
+        case 'name-asc':
+          return a.name.localeCompare(b.name);
+        case 'name-desc':
+          return b.name.localeCompare(a.name);
+        case 'time-asc':
+          return a.total_seconds - b.total_seconds;
+        case 'time-desc':
+          return b.total_seconds - a.total_seconds;
+        case 'value-asc':
+          return valA - valB;
+        case 'value-desc':
+          return valB - valA;
+        default:
+          return 0;
       }
     });
   }, [projects, sortBy, estimates]);
@@ -552,13 +662,20 @@ export function Projects() {
       const valB = estimates[b.id] || 0;
 
       switch (sortBy) {
-        case "name-asc": return a.name.localeCompare(b.name);
-        case "name-desc": return b.name.localeCompare(a.name);
-        case "time-asc": return a.total_seconds - b.total_seconds;
-        case "time-desc": return b.total_seconds - a.total_seconds;
-        case "value-asc": return valA - valB;
-        case "value-desc": return valB - valA;
-        default: return 0;
+        case 'name-asc':
+          return a.name.localeCompare(b.name);
+        case 'name-desc':
+          return b.name.localeCompare(a.name);
+        case 'time-asc':
+          return a.total_seconds - b.total_seconds;
+        case 'time-desc':
+          return b.total_seconds - a.total_seconds;
+        case 'value-asc':
+          return valA - valB;
+        case 'value-desc':
+          return valB - valA;
+        default:
+          return 0;
       }
     });
   }, [excludedProjects, sortBy, estimates]);
@@ -577,23 +694,30 @@ export function Projects() {
     localStorage.setItem(SORT_STORAGE_KEY, sortBy);
     localStorage.setItem(FOLDERS_STORAGE_KEY, String(useFolders));
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
-    setFolderInfo("View settings saved as default");
+    setFolderInfo('View settings saved as default');
     setTimeout(() => setFolderInfo(null), 3000);
   };
 
   const visibleFolderCandidates = useMemo(() => {
     const existingProjectNames = new Set(
-      [...projects, ...excludedProjects].map((project) => project.name.toLowerCase()),
+      [...projects, ...excludedProjects].map((project) =>
+        project.name.toLowerCase(),
+      ),
     );
     return folderCandidates.filter(
-      (candidate) => !candidate.already_exists && !existingProjectNames.has(candidate.name.toLowerCase()),
+      (candidate) =>
+        !candidate.already_exists &&
+        !existingProjectNames.has(candidate.name.toLowerCase()),
     );
   }, [folderCandidates, projects, excludedProjects]);
-  const hiddenRegisteredFolderCandidatesCount = folderCandidates.length - visibleFolderCandidates.length;
+  const hiddenRegisteredFolderCandidatesCount =
+    folderCandidates.length - visibleFolderCandidates.length;
 
   const detectedCandidatesView = useMemo(() => {
     const existingNames = new Set(projects.map((p) => p.name.toLowerCase()));
-    const excludedNames = new Set(excludedProjects.map((p) => p.name.toLowerCase()));
+    const excludedNames = new Set(
+      excludedProjects.map((p) => p.name.toLowerCase()),
+    );
     const seenCandidateNames = new Set<string>();
 
     const visible: Array<
@@ -651,7 +775,7 @@ export function Projects() {
 
     // Build a map of folder basename -> folder path for name-contains matching
     const folderBasenames = projectFolders.map((f) => {
-      const parts = f.path.replace(/\\/g, "/").replace(/\/+$/, "").split("/");
+      const parts = f.path.replace(/\\/g, '/').replace(/\/+$/, '').split('/');
       return { basename: parts[parts.length - 1].toLowerCase(), path: f.path };
     });
 
@@ -670,7 +794,9 @@ export function Projects() {
       }
       // 2. Project name contains a folder's basename (e.g. "TODO.md - __timeflow_demon" contains "__timeflow_demon")
       const nameLC = project.name.toLowerCase();
-      const matchedFolder = folderBasenames.find((f) => nameLC.includes(f.basename));
+      const matchedFolder = folderBasenames.find((f) =>
+        nameLC.includes(f.basename),
+      );
       if (matchedFolder && grouped.has(matchedFolder.path)) {
         grouped.get(matchedFolder.path)!.push(project);
       } else {
@@ -720,7 +846,7 @@ export function Projects() {
       projectCount += group.length;
 
       const groupNames = Array.from(
-        new Set(group.map((project) => project.name.trim()).filter(Boolean))
+        new Set(group.map((project) => project.name.trim()).filter(Boolean)),
       );
 
       for (const project of group) {
@@ -741,7 +867,7 @@ export function Projects() {
 
   const selectedProject = useMemo(
     () => projects.find((p) => p.id === projectDialogId) ?? null,
-    [projects, projectDialogId]
+    [projects, projectDialogId],
   );
 
   const renderDuplicateMarker = (project: ProjectWithStats) => {
@@ -750,7 +876,7 @@ export function Projects() {
 
     const title =
       info.groupNames.length > 1
-        ? `Possible duplicate (${info.groupSize}): ${info.groupNames.join(" | ")}`
+        ? `Possible duplicate (${info.groupSize}): ${info.groupNames.join(' | ')}`
         : `Possible duplicate (${info.groupSize}) after normalizing "_" and "-"`;
 
     return (
@@ -767,7 +893,7 @@ export function Projects() {
   const renderProjectList = (projectList: ProjectWithStats[]) => {
     if (projectList.length === 0) return null;
 
-    if (viewMode === "compact") {
+    if (viewMode === 'compact') {
       return (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
           {projectList.map((p) => (
@@ -778,14 +904,22 @@ export function Projects() {
               className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
               onClick={() => openEdit(p)}
             >
-              <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+              <div
+                className="h-3 w-3 rounded-full shrink-0"
+                style={{ backgroundColor: p.color }}
+              />
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span className={cn(
-                  "min-w-0 flex-1 truncate font-medium",
-                  p.name.length > 40 ? "text-[11px]" :
-                    p.name.length > 25 ? "text-xs" :
-                      "text-sm"
-                )} title={p.name}>
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 truncate font-medium',
+                    p.name.length > 40
+                      ? 'text-[11px]'
+                      : p.name.length > 25
+                        ? 'text-xs'
+                        : 'text-sm',
+                  )}
+                  title={p.name}
+                >
                   {p.name}
                 </span>
                 {p.frozen_at && (
@@ -793,14 +927,20 @@ export function Projects() {
                     type="button"
                     className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
                     title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
-                    onClick={(e) => { e.stopPropagation(); handleUnfreeze(p.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUnfreeze(p.id);
+                    }}
                   >
                     <Snowflake className="h-3 w-3 shrink-0" />
                   </button>
                 )}
                 {renderDuplicateMarker(p)}
                 {hotProjectIds.includes(p.id) && (
-                  <span title="Hot project - top 5 by time" className="shrink-0">
+                  <span
+                    title="Hot project - top 5 by time"
+                    className="shrink-0"
+                  >
                     <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
                   </span>
                 )}
@@ -818,19 +958,24 @@ export function Projects() {
     );
   };
 
-  const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => {
+  const renderProjectCard = (
+    p: ProjectWithStats,
+    options?: { inDialog?: boolean },
+  ) => {
     const isDeleting = busy === `delete-project:${p.id}`;
     return (
       <Card key={p.id} data-project-id={p.id} data-project-name={p.name}>
         <CardHeader
-          className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? "pr-10" : ""}`}
+          className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? 'pr-10' : ''}`}
         >
           <div className="flex items-center gap-2">
             <div className="relative group">
               <div
                 className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
                 style={{ backgroundColor: p.color }}
-                onClick={() => setEditingColorId(editingColorId === p.id ? null : p.id)}
+                onClick={() =>
+                  setEditingColorId(editingColorId === p.id ? null : p.id)
+                }
                 title="Change color"
               />
               {editingColorId === p.id && (
@@ -839,7 +984,9 @@ export function Projects() {
                     type="color"
                     defaultValue={p.color}
                     className="w-16 h-8 border border-border rounded cursor-pointer"
-                    onChange={(e) => handleUpdateProjectColor(p.id, e.target.value)}
+                    onChange={(e) =>
+                      handleUpdateProjectColor(p.id, e.target.value)
+                    }
                     title="Choose color"
                   />
                   <div className="mt-2 flex gap-1">
@@ -856,23 +1003,30 @@ export function Projects() {
                 </div>
               )}
             </div>
-            <CardTitle className={cn(
-              "flex items-center gap-2",
-              p.name.length > 50 ? "text-xs leading-tight" :
-                p.name.length > 30 ? "text-sm" :
-                  "text-base"
-            )}>
+            <CardTitle
+              className={cn(
+                'flex items-center gap-2',
+                p.name.length > 50
+                  ? 'text-xs leading-tight'
+                  : p.name.length > 30
+                    ? 'text-sm'
+                    : 'text-base',
+              )}
+            >
               {p.name}
 
               {renderDuplicateMarker(p)}
               {p.is_imported === 1 && (
-                <Badge variant="secondary" className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]">
+                <Badge
+                  variant="secondary"
+                  className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]"
+                >
                   Imported
                 </Badge>
               )}
             </CardTitle>
           </div>
-          <div className={`flex gap-1 ${options?.inDialog ? "mr-8" : ""}`}>
+          <div className={`flex gap-1 ${options?.inDialog ? 'mr-8' : ''}`}>
             <Button
               variant="ghost"
               size="icon"
@@ -886,9 +1040,15 @@ export function Projects() {
             <Button
               variant="ghost"
               size="icon"
-              className={`h-7 w-7 ${p.frozen_at ? "text-blue-400 bg-blue-500/10" : "text-muted-foreground"}`}
-              onClick={() => p.frozen_at ? handleUnfreeze(p.id) : handleFreeze(p.id)}
-              title={p.frozen_at ? `Frozen since ${p.frozen_at.slice(0, 10)} - click to unfreeze` : "Freeze project"}
+              className={`h-7 w-7 ${p.frozen_at ? 'text-blue-400 bg-blue-500/10' : 'text-muted-foreground'}`}
+              onClick={() =>
+                p.frozen_at ? handleUnfreeze(p.id) : handleFreeze(p.id)
+              }
+              title={
+                p.frozen_at
+                  ? `Frozen since ${p.frozen_at.slice(0, 10)} - click to unfreeze`
+                  : 'Freeze project'
+              }
               disabled={isDeleting}
             >
               <Snowflake className="h-3.5 w-3.5" />
@@ -918,7 +1078,9 @@ export function Projects() {
         <CardContent>
           <div className="flex items-end justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">TOTAL TIME / VALUE</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                TOTAL TIME / VALUE
+              </p>
               <p className="text-xl font-[200] text-emerald-400 leading-none flex items-baseline gap-x-1">
                 {renderDuration(p.total_seconds)}
                 <span className="text-[1.0em] font-[600] opacity-30">/</span>
@@ -933,12 +1095,16 @@ export function Projects() {
                     </span>
                   )}
                   {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
-                    <span title={`Manual sessions: ${extraInfo.db_stats.manual_session_count}`}>
+                    <span
+                      title={`Manual sessions: ${extraInfo.db_stats.manual_session_count}`}
+                    >
                       <MousePointerClick className="h-4 w-4 text-sky-400 fill-sky-400/10" />
                     </span>
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (
-                    <span title={`Comments: ${extraInfo.db_stats.comment_count}`}>
+                    <span
+                      title={`Comments: ${extraInfo.db_stats.comment_count}`}
+                    >
                       <MessageSquare className="h-4 w-4 text-blue-400 fill-blue-400/20" />
                     </span>
                   )}
@@ -968,7 +1134,7 @@ export function Projects() {
                 onClick={(e) => {
                   e.stopPropagation();
                   setProjectPageId(p.id);
-                  setCurrentPage("project-card");
+                  setCurrentPage('project-card');
                 }}
                 title="Karta projektu"
                 className="shrink-0 h-9 w-9"
@@ -982,30 +1148,49 @@ export function Projects() {
           {options?.inDialog && (
             <div className="mt-4 space-y-4 border-t pt-4 animate-in fade-in duration-500 text-sm">
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">Top 3 Applications</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
+                  Top 3 Applications
+                </p>
                 {loadingExtra ? (
-                  <p className="text-xs text-muted-foreground italic">Loading...</p>
+                  <p className="text-xs text-muted-foreground italic">
+                    Loading...
+                  </p>
                 ) : (
                   <div className="space-y-1.5">
                     {extraInfo?.top_apps.map((app, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs">
-                        <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: app.color || "#64748b" }} />
+                        <div
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: app.color || '#64748b' }}
+                        />
                         <span className="truncate flex-1">{app.name}</span>
-                        <span className="font-mono text-emerald-400 shrink-0">{formatDuration(app.seconds)}</span>
+                        <span className="font-mono text-emerald-400 shrink-0">
+                          {formatDuration(app.seconds)}
+                        </span>
                       </div>
                     ))}
-                    {extraInfo?.top_apps.length === 0 && <p className="text-xs text-muted-foreground italic">No data</p>}
+                    {extraInfo?.top_apps.length === 0 && (
+                      <p className="text-xs text-muted-foreground italic">
+                        No data
+                      </p>
+                    )}
 
                     <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">Apps Linked:</span>
-                        <span className="text-xs font-bold text-emerald-400">{p.app_count}</span>
+                        <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">
+                          Apps Linked:
+                        </span>
+                        <span className="text-xs font-bold text-emerald-400">
+                          {p.app_count}
+                        </span>
                       </div>
                       <Button
                         variant="outline"
                         size="sm"
                         className="w-1/2 text-[11px] h-7"
-                        onClick={() => setAssignOpen(assignOpen === p.id ? null : p.id)}
+                        onClick={() =>
+                          setAssignOpen(assignOpen === p.id ? null : p.id)
+                        }
                         disabled={isDeleting}
                       >
                         Manage Apps
@@ -1020,29 +1205,43 @@ export function Projects() {
                   Database Statistics
                   {extraInfo && (
                     <span className="text-[10px] lowercase font-normal opacity-70">
-                      ~{(extraInfo.db_stats.estimated_size_bytes / 1024).toFixed(1)} KB
+                      ~
+                      {(extraInfo.db_stats.estimated_size_bytes / 1024).toFixed(
+                        1,
+                      )}{' '}
+                      KB
                     </span>
                   )}
                 </p>
                 {loadingExtra ? (
-                  <p className="text-center py-2 text-xs text-muted-foreground">Loading statistics...</p>
+                  <p className="text-center py-2 text-xs text-muted-foreground">
+                    Loading statistics...
+                  </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Sessions:</span>
-                      <span className="font-medium">{extraInfo?.db_stats.session_count || 0}</span>
+                      <span className="font-medium">
+                        {extraInfo?.db_stats.session_count || 0}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Files:</span>
-                      <span className="font-medium">{extraInfo?.db_stats.file_activity_count || 0}</span>
+                      <span className="font-medium">
+                        {extraInfo?.db_stats.file_activity_count || 0}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Manual:</span>
-                      <span className="font-medium">{extraInfo?.db_stats.manual_session_count || 0}</span>
+                      <span className="font-medium">
+                        {extraInfo?.db_stats.manual_session_count || 0}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Comments:</span>
-                      <span className="font-medium">{extraInfo?.db_stats.comment_count || 0}</span>
+                      <span className="font-medium">
+                        {extraInfo?.db_stats.comment_count || 0}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -1053,25 +1252,38 @@ export function Projects() {
                     size="sm"
                     className="w-full text-[10px] h-7 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
                     onClick={() => handleCompactProject(p.id)}
-                    disabled={loadingExtra || !extraInfo || extraInfo.db_stats.file_activity_count === 0 || !!busy}
+                    disabled={
+                      loadingExtra ||
+                      !extraInfo ||
+                      extraInfo.db_stats.file_activity_count === 0 ||
+                      !!busy
+                    }
                   >
-                    {busy === `compact-project:${p.id}` ? "Compacting..." : "Compact project data"}
+                    {busy === `compact-project:${p.id}`
+                      ? 'Compacting...'
+                      : 'Compact project data'}
                   </Button>
                 </div>
               </div>
             </div>
           )}
 
-
-
           {assignOpen === p.id && (
             <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
               {apps.map((app) => (
-                <label key={app.id} className="flex items-center gap-2 rounded p-1 text-sm hover:bg-accent">
+                <label
+                  key={app.id}
+                  className="flex items-center gap-2 rounded p-1 text-sm hover:bg-accent"
+                >
                   <input
                     type="checkbox"
                     checked={app.project_id === p.id}
-                    onChange={() => handleAssign(app.id, app.project_id === p.id ? null : p.id)}
+                    onChange={() =>
+                      handleAssign(
+                        app.id,
+                        app.project_id === p.id ? null : p.id,
+                      )
+                    }
                     className="accent-primary"
                     disabled={isDeleting}
                   />
@@ -1090,15 +1302,20 @@ export function Projects() {
       <div className="flex items-center justify-between">
         <div className="flex flex-col">
           <p className="text-sm text-muted-foreground">
-            {projects.length} projects{excludedProjects.length > 0 ? ` (${excludedProjects.length} excluded)` : ""}
+            {projects.length} projects
+            {excludedProjects.length > 0
+              ? ` (${excludedProjects.length} excluded)`
+              : ''}
           </p>
           {duplicateProjectsView.groupCount > 0 && (
             <p className="text-xs text-amber-600/90">
-              Marked with{" "}
+              Marked with{' '}
               <span className="mx-1 inline-flex h-4 w-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
                 D
               </span>
-              = possible duplicate names in this tab ({duplicateProjectsView.projectCount} projects in {duplicateProjectsView.groupCount} groups)
+              = possible duplicate names in this tab (
+              {duplicateProjectsView.projectCount} projects in{' '}
+              {duplicateProjectsView.groupCount} groups)
             </p>
           )}
         </div>
@@ -1107,8 +1324,12 @@ export function Projects() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleSortChange(sortBy === "name-asc" ? "name-desc" : "name-asc")}
-              className={`h-7 w-8 p-0 ${sortBy.startsWith("name") ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() =>
+                handleSortChange(
+                  sortBy === 'name-asc' ? 'name-desc' : 'name-asc',
+                )
+              }
+              className={`h-7 w-8 p-0 ${sortBy.startsWith('name') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               title="ABC (toggle direction)"
             >
               <Type className="h-4 w-4" />
@@ -1116,8 +1337,12 @@ export function Projects() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleSortChange(sortBy === "value-desc" ? "value-asc" : "value-desc")}
-              className={`h-7 w-8 p-0 ${sortBy.startsWith("value") ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              onClick={() =>
+                handleSortChange(
+                  sortBy === 'value-desc' ? 'value-asc' : 'value-desc',
+                )
+              }
+              className={`h-7 w-8 p-0 ${sortBy.startsWith('value') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
               title="Value (toggle direction)"
             >
               <CircleDollarSign className="h-4 w-4" />
@@ -1125,8 +1350,12 @@ export function Projects() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleSortChange(sortBy === "time-desc" ? "time-asc" : "time-desc")}
-              className={`h-7 w-8 p-0 ${sortBy.startsWith("time") ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              onClick={() =>
+                handleSortChange(
+                  sortBy === 'time-desc' ? 'time-asc' : 'time-desc',
+                )
+              }
+              className={`h-7 w-8 p-0 ${sortBy.startsWith('time') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
               title="Time (toggle direction)"
             >
               <Clock className="h-4 w-4" />
@@ -1136,7 +1365,7 @@ export function Projects() {
               variant="ghost"
               size="sm"
               onClick={toggleFolders}
-              className={`h-7 w-8 p-0 ${useFolders ? "bg-background shadow-sm text-foreground" : "text-muted-foreground"}`}
+              className={`h-7 w-8 p-0 ${useFolders ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
               title="Toggle folder grouping"
             >
               <Folders className="h-4 w-4" />
@@ -1145,20 +1374,25 @@ export function Projects() {
 
           <div className="flex bg-secondary/50 p-1 rounded-md text-sm">
             <button
-              onClick={() => setViewMode("detailed")}
-              className={`px-3 py-1 rounded-sm transition-colors ${viewMode === "detailed" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setViewMode('detailed')}
+              className={`px-3 py-1 rounded-sm transition-colors ${viewMode === 'detailed' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Detailed
             </button>
             <button
-              onClick={() => setViewMode("compact")}
-              className={`px-3 py-1 rounded-sm transition-colors ${viewMode === "compact" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setViewMode('compact')}
+              className={`px-3 py-1 rounded-sm transition-colors ${viewMode === 'compact' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
             >
               Compact
             </button>
           </div>
 
-          <Button variant="ghost" size="icon" onClick={handleSaveDefaults} title="Zapisz widok jako domyślny">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleSaveDefaults}
+            title="Save view as default"
+          >
             <Save className="h-4 w-4" />
           </Button>
 
@@ -1172,17 +1406,26 @@ export function Projects() {
         <div className="space-y-5">
           {projectsByFolder.sections.map((section) => (
             <div key={section.rootPath} className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground" title={formatPathForDisplay(section.rootPath)}>{formatPathForDisplay(section.rootPath)}</p>
+              <p
+                className="text-xs font-medium text-muted-foreground"
+                title={formatPathForDisplay(section.rootPath)}
+              >
+                {formatPathForDisplay(section.rootPath)}
+              </p>
               {section.projects.length > 0 ? (
                 renderProjectList(section.projects)
               ) : (
-                <p className="text-xs text-muted-foreground">No projects for this folder</p>
+                <p className="text-xs text-muted-foreground">
+                  No projects for this folder
+                </p>
               )}
             </div>
           ))}
           {projectsByFolder.outside.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Other projects</p>
+              <p className="text-xs font-medium text-muted-foreground">
+                Other projects
+              </p>
               {renderProjectList(projectsByFolder.outside)}
             </div>
           )}
@@ -1192,11 +1435,19 @@ export function Projects() {
       )}
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <button type="button" onClick={expandAllSections} className="hover:text-foreground underline">
+        <button
+          type="button"
+          onClick={expandAllSections}
+          className="hover:text-foreground underline"
+        >
           Expand all
         </button>
         <span>·</span>
-        <button type="button" onClick={collapseAllSections} className="hover:text-foreground underline">
+        <button
+          type="button"
+          onClick={collapseAllSections}
+          className="hover:text-foreground underline"
+        >
           Collapse all
         </button>
       </div>
@@ -1204,7 +1455,7 @@ export function Projects() {
       <Card>
         <CardHeader
           className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection("excluded")}
+          onClick={toggleSection('excluded')}
         >
           <div className="flex items-center gap-2">
             {sectionOpen.excluded ? (
@@ -1212,27 +1463,38 @@ export function Projects() {
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
-            <CardTitle className="text-sm font-medium">Excluded Projects</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Excluded Projects
+            </CardTitle>
           </div>
         </CardHeader>
         {sectionOpen.excluded && (
           <CardContent>
             {sortedExcludedProjects.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No excluded projects</p>
+              <p className="text-xs text-muted-foreground">
+                No excluded projects
+              </p>
             ) : (
               <div className="space-y-2">
                 {sortedExcludedProjects.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs">
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs"
+                  >
                     <div className="min-w-0">
                       <p className="flex items-center gap-1.5 font-medium">
                         <span className="min-w-0 truncate">{p.name}</span>
                         {renderDuplicateMarker(p)}
                       </p>
                       <p className="truncate text-muted-foreground">
-                        Excluded{p.excluded_at ? `: ${p.excluded_at}` : ""}
+                        Excluded{p.excluded_at ? `: ${p.excluded_at}` : ''}
                       </p>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => handleRestore(p.id)}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleRestore(p.id)}
+                    >
                       Restore
                     </Button>
                     <Button
@@ -1256,7 +1518,7 @@ export function Projects() {
       <Card>
         <CardHeader
           className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection("folders")}
+          onClick={toggleSection('folders')}
         >
           <div className="flex items-center gap-2">
             {sectionOpen.folders ? (
@@ -1264,7 +1526,9 @@ export function Projects() {
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
-            <CardTitle className="text-sm font-medium">Project Folders</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Project Folders
+            </CardTitle>
           </div>
         </CardHeader>
         {sectionOpen.folders && (
@@ -1280,15 +1544,24 @@ export function Projects() {
                 }}
                 placeholder="C:\\projects\\clients"
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                  if (e.key === 'Enter') {
                     handleAddFolder();
                   }
                 }}
               />
-              <Button size="sm" variant="outline" onClick={handleBrowseFolder} disabled={busy === "add-folder"}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleBrowseFolder}
+                disabled={busy === 'add-folder'}
+              >
                 Browse...
               </Button>
-              <Button size="sm" onClick={handleAddFolder} disabled={busy === "add-folder"}>
+              <Button
+                size="sm"
+                onClick={handleAddFolder}
+                disabled={busy === 'add-folder'}
+              >
                 <Plus className="mr-1.5 h-4 w-4" />
                 Add
               </Button>
@@ -1303,8 +1576,16 @@ export function Projects() {
             {projectFolders.length > 0 ? (
               <div className="space-y-1">
                 {projectFolders.map((f) => (
-                  <div key={f.path} className="flex items-center justify-between gap-2 text-xs">
-                    <span className="truncate text-muted-foreground" title={formatPathForDisplay(f.path)}>{formatPathForDisplay(f.path)}</span>
+                  <div
+                    key={f.path}
+                    className="flex items-center justify-between gap-2 text-xs"
+                  >
+                    <span
+                      className="truncate text-muted-foreground"
+                      title={formatPathForDisplay(f.path)}
+                    >
+                      {formatPathForDisplay(f.path)}
+                    </span>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1319,11 +1600,18 @@ export function Projects() {
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-foreground">No folders configured</p>
+              <p className="text-xs text-muted-foreground">
+                No folders configured
+              </p>
             )}
 
             <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={handleSyncFolders} disabled={busy === "sync-folders"}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncFolders}
+                disabled={busy === 'sync-folders'}
+              >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                 Sync subfolders as projects
               </Button>
@@ -1335,7 +1623,7 @@ export function Projects() {
       <Card>
         <CardHeader
           className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection("candidates")}
+          onClick={toggleSection('candidates')}
         >
           <div className="flex items-center gap-2">
             {sectionOpen.candidates ? (
@@ -1343,20 +1631,32 @@ export function Projects() {
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
-            <CardTitle className="text-sm font-medium">Folder Project Candidates</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Folder Project Candidates
+            </CardTitle>
           </div>
         </CardHeader>
         {sectionOpen.candidates && (
           <CardContent>
             {visibleFolderCandidates.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No subfolder candidates found</p>
+              <p className="text-xs text-muted-foreground">
+                No subfolder candidates found
+              </p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto">
                 {visibleFolderCandidates.map((c) => (
-                  <div key={c.folder_path} className="flex items-center justify-between gap-2 text-xs py-1">
+                  <div
+                    key={c.folder_path}
+                    className="flex items-center justify-between gap-2 text-xs py-1"
+                  >
                     <div className="min-w-0">
                       <p className="truncate font-medium">{c.name}</p>
-                      <p className="truncate text-muted-foreground" title={formatPathForDisplay(c.folder_path)}>{formatPathForDisplay(c.folder_path)}</p>
+                      <p
+                        className="truncate text-muted-foreground"
+                        title={formatPathForDisplay(c.folder_path)}
+                      >
+                        {formatPathForDisplay(c.folder_path)}
+                      </p>
                     </div>
                     <Button
                       variant="outline"
@@ -1373,7 +1673,8 @@ export function Projects() {
             )}
             {hiddenRegisteredFolderCandidatesCount > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Hidden already registered folders: {hiddenRegisteredFolderCandidatesCount}
+                Hidden already registered folders:{' '}
+                {hiddenRegisteredFolderCandidatesCount}
               </p>
             )}
           </CardContent>
@@ -1383,7 +1684,7 @@ export function Projects() {
       <Card>
         <CardHeader
           className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection("detected")}
+          onClick={toggleSection('detected')}
         >
           <div className="flex items-center gap-2">
             {sectionOpen.detected ? (
@@ -1391,7 +1692,9 @@ export function Projects() {
             ) : (
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
-            <CardTitle className="text-sm font-medium">Detected Projects (opened &gt;= 2 times)</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Detected Projects (opened &gt;= 2 times)
+            </CardTitle>
           </div>
         </CardHeader>
         {sectionOpen.detected && (
@@ -1399,21 +1702,30 @@ export function Projects() {
             {detectedCandidatesView.visible.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {detectedProjects.length === 0
-                  ? "No detected projects"
-                  : "No candidate projects (detected items already match existing/excluded projects)."}
+                  ? 'No detected projects'
+                  : 'No candidate projects (detected items already match existing/excluded projects).'}
               </p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto">
                 {detectedCandidatesView.visible.map((d) => {
                   return (
-                    <div key={d.file_name} className="flex items-center justify-between gap-2 text-xs py-1">
+                    <div
+                      key={d.file_name}
+                      className="flex items-center justify-between gap-2 text-xs py-1"
+                    >
                       <div className="min-w-0">
-                        <p className="truncate font-medium">{d.inferredProjectName}</p>
+                        <p className="truncate font-medium">
+                          {d.inferredProjectName}
+                        </p>
                         <p className="truncate text-muted-foreground">
-                          {d.occurrence_count} opens · {formatDuration(d.total_seconds)}
+                          {d.occurrence_count} opens ·{' '}
+                          {formatDuration(d.total_seconds)}
                         </p>
                         {d.inferredProjectName !== d.file_name && (
-                          <p className="truncate text-muted-foreground/80" title={d.file_name}>
+                          <p
+                            className="truncate text-muted-foreground/80"
+                            title={d.file_name}
+                          >
                             from: {d.file_name}
                           </p>
                         )}
@@ -1428,31 +1740,39 @@ export function Projects() {
               detectedCandidatesView.hiddenExcluded > 0 ||
               detectedCandidatesView.hiddenDuplicates > 0 ||
               detectedCandidatesView.hiddenOverflow > 0) && (
-                <p className="text-xs text-muted-foreground">
-                  Hidden:
-                  {" "}
-                  {detectedCandidatesView.hiddenExisting > 0 && `${detectedCandidatesView.hiddenExisting} existing`}
-                  {detectedCandidatesView.hiddenExisting > 0 &&
-                    (detectedCandidatesView.hiddenExcluded > 0 ||
-                      detectedCandidatesView.hiddenDuplicates > 0 ||
-                      detectedCandidatesView.hiddenOverflow > 0) &&
-                    " · "}
-                  {detectedCandidatesView.hiddenExcluded > 0 && `${detectedCandidatesView.hiddenExcluded} excluded`}
-                  {detectedCandidatesView.hiddenExcluded > 0 &&
-                    (detectedCandidatesView.hiddenDuplicates > 0 || detectedCandidatesView.hiddenOverflow > 0) &&
-                    " · "}
-                  {detectedCandidatesView.hiddenDuplicates > 0 && `${detectedCandidatesView.hiddenDuplicates} duplicate names`}
-                  {detectedCandidatesView.hiddenDuplicates > 0 && detectedCandidatesView.hiddenOverflow > 0 && " · "}
-                  {detectedCandidatesView.hiddenOverflow > 0 &&
-                    `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? " (demo cap)" : ""}`}
-                </p>
-              )}
+              <p className="text-xs text-muted-foreground">
+                Hidden:{' '}
+                {detectedCandidatesView.hiddenExisting > 0 &&
+                  `${detectedCandidatesView.hiddenExisting} existing`}
+                {detectedCandidatesView.hiddenExisting > 0 &&
+                  (detectedCandidatesView.hiddenExcluded > 0 ||
+                    detectedCandidatesView.hiddenDuplicates > 0 ||
+                    detectedCandidatesView.hiddenOverflow > 0) &&
+                  ' · '}
+                {detectedCandidatesView.hiddenExcluded > 0 &&
+                  `${detectedCandidatesView.hiddenExcluded} excluded`}
+                {detectedCandidatesView.hiddenExcluded > 0 &&
+                  (detectedCandidatesView.hiddenDuplicates > 0 ||
+                    detectedCandidatesView.hiddenOverflow > 0) &&
+                  ' · '}
+                {detectedCandidatesView.hiddenDuplicates > 0 &&
+                  `${detectedCandidatesView.hiddenDuplicates} duplicate names`}
+                {detectedCandidatesView.hiddenDuplicates > 0 &&
+                  detectedCandidatesView.hiddenOverflow > 0 &&
+                  ' · '}
+                {detectedCandidatesView.hiddenOverflow > 0 &&
+                  `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? ' (demo cap)' : ''}`}
+              </p>
+            )}
             <div className="flex justify-end">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleAutoCreateDetected}
-                disabled={busy === "auto-detect" || detectedCandidatesView.totalCandidateCount === 0}
+                disabled={
+                  busy === 'auto-detect' ||
+                  detectedCandidatesView.totalCandidateCount === 0
+                }
               >
                 <Wand2 className="mr-1.5 h-3.5 w-3.5" />
                 Auto-create detected projects
@@ -1472,7 +1792,8 @@ export function Projects() {
         }}
       >
         <DialogContent className="max-w-2xl border-0 bg-transparent p-0 shadow-none">
-          {selectedProject && renderProjectCard(selectedProject, { inDialog: true })}
+          {selectedProject &&
+            renderProjectCard(selectedProject, { inDialog: true })}
         </DialogContent>
       </Dialog>
 
@@ -1506,7 +1827,11 @@ export function Projects() {
                   }}
                   placeholder="C:\projects\my-new-app"
                 />
-                <Button size="sm" variant="outline" onClick={handleBrowseProjectCreateFolder}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleBrowseProjectCreateFolder}
+                >
                   Browse...
                 </Button>
               </div>
@@ -1518,7 +1843,11 @@ export function Projects() {
                   <button
                     key={c}
                     className="h-8 w-8 rounded-full border-2 transition-transform"
-                    style={{ backgroundColor: c, borderColor: color === c ? "#fff" : "transparent", transform: color === c ? "scale(1.1)" : "scale(1)" }}
+                    style={{
+                      backgroundColor: c,
+                      borderColor: color === c ? '#fff' : 'transparent',
+                      transform: color === c ? 'scale(1.1)' : 'scale(1)',
+                    }}
                     onClick={() => setColor(c)}
                   />
                 ))}
@@ -1527,7 +1856,9 @@ export function Projects() {
             {createProjectError && (
               <p className="text-sm text-destructive">{createProjectError}</p>
             )}
-            <Button onClick={handleSave} className="w-full mt-2">Create</Button>
+            <Button onClick={handleSave} className="w-full mt-2">
+              Create
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1542,4 +1873,3 @@ export function Projects() {
     </div>
   );
 }
-

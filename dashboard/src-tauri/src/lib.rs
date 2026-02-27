@@ -131,6 +131,7 @@ pub fn run() {
             commands::get_sync_log,
             commands::get_db_info,
             commands::vacuum_database,
+            commands::optimize_database,
             commands::get_database_settings,
             commands::update_database_settings,
             commands::perform_manual_backup,

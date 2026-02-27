@@ -102,7 +102,7 @@ export const freezeProject = (id: number) =>
 export const unfreezeProject = (id: number) =>
   invokeMutation<void>("unfreeze_project", { id });
 export const autoFreezeProjects = (thresholdDays?: number) =>
-  invoke<{ frozen_count: number; unfrozen_count: number }>("auto_freeze_projects", {
+  invokeMutation<{ frozen_count: number; unfrozen_count: number }>("auto_freeze_projects", {
     thresholdDays: thresholdDays ?? null,
   });
 export const assignAppToProject = (appId: number, projectId: number | null) =>
@@ -363,6 +363,8 @@ export const getDbInfo = () => invoke<DbInfo>("get_db_info");
 
 export const vacuumDatabase = () => invoke<void>("vacuum_database");
 
+export const optimizeDatabase = () => invoke<void>("optimize_database");
+
 export const getDatabaseSettings = () =>
   invoke<DatabaseSettings>("get_database_settings");
 
@@ -371,7 +373,9 @@ export const updateDatabaseSettings = (settings: DatabaseSettings) =>
     vacuumOnStartup: settings.vacuum_on_startup,
     backupEnabled: settings.backup_enabled,
     backupPath: settings.backup_path,
-    backupIntervalDays: settings.backup_interval_days
+    backupIntervalDays: settings.backup_interval_days,
+    autoOptimizeEnabled: settings.auto_optimize_enabled,
+    autoOptimizeIntervalHours: settings.auto_optimize_interval_hours,
   });
 
 export const performManualBackup = () =>

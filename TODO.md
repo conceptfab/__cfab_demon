@@ -8,8 +8,14 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
+- weryfikacja lokalizacji ustawien i parametrów UI -> czy mozna poprawic logikę ich lokalizacji i wyświetlania
+- optymalizacja bazy danych - mechanizm dbający o optymalizację bazy danych
+- odmrazanie projektów nie jest prawidłowo pokazywane na wszystkich widokach - na jednej zakładce jest odmrożony na innej nadal zamrożony
+
+
+
 - AI - testy
-- sprawdzić logikę systemu synchronizacji w @__client @__server- mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem. Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem. BAzy danych maja byc aktualizowane i zmiany w sesjach.
+<!-- - sprawdzić logikę systemu synchronizacji w @__client @__server- mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem. Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem. BAzy danych maja byc aktualizowane i zmiany w sesjach. -->
 
 - dodac szyforwanie danych - np tokenem
 - 

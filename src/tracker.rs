@@ -15,6 +15,17 @@ use crate::config;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
 
+fn rebuild_file_index_cache(daily_data: &storage::DailyData) -> HashMap<String, HashMap<String, usize>> {
+    let mut cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
+    for (exe_name, app_data) in &daily_data.apps {
+        let file_map = cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
+        for (idx, file_entry) in app_data.files.iter().enumerate() {
+            file_map.insert(file_entry.name.clone(), idx);
+        }
+    }
+    cache
+}
+
 fn write_heartbeat() {
     if let Ok(dir) = config::config_dir() {
         let heartbeat = dir.join("heartbeat.txt");
@@ -178,13 +189,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     // Active session state per application
     let mut active_sessions: HashMap<String, Instant> = HashMap::new();
     // File name index per application -> position in files vector
-    let mut file_index_cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
-    for (exe_name, app_data) in &daily_data.apps {
-        let file_map = file_index_cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
-        for (idx, file_entry) in app_data.files.iter().enumerate() {
-            file_map.insert(file_entry.name.clone(), idx);
-        }
-    }
+    let mut file_index_cache = rebuild_file_index_cache(&daily_data);
     // CPU state per application (for background activity detection)
     let mut cpu_state: CpuState = HashMap::new();
 
@@ -212,13 +217,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             daily_data = storage::load_daily(today);
             current_date = today;
             active_sessions.clear();
-            file_index_cache.clear();
-            for (exe_name, app_data) in &daily_data.apps {
-                let file_map = file_index_cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
-                for (idx, file_entry) in app_data.files.iter().enumerate() {
-                    file_map.insert(file_entry.name.clone(), idx);
-                }
-            }
+            file_index_cache = rebuild_file_index_cache(&daily_data);
             cpu_state.clear();
         }
 

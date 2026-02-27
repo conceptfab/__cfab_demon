@@ -565,6 +565,35 @@ pub async fn initialize(app: &AppHandle) -> Result<(), String> {
                 }
             }
         }
+
+        // Auto optimization check
+        let auto_optimize_enabled = get_system_setting_internal(&db, "auto_optimize_enabled")
+            .map(|v| v == "true")
+            .unwrap_or(true);
+        if auto_optimize_enabled {
+            let interval_hours = get_system_setting_internal(&db, "auto_optimize_interval_hours")
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(24)
+                .clamp(1, 24 * 30);
+            let last_optimize = get_system_setting_internal(&db, "last_optimize_at");
+            let should_optimize = match last_optimize {
+                Some(date_str) => {
+                    if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
+                        let diff = chrono::Local::now()
+                            .signed_duration_since(last.with_timezone(&chrono::Local));
+                        diff.num_hours() >= interval_hours
+                    } else {
+                        true
+                    }
+                }
+                None => true,
+            };
+            if should_optimize {
+                if let Err(e) = optimize_database_internal(&db) {
+                    log::error!("Auto optimization failed: {}", e);
+                }
+            }
+        }
     }
 
     // Store db path for later use
@@ -627,6 +656,33 @@ pub fn perform_backup_internal(
         .map_err(|e| format!("Backup VACUUM INTO failed: {}", e))?;
 
     Ok(dest_path.to_string_lossy().to_string())
+}
+
+pub fn optimize_database_internal(db: &rusqlite::Connection) -> Result<(), String> {
+    db.execute_batch("PRAGMA wal_checkpoint(PASSIVE); PRAGMA optimize;")
+        .map_err(|e| format!("PRAGMA optimize failed: {}", e))?;
+
+    let page_count: i64 = db
+        .pragma_query_value(None, "page_count", |row| row.get(0))
+        .map_err(|e| format!("Failed reading page_count: {}", e))?;
+    let freelist_count: i64 = db
+        .pragma_query_value(None, "freelist_count", |row| row.get(0))
+        .map_err(|e| format!("Failed reading freelist_count: {}", e))?;
+
+    // Run full VACUUM only when fragmentation is noticeable.
+    if page_count > 0 && (freelist_count as f64 / page_count as f64) >= 0.20 {
+        db.execute_batch("VACUUM;")
+            .map_err(|e| format!("VACUUM during optimize failed: {}", e))?;
+    }
+
+    let now = chrono::Local::now().to_rfc3339();
+    db.execute(
+        "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_optimize_at', ?1, datetime('now'))",
+        [now],
+    )
+    .map_err(|e| format!("Failed to persist last_optimize_at: {}", e))?;
+
+    Ok(())
 }
 
 pub struct DbPath(pub Mutex<String>);

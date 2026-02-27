@@ -8,6 +8,7 @@ import {
   Database,
   FolderOpen,
   Wind,
+  Zap,
   Save,
   Clock,
   ShieldCheck,
@@ -16,6 +17,7 @@ import {
 import {
   getDbInfo,
   vacuumDatabase,
+  optimizeDatabase,
   getDatabaseSettings,
   updateDatabaseSettings,
   openDbFolder,
@@ -56,6 +58,19 @@ export function DatabaseManagement() {
       loadAll();
     } catch (e) {
       showError(`Vacuum failed: ${e}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOptimize = async () => {
+    setLoading(true);
+    try {
+      await optimizeDatabase();
+      showInfo("Database optimized successfully");
+      loadAll();
+    } catch (e) {
+      showError(`Optimization failed: ${e}`);
     } finally {
       setLoading(false);
     }
@@ -123,25 +138,31 @@ export function DatabaseManagement() {
     }
   };
 
-  const handleIntervalChange = (val: string) => {
+  const handleBackupIntervalChange = (val: string) => {
     if (!settings) return;
     const days = parseInt(val, 10) || 1;
     setSettings({ ...settings, backup_interval_days: days });
   };
 
-  const saveInterval = async () => {
+  const saveSettings = async (successMessage: string, errorMessage: string) => {
     if (!settings) return;
     setSaving(true);
     try {
       await updateDatabaseSettings(settings);
-      showInfo("Interval updated");
+      showInfo(successMessage);
       loadAll();
     } catch {
-      showError("Failed to update interval");
+      showError(errorMessage);
     } finally {
       setSaving(false);
     }
   };
+
+  const saveBackupInterval = async () =>
+    saveSettings("Backup interval updated", "Failed to update backup interval");
+
+  const saveOptimizeInterval = async () =>
+    saveSettings("Optimization interval updated", "Failed to update optimization interval");
 
   const handleRestore = async () => {
     try {
@@ -225,6 +246,61 @@ export function DatabaseManagement() {
                 />
               </div>
 
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="text-sm">Auto optimize</Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Run smart optimization automatically on schedule
+                  </p>
+                </div>
+                <Switch
+                  checked={settings.auto_optimize_enabled}
+                  onCheckedChange={() => handleToggleSetting("auto_optimize_enabled")}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-[10px] uppercase font-semibold text-muted-foreground">
+                  Optimize Interval (Hours)
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min="1"
+                    max={24 * 30}
+                    value={settings.auto_optimize_interval_hours}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        auto_optimize_interval_hours: Math.max(
+                          1,
+                          Math.min(24 * 30, parseInt(e.target.value, 10) || 1),
+                        ),
+                      })
+                    }
+                    className="h-8 text-[11px]"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 shrink-0"
+                    onClick={saveOptimizeInterval}
+                    disabled={saving}
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[11px] font-medium py-1.5">
+                <Clock className="h-3 w-3 text-muted-foreground" />
+                Last optimization:
+                {" "}
+                {settings.last_optimize_at
+                  ? new Date(settings.last_optimize_at).toLocaleString()
+                  : "Never"}
+              </div>
+
               <div className="pt-2 flex gap-2">
                 <Button
                   variant="secondary"
@@ -234,6 +310,16 @@ export function DatabaseManagement() {
                 >
                   <FolderOpen className="h-3.5 w-3.5" />
                   Open DB Folder
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-2 h-8 text-[11px]"
+                  onClick={handleOptimize}
+                  disabled={loading}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  Optimize Now
                 </Button>
                 <Button
                   variant="outline"
@@ -299,14 +385,14 @@ export function DatabaseManagement() {
                     type="number"
                     min="1"
                     value={settings.backup_interval_days}
-                    onChange={(e) => handleIntervalChange(e.target.value)}
+                    onChange={(e) => handleBackupIntervalChange(e.target.value)}
                     className="h-8 text-[11px]"
                   />
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 shrink-0"
-                    onClick={saveInterval}
+                    onClick={saveBackupInterval}
                     disabled={saving}
                   >
                     <Save className="h-3.5 w-3.5" />

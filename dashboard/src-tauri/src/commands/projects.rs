@@ -11,7 +11,7 @@ use super::types::{
 use crate::db;
 use rusqlite::OptionalExtension;
 
-const MANUAL_UNFREEZE_REASON: &str = "manual_user";
+
 
 pub(crate) fn load_project_folders_from_db(
     conn: &rusqlite::Connection,
@@ -489,9 +489,9 @@ pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
     conn.execute(
         "UPDATE projects
          SET frozen_at = NULL,
-             unfreeze_reason = ?2
+             unfreeze_reason = datetime('now')
          WHERE id = ?1",
-        rusqlite::params![id, MANUAL_UNFREEZE_REASON],
+        [id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -511,35 +511,27 @@ pub async fn auto_freeze_projects(
     let days = threshold_days.unwrap_or(14).max(1);
     let conn = db::get_connection(&app)?;
 
-    // If a manually-unfrozen project becomes active again, clear the marker:
-    // it has effectively "rejoined" normal auto-freeze lifecycle.
-    let _reset_unfreeze_reason = conn
+    // Clear stale unfreeze_reason timestamps (older than threshold) for cleanliness
+    let _clear_old = conn
         .execute(
             "UPDATE projects
              SET unfreeze_reason = NULL
              WHERE excluded_at IS NULL
-               AND unfreeze_reason = ?2
-               AND id IN (
-                   SELECT DISTINCT p.id FROM projects p
-                   JOIN applications a ON a.project_id = p.id
-                   JOIN sessions s ON s.app_id = a.id
-                   WHERE s.end_time >= datetime('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT project_id FROM manual_sessions
-                   WHERE end_time >= datetime('now', '-' || ?1 || ' days')
-               )",
-            rusqlite::params![days, MANUAL_UNFREEZE_REASON],
+               AND unfreeze_reason IS NOT NULL
+               AND unfreeze_reason < datetime('now', '-' || ?1 || ' days')",
+            [days],
         )
         .map_err(|e| e.to_string())?;
 
-    // Freeze projects inactive longer than threshold (no sessions or manual sessions in N days)
+    // Freeze projects inactive longer than threshold.
+    // Activity sources: sessions, manual_sessions, file_activities, recent manual unfreeze.
     let frozen = conn
         .execute(
             "UPDATE projects
-             SET frozen_at = datetime('now')
+             SET frozen_at = datetime('now'),
+                 unfreeze_reason = NULL
              WHERE excluded_at IS NULL
                AND frozen_at IS NULL
-               AND (unfreeze_reason IS NULL OR unfreeze_reason <> ?2)
                AND id NOT IN (
                    SELECT DISTINCT p.id FROM projects p
                    JOIN applications a ON a.project_id = p.id
@@ -548,8 +540,16 @@ pub async fn auto_freeze_projects(
                    UNION
                    SELECT DISTINCT project_id FROM manual_sessions
                    WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+                   UNION
+                   SELECT DISTINCT project_id FROM file_activities
+                   WHERE project_id IS NOT NULL
+                     AND last_seen >= datetime('now', '-' || ?1 || ' days')
+                   UNION
+                   SELECT id FROM projects
+                   WHERE unfreeze_reason IS NOT NULL
+                     AND unfreeze_reason >= datetime('now', '-' || ?1 || ' days')
                )",
-            rusqlite::params![days, MANUAL_UNFREEZE_REASON],
+            [days],
         )
         .map_err(|e| e.to_string())? as i64;
 
@@ -557,8 +557,7 @@ pub async fn auto_freeze_projects(
     let unfrozen = conn
         .execute(
             "UPDATE projects
-             SET frozen_at = NULL,
-                 unfreeze_reason = NULL
+             SET frozen_at = NULL
              WHERE frozen_at IS NOT NULL
                AND excluded_at IS NULL
                AND id IN (
@@ -569,6 +568,10 @@ pub async fn auto_freeze_projects(
                    UNION
                    SELECT DISTINCT project_id FROM manual_sessions
                    WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+                   UNION
+                   SELECT DISTINCT project_id FROM file_activities
+                   WHERE project_id IS NOT NULL
+                     AND last_seen >= datetime('now', '-' || ?1 || ' days')
                )",
             [days],
         )

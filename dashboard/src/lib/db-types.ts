@@ -381,6 +381,9 @@ export interface DatabaseSettings {
   backup_path: string;
   backup_interval_days: number;
   last_backup_at: string | null;
+  auto_optimize_enabled: boolean;
+  auto_optimize_interval_hours: number;
+  last_optimize_at: string | null;
 }
 
 export interface BackupFile {
