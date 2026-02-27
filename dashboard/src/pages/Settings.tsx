@@ -2,8 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff, TimerReset } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { open } from "@tauri-apps/plugin-dialog";
-import { clearAllData, getDemoModeStatus, rebuildSessions, setDemoMode, getSyncDir, setSyncDir } from "@/lib/tauri";
+import { clearAllData, getDemoModeStatus, rebuildSessions, setDemoMode } from "@/lib/tauri";
 import type { DemoModeStatus } from "@/lib/db-types";
 import { useAppStore } from "@/store/app-store";
 import {
@@ -72,7 +71,6 @@ export function Settings() {
   const [demoModeLoading, setDemoModeLoading] = useState(true);
   const [demoModeSwitching, setDemoModeSwitching] = useState(false);
   const [demoModeError, setDemoModeError] = useState<string | null>(null);
-  const [syncDir, setSyncDirState] = useState<string | null>(null);
 
   const labelClassName = "text-sm font-medium text-muted-foreground";
   const compactSelectClassName =
@@ -106,7 +104,6 @@ export function Settings() {
     };
 
     void loadDemoStatus();
-    void getSyncDir().then(setSyncDirState);
     return () => {
       cancelled = true;
     };
@@ -158,8 +155,6 @@ export function Settings() {
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3000);
     triggerRefresh();
-
-    setSyncDir(syncDir).catch(console.error);
   };
 
   const handleRebuildSessions = async () => {
@@ -817,59 +812,6 @@ export function Settings() {
                 />
                 <span className="text-sm text-muted-foreground">days</span>
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold">Cloud Sync Folder</CardTitle>
-          <p className="text-sm text-muted-foreground">Select a folder on your cloud drive (OneDrive, Dropbox, etc.) to synchronize data between devices.</p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-md border border-border/70 bg-background/35 p-3">
-            <div className="flex flex-col gap-3">
-              <label className={labelClassName}>Synchronization Path</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  placeholder="No cloud folder selected"
-                  className="flex-1 h-9 rounded-md border border-input bg-muted/30 px-3 text-xs font-mono shadow-sm focus-visible:outline-none"
-                  value={syncDir || ""}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={async () => {
-                    const selected = await open({
-                      directory: true,
-                      multiple: false,
-                    });
-                    if (selected && typeof selected === "string") {
-                      setSyncDirState(selected);
-                      setSavedSettings(false);
-                    }
-                  }}
-                >
-                  Browse
-                </Button>
-                {syncDir && (
-                   <Button
-                   variant="ghost"
-                   size="sm"
-                   className="text-destructive hover:text-destructive"
-                   onClick={() => {
-                     setSyncDirState(null);
-                     setSavedSettings(false);
-                   }}
-                 >
-                   Clear
-                 </Button>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground">This folder will store <code>sync_[machine].json</code> files used for automatic data exchange.</p>
             </div>
           </div>
         </CardContent>

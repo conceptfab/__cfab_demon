@@ -148,7 +148,7 @@ fn build_export_archive(
         if !app_ids.is_empty() {
             let mut stmt = conn
                 .prepare(
-                    "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds, s.date
+                    "SELECT s.id, s.app_id, s.project_id, s.start_time, s.end_time, s.duration_seconds, s.date
                         , COALESCE(s.rate_multiplier, 1.0), s.comment, s.is_hidden
                  FROM sessions s
                  INNER JOIN _export_app_ids e ON e.id = s.app_id
@@ -160,13 +160,14 @@ fn build_export_archive(
                     Ok(SessionRow {
                         id: row.get(0)?,
                         app_id: row.get(1)?,
-                        start_time: row.get(2)?,
-                        end_time: row.get(3)?,
-                        duration_seconds: row.get(4)?,
-                        date: row.get(5)?,
-                        rate_multiplier: row.get(6)?,
-                        comment: row.get(7)?,
-                        is_hidden: row.get::<_, i64>(8)? != 0,
+                        project_id: row.get(2)?,
+                        start_time: row.get(3)?,
+                        end_time: row.get(4)?,
+                        duration_seconds: row.get(5)?,
+                        date: row.get(6)?,
+                        rate_multiplier: row.get(7)?,
+                        comment: row.get(8)?,
+                        is_hidden: row.get::<_, i64>(9)? != 0,
                     })
                 })
                 .map_err(|e| e.to_string())?;

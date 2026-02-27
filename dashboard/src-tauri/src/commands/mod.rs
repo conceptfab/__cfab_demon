@@ -34,6 +34,3 @@ pub use projects::*;
 pub use sessions::*;
 pub use settings::*;
 pub use sync_log::*;
-pub mod sync;
-pub use sync::*;
-pub use settings::{get_sync_dir, set_sync_dir};

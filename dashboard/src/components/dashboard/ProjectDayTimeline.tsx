@@ -336,21 +336,67 @@ export function ProjectDayTimeline({
     [ctxMenu, onAssignSession]
   );
 
+  const ensureCommentForBoost = useCallback(
+    async (sessionIds: number[]) => {
+      if (sessionIds.length === 0) return true;
+
+      const commentById = new Map(
+        sessions.map((s) => [s.id, (s.comment ?? "").trim()] as const)
+      );
+      const missingIds = sessionIds.filter((id) => !commentById.get(id));
+      if (missingIds.length === 0) return true;
+
+      if (!onUpdateSessionComment) {
+        window.alert("Boost requires a comment, but comment editing is unavailable here.");
+        return false;
+      }
+
+      const label =
+        missingIds.length === 1
+          ? "this session"
+          : `${missingIds.length} sessions in this chunk`;
+      const entered = window.prompt(
+        `Boost requires a comment. Enter a comment for ${label}:`,
+        ""
+      );
+      const normalized = entered?.trim() ?? "";
+      if (!normalized) {
+        window.alert("Comment is required to add boost.");
+        return false;
+      }
+
+      try {
+        await Promise.all(
+          missingIds.map((sessionId) => onUpdateSessionComment(sessionId, normalized))
+        );
+        return true;
+      } catch (err) {
+        console.error("Failed to save required boost comment:", err);
+        window.alert(`Failed to save comment required for boost: ${String(err)}`);
+        return false;
+      }
+    },
+    [onUpdateSessionComment, sessions]
+  );
+
   const handleSetRateMultiplier = useCallback(
     async (multiplier: number | null) => {
       if (!ctxMenu || ctxMenu.type !== "assign" || !onUpdateSessionRateMultiplier) return;
       try {
         const sessionIds = getSegmentSessionIds(ctxMenu.segment);
         if (sessionIds.length === 0) return;
+        if (multiplier != null && multiplier > 1.000_001) {
+          const ok = await ensureCommentForBoost(sessionIds);
+          if (!ok) return;
+        }
         await onUpdateSessionRateMultiplier(sessionIds, multiplier);
+        setCtxMenu(null);
       } catch (err) {
         console.error("Failed to update session rate multiplier:", err);
         window.alert(`Failed to update session rate multiplier: ${String(err)}`);
-      } finally {
-        setCtxMenu(null);
       }
     },
-    [ctxMenu, onUpdateSessionRateMultiplier]
+    [ctxMenu, ensureCommentForBoost, onUpdateSessionRateMultiplier]
   );
 
   const handleCustomRateMultiplier = useCallback(async () => {
@@ -596,7 +642,15 @@ export function ProjectDayTimeline({
 
     const totalSeconds = rows.reduce((acc, row) => acc + row.totalSeconds, 0);
     return { rows, ticks, rangeStart, rangeSpan, totalSeconds, workingRange };
-  }, [sessions, manualSessions, workingHours]);
+  }, [sessions, manualSessions, workingHours, projects]);
+
+  const projectIdByName = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const project of projects ?? []) {
+      map.set(project.name.toLowerCase(), project.id);
+    }
+    return map;
+  }, [projects]);
 
   const clusterDetailsSummary = useMemo(() => {
     if (!clusterDetails) return null;
@@ -637,6 +691,8 @@ export function ProjectDayTimeline({
             {model.rows.map((row) => (
               <div key={row.name} className="grid grid-cols-[170px_1fr_90px] items-center gap-3">
                 <div
+                  data-project-id={row.isUnassigned ? undefined : projectIdByName.get(row.name.toLowerCase())}
+                  data-project-name={row.isUnassigned ? undefined : row.name}
                   className={`flex items-center gap-1 text-xs ${row.isUnassigned ? "text-amber-300" : "text-muted-foreground"}`}
                   title={row.name}
                 >

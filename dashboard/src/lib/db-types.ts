@@ -21,10 +21,13 @@ export interface Application {
 export interface Session {
   id: number;
   app_id: number;
+  project_id?: number | null;
   start_time: string;
   end_time: string;
   duration_seconds: number;
   rate_multiplier?: number;
+  comment?: string | null;
+  is_hidden?: boolean;
 }
 
 export interface FileActivity {
@@ -334,6 +337,13 @@ export interface ExportArchive {
     sessions: Session[];
     manual_sessions: ManualSession[];
     daily_files: Record<string, unknown>;
+    tombstones?: Array<{
+      table_name: string;
+      record_id?: number | null;
+      record_uuid?: string | null;
+      deleted_at: string;
+      sync_key?: string | null;
+    }>;
   };
 }
 

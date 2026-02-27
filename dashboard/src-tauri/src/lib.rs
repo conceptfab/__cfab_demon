@@ -136,10 +136,7 @@ pub fn run() {
             commands::perform_manual_backup,
             commands::open_db_folder,
             commands::restore_database_from_file,
-            commands::get_backup_files,
-            commands::get_sync_dir,
-            commands::set_sync_dir,
-            commands::perform_automatic_sync
+            commands::get_backup_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

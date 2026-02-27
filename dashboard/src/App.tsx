@@ -13,13 +13,13 @@ import {
   refreshToday,
   syncProjectsFromFolders,
   rebuildSessions,
-  performAutomaticSync,
 } from "@/lib/tauri";
 import {
   ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
   loadOnlineSyncSettings,
   runOnlineSyncOnce,
 } from "@/lib/online-sync";
+import { emitLocalDataChanged, LOCAL_DATA_CHANGED_EVENT } from "@/lib/sync-events";
 import { loadSessionSettings } from "@/lib/user-settings";
 import { Dashboard } from "@/pages/Dashboard";
 
@@ -149,6 +149,9 @@ function AutoRefresher() {
         // (e.g. data already in DB but views still need re-fetch).
         if (!disposed && result.file_found) {
           triggerRefresh();
+        }
+        if (!disposed && result.sessions_upserted > 0) {
+          emitLocalDataChanged("refresh_today");
         }
       } catch {
         // Silently ignore refresh errors
@@ -299,12 +302,14 @@ function AutoOnlineSync() {
   const startupAttemptedRef = useRef(false);
   const runningRef = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const localChangeTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!autoImportDone) return;
 
     let disposed = false;
     type SyncRunResult = Awaited<ReturnType<typeof runOnlineSyncOnce>>;
+    type SyncSource = "startup" | "interval" | "local_change";
 
     const clearTimer = () => {
       if (timerRef.current !== null) {
@@ -313,7 +318,14 @@ function AutoOnlineSync() {
       }
     };
 
-    const handleResult = async (resultPromise: Promise<SyncRunResult>, source: "startup" | "interval") => {
+    const clearLocalChangeTimer = () => {
+      if (localChangeTimerRef.current !== null) {
+        window.clearTimeout(localChangeTimerRef.current);
+        localChangeTimerRef.current = null;
+      }
+    };
+
+    const handleResult = async (resultPromise: Promise<SyncRunResult>, source: SyncSource) => {
       if (runningRef.current) {
         return;
       }
@@ -349,7 +361,7 @@ function AutoOnlineSync() {
       }
     };
 
-    const runOnce = async (source: "startup" | "interval") => {
+    const runOnce = async (source: SyncSource) => {
       try {
         if (source === "startup") {
           await handleResult(runOnlineSyncOnce(), source);
@@ -383,6 +395,18 @@ function AutoOnlineSync() {
       }, delayMs);
     };
 
+    const scheduleLocalChangeSync = () => {
+      clearLocalChangeTimer();
+      if (disposed) return;
+      localChangeTimerRef.current = window.setTimeout(() => {
+        if (runningRef.current) {
+          scheduleLocalChangeSync();
+          return;
+        }
+        void runOnce("local_change");
+      }, 1_500);
+    };
+
     const bootstrap = async () => {
       if (!startupAttemptedRef.current) {
         startupAttemptedRef.current = true;
@@ -397,41 +421,21 @@ function AutoOnlineSync() {
       // Re-read settings after local changes and move the next tick to the new interval.
       scheduleNextIntervalSync();
     };
+    const syncAfterLocalChange = () => {
+      scheduleLocalChangeSync();
+    };
     window.addEventListener("focus", reschedule);
     window.addEventListener(ONLINE_SYNC_SETTINGS_CHANGED_EVENT, reschedule);
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, syncAfterLocalChange);
 
     return () => {
       disposed = true;
       clearTimer();
+      clearLocalChangeTimer();
       window.removeEventListener("focus", reschedule);
       window.removeEventListener(ONLINE_SYNC_SETTINGS_CHANGED_EVENT, reschedule);
+      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, syncAfterLocalChange);
     };
-  }, [autoImportDone, triggerRefresh]);
-
-  return null;
-}
-
-function AutoCloudFolderSync() {
-  const { autoImportDone, triggerRefresh } = useAppStore();
-  const syncAttemptedRef = useRef(false);
-
-  useEffect(() => {
-    if (!autoImportDone) return;
-    if (syncAttemptedRef.current) return;
-    
-    const run = async () => {
-       syncAttemptedRef.current = true;
-       try {
-         const result = await performAutomaticSync();
-         if (result && result.includes("successfully")) {
-            console.log("Cloud Folder Sync:", result);
-            triggerRefresh();
-         }
-       } catch (e) {
-         console.warn("Cloud Folder Sync failed:", e);
-       }
-    };
-    run();
   }, [autoImportDone, triggerRefresh]);
 
   return null;
@@ -483,7 +487,6 @@ export default function App() {
           <AutoProjectSync />
           <AutoSessionRebuild />
           <AutoOnlineSync />
-          <AutoCloudFolderSync />
           <MainLayout>
             <PageRouter />
           </MainLayout>

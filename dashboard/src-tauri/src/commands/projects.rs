@@ -11,6 +11,8 @@ use super::types::{
 use crate::db;
 use rusqlite::OptionalExtension;
 
+const MANUAL_UNFREEZE_REASON: &str = "manual_user";
+
 pub(crate) fn load_project_folders_from_db(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<ProjectFolder>, String> {
@@ -336,12 +338,15 @@ fn query_projects_with_stats(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut all_time_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    let mut period_totals: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut all_time_totals: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
+    let mut period_totals: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
 
     // 1. Always compute All-Time totals
     if let (Some(start), Some(end)) = (min_date.clone(), max_date.clone()) {
-        let (_, totals, _, _) = compute_project_activity_unique(conn, &DateRange { start, end }, false, false, None)?;
+        let (_, totals, _, _) =
+            compute_project_activity_unique(conn, &DateRange { start, end }, false, false, None)?;
         all_time_totals = totals
             .into_iter()
             .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
@@ -396,7 +401,11 @@ fn query_projects_with_stats(
                 created_at: row.get::<_, String>(3).unwrap_or_default(),
                 excluded_at: row.get(4)?,
                 total_seconds: *all_time_totals.get(&key).unwrap_or(&0),
-                period_seconds: if date_range.is_some() { Some(*period_totals.get(&key).unwrap_or(&0)) } else { None },
+                period_seconds: if date_range.is_some() {
+                    Some(*period_totals.get(&key).unwrap_or(&0))
+                } else {
+                    None
+                },
                 app_count: row.get(5)?,
                 last_activity,
                 assigned_folder_path: row.get(8)?,
@@ -463,7 +472,11 @@ pub(crate) fn collect_project_subfolders(roots: &[ProjectFolder]) -> Vec<(String
 pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
     conn.execute(
-        "UPDATE projects SET frozen_at = datetime('now') WHERE id = ?1 AND excluded_at IS NULL",
+        "UPDATE projects
+         SET frozen_at = datetime('now'),
+             unfreeze_reason = NULL
+         WHERE id = ?1
+           AND excluded_at IS NULL",
         [id],
     )
     .map_err(|e| e.to_string())?;
@@ -474,8 +487,11 @@ pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), String> {
 pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
     conn.execute(
-        "UPDATE projects SET frozen_at = NULL WHERE id = ?1",
-        [id],
+        "UPDATE projects
+         SET frozen_at = NULL,
+             unfreeze_reason = ?2
+         WHERE id = ?1",
+        rusqlite::params![id, MANUAL_UNFREEZE_REASON],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -495,6 +511,27 @@ pub async fn auto_freeze_projects(
     let days = threshold_days.unwrap_or(14).max(1);
     let conn = db::get_connection(&app)?;
 
+    // If a manually-unfrozen project becomes active again, clear the marker:
+    // it has effectively "rejoined" normal auto-freeze lifecycle.
+    let _reset_unfreeze_reason = conn
+        .execute(
+            "UPDATE projects
+             SET unfreeze_reason = NULL
+             WHERE excluded_at IS NULL
+               AND unfreeze_reason = ?2
+               AND id IN (
+                   SELECT DISTINCT p.id FROM projects p
+                   JOIN applications a ON a.project_id = p.id
+                   JOIN sessions s ON s.app_id = a.id
+                   WHERE s.end_time >= datetime('now', '-' || ?1 || ' days')
+                   UNION
+                   SELECT DISTINCT project_id FROM manual_sessions
+                   WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+               )",
+            rusqlite::params![days, MANUAL_UNFREEZE_REASON],
+        )
+        .map_err(|e| e.to_string())?;
+
     // Freeze projects inactive longer than threshold (no sessions or manual sessions in N days)
     let frozen = conn
         .execute(
@@ -502,6 +539,7 @@ pub async fn auto_freeze_projects(
              SET frozen_at = datetime('now')
              WHERE excluded_at IS NULL
                AND frozen_at IS NULL
+               AND (unfreeze_reason IS NULL OR unfreeze_reason <> ?2)
                AND id NOT IN (
                    SELECT DISTINCT p.id FROM projects p
                    JOIN applications a ON a.project_id = p.id
@@ -511,7 +549,7 @@ pub async fn auto_freeze_projects(
                    SELECT DISTINCT project_id FROM manual_sessions
                    WHERE end_time >= datetime('now', '-' || ?1 || ' days')
                )",
-            [days],
+            rusqlite::params![days, MANUAL_UNFREEZE_REASON],
         )
         .map_err(|e| e.to_string())? as i64;
 
@@ -519,7 +557,8 @@ pub async fn auto_freeze_projects(
     let unfrozen = conn
         .execute(
             "UPDATE projects
-             SET frozen_at = NULL
+             SET frozen_at = NULL,
+                 unfreeze_reason = NULL
              WHERE frozen_at IS NOT NULL
                AND excluded_at IS NULL
                AND id IN (
@@ -1010,7 +1049,7 @@ pub async fn get_project_extra_info(
 
     // 3. Compute values
     // To match estimates.rs exactly, we need use the same logic for determining which sessions belong to a project.
-    
+
     let (min_date, max_date): (Option<String>, Option<String>) = conn
         .query_row(
             "SELECT MIN(d), MAX(d)
@@ -1025,9 +1064,10 @@ pub async fn get_project_extra_info(
         .map_err(|e| e.to_string())?;
 
     // Helper to get weighted extra seconds for a date range and SPECIFIC project ID
-    let get_extra_secs = |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
-        conn.query_row(
-            "WITH session_project_overlap AS (
+    let get_extra_secs =
+        |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
+            conn.query_row(
+                "WITH session_project_overlap AS (
                 SELECT s.id as session_id,
                        fa.project_id as project_id,
                        SUM(
@@ -1083,25 +1123,45 @@ pub async fn get_project_extra_info(
                        END)
             FROM session_projects sp
             WHERE sp.project_id = ?3",
-            rusqlite::params![start, end, p_id],
-            |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
-        ).map_err(|e| e.to_string())
-    };
+                rusqlite::params![start, end, p_id],
+                |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0)),
+            )
+            .map_err(|e| e.to_string())
+        };
 
     // Calculate All-Time (Global) Value
     let mut current_value = 0.0;
     if let (Some(start), Some(end)) = (min_date, max_date) {
-        let (_, totals_raw, _, _) = compute_project_activity_unique(&conn, &DateRange { start: start.clone(), end: end.clone() }, false, false, None)?;
-        let totals: HashMap<String, f64> = totals_raw.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
+        let (_, totals_raw, _, _) = compute_project_activity_unique(
+            &conn,
+            &DateRange {
+                start: start.clone(),
+                end: end.clone(),
+            },
+            false,
+            false,
+            None,
+        )?;
+        let totals: HashMap<String, f64> = totals_raw
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
         let clock_seconds = totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
         let extra_seconds = get_extra_secs(&conn, &start, &end, id)?;
         current_value = ((clock_seconds + extra_seconds) / 3600.0) * effective_rate;
     }
 
     // Calculate Period Value (for the selected range)
-    let (_, period_totals_raw, _, _) = compute_project_activity_unique(&conn, &date_range, false, false, None)?;
-    let period_totals: HashMap<String, f64> = period_totals_raw.into_iter().map(|(k, v)| (k.to_lowercase(), v)).collect();
-    let period_clock_seconds = period_totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
+    let (_, period_totals_raw, _, _) =
+        compute_project_activity_unique(&conn, &date_range, false, false, None)?;
+    let period_totals: HashMap<String, f64> = period_totals_raw
+        .into_iter()
+        .map(|(k, v)| (k.to_lowercase(), v))
+        .collect();
+    let period_clock_seconds = period_totals
+        .get(&name.to_lowercase())
+        .cloned()
+        .unwrap_or(0.0);
     let period_extra_seconds = get_extra_secs(&conn, &date_range.start, &date_range.end, id)?;
     let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
 

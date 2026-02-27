@@ -86,6 +86,13 @@ export function ProjectPage() {
     const [timelineData, setTimelineData] = useState<StackedBarData[]>([]);
     const [recentSessions, setRecentSessions] = useState<SessionWithApp[]>([]);
     const [manualSessions, setManualSessions] = useState<ManualSessionWithProject[]>([]);
+    const autoSessionsById = useMemo(() => {
+        const byId = new Map<number, SessionWithApp>();
+        for (const s of recentSessions) {
+            byId.set(s.id, s);
+        }
+        return byId;
+    }, [recentSessions]);
 
     const groupedSessions = useMemo(() => {
         const groups: { [date: string]: (SessionWithApp & { isManual?: boolean })[] } = {};
@@ -265,10 +272,47 @@ export function ProjectPage() {
         });
     };
 
-    const handleSetRateMultiplier = async (multiplier: number | null, ids: number[]) => {
-        if (ids.length === 0) return;
+    const ensureCommentForBoost = async (ids: number[]) => {
+        const autoSessionIds = Array.from(new Set(ids.filter((id) => autoSessionsById.has(id))));
+        if (autoSessionIds.length === 0) return true;
+
+        const missingIds = autoSessionIds.filter((id) => {
+            const comment = autoSessionsById.get(id)?.comment;
+            return !comment || !comment.trim();
+        });
+        if (missingIds.length === 0) return true;
+
+        const label = missingIds.length === 1 ? "this session" : `${missingIds.length} sessions`;
+        const entered = window.prompt(`Boost requires a comment. Enter a comment for ${label}:`, "");
+        const normalized = entered?.trim() ?? "";
+        if (!normalized) {
+            window.alert("Comment is required to add boost.");
+            return false;
+        }
+
         try {
-            await Promise.all(ids.map(id => updateSessionRateMultiplier(id, multiplier)));
+            await Promise.all(missingIds.map((id) => updateSessionComment(id, normalized)));
+            const missingSet = new Set(missingIds);
+            setRecentSessions((prev) =>
+                prev.map((s) => (missingSet.has(s.id) ? { ...s, comment: normalized } : s))
+            );
+            return true;
+        } catch (err) {
+            console.error("Failed to save required boost comment:", err);
+            window.alert(`Failed to save comment required for boost: ${String(err)}`);
+            return false;
+        }
+    };
+
+    const handleSetRateMultiplier = async (multiplier: number | null, ids: number[]) => {
+        const autoSessionIds = Array.from(new Set(ids.filter((id) => autoSessionsById.has(id))));
+        if (autoSessionIds.length === 0) return;
+        try {
+            if (multiplier != null && multiplier > 1.000_001) {
+                const ok = await ensureCommentForBoost(autoSessionIds);
+                if (!ok) return;
+            }
+            await Promise.all(autoSessionIds.map((id) => updateSessionRateMultiplier(id, multiplier)));
             triggerRefresh();
         } catch (err) {
             console.error(err);
@@ -350,7 +394,9 @@ export function ProjectPage() {
 
     const handleCustomRateMultiplier = () => {
         if (!ctxMenu) return;
-        const ids = ctxMenu.type === 'chart' ? ctxMenu.sessions.map((s: SessionWithApp) => s.id) : [ctxMenu.session.id];
+        const ids = ctxMenu.type === 'chart'
+            ? ctxMenu.sessions.filter((s) => !(s as any).isManual).map((s: SessionWithApp) => s.id)
+            : [ctxMenu.session.id];
         const currentMultiplier = ctxMenu.type === 'session' 
             ? (ctxMenu.session.rate_multiplier || 1) 
             : (ctxMenu.type === 'chart' ? (ctxMenu.sessions[0]?.rate_multiplier || 1) : 1);
@@ -397,7 +443,11 @@ export function ProjectPage() {
                     Back to Projects
                 </Button>
                 <div className="h-4 w-[1px] bg-border" />
-                <h1 className="text-xl font-semibold flex items-center gap-2">
+                <h1
+                    data-project-id={project.id}
+                    data-project-name={project.name}
+                    className="text-xl font-semibold flex items-center gap-2"
+                >
                     <div className="h-3 w-3 rounded-full" style={{ backgroundColor: project.color }} />
                     {project.name}
                 </h1>

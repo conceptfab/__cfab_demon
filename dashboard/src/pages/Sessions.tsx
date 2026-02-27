@@ -348,19 +348,63 @@ export function Sessions() {
     [ctxMenu, triggerRefresh]
   );
 
+  const ensureCommentForBoost = useCallback(
+    async (sessionIds: number[]) => {
+      if (sessionIds.length === 0) return true;
+
+      const missingIds = sessionIds.filter((id) => {
+        const comment = sessions.find((s) => s.id === id)?.comment;
+        return !comment || !comment.trim();
+      });
+
+      if (missingIds.length === 0) return true;
+
+      const label = missingIds.length === 1 ? "this session" : `${missingIds.length} sessions`;
+      const entered = window.prompt(
+        `Boost requires a comment. Enter a comment for ${label}:`,
+        ""
+      );
+      const normalized = entered?.trim() ?? "";
+
+      if (!normalized) {
+        window.alert("Comment is required to add boost.");
+        return false;
+      }
+
+      try {
+        await Promise.all(missingIds.map((id) => updateSessionComment(id, normalized)));
+        const missingSet = new Set(missingIds);
+        setSessions((prev) =>
+          prev.map((s) => (missingSet.has(s.id) ? { ...s, comment: normalized } : s))
+        );
+        return true;
+      } catch (err) {
+        console.error("Failed to save required boost comment:", err);
+        window.alert(`Failed to save comment required for boost: ${String(err)}`);
+        return false;
+      }
+    },
+    [sessions]
+  );
+
   const handleSetRateMultiplier = useCallback(
     async (multiplier: number | null) => {
       if (!ctxMenu) return;
+      const sessionId = ctxMenu.session.id;
       try {
-        await updateSessionRateMultiplier(ctxMenu.session.id, multiplier);
+        if (multiplier != null && multiplier > 1.000_001) {
+          const ok = await ensureCommentForBoost([sessionId]);
+          if (!ok) return;
+        }
+        await updateSessionRateMultiplier(sessionId, multiplier);
         triggerRefresh();
+        setCtxMenu(null);
       } catch (err) {
         console.error("Failed to update session rate multiplier:", err);
         window.alert(`Failed to update session rate multiplier: ${String(err)}`);
       }
-      setCtxMenu(null);
     },
-    [ctxMenu, triggerRefresh]
+    [ctxMenu, ensureCommentForBoost, triggerRefresh]
   );
 
   const handleCustomRateMultiplier = useCallback(async () => {
@@ -578,7 +622,12 @@ export function Sessions() {
           {groupedByProject.map((group) => (
             <div key={group.projectName} className="space-y-1">
               {/* Project Header - Exactly as in screenshot 125 */}
-              <div className="flex items-center justify-between gap-4 px-2 py-1 leading-none group/hdr cursor-pointer" onClick={() => setActiveProjectId(group.projectName === "Unassigned" ? "unassigned" : group.projectId)}>
+              <div
+                data-project-id={group.projectId ?? undefined}
+                data-project-name={group.projectId != null ? group.projectName : undefined}
+                className="flex items-center justify-between gap-4 px-2 py-1 leading-none group/hdr cursor-pointer"
+                onClick={() => setActiveProjectId(group.projectName === "Unassigned" ? "unassigned" : group.projectId)}
+              >
                 <div className="flex items-center gap-2 min-w-0">
                   <div className="h-2.5 w-2.5 rounded-full shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.3)]" style={{ backgroundColor: group.projectColor }} />
                   <span className="font-bold text-[13px] text-foreground/90 tracking-tight">{group.projectName}</span>
@@ -614,7 +663,11 @@ export function Sessions() {
           {groupedByProject.map((group) => (
             <Card key={group.projectName} className="border-border/30 overflow-hidden bg-background/50 backdrop-blur-sm">
               <CardContent className="p-3 space-y-3">
-                <div className="flex items-center justify-between gap-2 border-b border-border/5 pb-2">
+                <div
+                  data-project-id={group.projectId ?? undefined}
+                  data-project-name={group.projectId != null ? group.projectName : undefined}
+                  className="flex items-center justify-between gap-2 border-b border-border/5 pb-2"
+                >
                   <div className="flex items-center gap-2">
                     <div className="h-3 w-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.4)]" style={{ backgroundColor: group.projectColor }} />
                     <span className="font-bold text-lg tracking-tight select-none">{group.projectName}</span>

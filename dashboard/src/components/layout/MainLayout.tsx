@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
+import { ProjectContextMenu } from "@/components/project/ProjectContextMenu";
 
 export function MainLayout({ children }: { children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export function MainLayout({ children }: { children: ReactNode }) {
         <TopBar />
         <main className="flex-1 overflow-y-auto p-4 md:p-5">{children}</main>
       </div>
+      <ProjectContextMenu />
     </div>
   );
 }

@@ -773,6 +773,8 @@ export function Projects() {
           {projectList.map((p) => (
             <div
               key={p.id}
+              data-project-id={p.id}
+              data-project-name={p.name}
               className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
               onClick={() => openEdit(p)}
             >
@@ -819,7 +821,7 @@ export function Projects() {
   const renderProjectCard = (p: ProjectWithStats, options?: { inDialog?: boolean }) => {
     const isDeleting = busy === `delete-project:${p.id}`;
     return (
-      <Card key={p.id}>
+      <Card key={p.id} data-project-id={p.id} data-project-name={p.name}>
         <CardHeader
           className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? "pr-10" : ""}`}
         >

@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     excluded_at TEXT,
     assigned_folder_path TEXT,
+    frozen_at TEXT,
+    unfreeze_reason TEXT,
     is_imported INTEGER DEFAULT 0,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -533,19 +535,20 @@ pub async fn initialize(app: &AppHandle) -> Result<(), String> {
                     .and_then(|v| v.parse::<i64>().ok())
                     .unwrap_or(7);
                 let last_backup = get_system_setting_internal(&db, "last_backup_at");
-                
+
                 let should_backup = match last_backup {
                     Some(date_str) => {
                         if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
-                            let diff = chrono::Local::now().signed_duration_since(last.with_timezone(&chrono::Local));
+                            let diff = chrono::Local::now()
+                                .signed_duration_since(last.with_timezone(&chrono::Local));
                             diff.num_days() >= interval_days
                         } else {
                             true
                         }
-                    },
+                    }
                     None => true,
                 };
-                
+
                 if should_backup {
                     log::info!("Auto-backup is due. Performing backup...");
                     if let Err(e) = perform_backup_internal(&db, &backup_path) {
@@ -599,25 +602,30 @@ pub fn set_system_setting(app: &AppHandle, key: &str, value: &str) -> Result<(),
     Ok(())
 }
 
-pub fn perform_backup_internal(db: &rusqlite::Connection, backup_dir: &str) -> Result<String, String> {
+pub fn perform_backup_internal(
+    db: &rusqlite::Connection,
+    backup_dir: &str,
+) -> Result<String, String> {
     let dest_dir = std::path::Path::new(backup_dir);
     if !dest_dir.exists() {
-        std::fs::create_dir_all(dest_dir).map_err(|e| format!("Failed to create backup directory: {}", e))?;
+        std::fs::create_dir_all(dest_dir)
+            .map_err(|e| format!("Failed to create backup directory: {}", e))?;
     }
-    
+
     let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
     let file_name = format!("timeflow_backup_{}.db", timestamp);
     let dest_path = dest_dir.join(file_name);
-    
+
     // Flush WAL
     db.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
         .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
 
     let escaped_path = dest_path.to_string_lossy().replace('\'', "''");
     let sql = format!("VACUUM INTO '{}'", escaped_path);
-    
-    db.execute_batch(&sql).map_err(|e| format!("Backup VACUUM INTO failed: {}", e))?;
-    
+
+    db.execute_batch(&sql)
+        .map_err(|e| format!("Backup VACUUM INTO failed: {}", e))?;
+
     Ok(dest_path.to_string_lossy().to_string())
 }
 
@@ -644,7 +652,7 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL,
             updated_at TEXT NOT NULL
-        );"
+        );",
     )?;
 
     let has_projects_excluded_at: bool = db
@@ -774,7 +782,11 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
                 .pragma_query_value(None, "freelist_count", |row| row.get(0))
                 .unwrap_or(0);
             if freelist_count > page_count / 4 {
-                log::info!("DB has {} free pages out of {} — running VACUUM", freelist_count, page_count);
+                log::info!(
+                    "DB has {} free pages out of {} — running VACUUM",
+                    freelist_count,
+                    page_count
+                );
                 db.execute_batch("VACUUM;")?;
             }
         }
@@ -979,6 +991,16 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         db.execute("ALTER TABLE projects ADD COLUMN frozen_at TEXT", [])?;
     }
 
+    let has_projects_unfreeze_reason: bool = db
+        .prepare("SELECT COUNT(*) FROM pragma_table_info('projects') WHERE name='unfreeze_reason'")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_projects_unfreeze_reason {
+        log::info!("Migrating projects: adding unfreeze_reason");
+        db.execute("ALTER TABLE projects ADD COLUMN unfreeze_reason TEXT", [])?;
+    }
+
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS estimate_settings (
             key TEXT PRIMARY KEY,
@@ -1020,19 +1042,27 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         .unwrap_or(false);
     if !has_projects_updated_at {
         log::info!("Migrating projects: adding updated_at");
-        db.execute("ALTER TABLE projects ADD COLUMN updated_at TIMESTAMP DEFAULT '2000-01-01 00:00:00'", [])?;
+        db.execute(
+            "ALTER TABLE projects ADD COLUMN updated_at TIMESTAMP DEFAULT '2000-01-01 00:00:00'",
+            [],
+        )?;
         db.execute("UPDATE projects SET updated_at = CURRENT_TIMESTAMP", [])?;
     }
 
     let has_manual_sessions_updated_at: bool = db
-        .prepare("SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='updated_at'")?
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='updated_at'",
+        )?
         .query_row([], |row| row.get::<_, i64>(0))
         .map(|c| c > 0)
         .unwrap_or(false);
     if !has_manual_sessions_updated_at {
         log::info!("Migrating manual_sessions: adding updated_at");
         db.execute("ALTER TABLE manual_sessions ADD COLUMN updated_at TIMESTAMP DEFAULT '2000-01-01 00:00:00'", [])?;
-        db.execute("UPDATE manual_sessions SET updated_at = CURRENT_TIMESTAMP", [])?;
+        db.execute(
+            "UPDATE manual_sessions SET updated_at = CURRENT_TIMESTAMP",
+            [],
+        )?;
     }
 
     Ok(())

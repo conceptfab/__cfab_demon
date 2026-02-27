@@ -486,6 +486,29 @@ pub async fn update_session_rate_multiplier(
     };
 
     let conn = db::get_connection(&app)?;
+    let comment_for_session: Option<Option<String>> = conn
+        .query_row(
+            "SELECT comment FROM sessions WHERE id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let Some(existing_comment) = comment_for_session else {
+        return Err("Session not found".to_string());
+    };
+
+    if normalized > 1.000_001 {
+        let has_comment = existing_comment
+            .as_deref()
+            .map(|c| !c.trim().is_empty())
+            .unwrap_or(false);
+        if !has_comment {
+            return Err("Boost requires a non-empty session comment".to_string());
+        }
+    }
+
     let updated = conn
         .execute(
             "UPDATE sessions SET rate_multiplier = ?1 WHERE id = ?2",
@@ -518,7 +541,11 @@ pub async fn update_session_comment(
     let conn = db::get_connection(&app)?;
     let normalized = comment.and_then(|c| {
         let trimmed = c.trim().to_string();
-        if trimmed.is_empty() { None } else { Some(trimmed) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
     });
     let updated = conn
         .execute(

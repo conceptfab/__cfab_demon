@@ -1,4 +1,5 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { emitLocalDataChanged } from "@/lib/sync-events";
 import type {
   AssignmentMode,
   AssignmentModelStatus,
@@ -60,6 +61,13 @@ function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> 
   return tauriInvoke<T>(command, args);
 }
 
+function invokeMutation<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return invoke<T>(command, args).then((result) => {
+    emitLocalDataChanged(command);
+    return result;
+  });
+}
+
 // Import
 export const importJsonFiles = (filePaths: string[]) =>
   invoke<ImportResult[]>("import_json_files", { filePaths });
@@ -80,38 +88,38 @@ export const getProjects = (dateRange?: DateRange) =>
 export const getExcludedProjects = (dateRange?: DateRange) =>
   invoke<ProjectWithStats[]>("get_excluded_projects", { dateRange });
 export const createProject = (name: string, color: string, assignedFolderPath: string | null) =>
-  invoke<Project>("create_project", { name, color, assignedFolderPath });
+  invokeMutation<Project>("create_project", { name, color, assignedFolderPath });
 export const updateProject = (id: number, color: string) =>
-  invoke<void>("update_project", { id, color });
+  invokeMutation<void>("update_project", { id, color });
 export const excludeProject = (id: number) =>
-  invoke<void>("exclude_project", { id });
+  invokeMutation<void>("exclude_project", { id });
 export const restoreProject = (id: number) =>
-  invoke<void>("restore_project", { id });
+  invokeMutation<void>("restore_project", { id });
 export const deleteProject = (id: number) =>
-  invoke<void>("delete_project", { id });
+  invokeMutation<void>("delete_project", { id });
 export const freezeProject = (id: number) =>
-  invoke<void>("freeze_project", { id });
+  invokeMutation<void>("freeze_project", { id });
 export const unfreezeProject = (id: number) =>
-  invoke<void>("unfreeze_project", { id });
+  invokeMutation<void>("unfreeze_project", { id });
 export const autoFreezeProjects = (thresholdDays?: number) =>
   invoke<{ frozen_count: number; unfrozen_count: number }>("auto_freeze_projects", {
     thresholdDays: thresholdDays ?? null,
   });
 export const assignAppToProject = (appId: number, projectId: number | null) =>
-  invoke<void>("assign_app_to_project", { appId, projectId });
+  invokeMutation<void>("assign_app_to_project", { appId, projectId });
 export function assignSessionToProject(sessionId: number, projectId: number | null, source?: string) {
-  return invoke("assign_session_to_project", { sessionId, projectId, source });
+  return invokeMutation("assign_session_to_project", { sessionId, projectId, source });
 }
 export const getProjectExtraInfo = (id: number, dateRange: DateRange) =>
   invoke<ProjectExtraInfo>("get_project_extra_info", { id, dateRange });
 export const compactProjectData = (id: number) =>
   invoke<void>("compact_project_data", { id });
 export const deleteSession = (sessionId: number) =>
-  invoke<void>("delete_session", { sessionId });
+  invokeMutation<void>("delete_session", { sessionId });
 export const updateSessionRateMultiplier = (sessionId: number, multiplier: number | null) =>
-  invoke<void>("update_session_rate_multiplier", { sessionId, multiplier });
+  invokeMutation<void>("update_session_rate_multiplier", { sessionId, multiplier });
 export const updateSessionComment = (sessionId: number, comment: string | null) =>
-  invoke<void>("update_session_comment", { sessionId, comment });
+  invokeMutation<void>("update_session_comment", { sessionId, comment });
 export const getProjectFolders = () => invoke<ProjectFolder[]>("get_project_folders");
 export const addProjectFolder = (path: string) =>
   invoke<void>("add_project_folder", { path });
@@ -291,7 +299,7 @@ export const createManualSession = (input: {
   app_id?: number | null;
   start_time: string;
   end_time: string;
-}) => invoke<ManualSession>("create_manual_session", { input });
+}) => invokeMutation<ManualSession>("create_manual_session", { input });
 
 export const getManualSessions = (filters: {
   dateRange?: DateRange;
@@ -308,10 +316,10 @@ export const updateManualSession = (
     start_time: string;
     end_time: string;
   }
-) => invoke<void>("update_manual_session", { id, input });
+) => invokeMutation<void>("update_manual_session", { id, input });
 
 export const deleteManualSession = (id: number) =>
-  invoke<void>("delete_manual_session", { id });
+  invokeMutation<void>("delete_manual_session", { id });
 
 // Settings
 export const clearAllData = () => invoke<void>("clear_all_data");
@@ -376,7 +384,3 @@ export const restoreDatabaseFromFile = (path: string) =>
 
 export const getBackupFiles = () =>
   invoke<BackupFile[]>("get_backup_files");
-
-export const getSyncDir = () => invoke<string | null>("get_sync_dir");
-export const setSyncDir = (path: string | null) => invoke<void>("set_sync_dir", { path });
-export const performAutomaticSync = () => invoke<string>("perform_automatic_sync");

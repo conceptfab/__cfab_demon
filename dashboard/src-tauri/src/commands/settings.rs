@@ -310,19 +310,3 @@ pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, 
 pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, String> {
     db::set_demo_mode(&app, enabled)
 }
-
-#[tauri::command]
-pub async fn get_sync_dir(app: AppHandle) -> Result<Option<String>, String> {
-    db::get_system_setting(&app, "sync_dir")
-}
-
-#[tauri::command]
-pub async fn set_sync_dir(app: AppHandle, path: Option<String>) -> Result<(), String> {
-    if let Some(ref p) = path {
-        let pb = std::path::PathBuf::from(p);
-        if !pb.exists() {
-            std::fs::create_dir_all(&pb).map_err(|e| format!("Failed to create sync directory: {}", e))?;
-        }
-    }
-    db::set_system_setting(&app, "sync_dir", &path.unwrap_or_default())
-}

@@ -694,7 +694,8 @@ pub async fn run_auto_safe_assignment(
 
     let mut conn = db::get_connection(&app)?;
     let effective_limit = clamp_i64(limit.unwrap_or(500), 1, 10_000);
-    let session_ids = fetch_unassigned_session_ids(&conn, effective_limit, date_range, min_duration)?;
+    let session_ids =
+        fetch_unassigned_session_ids(&conn, effective_limit, date_range, min_duration)?;
 
     conn.execute(
         "INSERT INTO assignment_auto_runs (
@@ -1091,7 +1092,11 @@ pub async fn apply_deterministic_assignment(
         // Verify the target project still exists and is not excluded/frozen
         let project_valid: bool = tx
             .query_row(
-                "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1 AND is_excluded = 0",
+                "SELECT COUNT(*) > 0
+                 FROM projects
+                 WHERE id = ?1
+                   AND excluded_at IS NULL
+                   AND frozen_at IS NULL",
                 rusqlite::params![project_id],
                 |row| row.get(0),
             )
