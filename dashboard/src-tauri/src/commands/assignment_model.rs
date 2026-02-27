@@ -166,7 +166,7 @@ fn tokenize(text: &str) -> Vec<String> {
     ];
     text.to_lowercase()
         .split(&separators[..])
-        .filter(|t| t.len() > 2 && t.chars().any(|c| c.is_alphabetic()))
+        .filter(|t| t.len() >= 2 && t.chars().any(|c| c.is_alphabetic()))
         .map(|t| t.to_string())
         .collect()
 }
@@ -349,7 +349,7 @@ fn compute_raw_suggestion(
     let second_score = sorted.get(1).map(|(_, s)| *s).unwrap_or(0.0);
     let margin = (best_score - second_score).max(0.0);
     let evidence_count = *candidate_evidence.get(&best_project_id).unwrap_or(&1);
-    let evidence_factor = ((evidence_count as f64) / 4.0).min(1.0);
+    let evidence_factor = ((evidence_count as f64) / 3.0).min(1.0);
     let sigmoid_margin = 1.0 / (1.0 + (-margin).exp());
     let confidence = sigmoid_margin * evidence_factor;
 
@@ -859,9 +859,11 @@ pub async fn run_auto_safe_assignment(
                 rusqlite::params![suggestion_id, session_id, app_id, suggestion.project_id],
             )
             .map_err(|e| e.to_string())?;
-            increment_feedback_counter(&tx);
 
             result.assigned += 1;
+        }
+        if result.assigned > 0 {
+            increment_feedback_counter(&tx);
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(())
@@ -1162,7 +1164,6 @@ pub async fn apply_deterministic_assignment(
                 rusqlite::params![session_id, app_id, project_id],
             )
             .map_err(|e| e.to_string())?;
-            increment_feedback_counter(&tx);
 
             sessions_assigned += 1;
         }
