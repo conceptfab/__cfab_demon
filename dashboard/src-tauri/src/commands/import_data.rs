@@ -456,6 +456,12 @@ pub async fn import_data_archive(
     match result {
         Ok(summary) => {
             let _ = fs::remove_file(&backup_path);
+            // Retrain the AI model from the freshly imported data
+            if let Ok(conn) = db::get_connection(&app) {
+                if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
+                    log::warn!("Auto-retrain after sync import failed: {}", e);
+                }
+            }
             Ok(summary)
         }
         Err(import_error) => {

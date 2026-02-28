@@ -1297,6 +1297,11 @@ pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String>
     conn.execute("DELETE FROM file_activities WHERE project_id = ?1", [id])
         .map_err(|e| e.to_string())?;
 
+    // Retrain the AI model so it stays in sync with remaining data
+    if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
+        log::warn!("Auto-retrain after compact failed: {}", e);
+    }
+
     Ok(())
 }
 

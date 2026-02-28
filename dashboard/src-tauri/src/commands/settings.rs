@@ -146,6 +146,12 @@ pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), String> {
     tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
         .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
+
+    // Retrain the AI model so it stays in sync with remaining data
+    let conn2 = db::get_connection(&app)?;
+    if let Err(e) = super::assignment_model::retrain_model_sync(&conn2) {
+        log::warn!("Auto-retrain after reset_app_time failed: {}", e);
+    }
     Ok(())
 }
 
@@ -222,6 +228,12 @@ pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
+
+    // Retrain the AI model so it stays in sync with remaining data
+    let conn2 = db::get_connection(&app)?;
+    if let Err(e) = super::assignment_model::retrain_model_sync(&conn2) {
+        log::warn!("Auto-retrain after delete_app_and_data failed: {}", e);
+    }
     Ok(())
 }
 
@@ -240,6 +252,12 @@ pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), S
     )
     .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
+
+    // Retrain the AI model so it stays in sync with remaining data
+    let conn2 = db::get_connection(&app)?;
+    if let Err(e) = super::assignment_model::retrain_model_sync(&conn2) {
+        log::warn!("Auto-retrain after reset_project_time failed: {}", e);
+    }
     Ok(())
 }
 

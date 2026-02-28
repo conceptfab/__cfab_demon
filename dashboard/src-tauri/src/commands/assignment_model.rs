@@ -535,23 +535,11 @@ pub async fn set_assignment_model_cooldown(
     get_assignment_model_status(app).await
 }
 
-#[command]
-pub async fn train_assignment_model(
-    app: AppHandle,
-    force: bool,
-) -> Result<AssignmentModelStatus, String> {
-    let status = get_assignment_model_status(app.clone()).await?;
-
-    if status.is_training {
-        return Err("Training already in progress".to_string());
-    }
-
-    if !force && status.feedback_since_train < 30 {
-        return Ok(status);
-    }
-
-    let conn = db::get_connection(&app)?;
-    upsert_state(&conn, "is_training", "true")?;
+/// Retrain the assignment model synchronously using the given connection.
+/// This is the core training logic, callable from any module after destructive
+/// DB operations (compact, reset, import) to keep the model in sync with data.
+pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
+    upsert_state(conn, "is_training", "true")?;
     let start_time = std::time::Instant::now();
 
     let result = (|| -> rusqlite::Result<i64> {
@@ -625,14 +613,14 @@ pub async fn train_assignment_model(
     })();
 
     let duration_ms = start_time.elapsed().as_millis() as i64;
-    let _ = upsert_state(&conn, "is_training", "false");
+    let _ = upsert_state(conn, "is_training", "false");
 
     match result {
         Ok(total_samples) => {
-            upsert_state(&conn, "last_train_at", &chrono::Local::now().to_rfc3339())?;
-            upsert_state(&conn, "feedback_since_train", "0")?;
-            upsert_state(&conn, "last_train_duration_ms", &duration_ms.to_string())?;
-            upsert_state(&conn, "last_train_samples", &total_samples.to_string())?;
+            upsert_state(conn, "last_train_at", &chrono::Local::now().to_rfc3339())?;
+            upsert_state(conn, "feedback_since_train", "0")?;
+            upsert_state(conn, "last_train_duration_ms", &duration_ms.to_string())?;
+            upsert_state(conn, "last_train_samples", &total_samples.to_string())?;
             let _ = conn.execute(
                 "DELETE FROM assignment_model_state WHERE key = 'train_error_last'",
                 [],
@@ -641,13 +629,33 @@ pub async fn train_assignment_model(
                 "DELETE FROM assignment_model_state WHERE key = 'cooldown_until'",
                 [],
             );
-            get_assignment_model_status(app).await
+            Ok(total_samples)
         }
         Err(e) => {
-            upsert_state(&conn, "train_error_last", &e.to_string()).ok();
+            upsert_state(conn, "train_error_last", &e.to_string()).ok();
             Err(format!("Model training failed: {}", e))
         }
     }
+}
+
+#[command]
+pub async fn train_assignment_model(
+    app: AppHandle,
+    force: bool,
+) -> Result<AssignmentModelStatus, String> {
+    let status = get_assignment_model_status(app.clone()).await?;
+
+    if status.is_training {
+        return Err("Training already in progress".to_string());
+    }
+
+    if !force && status.feedback_since_train < 30 {
+        return Ok(status);
+    }
+
+    let conn = db::get_connection(&app)?;
+    retrain_model_sync(&conn)?;
+    get_assignment_model_status(app).await
 }
 
 pub async fn suggest_project_for_session(
