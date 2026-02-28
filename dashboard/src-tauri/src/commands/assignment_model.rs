@@ -72,6 +72,8 @@ struct SessionContext {
     hour_bucket: i64,
     weekday: i64,
     tokens: Vec<String>,
+    /// project_ids found on overlapping file_activities (direct evidence)
+    file_project_ids: Vec<i64>,
 }
 
 fn parse_state_f64(state: &HashMap<String, String>, key: &str, default: f64) -> f64 {
@@ -214,37 +216,48 @@ fn build_session_context(
 ) -> Result<Option<SessionContext>, String> {
     let session = conn
         .query_row(
-            "SELECT app_id, date, start_time FROM sessions WHERE id = ?1",
+            "SELECT app_id, date, start_time, end_time FROM sessions WHERE id = ?1",
             rusqlite::params![session_id],
             |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
                 ))
             },
         )
         .optional()
         .map_err(|e| e.to_string())?;
 
-    let Some((app_id, date, start_time)) = session else {
+    let Some((app_id, date, start_time, end_time)) = session else {
         return Ok(None);
     };
 
+    // Filter file_activities to only those overlapping with the session time window
     let mut file_stmt = conn
-        .prepare("SELECT file_name FROM file_activities WHERE app_id = ?1 AND date = ?2")
+        .prepare(
+            "SELECT file_name, project_id FROM file_activities
+             WHERE app_id = ?1 AND date = ?2
+               AND last_seen > ?3 AND first_seen < ?4",
+        )
         .map_err(|e| e.to_string())?;
     let mut file_rows = file_stmt
-        .query(rusqlite::params![app_id, date])
+        .query(rusqlite::params![app_id, date, start_time, end_time])
         .map_err(|e| e.to_string())?;
     let mut uniq_tokens = HashSet::new();
     let mut tokens = Vec::new();
+    let mut file_project_set = HashSet::new();
     while let Some(row) = file_rows.next().map_err(|e| e.to_string())? {
         let file_name: String = row.get(0).map_err(|e| e.to_string())?;
+        let project_id: Option<i64> = row.get(1).map_err(|e| e.to_string())?;
         for token in tokenize(&file_name) {
             if uniq_tokens.insert(token.clone()) {
                 tokens.push(token);
             }
+        }
+        if let Some(pid) = project_id {
+            file_project_set.insert(pid);
         }
     }
 
@@ -254,6 +267,7 @@ fn build_session_context(
         hour_bucket,
         weekday,
         tokens,
+        file_project_ids: file_project_set.into_iter().collect(),
     }))
 }
 
@@ -264,6 +278,30 @@ fn compute_raw_suggestion(
     let mut candidate_scores: HashMap<i64, f64> = HashMap::new();
     let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
 
+    // Layer 0 (strongest): direct file-activity project evidence
+    // If file_activities overlapping the session already have assigned project_ids,
+    // this is the most reliable signal – it mirrors what the frontend shows.
+    for &pid in &context.file_project_ids {
+        // Verify the target project is still active
+        let project_valid: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0
+                 FROM projects
+                 WHERE id = ?1
+                   AND excluded_at IS NULL
+                   AND frozen_at IS NULL",
+                rusqlite::params![pid],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if project_valid {
+            let score = 0.80;
+            *candidate_scores.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 2; // counts as strong evidence
+        }
+    }
+
+    // Layer 1: app→project historical mapping (reduced weight)
     let mut app_stmt = conn
         .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
         .map_err(|e| e.to_string())?;
@@ -273,11 +311,12 @@ fn compute_raw_suggestion(
     while let Some(row) = app_rows.next().map_err(|e| e.to_string())? {
         let project_id: i64 = row.get(0).map_err(|e| e.to_string())?;
         let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-        let score = 0.50 * (1.0 + cnt).ln();
+        let score = 0.30 * (1.0 + cnt).ln();
         *candidate_scores.entry(project_id).or_insert(0.0) += score;
         *candidate_evidence.entry(project_id).or_insert(0) += 1;
     }
 
+    // Layer 2: time-of-day patterns (reduced weight)
     let mut time_stmt = conn
         .prepare(
             "SELECT project_id, cnt
@@ -295,11 +334,12 @@ fn compute_raw_suggestion(
     while let Some(row) = time_rows.next().map_err(|e| e.to_string())? {
         let project_id: i64 = row.get(0).map_err(|e| e.to_string())?;
         let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-        let score = 0.15 * (1.0 + cnt).ln();
+        let score = 0.10 * (1.0 + cnt).ln();
         *candidate_scores.entry(project_id).or_insert(0.0) += score;
         *candidate_evidence.entry(project_id).or_insert(0) += 1;
     }
 
+    // Layer 3: token matching (unchanged weight)
     if !context.tokens.is_empty() {
         let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
         for chunk in context.tokens.chunks(200) {

@@ -12,14 +12,13 @@ TODO ??
 - optymalizacja bazy danych - mechanizm dbający o optymalizację bazy danych
 - odmrazanie projektów nie jest prawidłowo pokazywane na wszystkich widokach - na jednej zakładce jest odmrożony na innej nadal zamrożony
 
-
-
 - AI - testy
 <!-- - sprawdzić logikę systemu synchronizacji w @__client @__server- mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem. Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem. BAzy danych maja byc aktualizowane i zmiany w sesjach. -->
 
 - dodac szyforwanie danych - np tokenem
-- 
 
+- podzial sesji na kawałki jeśli sa dowowody na realizacje kilku projektów
+-
 
 - koszty dodatkowe w ramach projektu
 <!-- - zweryfikować poprzednią metodę i rozstrzygnąć czy jest potrzebne - jeśli to usunąć stary system/kod z aplikacji. -->
