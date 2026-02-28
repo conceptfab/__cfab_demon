@@ -11,7 +11,10 @@ import {
   min as minDate,
 } from 'date-fns';
 import type { AutoImportResult, DateRange } from '@/lib/db-types';
-import { loadCurrencySettings } from '@/lib/user-settings';
+import {
+  loadCurrencySettings,
+  loadAppearanceSettings,
+} from '@/lib/user-settings';
 import { DEFAULT_HELP_TAB, type HelpTabId } from '@/lib/help-navigation';
 
 type TimePreset = 'today' | 'week' | 'month' | 'all';
@@ -56,6 +59,10 @@ interface AppState {
   // Currency
   currencyCode: string;
   setCurrencyCode: (code: string) => void;
+
+  // Appearance
+  chartAnimations: boolean;
+  setChartAnimations: (enabled: boolean) => void;
 }
 
 const REFRESH_THROTTLE_MS = 250;
@@ -212,5 +219,8 @@ export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>(
 
     currencyCode: loadCurrencySettings().code,
     setCurrencyCode: (code) => set({ currencyCode: code }),
+
+    chartAnimations: loadAppearanceSettings().chartAnimations,
+    setChartAnimations: (enabled) => set({ chartAnimations: enabled }),
   }),
 );

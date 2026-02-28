@@ -1,4 +1,6 @@
-type AnimationEasing = "ease-out";
+import { useAppStore } from '@/store/app-store';
+
+type AnimationEasing = 'ease-out';
 
 export interface RechartsAnimationConfig {
   isAnimationActive: boolean;
@@ -14,8 +16,9 @@ interface RechartsAnimationOptions {
 }
 
 function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
+    return false;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 export function getRechartsAnimationConfig({
@@ -24,14 +27,35 @@ export function getRechartsAnimationConfig({
   minDuration = 170,
   maxDuration = 340,
 }: RechartsAnimationOptions): RechartsAnimationConfig {
+  const chartAnimationsActive = useAppStore.getState().chartAnimations;
+  if (!chartAnimationsActive) {
+    return {
+      isAnimationActive: false,
+      animationDuration: 0,
+      animationEasing: 'ease-out',
+    };
+  }
+
   if (!Number.isFinite(complexity) || complexity <= 0) {
-    return { isAnimationActive: false, animationDuration: 0, animationEasing: "ease-out" };
+    return {
+      isAnimationActive: false,
+      animationDuration: 0,
+      animationEasing: 'ease-out',
+    };
   }
   if (!Number.isFinite(maxComplexity) || maxComplexity <= 0) {
-    return { isAnimationActive: false, animationDuration: 0, animationEasing: "ease-out" };
+    return {
+      isAnimationActive: false,
+      animationDuration: 0,
+      animationEasing: 'ease-out',
+    };
   }
   if (prefersReducedMotion() || complexity > maxComplexity) {
-    return { isAnimationActive: false, animationDuration: 0, animationEasing: "ease-out" };
+    return {
+      isAnimationActive: false,
+      animationDuration: 0,
+      animationEasing: 'ease-out',
+    };
   }
 
   const clampedMin = Math.max(80, Math.floor(minDuration));
@@ -42,6 +66,6 @@ export function getRechartsAnimationConfig({
   return {
     isAnimationActive: true,
     animationDuration: duration,
-    animationEasing: "ease-out",
+    animationEasing: 'ease-out',
   };
 }

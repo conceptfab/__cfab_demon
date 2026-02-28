@@ -292,6 +292,61 @@ export function saveLanguageSettings(next: LanguageSettings): LanguageSettings {
   return normalized;
 }
 
+export interface AppearanceSettings {
+  chartAnimations: boolean;
+}
+
+const APPEARANCE_STORAGE_KEY = "timeflow.settings.appearance";
+const LEGACY_APPEARANCE_STORAGE_KEY = "cfab.settings.appearance";
+
+export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  chartAnimations: true,
+};
+
+export function loadAppearanceSettings(): AppearanceSettings {
+  if (typeof window === "undefined") return { ...DEFAULT_APPEARANCE_SETTINGS };
+  try {
+    const raw = loadRawSetting(
+      APPEARANCE_STORAGE_KEY,
+      LEGACY_APPEARANCE_STORAGE_KEY,
+    );
+    if (!raw) return { ...DEFAULT_APPEARANCE_SETTINGS };
+    if (
+      window.localStorage.getItem(APPEARANCE_STORAGE_KEY) === null &&
+      window.localStorage.getItem(LEGACY_APPEARANCE_STORAGE_KEY) !== null
+    ) {
+      migrateLegacySetting(
+        APPEARANCE_STORAGE_KEY,
+        LEGACY_APPEARANCE_STORAGE_KEY,
+        raw,
+      );
+    }
+    const parsed = JSON.parse(raw) as Partial<AppearanceSettings>;
+    return {
+      chartAnimations:
+        typeof parsed.chartAnimations === "boolean"
+          ? parsed.chartAnimations
+          : DEFAULT_APPEARANCE_SETTINGS.chartAnimations,
+    };
+  } catch {
+    return { ...DEFAULT_APPEARANCE_SETTINGS };
+  }
+}
+
+export function saveAppearanceSettings(next: AppearanceSettings): AppearanceSettings {
+  const normalized: AppearanceSettings = {
+    chartAnimations: !!next.chartAnimations,
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(
+      APPEARANCE_STORAGE_KEY,
+      JSON.stringify(normalized),
+    );
+    window.localStorage.removeItem(LEGACY_APPEARANCE_STORAGE_KEY);
+  }
+  return normalized;
+}
+
 export interface SessionIndicatorSettings {
   showAiBadge: boolean;
   showScoreBreakdown: boolean;

@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, Languages, TimerReset } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useTranslation } from "react-i18next";
-import { clearAllData, getDemoModeStatus, rebuildSessions, setDemoMode } from "@/lib/tauri";
-import type { DemoModeStatus } from "@/lib/db-types";
-import { useAppStore } from "@/store/app-store";
+import { useEffect, useMemo, useState } from 'react';
+import { Eye, EyeOff, Languages, TimerReset } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useTranslation } from 'react-i18next';
+import {
+  clearAllData,
+  getDemoModeStatus,
+  rebuildSessions,
+  setDemoMode,
+} from '@/lib/tauri';
+import type { DemoModeStatus } from '@/lib/db-types';
+import { useAppStore } from '@/store/app-store';
 import {
   type AppLanguageCode,
   type LanguageSettings,
@@ -25,7 +30,10 @@ import {
   type CurrencySettings,
   loadLanguageSettings,
   saveLanguageSettings,
-} from "@/lib/user-settings";
+  loadAppearanceSettings,
+  saveAppearanceSettings,
+  type AppearanceSettings,
+} from '@/lib/user-settings';
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
   loadOnlineSyncState,
@@ -35,14 +43,16 @@ import {
   type OnlineSyncSettings,
   type OnlineSyncRunResult,
   type OnlineSyncState,
-} from "@/lib/online-sync";
+} from '@/lib/online-sync';
 
-const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0"));
-const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = Array.from({ length: 60 }, (_, i) =>
+  String(i).padStart(2, '0'),
+);
 
 function splitTime(value: string): [string, string] {
   const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) return ["09", "00"];
+  if (!match) return ['09', '00'];
   return [match[1], match[2]];
 }
 
@@ -50,48 +60,65 @@ export function Settings() {
   const { i18n, t } = useTranslation();
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
   const setCurrencyCode = useAppStore((s) => s.setCurrencyCode);
+  const setChartAnimations = useAppStore((s) => s.setChartAnimations);
   const [clearing, setClearing] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [clearArmed, setClearArmed] = useState(false);
   const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
-    loadWorkingHoursSettings()
+    loadWorkingHoursSettings(),
   );
-  const [sessionSettings, setSessionSettings] = useState<SessionSettings>(() => loadSessionSettings());
-  const [onlineSyncSettings, setOnlineSyncSettings] = useState<OnlineSyncSettings>(() =>
-    loadOnlineSyncSettings()
+  const [sessionSettings, setSessionSettings] = useState<SessionSettings>(() =>
+    loadSessionSettings(),
   );
-  const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() => loadFreezeSettings());
-  const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(() =>
-    loadCurrencySettings()
+  const [onlineSyncSettings, setOnlineSyncSettings] =
+    useState<OnlineSyncSettings>(() => loadOnlineSyncSettings());
+  const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() =>
+    loadFreezeSettings(),
   );
-  const [languageSettings, setLanguageSettings] = useState<LanguageSettings>(() =>
-    loadLanguageSettings()
+  const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(
+    () => loadCurrencySettings(),
   );
-  const [workingHoursError, setWorkingHoursError] = useState<string | null>(null);
+  const [languageSettings, setLanguageSettings] = useState<LanguageSettings>(
+    () => loadLanguageSettings(),
+  );
+  const [appearanceSettings, setAppearanceSettings] =
+    useState<AppearanceSettings>(() => loadAppearanceSettings());
+  const [workingHoursError, setWorkingHoursError] = useState<string | null>(
+    null,
+  );
   const [savedSettings, setSavedSettings] = useState(true);
   const [rebuilding, setRebuilding] = useState(false);
   const [manualSyncing, setManualSyncing] = useState(false);
-  const [manualSyncResult, setManualSyncResult] = useState<OnlineSyncRunResult | null>(null);
+  const [manualSyncResult, setManualSyncResult] =
+    useState<OnlineSyncRunResult | null>(null);
   const [onlineSyncState, setOnlineSyncState] = useState<OnlineSyncState>(() =>
-    loadOnlineSyncState()
+    loadOnlineSyncState(),
   );
   const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
-  const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(null);
+  const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(
+    null,
+  );
   const [demoModeLoading, setDemoModeLoading] = useState(true);
   const [demoModeSwitching, setDemoModeSwitching] = useState(false);
   const [demoModeError, setDemoModeError] = useState<string | null>(null);
 
-  const labelClassName = "text-sm font-medium text-muted-foreground";
+  const labelClassName = 'text-sm font-medium text-muted-foreground';
   const compactSelectClassName =
-    "h-8 w-[3.75rem] rounded-md border border-input bg-background px-1.5 font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
+    'h-8 w-[3.75rem] rounded-md border border-input bg-background px-1.5 font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40';
   const sliderValue = Math.min(30, Math.max(0, sessionSettings.gapFillMinutes));
   const languageOptions: Array<{ code: AppLanguageCode; label: string }> = [
-    { code: "pl", label: t("settings.language.option.pl") },
-    { code: "en", label: t("settings.language.option.en") },
+    { code: 'pl', label: t('settings.language.option.pl') },
+    { code: 'en', label: t('settings.language.option.en') },
   ];
 
-  const [startHour, startMinute] = useMemo(() => splitTime(workingHours.start), [workingHours.start]);
-  const [endHour, endMinute] = useMemo(() => splitTime(workingHours.end), [workingHours.end]);
+  const [startHour, startMinute] = useMemo(
+    () => splitTime(workingHours.start),
+    [workingHours.start],
+  );
+  const [endHour, endMinute] = useMemo(
+    () => splitTime(workingHours.end),
+    [workingHours.end],
+  );
   const normalizedColor = normalizeHexColor(workingHours.color);
 
   useEffect(() => {
@@ -122,11 +149,15 @@ export function Settings() {
     };
   }, []);
 
-  const updateTimePart = (field: "start" | "end", part: "hour" | "minute", value: string) => {
+  const updateTimePart = (
+    field: 'start' | 'end',
+    part: 'hour' | 'minute',
+    value: string,
+  ) => {
     setWorkingHours((prev) => {
       const [hour, minute] = splitTime(prev[field]);
-      const nextHour = part === "hour" ? value : hour;
-      const nextMinute = part === "minute" ? value : minute;
+      const nextHour = part === 'hour' ? value : hour;
+      const nextMinute = part === 'minute' ? value : minute;
       return { ...prev, [field]: `${nextHour}:${nextMinute}` };
     });
     setWorkingHoursError(null);
@@ -138,7 +169,7 @@ export function Settings() {
     const endMinutes = timeToMinutes(workingHours.end);
 
     if (startMinutes === null || endMinutes === null) {
-      setWorkingHoursError("Please use a valid HH:mm time.");
+      setWorkingHoursError('Please use a valid HH:mm time.');
       setSavedSettings(false);
       return;
     }
@@ -157,6 +188,7 @@ export function Settings() {
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
     const savedLanguage = saveLanguageSettings(languageSettings);
+    const savedAppearance = saveAppearanceSettings(appearanceSettings);
 
     setWorkingHours(savedWorking);
     setSessionSettings(savedSession);
@@ -164,10 +196,12 @@ export function Settings() {
     setFreezeSettings(savedFreeze);
     setCurrencySettings(savedCurrency);
     setLanguageSettings(savedLanguage);
+    setAppearanceSettings(savedAppearance);
     setCurrencyCode(savedCurrency.code);
+    setChartAnimations(savedAppearance.chartAnimations);
     if (i18n.resolvedLanguage !== savedLanguage.code) {
       void i18n.changeLanguage(savedLanguage.code).catch((error) => {
-        console.warn("Failed to apply language change:", error);
+        console.warn('Failed to apply language change:', error);
       });
     }
     setWorkingHoursError(null);
@@ -185,23 +219,28 @@ export function Settings() {
       triggerRefresh();
     } catch (e) {
       console.error(e);
-      alert("Error linking sessions: " + String(e));
+      alert('Error linking sessions: ' + String(e));
     } finally {
       setRebuilding(false);
     }
   };
 
   const handleClearData = async () => {
-    if (!confirm("Are you sure you want to delete all data? This cannot be undone.")) return;
+    if (
+      !confirm(
+        'Are you sure you want to delete all data? This cannot be undone.',
+      )
+    )
+      return;
     setClearing(true);
     try {
       await clearAllData();
       triggerRefresh();
       setClearArmed(false);
-      alert("All data removed.");
+      alert('All data removed.');
     } catch (e) {
       console.error(e);
-      alert("Failed to clear data: " + String(e));
+      alert('Failed to clear data: ' + String(e));
     } finally {
       setClearing(false);
     }
@@ -212,8 +251,8 @@ export function Settings() {
       setManualSyncResult({
         ok: true,
         skipped: true,
-        action: "none",
-        reason: "demo_mode",
+        action: 'none',
+        reason: 'demo_mode',
         serverRevision: onlineSyncState.serverRevision,
       });
       return;
@@ -230,14 +269,14 @@ export function Settings() {
       setManualSyncResult(result);
       setOnlineSyncState(loadOnlineSyncState());
 
-      if (result.ok && result.action === "pull") {
+      if (result.ok && result.action === 'pull') {
         triggerRefresh();
       }
     } catch (e) {
       setManualSyncResult({
         ok: false,
-        action: "none",
-        reason: "sync_failed",
+        action: 'none',
+        reason: 'sync_failed',
         serverRevision: onlineSyncState.serverRevision,
         error: String(e),
       });
@@ -256,13 +295,13 @@ export function Settings() {
       triggerRefresh();
       alert(
         status.enabled
-          ? "Demo mode enabled. Dashboard now uses the demo database."
-          : "Demo mode disabled. Dashboard now uses the primary database.",
+          ? 'Demo mode enabled. Dashboard now uses the demo database.'
+          : 'Demo mode disabled. Dashboard now uses the primary database.',
       );
     } catch (e) {
       console.error(e);
       setDemoModeError(String(e));
-      alert("Failed to switch demo mode: " + String(e));
+      alert('Failed to switch demo mode: ' + String(e));
     } finally {
       setDemoModeSwitching(false);
     }
@@ -270,24 +309,28 @@ export function Settings() {
 
   const lastSyncLabel = onlineSyncState.lastSyncAt
     ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
-    : "Never";
+    : 'Never';
   const shortHash = onlineSyncState.serverHash
     ? `${onlineSyncState.serverHash.slice(0, 12)}...`
-    : "n/a";
+    : 'n/a';
   const localHashShort = onlineSyncState.localHash
     ? `${onlineSyncState.localHash.slice(0, 12)}...`
-    : "n/a";
+    : 'n/a';
   const pendingAckHashShort = onlineSyncState.pendingAck?.payloadSha256
     ? `${onlineSyncState.pendingAck.payloadSha256.slice(0, 12)}...`
-    : "n/a";
+    : 'n/a';
   const demoModeSyncDisabled = demoModeStatus?.enabled === true;
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold">Working Hours</CardTitle>
-          <p className="text-sm text-muted-foreground">Used to highlight expected work window on timeline.</p>
+          <CardTitle className="text-base font-semibold">
+            Working Hours
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Used to highlight expected work window on timeline.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
@@ -297,7 +340,9 @@ export function Settings() {
                 <select
                   className={compactSelectClassName}
                   value={startHour}
-                  onChange={(e) => updateTimePart("start", "hour", e.target.value)}
+                  onChange={(e) =>
+                    updateTimePart('start', 'hour', e.target.value)
+                  }
                 >
                   {HOURS.map((hour) => (
                     <option key={hour} value={hour}>
@@ -309,7 +354,9 @@ export function Settings() {
                 <select
                   className={compactSelectClassName}
                   value={startMinute}
-                  onChange={(e) => updateTimePart("start", "minute", e.target.value)}
+                  onChange={(e) =>
+                    updateTimePart('start', 'minute', e.target.value)
+                  }
                 >
                   {MINUTES.map((minute) => (
                     <option key={minute} value={minute}>
@@ -324,7 +371,9 @@ export function Settings() {
                 <select
                   className={compactSelectClassName}
                   value={endHour}
-                  onChange={(e) => updateTimePart("end", "hour", e.target.value)}
+                  onChange={(e) =>
+                    updateTimePart('end', 'hour', e.target.value)
+                  }
                 >
                   {HOURS.map((hour) => (
                     <option key={hour} value={hour}>
@@ -336,7 +385,9 @@ export function Settings() {
                 <select
                   className={compactSelectClassName}
                   value={endMinute}
-                  onChange={(e) => updateTimePart("end", "minute", e.target.value)}
+                  onChange={(e) =>
+                    updateTimePart('end', 'minute', e.target.value)
+                  }
                 >
                   {MINUTES.map((minute) => (
                     <option key={minute} value={minute}>
@@ -357,24 +408,32 @@ export function Settings() {
                   className="h-8 w-10 cursor-pointer rounded border border-input bg-background p-1"
                   value={normalizedColor}
                   onChange={(e) => {
-                    setWorkingHours((prev) => ({ ...prev, color: e.target.value }));
+                    setWorkingHours((prev) => ({
+                      ...prev,
+                      color: e.target.value,
+                    }));
                     setWorkingHoursError(null);
                     setSavedSettings(false);
                   }}
                 />
-                <span className="font-mono text-sm text-muted-foreground">{normalizedColor}</span>
+                <span className="font-mono text-sm text-muted-foreground">
+                  {normalizedColor}
+                </span>
               </div>
             </div>
           </div>
 
-          {workingHoursError && <p className="text-sm text-destructive">{workingHoursError}</p>}
+          {workingHoursError && (
+            <p className="text-sm text-destructive">{workingHoursError}</p>
+          )}
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="text-base font-semibold">Currency</CardTitle>
-          <p className="text-sm text-muted-foreground">Select preferred currency for project values.</p>
+          <p className="text-sm text-muted-foreground">
+            Select preferred currency for project values.
+          </p>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
@@ -382,9 +441,9 @@ export function Settings() {
               <label className={labelClassName}>Active Currency</label>
               <div className="flex items-center gap-2">
                 {[
-                  { code: "PLN", symbol: "zł" },
-                  { code: "USD", symbol: "$" },
-                  { code: "EUR", symbol: "€" },
+                  { code: 'PLN', symbol: 'zł' },
+                  { code: 'USD', symbol: '$' },
+                  { code: 'EUR', symbol: '€' },
                 ].map((item) => (
                   <button
                     key={item.code}
@@ -395,11 +454,14 @@ export function Settings() {
                     }}
                     className={`h-8 px-4 rounded-md text-sm font-medium transition-all ${
                       currencySettings.code === item.code
-                        ? "bg-primary text-primary-foreground shadow-sm scale-105"
-                        : "bg-background border border-input hover:bg-muted text-muted-foreground"
+                        ? 'bg-primary text-primary-foreground shadow-sm scale-105'
+                        : 'bg-background border border-input hover:bg-muted text-muted-foreground'
                     }`}
                   >
-                    {item.code} <span className="opacity-50 text-[10px] ml-1">({item.symbol})</span>
+                    {item.code}{' '}
+                    <span className="opacity-50 text-[10px] ml-1">
+                      ({item.symbol})
+                    </span>
                   </button>
                 ))}
               </div>
@@ -407,19 +469,22 @@ export function Settings() {
           </div>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Languages className="h-4 w-4 text-primary" />
-            {t("settings.language.title")}
+            {t('settings.language.title')}
           </CardTitle>
-          <p className="text-sm text-muted-foreground">{t("settings.language.description")}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('settings.language.description')}
+          </p>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
             <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-              <label className={labelClassName}>{t("settings.language.field")}</label>
+              <label className={labelClassName}>
+                {t('settings.language.field')}
+              </label>
               <div className="flex flex-wrap items-center gap-2">
                 {languageOptions.map((item) => (
                   <button
@@ -431,8 +496,8 @@ export function Settings() {
                     }}
                     className={`h-8 px-4 rounded-md text-sm font-medium transition-all ${
                       languageSettings.code === item.code
-                        ? "bg-primary text-primary-foreground shadow-sm scale-105"
-                        : "bg-background border border-input hover:bg-muted text-muted-foreground"
+                        ? 'bg-primary text-primary-foreground shadow-sm scale-105'
+                        : 'bg-background border border-input hover:bg-muted text-muted-foreground'
                     }`}
                   >
                     {item.label}
@@ -441,14 +506,19 @@ export function Settings() {
               </div>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">{t("settings.language.rollout_note")}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('settings.language.rollout_note')}
+          </p>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold">Session Management</CardTitle>
-          <p className="text-sm text-muted-foreground">Rules for automatic merging of nearby sessions.</p>
+          <CardTitle className="text-base font-semibold">
+            Session Management
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Rules for automatic merging of nearby sessions.
+          </p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
@@ -467,7 +537,10 @@ export function Settings() {
                     onChange={(e) => {
                       const val = Number.parseInt(e.target.value, 10);
                       if (!Number.isNaN(val)) {
-                        setSessionSettings((prev) => ({ ...prev, gapFillMinutes: val }));
+                        setSessionSettings((prev) => ({
+                          ...prev,
+                          gapFillMinutes: val,
+                        }));
                         setSavedSettings(false);
                       }
                     }}
@@ -489,7 +562,8 @@ export function Settings() {
               <div className="min-w-0">
                 <p className="text-sm font-medium">Skip short sessions</p>
                 <p className="text-xs leading-5 break-words text-muted-foreground">
-                  Sessions shorter than or equal to this duration will be hidden from the list.
+                  Sessions shorter than or equal to this duration will be hidden
+                  from the list.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -504,7 +578,10 @@ export function Settings() {
                   onChange={(e) => {
                     const val = Number.parseInt(e.target.value, 10);
                     if (!Number.isNaN(val)) {
-                      setSessionSettings((prev) => ({ ...prev, minSessionDurationSeconds: val }));
+                      setSessionSettings((prev) => ({
+                        ...prev,
+                        minSessionDurationSeconds: val,
+                      }));
                       setSavedSettings(false);
                     }
                   }}
@@ -530,7 +607,10 @@ export function Settings() {
               className="h-4 w-4 rounded border-input accent-primary"
               checked={sessionSettings.rebuildOnStartup}
               onChange={(e) => {
-                setSessionSettings((prev) => ({ ...prev, rebuildOnStartup: e.target.checked }));
+                setSessionSettings((prev) => ({
+                  ...prev,
+                  rebuildOnStartup: e.target.checked,
+                }));
                 setSavedSettings(false);
               }}
             />
@@ -543,14 +623,18 @@ export function Settings() {
                 Apply current merge gap to already imported sessions.
               </p>
             </div>
-            <Button variant="outline" className="h-8 w-fit" onClick={handleRebuildSessions} disabled={rebuilding}>
+            <Button
+              variant="outline"
+              className="h-8 w-fit"
+              onClick={handleRebuildSessions}
+              disabled={rebuilding}
+            >
               <TimerReset className="mr-2 h-4 w-4" />
-              {rebuilding ? "Rebuilding..." : "Rebuild"}
+              {rebuilding ? 'Rebuilding...' : 'Rebuild'}
             </Button>
           </div>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="text-base font-semibold">Online Sync</CardTitle>
@@ -566,7 +650,8 @@ export function Settings() {
             <div className="min-w-0">
               <p className="text-sm font-medium">Enable online sync</p>
               <p className="text-xs leading-5 break-words text-muted-foreground">
-                Allows the dashboard to exchange data snapshots with the sync server.
+                Allows the dashboard to exchange data snapshots with the sync
+                server.
               </p>
             </div>
             <input
@@ -575,7 +660,10 @@ export function Settings() {
               className="h-4 w-4 rounded border-input accent-primary"
               checked={onlineSyncSettings.enabled}
               onChange={(e) => {
-                setOnlineSyncSettings((prev) => ({ ...prev, enabled: e.target.checked }));
+                setOnlineSyncSettings((prev) => ({
+                  ...prev,
+                  enabled: e.target.checked,
+                }));
                 setSavedSettings(false);
               }}
             />
@@ -588,7 +676,8 @@ export function Settings() {
             <div className="min-w-0">
               <p className="text-sm font-medium">Sync on startup</p>
               <p className="text-xs leading-5 break-words text-muted-foreground">
-                Runs <code>status -&gt; pull/push</code> after local auto-import finishes.
+                Runs <code>status -&gt; pull/push</code> after local auto-import
+                finishes.
               </p>
             </div>
             <input
@@ -597,7 +686,10 @@ export function Settings() {
               className="h-4 w-4 rounded border-input accent-primary"
               checked={onlineSyncSettings.autoSyncOnStartup}
               onChange={(e) => {
-                setOnlineSyncSettings((prev) => ({ ...prev, autoSyncOnStartup: e.target.checked }));
+                setOnlineSyncSettings((prev) => ({
+                  ...prev,
+                  autoSyncOnStartup: e.target.checked,
+                }));
                 setSavedSettings(false);
               }}
             />
@@ -649,7 +741,10 @@ export function Settings() {
               className="h-4 w-4 rounded border-input accent-primary"
               checked={onlineSyncSettings.enableLogging}
               onChange={(e) => {
-                setOnlineSyncSettings((prev) => ({ ...prev, enableLogging: e.target.checked }));
+                setOnlineSyncSettings((prev) => ({
+                  ...prev,
+                  enableLogging: e.target.checked,
+                }));
                 setSavedSettings(false);
               }}
             />
@@ -664,7 +759,10 @@ export function Settings() {
                 placeholder={DEFAULT_ONLINE_SYNC_SERVER_URL}
                 value={onlineSyncSettings.serverUrl}
                 onChange={(e) => {
-                  setOnlineSyncSettings((prev) => ({ ...prev, serverUrl: e.target.value }));
+                  setOnlineSyncSettings((prev) => ({
+                    ...prev,
+                    serverUrl: e.target.value,
+                  }));
                   setSavedSettings(false);
                 }}
               />
@@ -697,7 +795,10 @@ export function Settings() {
                 placeholder="e.g. demo-user / email / UUID"
                 value={onlineSyncSettings.userId}
                 onChange={(e) => {
-                  setOnlineSyncSettings((prev) => ({ ...prev, userId: e.target.value }));
+                  setOnlineSyncSettings((prev) => ({
+                    ...prev,
+                    userId: e.target.value,
+                  }));
                   setSavedSettings(false);
                 }}
               />
@@ -707,13 +808,16 @@ export function Settings() {
               <span className={labelClassName}>API Token (Bearer)</span>
               <div className="flex items-center gap-2">
                 <input
-                  type={showOnlineSyncToken ? "text" : "password"}
+                  type={showOnlineSyncToken ? 'text' : 'password'}
                   autoComplete="off"
                   className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                   placeholder="Paste the raw token (without 'Bearer ' prefix and without quotes)"
                   value={onlineSyncSettings.apiToken}
                   onChange={(e) => {
-                    setOnlineSyncSettings((prev) => ({ ...prev, apiToken: e.target.value }));
+                    setOnlineSyncSettings((prev) => ({
+                      ...prev,
+                      apiToken: e.target.value,
+                    }));
                     setSavedSettings(false);
                   }}
                 />
@@ -722,8 +826,8 @@ export function Settings() {
                   variant="outline"
                   className="h-9 w-10 px-0"
                   onClick={() => setShowOnlineSyncToken((prev) => !prev)}
-                  aria-label={showOnlineSyncToken ? "Hide token" : "Show token"}
-                  title={showOnlineSyncToken ? "Hide token" : "Show token"}
+                  aria-label={showOnlineSyncToken ? 'Hide token' : 'Show token'}
+                  title={showOnlineSyncToken ? 'Hide token' : 'Show token'}
                 >
                   {showOnlineSyncToken ? (
                     <EyeOff className="h-4 w-4" />
@@ -733,17 +837,19 @@ export function Settings() {
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Enter the raw token; the app will add the Bearer header automatically.
+                Enter the raw token; the app will add the Bearer header
+                automatically.
               </p>
             </label>
 
             <div className="grid gap-1.5 text-sm">
               <span className={labelClassName}>Device ID</span>
               <div className="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs break-all">
-                {onlineSyncSettings.deviceId || "(generated on save)"}
+                {onlineSyncSettings.deviceId || '(generated on save)'}
               </div>
               <p className="text-xs text-muted-foreground">
-                Generated automatically and used to identify this machine during sync.
+                Generated automatically and used to identify this machine during
+                sync.
               </p>
             </div>
 
@@ -764,26 +870,30 @@ export function Settings() {
 
                 <div className="grid gap-1 text-xs text-muted-foreground">
                   <div>
-                    Server revision:{" "}
+                    Server revision:{' '}
                     <span className="font-mono text-foreground">
                       {onlineSyncState.serverRevision}
                     </span>
                   </div>
                   <div>
-                    Server hash:{" "}
-                    <span className="font-mono text-foreground break-all">{shortHash}</span>
+                    Server hash:{' '}
+                    <span className="font-mono text-foreground break-all">
+                      {shortHash}
+                    </span>
                   </div>
                   <div>
-                    Local rev/hash:{" "}
+                    Local rev/hash:{' '}
                     <span className="font-mono text-foreground">
-                      {onlineSyncState.localRevision ?? "n/a"} / {localHashShort}
+                      {onlineSyncState.localRevision ?? 'n/a'} /{' '}
+                      {localHashShort}
                     </span>
                   </div>
                   {onlineSyncState.pendingAck && (
                     <div className="text-amber-500">
-                      Pending ACK:{" "}
+                      Pending ACK:{' '}
                       <span className="font-mono text-foreground">
-                        r{onlineSyncState.pendingAck.revision} / {pendingAckHashShort}
+                        r{onlineSyncState.pendingAck.revision} /{' '}
+                        {pendingAckHashShort}
                       </span>
                       {onlineSyncState.pendingAck.retries > 0 && (
                         <> (retries: {onlineSyncState.pendingAck.retries})</>
@@ -792,7 +902,8 @@ export function Settings() {
                   )}
                   {onlineSyncState.needsReseed && (
                     <div className="text-amber-500">
-                      Server payload was cleaned up after ACKs. Local reseed/export is required.
+                      Server payload was cleaned up after ACKs. Local
+                      reseed/export is required.
                     </div>
                   )}
                 </div>
@@ -801,13 +912,14 @@ export function Settings() {
                   <div
                     className={
                       manualSyncResult.ok
-                        ? "text-xs text-emerald-400"
-                        : "text-xs text-destructive"
+                        ? 'text-xs text-emerald-400'
+                        : 'text-xs text-destructive'
                     }
                   >
                     {manualSyncResult.ok
-                      ? manualSyncResult.skipped && manualSyncResult.reason === "demo_mode"
-                        ? "Last manual sync: skipped (disabled in Demo Mode)"
+                      ? manualSyncResult.skipped &&
+                        manualSyncResult.reason === 'demo_mode'
+                        ? 'Last manual sync: skipped (disabled in Demo Mode)'
                         : manualSyncResult.ackPending
                           ? `Last manual sync: pull applied, ACK pending (${manualSyncResult.ackReason ?? manualSyncResult.reason})`
                           : `Last manual sync: ${manualSyncResult.action} (${manualSyncResult.reason})`
@@ -824,21 +936,23 @@ export function Settings() {
                 disabled={manualSyncing || demoModeSyncDisabled}
               >
                 {manualSyncing
-                  ? "Syncing..."
+                  ? 'Syncing...'
                   : demoModeSyncDisabled
-                    ? "Sync disabled in demo"
-                    : "Sync now"}
+                    ? 'Sync disabled in demo'
+                    : 'Sync now'}
               </Button>
             </div>
           </div>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold">Project Freezing</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            Project Freezing
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Projects inactive for a set period are automatically frozen and hidden from session assignment lists.
+            Projects inactive for a set period are automatically frozen and
+            hidden from session assignment lists.
           </p>
         </CardHeader>
         <CardContent>
@@ -847,7 +961,8 @@ export function Settings() {
               <div className="min-w-0">
                 <p className="text-sm font-medium">Inactivity threshold</p>
                 <p className="text-xs leading-5 break-words text-muted-foreground">
-                  Number of days without activity after which a project is automatically frozen.
+                  Number of days without activity after which a project is
+                  automatically frozen.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -862,7 +977,10 @@ export function Settings() {
                   onChange={(e) => {
                     const val = Number.parseInt(e.target.value, 10);
                     if (!Number.isNaN(val)) {
-                      setFreezeSettings((prev) => ({ ...prev, thresholdDays: val }));
+                      setFreezeSettings((prev) => ({
+                        ...prev,
+                        thresholdDays: val,
+                      }));
                       setSavedSettings(false);
                     }
                   }}
@@ -873,12 +991,12 @@ export function Settings() {
           </div>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
           <CardTitle className="text-base font-semibold">Demo Mode</CardTitle>
           <p className="text-sm text-muted-foreground">
-            Switch dashboard data source to a separate demo database file (persists after restart).
+            Switch dashboard data source to a separate demo database file
+            (persists after restart).
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -889,8 +1007,11 @@ export function Settings() {
             <div className="min-w-0">
               <p className="text-sm font-medium">Use demo database</p>
               <p className="text-xs leading-5 break-words text-muted-foreground">
-                Applies to the whole dashboard app (reads/writes/imports) and switches to a separate SQLite file.
-                In demo mode, live daily refresh reads from <code>fake_data</code> and expects <code>fake</code> in the JSON filename (for example <code>2026-02-22_fake.json</code>).
+                Applies to the whole dashboard app (reads/writes/imports) and
+                switches to a separate SQLite file. In demo mode, live daily
+                refresh reads from <code>fake_data</code> and expects{' '}
+                <code>fake</code> in the JSON filename (for example{' '}
+                <code>2026-02-22_fake.json</code>).
               </p>
             </div>
             <input
@@ -907,38 +1028,50 @@ export function Settings() {
 
           <div className="rounded-md border border-border/70 bg-background/20 p-3 text-xs">
             {demoModeLoading ? (
-              <p className="text-muted-foreground">Loading demo mode status...</p>
+              <p className="text-muted-foreground">
+                Loading demo mode status...
+              </p>
             ) : demoModeStatus ? (
               <div className="space-y-1.5 text-muted-foreground">
                 <div>
-                  Active DB:{" "}
+                  Active DB:{' '}
                   <span className="font-mono text-foreground break-all">
                     {demoModeStatus.activeDbPath}
                   </span>
                 </div>
                 <div>
-                  Primary DB:{" "}
+                  Primary DB:{' '}
                   <span className="font-mono text-foreground break-all">
                     {demoModeStatus.primaryDbPath}
                   </span>
                 </div>
                 <div>
-                  Demo DB:{" "}
+                  Demo DB:{' '}
                   <span className="font-mono text-foreground break-all">
                     {demoModeStatus.demoDbPath}
                   </span>
                 </div>
-                <div className={demoModeStatus.enabled ? "text-amber-500" : "text-emerald-500"}>
+                <div
+                  className={
+                    demoModeStatus.enabled
+                      ? 'text-amber-500'
+                      : 'text-emerald-500'
+                  }
+                >
                   {demoModeStatus.enabled
-                    ? "Demo mode is active. New imports/changes will affect the demo database."
-                    : "Primary mode is active."}
+                    ? 'Demo mode is active. New imports/changes will affect the demo database.'
+                    : 'Primary mode is active.'}
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground">Demo mode status unavailable.</p>
+              <p className="text-muted-foreground">
+                Demo mode status unavailable.
+              </p>
             )}
 
-            {demoModeError && <p className="mt-2 text-destructive">{demoModeError}</p>}
+            {demoModeError && (
+              <p className="mt-2 text-destructive">{demoModeError}</p>
+            )}
           </div>
 
           <div className="flex items-center justify-end">
@@ -953,26 +1086,33 @@ export function Settings() {
               }}
             >
               {demoModeSwitching
-                ? "Switching..."
+                ? 'Switching...'
                 : demoModeStatus?.enabled
-                  ? "Disable Demo Mode"
-                  : "Enable Demo Mode"}
+                  ? 'Disable Demo Mode'
+                  : 'Enable Demo Mode'}
             </Button>
           </div>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-base font-semibold text-destructive">Danger Zone</CardTitle>
-          <p className="text-sm text-muted-foreground">Hidden by default to avoid accidental clicks.</p>
+          <CardTitle className="text-base font-semibold text-destructive">
+            Danger Zone
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Hidden by default to avoid accidental clicks.
+          </p>
         </CardHeader>
         <CardContent>
           <details className="group rounded-md border border-destructive/50 bg-destructive/10">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5">
               <span className="text-sm font-medium">Data wipe controls</span>
-              <span className="text-xs text-muted-foreground group-open:hidden">Open</span>
-              <span className="hidden text-xs text-muted-foreground group-open:inline">Close</span>
+              <span className="text-xs text-muted-foreground group-open:hidden">
+                Open
+              </span>
+              <span className="hidden text-xs text-muted-foreground group-open:inline">
+                Close
+              </span>
             </summary>
 
             <div className="space-y-3 border-t border-destructive/40 p-3">
@@ -996,24 +1136,58 @@ export function Settings() {
                 onClick={handleClearData}
                 disabled={clearing || !clearArmed}
               >
-                {clearing ? "Clearing..." : "Clear Data"}
+                {clearing ? 'Clearing...' : 'Clear Data'}
               </Button>
             </div>
           </details>
         </CardContent>
       </Card>
-
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold">
+            Appearance & Performance
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Adjust visual effects and performance options.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <label
+            htmlFor="chartAnimationsEnabled"
+            className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Enable chart animations</p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                Turn off to improve UI responsiveness on slower devices.
+              </p>
+            </div>
+            <input
+              id="chartAnimationsEnabled"
+              type="checkbox"
+              className="h-4 w-4 rounded border-input accent-primary"
+              checked={appearanceSettings.chartAnimations}
+              onChange={(e) => {
+                setAppearanceSettings((prev) => ({
+                  ...prev,
+                  chartAnimations: e.target.checked,
+                }));
+                setSavedSettings(false);
+              }}
+            />
+          </label>
+        </CardContent>
+      </Card>
       <div className="h-20" /> {/* Spacer for floating button */}
-
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
         {showSavedToast && (
           <div className="rounded-full bg-emerald-500/20 px-3 py-1.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/40 shadow-xl animate-in fade-in zoom-in slide-in-from-bottom-2 duration-300">
             ✓ Saved
           </div>
         )}
-        
+
         {!savedSettings && (
-          <Button 
+          <Button
             className="h-8 min-w-[7rem] rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 animate-shine text-white border-none font-black text-[10px] uppercase tracking-wider"
             onClick={handleSaveSettings}
           >
