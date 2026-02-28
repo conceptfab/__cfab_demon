@@ -155,10 +155,22 @@ CREATE TABLE IF NOT EXISTS project_folders (
     added_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS session_manual_overrides (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    executable_name TEXT NOT NULL,
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    project_name TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(executable_name, start_time, end_time)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_app_id ON sessions(app_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
+CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
+ON session_manual_overrides(executable_name, start_time, end_time);
 
 CREATE TABLE IF NOT EXISTS assignment_model_app (
     app_id INTEGER NOT NULL,

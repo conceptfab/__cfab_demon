@@ -139,7 +139,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
             .map_err(|e| e.to_string())?
         {
             if let Ok((name, id)) = row {
-                existing_projects_map.insert(name, id);
+                existing_projects_map.insert(name.trim().to_lowercase(), id);
             }
         }
     }
@@ -177,7 +177,8 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
 
     let mut project_mapping = HashMap::new(); // archive_id -> local_id
     for p in &archive.data.projects {
-        let local_id = existing_projects_map.get(&p.name).copied();
+        let project_key = p.name.trim().to_lowercase();
+        let local_id = existing_projects_map.get(&project_key).copied();
 
         let id = if let Some(id) = local_id {
             // Upsert: Aktualizuj istniejący projekt o dane z importu (kolor, stawkę, folder, status zamrożenia)
@@ -220,7 +221,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
             ).map_err(|e| e.to_string())?;
             summary.projects_created += 1;
             let new_id = tx.last_insert_rowid();
-            existing_projects_map.insert(p.name.clone(), new_id);
+            existing_projects_map.insert(project_key, new_id);
             new_id
         };
         project_mapping.insert(p.id, id);
@@ -228,25 +229,36 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
 
     // 2. Map and Create Applications
     let mut existing_apps_map: HashMap<String, i64> = HashMap::new();
+    let mut existing_apps_display_map: HashMap<String, i64> = HashMap::new();
     {
         let mut stmt = tx
-            .prepare("SELECT executable_name, id FROM applications")
+            .prepare("SELECT executable_name, display_name, id FROM applications")
             .map_err(|e| e.to_string())?;
         for row in stmt
             .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
             })
             .map_err(|e| e.to_string())?
         {
-            if let Ok((exe, id)) = row {
-                existing_apps_map.insert(exe, id);
+            if let Ok((exe, display_name, id)) = row {
+                existing_apps_map.insert(exe.trim().to_lowercase(), id);
+                existing_apps_display_map.insert(display_name.trim().to_lowercase(), id);
             }
         }
     }
 
     let mut app_mapping = HashMap::new(); // archive_id -> local_id
     for a in &archive.data.applications {
-        let local_id = existing_apps_map.get(&a.executable_name).copied();
+        let exe_key = a.executable_name.trim().to_lowercase();
+        let display_key = a.display_name.trim().to_lowercase();
+        let local_id = existing_apps_map
+            .get(&exe_key)
+            .copied()
+            .or_else(|| existing_apps_display_map.get(&display_key).copied());
 
         let mapped_project_id = a
             .project_id
@@ -270,7 +282,8 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
             ).map_err(|e| e.to_string())?;
             summary.apps_created += 1;
             let new_id = tx.last_insert_rowid();
-            existing_apps_map.insert(a.executable_name.clone(), new_id);
+            existing_apps_map.insert(exe_key, new_id);
+            existing_apps_display_map.insert(display_key, new_id);
             new_id
         };
         app_mapping.insert(a.id, id);
@@ -404,6 +417,22 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
 
     tx.commit().map_err(|e| e.to_string())?;
 
+    match super::sessions::apply_manual_session_overrides(&conn) {
+        Ok(reapplied) if reapplied > 0 => {
+            log::info!(
+                "Reapplied {} manual session override(s) after import_data",
+                reapplied
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!(
+                "Failed to reapply manual session overrides after import_data: {}",
+                e
+            );
+        }
+    }
+
     Ok(summary)
 }
 
@@ -456,8 +485,23 @@ pub async fn import_data_archive(
     match result {
         Ok(summary) => {
             let _ = fs::remove_file(&backup_path);
-            // Retrain the AI model from the freshly imported data
             if let Ok(conn) = db::get_connection(&app) {
+                match super::sessions::apply_manual_session_overrides(&conn) {
+                    Ok(reapplied) if reapplied > 0 => {
+                        log::info!(
+                            "Reapplied {} manual session override(s) after sync import",
+                            reapplied
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to reapply manual session overrides after sync import: {}",
+                            e
+                        );
+                    }
+                }
+                // Retrain the AI model from the imported data plus reapplied local overrides.
                 if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
                     log::warn!("Auto-retrain after sync import failed: {}", e);
                 }
@@ -488,7 +532,9 @@ fn merge_or_insert_session(
 ) -> Result<bool, String> {
     let mut merged_start = incoming.start_time.clone();
     let mut merged_end = incoming.end_time.clone();
-    let mut merged_project_id = incoming.project_id;
+    // Preserve local assignment when overlapping sessions already exist.
+    // This prevents remote sync payloads from repeatedly overwriting manual local changes.
+    let mut merged_project_id: Option<i64> = None;
     let mut merged_rate_multiplier = incoming.rate_multiplier.max(1.0);
     let mut merged_comment = incoming.comment.clone().unwrap_or_default();
     let mut merged_is_hidden = incoming.is_hidden;
@@ -554,6 +600,10 @@ fn merge_or_insert_session(
         if overlap_ids.len() == prev_count {
             break;
         }
+    }
+
+    if merged_project_id.is_none() {
+        merged_project_id = incoming.project_id;
     }
 
     if overlap_ids.is_empty() {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, Flame, MessageSquare, MousePointerClick } from "lucide-react";
+import { Sparkles, Flame, MessageSquare, MousePointerClick, Clock3, Type, Save } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -72,6 +72,32 @@ interface PromptConfig {
   initialValue: string;
   onConfirm: (val: string) => void;
   description?: string;
+}
+
+type TimelineSortMode = "time_desc" | "alpha_asc";
+
+const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
+const TIMELINE_SAVE_VIEW_STORAGE_KEY = "timeflow-dashboard-activity-timeline-save-view";
+
+function loadTimelineSortMode(): TimelineSortMode {
+  if (typeof window === "undefined") return "time_desc";
+  try {
+    const raw = window.localStorage.getItem(TIMELINE_SORT_STORAGE_KEY);
+    return raw === "alpha_asc" ? "alpha_asc" : "time_desc";
+  } catch {
+    return "time_desc";
+  }
+}
+
+function loadTimelineSaveView(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const raw = window.localStorage.getItem(TIMELINE_SAVE_VIEW_STORAGE_KEY);
+    if (raw === "false") return false;
+    return true;
+  } catch {
+    return true;
+  }
 }
 
 const HATCH_STYLE: React.CSSProperties = {
@@ -256,7 +282,21 @@ export function ProjectDayTimeline({
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [sortMode, setSortMode] = useState<TimelineSortMode>(() => loadTimelineSortMode());
+  const [saveView, setSaveView] = useState<boolean>(() => loadTimelineSaveView());
   const ctxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(TIMELINE_SAVE_VIEW_STORAGE_KEY, saveView ? "true" : "false");
+      if (saveView) {
+        window.localStorage.setItem(TIMELINE_SORT_STORAGE_KEY, sortMode);
+      }
+    } catch {
+      // ignore localStorage failures
+    }
+  }, [saveView, sortMode]);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -634,7 +674,14 @@ export function ProjectDayTimeline({
         ...row,
         segments: mergeSessionFragments(row.segments),
       }))
-      .sort((a, b) => b.totalSeconds - a.totalSeconds);
+      .sort((a, b) => {
+        if (sortMode === "alpha_asc") {
+          return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        }
+        const byTime = b.totalSeconds - a.totalSeconds;
+        if (byTime !== 0) return byTime;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      });
     const ticks: number[] = [];
     for (let t = rangeStart; t <= rangeEnd; t += tickMs) {
       ticks.push(t);
@@ -642,7 +689,7 @@ export function ProjectDayTimeline({
 
     const totalSeconds = rows.reduce((acc, row) => acc + row.totalSeconds, 0);
     return { rows, ticks, rangeStart, rangeSpan, totalSeconds, workingRange };
-  }, [sessions, manualSessions, workingHours, projects]);
+  }, [sessions, manualSessions, workingHours, projects, sortMode]);
 
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
@@ -660,11 +707,54 @@ export function ProjectDayTimeline({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center justify-between gap-2">
+        <CardTitle className="text-sm font-medium flex flex-wrap items-center justify-between gap-2">
           <span>{title}</span>
-          <span className="text-xs text-muted-foreground">
-            {model ? `Total: ${formatDuration(model.totalSeconds)}` : "No data"}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
+              <button
+                type="button"
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                  sortMode === "time_desc"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setSortMode("time_desc")}
+                title="Sort by time"
+                aria-label="Sort by time"
+              >
+                <Clock3 className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                  sortMode === "alpha_asc"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setSortMode("alpha_asc")}
+                title="Sort alphabetically"
+                aria-label="Sort alphabetically"
+              >
+                <Type className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <button
+              type="button"
+              className={`inline-flex h-7 w-7 items-center justify-center rounded-sm border transition-colors cursor-pointer ${
+                saveView
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : "border-border/70 bg-secondary/20 text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setSaveView((prev) => !prev)}
+              title={saveView ? "Saved view enabled" : "Saved view disabled"}
+              aria-label={saveView ? "Saved view enabled" : "Saved view disabled"}
+            >
+              <Save className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-xs text-muted-foreground">
+              {model ? `Total: ${formatDuration(model.totalSeconds)}` : "No data"}
+            </span>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className={minHeightClassName ?? ""}>

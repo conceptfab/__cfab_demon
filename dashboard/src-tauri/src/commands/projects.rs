@@ -518,7 +518,7 @@ pub async fn auto_freeze_projects(
              SET unfreeze_reason = NULL
              WHERE excluded_at IS NULL
                AND unfreeze_reason IS NOT NULL
-               AND unfreeze_reason < datetime('now', '-' || ?1 || ' days')",
+               AND julianday(unfreeze_reason) < julianday('now', '-' || ?1 || ' days')",
             [days],
         )
         .map_err(|e| e.to_string())?;
@@ -533,21 +533,25 @@ pub async fn auto_freeze_projects(
              WHERE excluded_at IS NULL
                AND frozen_at IS NULL
                AND id NOT IN (
+                   SELECT DISTINCT s.project_id FROM sessions s
+                   WHERE s.project_id IS NOT NULL
+                     AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+                   UNION
                    SELECT DISTINCT p.id FROM projects p
                    JOIN applications a ON a.project_id = p.id
                    JOIN sessions s ON s.app_id = a.id
-                   WHERE s.end_time >= datetime('now', '-' || ?1 || ' days')
+                   WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
                    UNION
                    SELECT DISTINCT project_id FROM manual_sessions
-                   WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+                   WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
                    UNION
                    SELECT DISTINCT project_id FROM file_activities
                    WHERE project_id IS NOT NULL
-                     AND last_seen >= datetime('now', '-' || ?1 || ' days')
+                     AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
                    UNION
                    SELECT id FROM projects
                    WHERE unfreeze_reason IS NOT NULL
-                     AND unfreeze_reason >= datetime('now', '-' || ?1 || ' days')
+                     AND julianday(unfreeze_reason) >= julianday('now', '-' || ?1 || ' days')
                )",
             [days],
         )
@@ -561,17 +565,21 @@ pub async fn auto_freeze_projects(
              WHERE frozen_at IS NOT NULL
                AND excluded_at IS NULL
                AND id IN (
+                   SELECT DISTINCT s.project_id FROM sessions s
+                   WHERE s.project_id IS NOT NULL
+                     AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+                   UNION
                    SELECT DISTINCT p.id FROM projects p
                    JOIN applications a ON a.project_id = p.id
                    JOIN sessions s ON s.app_id = a.id
-                   WHERE s.end_time >= datetime('now', '-' || ?1 || ' days')
+                   WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
                    UNION
                    SELECT DISTINCT project_id FROM manual_sessions
-                   WHERE end_time >= datetime('now', '-' || ?1 || ' days')
+                   WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
                    UNION
                    SELECT DISTINCT project_id FROM file_activities
                    WHERE project_id IS NOT NULL
-                     AND last_seen >= datetime('now', '-' || ?1 || ' days')
+                     AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
                )",
             [days],
         )

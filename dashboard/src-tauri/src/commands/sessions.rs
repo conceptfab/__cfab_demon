@@ -38,6 +38,188 @@ fn apply_session_filters(
     }
 }
 
+pub(crate) fn upsert_manual_session_override(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+    project_id: Option<i64>,
+) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS session_manual_overrides (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             executable_name TEXT NOT NULL,
+             start_time TEXT NOT NULL,
+             end_time TEXT NOT NULL,
+             project_name TEXT,
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             UNIQUE(executable_name, start_time, end_time)
+         );
+         CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
+         ON session_manual_overrides(executable_name, start_time, end_time);",
+    )
+    .map_err(|e| e.to_string())?;
+
+    let session_meta = conn
+        .query_row(
+            "SELECT a.executable_name, s.start_time, s.end_time
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             WHERE s.id = ?1",
+            [session_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let Some((executable_name, start_time, end_time)) = session_meta else {
+        return Ok(());
+    };
+
+    let project_name: Option<String> = match project_id {
+        Some(pid) => conn
+            .query_row("SELECT name FROM projects WHERE id = ?1", [pid], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())?,
+        None => None,
+    };
+
+    conn.execute(
+        "INSERT INTO session_manual_overrides (executable_name, start_time, end_time, project_name, updated_at)
+         VALUES (?1, ?2, ?3, ?4, datetime('now'))
+         ON CONFLICT(executable_name, start_time, end_time) DO UPDATE SET
+           project_name = excluded.project_name,
+           updated_at = excluded.updated_at",
+        rusqlite::params![executable_name, start_time, end_time, project_name],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+pub(crate) fn apply_manual_session_overrides(
+    conn: &rusqlite::Connection,
+) -> Result<i64, String> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS session_manual_overrides (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             executable_name TEXT NOT NULL,
+             start_time TEXT NOT NULL,
+             end_time TEXT NOT NULL,
+             project_name TEXT,
+             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+             UNIQUE(executable_name, start_time, end_time)
+         );
+         CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
+         ON session_manual_overrides(executable_name, start_time, end_time);",
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut total_reapplied = 0_i64;
+
+    let overrides: Vec<(String, String, String, Option<String>)> = {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT executable_name, start_time, end_time, project_name
+                 FROM session_manual_overrides
+                 ORDER BY updated_at DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    for (exe_name, start_time, end_time, project_name) in overrides {
+        let target_project_id: Option<i64> = match project_name {
+            Some(name) => conn
+                .query_row(
+                    "SELECT id
+                     FROM projects
+                     WHERE lower(name) = lower(?1)
+                       AND excluded_at IS NULL
+                     LIMIT 1",
+                    [name],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| e.to_string())?,
+            None => None,
+        };
+
+        let sessions_to_update: Vec<(i64, i64, String, String, String, Option<i64>)> = {
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT s.id, s.app_id, s.date, s.start_time, s.end_time, s.project_id
+                     FROM sessions s
+                     JOIN applications a ON a.id = s.app_id
+                     WHERE lower(a.executable_name) = lower(?1)
+                       AND s.start_time = ?2
+                       AND s.end_time = ?3",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(
+                    rusqlite::params![exe_name, start_time, end_time],
+                    |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, Option<i64>>(5)?,
+                        ))
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        for (session_id, app_id, date, s_start, s_end, current_project_id) in sessions_to_update {
+            if current_project_id == target_project_id {
+                continue;
+            }
+
+            let changed = conn
+                .execute(
+                    "UPDATE sessions SET project_id = ?1 WHERE id = ?2",
+                    rusqlite::params![target_project_id, session_id],
+                )
+                .map_err(|e| e.to_string())?;
+            if changed > 0 {
+                total_reapplied += changed as i64;
+                conn.execute(
+                    "UPDATE file_activities
+                     SET project_id = ?1
+                     WHERE app_id = ?2
+                       AND date = ?3
+                       AND last_seen > ?4
+                       AND first_seen < ?5",
+                    rusqlite::params![target_project_id, app_id, date, s_start, s_end],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    Ok(total_reapplied)
+}
+
 #[tauri::command]
 pub async fn get_sessions(
     app: AppHandle,
@@ -437,6 +619,14 @@ pub async fn assign_session_to_project(
 
     if updated == 0 && updated_session == 0 {
         log::warn!("No overlapping file activity and no session found? Assignment saved nothing.");
+    }
+
+    if let Err(e) = upsert_manual_session_override(&conn, session_id, project_id) {
+        log::warn!(
+            "Failed to persist manual override for session {}: {}",
+            session_id,
+            e
+        );
     }
 
     // Feedback Loop logging

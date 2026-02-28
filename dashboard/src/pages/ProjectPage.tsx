@@ -199,6 +199,20 @@ export function ProjectPage() {
         };
     }, [ctxMenu]);
 
+    const getContextMenuStyle = (x: number, y: number, minWidth: number) => {
+        const padding = 8;
+        const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1920;
+        const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 1080;
+        const left = Math.min(Math.max(x, padding), viewportWidth - minWidth - padding);
+        const openUpward = y > viewportHeight * 0.62;
+        const top = Math.min(Math.max(y, padding), viewportHeight - padding);
+        return {
+            left,
+            top,
+            transform: openUpward ? "translateY(-100%)" : "none",
+        } as const;
+    };
+
     const filteredTimeline = useMemo(() => {
         if (!project) return timelineData;
 
@@ -813,8 +827,8 @@ export function ProjectPage() {
             {ctxMenu && ctxMenu.type === 'chart' && (
                 <div
                     ref={ctxRef}
-                    className="fixed z-50 min-w-[300px] overflow-hidden rounded-md border border-white/10 bg-[#1a1b26]/95 p-1 text-popover-foreground shadow-2xl animate-in fade-in-0 zoom-in-95 backdrop-blur-xl"
-                    style={{ left: ctxMenu.x, top: ctxMenu.y }}
+                    className="fixed z-50 min-w-[300px] max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-[#1a1b26]/95 p-1 text-popover-foreground shadow-2xl animate-in fade-in-0 zoom-in-95 backdrop-blur-xl"
+                    style={getContextMenuStyle(ctxMenu.x, ctxMenu.y, 300)}
                 >
                     {ctxMenu.sessions.length > 0 ? (
                         <>
@@ -984,8 +998,8 @@ export function ProjectPage() {
             {ctxMenu && (ctxMenu.type === 'session' || !ctxMenu.type) && (
                 <div
                     ref={ctxRef}
-                    className="fixed z-50 min-w-[240px] overflow-hidden rounded-md border border-white/10 bg-[#1a1b26]/95 p-1 text-popover-foreground shadow-2xl animate-in fade-in-0 zoom-in-95 backdrop-blur-xl"
-                    style={{ left: ctxMenu.x, top: ctxMenu.y }}
+                    className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-[#1a1b26]/95 p-1 text-popover-foreground shadow-2xl animate-in fade-in-0 zoom-in-95 backdrop-blur-xl"
+                    style={getContextMenuStyle(ctxMenu.x, ctxMenu.y, 240)}
                 >
                     <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground/60 border-b border-white/5 mb-1 flex items-center justify-between">
                         <span>Session actions (1 app)</span>

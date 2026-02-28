@@ -283,7 +283,7 @@ export function Projects() {
       .catch(() => {
         /* ignore — feature not yet compiled */
       });
-  }, []);
+  }, [refreshKey]);
 
   const hotProjectIds = useMemo(() => {
     return [...projects]

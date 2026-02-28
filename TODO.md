@@ -8,9 +8,22 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-- weryfikacja lokalizacji ustawien i parametrów UI -> czy mozna poprawic logikę ich lokalizacji i wyświetlania
+Weź na warsztat caly system AI:
+- czy zastosowana wersja AI jest odpowiednia, czy można coś poprawić, coś dodać
+- wydaje mi się, że trzeba wydzieli go wyraźnie jako osobny komponent
+- trening - mam wrazenie ze nie jest optymalny i "wiedza" gdzies odpływa
+- chce wyraźnie widzieć jak AI ocenia daną sesje - punktacja, może warto dodać wyraźną funkcję która umożliwi nauke przez wzocnienie jeśli AI trafiła, albo karanie jeśli chybiła - przez ręczne przepisanie sesji do innego projektu lub łapkę w górę dla potwierdzenia
+
+- animacje wykresów w UI wygladaja jakby lagowaly, zamiast płynnego pojawiania się danych, zacinają się w trakcie
+
+
+
+
+
+
+<!-- - weryfikacja lokalizacji ustawien i parametrów UI -> czy mozna poprawic logikę ich lokalizacji i wyświetlania
 - optymalizacja bazy danych - mechanizm dbający o optymalizację bazy danych
-- odmrazanie projektów nie jest prawidłowo pokazywane na wszystkich widokach - na jednej zakładce jest odmrożony na innej nadal zamrożony
+- odmrazanie projektów nie jest prawidłowo pokazywane na wszystkich widokach - na jednej zakładce jest odmrożony na innej nadal zamrożony -->
 
 - AI - testy
 <!-- - sprawdzić logikę systemu synchronizacji w @__client @__server- mam wątpliwość/dowody czy działa. po aktualizacji danych lokalnych powinny byc one od razu wysyłane w celu synchronizacji z innym klientem. Nie synchronizuja się dodane na innym komputerze boosty, komentarze, zapewne manualne sesje też mogą być problemem. BAzy danych maja byc aktualizowane i zmiany w sesjach. -->

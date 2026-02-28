@@ -216,11 +216,11 @@ export function Sessions() {
                 {isSuggested && (
                   <Sparkles className="h-3 w-3 text-sky-400 animate-pulse" />
                 )}
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center">
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-4 w-4 text-destructive/30 hover:text-destructive"
+                    className="h-4 w-4 text-destructive/35 hover:text-destructive"
                     onClick={async (e) => {
                       e.stopPropagation();
                       try {
@@ -293,7 +293,7 @@ export function Sessions() {
               </div>
             )}
 
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+            <div className="flex items-center">
               <Button
                 variant="ghost"
                 size="icon"
