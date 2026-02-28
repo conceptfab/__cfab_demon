@@ -20,7 +20,6 @@ import {
   runOnlineSyncOnce,
 } from '@/lib/online-sync';
 import {
-  emitLocalDataChanged,
   LOCAL_DATA_CHANGED_EVENT,
 } from '@/lib/sync-events';
 import { loadSessionSettings } from '@/lib/user-settings';
@@ -190,9 +189,6 @@ function AutoRefresher() {
         if (!disposed && result.file_found) {
           triggerRefresh();
         }
-        if (!disposed && result.sessions_upserted > 0) {
-          emitLocalDataChanged('refresh_today');
-        }
       } catch {
         // Silently ignore refresh errors
       } finally {
@@ -307,7 +303,6 @@ function AutoAiAssignment() {
           console.log(
             `Deterministic assignment: ${det.sessions_assigned} sessions assigned (${det.apps_with_rules} app rules)`,
           );
-          emitLocalDataChanged('deterministic_assignment');
           needsRefresh = true;
         }
       } catch (e) {
@@ -323,7 +318,6 @@ function AutoAiAssignment() {
           console.log(
             `AI auto-assignment: assigned ${result.assigned} / ${result.scanned} sessions`,
           );
-          emitLocalDataChanged('ai_auto_assignment');
           needsRefresh = true;
         }
       } catch (e) {

@@ -113,7 +113,7 @@ export function assignSessionToProject(sessionId: number, projectId: number | nu
 export const getProjectExtraInfo = (id: number, dateRange: DateRange) =>
   invoke<ProjectExtraInfo>("get_project_extra_info", { id, dateRange });
 export const compactProjectData = (id: number) =>
-  invoke<void>("compact_project_data", { id });
+  invokeMutation<void>("compact_project_data", { id });
 export const deleteSession = (sessionId: number) =>
   invokeMutation<void>("delete_session", { sessionId });
 export const updateSessionRateMultiplier = (sessionId: number, multiplier: number | null) =>
@@ -154,9 +154,9 @@ export const getHourlyBreakdown = (dateRange: DateRange) =>
 export const getEstimateSettings = () =>
   invoke<EstimateSettings>("get_estimate_settings");
 export const updateGlobalHourlyRate = (rate: number) =>
-  invoke<void>("update_global_hourly_rate", { rate });
+  invokeMutation<void>("update_global_hourly_rate", { rate });
 export const updateProjectHourlyRate = (projectId: number, rate: number | null) =>
-  invoke<void>("update_project_hourly_rate", { projectId, rate });
+  invokeMutation<void>("update_project_hourly_rate", { projectId, rate });
 export const getProjectEstimates = (dateRange: DateRange) =>
   invoke<EstimateProjectRow[]>("get_project_estimates", { dateRange });
 export const getEstimatesSummary = (dateRange: DateRange) =>
@@ -168,7 +168,7 @@ export const getApplications = (dateRange?: DateRange) =>
 export const getAppTimeline = (appId: number, dateRange: DateRange) =>
   invoke<TimelinePoint[]>("get_app_timeline", { appId, dateRange });
 export const updateAppColor = (id: number, color: string) =>
-  invoke<void>("update_app_color", { id, color });
+  invokeMutation<void>("update_app_color", { id, color });
 
 // Sessions
 export const getSessions = (filters: {
@@ -229,10 +229,10 @@ export const rollbackLastAutoSafeRun = () =>
   invokeMutation<AutoSafeRollbackResult>("rollback_last_auto_safe_run");
 
 export const autoRunIfNeeded = (minDuration?: number) =>
-  invoke<AutoSafeRunResult | null>("auto_run_if_needed", { minDuration });
+  invokeMutation<AutoSafeRunResult | null>("auto_run_if_needed", { minDuration });
 
 export const applyDeterministicAssignment = (minHistory?: number) =>
-  invoke<DeterministicResult>("apply_deterministic_assignment", {
+  invokeMutation<DeterministicResult>("apply_deterministic_assignment", {
     minHistory: minHistory ?? null,
   });
 
@@ -279,7 +279,7 @@ export const renameMonitoredApp = (exeName: string, displayName: string) =>
 
 // Refresh & Reset
 export const refreshToday = () =>
-  invoke<RefreshResult>("refresh_today");
+  invokeMutation<RefreshResult>("refresh_today");
 export const getTodayFileSignature = () =>
   invoke<TodayFileSignature>("get_today_file_signature");
 export const resetAppTime = (appId: number) =>
