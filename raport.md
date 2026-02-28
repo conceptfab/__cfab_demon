@@ -1,261 +1,343 @@
-# TIMEFLOW — Raport analizy kodu
+# Raport analizy kodu projektu TIMEFLOW
 
-> Dokument zawiera wyniki przeglądu kodu projektu pod kątem: poprawności logiki, wydajności, nadmiarowego kodu, brakujących tłumaczeń, AI i propozycji modularyzacji.
+Data analizy: 2026-02-28  
+Zakres: logika biznesowa, wydajność, optymalizacje, nadmiarowy kod, i18n/tłumaczenia.
 
----
+## 1) Podsumowanie wykonawcze
 
-## 1. Architektura (stan bieżący)
+Najważniejsze wnioski:
 
-```
-__client/
-├── src/                     ← Rust daemon (7 plików, ~54 kB)
-│   ├── main.rs              – punkt wejścia, logging, restart
-│   ├── config.rs            – ładowanie monitored apps z DB + JSON legacy
-│   ├── monitor.rs           – foreground detection, PID cache, CPU tracking
-│   ├── tracker.rs           – główna pętla monitoringu (run_loop)
-│   ├── storage.rs           – zapis/odczyt dziennych JSON (data/ + archive/)
-│   ├── tray.rs              – ikona tray, menu, launch dashboard
-│   └── single_instance.rs   – Windows Named Mutex
-│
-├── dashboard/
-│   ├── src/                 ← React/Vite frontend (~64 plików)
-│   │   ├── App.tsx          – router, auto-importers, auto-refresher, online-sync
-│   │   ├── pages/           – 15 stron UI
-│   │   ├── components/      – 37 komponentów
-│   │   ├── lib/             – tauri.ts, online-sync.ts, db-types.ts, user-settings.ts
-│   │   └── store/           – app-store.ts (Zustand)
-│   │
-│   └── src-tauri/
-│       └── src/             ← Tauri backend (19 command files + db.rs, ~300 kB)
-│           ├── commands/
-│           │   ├── assignment_model.rs   ← AI/ML rdzeń (1213 linii)
-│           │   ├── projects.rs           ← zarządzanie projektami
-│           │   ├── sessions.rs           ← sesje i sugestie
-│           │   └── ...
-│           └── db.rs        ← schemat SQLite + połączenie
-```
+1. Logika uczenia modelu przypisań AI jest niespójna z rzeczywistymi źródłami feedbacku (P0).
+2. Tryb `auto_safe` może wzmacniać własne decyzje bez potwierdzenia użytkownika (P0).
+3. Sugestie AI mogą wskazywać projekt już wykluczony/zamrożony (P0).
+4. Klucz manual override oparty o `(executable_name,start_time,end_time)` jest kruchy i może nie działać po scalaniu sesji/importach (P1).
+5. Wydajność listy sesji: sekwencyjne wywołania AI + masowe preloady score breakdown + częste odświeżanie (P1).
+6. Testy backendu Tauri są obecnie czerwone przez drift schematu testowego (P1).
+7. i18n jest dopiero częściowo wdrożone; duża część UI pozostaje hardcoded (P2).
 
----
+## 2) Wyniki krytyczne (P0)
 
-## 2. Analiza systemu AI — szczegółowa
+### P0.1 Niespójny feedback loop AI (część korekt użytkownika nie trafia do reinforcement)
 
-### 2.1 Architektura AI (3 warstwy)
+**Obserwacja**  
+Reinforcement w retrain bierze tylko `source IN ('manual_session_assign', 'ai_suggestion_reject')`, podczas gdy UI zapisuje wiele innych źródeł korekt.
 
-| Warstwa | Plik | Opis |
-|---------|------|------|
-| **Layer 1** — Regułowy | [assignment_model.rs](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs) → [suggest_project_for_session()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#653-682) | Podpowiedzi oparte na wyuczonym modelu |
-| **Layer 2** — Deterministyczny | [assignment_model.rs](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs) → [apply_deterministic_assignment()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#1043-1188) | Jeśli 100% sesji danej apki trafiło wcześniej do jednego projektu → automatycznie przypisuj |
-| **Layer 3** — Auto-safe ML | [assignment_model.rs](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs) → [run_auto_safe_assignment()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#683-904) | Automatyczne przypisanie jeśli confidence + evidence + margin wystarczające |
+**Dowody**
 
-### 2.2 Model ML — jak działa
+- `dashboard/src-tauri/src/commands/assignment_model.rs:704-709`  
+  filtr źródeł feedbacku podczas retrainingu.
+- `dashboard/src-tauri/src/commands/sessions.rs:645-650`  
+  `assign_session_to_project` zapisuje `source` z parametru (lub domyślne `manual_session_assign`).
+- `dashboard/src/pages/Sessions.tsx:976`  
+  `ai_suggestion_accept`.
+- `dashboard/src/pages/Sessions.tsx:1564`, `dashboard/src/pages/Sessions.tsx:1580`  
+  `manual_session_unassign`, `manual_session_change`.
+- `dashboard/src/pages/ProjectPage.tsx:456`, `dashboard/src/pages/ProjectPage.tsx:542`  
+  `bulk_unassign`, `manual_project_card_change`.
+- `dashboard/src-tauri/src/commands/projects.rs:803-804`  
+  `manual_app_assign`.
 
-Model zbiera **3 sygnały** do wyliczenia `confidence`:
+**Ryzyko**
 
-1. **App signal** (waga 0.50): `ln(1 + count)` — ile razy ta apka → ten projekt
-2. **Time signal** (waga 0.15): `ln(1 + count)` — ile razy ta apka + godzina + dzień tygodnia → ten projekt
-3. **Token signal** (waga 0.30): `avg_log × (matches/total)` — tokeny z nazw plików
+- Model nie uczy się z istotnej części realnych korekt użytkownika.
+- Efekt: słaba poprawa jakości sugestii mimo aktywnego użycia UI.
 
-Wynikowy `confidence` = `sigmoid(margin) × evidence_factor`, gdzie:
-- `margin` = różnica score najlepszego vs drugiego kandydata
-- `evidence_factor` = [min(evidence_count / 4, 1.0)](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/db-types.ts#119-124)
+**Rekomendacja**
 
-### 2.3 Znalezione problemy w logice AI
-
-> [!CAUTION]
-> **Problem 1: Confidence NIGDY nie osiągnie 1.0 w praktyce**
-
-Wzór `sigmoid(margin) × (evidence/4)` ma ograniczenie:
-- `sigmoid(x)` → asymptotycznie do 1.0 ale nigdy == 1.0
-- Dla `evidence_count = 3` (domyślny próg auto_safe): `evidence_factor = 3/4 = 0.75`
-- To oznacza, że przy domyślnych ustawieniach **max confidence ≈ 0.75**, a próg auto to **0.85**
-- **Konsekwencja**: auto-safe z domyślnymi ustawieniami (`min_evidence_auto=3`, `min_confidence_auto=0.85`) **praktycznie nigdy nie zadziała**, chyba że margin będzie astronomicznie wysoki
-
-**Rekomendacja**: Zwiększyć domyślny `min_evidence_auto` z 3 na **4** lub zmniejszyć `min_confidence_auto` z 0.85 na **0.75**. Alternatywnie zmienić wzór na `evidence_factor = min(evidence/3, 1.0)`.
-
-> [!WARNING]
-> **Problem 2: Deterministic assignment zapisuje feedback, który zawyża model ML**
-
-Funkcja [apply_deterministic_assignment()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#1043-1188) przy każdym przypisaniu wywołuje [increment_feedback_counter()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#152-162) i wstawia `assignment_feedback` z `source='deterministic_rule'`. Te dane trafią do treningu modelu — ale **nie są prawdziwą korektą użytkownika**. To błędne koło: im więcej sesji deterministic assignuje, tym bardziej model jest pewien, ale to pewność oparta na automatyce, nie na inteligentnym procesie uczenia.
-
-**Rekomendacja**: Nie inkrementować `feedback_since_train` dla `deterministic_rule`. Ewentualnie filtrować te dane przy treningu.
-
-> [!WARNING]
-> **Problem 3: Trening (Layer 3) NIE używa danych z Layer 2 feedbacku jako negatywnych przykładów**
-
-Trening modelu ([train_assignment_model](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#538-652)) wykonuje:
-```sql
-INSERT INTO assignment_model_app SELECT ... FROM sessions WHERE project_id IS NOT NULL
-```
-To traktuje KAŻDĄ przypisaną sesję jako pozytywny przykład, niezależnie od źródła przypisania. Nie ma mechanizmu **negatywnego feedbacku** — odrzucenia sugestii nie są uwzględniane w treningu.
-
-**Rekomendacja**: Dodać filtrowanie: sesje z rollbackiem (`assignment_feedback.source = 'auto_reject'`) powinny obniżać `cnt` w tabelach modelu.
-
-> [!IMPORTANT]
-> **Problem 4: Brak komunikatu UI "dlaczego AI to sugerowała"**
-
-Użytkownik widzi sugestię `suggested_project_name` przy sesji, ale **nie wie dlaczego** (app match? token? czas?). To uniemożliwia świadome "trenowanie" AI przez użytkownika.
-
-**Rekomendacja**: Zwracać w [SessionWithApp](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/db-types.ts#68-82) pole `suggestion_reason: string` z opisem np. _"App match: 15×, Token: main.rs, psd"_.
-
-> [!NOTE]
-> **Problem 5: `auto_accept` count = feedback count — systematyczny fałszywy wzrost**
-
-Każde auto-safe przypisanie inkrementuje `feedback_since_train`. Przy 500 sesjach auto = 500 feedbacków → natychmiast wymusza retrenowanie. To niepotrzebny szum.
-
-**Rekomendacja**: Nie liczyć `auto_accept` jako feedbacku per-sesja, lecz per-run (jeden run = jeden increment).
+1. Ujednolicić słownik `source` (enum/konstanta współdzielona FE/BE).
+2. Zastąpić listę hardcoded w retrain polityką opartą o typ feedbacku (np. `is_human_feedback=1`).
+3. Dodać testy integracyjne: każde źródło korekty użytkownika zwiększa wpływ na model.
 
 ---
 
-## 3. Brakujące tłumaczenia (UI powinno być po angielsku)
+### P0.2 Ryzyko samoutwardzania modelu (`auto_safe` uczy się na własnych auto-przypisaniach)
 
-> [!IMPORTANT]
-> Pomoc ([Help.tsx](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/pages/Help.tsx)) i Quick Start ([QuickStart.tsx](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/pages/QuickStart.tsx)) używają funkcji [t()](file:///c:/_cloud/__cfab_demon/__client/src/tracker.rs#77-88) i są bilingwalne — to **wyjątek OK**. Poniżej wylistowane pliki z polskim tekstem w normalnym UI.
+**Obserwacja**
 
-### 3.1 Frontend — pliki wymagające tłumaczenia
+- Trening bazowy bierze wszystkie sesje z `project_id IS NOT NULL`, niezależnie czy to przypisanie manualne czy auto.
+- `run_auto_safe_assignment` po przypisaniu zapisuje feedback typu `auto_accept` i podnosi licznik `feedback_since_train`.
 
-| Plik | Linia | Tekst PL | Propozycja EN |
-|------|-------|----------|---------------|
-| [Sessions.tsx](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/pages/Sessions.tsx#L892) | 892 | `"Brak powiazanej karty projektu"` / `"Przejdz do karty projektu"` | `"No linked project card"` / `"Go to project card"` |
-| [Projects.tsx](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/pages/Projects.tsx#L1161) | 1161 | `title="Zapisz widok jako domyślny"` | `title="Save view as default"` |
-| [prompt-modal.tsx](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/components/ui/prompt-modal.tsx#L31) | 31 | `cancelLabel = "Anuluj"` | `cancelLabel = "Cancel"` |
-| [ProjectContextMenu.tsx](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/components/project/ProjectContextMenu.tsx#L118) | 118 | `"Przejdz do karty projektu"` | `"Go to project card"` |
+**Dowody**
 
-### 3.2 Rust daemon — polskie komentarze i komunikaty logów
+- `dashboard/src-tauri/src/commands/assignment_model.rs:680-695`  
+  źródło danych treningowych.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:988-992`  
+  auto-przypisanie `sessions.project_id`.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:1039-1043`  
+  zapis `assignment_feedback` z `source='auto_accept'`.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:1048-1050`  
+  inkrementacja `feedback_since_train`.
 
-Nie są widoczne dla użytkownika, ale warto ujednolicić do angielskiego. Dotyczy **20+ miejsc** w:
-- [config.rs](file:///c:/_cloud/__cfab_demon/__client/src/config.rs) — komentarze doc, `log::warn`, [context()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#211-259) messages
-- [storage.rs](file:///c:/_cloud/__cfab_demon/__client/src/storage.rs) — komentarze, nazwy funkcji w logach
-- [monitor.rs](file:///c:/_cloud/__cfab_demon/__client/src/monitor.rs) — komentarze w kodzie
+**Ryzyko**
 
----
+- Błędne auto-decyzje mogą się utrwalać i wzmacniać.
+- Model może dryfować od danych potwierdzonych przez użytkownika.
 
-## 4. Wydajność i optymalizacje
+**Rekomendacja**
 
-### 4.1 Daemon ([tracker.rs](file:///c:/_cloud/__cfab_demon/__client/src/tracker.rs))
-
-| # | Problem | Zalecenie |
-|---|---------|-----------|
-| 1 | [check_dashboard_compatibility()](file:///c:/_cloud/__cfab_demon/__client/src/tracker.rs#42-76) blokuje wątek monitora MessageBoxem (l.57-66) | Przenieść sprawdzenie do tray thread lub użyć `MessageBoxW` z `MB_TOPMOST`. Obecnie monitor stoi do czasu zamknięcia okna dialogowego |
-| 2 | [build_process_snapshot()](file:///c:/_cloud/__cfab_demon/__client/src/monitor.rs#250-284) robi pełny snapshot procesów **co 10 sekund** nawet gdy [monitored](file:///c:/_cloud/__cfab_demon/__client/src/config.rs#223-232) jest puste (monitor_all=true z CPU tracking wyłączonym) | Skipować [build_process_snapshot()](file:///c:/_cloud/__cfab_demon/__client/src/monitor.rs#250-284) gdy `monitor_all == true` (już jest warunek, OK) |
-| 3 | `file_index_cache` rebuilt po midnight — duplikacja kodu z init (l.182-187 vs l.216-221) | Wyciągnąć helper `rebuild_file_index_cache(&daily_data)` |
-
-### 4.2 Frontend ([online-sync.ts](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/online-sync.ts))
-
-| # | Problem | Zalecenie |
-|---|---------|-----------|
-| 1 | Plik ma **1470 linii** — za duży na jeden moduł | Podzielić na: `sync-settings.ts`, `sync-state.ts`, `sync-indicator.ts`, `sync-engine.ts` |
-| 2 | [loadOnlineSyncSettings()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/online-sync.ts#601-634) zawsze **zapisuje** settings (l.631) — nawet przy read-only operacji | Generować i zapisywać `deviceId` tylko raz, nie przy każdym load |
-| 3 | Poll sync co 20s + file watcher co 5s + interval co 30s — **3 timery** robią de facto to samo | Uprościć do 2: file watcher + interval. Poll sync jest redundantny |
-
-### 4.3 Tauri backend
-
-| # | Problem | Plik | Zalecenie |
-|---|---------|------|-----------|
-| 1 | [assignment_model.rs](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs) — 1213 linii w jednym pliku | [assignment_model.rs](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs) | Podzielić na: `model_types.rs`, `model_training.rs`, `model_inference.rs`, `deterministic.rs`, `auto_safe.rs` |
-| 2 | Tokenizer ([tokenize()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#163-173)) filtruje tokeny < 3 znaków — gubimy [ui](file:///c:/_cloud/__cfab_demon/__client/src/single_instance.rs#30-56), `ux`, `3d`, [ai](file:///c:/_cloud/__cfab_demon/__client/icons.ai) | l.169 | Zmniejszyć min do 2 znaków |
-| 3 | Token query buduje IN clause dynamicznie — brak cache prepared statement | l.306 | Dla typowej sesji (10-30 tokenów) wpływ minimalny, akceptowalne |
+1. Rozdzielić etykiety treningowe: `manual_verified` vs `auto_assigned`.
+2. Domyślnie trenować wyłącznie na manualnie potwierdzonych danych.
+3. `auto_accept` traktować jako sygnał pomocniczy o niższej wadze lub całkowicie wyłączyć z retrain.
 
 ---
 
-## 5. Nadmiarowy / martwy kod
+### P0.3 Brak pełnej walidacji aktywności projektu w sugestii AI
 
-| Plik | Problem |
-|------|---------|
-| [dashboard/debug.js](file:///c:/_cloud/__cfab_demon/__client/dashboard/debug.js) (270B) | Plik debugowy — usunąć z projektu |
-| [dashboard/debug2.js](file:///c:/_cloud/__cfab_demon/__client/dashboard/debug2.js) (798B) | Plik debugowy — usunąć |
-| [dashboard/fix_dash.js](file:///c:/_cloud/__cfab_demon/__client/dashboard/fix_dash.js) (296B) | Skrypt naprawczy — przenieść do `/scripts` lub usunąć |
-| [dashboard/test_dates.py](file:///c:/_cloud/__cfab_demon/__client/dashboard/test_dates.py) (279B) | Testowy skrypt Python — nie należy do produkcji |
-| [dashboard/test_db.js](file:///c:/_cloud/__cfab_demon/__client/dashboard/test_db.js) (915B) | Test bazy danych — przenieść |
-| [dashboard/update_filter.py](file:///c:/_cloud/__cfab_demon/__client/dashboard/update_filter.py) (5.8 kB) | Skrypt migracyjny — archiwum |
-| [dashboard/update_sessions.py](file:///c:/_cloud/__cfab_demon/__client/dashboard/update_sessions.py) (939B) | Skrypt migracyjny — archiwum |
-| [dashboard/update_sessions_ts.py](file:///c:/_cloud/__cfab_demon/__client/dashboard/update_sessions_ts.py) (3.8 kB) | Skrypt migracyjny — archiwum |
-| [Projects.tsx (fixing imports)](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/pages/Projects.tsx%20(fixing%20imports)) (1.6 kB) | Plik-duplikat z przestrzenią w nazwie! Usunąć |
-| [problems.md](file:///c:/_cloud/__cfab_demon/__client/problems.md) | Notatki robocze — przenieść lub usunąć |
+**Obserwacja**  
+W `compute_raw_suggestion` weryfikacja aktywności projektu (`excluded_at`, `frozen_at`) jest wykonywana tylko dla warstwy 0 (file evidence), ale nie dla warstw 1/2/3. Końcowy wybór zwycięzcy nie ma dodatkowego filtra aktywności.
 
----
+**Dowody**
 
-## 6. Logika i poprawność
+- `dashboard/src-tauri/src/commands/assignment_model.rs:364-381`  
+  walidacja aktywności tylko dla Layer 0.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:384-456`  
+  Layer 1/2/3 bez analogicznej walidacji.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:476-481`  
+  zwrot finalnego `project_id` bez końcowej walidacji.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:988-992`  
+  auto-safe aplikuje tę sugestię bez dodatkowego guardu.
 
-### 6.1 Daemon
+**Ryzyko**
 
-| # | Problem | Plik:Linia |
-|---|---------|------------|
-| 1 | [is_dashboard_running()](file:///c:/_cloud/__cfab_demon/__client/src/tray.rs#207-221) sprawdza `p.name()` jako [String](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/online-sync.ts#246-249) — sysinfo v0.30+ zwraca `OsStr`. Może nie kompilować się po aktualizacji crate | [tray.rs:213](file:///c:/_cloud/__cfab_demon/__client/src/tray.rs#L213) |
-| 2 | [normalizeServerUrl()](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/online-sync.ts#201-210) mapuje nowy URL TimeFlow na legacy CfabServer — to blokuje migrację na nowy serwer | [online-sync.ts:205-208](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/online-sync.ts#L205) |
+- Auto-przypisanie do projektów wykluczonych/zamrożonych.
 
-### 6.2 Frontend
+**Rekomendacja**
 
-| # | Problem | Plik |
-|---|---------|------|
-| 1 | [AutoProjectSync](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/App.tsx#210-231) — hardcoded date range `"2020-01-01"` do `"2100-01-01"` — traci dane sprzed 2020 | [App.tsx:216](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/App.tsx#L216) |
-| 2 | [autoRunIfNeeded](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/tauri.ts#231-233) zwraca `null` gdy `scanned=0 && assigned=0` — to poprawne, ale brak logu | [assignment_model.rs:1208](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs#L1208) |
+1. Dodać uniwersalny filtr `is_active_project(project_id)` przed dodaniem kandydata z każdej warstwy.
+2. Dodać finalny guard przed zapisem (`UPDATE sessions`).
+3. Dodać test regresyjny: model nigdy nie proponuje `excluded_at != NULL` ani `frozen_at != NULL`.
 
----
+## 3) Wyniki wysokie (P1)
 
-## 7. Propozycja modularyzacji
+### P1.1 Manual override jest kruchy po przebudowie/scalaniu sesji
 
-### 7.1 Daemon (Rust) — obecna struktura jest OK
+**Obserwacja**  
+Override jest kluczowany po dokładnych `start_time` i `end_time`. Gdy sesje są scalane/zmieniane, klucz przestaje pasować.
 
-7 plików, jasny podział. Jedyny refaktor:
-- Wyciągnąć [check_dashboard_compatibility()](file:///c:/_cloud/__cfab_demon/__client/src/tracker.rs#42-76) z [tracker.rs](file:///c:/_cloud/__cfab_demon/__client/src/tracker.rs) do [tray.rs](file:///c:/_cloud/__cfab_demon/__client/src/tray.rs) (bo dotyczy UI, nie trackingu)
+**Dowody**
 
-### 7.2 Tauri backend — kluczowa modularyzacja
+- `dashboard/src-tauri/src/commands/sessions.rs:47-57`, `dashboard/src-tauri/src/commands/sessions.rs:94-99`  
+  unikalność i zapis override po `(executable_name,start_time,end_time)`.
+- `dashboard/src-tauri/src/commands/assignment_model.rs:217-223`  
+  odczyt override po exact match czasu.
+- `dashboard/src-tauri/src/commands/sessions.rs:876-929`, `dashboard/src-tauri/src/commands/sessions.rs:937-941`  
+  przebudowa zmienia `end_time` i usuwa scałkowane rekordy.
 
-Obecny `commands/` ma 19 plików, ale kilka jest zbyt dużych:
+**Ryzyko**
 
-```
-commands/
-├── assignment/              ← NOWY PODMODUŁ
-│   ├── mod.rs
-│   ├── types.rs             ← structs (AssignmentModelStatus, etc.)
-│   ├── state.rs             ← load_state_map, upsert_state, helpers
-│   ├── training.rs          ← train_assignment_model
-│   ├── inference.rs         ← compute_raw_suggestion, suggest_project_for_session
-│   ├── auto_safe.rs         ← run_auto_safe_assignment, auto_run_if_needed, rollback
-│   └── deterministic.rs     ← apply_deterministic_assignment
-│
-├── projects.rs              (47 kB → rozważyć podział: crud / sync / detection)
-├── sessions.rs              (28 kB → OK)
-├── import_data.rs           (30 kB → OK)
-└── ...
-```
+- Użytkownik ręcznie poprawia sesję, a później przypisanie „wraca” do poprzedniego projektu.
 
-### 7.3 Frontend — rekomendowana struktura
+**Rekomendacja**
 
-```
-lib/
-├── sync/                    ← NOWY MODUŁ (z obecnego online-sync.ts)
-│   ├── settings.ts          ← load/save settings, normalizacja
-│   ├── state.ts             ← sync state, scoped storage
-│   ├── indicator.ts         ← snapshot, listeners, UI status
-│   ├── engine.ts            ← runOnlineSyncOnce, push/pull/ack
-│   └── logger.ts            ← SyncFileLogger
-│
-├── ai/                      ← NOWY MODUŁ
-│   ├── types.ts             ← AssignmentMode, Status, Results
-│   ├── commands.ts          ← Tauri invoke wrappers
-│   └── reminder.ts          ← buildTrainingReminder logic
-│
-├── tauri.ts                 ← pozostaje jako centralny hub (bez AI commands)
-├── db-types.ts              ← podzielić na: project-types, session-types, etc.
-└── user-settings.ts         ← OK
-```
+1. Oprzeć override o stabilny identyfikator (`session_id`) lub trwały fingerprint.
+2. Dodać proces migracji override podczas `rebuild_sessions`.
+3. Dodać test e2e: manual assign -> rebuild -> assign stays.
 
 ---
 
-## 8. Podsumowanie priorytetów
+### P1.2 `merge_or_insert_session` ma wybór `project_id` zależny od kolejności rekordów
 
-| Priorytet | Kategoria | Opis |
-|-----------|-----------|------|
-| 🔴 Krytyczny | AI Logic | Confidence math uniemożliwia auto-safe przy domyślnych parametrach (§2.3 Problem 1) |
-| 🔴 Krytyczny | AI Logic | Deterministic feedback zawyża model (§2.3 Problem 2) |
-| 🟡 Ważny | UX/AI | Brak wyjaśnienia "dlaczego AI to sugeruje" (§2.3 Problem 4) |
-| 🟡 Ważny | Tłumaczenia | 4 pliki z polskim tekstem w UI (§3.1) |
-| 🟡 Ważny | Czystość | Plik-duplikat `Projects.tsx (fixing imports)` (§5) |
-| 🟢 Opcjonalny | Modularyzacja | Podział [assignment_model.rs](file:///c:/_cloud/__cfab_demon/__client/dashboard/src-tauri/src/commands/assignment_model.rs) i [online-sync.ts](file:///c:/_cloud/__cfab_demon/__client/dashboard/src/lib/online-sync.ts) na podmoduły (§7) |
-| 🟢 Opcjonalny | Czystość | Usunięcie plików debug/test/migracyjnych (§5) |
-| 🟢 Opcjonalny | Wydajność | Redukcja timerów sync (§4.2) |
+**Obserwacja**  
+Wykrywanie overlapów nie ma `ORDER BY`; pierwszy napotkany `project_id` wygrywa.
+
+**Dowody**
+
+- `dashboard/src-tauri/src/commands/import_data.rs:548-553`  
+  SELECT overlapów bez `ORDER BY`.
+- `dashboard/src-tauri/src/commands/import_data.rs:581-583`  
+  przypisanie `merged_project_id` tylko gdy `None`.
+
+**Ryzyko**
+
+- Niedeterministyczne zachowanie przy sprzecznych overlapach.
+- Możliwe „odbijanie” przypisań po imporcie/synchronizacji.
+
+**Rekomendacja**
+
+1. Wprowadzić deterministyczną regułę wyboru (np. najnowsza sesja, max overlap, priorytet manual).
+2. Dodać `ORDER BY` zgodny z tą regułą.
+3. Dodać test na konflikt dwóch różnych `project_id` w overlapach.
 
 ---
 
-*Raport wygenerowany 2026-02-27 na podstawie analizy pełnego kodu projektu.*
+### P1.3 N+1 i sekwencyjne wywołania AI podczas ładowania sesji
+
+**Obserwacja**
+
+- Backend `get_sessions` odpala `suggest_project_for_session` dla każdej sesji osobno i sekwencyjnie.
+- Dodatkowo dla każdej sugestii otwiera nowe połączenie DB tylko po nazwę projektu.
+- Frontend preloaduje score breakdown dla wszystkich sesji.
+
+**Dowody**
+
+- `dashboard/src-tauri/src/commands/sessions.rs:509-531`  
+  pętla sekwencyjna + lookup nazwy projektu per rekord.
+- `dashboard/src/pages/Sessions.tsx:1038-1076`  
+  auto-load score breakdown dla całej listy.
+- `dashboard/src/pages/Sessions.tsx:767-788`  
+  auto-refresh co 15s.
+
+**Ryzyko**
+
+- Wysokie zużycie CPU/IO, wolniejsze renderowanie i responsywność UI.
+
+**Rekomendacja**
+
+1. Dodać endpoint batchowy: sugestie dla listy sesji jedną operacją SQL/AI.
+2. Dołączać nazwę sugerowanego projektu w tym samym zapytaniu (bez dodatkowego `db::get_connection`).
+3. Ograniczyć preload score breakdown do widocznych elementów (viewport/lazy on expand).
+
+---
+
+### P1.4 Nadmierna presja odświeżania i synchronizacji
+
+**Obserwacja**
+
+- App ma kilka niezależnych timerów (refresh, file watcher, sync poll, local-change sync).
+- Dashboard przy `refreshKey` odpala ciężki zestaw równoległych fetchy.
+
+**Dowody**
+
+- `dashboard/src/App.tsx:227-233`  
+  okresowy refresh + watcher.
+- `dashboard/src/App.tsx:439-473`, `dashboard/src/App.tsx:475-485`  
+  interwał online sync + polling + sync po local change.
+- `dashboard/src/pages/Dashboard.tsx:215-260`  
+  wielokrotne równoległe pobrania danych przy każdym refreshu.
+
+**Ryzyko**
+
+- „Skakanie” wykresów i okresowe przycięcia UI.
+
+**Rekomendacja**
+
+1. Wprowadzić centralny scheduler refreshy z deduplikacją zdarzeń.
+2. Wprowadzić cooldown/coalescing dla triggerów.
+3. Rozdzielić priorytety odświeżania (krytyczne vs tło).
+
+---
+
+### P1.5 Czerwone testy backendu Tauri (drift schematu fixture’ów)
+
+**Status testów**
+
+- `cargo test` (repo root): 7/7 OK.
+- `cargo test` (`dashboard/src-tauri`): 3 OK, 2 FAIL.
+
+**Failujące testy**
+
+1. `commands::dashboard::tests::dashboard_counters_use_manual_session_days`
+2. `commands::estimates::tests::estimate_rows_use_project_override_or_global`
+
+**Przyczyna**  
+Testowe tabele nie zawierają kolumn, których oczekuje wspólna ścieżka SQL:
+
+- `projects.excluded_at`
+- `manual_sessions.title`
+
+**Dowody**
+
+- `dashboard/src-tauri/src/commands/dashboard.rs:535-540`  
+  testowe `projects` bez `excluded_at`.
+- `dashboard/src-tauri/src/commands/estimates.rs:423-428`, `dashboard/src-tauri/src/commands/estimates.rs:448-455`  
+  testowe `projects` bez `excluded_at` i `manual_sessions` bez `title`.
+- Wykonanie `cargo test` w `dashboard/src-tauri`: błędy `no such column: p.excluded_at`, `no such column: ms.title`.
+
+**Rekomendacja**
+
+1. Ujednolicić helper test-schema ze schematem runtime (jedno źródło prawdy).
+2. Dodać test „schema parity” dla in-memory fixtures.
+
+## 4) Wyniki średnie (P2)
+
+### P2.1 Niepełne i18n / brakujące tłumaczenia
+
+**Obserwacja**
+
+- `useTranslation` występuje tylko na części ekranów.
+- Zasoby locale są bardzo małe i obejmują głównie sekcję Language + hints dla Help/QuickStart.
+- W `Settings` duża część treści nadal hardcoded.
+
+**Dowody**
+
+- `dashboard/src/i18n.ts:3-4`  
+  tylko `en/common.json` i `pl/common.json`.
+- `dashboard/src/pages/Help.tsx:32`, `dashboard/src/pages/QuickStart.tsx:21`, `dashboard/src/pages/Settings.tsx:50`  
+  strony używające `useTranslation`.
+- Brak `useTranslation` m.in. w:  
+  `AI.tsx`, `Applications.tsx`, `DaemonControl.tsx`, `Dashboard.tsx`, `Data.tsx`, `Estimates.tsx`, `ImportPage.tsx`, `ProjectPage.tsx`, `Projects.tsx`, `Sessions.tsx`, `TimeAnalysis.tsx`.
+- `dashboard/src/locales/en/common.json:1-20` i `dashboard/src/locales/pl/common.json:1-20`  
+  bardzo ograniczony zakres kluczy.
+- `dashboard/src/pages/Settings.tsx:141-147`, `184-205`, `257-260`  
+  przykłady hardcoded komunikatów.
+
+**Ryzyko**
+
+- Niespójny UX językowy; część interfejsu niepodlegająca zmianie języka.
+
+**Rekomendacja**
+
+1. Ustalić plan migracji per ekran (Dashboard/Sessions/Projects jako pierwsze).
+2. Wymusić zasadę: nowe stringi wyłącznie przez `t(...)`.
+3. Dodać test/skrypt wykrywający hardcoded UI strings.
+
+---
+
+### P2.2 Nadmiarowy / potencjalnie martwy kod
+
+**Obserwacja**
+
+- Komendy `confirm_session_assignment` i `reject_session_assignment` są wystawione w API, ale nieużywane przez obecny frontend.
+- W repo jest dodatkowy plik `Projects.tsx (fixing imports)` (artefakt roboczy), śledzony przez git.
+
+**Dowody**
+
+- `dashboard/src-tauri/src/commands/assignment_model.rs:1574-1633`
+- `dashboard/src/lib/tauri.ts:243-247`
+- brak użyć w `dashboard/src/pages` i `dashboard/src/components` (wyszukiwanie po symbolach).
+- plik: `dashboard/src/pages/Projects.tsx (fixing imports)`
+
+**Ryzyko**
+
+- Rozjazd między utrzymywanym API a realnym flow UI.
+- Szum w repo i większe ryzyko pomyłek podczas refaktoryzacji.
+
+**Rekomendacja**
+
+1. Usunąć lub włączyć te komendy do aktywnego flow.
+2. Usunąć plik artefaktowy z repo (po potwierdzeniu, że nie jest potrzebny).
+
+---
+
+### P2.3 Miejsca potencjalnej optymalizacji indeksów SQL
+
+**Obserwacja**  
+Wiele krytycznych zapytań używa warunków zakresowych po czasie (`first_seen/last_seen`, `start_time/end_time`), a obecne indeksy są głównie ogólne (`app_id`, `date`, `start_time`).
+
+**Dowody**
+
+- Zapytania zakresowe:  
+  `dashboard/src-tauri/src/commands/assignment_model.rs:322`, `1009-1010`, `1176-1177`, `1335-1336`  
+  `dashboard/src-tauri/src/commands/sessions.rs:211-212`, `626-627`  
+  `dashboard/src-tauri/src/commands/import_data.rs:552-553`
+- Aktualne indeksy:  
+  `dashboard/src-tauri/src/db.rs:168-170`, `dashboard/src-tauri/src/db.rs:1142-1144`
+
+**Rekomendacja**
+
+1. Rozważyć indeksy złożone pod realne filtry (np. `file_activities(app_id,date,last_seen,first_seen)` oraz `sessions(app_id,date,start_time,end_time)`).
+2. Zweryfikować decyzję przez `EXPLAIN QUERY PLAN` na produkcyjnych wolumenach.
+
+## 5) Priorytetowy plan naprawczy (proponowana kolejność)
+
+1. Naprawić P0.1, P0.2, P0.3 w jednym cyklu zmian modelu AI.
+2. Naprawić P1.5 (test fixtures), aby przywrócić wiarygodny pipeline testowy.
+3. Zmniejszyć koszt listy sesji (P1.3) przez batch suggestions i lazy breakdown.
+4. Ustabilizować manual override (P1.1) i deterministykę merge (P1.2).
+5. Zredukować presję refresh/sync (P1.4) przez scheduler z deduplikacją.
+6. Rozpocząć etapową migrację i18n (P2.1), zaczynając od najczęściej używanych ekranów.
+7. Posprzątać artefakty/unused API (P2.2) i ewentualnie dodać indeksy po profilowaniu (P2.3).
+
+## 6) Wniosek końcowy
+
+Aplikacja działa, ale ma kilka istotnych ryzyk logicznych i jakościowych w obszarze AI-assignments oraz wydajności odświeżania. Największy wpływ na stabilność i jakość predykcji da naprawa pętli feedbacku, odseparowanie danych auto/manual w treningu i przywrócenie pełnej wiarygodności testów backendu.
