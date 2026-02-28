@@ -3,24 +3,20 @@
 - **KAŻDA NOWA FUNKCJA** musi zostać dopisana do panelu pomocy (`Help.tsx`).
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
-
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 
 ---
+
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku (pomoc i quick start są wyjątkiem). Przeanalizuj kod i logikę odpowiedzialną za AI, bo mam wątpliwości co do jej poprawności. Wszystkie zachowania AI muszą być precyzyjnie komunikowane by zachowaniu uzytkownika było elementem treningu. Sprawdz czygoś nie warto poprawic w jej rdzeniu i założeniach. Przygotuj aplikacje do dynamicznego rozwoju - podziel ją na moduły umożliwiające łatwe aktualizacje. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
-
-
-w zakladce analizy czasu zniknał wykres kołowy!!!! we wszytkich widokach!
-
 
 Podsumowując strategię na najbliższe dni: Zostaw tryb suggest, zmuś model do "zgadywania" częściej (zmiejszając Confidence do ok. 0.45) i zwiększ siłę Twoich poprawek (Feedback Weight do ok. 12). Po prostu używaj aplikacji - to wymusi maksymalnie szybką naukę.
 
 TŁUMACZENIE
 
-
 TODO ??
 
 Weź na warsztat caly system AI:
+
 - czy zastosowana wersja AI jest odpowiednia, czy można coś poprawić, coś dodać
 - wydaje mi się, że trzeba wydzieli go wyraźnie jako osobny komponent
 - trening - mam wrazenie ze nie jest optymalny i "wiedza" gdzies odpływa
@@ -28,11 +24,6 @@ Weź na warsztat caly system AI:
 - przeanalizuj tez problem - sesje które zostaly recznie przypisane do innego projektu niz wskazał system mają tendencjje do wracania do poprzedniego projektu!!!
 
 - animacje wykresów w UI wygladaja jakby lagowaly, zamiast płynnego pojawiania się danych, zacinają się w trakcie
-
-
-
-
-
 
 <!-- - weryfikacja lokalizacji ustawien i parametrów UI -> czy mozna poprawic logikę ich lokalizacji i wyświetlania
 - optymalizacja bazy danych - mechanizm dbający o optymalizację bazy danych

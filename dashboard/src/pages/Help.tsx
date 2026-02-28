@@ -978,6 +978,10 @@ export function Help() {
                     'Emergency Clear – opcja całkowitego wyczyszczenia bazy danych i ustawień.',
                     'Emergency Clear – option to completely clear the database and settings.',
                   ),
+                  t(
+                    'Appearance & Performance – wyłączanie animacji wykresów w celu poprawy responsywności UI.',
+                    'Appearance & Performance – disable chart animations to improve UI responsiveness.',
+                  ),
                 ]}
               />
             </TabsContent>
