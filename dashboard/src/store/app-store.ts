@@ -58,6 +58,30 @@ interface AppState {
   setCurrencyCode: (code: string) => void;
 }
 
+const REFRESH_THROTTLE_MS = 250;
+let lastRefreshAtMs = 0;
+let scheduledRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleThrottledRefresh(increment: () => void) {
+  const now = Date.now();
+  const elapsed = now - lastRefreshAtMs;
+  if (elapsed >= REFRESH_THROTTLE_MS) {
+    lastRefreshAtMs = now;
+    increment();
+    return;
+  }
+
+  const delay = REFRESH_THROTTLE_MS - elapsed;
+  if (scheduledRefreshTimer !== null) {
+    clearTimeout(scheduledRefreshTimer);
+  }
+  scheduledRefreshTimer = setTimeout(() => {
+    lastRefreshAtMs = Date.now();
+    scheduledRefreshTimer = null;
+    increment();
+  }, delay);
+}
+
 function presetToRange(preset: TimePreset): DateRange {
   const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
@@ -170,7 +194,10 @@ export const useAppStore: UseBoundStore<StoreApi<AppState>> = create<AppState>(
     },
 
     refreshKey: 0,
-    triggerRefresh: () => set((s) => ({ refreshKey: s.refreshKey + 1 })),
+    triggerRefresh: () =>
+      scheduleThrottledRefresh(() =>
+        set((s) => ({ refreshKey: s.refreshKey + 1 })),
+      ),
 
     autoImportDone: false,
     autoImportResult: null,

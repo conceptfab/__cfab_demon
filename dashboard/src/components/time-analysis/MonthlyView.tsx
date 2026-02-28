@@ -5,7 +5,6 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
-import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { formatDuration } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { PALETTE } from "./types";
@@ -22,13 +21,6 @@ interface MonthlyViewProps {
 }
 
 export function MonthlyBarChart({ monthlyBarData, monthTotalHours, stackedBarColorMap }: MonthlyViewProps) {
-  const barAnimation = getRechartsAnimationConfig({
-    complexity: monthlyBarData.data.length * Math.max(monthlyBarData.projectNames.length, 1),
-    maxComplexity: 180,
-    minDuration: 160,
-    maxDuration: 300,
-  });
-
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
@@ -57,9 +49,7 @@ export function MonthlyBarChart({ monthlyBarData, monthTotalHours, stackedBarCol
                 stackId="stack"
                 fill={stackedBarColorMap.get(name) || PALETTE[0]}
                 radius={[0, 0, 0, 0]}
-                isAnimationActive={barAnimation.isAnimationActive}
-                animationDuration={barAnimation.animationDuration}
-                animationEasing={barAnimation.animationEasing}
+                isAnimationActive={false}
               />
             ))}
           </BarChart>

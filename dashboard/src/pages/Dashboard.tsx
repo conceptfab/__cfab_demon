@@ -220,7 +220,14 @@ export function Dashboard() {
       getDashboardProjects(dateRange),
       getProjectTimeline(dateRange, projectTimelineSeriesLimit, timelineGranularity, undefined),
       timePreset === "today"
-        ? getSessions({ dateRange, limit: 500, offset: 0, minDuration: loadSessionSettings().minSessionDurationSeconds || undefined })
+        ? getSessions({
+            dateRange,
+            limit: 500,
+            offset: 0,
+            minDuration:
+              loadSessionSettings().minSessionDurationSeconds || undefined,
+            includeAiSuggestions: false,
+          })
         : Promise.resolve([] as SessionWithApp[]),
       timePreset === "today"
         ? getManualSessions({ dateRange })

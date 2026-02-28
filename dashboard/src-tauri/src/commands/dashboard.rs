@@ -58,7 +58,8 @@ pub async fn get_dashboard_stats(
         })
         .collect();
 
-    let (_, project_totals, _, _) = compute_project_activity_unique(&conn, &date_range, false, true, None)?;
+    let (_, project_totals, _, _) =
+        compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     let project_colors = query_project_color_map(&conn)?;
     let top_project = project_totals
         .into_iter()
@@ -315,7 +316,8 @@ pub async fn get_timeline(
     date_range: DateRange,
 ) -> Result<Vec<TimelinePoint>, String> {
     let conn = db::get_connection(&app)?;
-    let (bucket_map, _, _, _) = compute_project_activity_unique(&conn, &date_range, false, true, None)?;
+    let (bucket_map, _, _, _) =
+        compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     let mut out = Vec::with_capacity(bucket_map.len());
     for (date, project_seconds) in bucket_map {
         let seconds = project_seconds.values().copied().sum::<f64>().round() as i64;
@@ -330,7 +332,8 @@ pub async fn get_hourly_breakdown(
     date_range: DateRange,
 ) -> Result<Vec<HourlyData>, String> {
     let conn = db::get_connection(&app)?;
-    let (bucket_map, _, _, _) = compute_project_activity_unique(&conn, &date_range, true, true, None)?;
+    let (bucket_map, _, _, _) =
+        compute_project_activity_unique(&conn, &date_range, true, true, None)?;
 
     let mut totals_by_hour = [0f64; 24];
     for (bucket, project_seconds) in bucket_map {
@@ -520,7 +523,9 @@ mod tests {
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL,
                 project_id INTEGER,
-                is_hidden INTEGER DEFAULT 0
+                is_hidden INTEGER DEFAULT 0,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
+                comment TEXT
             );
             CREATE TABLE file_activities (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -535,7 +540,9 @@ mod tests {
             CREATE TABLE projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
-                color TEXT NOT NULL DEFAULT '#64748b'
+                color TEXT NOT NULL DEFAULT '#64748b',
+                excluded_at TEXT,
+                frozen_at TEXT
             );
             CREATE TABLE manual_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

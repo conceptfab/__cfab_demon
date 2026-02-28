@@ -178,6 +178,7 @@ export const getSessions = (filters: {
   projectId?: number;
   unassigned?: boolean;
   minDuration?: number;
+  includeAiSuggestions?: boolean;
   limit?: number;
   offset?: number;
 }) => invoke<SessionWithApp[]>("get_sessions", { filters });

@@ -424,7 +424,9 @@ mod tests {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
                 color TEXT NOT NULL,
-                hourly_rate REAL
+                hourly_rate REAL,
+                excluded_at TEXT,
+                frozen_at TEXT
             );
             CREATE TABLE sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -435,7 +437,8 @@ mod tests {
                 date TEXT NOT NULL,
                 rate_multiplier REAL NOT NULL DEFAULT 1.0,
                 project_id INTEGER,
-                is_hidden INTEGER DEFAULT 0
+                is_hidden INTEGER DEFAULT 0,
+                comment TEXT
             );
             CREATE TABLE file_activities (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -447,6 +450,7 @@ mod tests {
             );
             CREATE TABLE manual_sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '',
                 project_id INTEGER NOT NULL,
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,

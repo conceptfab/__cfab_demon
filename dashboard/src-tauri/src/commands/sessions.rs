@@ -1,5 +1,5 @@
 use rusqlite::OptionalExtension;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tauri::AppHandle;
 
 use super::types::{FileActivity, SessionFilters, SessionWithApp};
@@ -46,6 +46,7 @@ pub(crate) fn upsert_manual_session_override(
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS session_manual_overrides (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
+             session_id INTEGER,
              executable_name TEXT NOT NULL,
              start_time TEXT NOT NULL,
              end_time TEXT NOT NULL,
@@ -54,7 +55,9 @@ pub(crate) fn upsert_manual_session_override(
              UNIQUE(executable_name, start_time, end_time)
          );
          CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
-         ON session_manual_overrides(executable_name, start_time, end_time);",
+         ON session_manual_overrides(executable_name, start_time, end_time);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
+         ON session_manual_overrides(session_id);",
     )
     .map_err(|e| e.to_string())?;
 
@@ -90,15 +93,40 @@ pub(crate) fn upsert_manual_session_override(
         None => None,
     };
 
-    conn.execute(
-        "INSERT INTO session_manual_overrides (executable_name, start_time, end_time, project_name, updated_at)
-         VALUES (?1, ?2, ?3, ?4, datetime('now'))
-         ON CONFLICT(executable_name, start_time, end_time) DO UPDATE SET
-           project_name = excluded.project_name,
-           updated_at = excluded.updated_at",
-        rusqlite::params![executable_name, start_time, end_time, project_name],
-    )
-    .map_err(|e| e.to_string())?;
+    let updated_legacy = conn
+        .execute(
+            "UPDATE session_manual_overrides
+             SET session_id = ?1,
+                 project_name = ?2,
+                 updated_at = datetime('now')
+             WHERE lower(executable_name) = lower(?3)
+               AND start_time = ?4
+               AND end_time = ?5",
+            rusqlite::params![
+                session_id,
+                project_name,
+                executable_name,
+                start_time,
+                end_time
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+    if updated_legacy == 0 {
+        conn.execute(
+            "INSERT INTO session_manual_overrides (
+                session_id, executable_name, start_time, end_time, project_name, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+             ON CONFLICT(session_id) DO UPDATE SET
+               executable_name = excluded.executable_name,
+               start_time = excluded.start_time,
+               end_time = excluded.end_time,
+               project_name = excluded.project_name,
+               updated_at = excluded.updated_at",
+            rusqlite::params![session_id, executable_name, start_time, end_time, project_name],
+        )
+        .map_err(|e| e.to_string())?;
+    }
 
     Ok(())
 }
@@ -109,6 +137,7 @@ pub(crate) fn apply_manual_session_overrides(
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS session_manual_overrides (
              id INTEGER PRIMARY KEY AUTOINCREMENT,
+             session_id INTEGER,
              executable_name TEXT NOT NULL,
              start_time TEXT NOT NULL,
              end_time TEXT NOT NULL,
@@ -117,16 +146,18 @@ pub(crate) fn apply_manual_session_overrides(
              UNIQUE(executable_name, start_time, end_time)
          );
          CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
-         ON session_manual_overrides(executable_name, start_time, end_time);",
+         ON session_manual_overrides(executable_name, start_time, end_time);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
+         ON session_manual_overrides(session_id);",
     )
     .map_err(|e| e.to_string())?;
 
     let mut total_reapplied = 0_i64;
 
-    let overrides: Vec<(String, String, String, Option<String>)> = {
+    let overrides: Vec<(Option<i64>, String, String, String, Option<String>)> = {
         let mut stmt = conn
             .prepare_cached(
-                "SELECT executable_name, start_time, end_time, project_name
+                "SELECT session_id, executable_name, start_time, end_time, project_name
                  FROM session_manual_overrides
                  ORDER BY updated_at DESC",
             )
@@ -134,17 +165,18 @@ pub(crate) fn apply_manual_session_overrides(
         let rows = stmt
             .query_map([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<i64>>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
         rows.filter_map(|r| r.ok()).collect()
     };
 
-    for (exe_name, start_time, end_time, project_name) in overrides {
+    for (override_session_id, exe_name, start_time, end_time, project_name) in overrides {
         let target_project_id: Option<i64> = match project_name {
             Some(name) => conn
                 .query_row(
@@ -161,21 +193,40 @@ pub(crate) fn apply_manual_session_overrides(
             None => None,
         };
 
-        let sessions_to_update: Vec<(i64, i64, String, String, String, Option<i64>)> = {
-            let mut stmt = conn
-                .prepare_cached(
+        let sessions_to_update: Vec<(i64, i64, String, String, String, Option<i64>)> =
+            if let Some(sid) = override_session_id {
+                conn.query_row(
                     "SELECT s.id, s.app_id, s.date, s.start_time, s.end_time, s.project_id
                      FROM sessions s
-                     JOIN applications a ON a.id = s.app_id
-                     WHERE lower(a.executable_name) = lower(?1)
-                       AND s.start_time = ?2
-                       AND s.end_time = ?3",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(
-                    rusqlite::params![exe_name, start_time, end_time],
+                     WHERE s.id = ?1",
+                    rusqlite::params![sid],
                     |row| {
+                        Ok(vec![(
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                            row.get::<_, String>(4)?,
+                            row.get::<_, Option<i64>>(5)?,
+                        )])
+                    },
+                )
+                .optional()
+                .map_err(|e| e.to_string())?
+                .unwrap_or_default()
+            } else {
+                let mut stmt = conn
+                    .prepare_cached(
+                        "SELECT s.id, s.app_id, s.date, s.start_time, s.end_time, s.project_id
+                         FROM sessions s
+                         JOIN applications a ON a.id = s.app_id
+                         WHERE lower(a.executable_name) = lower(?1)
+                           AND s.start_time = ?2
+                           AND s.end_time = ?3",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map(rusqlite::params![exe_name, start_time, end_time], |row| {
                         Ok((
                             row.get::<_, i64>(0)?,
                             row.get::<_, i64>(1)?,
@@ -184,11 +235,10 @@ pub(crate) fn apply_manual_session_overrides(
                             row.get::<_, String>(4)?,
                             row.get::<_, Option<i64>>(5)?,
                         ))
-                    },
-                )
-                .map_err(|e| e.to_string())?;
-            rows.filter_map(|r| r.ok()).collect()
-        };
+                    })
+                    .map_err(|e| e.to_string())?;
+                rows.filter_map(|r| r.ok()).collect()
+            };
 
         for (session_id, app_id, date, s_start, s_end, current_project_id) in sessions_to_update {
             if current_project_id == target_project_id {
@@ -225,6 +275,7 @@ pub async fn get_sessions(
     app: AppHandle,
     filters: SessionFilters,
 ) -> Result<Vec<SessionWithApp>, String> {
+    let include_ai_suggestions = filters.include_ai_suggestions.unwrap_or(true);
     let (mut sessions, needs_suggestion) = {
         let conn = db::get_connection(&app)?;
 
@@ -493,37 +544,106 @@ pub async fn get_sessions(
             });
         }
 
-        let mut needs_suggestion_batch: Vec<i64> = Vec::new();
+        let mut suggestion_candidate_batch: Vec<i64> = Vec::new();
         for session in &mut sessions {
             if inferred_project_by_session
                 .get(&session.id)
                 .unwrap_or(&None)
                 .is_none()
             {
-                needs_suggestion_batch.push(session.id);
+                suggestion_candidate_batch.push(session.id);
+                continue;
+            }
+
+            // In AI Data mode we also want score hints for already assigned sessions.
+            // Keep existing historical suggestion fields untouched; only fill missing data later.
+            if session.suggested_project_id.is_none()
+                && session.suggested_project_name.is_none()
+                && session.suggested_confidence.is_none()
+            {
+                suggestion_candidate_batch.push(session.id);
             }
         }
-        (sessions, needs_suggestion_batch)
+        (sessions, suggestion_candidate_batch)
     };
 
-    // Now call async outside of any SQLite statements
-    for session_id in needs_suggestion {
-        if let Ok(Some(suggestion)) =
-            crate::commands::suggest_project_for_session(app.clone(), session_id).await
-        {
-            // Find session and update
-            if let Some(session) = sessions.iter_mut().find(|s| s.id == session_id) {
-                session.suggested_project_id = Some(suggestion.project_id);
-                session.suggested_confidence = Some(suggestion.confidence);
+    if include_ai_suggestions && !needs_suggestion.is_empty() {
+        let status = crate::commands::get_assignment_model_status(app.clone()).await?;
+        if status.mode != "off" {
+            let conn = db::get_connection(&app)?;
+            let mut suggestions = super::assignment_model::suggest_projects_for_sessions_with_status(
+                &conn,
+                &status,
+                &needs_suggestion,
+            )?;
 
-                // Re-open fresh conn just for this name lookup (or use a shared pool if available)
-                if let Ok(conn) = db::get_connection(&app) {
-                    if let Ok(name) = conn.query_row(
-                        "SELECT name FROM projects WHERE id = ?1",
-                        [suggestion.project_id],
-                        |row| row.get::<_, String>(0),
-                    ) {
-                        session.suggested_project_name = Some(name);
+            if suggestions.len() < needs_suggestion.len() {
+                let assigned_without_threshold: Vec<i64> = sessions
+                    .iter()
+                    .filter(|s| s.project_name.is_some())
+                    .map(|s| s.id)
+                    .filter(|id| {
+                        needs_suggestion.contains(id) && !suggestions.contains_key(id)
+                    })
+                    .collect();
+
+                if !assigned_without_threshold.is_empty() {
+                    let raw = super::assignment_model::suggest_projects_for_sessions_raw(
+                        &conn,
+                        &status,
+                        &assigned_without_threshold,
+                    )?;
+                    for (session_id, suggestion) in raw {
+                        suggestions.entry(session_id).or_insert(suggestion);
+                    }
+                }
+            }
+
+            if !suggestions.is_empty() {
+                let mut suggested_project_ids: HashSet<i64> = HashSet::new();
+                for s in suggestions.values() {
+                    suggested_project_ids.insert(s.project_id);
+                }
+
+                let mut project_name_by_id: HashMap<i64, String> = HashMap::new();
+                if !suggested_project_ids.is_empty() {
+                    let pid_list: Vec<i64> = suggested_project_ids.into_iter().collect();
+                    let placeholders =
+                        pid_list.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                    let sql = format!("SELECT id, name FROM projects WHERE id IN ({})", placeholders);
+                    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+                    let params: Vec<&dyn rusqlite::types::ToSql> = pid_list
+                        .iter()
+                        .map(|id| id as &dyn rusqlite::types::ToSql)
+                        .collect();
+                    let rows = stmt
+                        .query_map(rusqlite::params_from_iter(params), |row| {
+                            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                        })
+                        .map_err(|e| e.to_string())?;
+                    for row in rows {
+                        let (pid, name) = row.map_err(|e| e.to_string())?;
+                        project_name_by_id.insert(pid, name);
+                    }
+                }
+
+                let mut index_by_session_id: HashMap<i64, usize> = HashMap::new();
+                for (idx, session) in sessions.iter().enumerate() {
+                    index_by_session_id.insert(session.id, idx);
+                }
+
+                for (session_id, suggestion) in suggestions {
+                    if let Some(&idx) = index_by_session_id.get(&session_id) {
+                        if sessions[idx].suggested_project_id.is_none() {
+                            sessions[idx].suggested_project_id = Some(suggestion.project_id);
+                        }
+                        if sessions[idx].suggested_confidence.is_none() {
+                            sessions[idx].suggested_confidence = Some(suggestion.confidence);
+                        }
+                        if sessions[idx].suggested_project_name.is_none() {
+                            sessions[idx].suggested_project_name =
+                                project_name_by_id.get(&suggestion.project_id).cloned();
+                        }
                     }
                 }
             }
@@ -843,6 +963,7 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
 
     let gap_ms = gap_fill_minutes * 60 * 1000;
     let mut to_delete = Vec::new();
+    let mut merged_into: Vec<(i64, i64)> = Vec::new();
 
     let mut current_idx: Option<usize> = None;
 
@@ -863,6 +984,7 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
                 // Add the duration of the merged session AND the gap to the main session
                 sessions[c_idx].duration_seconds += sessions[i].duration_seconds + gap_duration;
                 to_delete.push(sessions[i].id);
+                merged_into.push((sessions[i].id, sessions[c_idx].id));
             } else {
                 current_idx = Some(i);
             }
@@ -929,6 +1051,45 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
                         .map_err(|e| e.to_string())?;
                 }
             }
+        }
+    }
+
+    {
+        tx.execute_batch(
+            "CREATE TABLE IF NOT EXISTS session_manual_overrides (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 session_id INTEGER,
+                 executable_name TEXT NOT NULL,
+                 start_time TEXT NOT NULL,
+                 end_time TEXT NOT NULL,
+                 project_name TEXT,
+                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                 UNIQUE(executable_name, start_time, end_time)
+             );
+             CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
+             ON session_manual_overrides(executable_name, start_time, end_time);
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
+             ON session_manual_overrides(session_id);",
+        )
+        .map_err(|e| e.to_string())?;
+
+        for (from_session_id, to_session_id) in &merged_into {
+            if from_session_id == to_session_id {
+                continue;
+            }
+            tx.execute(
+                "UPDATE OR IGNORE session_manual_overrides
+                 SET session_id = ?1,
+                     updated_at = datetime('now')
+                 WHERE session_id = ?2",
+                rusqlite::params![to_session_id, from_session_id],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute(
+                "DELETE FROM session_manual_overrides WHERE session_id = ?1",
+                rusqlite::params![from_session_id],
+            )
+            .map_err(|e| e.to_string())?;
         }
     }
 

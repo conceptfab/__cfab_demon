@@ -44,11 +44,19 @@ fn parse_local_timestamp(raw: &str) -> Option<DateTime<Local>> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(raw) {
         return Some(dt.with_timezone(&Local));
     }
-    if let Ok(naive) = NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M:%S") {
-        return local_from_naive(naive);
-    }
-    if let Ok(naive) = NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M") {
-        return local_from_naive(naive);
+
+    let formats = [
+        "%Y-%m-%dT%H:%M:%S%.f",
+        "%Y-%m-%d %H:%M:%S%.f",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M",
+        "%Y-%m-%d %H:%M",
+    ];
+    for fmt in formats {
+        if let Ok(naive) = NaiveDateTime::parse_from_str(raw, fmt) {
+            return local_from_naive(naive);
+        }
     }
     None
 }
@@ -509,4 +517,18 @@ pub async fn get_project_timeline(
     }
 
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_local_timestamp;
+
+    #[test]
+    fn parse_local_timestamp_accepts_legacy_and_fractional_formats() {
+        assert!(parse_local_timestamp("2026-02-28T10:15:30").is_some());
+        assert!(parse_local_timestamp("2026-02-28 10:15:30").is_some());
+        assert!(parse_local_timestamp("2026-02-28 10:15:30.123456").is_some());
+        assert!(parse_local_timestamp("2026-02-28T10:15:30.123456789+01:00").is_some());
+        assert!(parse_local_timestamp("2026-02-28T10:15").is_some());
+    }
 }

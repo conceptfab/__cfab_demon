@@ -1,29 +1,28 @@
 import { useEffect, useState, useMemo } from "react";
-import { useAppStore } from "@/store/app-store";
-import { getTimeline, getProjectTimeline, getProjects, getTopProjects } from "@/lib/tauri";
+import { getTimeline, getProjectTimeline, getProjects } from "@/lib/tauri";
 import {
   addDays, addMonths, subMonths, format, parseISO, subDays,
   startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
   isBefore, isAfter, getWeek,
 } from "date-fns";
-import type { DateRange, TimelinePoint, StackedBarData, ProjectTimeRow } from "@/lib/db-types";
+import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 
 export type RangeMode = "daily" | "weekly" | "monthly";
 
 export function useTimeAnalysisData() {
-  const { refreshKey } = useAppStore();
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [data, setData] = useState<{
-    projectTime: ProjectTimeRow[];
     timeline: TimelinePoint[];
     hourlyProjects: StackedBarData[];
     projectColors: Map<string, string>;
-  }>({ projectTime: [], timeline: [], hourlyProjects: [], projectColors: new Map() });
-  const { projectTime, timeline, hourlyProjects, projectColors } = data;
+  }>({ timeline: [], hourlyProjects: [], projectColors: new Map() });
+  const { timeline, hourlyProjects, projectColors } = data;
 
   const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
   const canShiftForward = anchorDate < today;
@@ -54,21 +53,36 @@ export function useTimeAnalysisData() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setLoadError(null);
+
     const hpPromise = rangeMode === "monthly"
       ? getProjectTimeline(activeDateRange, 10, "day")
       : getProjectTimeline(activeDateRange, 10, "hour");
 
     Promise.all([
-      getTopProjects(activeDateRange, 10),
       getTimeline(activeDateRange),
       hpPromise,
       getProjects(),
-    ]).then(([pt, tl, hp, projects]) => {
+    ]).then(([tl, hp, projects]) => {
+      if (cancelled) return;
       const colorMap = new Map<string, string>();
       for (const p of projects) colorMap.set(p.name, p.color);
-      setData({ projectTime: pt, timeline: tl, hourlyProjects: hp, projectColors: colorMap });
-    }).catch(console.error);
-  }, [activeDateRange, refreshKey, rangeMode]);
+      setData({ timeline: tl, hourlyProjects: hp, projectColors: colorMap });
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Unknown data loading error";
+      setLoadError(message);
+    }).finally(() => {
+      if (!cancelled) setIsLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDateRange, rangeMode]);
 
   // Parsed hourly project data (shared between daily & weekly)
   const parsed = useMemo(
@@ -78,12 +92,46 @@ export function useTimeAnalysisData() {
 
   // Pie chart — project breakdown
   const pieData = useMemo(() => {
-    return projectTime.map((p, i) => ({
-      name: p.name,
-      value: p.seconds,
-      fill: p.color || PALETTE[i % PALETTE.length],
-    }));
-  }, [projectTime]);
+    const totals = new Map<string, number>();
+
+    for (const row of hourlyProjects) {
+      for (const [key, val] of Object.entries(row)) {
+        if (
+          key === "date" ||
+          key === "has_boost" ||
+          key === "has_manual" ||
+          key === "comments" ||
+          typeof val !== "number" ||
+          !Number.isFinite(val) ||
+          val <= 0
+        ) {
+          continue;
+        }
+        totals.set(key, (totals.get(key) || 0) + val);
+      }
+    }
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, seconds], i) => ({
+        name,
+        value: Math.round(seconds),
+        fill: projectColors.get(name) || PALETTE[i % PALETTE.length],
+      }));
+  }, [hourlyProjects, projectColors]);
+
+  const totalRangeSeconds = useMemo(
+    () => timeline.reduce((sum, point) => sum + point.seconds, 0),
+    [timeline],
+  );
+
+  const pieFallbackMessage = useMemo(() => {
+    if (isLoading) return "Loading chart data...";
+    if (loadError) return "Unable to load chart data. Try changing period or refreshing.";
+    if (totalRangeSeconds <= 0) return "No tracked activity in selected period.";
+    if (hourlyProjects.length === 0) return "No project timeline data for selected period.";
+    return "No project distribution data available.";
+  }, [isLoading, loadError, totalRangeSeconds, hourlyProjects.length]);
 
   // Weekly heatmap grid
   const weeklyHourlyGrid = useMemo(() => {
@@ -306,6 +354,9 @@ export function useTimeAnalysisData() {
     dateLabel,
     handleExport,
     pieData,
+    pieFallbackMessage,
+    isLoading,
+    loadError,
     projectColors,
     // Daily
     dailyHourlyGrid,

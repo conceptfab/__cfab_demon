@@ -249,6 +249,8 @@ pub struct SessionFilters {
     pub unassigned: Option<bool>,
     #[serde(rename = "minDuration")]
     pub min_duration: Option<i64>,
+    #[serde(rename = "includeAiSuggestions")]
+    pub include_ai_suggestions: Option<bool>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }

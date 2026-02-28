@@ -5,7 +5,6 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
-import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { formatDuration } from "@/lib/utils";
 import { PALETTE } from "./types";
 import type { HourSlot } from "./types";
@@ -18,13 +17,6 @@ interface DailyViewProps {
 }
 
 export function DailyBarChart({ dailyBarData, dailyTotalHours, stackedBarColorMap }: DailyViewProps) {
-  const barAnimation = getRechartsAnimationConfig({
-    complexity: dailyBarData.data.length * Math.max(dailyBarData.projectNames.length, 1),
-    maxComplexity: 220,
-    minDuration: 160,
-    maxDuration: 300,
-  });
-
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
@@ -48,9 +40,7 @@ export function DailyBarChart({ dailyBarData, dailyTotalHours, stackedBarColorMa
                 stackId="stack"
                 fill={stackedBarColorMap.get(name) || PALETTE[0]}
                 radius={[0, 0, 0, 0]}
-                isAnimationActive={barAnimation.isAnimationActive}
-                animationDuration={barAnimation.animationDuration}
-                animationEasing={barAnimation.animationEasing}
+                isAnimationActive={false}
               />
             ))}
           </BarChart>

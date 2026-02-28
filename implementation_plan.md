@@ -1,6 +1,46 @@
 # Plan implementacji poprawek TIMEFLOW
 
-Na podstawie [raport.md](file:///C:/Users/micz/.gemini/antigravity/brain/51859c0f-1314-46a0-91c2-62e128e9f3fe/raport.md)
+Na podstawie [raport.md](./raport.md)
+
+## Status wdrożenia (2026-02-28)
+
+### Zrealizowane
+
+- [x] AI: `evidence_factor` przy `min_evidence_auto=3` jest skalowany przez `/3.0`.
+- [x] AI: tokenizacja dopuszcza tokeny o długości `>= 2`.
+- [x] AI: rozszerzono reinforcement o realne źródła manualnego feedbacku:
+  - `manual_session_assign`
+  - `manual_session_change`
+  - `manual_project_card_change`
+  - `manual_session_unassign`
+  - `bulk_unassign`
+  - `manual_app_assign`
+  - `ai_suggestion_reject`
+  - `ai_suggestion_accept`
+- [x] AI: sugestie i score breakdown filtrują projekty nieaktywne (`excluded_at` / `frozen_at`) we wszystkich warstwach (L0-L3).
+- [x] AI: retraining nie używa jako danych bazowych sesji, których ostatni feedback to `auto_accept` (ograniczenie self-reinforcement).
+- [x] AI: `auto_safe` nie inkrementuje `feedback_since_train` po auto-przypisaniach.
+- [x] Testy Tauri: naprawiono drift fixture schema (`projects.excluded_at`, `manual_sessions.title`, `sessions.rate_multiplier`, `sessions.comment`).
+- [x] UI cleanup: usunięto duplikat `dashboard/src/pages/Projects.tsx (fixing imports)`.
+- [x] UI EN strings z fazy 2 są obecne w kodzie (`Sessions`, `Projects`, `prompt-modal`, `ProjectContextMenu`).
+- [x] Manual override: priorytet `session_id` + migracja schematu i fallback legacy.
+- [x] AI suggestions: batch processing w `get_sessions` (jedno połączenie i zbiorczy lookup nazw projektów).
+- [x] Sessions UI: usunięto preload breakdown dla wszystkich sesji, przejście na lazy load on demand.
+- [x] Refresh/sync: wprowadzono throttling `triggerRefresh` (250ms) dla redukcji lawinowych refetchy.
+- [x] Wykresy: odciążenie `TimelineChart` dla dużych datasetów (prostsze ticki, wyłączone animacje/shape overlay przy wysokiej złożoności).
+- [x] Dashboard i ProjectPage: wyłączono AI suggestions tam, gdzie nie są potrzebne (`includeAiSuggestions: false`).
+- [x] Time Analysis: naprawiono regresję znikającego wykresu kołowego we wszystkich trybach (daily/weekly/monthly) przez oparcie danych pie chart o `get_project_timeline` + agregację frontendową (bez zależności od `get_top_projects`).
+- [x] Time Analysis / backend: rozszerzono parser timestampów (`analysis.rs`) o legacy formaty (`YYYY-MM-DD HH:mm[:ss][.fraction]`) dla pełniejszej kompatybilności danych historycznych i stabilniejszych agregacji wykresów.
+
+### W trakcie / do decyzji
+
+- [ ] Full i18n całego UI (poza Help/QuickStart) jako osobny etap migracji kluczy.
+
+### Niezrealizowane (zostawione celowo na oddzielny etap)
+
+- [ ] Refaktoryzacja modułowa `assignment_model.rs` (podział na `training/inference/auto_safe/...`).
+- [ ] Refaktoryzacja modułowa `online-sync.ts`.
+- [ ] Refaktor `tracker.rs` (deduplikacja `file_index_cache` helperem).
 
 ---
 

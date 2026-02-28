@@ -194,6 +194,7 @@ export function ProjectPage() {
         projectId: projectPageId,
         limit: 10000,
         dateRange: { start: '1970-01-01', end: '2100-01-01' },
+        includeAiSuggestions: false,
       }),
       getManualSessions({ projectId: projectPageId }),
     ])

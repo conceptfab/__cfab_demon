@@ -126,16 +126,25 @@ export function TimelineChart({
   }, [chartData]);
 
   const isHourly = granularity === "hour";
+  const chartComplexity = chartData.length * Math.max(seriesKeys.length, 1);
+  const useSimpleRendering = chartComplexity > 180;
   const barAnimation = useMemo(
     () =>
       getRechartsAnimationConfig({
-        complexity: chartData.length * Math.max(seriesKeys.length, 1),
+        complexity: chartComplexity,
         maxComplexity: isHourly ? 240 : 300,
         minDuration: isHourly ? 150 : 170,
         maxDuration: isHourly ? 250 : 320,
       }),
-    [chartData.length, seriesKeys.length, isHourly]
+    [chartComplexity, isHourly]
   );
+  const effectiveBarAnimation = useSimpleRendering
+    ? {
+        isAnimationActive: false,
+        animationDuration: 0,
+        animationEasing: "ease-out" as const,
+      }
+    : barAnimation;
   const daySpan = useMemo(() => {
     if (!dateRange?.start || !dateRange?.end) return 0;
     try {
@@ -324,14 +333,15 @@ export function TimelineChart({
                 <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
                 <XAxis
                   dataKey="date"
-                  tick={renderCustomAxisTick}
+                  tick={useSimpleRendering ? undefined : renderCustomAxisTick}
+                  tickFormatter={useSimpleRendering ? xTickFormatter : undefined}
                   stroke={CHART_AXIS_COLOR}
                   fontSize={11}
                   tickLine={false}
                   axisLine={false}
                   interval={isHourly ? 2 : undefined}
                   minTickGap={isHourly ? undefined : 18}
-                  height={50}
+                  height={useSimpleRendering ? 28 : 50}
                 />
                 <YAxis
                   stroke={CHART_AXIS_COLOR}
@@ -358,21 +368,40 @@ export function TimelineChart({
                       stackId="projects"
                       fill={color}
                       radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}
-                      isAnimationActive={barAnimation.isAnimationActive}
-                      animationDuration={barAnimation.animationDuration}
-                      animationEasing={barAnimation.animationEasing}
-                      shape={(props: any) => {
-                          const { x, y, width, height, fill, payload, radius } = props;
-                          if (!height || height <= 0) return null;
-                          return (
-                              <g>
-                                  <rect x={x} y={y} width={width} height={height} fill={fill} rx={radius?.[0] || 0} />
+                      isAnimationActive={effectiveBarAnimation.isAnimationActive}
+                      animationDuration={effectiveBarAnimation.animationDuration}
+                      animationEasing={effectiveBarAnimation.animationEasing}
+                      shape={
+                        useSimpleRendering
+                          ? undefined
+                          : ((props: any) => {
+                              const { x, y, width, height, fill, payload, radius } = props;
+                              if (!height || height <= 0) return null;
+                              return (
+                                <g>
+                                  <rect
+                                    x={x}
+                                    y={y}
+                                    width={width}
+                                    height={height}
+                                    fill={fill}
+                                    rx={radius?.[0] || 0}
+                                  />
                                   {payload?.has_manual && (
-                                      <rect x={x} y={y} width={width} height={height} fill="url(#hatch)" rx={radius?.[0] || 0} style={{ pointerEvents: 'none' }} />
+                                    <rect
+                                      x={x}
+                                      y={y}
+                                      width={width}
+                                      height={height}
+                                      fill="url(#hatch)"
+                                      rx={radius?.[0] || 0}
+                                      style={{ pointerEvents: "none" }}
+                                    />
                                   )}
-                              </g>
-                          );
-                      }}
+                                </g>
+                              );
+                            })
+                      }
                       style={{ 
                         cursor: onBarClick ? "pointer" : "default",
                       }}

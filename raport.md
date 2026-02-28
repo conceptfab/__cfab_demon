@@ -15,6 +15,12 @@ Najważniejsze wnioski:
 6. Testy backendu Tauri są obecnie czerwone przez drift schematu testowego (P1).
 7. i18n jest dopiero częściowo wdrożone; duża część UI pozostaje hardcoded (P2).
 
+### Aktualizacja wdrożeniowa (2026-02-28)
+
+- Naprawiono regresję Time Analysis: wykres kołowy ponownie renderuje się we wszystkich widokach (daily/weekly/monthly).
+- Zmieniono źródło danych pie chart na agregację z `get_project_timeline`, co usuwa wąskie gardło i eliminuje zależność od osobnego wywołania `get_top_projects`.
+- Rozszerzono parser czasu po stronie backendu (`analysis.rs`) o formaty legacy ze spacją i częścią ułamkową sekund, aby nie gubić historycznych sesji przy agregacjach.
+
 ## 2) Wyniki krytyczne (P0)
 
 ### P0.1 Niespójny feedback loop AI (część korekt użytkownika nie trafia do reinforcement)

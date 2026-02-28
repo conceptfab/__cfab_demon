@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS project_folders (
 
 CREATE TABLE IF NOT EXISTS session_manual_overrides (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
     executable_name TEXT NOT NULL,
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
@@ -1133,6 +1134,55 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         )?;
     }
 
+    let has_manual_overrides: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_manual_overrides'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if has_manual_overrides {
+        let has_session_manual_overrides_session_id: bool = db
+            .prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('session_manual_overrides') WHERE name='session_id'",
+            )?
+            .query_row([], |row| row.get::<_, i64>(0))
+            .map(|c| c > 0)
+            .unwrap_or(false);
+        if !has_session_manual_overrides_session_id {
+            log::info!("Migrating session_manual_overrides: adding session_id");
+            db.execute(
+                "ALTER TABLE session_manual_overrides ADD COLUMN session_id INTEGER",
+                [],
+            )?;
+        }
+
+        db.execute(
+            "UPDATE session_manual_overrides
+             SET session_id = (
+                SELECT s.id
+                FROM sessions s
+                JOIN applications a ON a.id = s.app_id
+                WHERE lower(a.executable_name) = lower(session_manual_overrides.executable_name)
+                  AND s.start_time = session_manual_overrides.start_time
+                  AND s.end_time = session_manual_overrides.end_time
+                ORDER BY s.id DESC
+                LIMIT 1
+             )
+             WHERE session_id IS NULL",
+            [],
+        )
+        .ok();
+
+        db.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
+             ON session_manual_overrides(executable_name, start_time, end_time);
+             CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
+             ON session_manual_overrides(session_id);",
+        )
+        .ok();
+    }
+
     Ok(())
 }
 
@@ -1143,6 +1193,42 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
          CREATE INDEX IF NOT EXISTS idx_file_activities_date ON file_activities(date);
          CREATE INDEX IF NOT EXISTS idx_file_activities_app_date ON file_activities(app_id, date);",
     )?;
+
+    let has_manual_overrides: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='session_manual_overrides'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if has_manual_overrides {
+        db.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
+             ON session_manual_overrides(executable_name, start_time, end_time);",
+        )?;
+
+        let has_session_id_column: bool = db
+            .prepare(
+                "SELECT COUNT(*) FROM pragma_table_info('session_manual_overrides') WHERE name='session_id'",
+            )?
+            .query_row([], |row| row.get::<_, i64>(0))
+            .map(|c| c > 0)
+            .unwrap_or(false);
+
+        if has_session_id_column {
+            if let Err(e) = db.execute_batch(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
+                 ON session_manual_overrides(session_id);",
+            ) {
+                log::warn!(
+                    "Could not create idx_session_manual_overrides_session_id: {}",
+                    e
+                );
+            }
+        }
+    }
+
     Ok(())
 }
 

@@ -124,6 +124,9 @@ export function Sessions() {
   const [aiBreakdowns, setAiBreakdowns] = useState<Map<number, ScoreBreakdown>>(
     new Map(),
   );
+  const [loadingBreakdownIds, setLoadingBreakdownIds] = useState<Set<number>>(
+    new Set(),
+  );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 100;
@@ -288,8 +291,7 @@ export function Sessions() {
                         ? Math.min(bdCandidate.total_score / 10, 1)
                         : null);
 
-                    const isLoadingData =
-                      scoreBreakdownData === null && !aiBreakdowns.has(s.id);
+                    const isLoadingData = loadingBreakdownIds.has(s.id);
 
                     return (
                       <div className="flex items-center gap-1 rounded-sm px-1 py-0.5 transform-gpu">
@@ -365,6 +367,10 @@ export function Sessions() {
                 <div className="text-[8px] text-muted-foreground/30 italic px-1 animate-pulse">
                   Loading AI data...
                 </div>
+              ) : !scoreBreakdownData ? (
+                <p className="text-[8px] text-muted-foreground/30 italic">
+                  No AI data
+                </p>
               ) : scoreBreakdownData?.candidates.length === 0 ? (
                 <p className="text-[8px] text-muted-foreground/30 italic">
                   No candidates
@@ -440,8 +446,7 @@ export function Sessions() {
                     ? Math.min(bdCandidate.total_score / 10, 1)
                     : null);
 
-                const isLoadingData =
-                  scoreBreakdownData === null && !aiBreakdowns.has(s.id);
+                const isLoadingData = loadingBreakdownIds.has(s.id);
 
                 return (
                   <button
@@ -588,6 +593,10 @@ export function Sessions() {
               <div className="text-[11px] text-muted-foreground/30 italic px-1 animate-pulse">
                 Loading AI data...
               </div>
+            ) : !scoreBreakdownData ? (
+              <p className="text-[11px] text-muted-foreground/30 italic">
+                No AI data
+              </p>
             ) : scoreBreakdownData?.candidates.length === 0 ? (
               <p className="text-[11px] text-muted-foreground/30 italic">
                 No candidates found
@@ -748,6 +757,7 @@ export function Sessions() {
           : (activeProjectId ?? undefined),
       unassigned: activeProjectId === 'unassigned' ? true : undefined,
       minDuration,
+      includeAiSuggestions: true,
     })
       .then((data) => {
         setSessions(data);
@@ -764,6 +774,62 @@ export function Sessions() {
     getProjects().then(setProjects).catch(console.error);
   }, [refreshKey]);
 
+  useEffect(() => {
+    if (!indicators.showScoreBreakdown || sessions.length === 0) return;
+    let cancelled = false;
+    const load = async () => {
+      const promises = sessions.map(async (s) => {
+        if (cancelled || aiBreakdowns.has(s.id)) return;
+        setLoadingBreakdownIds((prev) => {
+          const next = new Set(prev);
+          next.add(s.id);
+          return next;
+        });
+        try {
+          const data = await getSessionScoreBreakdown(s.id);
+          if (!cancelled) {
+            setAiBreakdowns((prev) => {
+              const next = new Map(prev);
+              next.set(s.id, data);
+              return next;
+            });
+          }
+        } catch (err) {
+          if (!cancelled) {
+            console.error(
+              `Failed to prefetch AI score breakdown for session ${s.id}:`,
+              err,
+            );
+            setAiBreakdowns((prev) => {
+              const next = new Map(prev);
+              next.set(s.id, {
+                candidates: [],
+                has_manual_override: false,
+                manual_override_project_id: null,
+                final_suggestion: null,
+              });
+              return next;
+            });
+          }
+        } finally {
+          if (!cancelled) {
+            setLoadingBreakdownIds((prev) => {
+              const next = new Set(prev);
+              next.delete(s.id);
+              return next;
+            });
+          }
+        }
+      });
+      await Promise.allSettled(promises);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, indicators.showScoreBreakdown]);
+
   // Auto-refresh sessions every 15 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -777,6 +843,7 @@ export function Sessions() {
             : (activeProjectId ?? undefined),
         unassigned: activeProjectId === 'unassigned' ? true : undefined,
         minDuration,
+        includeAiSuggestions: true,
       })
         .then((data) => {
           setSessions(data);
@@ -1025,55 +1092,47 @@ export function Sessions() {
         setScoreBreakdown(null);
         return;
       }
+      const cached = aiBreakdowns.get(sessionId);
+      if (cached) {
+        setScoreBreakdown({ sessionId, data: cached });
+        return;
+      }
+      setLoadingBreakdownIds((prev) => {
+        const next = new Set(prev);
+        next.add(sessionId);
+        return next;
+      });
       try {
         const data = await getSessionScoreBreakdown(sessionId);
+        setAiBreakdowns((prev) => {
+          const next = new Map(prev);
+          next.set(sessionId, data);
+          return next;
+        });
         setScoreBreakdown({ sessionId, data });
       } catch (err) {
         console.error('Failed to load score breakdown:', err);
+        setAiBreakdowns((prev) => {
+          const next = new Map(prev);
+          const empty: ScoreBreakdown = {
+            candidates: [],
+            has_manual_override: false,
+            manual_override_project_id: null,
+            final_suggestion: null,
+          };
+          next.set(sessionId, empty);
+          return next;
+        });
+      } finally {
+        setLoadingBreakdownIds((prev) => {
+          const next = new Set(prev);
+          next.delete(sessionId);
+          return next;
+        });
       }
     },
-    [scoreBreakdown],
+    [aiBreakdowns, scoreBreakdown],
   );
-
-  // Auto-load score breakdowns for all sessions
-  useEffect(() => {
-    if (sessions.length === 0) return;
-    let cancelled = false;
-    const load = async () => {
-      const promises = sessions.map(async (s) => {
-        if (cancelled || aiBreakdowns.has(s.id)) return;
-        try {
-          const data = await getSessionScoreBreakdown(s.id);
-          if (!cancelled) {
-            setAiBreakdowns((prev) => {
-              const next = new Map(prev);
-              next.set(s.id, data);
-              return next;
-            });
-          }
-        } catch {
-          if (!cancelled) {
-            setAiBreakdowns((prev) => {
-              const next = new Map(prev);
-              next.set(s.id, {
-                candidates: [],
-                has_manual_override: false,
-                manual_override_project_id: null,
-                final_suggestion: null,
-              });
-              return next;
-            });
-          }
-        }
-      });
-      await Promise.allSettled(promises);
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions]);
 
   const loadMore = () => {
     getSessions({
@@ -1086,6 +1145,7 @@ export function Sessions() {
           : (activeProjectId ?? undefined),
       unassigned: activeProjectId === 'unassigned' ? true : undefined,
       minDuration,
+      includeAiSuggestions: true,
     })
       .then((data) => {
         setSessions((prev) => [...prev, ...data]);
@@ -1148,6 +1208,17 @@ export function Sessions() {
   const unassignedGroup = groupedByProject.find(
     (g) => g.projectName.toLowerCase() === 'unassigned',
   );
+  const aiSessionsCount = useMemo(
+    () =>
+      sessions.filter(
+        (s) =>
+          aiBreakdowns.has(s.id) ||
+          s.suggested_project_id != null ||
+          s.suggested_confidence != null ||
+          s.ai_assigned,
+      ).length,
+    [sessions, aiBreakdowns],
+  );
   const resolveGroupProjectId = useCallback(
     (group: GroupedProject) => {
       if (group.projectName.toLowerCase() === 'unassigned') return null;
@@ -1185,7 +1256,7 @@ export function Sessions() {
         <p className="text-xs text-muted-foreground font-medium flex items-baseline gap-1">
           {sessions.length} sessions{' '}
           <span className="opacity-40 text-[10px]">
-            ({aiBreakdowns.size} AI) /
+            ({aiSessionsCount} AI) /
           </span>{' '}
           {groupedByProject.length} projects
           {activeProjectId === 'unassigned' && (
@@ -1365,7 +1436,7 @@ export function Sessions() {
                       isCompact: true,
                       indicators,
                       forceShowScoreBreakdown: false,
-                      isLoadingScoreBreakdown: false,
+                      isLoadingScoreBreakdown: loadingBreakdownIds.has(s.id),
                     }),
                   )}
                 </div>
@@ -1435,7 +1506,8 @@ export function Sessions() {
                         indicators,
                         forceShowScoreBreakdown: viewMode === 'ai_detailed',
                         isLoadingScoreBreakdown:
-                          viewMode === 'ai_detailed' && !aiBreakdowns.has(s.id),
+                          viewMode === 'ai_detailed' &&
+                          loadingBreakdownIds.has(s.id),
                       }),
                     )}
                   </div>
