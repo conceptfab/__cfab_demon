@@ -152,6 +152,7 @@ pub struct ProjectDbStats {
     pub file_activity_count: i64,
     pub manual_session_count: i64,
     pub comment_count: i64,
+    pub boosted_session_count: i64,
     pub estimated_size_bytes: i64,
 }
 

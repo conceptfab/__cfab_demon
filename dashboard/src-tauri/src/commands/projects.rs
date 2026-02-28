@@ -1201,7 +1201,7 @@ pub async fn get_project_extra_info(
         )
         .map_err(|e| e.to_string())?;
 
-    let comment_count: i64 = conn
+    let (comment_count, boosted_session_count): (i64, i64) = conn
         .query_row(
             "WITH session_project_overlap AS (
                 SELECT s.id as session_id,
@@ -1232,7 +1232,7 @@ pub async fn get_project_extra_info(
                 FROM session_project_overlap
             ),
             session_projects AS (
-                SELECT s.id, s.comment,
+                SELECT s.id, s.comment, s.rate_multiplier,
                        CASE
                            WHEN s.project_id IS NOT NULL THEN s.project_id
                            WHEN ro.project_count = 1
@@ -1246,9 +1246,12 @@ pub async fn get_project_extra_info(
                  AND ro.rn = 1
                 WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
             )
-            SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?1 AND comment IS NOT NULL AND comment <> ''",
+            SELECT 
+                COUNT(*) FILTER (WHERE sp.project_id = ?1 AND comment IS NOT NULL AND comment <> ''),
+                COUNT(*) FILTER (WHERE sp.project_id = ?1 AND rate_multiplier > 1.000001)
+            FROM session_projects sp",
             [id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .map_err(|e| e.to_string())?;
 
@@ -1291,6 +1294,7 @@ pub async fn get_project_extra_info(
             file_activity_count,
             manual_session_count,
             comment_count,
+            boosted_session_count,
             estimated_size_bytes,
         },
         top_apps,

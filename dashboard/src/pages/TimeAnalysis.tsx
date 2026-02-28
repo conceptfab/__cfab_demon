@@ -6,6 +6,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
+import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { formatDuration } from "@/lib/utils";
 import { useTimeAnalysisData } from "@/components/time-analysis/useTimeAnalysisData";
 import { DailyBarChart, DailyHeatmap } from "@/components/time-analysis/DailyView";
@@ -14,6 +15,12 @@ import { MonthlyBarChart, MonthlyHeatmap } from "@/components/time-analysis/Mont
 
 export function TimeAnalysis() {
   const d = useTimeAnalysisData();
+  const pieAnimation = getRechartsAnimationConfig({
+    complexity: d.pieData.length,
+    maxComplexity: 14,
+    minDuration: 180,
+    maxDuration: 320,
+  });
 
   return (
     <div className="space-y-6">
@@ -63,6 +70,9 @@ export function TimeAnalysis() {
                       paddingAngle={2} 
                       dataKey="value"
                       stroke="none"
+                      isAnimationActive={pieAnimation.isAnimationActive}
+                      animationDuration={pieAnimation.animationDuration}
+                      animationEasing={pieAnimation.animationEasing}
                     >
                       {d.pieData.map((entry, i) => (
                         <Cell key={i} fill={entry.fill} />

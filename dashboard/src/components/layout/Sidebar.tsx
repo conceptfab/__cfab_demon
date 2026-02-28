@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { MouseEvent } from "react";
 import {
   LayoutDashboard,
@@ -22,6 +22,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/app-store";
 import { BugHunter } from "./BugHunter";
+import { helpTabForPage } from "@/lib/help-navigation";
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
@@ -113,6 +114,12 @@ export function Sidebar() {
   );
 
   const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
+  const openContextHelp = useCallback(() => {
+    const targetTab =
+      currentPage === "help" ? helpTab : helpTabForPage(currentPage, helpTab);
+    setHelpTab(targetTab);
+    setCurrentPage("help");
+  }, [currentPage, helpTab, setCurrentPage, setHelpTab]);
 
   useEffect(() => {
     const check = () => {
@@ -155,12 +162,12 @@ export function Sidebar() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "F1") {
         e.preventDefault();
-        setCurrentPage("help");
+        openContextHelp();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [setCurrentPage]);
+  }, [openContextHelp]);
 
   // Use all-time unassigned count (with minDuration applied) so badge
   // matches what Sessions page can actually display.
@@ -321,13 +328,10 @@ export function Sidebar() {
               )}
             </button>
             <button
-              onClick={() => {
-                setHelpTab("dashboard");
-                setCurrentPage("help");
-              }}
+              onClick={openContextHelp}
               className={cn(
                 "transition-all",
-                currentPage === "help" && helpTab !== "quickstart" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
+                currentPage === "help" ? "text-primary scale-110" : "text-muted-foreground/30 hover:text-foreground"
               )}
               title="Help (F1)"
             >

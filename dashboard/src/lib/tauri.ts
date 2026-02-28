@@ -41,6 +41,7 @@ import type {
   BackupFile,
   DeterministicResult,
   ProjectExtraInfo,
+  ScoreBreakdown,
 } from "./db-types";
 
 export function hasTauriRuntime(): boolean {
@@ -235,6 +236,21 @@ export const applyDeterministicAssignment = (minHistory?: number) =>
   invokeMutation<DeterministicResult>("apply_deterministic_assignment", {
     minHistory: minHistory ?? null,
   });
+
+export const getSessionScoreBreakdown = (sessionId: number) =>
+  invoke<ScoreBreakdown>("get_session_score_breakdown", { sessionId });
+
+export const confirmSessionAssignment = (sessionId: number) =>
+  invokeMutation<void>("confirm_session_assignment", { sessionId });
+
+export const rejectSessionAssignment = (sessionId: number, newProjectId?: number | null) =>
+  invokeMutation<void>("reject_session_assignment", { sessionId, newProjectId: newProjectId ?? null });
+
+export const getFeedbackWeight = () =>
+  invoke<number>("get_feedback_weight");
+
+export const setFeedbackWeight = (weight: number) =>
+  invoke<void>("set_feedback_weight", { weight });
 
 // Analysis
 export const getHeatmap = (dateRange: DateRange) =>

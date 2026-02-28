@@ -1,3 +1,28 @@
+//! # Assignment Model — AI Session-to-Project Classification
+//!
+//! This module implements a multi-layer evidence scoring system that assigns
+//! sessions to projects. It is NOT a neural network — it uses deterministic
+//! feature-based scoring with 4 evidence layers:
+//!
+//! - **Layer 0 (0.80)**: Direct file-activity overlap — strongest signal
+//! - **Layer 1 (0.30)**: Historical app→project mapping (logarithmic scaling)
+//! - **Layer 2 (0.10)**: Time-of-day + weekday patterns
+//! - **Layer 3 (0.30)**: File name token matching
+//!
+//! ## Training
+//! `retrain_model_sync()` rebuilds 3 database tables from historical data,
+//! then applies reinforcement from `assignment_feedback` (manual corrections
+//! get `feedback_weight`× boost, wrong predictions get penalized).
+//!
+//! ## Modes
+//! - `off`: No suggestions
+//! - `suggest`: Show suggestions, user accepts/rejects
+//! - `auto_safe`: Auto-assign when confidence ≥ threshold + evidence ≥ min + margin ≥ 0.20
+//!
+//! ## Manual Override Protection
+//! Sessions with entries in `session_manual_overrides` are never overridden
+//! by auto-safe or re-suggested to a different project.
+
 use chrono::{Datelike, Timelike};
 use rusqlite::{OptionalExtension, ToSql};
 use serde::{Deserialize, Serialize};
@@ -13,6 +38,7 @@ const DEFAULT_MIN_CONFIDENCE_SUGGEST: f64 = 0.60;
 const DEFAULT_MIN_CONFIDENCE_AUTO: f64 = 0.85;
 const DEFAULT_MIN_EVIDENCE_AUTO: i64 = 3;
 const AUTO_SAFE_MIN_MARGIN: f64 = 0.20;
+const DEFAULT_FEEDBACK_WEIGHT: f64 = 5.0;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssignmentModelStatus {
@@ -160,6 +186,60 @@ fn increment_feedback_counter(conn: &rusqlite::Connection) {
            updated_at = datetime('now')",
         [],
     );
+}
+
+/// Check if a session has a manual override that forces it to a specific project.
+/// Returns Some(project_id) if override exists and target project is valid, None otherwise.
+fn check_manual_override(conn: &rusqlite::Connection, session_id: i64) -> Option<i64> {
+    let meta = conn
+        .query_row(
+            "SELECT a.executable_name, s.start_time, s.end_time
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             WHERE s.id = ?1",
+            rusqlite::params![session_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .ok()
+        .flatten()?;
+
+    let (exe_name, start_time, end_time) = meta;
+
+    let project_name: Option<String> = conn
+        .query_row(
+            "SELECT project_name
+             FROM session_manual_overrides
+             WHERE lower(executable_name) = lower(?1)
+               AND start_time = ?2
+               AND end_time = ?3",
+            rusqlite::params![exe_name, start_time, end_time],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten()?;
+
+    let project_name = project_name?;
+
+    conn.query_row(
+        "SELECT id FROM projects
+         WHERE lower(name) = lower(?1)
+           AND excluded_at IS NULL
+           AND frozen_at IS NULL
+         LIMIT 1",
+        rusqlite::params![project_name],
+        |row| row.get::<_, i64>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
 }
 
 fn tokenize(text: &str) -> Vec<String> {
@@ -582,6 +662,12 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
     upsert_state(conn, "is_training", "true")?;
     let start_time = std::time::Instant::now();
 
+    // Load feedback weight from model state (default: 5.0)
+    let feedback_weight = {
+        let state = load_state_map(conn).unwrap_or_default();
+        parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT)
+    };
+
     let result = (|| -> rusqlite::Result<i64> {
         let tx = conn.unchecked_transaction()?;
 
@@ -609,6 +695,49 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             GROUP BY app_id, hour_bucket, weekday, project_id;
             ",
         )?;
+
+        // Reinforcement: boost counts based on manual feedback.
+        // For each manual correction (from_project -> to_project), boost the correct
+        // project and penalize the wrong one in assignment_model_app.
+        {
+            let mut fb_stmt = tx.prepare(
+                "SELECT app_id, from_project_id, to_project_id, COUNT(*) as cnt
+                 FROM assignment_feedback
+                 WHERE source IN ('manual_session_assign', 'ai_suggestion_reject')
+                   AND to_project_id IS NOT NULL
+                   AND app_id IS NOT NULL
+                 GROUP BY app_id, from_project_id, to_project_id",
+            )?;
+            let mut fb_rows = fb_stmt.query([])?;
+            while let Some(row) = fb_rows.next()? {
+                let app_id: i64 = row.get(0)?;
+                let from_project_id: Option<i64> = row.get(1)?;
+                let to_project_id: i64 = row.get(2)?;
+                let cnt: i64 = row.get(3)?;
+
+                let boost = (cnt as f64 * feedback_weight).round() as i64;
+
+                // Boost the correct project (user moved the session here)
+                tx.execute(
+                    "INSERT INTO assignment_model_app (app_id, project_id, cnt, last_seen)
+                     VALUES (?1, ?2, ?3, datetime('now'))
+                     ON CONFLICT(app_id, project_id) DO UPDATE SET
+                       cnt = assignment_model_app.cnt + ?3",
+                    rusqlite::params![app_id, to_project_id, boost],
+                )?;
+
+                // Penalize the wrong project (system was wrong about this one)
+                if let Some(from_pid) = from_project_id {
+                    let penalty = (boost / 2).max(1);
+                    tx.execute(
+                        "UPDATE assignment_model_app
+                         SET cnt = MAX(cnt - ?3, 1)
+                         WHERE app_id = ?1 AND project_id = ?2",
+                        rusqlite::params![app_id, from_pid, penalty],
+                    )?;
+                }
+            }
+        }
 
         let mut token_counts: HashMap<(String, i64), i64> = HashMap::new();
         {
@@ -804,6 +933,12 @@ pub async fn run_auto_safe_assignment(
             };
 
             if current_project_id.is_some() {
+                result.skipped_already_assigned += 1;
+                continue;
+            }
+
+            // Respect manual overrides: never auto-assign sessions the user explicitly moved
+            if check_manual_override(&tx, session_id).is_some() {
                 result.skipped_already_assigned += 1;
                 continue;
             }
@@ -1258,4 +1393,260 @@ pub async fn auto_run_if_needed(
         return Ok(None);
     }
     Ok(Some(result))
+}
+
+// ---------------------------------------------------------------------------
+// Score Breakdown & Reinforcement Commands
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CandidateScore {
+    pub project_id: i64,
+    pub project_name: String,
+    pub layer0_file_score: f64,
+    pub layer1_app_score: f64,
+    pub layer2_time_score: f64,
+    pub layer3_token_score: f64,
+    pub total_score: f64,
+    pub evidence_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ScoreBreakdown {
+    pub candidates: Vec<CandidateScore>,
+    pub final_suggestion: Option<ProjectSuggestion>,
+    pub has_manual_override: bool,
+    pub manual_override_project_id: Option<i64>,
+}
+
+/// Compute and return the full per-layer score breakdown for a session.
+#[command]
+pub async fn get_session_score_breakdown(
+    app: AppHandle,
+    session_id: i64,
+) -> Result<ScoreBreakdown, String> {
+    let conn = db::get_connection(&app)?;
+    let context = build_session_context(&conn, session_id)?;
+
+    let manual_override_pid = check_manual_override(&conn, session_id);
+
+    let Some(context) = context else {
+        return Ok(ScoreBreakdown {
+            candidates: vec![],
+            final_suggestion: None,
+            has_manual_override: manual_override_pid.is_some(),
+            manual_override_project_id: manual_override_pid,
+        });
+    };
+
+    // Compute per-layer scores for all candidates
+    let mut layer0: HashMap<i64, f64> = HashMap::new();
+    let mut layer1: HashMap<i64, f64> = HashMap::new();
+    let mut layer2: HashMap<i64, f64> = HashMap::new();
+    let mut layer3: HashMap<i64, f64> = HashMap::new();
+    let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
+
+    // Layer 0: file-activity evidence
+    for &pid in &context.file_project_ids {
+        let valid: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1 AND excluded_at IS NULL AND frozen_at IS NULL",
+                rusqlite::params![pid],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if valid {
+            *layer0.entry(pid).or_insert(0.0) += 0.80;
+            *candidate_evidence.entry(pid).or_insert(0) += 2;
+        }
+    }
+
+    // Layer 1: app→project
+    {
+        let mut stmt = conn
+            .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt.query(rusqlite::params![context.app_id]).map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+            let score = 0.30 * (1.0 + cnt).ln();
+            *layer1.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    // Layer 2: time patterns
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query(rusqlite::params![context.app_id, context.hour_bucket, context.weekday])
+            .map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+            let score = 0.10 * (1.0 + cnt).ln();
+            *layer2.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    // Layer 3: token matching
+    if !context.tokens.is_empty() {
+        let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
+        for chunk in context.tokens.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT project_id, SUM(cnt), COUNT(cnt) FROM assignment_model_token WHERE token IN ({}) GROUP BY project_id",
+                placeholders
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
+            let mut rows = stmt.query(rusqlite::params_from_iter(params)).map_err(|e| e.to_string())?;
+            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+                let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
+                let entry = token_stats.entry(pid).or_insert((0.0, 0.0));
+                entry.0 += sum_cnt;
+                entry.1 += matches_cnt;
+            }
+        }
+        let token_total = context.tokens.len() as f64;
+        for (pid, (sum_cnt, matches_cnt)) in token_stats {
+            let avg_log = (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+            let score = 0.30 * avg_log;
+            *layer3.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    // Collect all candidate project IDs
+    let mut all_pids: HashSet<i64> = HashSet::new();
+    all_pids.extend(layer0.keys());
+    all_pids.extend(layer1.keys());
+    all_pids.extend(layer2.keys());
+    all_pids.extend(layer3.keys());
+
+    let mut candidates: Vec<CandidateScore> = Vec::new();
+    for pid in all_pids {
+        let l0 = *layer0.get(&pid).unwrap_or(&0.0);
+        let l1 = *layer1.get(&pid).unwrap_or(&0.0);
+        let l2 = *layer2.get(&pid).unwrap_or(&0.0);
+        let l3 = *layer3.get(&pid).unwrap_or(&0.0);
+        let total = l0 + l1 + l2 + l3;
+        let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
+
+        let project_name: String = conn
+            .query_row("SELECT name FROM projects WHERE id = ?1", rusqlite::params![pid], |row| row.get(0))
+            .unwrap_or_else(|_| format!("#{}", pid));
+
+        candidates.push(CandidateScore {
+            project_id: pid,
+            project_name,
+            layer0_file_score: (l0 * 1000.0).round() / 1000.0,
+            layer1_app_score: (l1 * 1000.0).round() / 1000.0,
+            layer2_time_score: (l2 * 1000.0).round() / 1000.0,
+            layer3_token_score: (l3 * 1000.0).round() / 1000.0,
+            total_score: (total * 1000.0).round() / 1000.0,
+            evidence_count: evidence,
+        });
+    }
+
+    candidates.sort_by(|a, b| b.total_score.partial_cmp(&a.total_score).unwrap_or(std::cmp::Ordering::Equal));
+
+    let final_suggestion = compute_raw_suggestion(&conn, &context)?;
+
+    Ok(ScoreBreakdown {
+        candidates,
+        final_suggestion,
+        has_manual_override: manual_override_pid.is_some(),
+        manual_override_project_id: manual_override_pid,
+    })
+}
+
+/// Confirm that an AI-assigned session is correct (thumbs up).
+#[command]
+pub async fn confirm_session_assignment(
+    app: AppHandle,
+    session_id: i64,
+) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+
+    let session = conn
+        .query_row(
+            "SELECT app_id, project_id FROM sessions WHERE id = ?1",
+            rusqlite::params![session_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("Session not found")?;
+
+    let (app_id, project_id) = session;
+    let project_id = project_id.ok_or("Session has no project assigned")?;
+
+    conn.execute(
+        "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
+         VALUES (?1, ?2, ?3, ?3, 'ai_suggestion_accept', datetime('now'))",
+        rusqlite::params![session_id, app_id, project_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    increment_feedback_counter(&conn);
+    Ok(())
+}
+
+/// Reject an AI-assigned session and reassign to a different project (thumbs down).
+#[command]
+pub async fn reject_session_assignment(
+    app: AppHandle,
+    session_id: i64,
+    new_project_id: Option<i64>,
+) -> Result<(), String> {
+    let conn = db::get_connection(&app)?;
+
+    let session = conn
+        .query_row(
+            "SELECT app_id, project_id FROM sessions WHERE id = ?1",
+            rusqlite::params![session_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?)),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?
+        .ok_or("Session not found")?;
+
+    let (app_id, old_project_id) = session;
+
+    conn.execute(
+        "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
+         VALUES (?1, ?2, ?3, ?4, 'ai_suggestion_reject', datetime('now'))",
+        rusqlite::params![session_id, app_id, old_project_id, new_project_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    increment_feedback_counter(&conn);
+    Ok(())
+}
+
+/// Get the current feedback weight setting.
+#[command]
+pub async fn get_feedback_weight(app: AppHandle) -> Result<f64, String> {
+    let conn = db::get_connection(&app)?;
+    let state = load_state_map(&conn)?;
+    Ok(parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT))
+}
+
+/// Set the feedback weight (how much manual corrections influence the model).
+#[command]
+pub async fn set_feedback_weight(app: AppHandle, weight: f64) -> Result<(), String> {
+    if !weight.is_finite() || weight < 1.0 || weight > 50.0 {
+        return Err("Feedback weight must be between 1.0 and 50.0".to_string());
+    }
+    let conn = db::get_connection(&app)?;
+    upsert_state(&conn, "feedback_weight", &format!("{:.1}", weight))
 }

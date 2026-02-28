@@ -80,7 +80,7 @@ export interface SessionWithApp extends Session {
   comment?: string | null;
 }
 
-export type AssignmentMode = "off" | "suggest" | "auto_safe";
+export type AssignmentMode = 'off' | 'suggest' | 'auto_safe';
 
 export interface AssignmentModelStatus {
   mode: AssignmentMode;
@@ -120,6 +120,31 @@ export interface DeterministicResult {
   apps_with_rules: number;
   sessions_assigned: number;
   sessions_skipped: number;
+}
+
+export interface CandidateScore {
+  project_id: number;
+  project_name: string;
+  layer0_file_score: number;
+  layer1_app_score: number;
+  layer2_time_score: number;
+  layer3_token_score: number;
+  total_score: number;
+  evidence_count: number;
+}
+
+export interface ProjectSuggestion {
+  project_id: number;
+  confidence: number;
+  evidence_count: number;
+  margin: number;
+}
+
+export interface ScoreBreakdown {
+  candidates: CandidateScore[];
+  final_suggestion: ProjectSuggestion | null;
+  has_manual_override: boolean;
+  manual_override_project_id: number | null;
 }
 
 export interface DashboardStats {
@@ -201,6 +226,7 @@ export interface ProjectDbStats {
   file_activity_count: number;
   manual_session_count: number;
   comment_count: number;
+  boosted_session_count: number;
   estimated_size_bytes: number;
 }
 
@@ -323,7 +349,7 @@ export interface ExportArchive {
   version: string;
   exported_at: string;
   machine_id: string;
-  export_type: "single_project" | "all_data";
+  export_type: 'single_project' | 'all_data';
   date_range: DateRange;
   metadata: {
     project_id?: number;

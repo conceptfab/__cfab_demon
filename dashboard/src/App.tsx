@@ -19,9 +19,7 @@ import {
   loadOnlineSyncSettings,
   runOnlineSyncOnce,
 } from '@/lib/online-sync';
-import {
-  LOCAL_DATA_CHANGED_EVENT,
-} from '@/lib/sync-events';
+import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
 import { loadSessionSettings } from '@/lib/user-settings';
 import { Dashboard } from '@/pages/Dashboard';
 
@@ -289,9 +287,11 @@ function AutoSessionRebuild() {
 
 function AutoAiAssignment() {
   const { autoImportDone, refreshKey, triggerRefresh } = useAppStore();
+  const lastProcessedKey = useRef(-1);
 
   useEffect(() => {
-    if (!autoImportDone) return;
+    if (!autoImportDone || lastProcessedKey.current === refreshKey) return;
+    lastProcessedKey.current = refreshKey;
 
     const run = async () => {
       let needsRefresh = false;
@@ -325,6 +325,8 @@ function AutoAiAssignment() {
       }
 
       if (needsRefresh) {
+        // Prevent immediate re-trigger inside the same effect cycle by manually updating the ref
+        // triggerRefresh will cause a new render, where lastProcessedKey will correctly block re-run if it matches.
         triggerRefresh();
       }
     };

@@ -5,6 +5,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
+import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { formatDuration } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { PALETTE } from "./types";
@@ -18,6 +19,13 @@ interface WeeklyViewProps {
 }
 
 export function WeeklyBarChart({ weeklyBarData, weeklyTotalHours, stackedBarColorMap }: WeeklyViewProps) {
+  const barAnimation = getRechartsAnimationConfig({
+    complexity: weeklyBarData.data.length * Math.max(weeklyBarData.projectNames.length, 1),
+    maxComplexity: 220,
+    minDuration: 160,
+    maxDuration: 300,
+  });
+
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
@@ -40,7 +48,16 @@ export function WeeklyBarChart({ weeklyBarData, weeklyTotalHours, stackedBarColo
               labelFormatter={(v) => { try { return format(parseISO(v as string), "EEE, MMM d"); } catch { return v as string; } }}
             />
             {weeklyBarData.projectNames.map((name) => (
-              <Bar key={name} dataKey={name} stackId="stack" fill={stackedBarColorMap.get(name) || PALETTE[0]} radius={[0, 0, 0, 0]} />
+              <Bar
+                key={name}
+                dataKey={name}
+                stackId="stack"
+                fill={stackedBarColorMap.get(name) || PALETTE[0]}
+                radius={[0, 0, 0, 0]}
+                isAnimationActive={barAnimation.isAnimationActive}
+                animationDuration={barAnimation.animationDuration}
+                animationEasing={barAnimation.animationEasing}
+              />
             ))}
           </BarChart>
         </ResponsiveContainer>

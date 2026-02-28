@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef } from "react";
 import {
   Flame,
   PenLine,
@@ -13,6 +13,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
+import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import {
   BarChart,
   Bar,
@@ -52,7 +53,7 @@ export function TimelineChart({
   onBarClick,
   onBarContextMenu,
 }: Props) {
-  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
+  const hoveredDateRef = useRef<string | null>(null);
   const seriesKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const row of data) {
@@ -116,8 +117,25 @@ export function TimelineChart({
       return out;
     });
   }, [data, seriesKeys, granularity, dateRange, trimLeadingToFirstData]);
+  const chartDataByDate = useMemo(() => {
+    const map = new Map<string, (typeof chartData)[number]>();
+    for (const row of chartData) {
+      map.set(String(row.date), row);
+    }
+    return map;
+  }, [chartData]);
 
   const isHourly = granularity === "hour";
+  const barAnimation = useMemo(
+    () =>
+      getRechartsAnimationConfig({
+        complexity: chartData.length * Math.max(seriesKeys.length, 1),
+        maxComplexity: isHourly ? 240 : 300,
+        minDuration: isHourly ? 150 : 170,
+        maxDuration: isHourly ? 250 : 320,
+      }),
+    [chartData.length, seriesKeys.length, isHourly]
+  );
   const daySpan = useMemo(() => {
     if (!dateRange?.start || !dateRange?.end) return 0;
     try {
@@ -226,8 +244,8 @@ export function TimelineChart({
 
   const renderCustomAxisTick = (props: any) => {
     const { x, y, payload } = props;
-    const dateKey = payload.value;
-    const row = chartData.find(d => d.date === dateKey);
+    const dateKey = String(payload.value);
+    const row = chartDataByDate.get(dateKey);
     if (!row) return null;
 
     const hasComments = Array.isArray(row.comments) && row.comments.length > 0;
@@ -276,8 +294,8 @@ export function TimelineChart({
           className={(heightClassName ?? (isHourly ? "h-64" : "h-56")) + " outline-none focus:outline-none focus:ring-0"}
           onContextMenu={(e) => {
             e.preventDefault();
-            if (hoveredDate && onBarContextMenu) {
-                onBarContextMenu(hoveredDate, e.clientX, e.clientY);
+            if (hoveredDateRef.current && onBarContextMenu) {
+                onBarContextMenu(hoveredDateRef.current, e.clientX, e.clientY);
             }
           }}
         >
@@ -286,9 +304,11 @@ export function TimelineChart({
                 data={chartData}
                 onMouseMove={(state: any) => {
                     const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
-                    if (date) setHoveredDate(date);
+                    hoveredDateRef.current = typeof date === "string" && date.length > 0 ? date : null;
                 }}
-                onMouseLeave={() => setHoveredDate(null)}
+                onMouseLeave={() => {
+                  hoveredDateRef.current = null;
+                }}
                 onClick={(state: any) => {
                   const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
                   if (date) onBarClick?.(date);
@@ -338,6 +358,9 @@ export function TimelineChart({
                       stackId="projects"
                       fill={color}
                       radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}
+                      isAnimationActive={barAnimation.isAnimationActive}
+                      animationDuration={barAnimation.animationDuration}
+                      animationEasing={barAnimation.animationEasing}
                       shape={(props: any) => {
                           const { x, y, width, height, fill, payload, radius } = props;
                           if (!height || height <= 0) return null;
@@ -352,11 +375,7 @@ export function TimelineChart({
                       }}
                       style={{ 
                         cursor: onBarClick ? "pointer" : "default",
-                        filter: hoveredDate === null || hoveredDate === key ? 'none' : 'grayscale(0.4) opacity(0.6)',
-                        transition: 'all 0.2s ease'
                       }}
-                      onMouseEnter={() => setHoveredDate(key)}
-                      onMouseLeave={() => setHoveredDate(null)}
                     />
                   );
                 })}

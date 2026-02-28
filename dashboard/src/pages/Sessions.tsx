@@ -6,6 +6,7 @@ import {
   Sparkles,
   MessageSquare,
   CircleDollarSign,
+  BarChart3,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +18,7 @@ import {
   deleteSession,
   updateSessionRateMultiplier,
   updateSessionComment,
+  getSessionScoreBreakdown,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { formatDuration } from '@/lib/utils';
@@ -26,8 +28,13 @@ import type {
   DateRange,
   SessionWithApp,
   ProjectWithStats,
+  ScoreBreakdown,
 } from '@/lib/db-types';
-import { loadSessionSettings } from '@/lib/user-settings';
+import {
+  loadSessionSettings,
+  loadIndicatorSettings,
+  type SessionIndicatorSettings,
+} from '@/lib/user-settings';
 
 interface ContextMenu {
   x: number;
@@ -77,6 +84,8 @@ export function Sessions() {
     triggerRefresh,
     sessionsFocusDate,
     clearSessionsFocusDate,
+    sessionsFocusRange,
+    setSessionsFocusRange,
     sessionsFocusProject,
     setSessionsFocusProject,
     setProjectPageId,
@@ -85,6 +94,9 @@ export function Sessions() {
   const [rangeMode, setRangeMode] = useState<RangeMode>('daily');
   const [anchorDate, setAnchorDate] = useState<string>(
     () => sessionsFocusDate ?? format(new Date(), 'yyyy-MM-dd'),
+  );
+  const [overrideDateRange, setOverrideDateRange] = useState<DateRange | null>(
+    null,
   );
   const [activeProjectId, setActiveProjectId] = useState<
     number | 'unassigned' | null
@@ -98,8 +110,20 @@ export function Sessions() {
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [projectCtxMenu, setProjectCtxMenu] =
     useState<ProjectHeaderMenu | null>(null);
-  const [viewMode, setViewMode] = useState<'detailed' | 'compact'>('detailed');
+  const [viewMode, setViewMode] = useState<
+    'detailed' | 'compact' | 'ai_detailed'
+  >('detailed');
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [indicators] = useState<SessionIndicatorSettings>(() =>
+    loadIndicatorSettings(),
+  );
+  const [scoreBreakdown, setScoreBreakdown] = useState<{
+    sessionId: number;
+    data: ScoreBreakdown;
+  } | null>(null);
+  const [aiBreakdowns, setAiBreakdowns] = useState<Map<number, ScoreBreakdown>>(
+    new Map(),
+  );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
   const PAGE_SIZE = 100;
@@ -114,6 +138,7 @@ export function Sessions() {
   const shiftStepDays = rangeMode === 'weekly' ? 7 : 1;
 
   const activeDateRange = useMemo<DateRange>(() => {
+    if (overrideDateRange) return overrideDateRange;
     const selectedDay = anchorDate || today;
     const selectedDateObj = parseISO(selectedDay);
 
@@ -126,9 +151,10 @@ export function Sessions() {
           end: selectedDay,
         };
     }
-  }, [rangeMode, anchorDate, today]);
+  }, [rangeMode, anchorDate, today, overrideDateRange]);
 
   const shiftDateRange = (direction: -1 | 1) => {
+    setOverrideDateRange(null);
     const current = parseISO(anchorDate);
     const next = format(
       addDays(current, direction * shiftStepDays),
@@ -141,24 +167,37 @@ export function Sessions() {
   /**
    * Helper component for session rows to maintain consistency
    */
-  const SessionRow = ({
+  const renderSessionRow = ({
+    key,
     session: s,
     dismissedSuggestions,
-    handleAcceptSuggestion,
-    handleRejectSuggestion,
+    handleToggleScoreBreakdown,
+    scoreBreakdownSessionId,
+    scoreBreakdownData,
     deleteSession,
     triggerRefresh,
     handleContextMenu,
     isCompact,
+    indicators: ind,
+    forceShowScoreBreakdown,
+    isLoadingScoreBreakdown,
   }: {
+    key?: string | number;
     session: SessionWithApp;
     dismissedSuggestions: Set<number>;
-    handleAcceptSuggestion: (s: SessionWithApp, e: React.MouseEvent) => void;
-    handleRejectSuggestion: (s: SessionWithApp, e: React.MouseEvent) => void;
+    handleToggleScoreBreakdown: (
+      sessionId: number,
+      e: React.MouseEvent,
+    ) => void;
+    scoreBreakdownSessionId: number | null;
+    scoreBreakdownData: ScoreBreakdown | null;
     deleteSession: (id: number) => Promise<void>;
     triggerRefresh: () => void;
     handleContextMenu: (e: React.MouseEvent, s: SessionWithApp) => void;
     isCompact?: boolean;
+    indicators: SessionIndicatorSettings;
+    forceShowScoreBreakdown?: boolean;
+    isLoadingScoreBreakdown?: boolean;
   }) => {
     const isSuggested =
       s.project_name === null &&
@@ -168,7 +207,8 @@ export function Sessions() {
     if (isCompact) {
       return (
         <div
-          className="group relative rounded border border-transparent hover:border-border/30 hover:bg-secondary/10 transition-all p-1.5 bg-secondary/5 cursor-context-menu mb-0.5"
+          key={key}
+          className="group relative rounded border border-transparent hover:border-border/30 hover:bg-secondary/10 transition-colors p-1.5 bg-secondary/5 cursor-default mb-0.5"
           onContextMenu={(e) => handleContextMenu(e, s)}
         >
           <div className="grid grid-cols-[140px_1fr] gap-x-3">
@@ -211,37 +251,158 @@ export function Sessions() {
                 )}
               </div>
 
-              {/* AI/Action shortcuts in compact view - extremely minimal */}
+              {/* AI/Action shortcuts in compact view */}
               <div className="flex items-center gap-2 shrink-0">
-                {isSuggested && (
-                  <Sparkles className="h-3 w-3 text-sky-400 animate-pulse" />
+                {/* AI suggestion badge (no thumbs - reassigning = negative training signal) */}
+                {ind.showSuggestions && isSuggested && (
+                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
+                    <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
+                    <span className="text-[9px] text-sky-300 font-medium truncate max-w-[80px]">
+                      {s.suggested_project_name}
+                      {s.suggested_confidence != null &&
+                        ` ${(s.suggested_confidence * 100).toFixed(0)}%`}
+                    </span>
+                  </div>
                 )}
-                <div className="flex items-center">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-4 w-4 text-destructive/35 hover:text-destructive"
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        await deleteSession(s.id);
-                        triggerRefresh();
-                      } catch {}
-                    }}
-                  >
-                    <Trash2 className="h-2.5 w-2.5" />
-                  </Button>
-                </div>
+                {/* AI assigned indicator */}
+                {ind.showAiBadge && s.ai_assigned && !isSuggested && (
+                  <Sparkles className="h-3 w-3 text-violet-400/60 shrink-0" />
+                )}
+                {/* Score bar - shows AI target project + confidence */}
+                {ind.showScoreBreakdown &&
+                  (() => {
+                    // Determine AI target project name and confidence
+                    const bdCandidate =
+                      scoreBreakdownData?.candidates?.[0] ?? null;
+                    const bdConf =
+                      scoreBreakdownData?.final_suggestion?.confidence ?? null;
+
+                    const targetName =
+                      s.suggested_project_name ??
+                      bdCandidate?.project_name ??
+                      (s.ai_assigned ? s.project_name : null);
+                    const conf =
+                      s.suggested_confidence ??
+                      bdConf ??
+                      (bdCandidate
+                        ? Math.min(bdCandidate.total_score / 10, 1)
+                        : null);
+
+                    const isLoadingData =
+                      scoreBreakdownData === null && !aiBreakdowns.has(s.id);
+
+                    return (
+                      <div className="flex items-center gap-1 rounded-sm px-1 py-0.5 transform-gpu">
+                        {isLoadingData ? (
+                          <span className="text-[8px] text-muted-foreground/40 italic px-1 animate-pulse">
+                            loading...
+                          </span>
+                        ) : targetName ? (
+                          <span className="text-[8px] text-violet-300 font-medium truncate max-w-[70px]">
+                            {targetName}
+                          </span>
+                        ) : (
+                          <span className="text-[8px] text-muted-foreground/30 font-medium px-1">
+                            no ai data
+                          </span>
+                        )}
+                        <div className="w-[32px] h-[6px] rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width:
+                                conf != null
+                                  ? `${Math.max(8, conf * 100)}%`
+                                  : '0%',
+                              backgroundColor:
+                                conf != null
+                                  ? conf >= 0.8
+                                    ? '#22c55e'
+                                    : conf >= 0.5
+                                      ? '#eab308'
+                                      : '#ef4444'
+                                  : 'transparent',
+                            }}
+                          />
+                        </div>
+                        {conf != null && (
+                          <span className="text-[7px] font-mono text-muted-foreground">
+                            {(conf * 100).toFixed(0)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+                {/* Delete */}
+                <button
+                  className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[2px] text-destructive/30 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await deleteSession(s.id);
+                      triggerRefresh();
+                    } catch {}
+                  }}
+                >
+                  <Trash2 className="h-2.5 w-2.5" />
+                </button>
               </div>
             </div>
           </div>
+          {/* Score Breakdown Panel (compact) */}
+          {(scoreBreakdownSessionId === s.id || forceShowScoreBreakdown) && (
+            <div className="mt-1 border-t border-border/10 pt-1">
+              <div className="text-[8px] text-muted-foreground/60 font-medium mb-0.5 flex items-center gap-1">
+                <BarChart3 className="h-2 w-2" />
+                AI Score Breakdown
+                {scoreBreakdownData?.has_manual_override && (
+                  <span className="text-amber-400/70 ml-1">
+                    (manual override)
+                  </span>
+                )}
+              </div>
+              {isLoadingScoreBreakdown ? (
+                <div className="text-[8px] text-muted-foreground/30 italic px-1 animate-pulse">
+                  Loading AI data...
+                </div>
+              ) : scoreBreakdownData?.candidates.length === 0 ? (
+                <p className="text-[8px] text-muted-foreground/30 italic">
+                  No candidates
+                </p>
+              ) : (
+                <div className="space-y-0.5">
+                  {scoreBreakdownData?.candidates.slice(0, 3).map((c, i) => (
+                    <div
+                      key={c.project_id}
+                      className={`flex items-center gap-2 text-[8px] ${
+                        i === 0
+                          ? 'text-sky-300/80 font-medium'
+                          : 'text-muted-foreground/40'
+                      }`}
+                    >
+                      <span className="truncate max-w-[100px]">
+                        {c.project_name}
+                      </span>
+                      <span className="font-mono">
+                        {c.total_score.toFixed(2)}
+                      </span>
+                      <span className="text-muted-foreground/20">
+                        ({c.evidence_count} ev)
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       );
     }
 
     return (
       <div
-        className="group relative rounded-xl border transition-all p-4 cursor-context-menu mb-4"
+        key={key}
+        className="group relative rounded-xl border transition-[background-color,border-color] p-4 cursor-default mb-4"
         onContextMenu={(e) => handleContextMenu(e, s)}
         style={{ backgroundColor: '#1a1b26', borderColor: '#24283b' }}
       >
@@ -257,47 +418,90 @@ export function Sessions() {
             {(s.rate_multiplier ?? 1) > 1.000_001 && (
               <CircleDollarSign className="h-4 w-4 text-emerald-400 fill-emerald-500/10 shrink-0" />
             )}
-            {s.ai_assigned && (
-              <Sparkles className="h-2.5 w-2.5 text-violet-400/60 shrink-0" />
+            {/* AI assigned indicator (no thumbs - reassigning = negative training signal) */}
+            {ind.showAiBadge && s.ai_assigned && !isSuggested && (
+              <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
             )}
+            {/* Score bar - shows AI target project + confidence */}
+            {ind.showScoreBreakdown &&
+              (() => {
+                const bdCandidate = scoreBreakdownData?.candidates?.[0] ?? null;
+                const bdConf =
+                  scoreBreakdownData?.final_suggestion?.confidence ?? null;
+
+                const targetName =
+                  s.suggested_project_name ??
+                  bdCandidate?.project_name ??
+                  (s.ai_assigned ? s.project_name : null);
+                const conf =
+                  s.suggested_confidence ??
+                  bdConf ??
+                  (bdCandidate
+                    ? Math.min(bdCandidate.total_score / 10, 1)
+                    : null);
+
+                const isLoadingData =
+                  scoreBreakdownData === null && !aiBreakdowns.has(s.id);
+
+                return (
+                  <button
+                    className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 cursor-pointer hover:bg-white/10 !transition-none transform-gpu"
+                    onClick={(e) => handleToggleScoreBreakdown(s.id, e)}
+                  >
+                    {isLoadingData ? (
+                      <span className="text-[9px] text-muted-foreground/40 italic px-1 animate-pulse">
+                        loading...
+                      </span>
+                    ) : targetName ? (
+                      <span className="text-[11px] text-violet-300 font-medium truncate max-w-[100px]">
+                        {targetName}
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-muted-foreground/30 font-medium px-1">
+                        no ai data
+                      </span>
+                    )}
+                    <div className="w-[40px] h-[7px] rounded-full bg-white/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width:
+                            conf != null ? `${Math.max(8, conf * 100)}%` : '0%',
+                          backgroundColor:
+                            conf != null
+                              ? conf >= 0.8
+                                ? '#22c55e'
+                                : conf >= 0.5
+                                  ? '#eab308'
+                                  : '#ef4444'
+                              : 'transparent',
+                        }}
+                      />
+                    </div>
+                    {conf != null && (
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        {(conf * 100).toFixed(0)}%
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
           </div>
 
           <div className="flex items-center gap-3">
-            {isSuggested && (
-              <div className="flex items-center gap-2 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-                <div className="flex items-center gap-1.5 text-[9px] text-sky-300 italic font-medium">
-                  <Sparkles className="h-2.5 w-2.5 shrink-0" />
-                  <span>
-                    AI: {s.suggested_project_name} (
-                    {((s.suggested_confidence ?? 0) * 100).toFixed(0)}%)
-                  </span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-4 px-1.5 text-[9px] bg-sky-500/20 text-sky-200 hover:bg-sky-500/40 border-none"
-                    onClick={(e) => handleAcceptSuggestion(s, e)}
-                  >
-                    Accept
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-4 px-1.5 text-[9px] text-muted-foreground/60 hover:bg-muted/10 border-none"
-                    onClick={(e) => handleRejectSuggestion(s, e)}
-                  >
-                    Reject
-                  </Button>
-                </div>
+            {ind.showSuggestions && isSuggested && (
+              <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
+                <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
+                <span className="text-[9px] text-sky-300 italic font-medium">
+                  AI: {s.suggested_project_name} (
+                  {((s.suggested_confidence ?? 0) * 100).toFixed(0)}%)
+                </span>
               </div>
             )}
 
             <div className="flex items-center">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 text-destructive/40 hover:text-destructive hover:bg-destructive/10"
+              <button
+                className="h-5 w-5 shrink-0 flex items-center justify-center rounded-sm text-destructive/40 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu"
                 onClick={async (e) => {
                   e.stopPropagation();
                   try {
@@ -306,8 +510,8 @@ export function Sessions() {
                   } catch {}
                 }}
               >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
         </div>
@@ -367,17 +571,154 @@ export function Sessions() {
             )}
           </div>
         </div>
+
+        {/* Score Breakdown Panel */}
+        {(scoreBreakdownSessionId === s.id || forceShowScoreBreakdown) && (
+          <div className="mt-2 border-t border-border/10 pt-2">
+            <div className="text-[11px] text-muted-foreground/60 font-medium mb-1 flex items-center gap-1">
+              <BarChart3 className="h-3 w-3" />
+              AI Score Breakdown
+              {scoreBreakdownData?.has_manual_override && (
+                <span className="text-amber-400/70 ml-1">
+                  (manual override active)
+                </span>
+              )}
+            </div>
+            {isLoadingScoreBreakdown ? (
+              <div className="text-[11px] text-muted-foreground/30 italic px-1 animate-pulse">
+                Loading AI data...
+              </div>
+            ) : scoreBreakdownData?.candidates.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground/30 italic">
+                No candidates found
+              </p>
+            ) : (
+              <div className="space-y-0.5">
+                {scoreBreakdownData?.candidates.slice(0, 5).map((c, i) => (
+                  <div
+                    key={c.project_id}
+                    className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
+                      i === 0
+                        ? 'text-sky-300/80 font-medium'
+                        : 'text-muted-foreground/40'
+                    }`}
+                  >
+                    <span className="truncate">{c.project_name}</span>
+                    <span
+                      className="text-right font-mono"
+                      title="File activity (L0)"
+                    >
+                      {c.layer0_file_score > 0
+                        ? c.layer0_file_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span
+                      className="text-right font-mono"
+                      title="App history (L1)"
+                    >
+                      {c.layer1_app_score > 0
+                        ? c.layer1_app_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span
+                      className="text-right font-mono"
+                      title="Time pattern (L2)"
+                    >
+                      {c.layer2_time_score > 0
+                        ? c.layer2_time_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span
+                      className="text-right font-mono"
+                      title="Token match (L3)"
+                    >
+                      {c.layer3_token_score > 0
+                        ? c.layer3_token_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span
+                      className="text-right font-mono font-bold"
+                      title="Total score"
+                    >
+                      {c.total_score.toFixed(3)}
+                    </span>
+                    <span
+                      className="text-right font-mono"
+                      title="Evidence layers"
+                    >
+                      {c.evidence_count}ev
+                    </span>
+                  </div>
+                ))}
+                {scoreBreakdownData?.final_suggestion && (
+                  <div className="flex gap-4 text-[11px] text-muted-foreground/30 mt-1 pt-1 border-t border-border/5">
+                    <span>
+                      final confidence:{' '}
+                      <span className="text-violet-400/60 font-mono">
+                        {(
+                          scoreBreakdownData.final_suggestion.confidence * 100
+                        ).toFixed(0)}
+                        %
+                      </span>
+                    </span>
+                    <span>
+                      margin:{' '}
+                      <span className="text-violet-400/60 font-mono">
+                        {scoreBreakdownData.final_suggestion.margin.toFixed(3)}
+                      </span>
+                    </span>
+                    <span>
+                      total evidence:{' '}
+                      <span className="text-violet-400/60 font-mono">
+                        {scoreBreakdownData.final_suggestion.evidence_count}
+                      </span>
+                    </span>
+                  </div>
+                )}
+                <div className="text-[10px] text-muted-foreground/20 mt-1 flex gap-3">
+                  <span>L0=file</span>
+                  <span>L1=app</span>
+                  <span>L2=time</span>
+                  <span>L3=token</span>
+                  {scoreBreakdownData?.final_suggestion && (
+                    <span className="text-sky-400/50">
+                      conf=
+                      {(
+                        scoreBreakdownData.final_suggestion.confidence * 100
+                      ).toFixed(0)}
+                      % margin=
+                      {scoreBreakdownData.final_suggestion.margin.toFixed(3)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
 
   useEffect(() => {
-    if (!sessionsFocusDate && sessionsFocusProject === null) return;
+    if (
+      !sessionsFocusDate &&
+      !sessionsFocusRange &&
+      sessionsFocusProject === null
+    )
+      return;
+
     if (sessionsFocusDate) {
+      setOverrideDateRange(null);
       setRangeMode('daily');
       setAnchorDate(sessionsFocusDate);
       clearSessionsFocusDate();
+    } else if (sessionsFocusRange) {
+      setOverrideDateRange(sessionsFocusRange);
+      // We set anchorDate to end of range just so navigation buttons are somewhat sane
+      setAnchorDate(sessionsFocusRange.end);
+      setSessionsFocusRange(null);
     }
+
     if (sessionsFocusProject !== null) {
       setActiveProjectId(sessionsFocusProject);
       setSessionsFocusProject(null);
@@ -385,6 +726,8 @@ export function Sessions() {
   }, [
     sessionsFocusDate,
     clearSessionsFocusDate,
+    sessionsFocusRange,
+    setSessionsFocusRange,
     sessionsFocusProject,
     setSessionsFocusProject,
   ]);
@@ -675,6 +1018,63 @@ export function Sessions() {
     [triggerRefresh],
   );
 
+  const handleToggleScoreBreakdown = useCallback(
+    async (sessionId: number, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (scoreBreakdown?.sessionId === sessionId) {
+        setScoreBreakdown(null);
+        return;
+      }
+      try {
+        const data = await getSessionScoreBreakdown(sessionId);
+        setScoreBreakdown({ sessionId, data });
+      } catch (err) {
+        console.error('Failed to load score breakdown:', err);
+      }
+    },
+    [scoreBreakdown],
+  );
+
+  // Auto-load score breakdowns for all sessions
+  useEffect(() => {
+    if (sessions.length === 0) return;
+    let cancelled = false;
+    const load = async () => {
+      const promises = sessions.map(async (s) => {
+        if (cancelled || aiBreakdowns.has(s.id)) return;
+        try {
+          const data = await getSessionScoreBreakdown(s.id);
+          if (!cancelled) {
+            setAiBreakdowns((prev) => {
+              const next = new Map(prev);
+              next.set(s.id, data);
+              return next;
+            });
+          }
+        } catch {
+          if (!cancelled) {
+            setAiBreakdowns((prev) => {
+              const next = new Map(prev);
+              next.set(s.id, {
+                candidates: [],
+                has_manual_override: false,
+                manual_override_project_id: null,
+                final_suggestion: null,
+              });
+              return next;
+            });
+          }
+        }
+      });
+      await Promise.allSettled(promises);
+    };
+    load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions]);
+
   const loadMore = () => {
     getSessions({
       dateRange: effectiveDateRange,
@@ -782,8 +1182,11 @@ export function Sessions() {
     <div className="space-y-4">
       {/* Filters & Mode Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <p className="text-xs text-muted-foreground font-medium">
-          {sessions.length} sessions <span className="opacity-40 px-1">/</span>{' '}
+        <p className="text-xs text-muted-foreground font-medium flex items-baseline gap-1">
+          {sessions.length} sessions{' '}
+          <span className="opacity-40 text-[10px]">
+            ({aiBreakdowns.size} AI) /
+          </span>{' '}
           {groupedByProject.length} projects
           {activeProjectId === 'unassigned' && (
             <span className="text-amber-400/80 ml-2 font-bold select-none">
@@ -797,7 +1200,10 @@ export function Sessions() {
               variant={rangeMode === 'daily' ? 'secondary' : 'ghost'}
               size="sm"
               className="h-7 text-[10px] px-3 font-bold"
-              onClick={() => setRangeMode('daily')}
+              onClick={() => {
+                setRangeMode('daily');
+                setOverrideDateRange(null);
+              }}
             >
               Today
             </Button>
@@ -805,7 +1211,10 @@ export function Sessions() {
               variant={rangeMode === 'weekly' ? 'secondary' : 'ghost'}
               size="sm"
               className="h-7 text-[10px] px-3 font-bold"
-              onClick={() => setRangeMode('weekly')}
+              onClick={() => {
+                setRangeMode('weekly');
+                setOverrideDateRange(null);
+              }}
             >
               Week
             </Button>
@@ -837,6 +1246,12 @@ export function Sessions() {
           </div>
           <div className="mx-1 h-4 w-px bg-border/40" />
           <div className="flex bg-secondary/30 p-0.5 rounded border border-border/20">
+            <button
+              onClick={() => setViewMode('ai_detailed')}
+              className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'ai_detailed' ? 'bg-violet-500/20 text-violet-300 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              AI Data
+            </button>
             <button
               onClick={() => setViewMode('detailed')}
               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'detailed' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
@@ -932,19 +1347,27 @@ export function Sessions() {
                   </span>
                 </div>
                 <div className="space-y-0.5 px-0.5">
-                  {group.sessions.map((s) => (
-                    <SessionRow
-                      key={s.id}
-                      session={s}
-                      dismissedSuggestions={dismissedSuggestions}
-                      handleAcceptSuggestion={handleAcceptSuggestion}
-                      handleRejectSuggestion={handleRejectSuggestion}
-                      deleteSession={deleteSession}
-                      triggerRefresh={triggerRefresh}
-                      handleContextMenu={handleContextMenu}
-                      isCompact={true}
-                    />
-                  ))}
+                  {group.sessions.map((s) =>
+                    renderSessionRow({
+                      key: s.id,
+                      session: s,
+                      dismissedSuggestions,
+                      handleToggleScoreBreakdown,
+                      scoreBreakdownSessionId:
+                        scoreBreakdown?.sessionId ?? null,
+                      scoreBreakdownData:
+                        scoreBreakdown?.sessionId === s.id
+                          ? scoreBreakdown.data
+                          : (aiBreakdowns.get(s.id) ?? null),
+                      deleteSession,
+                      triggerRefresh,
+                      handleContextMenu,
+                      isCompact: true,
+                      indicators,
+                      forceShowScoreBreakdown: false,
+                      isLoadingScoreBreakdown: false,
+                    }),
+                  )}
                 </div>
               </div>
             );
@@ -994,18 +1417,27 @@ export function Sessions() {
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {group.sessions.map((s) => (
-                      <SessionRow
-                        key={s.id}
-                        session={s}
-                        dismissedSuggestions={dismissedSuggestions}
-                        handleAcceptSuggestion={handleAcceptSuggestion}
-                        handleRejectSuggestion={handleRejectSuggestion}
-                        deleteSession={deleteSession}
-                        triggerRefresh={triggerRefresh}
-                        handleContextMenu={handleContextMenu}
-                      />
-                    ))}
+                    {group.sessions.map((s) =>
+                      renderSessionRow({
+                        key: s.id,
+                        session: s,
+                        dismissedSuggestions,
+                        handleToggleScoreBreakdown,
+                        scoreBreakdownSessionId:
+                          scoreBreakdown?.sessionId ?? null,
+                        scoreBreakdownData:
+                          scoreBreakdown?.sessionId === s.id
+                            ? scoreBreakdown.data
+                            : (aiBreakdowns.get(s.id) ?? null),
+                        deleteSession,
+                        triggerRefresh,
+                        handleContextMenu,
+                        indicators,
+                        forceShowScoreBreakdown: viewMode === 'ai_detailed',
+                        isLoadingScoreBreakdown:
+                          viewMode === 'ai_detailed' && !aiBreakdowns.has(s.id),
+                      }),
+                    )}
                   </div>
                 </CardContent>
               </Card>

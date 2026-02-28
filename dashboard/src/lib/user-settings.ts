@@ -237,3 +237,107 @@ export function saveCurrencySettings(next: CurrencySettings): CurrencySettings {
   }
   return normalized;
 }
+
+export type AppLanguageCode = "pl" | "en";
+
+export interface LanguageSettings {
+  code: AppLanguageCode;
+}
+
+const LANGUAGE_STORAGE_KEY = "timeflow.settings.language";
+const LEGACY_LANGUAGE_STORAGE_KEY = "cfab.settings.language";
+
+export const DEFAULT_LANGUAGE_SETTINGS: LanguageSettings = {
+  code: "en",
+};
+
+export function normalizeLanguageCode(value: unknown): AppLanguageCode {
+  if (typeof value !== "string") return DEFAULT_LANGUAGE_SETTINGS.code;
+  return value.toLowerCase().startsWith("pl") ? "pl" : "en";
+}
+
+function detectBrowserLanguageCode(): AppLanguageCode {
+  if (typeof navigator === "undefined") return DEFAULT_LANGUAGE_SETTINGS.code;
+  return normalizeLanguageCode(navigator.language || navigator.languages?.[0]);
+}
+
+export function loadLanguageSettings(): LanguageSettings {
+  if (typeof window === "undefined") return { ...DEFAULT_LANGUAGE_SETTINGS };
+  try {
+    const raw = loadRawSetting(LANGUAGE_STORAGE_KEY, LEGACY_LANGUAGE_STORAGE_KEY);
+    if (!raw) return { code: detectBrowserLanguageCode() };
+    if (
+      window.localStorage.getItem(LANGUAGE_STORAGE_KEY) === null &&
+      window.localStorage.getItem(LEGACY_LANGUAGE_STORAGE_KEY) !== null
+    ) {
+      migrateLegacySetting(LANGUAGE_STORAGE_KEY, LEGACY_LANGUAGE_STORAGE_KEY, raw);
+    }
+    const parsed = JSON.parse(raw) as Partial<LanguageSettings>;
+    return {
+      code: normalizeLanguageCode(parsed.code),
+    };
+  } catch {
+    return { code: detectBrowserLanguageCode() };
+  }
+}
+
+export function saveLanguageSettings(next: LanguageSettings): LanguageSettings {
+  const normalized: LanguageSettings = {
+    code: normalizeLanguageCode(next.code),
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(LANGUAGE_STORAGE_KEY, JSON.stringify(normalized));
+    window.localStorage.removeItem(LEGACY_LANGUAGE_STORAGE_KEY);
+  }
+  return normalized;
+}
+
+export interface SessionIndicatorSettings {
+  showAiBadge: boolean;
+  showScoreBreakdown: boolean;
+  showThumbsOnAi: boolean;
+  showThumbsOnAll: boolean;
+  showSuggestions: boolean;
+}
+
+const INDICATOR_STORAGE_KEY = "timeflow.settings.session-indicators";
+
+export const DEFAULT_INDICATOR_SETTINGS: SessionIndicatorSettings = {
+  showAiBadge: true,
+  showScoreBreakdown: true,
+  showThumbsOnAi: true,
+  showThumbsOnAll: false,
+  showSuggestions: true,
+};
+
+export function loadIndicatorSettings(): SessionIndicatorSettings {
+  if (typeof window === "undefined") return { ...DEFAULT_INDICATOR_SETTINGS };
+  try {
+    const raw = window.localStorage.getItem(INDICATOR_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_INDICATOR_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<SessionIndicatorSettings>;
+    return {
+      showAiBadge: typeof parsed.showAiBadge === "boolean" ? parsed.showAiBadge : DEFAULT_INDICATOR_SETTINGS.showAiBadge,
+      showScoreBreakdown: typeof parsed.showScoreBreakdown === "boolean" ? parsed.showScoreBreakdown : DEFAULT_INDICATOR_SETTINGS.showScoreBreakdown,
+      showThumbsOnAi: typeof parsed.showThumbsOnAi === "boolean" ? parsed.showThumbsOnAi : DEFAULT_INDICATOR_SETTINGS.showThumbsOnAi,
+      showThumbsOnAll: typeof parsed.showThumbsOnAll === "boolean" ? parsed.showThumbsOnAll : DEFAULT_INDICATOR_SETTINGS.showThumbsOnAll,
+      showSuggestions: typeof parsed.showSuggestions === "boolean" ? parsed.showSuggestions : DEFAULT_INDICATOR_SETTINGS.showSuggestions,
+    };
+  } catch {
+    return { ...DEFAULT_INDICATOR_SETTINGS };
+  }
+}
+
+export function saveIndicatorSettings(next: SessionIndicatorSettings): SessionIndicatorSettings {
+  const normalized: SessionIndicatorSettings = {
+    showAiBadge: !!next.showAiBadge,
+    showScoreBreakdown: !!next.showScoreBreakdown,
+    showThumbsOnAi: !!next.showThumbsOnAi,
+    showThumbsOnAll: !!next.showThumbsOnAll,
+    showSuggestions: !!next.showSuggestions,
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(INDICATOR_STORAGE_KEY, JSON.stringify(normalized));
+  }
+  return normalized;
+}

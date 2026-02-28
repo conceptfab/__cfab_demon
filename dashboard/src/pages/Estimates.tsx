@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -7,35 +7,35 @@ import {
   FolderOpen,
   Save,
   SlidersHorizontal,
-} from "lucide-react";
-import { format, parseISO } from "date-fns";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { MetricCard } from "@/components/dashboard/MetricCard";
-import { useAppStore } from "@/store/app-store";
+} from 'lucide-react';
+import { format, parseISO } from 'date-fns';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { useAppStore } from '@/store/app-store';
 import {
   getEstimateSettings,
   getEstimatesSummary,
   getProjectEstimates,
   updateGlobalHourlyRate,
   updateProjectHourlyRate,
-} from "@/lib/tauri";
+} from '@/lib/tauri';
 import type {
   EstimateProjectRow,
   EstimateSettings,
   EstimateSummary,
-} from "@/lib/db-types";
+} from '@/lib/db-types';
 
 const MAX_RATE = 100000;
 
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error.trim()) return error;
+  if (typeof error === 'string' && error.trim()) return error;
   return fallback;
 }
 
 function parseRateInput(raw: string): number | null {
-  const normalized = raw.trim().replace(",", ".");
+  const normalized = raw.trim().replace(',', '.');
   if (!normalized) return null;
   const value = Number(normalized);
   if (!Number.isFinite(value)) return null;
@@ -56,7 +56,7 @@ export function Estimates() {
     canShiftForward,
     triggerRefresh,
     setCurrentPage,
-    setSessionsFocusDate,
+    setSessionsFocusRange,
     setSessionsFocusProject,
     currencyCode,
   } = useAppStore();
@@ -65,7 +65,7 @@ export function Estimates() {
   const [summary, setSummary] = useState<EstimateSummary | null>(null);
   const [rows, setRows] = useState<EstimateProjectRow[]>([]);
   const [drafts, setDrafts] = useState<Record<number, string>>({});
-  const [globalRateInput, setGlobalRateInput] = useState("100");
+  const [globalRateInput, setGlobalRateInput] = useState('100');
   const [loading, setLoading] = useState(true);
   const [savingGlobal, setSavingGlobal] = useState(false);
   const [savingProjectId, setSavingProjectId] = useState<number | null>(null);
@@ -77,11 +77,11 @@ export function Estimates() {
   const currency = useMemo(
     () =>
       new Intl.NumberFormat(undefined, {
-        style: "currency",
+        style: 'currency',
         currency: currencyCode,
         maximumFractionDigits: 2,
       }),
-    [currencyCode]
+    [currencyCode],
   );
   const decimal = useMemo(
     () =>
@@ -89,12 +89,14 @@ export function Estimates() {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
-    []
+    [],
   );
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    if (rows.length === 0) {
+      setLoading(true);
+    }
     setGlobalError(null);
     setTableError(null);
 
@@ -106,35 +108,41 @@ export function Estimates() {
       .then(([settingsRes, rowsRes, summaryRes]) => {
         if (cancelled) return;
 
-        if (settingsRes.status === "fulfilled") {
+        if (settingsRes.status === 'fulfilled') {
           setSettings(settingsRes.value);
-          setGlobalRateInput(formatRateInput(settingsRes.value.global_hourly_rate));
+          setGlobalRateInput(
+            formatRateInput(settingsRes.value.global_hourly_rate),
+          );
         } else {
           setGlobalError(
-            getErrorMessage(settingsRes.reason, "Failed to load global rate")
+            getErrorMessage(settingsRes.reason, 'Failed to load global rate'),
           );
         }
 
-        if (rowsRes.status === "fulfilled") {
+        if (rowsRes.status === 'fulfilled') {
           setRows(rowsRes.value);
           const nextDrafts: Record<number, string> = {};
           for (const row of rowsRes.value) {
             nextDrafts[row.project_id] =
               row.project_hourly_rate === null
-                ? ""
+                ? ''
                 : formatRateInput(row.project_hourly_rate);
           }
           setDrafts(nextDrafts);
         } else {
           setRows([]);
-          setTableError(getErrorMessage(rowsRes.reason, "Failed to load project estimates"));
+          setTableError(
+            getErrorMessage(rowsRes.reason, 'Failed to load project estimates'),
+          );
         }
 
-        if (summaryRes.status === "fulfilled") {
+        if (summaryRes.status === 'fulfilled') {
           setSummary(summaryRes.value);
         } else {
           setSummary(null);
-          setTableError(getErrorMessage(summaryRes.reason, "Failed to load summary"));
+          setTableError(
+            getErrorMessage(summaryRes.reason, 'Failed to load summary'),
+          );
         }
       })
       .finally(() => {
@@ -161,17 +169,17 @@ export function Estimates() {
     setGlobalMessage(null);
     try {
       await updateGlobalHourlyRate(parsed);
-      setGlobalMessage("Global hourly rate saved");
+      setGlobalMessage('Global hourly rate saved');
       triggerRefresh();
     } catch (error) {
-      setGlobalError(getErrorMessage(error, "Failed to save global rate"));
+      setGlobalError(getErrorMessage(error, 'Failed to save global rate'));
     } finally {
       setSavingGlobal(false);
     }
   };
 
   const handleSaveProjectRate = async (projectId: number) => {
-    const raw = drafts[projectId] ?? "";
+    const raw = drafts[projectId] ?? '';
     const parsed = parseRateInput(raw);
     if (raw.trim() && (parsed === null || parsed < 0 || parsed > MAX_RATE)) {
       setTableError(`Project rate must be empty or between 0 and ${MAX_RATE}`);
@@ -184,10 +192,10 @@ export function Estimates() {
     setTableMessage(null);
     try {
       await updateProjectHourlyRate(projectId, parsed);
-      setTableMessage("Project rate updated");
+      setTableMessage('Project rate updated');
       triggerRefresh();
     } catch (error) {
-      setTableError(getErrorMessage(error, "Failed to update project rate"));
+      setTableError(getErrorMessage(error, 'Failed to update project rate'));
     } finally {
       setSavingProjectId(null);
     }
@@ -199,11 +207,11 @@ export function Estimates() {
     setTableMessage(null);
     try {
       await updateProjectHourlyRate(projectId, null);
-      setDrafts((prev) => ({ ...prev, [projectId]: "" }));
-      setTableMessage("Project rate reset to global");
+      setDrafts((prev) => ({ ...prev, [projectId]: '' }));
+      setTableMessage('Project rate reset to global');
       triggerRefresh();
     } catch (error) {
-      setTableError(getErrorMessage(error, "Failed to reset project rate"));
+      setTableError(getErrorMessage(error, 'Failed to reset project rate'));
     } finally {
       setSavingProjectId(null);
     }
@@ -212,19 +220,19 @@ export function Estimates() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {(["today", "week", "month", "all"] as const).map((preset) => (
+        {(['today', 'week', 'month', 'all'] as const).map((preset) => (
           <Button
             key={preset}
-            variant={timePreset === preset ? "default" : "ghost"}
+            variant={timePreset === preset ? 'default' : 'ghost'}
             size="sm"
             onClick={() => setTimePreset(preset)}
             className="capitalize"
           >
-            {preset === "all" ? "All time" : preset}
+            {preset === 'all' ? 'All time' : preset}
           </Button>
         ))}
 
-        {timePreset !== "all" && (
+        {timePreset !== 'all' && (
           <>
             <div className="mx-1 h-5 w-px bg-border" />
             <Button
@@ -238,10 +246,10 @@ export function Estimates() {
             </Button>
             <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
               {dateRange.start === dateRange.end
-                ? format(parseISO(dateRange.start), "MMM d")
-                : `${format(parseISO(dateRange.start), "MMM d")} – ${format(
+                ? format(parseISO(dateRange.start), 'MMM d')
+                : `${format(parseISO(dateRange.start), 'MMM d')} – ${format(
                     parseISO(dateRange.end),
-                    "MMM d"
+                    'MMM d',
                   )}`}
             </span>
             <Button
@@ -261,29 +269,47 @@ export function Estimates() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Total Hours"
-          value={summary ? `${decimal.format(summary.total_hours)} h` : loading ? "..." : "0.00 h"}
+          value={
+            summary
+              ? `${decimal.format(summary.total_hours)} h`
+              : loading
+                ? '...'
+                : '0.00 h'
+          }
           icon={Clock3}
         />
         <MetricCard
           title="Estimated Value"
-          value={summary ? currency.format(summary.total_value) : loading ? "..." : currency.format(0)}
+          value={
+            summary
+              ? currency.format(summary.total_value)
+              : loading
+                ? '...'
+                : currency.format(0)
+          }
           icon={CircleDollarSign}
         />
         <MetricCard
           title="Active Projects"
-          value={summary ? String(summary.projects_count) : loading ? "..." : "0"}
+          value={
+            summary ? String(summary.projects_count) : loading ? '...' : '0'
+          }
           icon={FolderOpen}
         />
         <MetricCard
           title="Rate Overrides"
-          value={summary ? String(summary.overrides_count) : loading ? "..." : "0"}
+          value={
+            summary ? String(summary.overrides_count) : loading ? '...' : '0'
+          }
           icon={SlidersHorizontal}
         />
       </div>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Global Hourly Rate</CardTitle>
+          <CardTitle className="text-sm font-medium">
+            Global Hourly Rate
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -301,15 +327,21 @@ export function Estimates() {
               className="h-9 w-48 rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               placeholder="100"
             />
-            <Button size="sm" onClick={handleSaveGlobalRate} disabled={savingGlobal}>
+            <Button
+              size="sm"
+              onClick={handleSaveGlobalRate}
+              disabled={savingGlobal}
+            >
               <Save className="mr-1.5 h-3.5 w-3.5" />
-              {savingGlobal ? "Saving..." : "Save"}
+              {savingGlobal ? 'Saving...' : 'Save'}
             </Button>
             <span className="text-xs text-muted-foreground">
               Current: {currency.format(settings?.global_hourly_rate ?? 100)}
             </span>
           </div>
-          {globalError && <p className="text-xs text-destructive">{globalError}</p>}
+          {globalError && (
+            <p className="text-xs text-destructive">{globalError}</p>
+          )}
           {globalMessage && !globalError && (
             <p className="text-xs text-emerald-400">{globalMessage}</p>
           )}
@@ -318,20 +350,32 @@ export function Estimates() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Project Estimates</CardTitle>
+          <CardTitle className="text-sm font-medium">
+            Project Estimates
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {tableError && <p className="text-xs text-destructive">{tableError}</p>}
-          {tableMessage && !tableError && <p className="text-xs text-emerald-400">{tableMessage}</p>}
+          {tableError && (
+            <p className="text-xs text-destructive">{tableError}</p>
+          )}
+          {tableMessage && !tableError && (
+            <p className="text-xs text-emerald-400">{tableMessage}</p>
+          )}
 
           {loading ? (
-            <p className="text-sm text-muted-foreground">Loading estimates...</p>
+            <p className="text-sm text-muted-foreground">
+              Loading estimates...
+            </p>
           ) : rows.length === 0 ? (
             <div className="space-y-3 rounded-md border border-dashed p-4">
               <p className="text-sm text-muted-foreground">
                 No active project time in this date range.
               </p>
-              <Button variant="outline" size="sm" onClick={() => setCurrentPage("projects")}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage('projects')}
+              >
                 Open Projects
               </Button>
             </div>
@@ -349,7 +393,7 @@ export function Estimates() {
                 </div>
 
                 {rows.map((row) => {
-                  const draft = drafts[row.project_id] ?? "";
+                  const draft = drafts[row.project_id] ?? '';
                   const isSaving = savingProjectId === row.project_id;
                   return (
                     <div
@@ -361,7 +405,10 @@ export function Estimates() {
                           className="h-3 w-3 shrink-0 rounded-full"
                           style={{ backgroundColor: row.project_color }}
                         />
-                        <span className="truncate text-sm font-medium" title={row.project_name}>
+                        <span
+                          className="truncate text-sm font-medium"
+                          title={row.project_name}
+                        >
                           {row.project_name}
                         </span>
                         {row.multiplied_session_count > 0 && (
@@ -370,9 +417,9 @@ export function Estimates() {
                             className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0"
                             title={`${row.multiplied_session_count} session(s) with rate multiplier — click to view`}
                             onClick={() => {
-                              setSessionsFocusDate(dateRange.end);
+                              setSessionsFocusRange(dateRange);
                               setSessionsFocusProject(row.project_id);
-                              setCurrentPage("sessions");
+                              setCurrentPage('sessions');
                             }}
                           >
                             <CircleDollarSign className="h-3 w-3" />
@@ -385,9 +432,18 @@ export function Estimates() {
                         {decimal.format(row.hours)}
                       </span>
 
-                      <span className="text-right font-mono text-sm" title={row.weighted_hours !== row.hours ? `Includes ${decimal.format(row.multiplier_extra_seconds / 3600)} bonus hours from rate multipliers` : undefined}>
+                      <span
+                        className="text-right font-mono text-sm"
+                        title={
+                          row.weighted_hours !== row.hours
+                            ? `Includes ${decimal.format(row.multiplier_extra_seconds / 3600)} bonus hours from rate multipliers`
+                            : undefined
+                        }
+                      >
                         {row.weighted_hours !== row.hours ? (
-                          <span className="text-emerald-400">{decimal.format(row.weighted_hours)}</span>
+                          <span className="text-emerald-400">
+                            {decimal.format(row.weighted_hours)}
+                          </span>
                         ) : (
                           decimal.format(row.weighted_hours)
                         )}

@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "language": {
+      "title": "Language",
+      "description": "Set the preferred interface language for TIMEFLOW.",
+      "field": "Interface language",
+      "option": {
+        "pl": "Polish",
+        "en": "English"
+      },
+      "rollout_note": "Applies now to Help and Quick Start. Remaining views will be migrated in the next i18n phases."
+    }
+  },
+  "help": {
+    "language_hint": "Language is managed in Settings > Language."
+  },
+  "quickstart": {
+    "language_hint": "Language is managed in Settings > Language."
+  }
+}

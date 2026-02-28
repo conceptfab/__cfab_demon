@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "language": {
+      "title": "Język",
+      "description": "Ustaw preferowany język interfejsu TIMEFLOW.",
+      "field": "Język interfejsu",
+      "option": {
+        "pl": "Polski",
+        "en": "Angielski"
+      },
+      "rollout_note": "Teraz obejmuje Pomoc i Quick Start. Pozostałe widoki będą migrowane w kolejnych etapach i18n."
+    }
+  },
+  "help": {
+    "language_hint": "Język ustawisz w Ustawienia > Język."
+  },
+  "quickstart": {
+    "language_hint": "Język ustawisz w Ustawienia > Język."
+  }
+}

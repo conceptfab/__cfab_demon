@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, PlayCircle, RotateCcw, Save, WandSparkles } from "lucide-react";
+import { Brain, Eye, PlayCircle, RotateCcw, Save, WandSparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast-notification";
@@ -11,9 +11,16 @@ import {
   setAssignmentModelCooldown,
   setAssignmentMode,
   trainAssignmentModel,
+  getFeedbackWeight,
+  setFeedbackWeight as setFeedbackWeightApi,
 } from "@/lib/tauri";
 import type { AssignmentMode, AssignmentModelStatus } from "@/lib/db-types";
-import { loadSessionSettings } from "@/lib/user-settings";
+import {
+  loadSessionSettings,
+  loadIndicatorSettings,
+  saveIndicatorSettings,
+  type SessionIndicatorSettings,
+} from "@/lib/user-settings";
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -95,6 +102,8 @@ export function AIPage() {
   const [autoConf, setAutoConf] = useState<number>(0.85);
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
   const [autoLimit, setAutoLimit] = useState<number>(500);
+  const [feedbackWeight, setFeedbackWeight] = useState<number>(5.0);
+  const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() => loadIndicatorSettings());
 
   const syncFromStatus = (nextStatus: AssignmentModelStatus) => {
     setStatus(nextStatus);
@@ -111,6 +120,8 @@ export function AIPage() {
     try {
       const nextStatus = await getAssignmentModelStatus();
       syncFromStatus(nextStatus);
+      const fw = await getFeedbackWeight();
+      setFeedbackWeight(fw);
     } catch (e) {
       console.error(e);
       showError(`Failed to load AI model status: ${String(e)}`);
@@ -135,6 +146,8 @@ export function AIPage() {
       const normalizedEvidence = Math.round(clampNumber(autoEvidence, 1, 50));
 
       await setAssignmentMode(mode, normalizedSuggest, normalizedAuto, normalizedEvidence);
+      const clampedFw = Math.max(1, Math.min(50, feedbackWeight));
+      await setFeedbackWeightApi(clampedFw);
       showInfo("Model settings saved.");
       await fetchStatus(true);
     } catch (e) {
@@ -401,6 +414,22 @@ export function AIPage() {
                 }}
               />
             </label>
+
+            <label className="space-y-1.5 text-sm">
+              <span className="text-xs text-muted-foreground">Feedback Weight (1..50)</span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                step={0.5}
+                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                value={feedbackWeight}
+                onChange={(e) => {
+                  const next = Number.parseFloat(e.target.value);
+                  setFeedbackWeight(Number.isNaN(next) ? 5 : next);
+                }}
+              />
+            </label>
           </div>
 
           <div className="flex justify-end">
@@ -408,6 +437,46 @@ export function AIPage() {
               <Save className="mr-2 h-4 w-4" />
               {savingMode ? "Saving..." : "Save model settings"}
             </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base font-semibold">
+            <Eye className="h-4 w-4" />
+            Session Indicators
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Configure which AI indicators and feedback controls are visible on session rows.
+          </p>
+          <div className="space-y-3">
+            {([
+              { key: "showAiBadge" as const, label: "AI badge", desc: "Show sparkle icon on sessions assigned by AI auto-safe" },
+              { key: "showThumbsOnAi" as const, label: "Thumbs on AI sessions", desc: "Show confirm/reject buttons on AI-assigned sessions" },
+              { key: "showThumbsOnAll" as const, label: "Thumbs on all sessions", desc: "Show feedback buttons on every assigned session (not just AI)" },
+              { key: "showSuggestions" as const, label: "AI suggestions", desc: "Show project suggestions for unassigned sessions" },
+              { key: "showScoreBreakdown" as const, label: "Score breakdown button", desc: "Show the score details button (BarChart3) on each session" },
+            ]).map(({ key, label, desc }) => (
+              <label key={key} className="flex items-start gap-3 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                  checked={indicators[key]}
+                  onChange={(e) => {
+                    const next = { ...indicators, [key]: e.target.checked };
+                    setIndicators(next);
+                    saveIndicatorSettings(next);
+                  }}
+                />
+                <div>
+                  <span className="text-sm font-medium group-hover:text-foreground transition-colors">{label}</span>
+                  <p className="text-xs text-muted-foreground">{desc}</p>
+                </div>
+              </label>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -494,6 +563,9 @@ export function AIPage() {
             </p>
             <p className="mt-2 text-muted-foreground">
               <strong>Session Limit</strong>: how many unassigned sessions auto-safe will scan in one batch.
+            </p>
+            <p className="mt-2 text-muted-foreground">
+              <strong>Feedback Weight</strong>: how much manual corrections (thumbs up/down, reassignments) influence the model during training. Higher = corrections dominate more. Default: 5.
             </p>
           </div>
 

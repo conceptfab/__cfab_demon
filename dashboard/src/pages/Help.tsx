@@ -1,4 +1,3 @@
-import { useState } from "react";
 import logo from "@/assets/logo.png";
 import cfab from "@/assets/cfab.png";
 import {
@@ -15,7 +14,6 @@ import {
   Settings,
   Info,
   ChevronRight,
-  Languages,
   Rocket,
   ArrowRight
 } from "lucide-react";
@@ -24,14 +22,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store/app-store";
+import { normalizeHelpTab, pageForHelpTab, type HelpTabId } from "@/lib/help-navigation";
+import { normalizeLanguageCode } from "@/lib/user-settings";
+import { useTranslation } from "react-i18next";
 
 type Language = "pl" | "en";
 
 export function Help() {
-  const [lang, setLang] = useState<Language>("pl");
+  const { i18n, t: t18n } = useTranslation();
+  const lang: Language = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
   const { helpTab: activeTab, setHelpTab: setActiveTab, setCurrentPage } = useAppStore();
 
   const t = (pl: string, en: string) => (lang === "pl" ? pl : en);
+  const activeTabValue = normalizeHelpTab(activeTab, "dashboard");
+  const openActiveSection = () => {
+    setCurrentPage(pageForHelpTab(activeTabValue));
+  };
 
   return (
     <div className="flex h-full flex-col p-8 space-y-8 overflow-y-auto max-w-6xl mx-auto">
@@ -56,17 +62,7 @@ export function Help() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setLang(lang === "pl" ? "en" : "pl")}
-            className="w-fit flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border-primary/20 hover:bg-primary/5 transition-colors"
-          >
-            <Languages className="h-3.5 w-3.5" />
-            {lang === "pl" ? "ENGLISH VERSION" : "POLSKA WERSJA"}
-          </Button>
-        </div>
+        <span className="text-[11px] text-muted-foreground">{t18n("help.language_hint")}</span>
       </div>
 
       <Card className="border-none bg-transparent shadow-none">
@@ -121,7 +117,7 @@ export function Help() {
               </h4>
               <p className="text-xs text-muted-foreground">
                 {t(
-                  "Zyskaj natychmiastowy wgląd v faktyczną wartość Twojej pracy dzięki systemowi stawek i wycen.",
+                  "Zyskaj natychmiastowy wgląd w faktyczną wartość Twojej pracy dzięki systemowi stawek i wycen.",
                   "Get instant insight into the actual value of your work thanks to the rate and estimate system."
                 )}
               </p>
@@ -156,17 +152,35 @@ export function Help() {
       </Card>
 
       <div className="space-y-4 pt-4">
-        <h2 className="text-2xl font-light mb-6">
-          {t("Przewodnik po sekcjach", "Section Guide")}
-        </h2>
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <h2 className="text-2xl font-light">
+            {t("Przewodnik po sekcjach", "Section Guide")}
+          </h2>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openActiveSection}
+            className="w-fit border-primary/20 hover:bg-primary/5"
+          >
+            {activeTabValue === "quickstart"
+              ? t("Uruchom pełny samouczek", "Open full tutorial")
+              : t("Przejdź do opisywanego modułu", "Open this module")}
+            <ArrowRight className="ml-2 h-3.5 w-3.5" />
+          </Button>
+        </div>
 
         <Tabs
-          value={activeTab}
-          onValueChange={setActiveTab}
+          value={activeTabValue}
+          onValueChange={(value) => setActiveTab(normalizeHelpTab(value, activeTabValue))}
           orientation="vertical"
           className="flex flex-col md:flex-row gap-0 items-start"
         >
           <TabsList className="flex flex-col h-auto bg-transparent p-0 gap-1 w-full md:w-56 shrink-0 border-r border-border/10 pr-6">
+            <HelpTabTrigger
+              value="quickstart"
+              icon={<Rocket className="h-3.5 w-3.5" />}
+              label={t("Quick Start", "Quick Start")}
+            />
             <HelpTabTrigger
               value="dashboard"
               icon={<LayoutDashboard className="h-3.5 w-3.5" />}
@@ -220,6 +234,57 @@ export function Help() {
           </TabsList>
 
           <div className="flex-1 min-w-0 w-full pl-10">
+            <TabsContent value="quickstart" className="m-0 focus-visible:outline-none">
+              <SectionHelp
+                icon={<Rocket className="h-6 w-6" />}
+                title={t("SZYBKI START", "QUICK START")}
+                description={t(
+                  "Szybka konfiguracja TIMEFLOW dla nowych instalacji i pierwszego uruchomienia.",
+                  "Fast TIMEFLOW setup for a new install and first launch."
+                )}
+                footer={t("Kluczowe funkcjonalności", "Key Functionalities")}
+                features={[
+                  t(
+                    "Krok po kroku: od przygotowania plików .exe po uruchomienie Daemona.",
+                    "Step by step guidance from .exe preparation to launching the Daemon."
+                  ),
+                  t(
+                    "Konfiguracja folderów projektowych i procesów aplikacji do monitorowania.",
+                    "Configuration of project folders and app processes to be tracked."
+                  ),
+                  t(
+                    "Instrukcja pierwszego przypisywania sesji i uruchomienia lokalnego AI.",
+                    "First-session assignment and local AI onboarding instructions."
+                  ),
+                  t(
+                    "Dostęp z ikony rakiety w sidebarze oraz z poziomu ekranu pomocy.",
+                    "Accessible from the sidebar rocket icon and from the Help screen."
+                  ),
+                  t(
+                    "Automatyczne ukrycie wskaźnika 'first run' po zakończeniu samouczka.",
+                    "Automatically clears the first-run hint after finishing the tutorial."
+                  )
+                ]}
+              >
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
+                  <p className="text-muted-foreground">
+                    {t(
+                      "Pełny samouczek prowadzi przez wszystkie kroki instalacji i konfiguracji.",
+                      "The full tutorial walks through installation and configuration end-to-end."
+                    )}
+                  </p>
+                  <Button
+                    variant="ghost"
+                    className="mt-3 h-8 px-2 text-primary hover:bg-primary/10"
+                    onClick={() => setCurrentPage("quickstart")}
+                  >
+                    <Rocket className="mr-2 h-3.5 w-3.5" />
+                    {t("Uruchom Quick Start", "Launch Quick Start")}
+                  </Button>
+                </div>
+              </SectionHelp>
+            </TabsContent>
+
             <TabsContent value="dashboard" className="m-0 focus-visible:outline-none">
               <SectionHelp
                 icon={<LayoutDashboard className="h-6 w-6" />}
@@ -331,7 +396,7 @@ export function Help() {
                     "Folder Sync – TIMEFLOW scans paths and automatically detects new projects."
                   ),
                   t(
-                    "Detekcja kandydatów – system sugeruje utworzenie projektów na podstawie aktywności v folderach.",
+                    "Detekcja kandydatów – system sugeruje utworzenie projektów na podstawie aktywności w folderach.",
                     "Candidate Detection – the system suggests project creation based on folder activity."
                   ),
                   t(
@@ -361,7 +426,7 @@ export function Help() {
                     "Global hourly rate configuration and specific rates for chosen projects."
                   ),
                   t(
-                    "Uwzględnianie mnożników sesji (Multipliers) v końcowej wycenie projektu.",
+                    "Uwzględnianie mnożników sesji (Multipliers) w końcowej wycenie projektu.",
                     "Includes session multipliers in the final project valuation."
                   ),
                   t(
@@ -700,7 +765,7 @@ function HelpTabTrigger({
   icon,
   label
 }: {
-  value: string;
+  value: HelpTabId;
   icon: React.ReactNode;
   label: string;
 }) {

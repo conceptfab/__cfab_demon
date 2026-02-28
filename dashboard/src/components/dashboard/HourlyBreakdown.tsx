@@ -6,6 +6,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
+import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HourlyData } from "@/lib/db-types";
@@ -27,6 +28,12 @@ export function HourlyBreakdown({ data }: Props) {
     }
     return full;
   }, [data]);
+  const barAnimation = getRechartsAnimationConfig({
+    complexity: chartData.length,
+    maxComplexity: 36,
+    minDuration: 150,
+    maxDuration: 260,
+  });
 
   return (
     <Card>
@@ -58,7 +65,14 @@ export function HourlyBreakdown({ data }: Props) {
                 itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                 formatter={(value) => [`${value} min`, "Time"]}
               />
-              <Bar dataKey="minutes" fill={CHART_PRIMARY_COLOR} radius={[2, 2, 0, 0]} />
+              <Bar
+                dataKey="minutes"
+                fill={CHART_PRIMARY_COLOR}
+                radius={[2, 2, 0, 0]}
+                isAnimationActive={barAnimation.isAnimationActive}
+                animationDuration={barAnimation.animationDuration}
+                animationEasing={barAnimation.animationEasing}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>

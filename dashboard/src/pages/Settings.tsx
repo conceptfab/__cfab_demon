@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, TimerReset } from "lucide-react";
+import { Eye, EyeOff, Languages, TimerReset } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { clearAllData, getDemoModeStatus, rebuildSessions, setDemoMode } from "@/lib/tauri";
 import type { DemoModeStatus } from "@/lib/db-types";
 import { useAppStore } from "@/store/app-store";
 import {
+  type AppLanguageCode,
+  type LanguageSettings,
   loadWorkingHoursSettings,
   normalizeHexColor,
   saveWorkingHoursSettings,
@@ -20,6 +23,8 @@ import {
   loadCurrencySettings,
   saveCurrencySettings,
   type CurrencySettings,
+  loadLanguageSettings,
+  saveLanguageSettings,
 } from "@/lib/user-settings";
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
@@ -42,6 +47,7 @@ function splitTime(value: string): [string, string] {
 }
 
 export function Settings() {
+  const { i18n, t } = useTranslation();
   const triggerRefresh = useAppStore((s) => s.triggerRefresh);
   const setCurrencyCode = useAppStore((s) => s.setCurrencyCode);
   const [clearing, setClearing] = useState(false);
@@ -57,6 +63,9 @@ export function Settings() {
   const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() => loadFreezeSettings());
   const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(() =>
     loadCurrencySettings()
+  );
+  const [languageSettings, setLanguageSettings] = useState<LanguageSettings>(() =>
+    loadLanguageSettings()
   );
   const [workingHoursError, setWorkingHoursError] = useState<string | null>(null);
   const [savedSettings, setSavedSettings] = useState(true);
@@ -76,6 +85,10 @@ export function Settings() {
   const compactSelectClassName =
     "h-8 w-[3.75rem] rounded-md border border-input bg-background px-1.5 font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
   const sliderValue = Math.min(30, Math.max(0, sessionSettings.gapFillMinutes));
+  const languageOptions: Array<{ code: AppLanguageCode; label: string }> = [
+    { code: "pl", label: t("settings.language.option.pl") },
+    { code: "en", label: t("settings.language.option.en") },
+  ];
 
   const [startHour, startMinute] = useMemo(() => splitTime(workingHours.start), [workingHours.start]);
   const [endHour, endMinute] = useMemo(() => splitTime(workingHours.end), [workingHours.end]);
@@ -143,13 +156,20 @@ export function Settings() {
     const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
+    const savedLanguage = saveLanguageSettings(languageSettings);
 
     setWorkingHours(savedWorking);
     setSessionSettings(savedSession);
     setOnlineSyncSettings(savedOnlineSync);
     setFreezeSettings(savedFreeze);
     setCurrencySettings(savedCurrency);
+    setLanguageSettings(savedLanguage);
     setCurrencyCode(savedCurrency.code);
+    if (i18n.resolvedLanguage !== savedLanguage.code) {
+      void i18n.changeLanguage(savedLanguage.code).catch((error) => {
+        console.warn("Failed to apply language change:", error);
+      });
+    }
     setWorkingHoursError(null);
     setSavedSettings(true);
     setShowSavedToast(true);
@@ -385,6 +405,43 @@ export function Settings() {
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Languages className="h-4 w-4 text-primary" />
+            {t("settings.language.title")}
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">{t("settings.language.description")}</p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="rounded-md border border-border/70 bg-background/35 p-3">
+            <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
+              <label className={labelClassName}>{t("settings.language.field")}</label>
+              <div className="flex flex-wrap items-center gap-2">
+                {languageOptions.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => {
+                      setLanguageSettings({ code: item.code });
+                      setSavedSettings(false);
+                    }}
+                    className={`h-8 px-4 rounded-md text-sm font-medium transition-all ${
+                      languageSettings.code === item.code
+                        ? "bg-primary text-primary-foreground shadow-sm scale-105"
+                        : "bg-background border border-input hover:bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("settings.language.rollout_note")}</p>
         </CardContent>
       </Card>
 

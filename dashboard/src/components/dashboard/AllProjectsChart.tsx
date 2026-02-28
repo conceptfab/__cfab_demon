@@ -6,6 +6,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
+import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +29,12 @@ export function AllProjectsChart({ projects }: Props) {
     }
     return out;
   }, [projects, sortMode]);
+  const barAnimation = getRechartsAnimationConfig({
+    complexity: sorted.length,
+    maxComplexity: 45,
+    minDuration: 170,
+    maxDuration: 300,
+  });
 
   return (
     <Card>
@@ -81,7 +88,13 @@ export function AllProjectsChart({ projects }: Props) {
                   formatter={(value) => [formatDuration(Number(value)), "Time"]}
                   labelFormatter={(label) => String(label)}
                 />
-                <Bar dataKey="seconds" radius={[4, 4, 0, 0]}>
+                <Bar
+                  dataKey="seconds"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={barAnimation.isAnimationActive}
+                  animationDuration={barAnimation.animationDuration}
+                  animationEasing={barAnimation.animationEasing}
+                >
                   {sorted.map((p) => (
                     <Cell key={p.name} fill={p.color} />
                   ))}

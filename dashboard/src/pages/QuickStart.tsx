@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   Rocket,
   Monitor,
@@ -8,18 +7,20 @@ import {
   MousePointer2,
   Brain,
   ChevronLeft,
-  Languages,
   ArrowRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useAppStore } from "@/store/app-store";
+import { normalizeLanguageCode } from "@/lib/user-settings";
+import { useTranslation } from "react-i18next";
 
 type Language = "pl" | "en";
 
 export function QuickStart() {
-  const [lang, setLang] = useState<Language>("en");
+  const { i18n, t: t18n } = useTranslation();
   const { setCurrentPage, setFirstRun } = useAppStore();
+  const lang: Language = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
 
   const handleStart = () => {
     setFirstRun(false);
@@ -103,16 +104,7 @@ export function QuickStart() {
           <ChevronLeft className="h-4 w-4" />
           {t("Powrót", "Back")}
         </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setLang(lang === "pl" ? "en" : "pl")}
-          className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border-primary/20 hover:bg-primary/5 transition-colors"
-        >
-          <Languages className="h-3.5 w-3.5" />
-          {lang === "pl" ? "ENGLISH VERSION" : "POLSKA WERSJA"}
-        </Button>
+        <span className="text-[11px] text-muted-foreground">{t18n("quickstart.language_hint")}</span>
       </div>
 
       <div className="text-center space-y-2 py-4">

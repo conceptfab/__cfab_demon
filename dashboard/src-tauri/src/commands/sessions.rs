@@ -233,7 +233,10 @@ pub async fn get_sessions(
                     COALESCE(s.rate_multiplier, 1.0),
                     a.display_name, a.executable_name, s.project_id, p.name, p.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
-                    s.comment
+                    s.comment,
+                    asug_latest.suggested_confidence,
+                    asug_latest.suggested_project_id,
+                    p_sug.name
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
              LEFT JOIN projects p ON p.id = s.project_id
@@ -242,6 +245,12 @@ pub async fn get_sessions(
                  FROM assignment_feedback
                  WHERE id IN (SELECT MAX(id) FROM assignment_feedback GROUP BY session_id)
              ) af_last ON af_last.session_id = s.id
+             LEFT JOIN (
+                 SELECT session_id, suggested_confidence, suggested_project_id
+                 FROM assignment_suggestions
+                 WHERE id IN (SELECT MAX(id) FROM assignment_suggestions GROUP BY session_id)
+             ) asug_latest ON asug_latest.session_id = s.id
+             LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
              WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -289,6 +298,9 @@ pub async fn get_sessions(
                 let explicit_pcolor: Option<String> = row.get(10)?;
                 let ai_assigned_flag: i64 = row.get(11).unwrap_or(0);
                 let comment: Option<String> = row.get(12)?;
+                let hist_confidence: Option<f64> = row.get(13).unwrap_or(None);
+                let hist_suggested_pid: Option<i64> = row.get(14).unwrap_or(None);
+                let hist_suggested_pname: Option<String> = row.get(15).unwrap_or(None);
                 Ok((
                     SessionWithApp {
                         id,
@@ -302,9 +314,9 @@ pub async fn get_sessions(
                         project_name: explicit_pname,
                         project_color: explicit_pcolor,
                         files: Vec::new(),
-                        suggested_project_id: None,
-                        suggested_project_name: None,
-                        suggested_confidence: None,
+                        suggested_project_id: hist_suggested_pid,
+                        suggested_project_name: hist_suggested_pname,
+                        suggested_confidence: hist_confidence,
                         ai_assigned: ai_assigned_flag != 0,
                         comment,
                     },
