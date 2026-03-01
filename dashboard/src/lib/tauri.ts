@@ -403,3 +403,10 @@ export const restoreDatabaseFromFile = (path: string) =>
 
 export const getBackupFiles = () =>
   invoke<BackupFile[]>("get_backup_files");
+
+// Secure token storage (API token stored in Rust backend, not localStorage)
+export const getSecureToken = () =>
+  invoke<string>("get_secure_token");
+
+export const setSecureToken = (token: string) =>
+  invoke<void>("set_secure_token", { token });

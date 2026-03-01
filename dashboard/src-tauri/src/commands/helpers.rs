@@ -18,6 +18,30 @@ pub(crate) fn no_console(cmd: &mut Command) {
 #[cfg(not(windows))]
 pub(crate) fn no_console(_cmd: &mut Command) {}
 
+/// Validates that a file path is safe (no path traversal components).
+/// Returns an error string if the path is unsafe.
+pub(crate) fn validate_import_path(path: &str) -> Result<(), String> {
+    let p = std::path::Path::new(path);
+
+    // Reject paths containing ".." components
+    for component in p.components() {
+        if let std::path::Component::ParentDir = component {
+            return Err(format!(
+                "Path traversal detected in '{}': '..' components are not allowed",
+                path
+            ));
+        }
+    }
+
+    // Must be an absolute path (user-selected via dialog) or a simple filename
+    if !p.is_absolute() && p.components().count() > 1 {
+        // Relative multi-segment paths are suspicious when not from a dialog
+        log::warn!("Import path '{}' is relative with multiple segments", path);
+    }
+
+    Ok(())
+}
+
 pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
     let base = std::path::PathBuf::from(&appdata).join("TimeFlow");

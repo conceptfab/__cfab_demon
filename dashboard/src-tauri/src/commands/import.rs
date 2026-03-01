@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use tauri::AppHandle;
 
-use super::helpers::timeflow_data_dir;
+use super::helpers::{timeflow_data_dir, validate_import_path};
 use super::monitored::monitored_exe_name_set;
 use super::projects::{ensure_app_project_from_file_hint, load_project_folders_from_db};
 use super::types::{
@@ -35,6 +35,15 @@ pub async fn import_json_files(
     let mut results = Vec::new();
 
     for path in &file_paths {
+        if let Err(e) = validate_import_path(path) {
+            results.push(ImportResult {
+                file_path: path.clone(),
+                success: false,
+                records_imported: 0,
+                error: Some(e),
+            });
+            continue;
+        }
         results.push(import_single_file(&mut conn, path));
     }
 

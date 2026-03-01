@@ -39,6 +39,7 @@ import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
   loadOnlineSyncState,
   loadOnlineSyncSettings,
+  loadSecureApiToken,
   runOnlineSyncOnce,
   saveOnlineSyncSettings,
   type OnlineSyncSettings,
@@ -102,6 +103,15 @@ export function Settings() {
     loadOnlineSyncState(),
   );
   const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
+
+  // Load API token from Rust secure storage on mount
+  useEffect(() => {
+    loadSecureApiToken().then((token) => {
+      if (token) {
+        setOnlineSyncSettings((prev) => ({ ...prev, apiToken: token }));
+      }
+    });
+  }, []);
   const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(
     null,
   );
@@ -191,6 +201,7 @@ export function Settings() {
       color: normalizedColor,
     });
     const savedSession = saveSessionSettings(sessionSettings);
+    const uiApiToken = onlineSyncSettings.apiToken; // preserve token for UI display
     const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
@@ -199,7 +210,7 @@ export function Settings() {
 
     setWorkingHours(savedWorking);
     setSessionSettings(savedSession);
-    setOnlineSyncSettings(savedOnlineSync);
+    setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiApiToken });
     setFreezeSettings(savedFreeze);
     setCurrencySettings(savedCurrency);
     setLanguageSettings(savedLanguage);
@@ -276,8 +287,9 @@ export function Settings() {
     setManualSyncResult(null);
     try {
       // Persist only online sync settings before running manual sync.
+      const uiToken = onlineSyncSettings.apiToken;
       const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
-      setOnlineSyncSettings(savedOnlineSync);
+      setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
 
       const result = await runOnlineSyncOnce({ ignoreStartupToggle: true });
       setManualSyncResult(result);

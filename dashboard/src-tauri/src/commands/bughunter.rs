@@ -22,19 +22,27 @@ pub async fn send_bug_report(
     
     // --- KONFIGURACJA SMTP ---
     // Dane pobierane podczas kompilacji ze zmiennych środowiskowych.
-    // Jeśli ich braknie w środowisku builda, zostaną użyte wartości domyślne/REPLACE_ME.
-    let smtp_server = "host372606.hostido.net.pl"; 
-    let smtp_user = option_env!("SMTP_USER").unwrap_or("timeflow@conceptfab.com"); 
-    let smtp_pass = option_env!("SMTP_PASS").unwrap_or("REPLACE_ME"); 
+    // Build MUSI dostarczyć SMTP_USER i SMTP_PASS — brak wartości = błąd runtime.
+    let smtp_server = "host372606.hostido.net.pl";
+    let smtp_user = match option_env!("SMTP_USER") {
+        Some(u) if !u.is_empty() => u,
+        _ => return Err("SMTP_USER not configured at build time".into()),
+    };
+    let smtp_pass = match option_env!("SMTP_PASS") {
+        Some(p) if !p.is_empty() && p != "REPLACE_ME" => p,
+        _ => return Err("SMTP_PASS not configured at build time".into()),
+    };
     let recipient = "michal@conceptfab.com";
     // -------------------------
 
-    let email_subject = format!("TIMEFLOW ({}) - {}", version, subject);
-    
+    // Sanityzacja nagłówków email — usuwamy \r i \n z subject aby zapobiec header injection
+    let sanitized_subject = subject.replace(['\r', '\n'], " ");
+    let email_subject = format!("TIMEFLOW ({}) - {}", version, sanitized_subject);
+
     // Budowanie treści maila
     let body_text = format!(
         "Bug Report from TIMEFLOW (Version: {})\n\nSubject: {}\n\nDescription:\n{}",
-        version, subject, message
+        version, sanitized_subject, message
     );
 
     let mut multipart = MultiPart::mixed()
@@ -44,7 +52,7 @@ pub async fn send_bug_report(
     for (filename, content) in attachments {
         multipart = multipart.singlepart(
             Attachment::new(filename)
-                .body(content, "application/octet-stream".parse().unwrap())
+                .body(content, "application/octet-stream".parse().expect("valid MIME literal"))
         );
     }
 

@@ -142,7 +142,9 @@ pub fn run() {
             commands::perform_manual_backup,
             commands::open_db_folder,
             commands::restore_database_from_file,
-            commands::get_backup_files
+            commands::get_backup_files,
+            commands::get_secure_token,
+            commands::set_secure_token
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,4 +1,4 @@
-use super::helpers::timeflow_data_dir;
+use super::helpers::{timeflow_data_dir, validate_import_path};
 use super::types::{ExportArchive, ImportSummary, ImportValidation, SessionConflict, SessionRow};
 use crate::db;
 use std::collections::{HashMap, HashSet};
@@ -12,6 +12,7 @@ pub async fn validate_import(
     app: AppHandle,
     archive_path: String,
 ) -> Result<ImportValidation, String> {
+    validate_import_path(&archive_path)?;
     let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
     let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     let conn = db::get_connection(&app)?;
@@ -112,6 +113,7 @@ pub async fn validate_import(
 
 #[tauri::command]
 pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportSummary, String> {
+    validate_import_path(&archive_path)?;
     let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
     let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     let mut conn = db::get_connection(&app)?;

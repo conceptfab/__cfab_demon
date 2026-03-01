@@ -3,7 +3,9 @@ import {
   appendSyncLog,
   exportDataArchive,
   getDemoModeStatus,
+  getSecureToken,
   importDataArchive,
+  setSecureToken,
 } from '@/lib/tauri';
 
 const ONLINE_SYNC_SETTINGS_KEY = 'timeflow.settings.online-sync';
@@ -621,6 +623,21 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
       : null;
   const deviceId = existingDeviceId ?? generateDeviceId();
 
+  // Migrate legacy token from localStorage to secure storage (fire-and-forget)
+  const legacyToken = normalizeApiToken(parsed?.apiToken);
+  if (legacyToken) {
+    setSecureToken(legacyToken).then(() => {
+      // Remove token from localStorage after successful migration
+      const raw = readJsonStorage<OnlineSyncSettings>(ONLINE_SYNC_SETTINGS_KEY);
+      if (raw && 'apiToken' in raw) {
+        delete (raw as Record<string, unknown>).apiToken;
+        writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, raw);
+      }
+    }).catch(() => {
+      // Migration failed silently — token stays in localStorage until next attempt
+    });
+  }
+
   const normalized: OnlineSyncSettings = {
     enabled:
       typeof parsed?.enabled === 'boolean'
@@ -637,7 +654,7 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
       normalizeServerUrl(parsed?.serverUrl) ||
       DEFAULT_ONLINE_SYNC_SETTINGS.serverUrl,
     userId: typeof parsed?.userId === 'string' ? parsed.userId.trim() : '',
-    apiToken: normalizeApiToken(parsed?.apiToken),
+    apiToken: '', // Token is now stored in Rust secure storage, not localStorage
     deviceId,
     requestTimeoutMs:
       typeof parsed?.requestTimeoutMs === 'number' &&
@@ -657,9 +674,26 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
   return normalized;
 }
 
+/** Load the API token from Rust secure storage (async). */
+export async function loadSecureApiToken(): Promise<string> {
+  try {
+    return await getSecureToken();
+  } catch {
+    return '';
+  }
+}
+
 export function saveOnlineSyncSettings(
   next: Partial<OnlineSyncSettings>,
 ): OnlineSyncSettings {
+  // If a new apiToken is provided, save it to Rust secure storage (fire-and-forget)
+  if (next.apiToken !== undefined) {
+    const tokenToStore = normalizeApiToken(next.apiToken);
+    setSecureToken(tokenToStore).catch(() => {
+      console.warn('[online-sync] Failed to persist API token to secure storage');
+    });
+  }
+
   const current = loadOnlineSyncSettings();
   const merged: OnlineSyncSettings = {
     ...current,
@@ -674,10 +708,7 @@ export function saveOnlineSyncSettings(
       typeof (next.userId ?? current.userId) === 'string'
         ? String(next.userId ?? current.userId).trim()
         : current.userId,
-    apiToken:
-      typeof (next.apiToken ?? current.apiToken) === 'string'
-        ? normalizeApiToken(next.apiToken ?? current.apiToken)
-        : current.apiToken,
+    apiToken: '', // Token stored in Rust secure storage, not localStorage
     deviceId:
       typeof (next.deviceId ?? current.deviceId) === 'string' &&
       String(next.deviceId ?? current.deviceId).trim()
@@ -868,6 +899,7 @@ async function postAckWithRetries(
     revision: number;
     payloadSha256: string;
   },
+  apiToken: string,
 ): Promise<SyncAckResponse> {
   const maxAttempts = 3;
 
@@ -878,7 +910,7 @@ async function postAckWithRetries(
         '/api/sync/ack',
         body,
         getAckTimeoutMs(settings.requestTimeoutMs),
-        settings.apiToken,
+        apiToken,
       );
     } catch (error) {
       if (attempt >= maxAttempts || !isRetryableAckError(error)) {
@@ -1034,6 +1066,7 @@ async function isDemoModeSyncDisabled(): Promise<boolean> {
 async function flushPendingAck(
   settings: OnlineSyncSettings,
   state: OnlineSyncState,
+  apiToken: string = '',
 ): Promise<FlushPendingAckResult> {
   if (!state.pendingAck) {
     return {
@@ -1052,7 +1085,7 @@ async function flushPendingAck(
       deviceId: settings.deviceId,
       revision: pendingAck.revision,
       payloadSha256: pendingAck.payloadSha256,
-    });
+    }, apiToken);
 
     logSyncDiagnostic('ack', {
       reason: ackRes.reason,
@@ -1112,6 +1145,7 @@ async function handleServerSnapshotPruned(
   state: OnlineSyncState,
   local: LocalDatasetState,
   statusRes: SyncStatusResponse,
+  apiToken: string = '',
 ): Promise<OnlineSyncRunResult> {
   if (local.archive && local.hasReseedData) {
     const push = await postJson<SyncPushResponse>(
@@ -1124,7 +1158,7 @@ async function handleServerSnapshotPruned(
         archive: local.archive,
       },
       settings.requestTimeoutMs,
-      settings.apiToken,
+      apiToken,
     );
 
     if (push.accepted === false) {
@@ -1234,6 +1268,9 @@ async function _runOnlineSyncOnceImpl(
     return result;
   }
 
+  // Load API token from Rust secure storage (not localStorage)
+  const secureApiToken = await loadSecureApiToken();
+
   log?.info('Connecting to server', {
     serverUrl: settings.serverUrl,
     deviceId: settings.deviceId,
@@ -1254,7 +1291,7 @@ async function _runOnlineSyncOnceImpl(
     log?.info('Flushing pending ACK', {
       hasPendingAck: state.pendingAck !== null,
     });
-    const pendingAckResult = await flushPendingAck(settings, state);
+    const pendingAckResult = await flushPendingAck(settings, state, secureApiToken);
     log?.info('Pending ACK result', {
       attempted: pendingAckResult.attempted,
       accepted: pendingAckResult.accepted,
@@ -1308,7 +1345,7 @@ async function _runOnlineSyncOnceImpl(
         clientHash: local.payloadSha256 ?? state.localHash,
       },
       settings.requestTimeoutMs,
-      settings.apiToken,
+      secureApiToken,
     );
 
     log?.info('Server status response', {
@@ -1336,6 +1373,7 @@ async function _runOnlineSyncOnceImpl(
         state,
         local,
         status,
+        secureApiToken,
       );
       log?.info('Sync finished (server_snapshot_pruned)', {
         ok: result.ok,
@@ -1357,7 +1395,7 @@ async function _runOnlineSyncOnceImpl(
           clientRevision: state.localRevision,
         },
         settings.requestTimeoutMs,
-        settings.apiToken,
+        secureApiToken,
       );
 
       log?.info('Pull response', {
@@ -1379,6 +1417,7 @@ async function _runOnlineSyncOnceImpl(
           state,
           local,
           status,
+          secureApiToken,
         );
         log?.info('Sync finished (pull server_snapshot_pruned)', {
           ok: result.ok,
@@ -1417,7 +1456,7 @@ async function _runOnlineSyncOnceImpl(
         saveOnlineSyncState(state, settings);
 
         log?.info('Flushing post-pull ACK');
-        const ackResult = await flushPendingAck(settings, state);
+        const ackResult = await flushPendingAck(settings, state, secureApiToken);
         log?.info('Post-pull ACK result', {
           accepted: ackResult.accepted,
           reason: ackResult.reason,
@@ -1527,7 +1566,7 @@ async function _runOnlineSyncOnceImpl(
           archive: local.archive,
         },
         settings.requestTimeoutMs,
-        settings.apiToken,
+        secureApiToken,
       );
 
       if (push.accepted === false) {

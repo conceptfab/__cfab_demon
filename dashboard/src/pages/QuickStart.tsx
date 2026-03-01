@@ -1,3 +1,4 @@
+import type React from 'react';
 import {
   Rocket,
   Monitor,
@@ -17,6 +18,10 @@ import { useTranslation } from 'react-i18next';
 
 type Language = 'pl' | 'en';
 
+function B({ children }: { children: React.ReactNode }) {
+  return <strong className="text-primary font-semibold">{children}</strong>;
+}
+
 export function QuickStart() {
   const { i18n, t: t18n } = useTranslation();
   const { setCurrentPage, setFirstRun } = useUIStore();
@@ -35,60 +40,54 @@ export function QuickStart() {
     {
       icon: <Monitor className="h-6 w-6" />,
       title: t('Przygotowanie plików', 'File Preparation'),
-      desc: t(
-        'Wrzuć oba pliki .exe (timeflow-dashboard.exe i timeflow-demon.exe) do jednego folderu na dysku i uruchom timeflow-dashboard.exe.',
-        'Place both .exe files (timeflow-dashboard.exe and timeflow-demon.exe) in the same folder and run timeflow-dashboard.exe.',
-      ),
+      desc: lang === 'pl'
+        ? <>Wrzuć oba pliki .exe (timeflow-dashboard.exe i timeflow-demon.exe) do jednego folderu na dysku i uruchom timeflow-dashboard.exe.</>
+        : <>Place both .exe files (timeflow-dashboard.exe and timeflow-demon.exe) in the same folder and run timeflow-dashboard.exe.</>,
       color: 'text-blue-400',
       bg: 'bg-blue-400/10',
     },
     {
       icon: <FolderKanban className="h-6 w-6" />,
       title: t('Konfiguracja projektów', 'Projects Configuration'),
-      desc: t(
-        'W zakładce <strong>Projects</strong> wskaż folder nadrzędny Twoich prac. Każdy podfolder będzie traktowany jako osobny projekt.',
-        'In the <strong>Projects</strong> tab, point to the parent folder of your work. Each subfolder will be treated as a separate project.',
-      ),
+      desc: lang === 'pl'
+        ? <>W zakładce <B>Projects</B> wskaż folder nadrzędny Twoich prac. Każdy podfolder będzie traktowany jako osobny projekt.</>
+        : <>In the <B>Projects</B> tab, point to the parent folder of your work. Each subfolder will be treated as a separate project.</>,
       color: 'text-emerald-400',
       bg: 'bg-emerald-400/10',
     },
     {
       icon: <AppWindow className="h-6 w-6" />,
       title: t('Dodawanie aplikacji', 'Adding Applications'),
-      desc: t(
-        'W zakładce <strong>Applications</strong> dodaj nazwy procesów (np. nazwa.exe), które chcesz śledzić. Nadaj im czytelne nazwy.',
-        'In the <strong>Applications</strong> tab, add process names (e.g. name.exe) you want to track. Give them friendly names.',
-      ),
+      desc: lang === 'pl'
+        ? <>W zakładce <B>Applications</B> dodaj nazwy procesów (np. nazwa.exe), które chcesz śledzić. Nadaj im czytelne nazwy.</>
+        : <>In the <B>Applications</B> tab, add process names (e.g. name.exe) you want to track. Give them friendly names.</>,
       color: 'text-amber-400',
       bg: 'bg-amber-400/10',
     },
     {
       icon: <Cpu className="h-6 w-6" />,
       title: t('Uruchomienie Demona', 'Starting the Demon'),
-      desc: t(
-        "W zakładce <strong>Daemon</strong> uruchom go i włącz 'Autostart ON'. System zacznie pracować w tle.",
-        "In the <strong>Daemon</strong> tab, start it and enable 'Autostart ON'. The system will start working in the background.",
-      ),
+      desc: lang === 'pl'
+        ? <>W zakładce <B>Daemon</B> uruchom go i włącz &apos;Autostart ON&apos;. System zacznie pracować w tle.</>
+        : <>In the <B>Daemon</B> tab, start it and enable &apos;Autostart ON&apos;. The system will start working in the background.</>,
       color: 'text-purple-400',
       bg: 'bg-purple-400/10',
     },
     {
       icon: <MousePointer2 className="h-6 w-6" />,
       title: t('Przypisywanie sesji', 'Assigning Sessions'),
-      desc: t(
-        'Użyj prawego przycisku myszy w zakładce <strong>Dashboard</strong>, aby przypisać sesje. Gwiazdka w trayu oznacza nieprzypisane sesje.',
-        'Right-click in the <strong>Dashboard</strong> tab to assign sessions. A star in the tray icon means unassigned sessions.',
-      ),
+      desc: lang === 'pl'
+        ? <>Użyj prawego przycisku myszy w zakładce <B>Dashboard</B>, aby przypisać sesje. Gwiazdka w trayu oznacza nieprzypisane sesje.</>
+        : <>Right-click in the <B>Dashboard</B> tab to assign sessions. A star in the tray icon means unassigned sessions.</>,
       color: 'text-sky-400',
       bg: 'bg-sky-400/10',
     },
     {
       icon: <Brain className="h-6 w-6" />,
       title: t('Szkolenie AI', 'AI Training'),
-      desc: t(
-        'Kilka ręcznych przypisań wyszkoli Twoje lokalne AI (zakładka <strong>AI & Model</strong>), które zacznie automatyzować pracę za Ciebie.',
-        'A few manual assignments will train your local AI (<strong>AI & Model</strong> tab), which will then start automating the work for you.',
-      ),
+      desc: lang === 'pl'
+        ? <>Kilka ręcznych przypisań wyszkoli Twoje lokalne AI (zakładka <B>AI &amp; Model</B>), które zacznie automatyzować pracę za Ciebie.</>
+        : <>A few manual assignments will train your local AI (<B>AI &amp; Model</B> tab), which will then start automating the work for you.</>,
       color: 'text-pink-400',
       bg: 'bg-pink-400/10',
     },
@@ -149,10 +148,9 @@ export function QuickStart() {
                   {step.title}
                 </h3>
               </div>
-              <p
-                className="text-sm text-muted-foreground/80 leading-relaxed max-w-5xl [&_strong]:text-primary [&_strong]:font-semibold [&_strong]:bg-transparent mt-0.5"
-                dangerouslySetInnerHTML={{ __html: step.desc }}
-              />
+              <p className="text-sm text-muted-foreground/80 leading-relaxed max-w-5xl mt-0.5">
+                {step.desc}
+              </p>
             </div>
           </div>
         ))}
