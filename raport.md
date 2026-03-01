@@ -1,103 +1,359 @@
-# Raport z analizy kodu projektu TIMEFLOW
+# TIMEFLOW — Raport analizy kodu
 
-Zgodnie z poleceniem przeanalizowałem kod pod kątem logiki, wydajności, możliwych optymalizacji, nadmiarowości oraz obsługi tłumaczeń. Kierowałem się w ocenie zasadami **KISS**, **YAGNI** oraz nastawieniem na możliwie proste rozwiązania, co jest kluczowe, aby projekt pozostał łatwy do modyfikacji w przyszłości.
-
----
-
-## 1. Poprawność logiki
-
-Pod kątem biznesowym i strukturalnym kod jest solidny i robi to, co do niego należy:
-
-- W **backendzie (Rust)** architektura jest bardzo czytelna. `tracker.rs` sprytnie zarządza wątkiem monitorującym, a optymalizacja sprawdzania CPU (jedno sprawdzenie per "tick" przy użyciu ProcessSnapshot) jest bardzo dobrym, wydajnym rozwiązaniem. System atomowego zapisu JSON (`atomic_replace_file` w `storage.rs`) poprzez `MoveFileExW` z flagą replace, połączony z pisaniem do pliku `.tmp`, daje gwarancję odporności na awarie prądu i restarty.
-- W **frontendzie (React+TypeScript)** główny podział na warstwy logiczne jest widoczny i poprawny. Logika odpytywania z użyciem Tauri API sprawuje się poprawnie, a aplikacja potrafi reagować na zmiany danych z zewnątrz.
-
-**Ocena KISS**: Bardzo dobrze w backendzie (Rust wykorzystuje proste pliki `.json` i proste API bez przekombinowanych baz danych czy serwisów). We frontendzie zaczyna pojawiać się lekka plątanina w architekturze (patrz niżej).
+Data: 2026-03-01
 
 ---
 
-## 2. Wydajność i optymalizacje (Sugerowane rozwiązania)
+## Spis treści
 
-### Frontend (React) - PRIORYTET
-
-Aplikacja w warstwie React potrzebuje refaktoryzacji pod kątem wydajności domowej (DOM rendering) oraz cyklu życia komponentów.
-
-1. **Gigantyczny `App.tsx` (Zarządzanie Synchronizacją)**
-   - **Problem:** W pliku `App.tsx` osadzonych jest wiele mikroskopijnych "sub-komponentów" typu `AutoImporter`, `AutoRefresher`, `AutoOnlineSync`, z których każdy rejestruje własny `useEffect` i timery (interwały). Powoduje to, że `App.tsx` staje się punktem centralnym, który może wyzwalać setki zbędnych operacji i re-renderów całej aplikacji (jest na samym szczycie drzewa DOM).
-   - **Rozwiązanie:** Wyciągnąć całą mechanikę tła (Auto-Sync, Data Polling) do jednego niestandardowego hooka (np. `useBackgroundSync()`) lub osobnego pliku `SyncManager.ts`. Zastosuj architekturę prostej pętli zdarzeń, sprawdzającej konieczność aktualizacji. Pamiętaj: KISS – jedna pętla odpytująca działająca w tle zamiast dziesięciu izolowanych `setInterval`.
-   - **[ZROBIONE]**: Usługi działające w tle zostały wydzielone do osobnego komponentu `BackgroundServices.tsx`. `App.tsx` został wyczyszczony z logiki pobierania i nieużywanych importów, stając się jedynie czytelnym punktem startowym.
-2. **Gigantyczny `Sessions.tsx` (Renderowanie Listy)**
-   - **Problem:** Widok sesji ma ponad 1700 linii kodu. Cały grid / wiersze sesji najprawdopodobniej renderują się równocześnie. Gdy użytkownik naniesie dane z wielu dni/tygodni, aplikacja zawiesi przeglądarkową maszynę renderującą (setki/tysiące elementów DOM naraz).
-   - **Rozwiązanie:** Należy to podzielić na mniejsze sub-komponenty (np. `SessionRow.tsx`), ale przede wszystkim – **zastosować wirtualizację listy (np. `react-virtuoso` lub `react-window`)**. Renderuj tylko te sesje, które użytkownik aktualnie widzi na ekranie. Zauważalnie podniesie to responsywność interfejsu.
-   - **[ZROBIONE]**: Kod `Sessions.tsx` został zrefaktoryzowany za pomocą `react-virtuoso`. Zastosowano płaską listę i wirtualizację, co chroni przed awarią lub "zacięciem" przeglądarki podczas przewijania tysięcy sesji. Komponent renderujący pojedynczy obszar/rząd sesji przeniesiony do izolowanego pliku `SessionRow.tsx`.
-3. **Zarządzanie Stanem (`app-store.ts`)**
-   - **Problem:** Stan globalny `useAppStore` w pliku `app-store.ts` to potężny "worek" (ang. god object), w którym zmiksowano nawigację (`currentPage`), filtry dat (`dateRange`), wynik importu (`autoImportResult`), motywy i waluty.
-   - **Rozwiązanie:** Uprość i oddziel odpowiedzialności (tzw. "Slice pattern" lub osobne store'y). Stwórz `useUIStore` dla nawigacji, `useSettingsStore` dla konfiguracji i `useDataStore` dla obszarów roboczych. Rozbicie zagwarantuje mniejszą liczbę re-renderów zależnych komponentów.
-   - **[ZROBIONE]**: Usunięto całkowicie `useAppStore`, rozbijając wiedzę o stanie na `ui-store.ts`, `data-store.ts` oraz `settings-store.ts`. Zaktualizowano wszystkie (kilkadziesiąt) importy i struktury w całej aplikacji. Zrealizowano w ten sposób zasadę Single Responsibility i zwiększono wydajność unikając niepotrzebnego re-renderowania.
-
-### Backend (Rust)
-
-Silnik demona zaimplementowany w Rust jest napisany optymalnie i zgodnie ze sztuką (np. prealokacja struktur, jednorazowe pomiary).
-
-- **Drobna optymalizacja:** W pętli głównej `tracker.rs` dochodzi do częstego klonowania stringów (np. `exe_name.clone()`, `file_name.to_string()`), gdy przypisujemy nazwy. Mimo że jest to pętla wywoływana z niewielką częstotliwością, docelowo można rozważyć użycie `Rc<String>` czy `Arc<String>` lub String interning, jeżeli chcemy osiągnąć minimalne zużycie zasobów (YAGNI nakazuje, by nie robić tego, zanim nie stanie się to widocznym problemem dla profillera).
+1. [Podsumowanie](#1-podsumowanie)
+2. [Problemy krytyczne](#2-problemy-krytyczne)
+3. [Logika i poprawność](#3-logika-i-poprawność)
+4. [Wydajność i optymalizacje](#4-wydajność-i-optymalizacje)
+5. [Nadmiarowy i zduplikowany kod](#5-nadmiarowy-i-zduplikowany-kod)
+6. [Architektura i wzorce](#6-architektura-i-wzorce)
+7. [Tłumaczenia (i18n)](#7-tłumaczenia-i18n)
+8. [Sugerowane działania — priorytetyzacja](#8-sugerowane-działania--priorytetyzacja)
 
 ---
 
-## 3. Nadmiarowy kod
+## 1. Podsumowanie
 
-- Na chwilę obecną, frontend wydaje się rozwijać funkcje horyzontalnie, co dubluje zbliżoną logikę. Np. `AutoProjectSync`, `AutoSessionRebuild`, `AutoAiAssignment` mają bardzo podobną strukturę interwałów i obsługi statusu błędu. Dałoby się to zredukować (uprościć kod i usunąć nadmiarowość), tworząc wspólną generyczną warstwę do odpytywania Tauri/zewnętrznego API w równych odstępach czasu (tzw. "Job Pool").
-- **[ZROBIONE]**: Cały plik `BackgroundServices.tsx` poddano refaktoryzacji by scentralizować timery z `setInterval` i `setTimeout`. Usługi `AutoImporter`, `AutoProjectSync`, `AutoSessionRebuild` oraz `AutoAiAssignment` działają w pojedynczej pętli zdarzeń opierając się na jednym `setInterval` wymuszanym co sekundę. Architektura ta znacznie zmniejsza duplikację i eliminuje nadmiarowe nakładanie się interwałów czasowych.
-
----
-
-## 4. Brakujące tłumaczenia (Umiędzynarodowienie - i18n)
-
-Aplikacja ma wpiętą bibliotekę i18n, jednak jej adaptacja jest obecnie na poziomie **wstępnym (początki wdrożenia)**.
-
-- **Aktualny stan:** Pliki językowe (`locales/en/common.json` oraz `pl/common.json`) zawierają bardzo szczątkowe informacje (tylko sekcje: `settings`, `help`, `quickstart`).
-- **Problemy do rozwiązania:** Cały szkielet (tzw. layout) oraz widoki takie jak Sidebar, TopBar, czy zakładka Sessions zawierają sztywny (hardcoded) tekst w języku angielskim np.: `"Dashboard"`, `"Sessions"`, `"Projects"`, `"AI Mode"`, `"Running"`, czy formatowania walut, statystyk na kartach projektów itp.
-- **Sugerowane rozwiązanie (Krok po kroku):** Zamiast dodawać kolejne komponenty na sztywno, przed kolejnymi "feature'ami" podjąć decyzję o kompleksowym wyprowadzeniu tekstów z `Sidebar.tsx`, `Sessions.tsx` i innych głównych ścieżek do `common.json`, by funkcja tłumaczenia (metoda `t("...")` z `react-i18next`) objęła 100% interfejsu (lub zrezygnować z tłumaczeń na polski, jeśli to nie jest potrzebne na dziś – stosując zasadę YAGNI). Z uwag w kodzie, obecny stan to _"Remaining views will be migrated in the next i18n phases"_, więc należy dokończyć ten proces.
+| Kategoria | Krytyczne | Średnie | Niskie |
+|-----------|:---------:|:-------:|:------:|
+| Dead code / nadmiarowy kod | 1 | 4 | 3 |
+| Logika / poprawność | 1 | 3 | 2 |
+| Wydajność | — | 2 | 3 |
+| Duplikacja kodu | — | 5 | 1 |
+| Architektura / wzorce | — | 2 | 2 |
+| Tłumaczenia (i18n) | 1 | 1 | — |
+| **Razem** | **3** | **17** | **11** |
 
 ---
 
-## 5. Podsumowanie (zgodnie z KISS)
+## 2. Problemy krytyczne
 
-1. **Zostaw Rust-a w spokoju**, póki nie obciąża komputera (logika, użycie snapshotów WinAPI są bardzo rzetelne).
-2. **Upodobnij architekturę App.tsx do struktury szkieletowej**, wyrzucając pobieranie danych i logikę tła poza główny rdzeń renderujący.
-3. W `Sessions.tsx` rozważ (nawet na zapas) wirtualizowaną listę, by uniemożliwić ewentualne zablokowanie UI.
-4. Uzupełnij system `i18next` zastępując ciągi tekstowe w UI odpowiednimi kluczami z `common.json`.
+### 2.1 Dead code: `app-store.ts` (227 linii)
 
-5. Refaktoryzacja zarządzania stanem (
+**Plik:** `src/store/app-store.ts`
 
-app-store.ts
-) Plik ten obecnie stanowi jeden olbrzymi "worek" (God object) na wszystkie stany w aplikacji (filtry, interfejs, waluty, obszary robocze). Zgodnie z raportem należałoby to rozdzielić na mniejsze pliki/logicze części, np.:
+Cały plik jest nieużywany. `useAppStore` nie jest importowany nigdzie w projekcie. To stary monolityczny store sprzed refaktoryzacji na `ui-store.ts`, `data-store.ts` i `settings-store.ts`. Zawiera zduplikowaną logikę (`presetToRange`, `inferPreset`, `scheduleThrottledRefresh`).
 
-useUIStore (nawigacja, otwieranie okienek),
-useSettingsStore (motywy, waluty),
-useDataStore (obszary robocze, daty). 2. Redukcja nadmiarowego kodu (Job Pool / Background Services) Usługi w tle (takie jak
+**Akcja:** Usunąć plik.
 
-AutoProjectSync
-,
+### 2.2 Race condition: brak mutexa na `runOnlineSyncOnce`
 
-AutoSessionRebuild
-,
+**Plik:** `src/lib/online-sync.ts`
 
-AutoAiAssignment
-), które przeniesiono wcześniej z
+Jeśli dwa wywołania uruchomią się równocześnie (timer + ręczny trigger + local_change event), mogą wykonać push/pull równolegle. To prowadzi do race condition na stanie localStorage i sprzecznych operacji z serwerem.
 
-App.tsx
-nadal powielają logikę timerów (setInterval) oraz obsługę błędów. Raport sugeruje uproszczenie tego przez napisanie jednej generycznej warstwy pętli dla wszystkich takich zadań, aby pozbyć się duplikowania logiki.
+**Uwaga:** `BackgroundServices.tsx` używa `syncRunningRef` jako guard, ale bezpośrednie wywołania `runOnlineSyncOnce()` z Sidebara (linia 276) i Settings (linia 942) go pomijają.
 
-3. Umiędzynarodowienie i wdrożenie tłumaczeń (i18n) Biblioteka react-i18next jest gotowa, ale dodana jedynie pobieżnie. Obecnie wiele tekstów w interfejsie (
+**Akcja:** Dodać moduł-level lock (`let isSyncRunning = false` lub Promise-based mutex) wewnątrz `runOnlineSyncOnce`.
 
-Sidebar.tsx
-,
+### 2.3 Tekst polski w angielskim UI
 
-TopBar.tsx
-, widok Sessions) to twardy tekst wpisany po angielsku ("Dashboard", "Running", "Sessions"). Aplikacja wymaga przeniesienia wszystkich pozostałych stringów do plików common.json, by 100% interfejsu obsługiwało tłumaczenia (w tym język polski).
+**Plik:** `src/components/ManualSessionDialog.tsx`, linia ~306
 
-4. Drobna optymalizacja backendu w języku Rust (Bardziej jako ciekawostka) Zasugerowano unikanie klonowania łańcuchów znakowych podczas sprawdzania procesów, na rzecz Rc<String> lub Arc<String>. Raport zaznacza jednak, żeby zgodnie z zasadą YAGNI na razie tego nie ruszać, dopóki wydajność demona operacyjnego jest dobra.
+Checkbox label `"Przedłuż sesję na kolejne dni"` — tekst po polsku wmieszany w angielski interfejs. Powinien być przetłumaczony lub użyty przez system i18n.
 
-Co robimy w pierwszej kolejności? Chcesz podzielić
+**Akcja:** Przenieść do systemu i18n lub co najmniej dodać angielski odpowiednik.
 
-app-store.ts
-, zredukować timery czy wdrożyć dokończenie tłumaczeń do polskiego języka? Rozbicie głównego stanu aplikacji (app-store) pomoże przybliżyć strukturę bezpośrednio dla zasady KISS.
+---
+
+## 3. Logika i poprawność
+
+### 3.1 Brakujący dependency w useCallback
+
+**Plik:** `src/pages/Dashboard.tsx`, linia 229
+
+`handleUpdateSessionComment` używa `triggerRefresh` w ciele `useCallback`, ale dependency array to `[]`. Narusza to reguły React hooks. Zustand selektory są stabilne, więc w praktyce nie powoduje buga, ale linter to zgłosi.
+
+**Poprawka:** Zmienić `[]` na `[triggerRefresh]` (analogicznie do `handleAssignSession` w linii 197).
+
+### 3.2 `fetchStatus` poza dep array w useEffect
+
+**Plik:** `src/pages/AI.tsx`, linia 145-151
+
+`useEffect(() => { fetchStatus(); ... }, [])` — `fetchStatus` nie jest w dependency array. Funkcja używa `showError`, więc React linter zgłosi ostrzeżenie.
+
+**Poprawka:** Opakować `fetchStatus` w `useCallback` lub przenieść logikę bezpośrednio do efektu.
+
+### 3.3 Brak try/catch w handleResetAppTime
+
+**Plik:** `src/pages/Applications.tsx`, linia ~158-161
+
+`handleResetAppTime` wywołuje `resetAppTime()` bez try/catch. Jeśli komenda Tauri rzuci błąd, Promise zostanie odrzucony bez obsługi.
+
+**Poprawka:** Dodać try/catch z `showError` lub `console.error`.
+
+### 3.4 Komendy Tauri używające `invoke` zamiast `invokeMutation`
+
+**Plik:** `src/lib/tauri.ts`
+
+Następujące komendy zmieniają stan, ale używają `invoke` zamiast `invokeMutation`, więc nie emitują eventu `LOCAL_DATA_CHANGED`:
+
+| Linia | Komenda |
+|-------|---------|
+| 200 | `setAssignmentMode` |
+| 213 | `setAssignmentModelCooldown` |
+| 216 | `trainAssignmentModel` |
+| 253 | `setFeedbackWeight` |
+
+**Poprawka:** Zmienić na `invokeMutation`.
+
+### 3.5 `formatDuration` nie obsługuje ujemnych wartości
+
+**Plik:** `src/lib/utils.ts`, linia 8-15
+
+Ujemna wartość `seconds` da niepoprawny wynik (np. `-5` → `"0m -5s"`).
+
+**Poprawka:** Dodać `Math.abs()` lub zwracać `"0s"` dla wartości ≤ 0.
+
+---
+
+## 4. Wydajność i optymalizacje
+
+### 4.1 Duplikacja pollingu: Sidebar vs BackgroundServices
+
+**Pliki:** `src/components/layout/Sidebar.tsx` (linia 134-168), `src/components/sync/BackgroundServices.tsx`
+
+Sidebar odpytuje 5 endpointów co 10 sekund (`getDaemonStatus`, `getAssignmentModelStatus`, `getDatabaseSettings`, 2x `getSessionCount`). BackgroundServices ma własny polling loop (co 1s z warunkami czasowymi). Oba działają niezależnie.
+
+**Sugestia:** Przenieść polling Sidebara do BackgroundServices lub współdzielonego store'a, aby uniknąć podwójnych wywołań IPC.
+
+### 4.2 `loadOnlineSyncSettings` zapisuje do localStorage przy każdym odczycie
+
+**Plik:** `src/lib/online-sync.ts`, linia ~665
+
+Funkcja `load*` ma side-effect: zapisuje do localStorage (aby utrwalić wygenerowane `deviceId`). Przy częstych odczytach (co 1s w job pool) to niepotrzebne operacje I/O.
+
+**Poprawka:** Zapisywać tylko gdy `deviceId` był wygenerowany (nie istniał w storage).
+
+### 4.3 DaemonControl — logi bez memoizacji
+
+**Plik:** `src/pages/DaemonControl.tsx`, linia 277-289
+
+`logs.split("\n").map(...)` przy każdym auto-refresh (co 5s) tworzy nową tablicę i przerenderowuje cały blok DOM.
+
+**Poprawka:** Użyć `useMemo` na splittowanych liniach.
+
+### 4.4 `loadSessionSettings()` wywoływane co 10s w Sidebar
+
+**Plik:** `src/components/layout/Sidebar.tsx`, linia ~138
+
+Synchroniczny odczyt z localStorage przy każdym ticku intervalu. Niewielki koszt, ale niepotrzebne powtarzanie.
+
+**Poprawka:** Cache'ować wartość i odświeżać rzadziej (np. na focus window).
+
+### 4.5 Podwójna serializacja `JSON.stringify(archive)` w online-sync
+
+**Plik:** `src/lib/online-sync.ts`
+
+Archiwum jest serializowane do JSON dwukrotnie: raz w `sha256Hex` i ponownie w `pushPayloadSize`. Dla dużych zbiorów danych to zbędna operacja.
+
+**Poprawka:** Zachować serializowany string i użyć ponownie.
+
+---
+
+## 5. Nadmiarowy i zduplikowany kod
+
+### 5.1 `getErrorMessage` — 3 identyczne kopie
+
+**Pliki:** `Estimates.tsx:33`, `Projects.tsx:92`, `ManualSessionDialog.tsx:41`
+
+Identyczna funkcja `getErrorMessage(error: unknown, fallback: string): string` powtórzona w 3 plikach.
+
+**Poprawka:** Wynieść do `@/lib/utils.ts`.
+
+### 5.2 `formatMultiplierLabel` — 3 identyczne kopie
+
+**Pliki:** `Sessions.tsx:70`, `ProjectPage.tsx:76`, `ProjectDayTimeline.tsx:115`
+
+**Poprawka:** Wynieść do `@/lib/utils.ts`.
+
+### 5.3 `PromptConfig` — 4 identyczne interfejsy
+
+**Pliki:** `Applications.tsx:30`, `Sessions.tsx:62`, `ProjectPage.tsx:88`, `ProjectDayTimeline.tsx:70`
+
+Identyczny interfejs `PromptConfig { title, initialValue, onConfirm, description? }` zdefiniowany w 4 plikach.
+
+**Poprawka:** Wynieść do wspólnego pliku typów.
+
+### 5.4 Date-range toolbar — zduplikowany JSX w 3+ stronach
+
+**Pliki:** `Dashboard.tsx`, `Estimates.tsx`, `Sessions.tsx` (+ `TimeAnalysis.tsx` z własną wersją)
+
+Prawie identyczny blok JSX: przyciski preset (today/week/month/all), nawigacja prev/next, wyświetlanie zakresu dat.
+
+**Poprawka:** Wydzielić komponent `DateRangeToolbar`.
+
+### 5.5 Nieużywane eksporty
+
+| Plik | Eksport | Status |
+|------|---------|--------|
+| `src/lib/utils.ts:25` | `formatDurationLong` | Nigdzie nie importowany |
+| `src/lib/utils.ts:32` | `formatHours` | Nigdzie nie importowany |
+| `src/lib/tauri.ts:76` | `checkFileImported` | Nigdzie nie importowany |
+
+**Poprawka:** Usunąć nieużywane eksporty.
+
+### 5.6 `chart-animation.ts` — powtórzony disabled config
+
+**Plik:** `src/lib/chart-animation.ts`, linie 32-58
+
+Obiekt `{ isAnimationActive: false, animationDuration: 0, animationEasing: 'ease-out' }` powtórzony 4 razy w różnych branchach.
+
+**Poprawka:** Wydzielić stałą `DISABLED_ANIMATION_CONFIG`.
+
+### 5.7 Redundantna funkcja `createDefaultOnlineSyncState`
+
+**Plik:** `src/lib/online-sync.ts`, linia 309-319
+
+Robi dokładnie to samo co `{ ...DEFAULT_ONLINE_SYNC_STATE }`.
+
+**Poprawka:** Zamienić na spread operatora.
+
+---
+
+## 6. Architektura i wzorce
+
+### 6.1 `window.alert` / `window.confirm` zamiast własnych komponentów
+
+**Pliki:** Applications, Projects, Sessions, ProjectPage, ProjectDayTimeline (~20+ wystąpień)
+
+Natywne `window.alert()` i `window.confirm()` zamiast komponentów dialogów. Na `AI.tsx` używa się `useToast`, ale reszta app nie — niespójne UX.
+
+**Sugestia:** Zamienić na `useToast` (showError/showInfo) dla powiadomień i dedykowany komponent dialog potwierdzenia dla akcji destrukcyjnych.
+
+### 6.2 Nadmierny rozmiar plików stron
+
+| Plik | Linie |
+|------|------:|
+| `Projects.tsx` | ~1873 |
+| `ProjectPage.tsx` | ~1612 |
+| `Settings.tsx` | ~1201 |
+| `Sessions.tsx` | ~1201 |
+
+**Sugestia:** Wydzielić logiczne sekcje do subkomponentów (np. `ProjectDialogs.tsx`, `SessionGroupView.tsx`, `SettingsSection*.tsx`).
+
+### 6.3 Import w środku pliku
+
+**Plik:** `src/pages/Dashboard.tsx`, linia 104
+
+`import { TopProjectsList }` umieszczony między definicją `AutoImportBanner` a eksportem `Dashboard`. Reszta importów jest na górze pliku.
+
+**Poprawka:** Przenieść import na górę pliku.
+
+### 6.4 `dangerouslySetInnerHTML` na statycznych danych
+
+**Plik:** `src/pages/QuickStart.tsx`, linia 154
+
+`dangerouslySetInnerHTML={{ __html: step.desc }}` — dane są statyczne (nie user input), więc nie ma ryzyka XSS, ale to niepotrzebne użycie niebezpiecznego API.
+
+**Poprawka:** Użyć komponentów React zamiast HTML stringa.
+
+### 6.5 Niespójne mapowanie camelCase/snake_case w tauri.ts
+
+**Plik:** `src/lib/tauri.ts`, linia 388-396
+
+`updateDatabaseSettings` ręcznie mapuje camelCase → snake_case, podczas gdy reszta API tego nie robi. Niespójny wzorzec.
+
+### 6.6 `user-settings.ts` — powtarzalny boilerplate
+
+**Plik:** `src/lib/user-settings.ts`
+
+Każdy typ ustawień (7 typów) ma prawie identyczną strukturę: `loadRawSetting` + sprawdzenie legacy + `JSON.parse` + normalizacja + try/catch. ~100 linii boilerplate na typ.
+
+**Sugestia:** Generyczna funkcja `loadSettings<T>(key, legacyKey, normalizer, defaults)`.
+
+---
+
+## 7. Tłumaczenia (i18n)
+
+### 7.1 Stan obecny
+
+| Metryka | Wartość |
+|---------|--------|
+| System i18n | i18next + react-i18next (skonfigurowany) |
+| Pliki locale | `en/common.json`, `pl/common.json` (11 kluczy) |
+| Strony z `useTranslation` | 3 / 14 (Settings, Help, QuickStart) |
+| Strony w pełni przetłumaczone | 0 / 14 |
+| Strony całkowicie bez i18n | 11 / 14 |
+| Szacowana liczba brakujących kluczy | ~400-500 |
+| Pokrycie tłumaczeń | **~1%** |
+
+### 7.2 Główne problemy
+
+1. **Minimalne pokrycie** — system i18n jest skonfigurowany, ale użyty w marginalnym stopniu. 11 z 14 stron nie importuje nawet `useTranslation`.
+
+2. **Niespójny mechanizm tłumaczeń** — `Help.tsx` i `QuickStart.tsx` unikają plików locale na rzecz inline'owej funkcji `t(pl, en)` opartej na `i18n.resolvedLanguage`. To obchodzi system i18next i utrudnia centralne zarządzanie tłumaczeniami.
+
+3. **Komponenty bez tłumaczeń** — nawigacja w Sidebar, dialogi, formularze, komunikaty błędów, tooltips — wszystko hardcoded po angielsku.
+
+### 7.3 Strony i komponenty z największą liczbą hardcoded strings
+
+| Plik | Szacowana liczba stringów |
+|------|:-------------------------:|
+| `Projects.tsx` | 80+ |
+| `AI.tsx` | 60+ |
+| `ProjectPage.tsx` | 50+ |
+| `Sessions.tsx` | 40+ |
+| `Settings.tsx` | 40+ (poza sekcją Language) |
+| `Applications.tsx` | 30+ |
+| `DatabaseManagement.tsx` | 30+ |
+| `Estimates.tsx` | 25+ |
+| `DaemonControl.tsx` | 25+ |
+| `ManualSessionDialog.tsx` | 20+ |
+| `BugHunter.tsx` | 15+ |
+| `Sidebar.tsx` | 15+ |
+| `Help.tsx` | Inline `t(pl, en)` — ~200 stringów poza systemem i18n |
+| `QuickStart.tsx` | Inline `t(pl, en)` — ~30 stringów poza systemem i18n |
+
+---
+
+## 8. Sugerowane działania — priorytetyzacja
+
+### Priorytet 1 — natychmiast (krytyczne / szybkie wygrane)
+
+| # | Akcja | Pliki | Nakład |
+|---|-------|-------|--------|
+| 1 | Usunąć `app-store.ts` (dead code) | 1 plik | 5 min |
+| 2 | Dodać mutex na `runOnlineSyncOnce` | `online-sync.ts` | 15 min |
+| 3 | Naprawić polski tekst w `ManualSessionDialog.tsx` | 1 plik | 5 min |
+| 4 | Dodać `[triggerRefresh]` do dep array w `Dashboard.tsx:229` | 1 plik | 2 min |
+| 5 | Zmienić `invoke` → `invokeMutation` dla 4 komend AI w `tauri.ts` | 1 plik | 5 min |
+| 6 | Usunąć 3 nieużywane eksporty | 2 pliki | 5 min |
+
+### Priorytet 2 — wkrótce (średnie / poprawa jakości)
+
+| # | Akcja | Pliki | Nakład |
+|---|-------|-------|--------|
+| 7 | Wynieść `getErrorMessage` do utils | 4 pliki | 10 min |
+| 8 | Wynieść `formatMultiplierLabel` do utils | 4 pliki | 10 min |
+| 9 | Wynieść `PromptConfig` do wspólnego pliku | 5 plików | 10 min |
+| 10 | Wydzielić `DateRangeToolbar` | 4+ pliki | 30 min |
+| 11 | Zamienić `window.alert/confirm` na toast/dialog | 10+ plików | 1-2h |
+| 12 | Dodać try/catch w `Applications.tsx` | 1 plik | 5 min |
+| 13 | Naprawić side-effect w `loadOnlineSyncSettings` | 1 plik | 10 min |
+
+### Priorytet 3 — planowane (refaktoring / architektura)
+
+| # | Akcja | Pliki | Nakład |
+|---|-------|-------|--------|
+| 14 | Rozbić duże strony na subkomponenty | 4 pliki | 2-4h |
+| 15 | Zunifikować polling (Sidebar + BackgroundServices) | 2 pliki | 1h |
+| 16 | Generyczna funkcja `loadSettings<T>` | `user-settings.ts` | 30 min |
+| 17 | Ujednolicić camelCase/snake_case w tauri.ts | 1 plik | 15 min |
+
+### Priorytet 4 — backlog (i18n)
+
+| # | Akcja | Nakład |
+|---|-------|--------|
+| 18 | Zunifikować mechanizm tłumaczeń (usunąć inline `t(pl,en)`, użyć kluczy i18next) | 2-3h |
+| 19 | Dodać klucze dla nawigacji, wspólnych elementów UI, dialogów | 1-2 dni |
+| 20 | Przetłumaczyć wszystkie strony (~400-500 kluczy) | 3-5 dni |
+
+---
+
+*Raport wygenerowany automatycznie na podstawie analizy kodu źródłowego.*

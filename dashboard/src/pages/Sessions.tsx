@@ -129,6 +129,11 @@ export function Sessions() {
   );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
+  const scrollParentRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = document.querySelector('main');
+    if (el) scrollParentRef.current = el;
+  }, []);
   const PAGE_SIZE = 100;
   const minDuration = useMemo(() => {
     const s = loadSessionSettings();
@@ -840,7 +845,7 @@ export function Sessions() {
 
       {flattenedItems.length > 0 ? (
         <Virtuoso
-          useWindowScroll
+          customScrollParent={scrollParentRef.current ?? undefined}
           data={flattenedItems}
           itemContent={(_index: number, item: FlatItem) => {
             if (item.type === 'header') {
@@ -982,7 +987,7 @@ export function Sessions() {
               <div
                 className={`px-3 bg-background/50 backdrop-blur-sm border-x border-border/30 ${
                   isFirstInGroup ? 'pt-3' : 'pt-0'
-                } ${isLastInGroup ? 'rounded-b-xl border-b pb-3 mb-4' : 'mb-4'}`}
+                } ${isLastInGroup ? 'rounded-b-xl border-b pb-3 mb-4' : ''}`}
               >
                 <div className="h-full">
                   <SessionRow
