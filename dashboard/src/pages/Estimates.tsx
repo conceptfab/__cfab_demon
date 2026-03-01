@@ -63,7 +63,6 @@ export function Estimates() {
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [globalRateInput, setGlobalRateInput] = useState('100');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [savingGlobal, setSavingGlobal] = useState(false);
   const [savingProjectId, setSavingProjectId] = useState<number | null>(null);
   const [globalMessage, setGlobalMessage] = useState<string | null>(null);
@@ -95,8 +94,6 @@ export function Estimates() {
     const isInitialLoad = !hasLoadedOnceRef.current;
     if (isInitialLoad) {
       setLoading(true);
-    } else {
-      setRefreshing(true);
     }
     setGlobalError(null);
     setTableError(null);
@@ -161,14 +158,13 @@ export function Estimates() {
             hasLoadedOnceRef.current = true;
             setLoading(false);
           }
-          setRefreshing(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [dateRange, refreshKey]);
+  }, [dateRange.start, dateRange.end, refreshKey]);
 
   const handleSaveGlobalRate = async () => {
     const parsed = parseRateInput(globalRateInput);
@@ -343,16 +339,9 @@ export function Estimates() {
 
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <CardTitle className="text-sm font-medium">
-              {t('Estymacje projektów', 'Project Estimates')}
-            </CardTitle>
-            {refreshing && (
-              <span className="text-[11px] text-muted-foreground">
-                {t('Odświeżanie...', 'Refreshing...')}
-              </span>
-            )}
-          </div>
+          <CardTitle className="text-sm font-medium">
+            {t('Estymacje projektów', 'Project Estimates')}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {tableError && (

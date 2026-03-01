@@ -38,6 +38,7 @@ interface Props {
   trimLeadingToFirstData?: boolean;
   title?: string;
   heightClassName?: string;
+  disableAnimation?: boolean;
   onBarClick?: (date: string) => void;
   onBarContextMenu?: (date: string, x: number, y: number) => void;
 }
@@ -52,6 +53,7 @@ export function TimelineChart({
   trimLeadingToFirstData = false,
   title,
   heightClassName,
+  disableAnimation = false,
   onBarClick,
   onBarContextMenu,
 }: Props) {
@@ -61,12 +63,26 @@ export function TimelineChart({
   const hoveredDateRef = useRef<string | null>(null);
   const seriesKeys = useMemo(() => {
     const keys = new Set<string>();
+    const totals = new Map<string, number>();
     for (const row of data) {
       for (const key of Object.keys(row)) {
-        if (key !== "date" && key !== "comments" && key !== "has_boost" && key !== "has_manual") keys.add(key);
+        if (key === "date" || key === "comments" || key === "has_boost" || key === "has_manual") {
+          continue;
+        }
+        keys.add(key);
+        const value = row[key];
+        if (typeof value === "number" && Number.isFinite(value)) {
+          totals.set(key, (totals.get(key) ?? 0) + value);
+        }
       }
     }
-    return Array.from(keys);
+    return Array.from(keys).sort((a, b) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      const diff = (totals.get(b) ?? 0) - (totals.get(a) ?? 0);
+      if (Math.abs(diff) > 0.001) return diff;
+      return a.localeCompare(b, undefined, { sensitivity: "base" });
+    });
   }, [data]);
 
   const chartData = useMemo(() => {
@@ -150,6 +166,13 @@ export function TimelineChart({
         animationEasing: "ease-out" as const,
       }
     : barAnimation;
+  const finalBarAnimation = disableAnimation
+    ? {
+        isAnimationActive: false,
+        animationDuration: 0,
+        animationEasing: "ease-out" as const,
+      }
+    : effectiveBarAnimation;
   const daySpan = useMemo(() => {
     if (!dateRange?.start || !dateRange?.end) return 0;
     try {
@@ -377,9 +400,9 @@ export function TimelineChart({
                       stackId="projects"
                       fill={color}
                       radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}
-                      isAnimationActive={effectiveBarAnimation.isAnimationActive}
-                      animationDuration={effectiveBarAnimation.animationDuration}
-                      animationEasing={effectiveBarAnimation.animationEasing}
+                      isAnimationActive={finalBarAnimation.isAnimationActive}
+                      animationDuration={finalBarAnimation.animationDuration}
+                      animationEasing={finalBarAnimation.animationEasing}
                       shape={
                         useSimpleRendering
                           ? undefined

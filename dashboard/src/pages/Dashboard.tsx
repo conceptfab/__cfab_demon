@@ -456,6 +456,7 @@ export function Dashboard() {
           dateRange={dateRange}
           trimLeadingToFirstData={timePreset === 'all'}
           heightClassName="h-[24rem]"
+          disableAnimation
         />
       )}
 
