@@ -4,13 +4,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PromptModal } from "@/components/ui/prompt-modal";
-import { formatDuration } from "@/lib/utils";
+import { useToast } from "@/components/ui/toast-notification";
+import { formatDuration, formatMultiplierLabel } from "@/lib/utils";
 import {
   normalizeHexColor,
   timeToMinutes,
   type WorkingHoursSettings,
 } from "@/lib/user-settings";
-import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
+import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject, PromptConfig } from "@/lib/db-types";
 
 interface Props {
   sessions: SessionWithApp[];
@@ -67,13 +68,6 @@ interface ClusterDetailsState {
   segment: SegmentData;
 }
 
-interface PromptConfig {
-  title: string;
-  initialValue: string;
-  onConfirm: (val: string) => void;
-  description?: string;
-}
-
 type TimelineSortMode = "time_desc" | "alpha_asc";
 
 const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
@@ -111,13 +105,6 @@ const HATCH_STYLE: React.CSSProperties = {
   pointerEvents: "none",
 };
 const SESSION_FRAGMENT_CLUSTER_GAP_MS = 60_000;
-
-function formatMultiplierLabel(multiplier?: number): string {
-  const value = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
-  return Number.isInteger(value)
-    ? `x${value.toFixed(0)}`
-    : `x${value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}`;
-}
 
 function getSegmentSessionIds(segment: SegmentData): number[] {
   if (segment.isManual) return [];
@@ -279,6 +266,7 @@ export function ProjectDayTimeline({
   onAddManualSession,
   onEditManualSession,
 }: Props) {
+  const { showError, showInfo } = useToast();
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
@@ -368,7 +356,7 @@ export function ProjectDayTimeline({
         await onAssignSession(sessionIds, projectId);
       } catch (err) {
         console.error("Failed to assign session(s) to project:", err);
-        window.alert(`Failed to assign session(s): ${String(err)}`);
+        showError(`Failed to assign session(s): ${String(err)}`);
       } finally {
         setCtxMenu(null);
       }
@@ -387,7 +375,7 @@ export function ProjectDayTimeline({
       if (missingIds.length === 0) return true;
 
       if (!onUpdateSessionComment) {
-        window.alert("Boost requires a comment, but comment editing is unavailable here.");
+        showInfo("Boost requires a comment, but comment editing is unavailable here.");
         return false;
       }
 
@@ -401,7 +389,7 @@ export function ProjectDayTimeline({
       );
       const normalized = entered?.trim() ?? "";
       if (!normalized) {
-        window.alert("Comment is required to add boost.");
+        showError("Comment is required to add boost.");
         return false;
       }
 
@@ -412,7 +400,7 @@ export function ProjectDayTimeline({
         return true;
       } catch (err) {
         console.error("Failed to save required boost comment:", err);
-        window.alert(`Failed to save comment required for boost: ${String(err)}`);
+        showError(`Failed to save comment required for boost: ${String(err)}`);
         return false;
       }
     },
@@ -433,7 +421,7 @@ export function ProjectDayTimeline({
         setCtxMenu(null);
       } catch (err) {
         console.error("Failed to update session rate multiplier:", err);
-        window.alert(`Failed to update session rate multiplier: ${String(err)}`);
+        showError(`Failed to update session rate multiplier: ${String(err)}`);
       }
     },
     [ctxMenu, ensureCommentForBoost, onUpdateSessionRateMultiplier]
@@ -455,7 +443,7 @@ export function ProjectDayTimeline({
         const normalizedRaw = raw.trim().replace(",", ".");
         const parsed = Number(normalizedRaw);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          window.alert("Multiplier must be a positive number.");
+          showError("Multiplier must be a positive number.");
           return;
         }
         await handleSetRateMultiplier(parsed);

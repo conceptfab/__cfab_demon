@@ -11,7 +11,9 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 Podsumowując strategię na najbliższe dni: Zostaw tryb suggest, zmuś model do "zgadywania" częściej (zmiejszając Confidence do ok. 0.45) i zwiększ siłę Twoich poprawek (Feedback Weight do ok. 12). Po prostu używaj aplikacji - to wymusi maksymalnie szybką naukę.
 
-TŁUMACZENIE
+- TŁUMACZENIE
+- wyszukiwanie projektów po nazwie w zakladce projekty
+- mozliwosc zmiany koloru projektu w karcie projektu
 
 TODO ??
 

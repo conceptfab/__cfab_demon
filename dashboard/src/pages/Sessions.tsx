@@ -19,7 +19,7 @@ import {
   getSessionScoreBreakdown,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, formatMultiplierLabel } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { addDays, format, parseISO, subDays } from 'date-fns';
@@ -30,12 +30,14 @@ import type {
   SessionWithApp,
   ProjectWithStats,
   ScoreBreakdown,
+  PromptConfig,
 } from '@/lib/db-types';
 import {
   loadSessionSettings,
   loadIndicatorSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
+import { useToast } from '@/components/ui/toast-notification';
 
 interface ContextMenu {
   x: number;
@@ -59,27 +61,10 @@ interface GroupedProject {
   sessions: SessionWithApp[];
 }
 
-interface PromptConfig {
-  title: string;
-  initialValue: string;
-  onConfirm: (val: string) => void;
-  description?: string;
-}
 type RangeMode = 'daily' | 'weekly';
 
-function formatMultiplierLabel(multiplier?: number): string {
-  const value =
-    typeof multiplier === 'number' &&
-    Number.isFinite(multiplier) &&
-    multiplier > 0
-      ? multiplier
-      : 1;
-  return Number.isInteger(value)
-    ? `x${value.toFixed(0)}`
-    : `x${value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}`;
-}
-
 export function Sessions() {
+  const { showError } = useToast();
   const {
     sessionsFocusDate,
     clearSessionsFocusDate,
@@ -397,7 +382,7 @@ export function Sessions() {
       const normalized = entered?.trim() ?? '';
 
       if (!normalized) {
-        window.alert('Comment is required to add boost.');
+        showError('Comment is required to add boost.');
         return false;
       }
 
@@ -414,9 +399,7 @@ export function Sessions() {
         return true;
       } catch (err) {
         console.error('Failed to save required boost comment:', err);
-        window.alert(
-          `Failed to save comment required for boost: ${String(err)}`,
-        );
+        showError(`Failed to save comment required for boost: ${String(err)}`);
         return false;
       }
     },
@@ -437,9 +420,7 @@ export function Sessions() {
         setCtxMenu(null);
       } catch (err) {
         console.error('Failed to update session rate multiplier:', err);
-        window.alert(
-          `Failed to update session rate multiplier: ${String(err)}`,
-        );
+        showError(`Failed to update session rate multiplier: ${String(err)}`);
       }
     },
     [ctxMenu, ensureCommentForBoost, triggerRefresh],
@@ -461,7 +442,7 @@ export function Sessions() {
         const normalizedRaw = raw.trim().replace(',', '.');
         const parsed = Number(normalizedRaw);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          window.alert('Multiplier must be a positive number.');
+          showError('Multiplier must be a positive number.');
           return;
         }
         await handleSetRateMultiplier(parsed);

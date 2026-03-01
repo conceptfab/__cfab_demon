@@ -306,18 +306,6 @@ function shortHash(hash: string | null): string {
   return hash ? `${hash.slice(0, 8)}...` : 'n/a';
 }
 
-function createDefaultOnlineSyncState(): OnlineSyncState {
-  return {
-    serverRevision: DEFAULT_ONLINE_SYNC_STATE.serverRevision,
-    serverHash: DEFAULT_ONLINE_SYNC_STATE.serverHash,
-    localRevision: DEFAULT_ONLINE_SYNC_STATE.localRevision,
-    localHash: DEFAULT_ONLINE_SYNC_STATE.localHash,
-    pendingAck: DEFAULT_ONLINE_SYNC_STATE.pendingAck,
-    lastSyncAt: DEFAULT_ONLINE_SYNC_STATE.lastSyncAt,
-    needsReseed: DEFAULT_ONLINE_SYNC_STATE.needsReseed,
-  };
-}
-
 function normalizePendingAck(input: unknown): OnlineSyncPendingAck | null {
   if (!isRecord(input)) return null;
   const revision = normalizeNullableNumber(input.revision);
@@ -343,7 +331,7 @@ function normalizePendingAck(input: unknown): OnlineSyncPendingAck | null {
 }
 
 function normalizeOnlineSyncState(input: unknown): OnlineSyncState {
-  const parsed = isRecord(input) ? input : createDefaultOnlineSyncState();
+  const parsed = isRecord(input) ? input : { ...DEFAULT_ONLINE_SYNC_STATE };
 
   const serverRevisionRaw = normalizeNullableNumber(parsed.serverRevision);
   const serverRevision =
@@ -627,10 +615,11 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
     ONLINE_SYNC_SETTINGS_KEY,
     LEGACY_ONLINE_SYNC_SETTINGS_KEY,
   );
-  const deviceId =
+  const existingDeviceId =
     typeof parsed?.deviceId === 'string' && parsed.deviceId.trim()
       ? parsed.deviceId.trim()
-      : generateDeviceId();
+      : null;
+  const deviceId = existingDeviceId ?? generateDeviceId();
 
   const normalized: OnlineSyncSettings = {
     enabled:
@@ -661,8 +650,10 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
         : DEFAULT_ONLINE_SYNC_SETTINGS.enableLogging,
   };
 
-  // Persist generated device id even if sync is disabled, so the identifier is stable.
-  writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, normalized);
+  // Persist only when a new deviceId was generated, so the identifier is stable.
+  if (!existingDeviceId) {
+    writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, normalized);
+  }
   return normalized;
 }
 
@@ -1171,7 +1162,23 @@ async function handleServerSnapshotPruned(
   };
 }
 
+let _syncRunning = false;
+
 export async function runOnlineSyncOnce(
+  options: RunOnlineSyncOptions = {},
+): Promise<OnlineSyncRunResult> {
+  if (_syncRunning) {
+    return { ok: true, skipped: true, action: 'none', reason: 'already_running', serverRevision: null };
+  }
+  _syncRunning = true;
+  try {
+    return await _runOnlineSyncOnceImpl(options);
+  } finally {
+    _syncRunning = false;
+  }
+}
+
+async function _runOnlineSyncOnceImpl(
   options: RunOnlineSyncOptions = {},
 ): Promise<OnlineSyncRunResult> {
   const settings = loadOnlineSyncSettings();

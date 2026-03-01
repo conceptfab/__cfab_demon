@@ -11,7 +11,7 @@ import {
 } from 'date-fns';
 import type { AutoImportResult, DateRange } from '@/lib/db-types';
 
-type TimePreset = 'today' | 'week' | 'month' | 'all';
+export type TimePreset = 'today' | 'week' | 'month' | 'all';
 
 interface DataState {
   dateRange: DateRange;

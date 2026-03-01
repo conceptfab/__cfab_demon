@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   Brain,
   Eye,
@@ -95,6 +96,7 @@ function buildTrainingReminder(status: AssignmentModelStatus | null): {
 export function AIPage() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
@@ -127,7 +129,7 @@ export function AIPage() {
     [status],
   );
 
-  const fetchStatus = async (silent = false) => {
+  const fetchStatus = useCallback(async (silent = false) => {
     if (!silent) setLoadingStatus(true);
     try {
       const nextStatus = await getAssignmentModelStatus();
@@ -140,7 +142,7 @@ export function AIPage() {
     } finally {
       if (!silent) setLoadingStatus(false);
     }
-  };
+  }, [showError]);
 
   useEffect(() => {
     fetchStatus();
@@ -148,7 +150,7 @@ export function AIPage() {
       void fetchStatus(true);
     }, 30_000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchStatus]);
 
   const handleSaveMode = async () => {
     setSavingMode(true);
@@ -222,7 +224,7 @@ export function AIPage() {
   const handleRollback = async () => {
     if (!status?.can_rollback_last_auto_run) return;
 
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       "Rollback the last auto-safe batch? This will only revert sessions that haven't been manually changed since.",
     );
     if (!confirmed) return;
@@ -686,5 +688,6 @@ export function AIPage() {
         </CardContent>
       </Card>
     </div>
+    <ConfirmDialog />
   );
 }

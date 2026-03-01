@@ -63,12 +63,15 @@ import {
   formatDuration,
   formatPathForDisplay,
   formatMoney,
+  getErrorMessage,
   cn,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
+import { useToast } from '@/components/ui/toast-notification';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import type {
   ProjectWithStats,
   AppWithStats,
@@ -89,15 +92,6 @@ const COLORS = [
   '#22d3ee',
 ];
 
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === 'string' && error) {
-    return error;
-  }
-  return fallback;
-}
 
 function inferDetectedProjectName(fileName: string): string {
   const trimmed = fileName.trim();
@@ -157,6 +151,8 @@ export function Projects() {
   const { setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
+  const { showError } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>(
     [],
@@ -409,7 +405,7 @@ export function Projects() {
   };
 
   const handleExclude = async (id: number) => {
-    if (!window.confirm('Exclude this project? It can be restored later.')) {
+    if (!await confirm('Exclude this project? It can be restored later.')) {
       return;
     }
     await excludeProject(id);
@@ -433,13 +429,8 @@ export function Projects() {
 
   const handleDeleteProject = async (project: ProjectWithStats) => {
     const projectLabel = project.name.trim() || `#${project.id}`;
-    const confirmed = window.confirm(
-      `Delete project permanently?\n\n${projectLabel}\n\n` +
-        `This will:\n` +
-        `- remove the project record\n` +
-        `- unassign linked apps/sessions/file activities\n` +
-        `- delete manual sessions assigned to this project\n\n` +
-        `This cannot be undone.`,
+    const confirmed = await confirm(
+      `Permanently delete project "${projectLabel}"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -453,20 +444,14 @@ export function Projects() {
       triggerRefresh();
     } catch (e) {
       console.error('Failed to delete project:', e);
-      window.alert(
-        `Failed to delete project "${projectLabel}": ${getErrorMessage(e, 'Unknown error')}`,
-      );
+      showError(`Failed to delete project "${projectLabel}": ${getErrorMessage(e, 'Unknown error')}`);
     } finally {
       setBusy((prev) => (prev === busyKey ? null : prev));
     }
   };
 
   const handleResetProjectTime = async (id: number) => {
-    if (
-      !window.confirm(
-        'Reset tracked time for this project? This cannot be undone.',
-      )
-    ) {
+    if (!await confirm('Reset tracked time for this project? This cannot be undone.')) {
       return;
     }
     await resetProjectTime(id);
@@ -474,11 +459,7 @@ export function Projects() {
   };
 
   const handleCompactProject = async (id: number) => {
-    if (
-      !window.confirm(
-        "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This operation cannot be undone.",
-      )
-    ) {
+    if (!await confirm("Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.")) {
       return;
     }
     setBusy(`compact-project:${id}`);
@@ -492,9 +473,7 @@ export function Projects() {
       setExtraInfo(info);
     } catch (e) {
       console.error('Failed to compact project data:', e);
-      window.alert(
-        `Failed to compact project data: ${getErrorMessage(e, 'Unknown error')}`,
-      );
+      showError(`Failed to compact project data: ${getErrorMessage(e, 'Unknown error')}`);
     } finally {
       setBusy(null);
     }
@@ -573,11 +552,7 @@ export function Projects() {
   };
 
   const handleRemoveFolder = async (path: string) => {
-    if (
-      !window.confirm(
-        `Remove folder from project roots?\n\n${formatPathForDisplay(path)}`,
-      )
-    ) {
+    if (!await confirm(`Remove folder from project roots? ${formatPathForDisplay(path)}`)) {
       return;
     }
     setBusy(`remove-folder:${path}`);
@@ -1868,6 +1843,7 @@ export function Projects() {
         defaultProjectId={sessionDialogProjectId}
         onSaved={triggerRefresh}
       />
+      <ConfirmDialog />
     </div>
   );
 }

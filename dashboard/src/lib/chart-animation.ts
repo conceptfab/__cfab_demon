@@ -15,6 +15,12 @@ interface RechartsAnimationOptions {
   maxDuration?: number;
 }
 
+const DISABLED_ANIMATION_CONFIG: RechartsAnimationConfig = {
+  isAnimationActive: false,
+  animationDuration: 0,
+  animationEasing: 'ease-out',
+};
+
 function prefersReducedMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function')
     return false;
@@ -29,33 +35,17 @@ export function getRechartsAnimationConfig({
 }: RechartsAnimationOptions): RechartsAnimationConfig {
   const chartAnimationsActive = useSettingsStore.getState().chartAnimations;
   if (!chartAnimationsActive) {
-    return {
-      isAnimationActive: false,
-      animationDuration: 0,
-      animationEasing: 'ease-out',
-    };
+    return DISABLED_ANIMATION_CONFIG;
   }
 
   if (!Number.isFinite(complexity) || complexity <= 0) {
-    return {
-      isAnimationActive: false,
-      animationDuration: 0,
-      animationEasing: 'ease-out',
-    };
+    return DISABLED_ANIMATION_CONFIG;
   }
   if (!Number.isFinite(maxComplexity) || maxComplexity <= 0) {
-    return {
-      isAnimationActive: false,
-      animationDuration: 0,
-      animationEasing: 'ease-out',
-    };
+    return DISABLED_ANIMATION_CONFIG;
   }
   if (prefersReducedMotion() || complexity > maxComplexity) {
-    return {
-      isAnimationActive: false,
-      animationDuration: 0,
-      animationEasing: 'ease-out',
-    };
+    return DISABLED_ANIMATION_CONFIG;
   }
 
   const clampedMin = Math.max(80, Math.floor(minDuration));

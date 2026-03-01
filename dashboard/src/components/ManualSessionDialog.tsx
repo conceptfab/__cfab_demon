@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createManualSession, updateManualSession, deleteManualSession, getApplications } from "@/lib/tauri";
+import { getErrorMessage } from "@/lib/utils";
 import type { ProjectWithStats, ManualSessionWithProject, AppWithStats } from "@/lib/db-types";
 
 interface Props {
@@ -36,16 +37,6 @@ function toLocalDatetimeValue(iso?: string): string {
   const offset = d.getTimezoneOffset();
   const local = new Date(d.getTime() - offset * 60000);
   return local.toISOString().slice(0, 16);
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === "string" && error) {
-    return error;
-  }
-  return fallback;
 }
 
 export function ManualSessionDialog({
@@ -303,7 +294,7 @@ export function ManualSessionDialog({
               checked={allowMultiDay}
               onChange={(e) => handleAllowMultiDayChange(e.target.checked)}
             />
-            <span className="text-sm font-medium">Przedłuż sesję na kolejne dni</span>
+            <span className="text-sm font-medium">Extend session across multiple days</span>
           </label>
 
           {error && <p className="text-xs text-destructive">{error}</p>}

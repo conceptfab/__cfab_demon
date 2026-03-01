@@ -73,8 +73,6 @@ function invokeMutation<T>(command: string, args?: Record<string, unknown>): Pro
 export const importJsonFiles = (filePaths: string[]) =>
   invoke<ImportResult[]>("import_json_files", { filePaths });
 
-export const checkFileImported = (filePath: string) =>
-  invoke<boolean>("check_file_imported", { filePath });
 
 export const getImportedFiles = () =>
   invoke<ImportedFile[]>("get_imported_files");
@@ -203,7 +201,7 @@ export const setAssignmentMode = (
   autoConf: number,
   autoEv: number
 ) =>
-  invoke<void>("set_assignment_mode", {
+  invokeMutation<void>("set_assignment_mode", {
     mode,
     suggestConf,
     autoConf,
@@ -211,10 +209,10 @@ export const setAssignmentMode = (
   });
 
 export const setAssignmentModelCooldown = (hours: number) =>
-  invoke<AssignmentModelStatus>("set_assignment_model_cooldown", { hours });
+  invokeMutation<AssignmentModelStatus>("set_assignment_model_cooldown", { hours });
 
 export const trainAssignmentModel = (force = false) =>
-  invoke<AssignmentModelStatus>("train_assignment_model", { force });
+  invokeMutation<AssignmentModelStatus>("train_assignment_model", { force });
 
 export const runAutoSafeAssignment = (
   limit?: number,
@@ -251,7 +249,7 @@ export const getFeedbackWeight = () =>
   invoke<number>("get_feedback_weight");
 
 export const setFeedbackWeight = (weight: number) =>
-  invoke<void>("set_feedback_weight", { weight });
+  invokeMutation<void>("set_feedback_weight", { weight });
 
 // Analysis
 export const getHeatmap = (dateRange: DateRange) =>

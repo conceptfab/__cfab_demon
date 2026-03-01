@@ -25,19 +25,16 @@ import {
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { formatDuration } from '@/lib/utils';
 import { useDataStore } from '@/store/data-store';
-import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
-
-interface PromptConfig {
-  title: string;
-  initialValue: string;
-  onConfirm: (val: string) => void;
-  description?: string;
-}
+import { useToast } from '@/components/ui/toast-notification';
+import { useConfirm } from '@/components/ui/confirm-dialog';
+import type { AppWithStats, MonitoredApp, PromptConfig } from '@/lib/db-types';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
 
 export function Applications() {
   const { triggerRefresh, refreshKey } = useDataStore();
+  const { showError } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [apps, setApps] = useState<AppWithStats[]>([]);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('total_seconds');
@@ -114,7 +111,7 @@ export function Applications() {
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          window.alert('Application name cannot be empty.');
+          showError('Application name cannot be empty.');
           return;
         }
         if (trimmed === current) return;
@@ -124,7 +121,7 @@ export function Applications() {
           loadMonitored();
         } catch (e) {
           console.error('Failed to rename monitored app:', e);
-          window.alert(`Failed to rename monitored app: ${String(e)}`);
+          showError(`Failed to rename monitored app: ${String(e)}`);
         }
       },
     });
@@ -156,8 +153,12 @@ export function Applications() {
   }, [apps, search, sortKey, sortAsc]);
 
   const handleResetAppTime = async (appId: number) => {
-    await resetAppTime(appId);
-    triggerRefresh();
+    try {
+      await resetAppTime(appId);
+      triggerRefresh();
+    } catch (err) {
+      console.error('Failed to reset app time:', err);
+    }
   };
 
   const handleUpdateColor = async (appId: number, color: string) => {
@@ -175,7 +176,7 @@ export function Applications() {
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          window.alert('Application name cannot be empty.');
+          showError('Application name cannot be empty.');
           return;
         }
         if (trimmed === current) return;
@@ -185,7 +186,7 @@ export function Applications() {
           triggerRefresh();
         } catch (e) {
           console.error('Failed to rename application:', e);
-          window.alert(`Failed to rename application: ${String(e)}`);
+          showError(`Failed to rename application: ${String(e)}`);
         }
       },
     });
@@ -193,13 +194,8 @@ export function Applications() {
 
   const handleDeleteApp = async (app: AppWithStats) => {
     const label = app.display_name || app.executable_name;
-    const confirmed = window.confirm(
-      `Delete application "${label}" and all related sessions/files?\n\n` +
-        `This will remove:\n` +
-        `- app row (${app.executable_name})\n` +
-        `- ${app.session_count} sessions\n` +
-        `- related file activity records\n\n` +
-        `This cannot be undone.`,
+    const confirmed = await confirm(
+      `Delete application "${label}" and all related sessions/files? This will remove the app row, ${app.session_count} sessions, and related file activity records. This cannot be undone.`,
     );
     if (!confirmed) return;
 
@@ -208,7 +204,7 @@ export function Applications() {
       triggerRefresh();
     } catch (e) {
       console.error('Failed to delete app and data:', e);
-      window.alert(`Failed to delete application: ${String(e)}`);
+      showError(`Failed to delete application: ${String(e)}`);
     }
   };
 
@@ -508,6 +504,7 @@ export function Applications() {
         initialValue={promptConfig?.initialValue ?? ''}
         onConfirm={promptConfig?.onConfirm ?? (() => {})}
       />
+      <ConfirmDialog />
     </div>
   );
 }

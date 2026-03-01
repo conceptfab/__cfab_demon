@@ -28,6 +28,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { PromptModal } from '@/components/ui/prompt-modal';
+import { useToast } from '@/components/ui/toast-notification';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   getProjects,
   getProjectExtraInfo,
@@ -46,7 +48,7 @@ import {
   deleteSession,
   deleteManualSession,
 } from '@/lib/tauri';
-import { formatDuration, formatMoney, cn } from '@/lib/utils';
+import { formatDuration, formatMoney, formatMultiplierLabel, cn } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -56,6 +58,7 @@ import type {
   SessionWithApp,
   ManualSessionWithProject,
   StackedBarData,
+  PromptConfig,
 } from '@/lib/db-types';
 
 type ContextMenu =
@@ -73,29 +76,12 @@ type ContextMenu =
       sessions: SessionWithApp[];
     };
 
-function formatMultiplierLabel(multiplier?: number): string {
-  const value =
-    typeof multiplier === 'number' &&
-    Number.isFinite(multiplier) &&
-    multiplier > 0
-      ? multiplier
-      : 1;
-  return Number.isInteger(value)
-    ? `x${value.toFixed(0)}`
-    : `x${value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}`;
-}
-
-interface PromptConfig {
-  title: string;
-  initialValue: string;
-  onConfirm: (val: string) => void;
-  description?: string;
-}
-
 export function ProjectPage() {
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
+  const { showError, showInfo } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
@@ -295,12 +281,8 @@ export function ProjectPage() {
   };
 
   const handleCompact = async () => {
-    if (
-      !project ||
-      !window.confirm(
-        "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This operation cannot be undone.",
-      )
-    ) {
+    if (!project) return;
+    if (!await confirm("Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.")) {
       return;
     }
     setBusy('compact');
@@ -318,7 +300,7 @@ export function ProjectPage() {
     action: () => Promise<void>,
     confirmMsg?: string,
   ) => {
-    if (confirmMsg && !window.confirm(confirmMsg)) return;
+    if (confirmMsg && !await confirm(confirmMsg)) return;
     try {
       await action();
       triggerRefresh();
@@ -362,7 +344,7 @@ export function ProjectPage() {
     );
     const normalized = entered?.trim() ?? '';
     if (!normalized) {
-      window.alert('Comment is required to add boost.');
+      showError('Comment is required to add boost.');
       return false;
     }
 
@@ -379,7 +361,7 @@ export function ProjectPage() {
       return true;
     } catch (err) {
       console.error('Failed to save required boost comment:', err);
-      window.alert(`Failed to save comment required for boost: ${String(err)}`);
+      showError(`Failed to save comment required for boost: ${String(err)}`);
       return false;
     }
   };
@@ -437,16 +419,10 @@ export function ProjectPage() {
   ) => {
     const autoSessions = sessions.filter((s) => !s.isManual);
     if (autoSessions.length === 0) {
-      window.alert(
-        'Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.',
-      );
+      showInfo('Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.');
       return;
     }
-    if (
-      !window.confirm(
-        `Unassign ${autoSessions.length} automatic sessions from this project?`,
-      )
-    )
+    if (!await confirm(`Unassign ${autoSessions.length} automatic sessions from this project?`))
       return;
     try {
       await Promise.all(
@@ -464,7 +440,7 @@ export function ProjectPage() {
   const handleBulkDelete = async (
     sessions: (SessionWithApp & { isManual?: boolean })[],
   ) => {
-    if (!window.confirm(`Permanently delete ${sessions.length} sessions?`))
+    if (!await confirm(`Permanently delete ${sessions.length} sessions?`))
       return;
     try {
       await Promise.all(
@@ -1114,9 +1090,7 @@ export function ProjectPage() {
                   const apps = Array.from(
                     new Set(ctxMenu.sessions.map((s) => s.app_name)),
                   ).join(', ');
-                  window.alert(
-                    `Bulk action on ${count} sessions\nApps affected: ${apps}`,
-                  );
+                  showInfo(`Bulk action on ${count} sessions — Apps affected: ${apps}`);
                   setCtxMenu(null);
                 }}
               >
@@ -1409,7 +1383,7 @@ export function ProjectPage() {
           <button
             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-red-500/10 text-red-400/70 hover:text-red-400 cursor-pointer transition-colors group"
             onClick={async () => {
-              if (window.confirm('Delete this session?')) {
+              if (await confirm('Delete this session?')) {
                 try {
                   await deleteSession((ctxMenu as any).session.id);
                   triggerRefresh();
@@ -1607,6 +1581,7 @@ export function ProjectPage() {
         editSession={editManualSession || undefined}
         onSaved={triggerRefresh}
       />
+      <ConfirmDialog />
     </div>
   );
 }

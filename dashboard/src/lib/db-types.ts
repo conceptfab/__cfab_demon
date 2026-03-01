@@ -418,3 +418,10 @@ export interface BackupFile {
   size_bytes: number;
   modified_at: string;
 }
+
+export interface PromptConfig {
+  title: string;
+  initialValue: string;
+  onConfirm: (val: string) => void;
+  description?: string;
+}

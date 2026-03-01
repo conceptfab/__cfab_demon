@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ChevronLeft,
-  ChevronRight,
   CircleDollarSign,
   Clock3,
   FolderOpen,
   Save,
   SlidersHorizontal,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MetricCard } from '@/components/dashboard/MetricCard';
@@ -27,14 +24,10 @@ import type {
   EstimateSettings,
   EstimateSummary,
 } from '@/lib/db-types';
+import { getErrorMessage } from '@/lib/utils';
+import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 
 const MAX_RATE = 100000;
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string' && error.trim()) return error;
-  return fallback;
-}
 
 function parseRateInput(raw: string): number | null {
   const normalized = raw.trim().replace(',', '.');
@@ -220,52 +213,13 @@ export function Estimates() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        {(['today', 'week', 'month', 'all'] as const).map((preset) => (
-          <Button
-            key={preset}
-            variant={timePreset === preset ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setTimePreset(preset)}
-            className="capitalize"
-          >
-            {preset === 'all' ? 'All time' : preset}
-          </Button>
-        ))}
-
-        {timePreset !== 'all' && (
-          <>
-            <div className="mx-1 h-5 w-px bg-border" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => shiftDateRange(-1)}
-              title="Previous period"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
-              {dateRange.start === dateRange.end
-                ? format(parseISO(dateRange.start), 'MMM d')
-                : `${format(parseISO(dateRange.start), 'MMM d')} – ${format(
-                    parseISO(dateRange.end),
-                    'MMM d',
-                  )}`}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => shiftDateRange(1)}
-              disabled={!canShiftForward()}
-              title="Next period"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-      </div>
+      <DateRangeToolbar
+        dateRange={dateRange}
+        timePreset={timePreset}
+        setTimePreset={setTimePreset}
+        shiftDateRange={shiftDateRange}
+        canShiftForward={canShiftForward}
+      />
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard

@@ -6,8 +6,6 @@ import {
   FolderOpen,
   Archive,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   AlertTriangle,
 } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
@@ -15,6 +13,7 @@ import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { ProjectDayTimeline } from '@/components/dashboard/ProjectDayTimeline';
 import { AllProjectsChart } from '@/components/dashboard/AllProjectsChart';
 import { TopAppsChart } from '@/components/dashboard/TopAppsChart';
+import { TopProjectsList } from '@/components/dashboard/TopProjectsList';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/store/ui-store';
@@ -35,6 +34,7 @@ import {
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
+import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import {
   loadWorkingHoursSettings,
   loadSessionSettings,
@@ -100,8 +100,6 @@ function AutoImportBanner() {
     </Card>
   );
 }
-
-import { TopProjectsList } from '@/components/dashboard/TopProjectsList';
 
 export function Dashboard() {
   const { setCurrentPage, setSessionsFocusDate } = useUIStore();
@@ -226,7 +224,7 @@ export function Dashboard() {
         console.error('Failed to update session comment:', err);
       }
     },
-    [],
+    [triggerRefresh],
   );
 
   const handleRefresh = async () => {
@@ -342,7 +340,13 @@ export function Dashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-1.5">
+      <DateRangeToolbar
+        dateRange={dateRange}
+        timePreset={timePreset}
+        setTimePreset={setTimePreset}
+        shiftDateRange={shiftDateRange}
+        canShiftForward={canShiftForward}
+      >
         <Button
           variant="outline"
           size="sm"
@@ -352,49 +356,7 @@ export function Dashboard() {
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
           {refreshing ? 'Refreshing...' : 'Refresh'}
         </Button>
-
-        {(['today', 'week', 'month', 'all'] as const).map((preset) => (
-          <Button
-            key={preset}
-            variant={timePreset === preset ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => setTimePreset(preset)}
-            className="capitalize"
-          >
-            {preset === 'all' ? 'All time' : preset}
-          </Button>
-        ))}
-
-        {timePreset !== 'all' && (
-          <>
-            <div className="mx-0.5 h-4 w-px bg-border" />
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => shiftDateRange(-1)}
-              title="Previous period"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[5rem] text-center text-[11px] text-muted-foreground">
-              {dateRange.start === dateRange.end
-                ? format(parseISO(dateRange.start), 'MMM d')
-                : `${format(parseISO(dateRange.start), 'MMM d')} – ${format(parseISO(dateRange.end), 'MMM d')}`}
-            </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => shiftDateRange(1)}
-              disabled={!canShiftForward()}
-              title="Next period"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-      </div>
+      </DateRangeToolbar>
 
       {/* Auto-import status banner */}
       <AutoImportBanner />
