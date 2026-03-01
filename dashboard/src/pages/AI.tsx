@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   Brain,
@@ -135,16 +135,19 @@ export function AIPage() {
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
   const [autoLimit, setAutoLimit] = useState<number>(500);
   const [feedbackWeight, setFeedbackWeight] = useState<number>(5.0);
+  const dirtyRef = useRef(false);
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
 
-  const syncFromStatus = (nextStatus: AssignmentModelStatus) => {
+  const syncFromStatus = (nextStatus: AssignmentModelStatus, force = false) => {
     setStatus(nextStatus);
-    setMode(nextStatus.mode);
-    setSuggestConf(nextStatus.min_confidence_suggest);
-    setAutoConf(nextStatus.min_confidence_auto);
-    setAutoEvidence(nextStatus.min_evidence_auto);
+    if (force || !dirtyRef.current) {
+      setMode(nextStatus.mode);
+      setSuggestConf(nextStatus.min_confidence_suggest);
+      setAutoConf(nextStatus.min_confidence_auto);
+      setAutoEvidence(nextStatus.min_evidence_auto);
+    }
   };
 
   const trainingReminder = useMemo(
@@ -158,7 +161,7 @@ export function AIPage() {
       const nextStatus = await getAssignmentModelStatus();
       syncFromStatus(nextStatus);
       const fw = await getFeedbackWeight();
-      setFeedbackWeight(fw);
+      if (!dirtyRef.current) setFeedbackWeight(fw);
     } catch (e) {
       console.error(e);
       showError(
@@ -193,8 +196,13 @@ export function AIPage() {
       );
       const clampedFw = Math.max(1, Math.min(50, feedbackWeight));
       await setFeedbackWeightApi(clampedFw);
+      dirtyRef.current = false;
       showInfo(t('Ustawienia modelu zapisane.', 'Model settings saved.'));
-      await fetchStatus(true);
+      // Force-sync form fields from backend after save
+      const freshStatus = await getAssignmentModelStatus();
+      syncFromStatus(freshStatus, true);
+      const freshFw = await getFeedbackWeight();
+      setFeedbackWeight(freshFw);
     } catch (e) {
       console.error(e);
       showError(
@@ -481,7 +489,7 @@ export function AIPage() {
                 <select
                   className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   value={mode}
-                  onChange={(e) => setMode(e.target.value as AssignmentMode)}
+                  onChange={(e) => { setMode(e.target.value as AssignmentMode); dirtyRef.current = true; }}
                 >
                   <option value="off">off</option>
                   <option value="suggest">suggest</option>
@@ -503,6 +511,7 @@ export function AIPage() {
                   onChange={(e) => {
                     const next = Number.parseFloat(e.target.value);
                     setSuggestConf(Number.isNaN(next) ? 0 : next);
+                    dirtyRef.current = true;
                   }}
                 />
               </label>
@@ -521,6 +530,7 @@ export function AIPage() {
                   onChange={(e) => {
                     const next = Number.parseFloat(e.target.value);
                     setAutoConf(Number.isNaN(next) ? 0 : next);
+                    dirtyRef.current = true;
                   }}
                 />
               </label>
@@ -539,6 +549,7 @@ export function AIPage() {
                   onChange={(e) => {
                     const next = Number.parseInt(e.target.value, 10);
                     setAutoEvidence(Number.isNaN(next) ? 1 : next);
+                    dirtyRef.current = true;
                   }}
                 />
               </label>
@@ -557,6 +568,7 @@ export function AIPage() {
                   onChange={(e) => {
                     const next = Number.parseFloat(e.target.value);
                     setFeedbackWeight(Number.isNaN(next) ? 5 : next);
+                    dirtyRef.current = true;
                   }}
                 />
               </label>

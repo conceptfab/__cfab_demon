@@ -38,3 +38,6 @@ Thumbs.db
 .coverage
 htmlcov/
 
+# Custom configs
+ftp_config.py
+

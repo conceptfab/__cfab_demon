@@ -44,7 +44,12 @@ import {
   getProjectTimeline,
   updateProject,
 } from '@/lib/tauri';
-import { formatDuration, formatMoney, formatMultiplierLabel, cn } from '@/lib/utils';
+import {
+  formatDuration,
+  formatMoney,
+  formatMultiplierLabel,
+  cn,
+} from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -73,6 +78,14 @@ type ContextMenu =
       date: string;
       sessions: SessionWithApp[];
     };
+
+type RecentCommentItem = {
+  key: string;
+  start_time: string;
+  duration_seconds: number;
+  comment: string;
+  source: string;
+};
 
 const COLORS = [
   '#38bdf8',
@@ -157,6 +170,40 @@ export function ProjectPage() {
           b.start_time.localeCompare(a.start_time),
         ), // Most recent sessions first within day
       }));
+  }, [recentSessions, manualSessions]);
+
+  const recentComments = useMemo<RecentCommentItem[]>(() => {
+    const automatic = recentSessions
+      .map((s) => {
+        const text = s.comment?.trim();
+        if (!text) return null;
+        return {
+          key: `auto-${s.id}`,
+          start_time: s.start_time,
+          duration_seconds: s.duration_seconds,
+          comment: text,
+          source: s.app_name,
+        };
+      })
+      .filter((item): item is RecentCommentItem => item !== null);
+
+    const manual = manualSessions
+      .map((m) => {
+        const text = m.title?.trim();
+        if (!text) return null;
+        return {
+          key: `manual-${m.id}`,
+          start_time: m.start_time,
+          duration_seconds: m.duration_seconds,
+          comment: text,
+          source: 'Manual Session',
+        };
+      })
+      .filter((item): item is RecentCommentItem => item !== null);
+
+    return [...automatic, ...manual]
+      .sort((a, b) => b.start_time.localeCompare(a.start_time))
+      .slice(0, 5);
   }, [recentSessions, manualSessions]);
 
   const [estimate, setEstimate] = useState<number>(0);
@@ -306,7 +353,11 @@ export function ProjectPage() {
 
   const handleCompact = async () => {
     if (!project) return;
-    if (!await confirm("Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.")) {
+    if (
+      !(await confirm(
+        "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
+      ))
+    ) {
       return;
     }
     setBusy('compact');
@@ -324,7 +375,7 @@ export function ProjectPage() {
     action: () => Promise<void>,
     confirmMsg?: string,
   ) => {
-    if (confirmMsg && !await confirm(confirmMsg)) return;
+    if (confirmMsg && !(await confirm(confirmMsg))) return;
     try {
       await action();
       triggerRefresh();
@@ -438,10 +489,16 @@ export function ProjectPage() {
   ) => {
     const autoSessions = sessions.filter((s) => !s.isManual);
     if (autoSessions.length === 0) {
-      showInfo('Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.');
+      showInfo(
+        'Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.',
+      );
       return;
     }
-    if (!await confirm(`Unassign ${autoSessions.length} automatic sessions from this project?`))
+    if (
+      !(await confirm(
+        `Unassign ${autoSessions.length} automatic sessions from this project?`,
+      ))
+    )
       return;
     try {
       await assignSessions(
@@ -458,7 +515,7 @@ export function ProjectPage() {
   const handleBulkDelete = async (
     sessions: (SessionWithApp & { isManual?: boolean })[],
   ) => {
-    if (!await confirm(`Permanently delete ${sessions.length} sessions?`))
+    if (!(await confirm(`Permanently delete ${sessions.length} sessions?`)))
       return;
     try {
       const manualIds = sessions.filter((s) => s.isManual).map((s) => s.id);
@@ -931,12 +988,9 @@ export function ProjectPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {recentSessions
-                  .filter((s) => s.comment)
-                  .slice(0, 5)
-                  .map((s) => (
+                {recentComments.map((s) => (
                     <div
-                      key={s.id}
+                      key={s.key}
                       className="p-3 rounded-lg bg-secondary/20 border border-border/40 space-y-2"
                     >
                       <div className="flex items-center justify-between">
@@ -951,11 +1005,11 @@ export function ProjectPage() {
                         "{s.comment}"
                       </p>
                       <p className="text-[10px] text-muted-foreground text-right">
-                        - {s.app_name}
+                        - {s.source}
                       </p>
                     </div>
                   ))}
-                {recentSessions.filter((s) => s.comment).length === 0 && (
+                {recentComments.length === 0 && (
                   <p className="text-sm text-muted-foreground italic text-center py-4">
                     No comments found
                   </p>
@@ -983,9 +1037,15 @@ export function ProjectPage() {
                 <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider font-bold">
                   <tr>
                     <th className="px-4 py-3">{tt('Data', 'Date')}</th>
-                    <th className="px-4 py-3">{tt('Czas trwania', 'Duration')}</th>
-                    <th className="px-4 py-3">{tt('Aplikacja', 'Application')}</th>
-                    <th className="px-4 py-3">{tt('Szczegóły / Komentarz', 'Details / Comment')}</th>
+                    <th className="px-4 py-3">
+                      {tt('Czas trwania', 'Duration')}
+                    </th>
+                    <th className="px-4 py-3">
+                      {tt('Aplikacja', 'Application')}
+                    </th>
+                    <th className="px-4 py-3">
+                      {tt('Szczegóły / Komentarz', 'Details / Comment')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -1025,9 +1085,10 @@ export function ProjectPage() {
                                   <PenLine className="h-3 w-3 text-emerald-400" />
                                 )}
                                 {format(parseISO(s.start_time), 'HH:mm')}
-                                <span className="text-[10px] opacity-20 ml-2 font-mono">
-                                  - {format(parseISO(s.end_time), 'HH:mm')}
+                                <span className="mx-1.5 opacity-30 select-none text-muted-foreground">
+                                  -
                                 </span>
+                                {format(parseISO(s.end_time), 'HH:mm')}
                               </div>
                             </td>
                             <td className="px-4 py-3 font-mono text-emerald-400">
@@ -1142,7 +1203,9 @@ export function ProjectPage() {
                   const apps = Array.from(
                     new Set(ctxMenu.sessions.map((s) => s.app_name)),
                   ).join(', ');
-                  showInfo(`Bulk action on ${count} sessions - Apps affected: ${apps}`);
+                  showInfo(
+                    `Bulk action on ${count} sessions - Apps affected: ${apps}`,
+                  );
                   setCtxMenu(null);
                 }}
               >
@@ -1209,7 +1272,12 @@ export function ProjectPage() {
                 onClick={() => handleBulkUnassign(ctxMenu.sessions)}
               >
                 <History className="h-3.5 w-3.5 text-muted-foreground/40" />
-                <span className="truncate">{tt('Odepnij grupę od projektu', 'Unassign group from project')}</span>
+                <span className="truncate">
+                  {tt(
+                    'Odepnij grupę od projektu',
+                    'Unassign group from project',
+                  )}
+                </span>
               </button>
 
               <button
@@ -1342,7 +1410,9 @@ export function ProjectPage() {
           style={getContextMenuStyle(ctxMenu.x, ctxMenu.y, 240)}
         >
           <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground/60 border-b border-white/5 mb-1 flex items-center justify-between">
-            <span>{tt('Akcje sesji (1 aplikacja)', 'Session actions (1 app)')}</span>
+            <span>
+              {tt('Akcje sesji (1 aplikacja)', 'Session actions (1 app)')}
+            </span>
             <span className="text-[10px] opacity-40">1 session</span>
           </div>
 
@@ -1354,7 +1424,9 @@ export function ProjectPage() {
               setCtxMenu(null);
             }}
           >
-            <span className="font-medium text-xs ml-1">{tt('Szczegóły sesji', 'Session details')}</span>
+            <span className="font-medium text-xs ml-1">
+              {tt('Szczegóły sesji', 'Session details')}
+            </span>
             <span className="text-[10px] text-muted-foreground/50 mr-1">1</span>
           </button>
 
@@ -1429,7 +1501,9 @@ export function ProjectPage() {
             onClick={() => handleAssign(null)}
           >
             <History className="h-3.5 w-3.5 text-muted-foreground/40" />
-            <span className="truncate">{tt('Odepnij z projektu', 'Unassign from project')}</span>
+            <span className="truncate">
+              {tt('Odepnij z projektu', 'Unassign from project')}
+            </span>
           </button>
 
           <button

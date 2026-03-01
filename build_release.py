@@ -130,7 +130,7 @@ def zip_artifacts(dist_dir: Path, version: str) -> Path:
     print("=" * 60)
     
     zip_name = f"TIMEFLOW_v{version}.zip"
-    zip_path = ROOT / zip_name
+    zip_path = dist_dir / zip_name
     
     files_to_zip = [
         "timeflow-demon.exe",
