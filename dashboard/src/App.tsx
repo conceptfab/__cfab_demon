@@ -1,5 +1,6 @@
 import { Component, lazy, Suspense } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
+import i18n from '@/i18n';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast-notification';
@@ -89,7 +90,7 @@ function PageRouter() {
     <Suspense
       fallback={
         <div className="flex h-64 items-center justify-center text-muted-foreground">
-          Loading...
+          {i18n.t('ui.app.loading')}
         </div>
       }
     >
@@ -117,13 +118,13 @@ class ErrorBoundary extends Component<
       return (
         <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-200">
           <div className="max-w-md space-y-4 text-center">
-            <h1 className="text-xl font-semibold">Something went wrong</h1>
+            <h1 className="text-xl font-semibold">{i18n.t('ui.app.error_title')}</h1>
             <p className="text-sm text-slate-400">{this.state.error.message}</p>
             <button
               className="rounded bg-sky-600 px-4 py-2 text-sm hover:bg-sky-500"
               onClick={() => this.setState({ error: null })}
             >
-              Try again
+              {i18n.t('ui.app.try_again')}
             </button>
           </div>
         </div>

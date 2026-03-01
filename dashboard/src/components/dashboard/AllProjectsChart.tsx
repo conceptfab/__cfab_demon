@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_GRID_COLOR,
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function AllProjectsChart({ projects }: Props) {
+  const { t } = useTranslation();
   const [sortMode, setSortMode] = useState<"name" | "time_desc">("name");
 
   const sorted = useMemo(() => {
@@ -40,28 +42,28 @@ export function AllProjectsChart({ projects }: Props) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center justify-between gap-2">
-          <span>All Projects</span>
+          <span>{t("components.all_projects.title")}</span>
           <div className="flex gap-2">
             <Button
               size="sm"
               variant={sortMode === "name" ? "default" : "outline"}
               onClick={() => setSortMode("name")}
             >
-              Name / Folder
+              {t("components.all_projects.sort_name")}
             </Button>
             <Button
               size="sm"
               variant={sortMode === "time_desc" ? "default" : "outline"}
               onClick={() => setSortMode("time_desc")}
             >
-              Most Time
+              {t("components.all_projects.sort_most_time")}
             </Button>
           </div>
         </CardTitle>
       </CardHeader>
       <CardContent>
         {sorted.length === 0 ? (
-          <p className="py-8 text-sm text-muted-foreground">No projects found.</p>
+          <p className="py-8 text-sm text-muted-foreground">{t("components.all_projects.no_projects")}</p>
         ) : (
           <div className="h-[11rem] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -85,7 +87,7 @@ export function AllProjectsChart({ projects }: Props) {
                   contentStyle={TOOLTIP_CONTENT_STYLE}
                   labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600, marginBottom: 4 }}
                   itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                  formatter={(value) => [formatDuration(Number(value)), "Time"]}
+                  formatter={(value) => [formatDuration(Number(value)), t("components.all_projects.tooltip_time")]}
                   labelFormatter={(label) => String(label)}
                 />
                 <Bar

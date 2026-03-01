@@ -1,4 +1,5 @@
 import { useMemo, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Flame,
   PenLine,
@@ -27,6 +28,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { eachDayOfInterval, format, parseISO } from "date-fns";
 import { formatDuration } from "@/lib/utils";
 import type { DateRange, StackedBarData } from "@/lib/db-types";
+import { resolveDateFnsLocale } from "@/lib/date-locale";
 
 interface Props {
   data: StackedBarData[];
@@ -48,11 +50,14 @@ export function TimelineChart({
   granularity = "day",
   dateRange,
   trimLeadingToFirstData = false,
-  title = "Activity Timeline",
+  title,
   heightClassName,
   onBarClick,
   onBarContextMenu,
 }: Props) {
+  const { t, i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+  const effectiveTitle = title ?? t("components.timeline_chart.default_title");
   const hoveredDateRef = useRef<string | null>(null);
   const seriesKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -160,8 +165,8 @@ export function TimelineChart({
     const raw = String(v);
     try {
       if (isHourly) return format(parseISO(raw), "HH:mm");
-      if (daySpan <= 7) return format(parseISO(raw), "EEE");
-      return format(parseISO(raw), "MMM d");
+      if (daySpan <= 7) return format(parseISO(raw), "EEE", { locale });
+      return format(parseISO(raw), "MMM d", { locale });
     } catch {
       return raw;
     }
@@ -169,7 +174,11 @@ export function TimelineChart({
   const xLabelFormatter = (v: unknown) => {
     const raw = String(v);
     try {
-      return format(parseISO(raw), isHourly ? "MMM d, yyyy HH:mm" : "MMM d, yyyy");
+      return format(
+        parseISO(raw),
+        isHourly ? "MMM d, yyyy HH:mm" : "MMM d, yyyy",
+        { locale },
+      );
     } catch {
       return raw;
     }
@@ -230,7 +239,7 @@ export function TimelineChart({
           <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px dashed ${CHART_GRID_COLOR}` }}>
             {comments.map((c, i) => (
               <div key={i} style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontSize: 11, fontStyle: "italic", marginBottom: 2 }}>
-                “{c}”
+                "{c}"
               </div>
             ))}
           </div>
@@ -238,13 +247,13 @@ export function TimelineChart({
         {row?.has_boost && (
           <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, color: '#f87171', fontSize: 10, fontWeight: 700 }}>
             <Flame className="h-3 w-3" />
-            BOOSTED ACTIVITY
+            {t("components.timeline_chart.boosted_activity")}
           </div>
         )}
         {row?.has_manual && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#34d399', fontSize: 10, fontWeight: 700 }}>
             <PenLine className="h-3 w-3" />
-            MANUAL DATA INCLUDED
+            {t("components.timeline_chart.manual_data_included")}
           </div>
         )}
       </div>
@@ -296,7 +305,7 @@ export function TimelineChart({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <CardTitle className="text-sm font-medium">{effectiveTitle}</CardTitle>
       </CardHeader>
       <CardContent>
         <div 
@@ -415,3 +424,4 @@ export function TimelineChart({
     </Card>
   );
 }
+

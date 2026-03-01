@@ -5,8 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles } from "@/lib/tauri";
 import type { ArchivedFile } from "@/lib/db-types";
+import { useInlineT } from "@/lib/inline-i18n";
 
 export function ImportPage() {
+  const t = useInlineT();
   const [imported, setImported] = useState<{ file_path: string; import_date: string; records_count: number }[]>([]);
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -39,14 +41,14 @@ export function ImportPage() {
       {imported.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Imported Files</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("Zaimportowane pliki", "Imported Files")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {imported.map((f) => (
                 <div key={f.file_path} className="flex items-center justify-between text-xs py-1">
                   <span className="truncate text-muted-foreground">{f.file_path.split(/[/\\]/).pop()}</span>
-                  <span className="font-mono text-muted-foreground">{f.records_count} sessions</span>
+                  <span className="font-mono text-muted-foreground">{f.records_count} {t("sesji", "sessions")}</span>
                 </div>
               ))}
             </div>
@@ -56,11 +58,11 @@ export function ImportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Archive</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("Archiwum", "Archive")}</CardTitle>
         </CardHeader>
         <CardContent>
           {archive.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Archive is empty</p>
+            <p className="text-xs text-muted-foreground">{t("Archiwum jest puste", "Archive is empty")}</p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {archive.map((f) => (
@@ -72,7 +74,7 @@ export function ImportPage() {
                     className="h-7 w-7 text-destructive"
                     onClick={() => handleDeleteArchive(f.file_name)}
                     disabled={deleting === f.file_name}
-                    title="Delete from archive"
+                    title={t("Usuń z archiwum", "Delete from archive")}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

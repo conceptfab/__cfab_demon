@@ -19,6 +19,7 @@ import {
   Bug,
 } from 'lucide-react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { BugHunter } from './BugHunter';
@@ -54,15 +55,19 @@ interface StatusIndicatorProps {
 }
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'sessions', label: 'Sessions', icon: List },
-  { id: 'projects', label: 'Projects', icon: FolderKanban },
-  { id: 'estimates', label: 'Estimates', icon: CircleDollarSign },
-  { id: 'applications', label: 'Applications', icon: AppWindow },
-  { id: 'analysis', label: 'Time Analysis', icon: BarChart3 },
-  { id: 'ai', label: 'AI & Model', icon: Brain },
-  { id: 'data', label: 'Data', icon: Import },
-  { id: 'daemon', label: 'Daemon', icon: Cpu },
+  { id: 'dashboard', labelKey: 'layout.nav.dashboard', icon: LayoutDashboard },
+  { id: 'sessions', labelKey: 'layout.nav.sessions', icon: List },
+  { id: 'projects', labelKey: 'layout.nav.projects', icon: FolderKanban },
+  { id: 'estimates', labelKey: 'layout.nav.estimates', icon: CircleDollarSign },
+  {
+    id: 'applications',
+    labelKey: 'layout.nav.applications',
+    icon: AppWindow,
+  },
+  { id: 'analysis', labelKey: 'layout.nav.analysis', icon: BarChart3 },
+  { id: 'ai', labelKey: 'layout.nav.ai', icon: Brain },
+  { id: 'data', labelKey: 'layout.nav.data', icon: Import },
+  { id: 'daemon', labelKey: 'layout.nav.daemon', icon: Cpu },
 ];
 
 function StatusIndicator({
@@ -111,6 +116,7 @@ function StatusIndicator({
 }
 
 export function Sidebar() {
+  const { t, i18n } = useTranslation();
   const { currentPage, setCurrentPage, helpTab, setHelpTab, firstRun } =
     useUIStore();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
@@ -146,8 +152,6 @@ export function Sidebar() {
           unassigned: true,
           minDuration,
         }),
-        // All-time unassigned count with same minDuration filter
-        // so badge matches what Sessions page actually shows
         getSessionCount({
           unassigned: true,
           minDuration,
@@ -156,10 +160,12 @@ export function Sidebar() {
         if (daemonRes.status === 'fulfilled') setStatus(daemonRes.value);
         if (aiRes.status === 'fulfilled') setAiStatus(aiRes.value);
         if (dbRes.status === 'fulfilled') setDbSettings(dbRes.value);
-        if (todayCountRes.status === 'fulfilled')
+        if (todayCountRes.status === 'fulfilled') {
           setTodayUnassigned(Math.max(0, todayCountRes.value));
-        if (allCountRes.status === 'fulfilled')
+        }
+        if (allCountRes.status === 'fulfilled') {
           setAllUnassigned(Math.max(0, allCountRes.value));
+        }
       });
     };
     check();
@@ -182,8 +188,6 @@ export function Sidebar() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [openContextHelp]);
 
-  // Use all-time unassigned count (with minDuration applied) so badge
-  // matches what Sessions page can actually display.
   const unassignedSessions =
     todayUnassigned > 0 ? todayUnassigned : allUnassigned;
   const sessionsBadge =
@@ -191,9 +195,12 @@ export function Sidebar() {
   const sessionsAttentionTitle =
     unassignedSessions > 0
       ? todayUnassigned > 0
-        ? `${unassignedSessions} unassigned sessions today`
-        : `${unassignedSessions} unassigned sessions (all dates)`
+        ? t('layout.tooltips.unassigned_today', { count: unassignedSessions })
+        : t('layout.tooltips.unassigned_all_dates', {
+            count: unassignedSessions,
+          })
       : undefined;
+
   const handleSidebarDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     if (!hasTauriRuntime()) return;
@@ -235,7 +242,7 @@ export function Sidebar() {
           >
             <span className="flex items-center gap-2.5">
               <item.icon className="h-3.5 w-3.5" />
-              <span>{item.label}</span>
+              <span>{t(item.labelKey)}</span>
             </span>
             {item.id === 'sessions' && unassignedSessions > 0 && (
               <span className="rounded-sm border border-destructive/25 bg-destructive/10 px-1.5 py-0 text-[10px] font-medium text-destructive">
@@ -250,18 +257,26 @@ export function Sidebar() {
         <div className="space-y-0.5">
           <StatusIndicator
             icon={Cpu}
-            label="Daemon"
-            statusText={status?.running ? 'Running' : 'Stopped'}
+            label={t('layout.status.daemon')}
+            statusText={
+              status?.running
+                ? t('layout.status.running')
+                : t('layout.status.stopped')
+            }
             colorClass={status?.running ? 'text-emerald-500' : 'text-red-400'}
             onClick={() => setCurrentPage('daemon')}
             title={
-              allUnassigned > 0 ? `${allUnassigned} unassigned` : undefined
+              allUnassigned > 0
+                ? t('layout.tooltips.unassigned_short', {
+                    count: allUnassigned,
+                  })
+                : undefined
             }
           />
 
           <StatusIndicator
             icon={RefreshCw}
-            label="Sync"
+            label={t('layout.status.sync')}
             statusText={syncIndicator.label}
             colorClass={
               syncIndicator.status === 'error'
@@ -279,8 +294,10 @@ export function Sidebar() {
 
           <StatusIndicator
             icon={Brain}
-            label="AI Mode"
-            statusText={aiStatus?.mode?.replace('_', ' ') ?? 'off'}
+            label={t('layout.status.ai_mode')}
+            statusText={
+              aiStatus?.mode?.replace('_', ' ') ?? t('layout.status.off')
+            }
             colorClass={
               aiStatus?.mode !== 'off'
                 ? 'text-purple-400'
@@ -296,8 +313,8 @@ export function Sidebar() {
           {aiStatus?.is_training ? (
             <StatusIndicator
               icon={Activity}
-              label="AI"
-              statusText="Training"
+              label={t('layout.status.ai')}
+              statusText={t('layout.status.training')}
               colorClass="text-amber-500"
               pulse
               onClick={() => setCurrentPage('ai')}
@@ -305,21 +322,29 @@ export function Sidebar() {
           ) : (aiStatus?.feedback_since_train ?? 0) > 0 ? (
             <StatusIndicator
               icon={Activity}
-              label="AI"
-              statusText="New Data"
+              label={t('layout.status.ai')}
+              statusText={t('layout.status.new_data')}
               colorClass="text-sky-400"
               onClick={() => setCurrentPage('ai')}
-              title={`${aiStatus?.feedback_since_train} new assignments since last training`}
+              title={t('layout.tooltips.new_assignments_since_training', {
+                count: aiStatus?.feedback_since_train ?? 0,
+              })}
             />
           ) : (
             dbSettings?.backup_enabled && (
               <StatusIndicator
                 icon={ShieldCheck}
-                label="Backup"
-                statusText="Safe"
+                label={t('layout.status.backup')}
+                statusText={t('layout.status.safe')}
                 colorClass="text-emerald-500/80"
                 onClick={() => setCurrentPage('settings')}
-                title={`Last backup: ${dbSettings.last_backup_at ? new Date(dbSettings.last_backup_at).toLocaleDateString() : 'Never'}`}
+                title={t('layout.tooltips.last_backup', {
+                  date: dbSettings.last_backup_at
+                    ? new Date(dbSettings.last_backup_at).toLocaleDateString(
+                        i18n.resolvedLanguage || undefined,
+                      )
+                    : t('layout.tooltips.never'),
+                })}
               />
             )
           )}
@@ -333,9 +358,11 @@ export function Sidebar() {
             {status?.version && !status.is_compatible && (
               <span
                 className="text-[9px] font-mono text-destructive font-bold"
-                title="VERSION INCOMPATIBILITY! Daemon: v{status.version}"
+                title={t('layout.tooltips.version_incompatibility', {
+                  version: status.version,
+                })}
               >
-                ⚠️
+                !
               </span>
             )}
           </div>
@@ -345,7 +372,7 @@ export function Sidebar() {
               className={cn(
                 'transition-all text-muted-foreground/30 hover:text-destructive active:scale-90',
               )}
-              title="BugHunter - report a bug"
+              title={t('layout.tooltips.bughunter')}
             >
               <Bug className="h-4 w-4" />
             </button>
@@ -359,7 +386,7 @@ export function Sidebar() {
                   ? 'text-primary scale-110'
                   : 'text-muted-foreground/30 hover:text-primary',
               )}
-              title="Quick Start"
+              title={t('layout.tooltips.quick_start')}
             >
               <Rocket
                 className={cn(
@@ -383,7 +410,7 @@ export function Sidebar() {
                   ? 'text-primary scale-110'
                   : 'text-muted-foreground/30 hover:text-foreground',
               )}
-              title="Help (F1)"
+              title={t('layout.tooltips.help')}
             >
               <HelpCircle className="h-4 w-4" />
             </button>
@@ -395,7 +422,7 @@ export function Sidebar() {
                   ? 'text-primary scale-110'
                   : 'text-muted-foreground/30 hover:text-foreground',
               )}
-              title="Settings"
+              title={t('layout.tooltips.settings')}
             >
               <Settings className="h-4 w-4" />
             </button>

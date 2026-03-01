@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Sparkles,
   CircleDollarSign,
@@ -10,6 +11,8 @@ import { format, parseISO } from 'date-fns';
 import { formatDuration } from '@/lib/utils';
 import type { SessionWithApp, ScoreBreakdown } from '@/lib/db-types';
 import type { SessionIndicatorSettings } from '@/lib/user-settings';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
+import type { Locale } from 'date-fns';
 
 function formatTime(t: string) {
   try {
@@ -19,9 +22,9 @@ function formatTime(t: string) {
   }
 }
 
-function formatDate(t: string) {
+function formatDate(t: string, locale: Locale) {
   try {
-    return format(parseISO(t), 'MMM d, yyyy');
+    return format(parseISO(t), 'MMM d, yyyy', { locale });
   } catch {
     return t;
   }
@@ -58,6 +61,8 @@ export const SessionRow = memo(function SessionRow({
   isLoadingScoreBreakdown,
   className = '',
 }: SessionRowProps) {
+  const { t, i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
   const isSuggested =
     s.project_name === null &&
     s.suggested_project_id != null &&
@@ -102,7 +107,7 @@ export const SessionRow = memo(function SessionRow({
                 ))
               ) : (
                 <span className="text-[9px] text-muted-foreground/10 italic">
-                  idle
+                  {t('sessions.row.idle')}
                 </span>
               )}
             </div>
@@ -142,7 +147,7 @@ export const SessionRow = memo(function SessionRow({
                     <div className="flex items-center gap-1 rounded-sm px-1 py-0.5 transform-gpu">
                       {isLoadingScoreBreakdown ? (
                         <span className="text-[8px] text-muted-foreground/40 italic px-1 animate-pulse">
-                          loading...
+                          {t('sessions.row.loading_short')}
                         </span>
                       ) : targetName ? (
                         <span className="text-[8px] text-violet-300 font-medium truncate max-w-[70px]">
@@ -150,7 +155,7 @@ export const SessionRow = memo(function SessionRow({
                         </span>
                       ) : (
                         <span className="text-[8px] text-muted-foreground/30 font-medium px-1">
-                          no ai data
+                          {t('sessions.row.no_ai_data_short')}
                         </span>
                       )}
                       <div className="w-[32px] h-[6px] rounded-full bg-white/10 overflow-hidden">
@@ -187,7 +192,9 @@ export const SessionRow = memo(function SessionRow({
                   try {
                     await deleteSession(s.id);
                     triggerRefresh();
-                  } catch {}
+                  } catch (error) {
+                    console.error('Failed to delete session:', error);
+                  }
                 }}
               >
                 <Trash2 className="h-2.5 w-2.5" />
@@ -199,24 +206,24 @@ export const SessionRow = memo(function SessionRow({
           <div className="mt-1 border-t border-border/10 pt-1">
             <div className="text-[8px] text-muted-foreground/60 font-medium mb-0.5 flex items-center gap-1">
               <BarChart3 className="h-2 w-2" />
-              AI Score Breakdown
+              {t('sessions.row.ai_score_breakdown')}
               {scoreBreakdownData?.has_manual_override && (
                 <span className="text-amber-400/70 ml-1">
-                  (manual override)
+                  {t('sessions.row.manual_override')}
                 </span>
               )}
             </div>
             {isLoadingScoreBreakdown ? (
               <div className="text-[8px] text-muted-foreground/30 italic px-1 animate-pulse">
-                Loading AI data...
+                {t('sessions.row.loading_ai_data')}
               </div>
             ) : !scoreBreakdownData ? (
               <p className="text-[8px] text-muted-foreground/30 italic">
-                No AI data
+                {t('sessions.row.no_ai_data')}
               </p>
             ) : scoreBreakdownData?.candidates.length === 0 ? (
               <p className="text-[8px] text-muted-foreground/30 italic">
-                No candidates
+                {t('sessions.row.no_candidates')}
               </p>
             ) : (
               <div className="space-y-0.5">
@@ -236,7 +243,7 @@ export const SessionRow = memo(function SessionRow({
                       {c.total_score.toFixed(2)}
                     </span>
                     <span className="text-muted-foreground/20">
-                      ({c.evidence_count} ev)
+                      ({t('sessions.row.evidence_short', { count: c.evidence_count })})
                     </span>
                   </div>
                 ))}
@@ -292,7 +299,7 @@ export const SessionRow = memo(function SessionRow({
                 >
                   {isLoadingScoreBreakdown ? (
                     <span className="text-[9px] text-muted-foreground/40 italic px-1 animate-pulse">
-                      loading...
+                      {t('sessions.row.loading_short')}
                     </span>
                   ) : targetName ? (
                     <span className="text-[11px] text-violet-300 font-medium truncate max-w-[100px]">
@@ -300,7 +307,7 @@ export const SessionRow = memo(function SessionRow({
                     </span>
                   ) : (
                     <span className="text-[9px] text-muted-foreground/30 font-medium px-1">
-                      no ai data
+                      {t('sessions.row.no_ai_data_short')}
                     </span>
                   )}
                   <div className="w-[40px] h-[7px] rounded-full bg-white/10 overflow-hidden">
@@ -335,8 +342,10 @@ export const SessionRow = memo(function SessionRow({
             <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
               <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
               <span className="text-[9px] text-sky-300 italic font-medium">
-                AI: {s.suggested_project_name} (
-                {((s.suggested_confidence ?? 0) * 100).toFixed(0)}%)
+                {t('sessions.row.ai_suggestion', {
+                  project: s.suggested_project_name,
+                  confidence: ((s.suggested_confidence ?? 0) * 100).toFixed(0),
+                })}
               </span>
             </div>
           )}
@@ -348,7 +357,9 @@ export const SessionRow = memo(function SessionRow({
                 try {
                   await deleteSession(s.id);
                   triggerRefresh();
-                } catch {}
+                } catch (error) {
+                  console.error('Failed to delete session:', error);
+                }
               }}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -359,9 +370,9 @@ export const SessionRow = memo(function SessionRow({
 
       <div className="grid grid-cols-[140px_1fr] gap-x-4 border-t border-border/5 pt-1.5">
         <div className="flex flex-col text-[10px] text-muted-foreground/40 font-medium leading-tight border-r border-border/5 pr-2">
-          <p className="text-muted-foreground/60">{formatDate(s.start_time)}</p>
+          <p className="text-muted-foreground/60">{formatDate(s.start_time, locale)}</p>
           <p>
-            {formatTime(s.start_time)} – {formatTime(s.end_time)}
+            {formatTime(s.start_time)} - {formatTime(s.end_time)}
           </p>
           <div className="mt-1 font-mono text-[11px] font-bold text-foreground/40 leading-none">
             {formatDuration(s.duration_seconds)}
@@ -394,7 +405,7 @@ export const SessionRow = memo(function SessionRow({
               ))
             ) : (
               <span className="text-[10px] text-muted-foreground/10 italic">
-                No traceable activity
+                {t('sessions.row.no_traceable_activity')}
               </span>
             )}
           </div>
@@ -412,24 +423,24 @@ export const SessionRow = memo(function SessionRow({
         <div className="mt-2 border-t border-border/10 pt-2">
           <div className="text-[11px] text-muted-foreground/60 font-medium mb-1 flex items-center gap-1">
             <BarChart3 className="h-3 w-3" />
-            AI Score Breakdown
+            {t('sessions.row.ai_score_breakdown')}
             {scoreBreakdownData?.has_manual_override && (
               <span className="text-amber-400/70 ml-1">
-                (manual override active)
+                {t('sessions.row.manual_override_active')}
               </span>
             )}
           </div>
           {isLoadingScoreBreakdown ? (
             <div className="text-[11px] text-muted-foreground/30 italic px-1 animate-pulse">
-              Loading AI data...
+              {t('sessions.row.loading_ai_data')}
             </div>
           ) : !scoreBreakdownData ? (
             <p className="text-[11px] text-muted-foreground/30 italic">
-              No AI data
+              {t('sessions.row.no_ai_data')}
             </p>
           ) : scoreBreakdownData?.candidates.length === 0 ? (
             <p className="text-[11px] text-muted-foreground/30 italic">
-              No candidates found
+              {t('sessions.row.no_candidates_found')}
             </p>
           ) : (
             <div className="space-y-0.5">
@@ -467,14 +478,16 @@ export const SessionRow = memo(function SessionRow({
                     {c.total_score.toFixed(3)}
                   </span>
                   <span className="text-right font-mono">
-                    {c.evidence_count}ev
+                    {t('sessions.row.evidence_short', {
+                      count: c.evidence_count,
+                    })}
                   </span>
                 </div>
               ))}
               {scoreBreakdownData?.final_suggestion && (
                 <div className="flex gap-4 text-[11px] text-muted-foreground/30 mt-1 pt-1 border-t border-border/5">
                   <span>
-                    final confidence:{' '}
+                    {t('sessions.row.final_confidence')}{' '}
                     <span className="text-violet-400/60 font-mono">
                       {(
                         scoreBreakdownData.final_suggestion.confidence * 100
@@ -483,13 +496,13 @@ export const SessionRow = memo(function SessionRow({
                     </span>
                   </span>
                   <span>
-                    margin:{' '}
+                    {t('sessions.row.margin')}{' '}
                     <span className="text-violet-400/60 font-mono">
                       {scoreBreakdownData.final_suggestion.margin.toFixed(3)}
                     </span>
                   </span>
                   <span>
-                    total evidence:{' '}
+                    {t('sessions.row.total_evidence')}{' '}
                     <span className="text-violet-400/60 font-mono">
                       {scoreBreakdownData.final_suggestion.evidence_count}
                     </span>
@@ -503,3 +516,5 @@ export const SessionRow = memo(function SessionRow({
     </div>
   );
 });
+
+

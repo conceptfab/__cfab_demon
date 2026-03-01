@@ -17,10 +17,12 @@ import {
 import { validateImport, importData } from '@/lib/tauri';
 import type { ImportValidation, ImportSummary } from '@/lib/db-types';
 import { useDataStore } from '@/store/data-store';
+import { useInlineT } from '@/lib/inline-i18n';
 
 import { open } from '@tauri-apps/plugin-dialog';
 
 export function ImportPanel() {
+  const t = useInlineT();
   const [archivePath, setArchivePath] = useState<string | null>(null);
   const [validation, setValidation] = useState<ImportValidation | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -33,7 +35,7 @@ export function ImportPanel() {
         multiple: false,
         filters: [
           {
-            name: 'JSON Archive',
+            name: t('Archiwum JSON', 'JSON Archive'),
             extensions: ['json'],
           },
         ],
@@ -76,10 +78,13 @@ export function ImportPanel() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Upload className="h-5 w-5 text-orange-500" />
-          Data Import
+          {t('Import danych', 'Data Import')}
         </CardTitle>
         <CardDescription>
-          Upload an export file to restore or sync your data.
+          {t(
+            'Wczytaj plik eksportu, aby przywrócić lub zsynchronizować dane.',
+            'Upload an export file to restore or sync your data.',
+          )}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -92,9 +97,11 @@ export function ImportPanel() {
               <FileJson className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">Click to pick a .json file</p>
+              <p className="text-sm font-medium">
+                {t('Kliknij, aby wybrać plik .json', 'Click to pick a .json file')}
+              </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                Supported formats: timeflow-export-*.json
+                {t('Obsługiwane formaty: timeflow-export-*.json', 'Supported formats: timeflow-export-*.json')}
               </p>
             </div>
             <Button
@@ -106,7 +113,7 @@ export function ImportPanel() {
                 selectFile();
               }}
             >
-              Select File
+              {t('Wybierz plik', 'Select File')}
             </Button>
           </div>
         )}
@@ -115,7 +122,7 @@ export function ImportPanel() {
           <div className="space-y-4">
             <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Validation Status</span>
+                <span className="text-sm font-medium">{t('Status walidacji', 'Validation Status')}</span>
                 {validation.valid ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 ) : (
@@ -123,12 +130,12 @@ export function ImportPanel() {
                 )}
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>Missing Projects: {validation.missing_projects.length}</p>
+                <p>{t('Brakujące projekty', 'Missing Projects')}: {validation.missing_projects.length}</p>
                 <p>
-                  Missing Applications: {validation.missing_applications.length}
+                  {t('Brakujące aplikacje', 'Missing Applications')}: {validation.missing_applications.length}
                 </p>
                 <p>
-                  Session Conflicts: {validation.overlapping_sessions.length}
+                  {t('Konflikty sesji', 'Session Conflicts')}: {validation.overlapping_sessions.length}
                 </p>
               </div>
             </div>
@@ -137,7 +144,7 @@ export function ImportPanel() {
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <div className="space-y-1">
                   <p className="text-xs font-medium flex items-center gap-1">
-                    <Info className="h-3 w-3" /> New projects to be created:
+                    <Info className="h-3 w-3" /> {t('Nowe projekty do utworzenia:', 'New projects to be created:')}
                   </p>
                   <div className="text-[10px] bg-sky-500/10 text-sky-400 p-2 rounded max-h-24 overflow-y-auto">
                     {validation.missing_projects.join(', ')}
@@ -152,7 +159,7 @@ export function ImportPanel() {
               className="w-full gap-2 bg-orange-600 hover:bg-orange-700 text-white border-0 shadow-lg shadow-orange-950/20 transition-all duration-200"
             >
               <Upload className="h-4 w-4" />
-              {importing ? 'Importing...' : 'Start Import'}
+              {importing ? t('Importowanie...', 'Importing...') : t('Rozpocznij import', 'Start Import')}
             </Button>
             <Button
               variant="outline"
@@ -162,7 +169,7 @@ export function ImportPanel() {
               }}
               className="w-full"
             >
-              Cancel and select another file
+              {t('Anuluj i wybierz inny plik', 'Cancel and select another file')}
             </Button>
           </div>
         )}
@@ -175,25 +182,25 @@ export function ImportPanel() {
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                 </div>
               </div>
-              <h3 className="font-semibold">Import Finished!</h3>
+              <h3 className="font-semibold">{t('Import zakończony!', 'Import Finished!')}</h3>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">Projects</p>
-                <p className="font-bold">{summary.projects_created} new</p>
+                <p className="text-muted-foreground">{t('Projekty', 'Projects')}</p>
+                <p className="font-bold">{summary.projects_created} {t('nowe', 'new')}</p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">Applications</p>
-                <p className="font-bold">{summary.apps_created} new</p>
+                <p className="text-muted-foreground">{t('Aplikacje', 'Applications')}</p>
+                <p className="font-bold">{summary.apps_created} {t('nowe', 'new')}</p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">Sessions</p>
-                <p className="font-bold">{summary.sessions_imported} added</p>
+                <p className="text-muted-foreground">{t('Sesje', 'Sessions')}</p>
+                <p className="font-bold">{summary.sessions_imported} {t('dodane', 'added')}</p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">Merged</p>
-                <p className="font-bold">{summary.sessions_merged} sessions</p>
+                <p className="text-muted-foreground">{t('Połączone', 'Merged')}</p>
+                <p className="font-bold">{summary.sessions_merged} {t('sesji', 'sessions')}</p>
               </div>
             </div>
 
@@ -206,7 +213,7 @@ export function ImportPanel() {
               }}
               className="w-full"
             >
-              Done
+              {t('Gotowe', 'Done')}
             </Button>
           </div>
         )}

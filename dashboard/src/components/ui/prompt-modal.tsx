@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -27,9 +28,14 @@ export function PromptModal({
   description,
   initialValue,
   onConfirm,
-  confirmLabel = 'OK',
-  cancelLabel = 'Cancel',
+  confirmLabel,
+  cancelLabel,
 }: PromptModalProps) {
+  const { t } = useTranslation();
+  const effectiveConfirmLabel =
+    confirmLabel ?? t('components.prompt_modal.confirm_default');
+  const effectiveCancelLabel =
+    cancelLabel ?? t('components.prompt_modal.cancel_default');
   const [value, setValue] = React.useState(initialValue);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -68,10 +74,10 @@ export function PromptModal({
               size="sm"
               onClick={() => onOpenChange(false)}
             >
-              {cancelLabel}
+              {effectiveCancelLabel}
             </Button>
             <Button type="submit" size="sm" className="min-w-[70px]">
-              {confirmLabel}
+              {effectiveConfirmLabel}
             </Button>
           </div>
         </form>

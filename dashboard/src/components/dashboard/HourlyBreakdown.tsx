@@ -10,12 +10,14 @@ import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HourlyData } from "@/lib/db-types";
+import { useInlineT } from "@/lib/inline-i18n";
 
 interface Props {
   data: HourlyData[];
 }
 
 export function HourlyBreakdown({ data }: Props) {
+  const t = useInlineT();
   const chartData = useMemo(() => {
     const full = Array.from({ length: 24 }, (_, i) => ({
       hour: `${i.toString().padStart(2, "0")}:00`,
@@ -38,7 +40,7 @@ export function HourlyBreakdown({ data }: Props) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Hourly Breakdown</CardTitle>
+        <CardTitle className="text-sm font-medium">{t("Rozkład godzinowy", "Hourly Breakdown")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-64">
@@ -63,7 +65,7 @@ export function HourlyBreakdown({ data }: Props) {
                 contentStyle={TOOLTIP_CONTENT_STYLE}
                 labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
                 itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                formatter={(value) => [`${value} min`, "Time"]}
+                formatter={(value) => [`${value} ${t("min", "min")}`, t("Czas", "Time")]}
               />
               <Bar
                 dataKey="minutes"

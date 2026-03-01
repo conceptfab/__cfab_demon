@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useInlineT } from '@/lib/inline-i18n';
 
 interface ConfirmState {
   open: boolean;
@@ -14,6 +15,7 @@ interface ConfirmState {
 }
 
 export function useConfirm() {
+  const t = useInlineT();
   const [state, setState] = useState<ConfirmState>({
     open: false,
     message: '',
@@ -39,21 +41,21 @@ export function useConfirm() {
       <Dialog open={state.open} onOpenChange={(open) => { if (!open) handleClose(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Confirm</DialogTitle>
+            <DialogTitle>{t('Potwierdzenie', 'Confirm')}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">{state.message}</p>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={() => handleClose(false)}>
-              Cancel
+              {t('Anuluj', 'Cancel')}
             </Button>
             <Button variant="destructive" size="sm" onClick={() => handleClose(true)}>
-              Confirm
+              {t('Potwierdź', 'Confirm')}
             </Button>
           </div>
         </DialogContent>
       </Dialog>
     ),
-    [state.open, state.message, handleClose],
+    [state.open, state.message, handleClose, t],
   );
 
   return { confirm, ConfirmDialog };

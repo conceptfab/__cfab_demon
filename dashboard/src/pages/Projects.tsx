@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Plus,
   Trash2,
@@ -72,6 +73,7 @@ import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { useInlineT } from '@/lib/inline-i18n';
 import type {
   ProjectWithStats,
   AppWithStats,
@@ -148,6 +150,8 @@ function renderDuration(seconds: number) {
 }
 
 export function Projects() {
+  const { t } = useTranslation();
+  const tt = useInlineT();
   const { setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
@@ -275,7 +279,7 @@ export function Projects() {
         }
       })
       .catch(() => {
-        /* ignore — feature not yet compiled */
+        /* ignore Ä‚ËĂ˘â€šÂ¬Ă˘â‚¬ĹĄ feature not yet compiled */
       });
   }, [refreshKey]);
 
@@ -383,12 +387,12 @@ export function Projects() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setCreateProjectError('Project name is required.');
+      setCreateProjectError(t('projects.errors.project_name_required'));
       return;
     }
     if (!projectFolderPath.trim()) {
       setCreateProjectError(
-        'Project folder is required to identify tracked files.',
+        t('projects.errors.project_folder_required'),
       );
       return;
     }
@@ -405,7 +409,7 @@ export function Projects() {
   };
 
   const handleExclude = async (id: number) => {
-    if (!await confirm('Exclude this project? It can be restored later.')) {
+    if (!await confirm(t('projects.confirm.exclude_project'))) {
       return;
     }
     await excludeProject(id);
@@ -451,7 +455,7 @@ export function Projects() {
   };
 
   const handleResetProjectTime = async (id: number) => {
-    if (!await confirm('Reset tracked time for this project? This cannot be undone.')) {
+    if (!await confirm(t('projects.confirm.reset_project_time'))) {
       return;
     }
     await resetProjectTime(id);
@@ -459,7 +463,7 @@ export function Projects() {
   };
 
   const handleCompactProject = async (id: number) => {
-    if (!await confirm("Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.")) {
+    if (!await confirm(t('projects.confirm.compact_project_data'))) {
       return;
     }
     setBusy(`compact-project:${id}`);
@@ -497,7 +501,7 @@ export function Projects() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select Assigned Project Folder',
+        title: t('projects.dialogs.select_assigned_project_folder'),
       });
       if (selected && typeof selected === 'string') {
         setProjectFolderPath(selected);
@@ -516,7 +520,7 @@ export function Projects() {
   const handleAddFolder = async () => {
     const path = newFolderPath.trim();
     if (!path) {
-      setFolderError('Please enter a folder path');
+      setFolderError(t('projects.errors.folder_path_required'));
       return;
     }
     setBusy('add-folder');
@@ -525,7 +529,7 @@ export function Projects() {
     try {
       await addProjectFolder(path);
       setNewFolderPath('');
-      setFolderInfo('Folder saved');
+      setFolderInfo(t('projects.messages.folder_saved'));
       triggerRefresh();
     } catch (error: unknown) {
       setFolderError(getErrorMessage(error, 'Failed to add folder'));
@@ -540,7 +544,7 @@ export function Projects() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select Project Folder',
+        title: t('projects.dialogs.select_project_folder'),
       });
       if (selected && typeof selected === 'string') {
         setNewFolderPath(selected);
@@ -552,7 +556,7 @@ export function Projects() {
   };
 
   const handleRemoveFolder = async (path: string) => {
-    if (!await confirm(`Remove folder from project roots? ${formatPathForDisplay(path)}`)) {
+    if (!await confirm(t('projects.confirm.remove_project_root', { path: formatPathForDisplay(path) }))) {
       return;
     }
     setBusy(`remove-folder:${path}`);
@@ -849,8 +853,13 @@ export function Projects() {
 
     const title =
       info.groupNames.length > 1
-        ? `Possible duplicate (${info.groupSize}): ${info.groupNames.join(' | ')}`
-        : `Possible duplicate (${info.groupSize}) after normalizing "_" and "-"`;
+        ? t('projects.labels.possible_duplicate_named', {
+            groupSize: info.groupSize,
+            groupNames: info.groupNames.join(' | '),
+          })
+        : t('projects.labels.possible_duplicate_normalized', {
+            groupSize: info.groupSize,
+          });
 
     return (
       <span
@@ -858,7 +867,7 @@ export function Projects() {
         title={title}
         aria-label={title}
       >
-        D
+        {t('projects.labels.duplicate_marker')}
       </span>
     );
   };
@@ -899,7 +908,9 @@ export function Projects() {
                   <button
                     type="button"
                     className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                    title={`Frozen since ${p.frozen_at.slice(0, 10)} — click to unfreeze`}
+                    title={t('projects.labels.frozen_since_click_unfreeze', {
+                      date: p.frozen_at.slice(0, 10),
+                    })}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleUnfreeze(p.id);
@@ -911,7 +922,7 @@ export function Projects() {
                 {renderDuplicateMarker(p)}
                 {hotProjectIds.includes(p.id) && (
                   <span
-                    title="Hot project - top 5 by time"
+                    title={t('projects.labels.hot_project')}
                     className="shrink-0"
                   >
                     <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
@@ -949,7 +960,7 @@ export function Projects() {
                 onClick={() =>
                   setEditingColorId(editingColorId === p.id ? null : p.id)
                 }
-                title="Change color"
+                title={t('projects.labels.change_color')}
               />
               {editingColorId === p.id && (
                 <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
@@ -960,7 +971,7 @@ export function Projects() {
                     onChange={(e) =>
                       handleUpdateProjectColor(p.id, e.target.value)
                     }
-                    title="Choose color"
+                    title={t('projects.labels.choose_color')}
                   />
                   <div className="mt-2 flex gap-1">
                     {COLORS.map((c) => (
@@ -994,7 +1005,7 @@ export function Projects() {
                   variant="secondary"
                   className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]"
                 >
-                  Imported
+                  {t('projects.labels.imported')}
                 </Badge>
               )}
             </CardTitle>
@@ -1005,7 +1016,7 @@ export function Projects() {
               size="icon"
               className="h-7 w-7"
               onClick={() => handleResetProjectTime(p.id)}
-              title="Reset time"
+              title={t('projects.labels.reset_time')}
               disabled={isDeleting}
             >
               <TimerReset className="h-3.5 w-3.5" />
@@ -1019,8 +1030,10 @@ export function Projects() {
               }
               title={
                 p.frozen_at
-                  ? `Frozen since ${p.frozen_at.slice(0, 10)} - click to unfreeze`
-                  : 'Freeze project'
+                  ? t('projects.labels.frozen_since_click_unfreeze', {
+                      date: p.frozen_at.slice(0, 10),
+                    })
+                  : t('projects.labels.freeze_project')
               }
               disabled={isDeleting}
             >
@@ -1031,7 +1044,7 @@ export function Projects() {
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => handleExclude(p.id)}
-              title="Exclude project"
+              title={t('projects.labels.exclude_project')}
               disabled={isDeleting}
             >
               <CircleOff className="h-3.5 w-3.5" />
@@ -1041,7 +1054,7 @@ export function Projects() {
               size="icon"
               className="h-7 w-7 text-destructive"
               onClick={() => void handleDeleteProject(p)}
-              title="Delete project permanently"
+              title={t('projects.labels.delete_project_permanently')}
               disabled={isDeleting}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -1052,7 +1065,7 @@ export function Projects() {
           <div className="flex items-end justify-between gap-4">
             <div className="space-y-1">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                TOTAL TIME / VALUE
+                {t('projects.labels.total_time_value')}
               </p>
               <p className="text-xl font-[200] text-emerald-400 leading-none flex items-baseline gap-x-1">
                 {renderDuration(p.total_seconds)}
@@ -1063,7 +1076,7 @@ export function Projects() {
 
                 <span className="ml-1 flex items-center gap-2">
                   {hotProjectIds.includes(p.id) && (
-                    <span title="Hot project - top 5 by time">
+                    <span title={t('projects.labels.hot_project')}>
                       <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />
                     </span>
                   )}
@@ -1076,7 +1089,7 @@ export function Projects() {
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (
                     <span
-                      title={`Comments: ${extraInfo.db_stats.comment_count}`}
+                      title={`${t('projects.labels.comments')} ${extraInfo.db_stats.comment_count}`}
                     >
                       <MessageSquare className="h-4 w-4 text-blue-400 fill-blue-400/20" />
                     </span>
@@ -1151,7 +1164,7 @@ export function Projects() {
                     <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">
-                          Apps Linked:
+                          {tt('PoĹ‚Ä…czone aplikacje:', 'Apps Linked:')}
                         </span>
                         <span className="text-xs font-bold text-emerald-400">
                           {p.app_count}
@@ -1166,7 +1179,7 @@ export function Projects() {
                         }
                         disabled={isDeleting}
                       >
-                        Manage Apps
+                        {tt('ZarzÄ…dzaj aplikacjami', 'Manage Apps')}
                       </Button>
                     </div>
                   </div>
@@ -1175,7 +1188,7 @@ export function Projects() {
 
               <div className="rounded-lg bg-secondary/30 p-3 space-y-2">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center justify-between">
-                  Database Statistics
+                  {tt('Statystyki bazy danych', 'Database Statistics')}
                   {extraInfo && (
                     <span className="text-[10px] lowercase font-normal opacity-70">
                       ~
@@ -1188,30 +1201,30 @@ export function Projects() {
                 </p>
                 {loadingExtra ? (
                   <p className="text-center py-2 text-xs text-muted-foreground">
-                    Loading statistics...
+                    {tt('Wczytywanie statystyk...', 'Loading statistics...')}
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Sessions:</span>
+                      <span className="text-muted-foreground">{tt('Sesje:', 'Sessions:')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.session_count || 0}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Files:</span>
+                      <span className="text-muted-foreground">{tt('Pliki:', 'Files:')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.file_activity_count || 0}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Manual:</span>
+                      <span className="text-muted-foreground">{tt('RÄ™czne:', 'Manual:')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.manual_session_count || 0}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Comments:</span>
+                      <span className="text-muted-foreground">{t('projects.labels.comments')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.comment_count || 0}
                       </span>
@@ -1233,8 +1246,8 @@ export function Projects() {
                     }
                   >
                     {busy === `compact-project:${p.id}`
-                      ? 'Compacting...'
-                      : 'Compact project data'}
+                      ? t('projects.labels.compacting')
+                      : t('projects.labels.compact_project_data')}
                   </Button>
                 </div>
               </div>
@@ -1275,20 +1288,20 @@ export function Projects() {
       <div className="flex items-center justify-between">
         <div className="flex flex-col">
           <p className="text-sm text-muted-foreground">
-            {projects.length} projects
+            {projects.length} {tt('projektów', 'projects')}
             {excludedProjects.length > 0
-              ? ` (${excludedProjects.length} excluded)`
+              ? ` (${excludedProjects.length} ${tt('wykluczonych', 'excluded')})`
               : ''}
           </p>
           {duplicateProjectsView.groupCount > 0 && (
             <p className="text-xs text-amber-600/90">
-              Marked with{' '}
+              {tt('Oznaczone', 'Marked with')}{' '}
               <span className="mx-1 inline-flex h-4 w-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
                 D
               </span>
-              = possible duplicate names in this tab (
-              {duplicateProjectsView.projectCount} projects in{' '}
-              {duplicateProjectsView.groupCount} groups)
+              = {tt('możliwe duplikaty nazw w tej zakładce', 'possible duplicate names in this tab')} (
+              {duplicateProjectsView.projectCount} {tt('projektów', 'projects')} {tt('w', 'in')}{' '}
+              {duplicateProjectsView.groupCount} {tt('grupach', 'groups')})
             </p>
           )}
         </div>
@@ -1350,13 +1363,13 @@ export function Projects() {
               onClick={() => setViewMode('detailed')}
               className={`px-3 py-1 rounded-sm transition-colors ${viewMode === 'detailed' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              Detailed
+              {t('projects.labels.detailed')}
             </button>
             <button
               onClick={() => setViewMode('compact')}
               className={`px-3 py-1 rounded-sm transition-colors ${viewMode === 'compact' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              Compact
+              {t('projects.labels.compact')}
             </button>
           </div>
 
@@ -1364,13 +1377,13 @@ export function Projects() {
             variant="ghost"
             size="icon"
             onClick={handleSaveDefaults}
-            title="Save view as default"
+            title={tt('Zapisz widok jako domyślny', 'Save view as default')}
           >
             <Save className="h-4 w-4" />
           </Button>
 
           <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> New Project
+            <Plus className="mr-2 h-4 w-4" /> {tt('Nowy projekt', 'New Project')}
           </Button>
         </div>
       </div>
@@ -1389,7 +1402,7 @@ export function Projects() {
                 renderProjectList(section.projects)
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No projects for this folder
+                  {tt('Brak projektĂłw dla tego folderu', 'No projects for this folder')}
                 </p>
               )}
             </div>
@@ -1397,7 +1410,7 @@ export function Projects() {
           {projectsByFolder.outside.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
-                Other projects
+                {tt('Inne projekty', 'Other projects')}
               </p>
               {renderProjectList(projectsByFolder.outside)}
             </div>
@@ -1415,7 +1428,7 @@ export function Projects() {
         >
           Expand all
         </button>
-        <span>·</span>
+        <span>Ä‚â€šĂ‚Â·</span>
         <button
           type="button"
           onClick={collapseAllSections}
@@ -1460,7 +1473,8 @@ export function Projects() {
                         {renderDuplicateMarker(p)}
                       </p>
                       <p className="truncate text-muted-foreground">
-                        Excluded{p.excluded_at ? `: ${p.excluded_at}` : ''}
+                        {t('projects.labels.excluded')}
+                        {p.excluded_at ? `: ${p.excluded_at}` : ''}
                       </p>
                     </div>
                     <Button
@@ -1468,7 +1482,7 @@ export function Projects() {
                       size="sm"
                       onClick={() => handleRestore(p.id)}
                     >
-                      Restore
+                      {t('projects.labels.restore')}
                     </Button>
                     <Button
                       variant="outline"
@@ -1476,9 +1490,9 @@ export function Projects() {
                       className="text-destructive"
                       onClick={() => void handleDeleteProject(p)}
                       disabled={busy === `delete-project:${p.id}`}
-                      title="Delete project permanently"
+                      title={t('projects.labels.delete_project_permanently')}
                     >
-                      Delete
+                      {t('projects.labels.delete')}
                     </Button>
                   </div>
                 ))}
@@ -1528,7 +1542,7 @@ export function Projects() {
                 onClick={handleBrowseFolder}
                 disabled={busy === 'add-folder'}
               >
-                Browse...
+                  {tt('Przeglądaj...', 'Browse...')}
               </Button>
               <Button
                 size="sm"
@@ -1586,7 +1600,7 @@ export function Projects() {
                 disabled={busy === 'sync-folders'}
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                Sync subfolders as projects
+                {tt('Synchronizuj podfoldery jako projekty', 'Sync subfolders as projects')}
               </Button>
             </div>
           </CardContent>
@@ -1605,7 +1619,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              Folder Project Candidates
+              {tt('Kandydaci projektĂłw z folderĂłw', 'Folder Project Candidates')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1646,7 +1660,7 @@ export function Projects() {
             )}
             {hiddenRegisteredFolderCandidatesCount > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                Hidden already registered folders:{' '}
+                {tt('Ukryte juĹĽ zarejestrowane foldery:', 'Hidden already registered folders:')}{' '}
                 {hiddenRegisteredFolderCandidatesCount}
               </p>
             )}
@@ -1666,7 +1680,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              Detected Projects (opened &gt;= 2 times)
+              {tt('Wykryte projekty (otwarte >= 2 razy)', 'Detected Projects (opened >= 2 times)')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1675,8 +1689,8 @@ export function Projects() {
             {detectedCandidatesView.visible.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {detectedProjects.length === 0
-                  ? 'No detected projects'
-                  : 'No candidate projects (detected items already match existing/excluded projects).'}
+                  ? tt('Brak wykrytych projektów', 'No detected projects')
+                  : tt('Brak projektĂłw kandydujÄ…cych (wykryte elementy pasujÄ… juĹĽ do istniejÄ…cych/wykluczonych projektĂłw).', 'No candidate projects (detected items already match existing/excluded projects).')}
               </p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto">
@@ -1691,7 +1705,7 @@ export function Projects() {
                           {d.inferredProjectName}
                         </p>
                         <p className="truncate text-muted-foreground">
-                          {d.occurrence_count} opens ·{' '}
+                          {d.occurrence_count} opens Ä‚â€šĂ‚Â·{' '}
                           {formatDuration(d.total_seconds)}
                         </p>
                         {d.inferredProjectName !== d.file_name && (
@@ -1699,11 +1713,11 @@ export function Projects() {
                             className="truncate text-muted-foreground/80"
                             title={d.file_name}
                           >
-                            from: {d.file_name}
+                            {tt('z:', 'from:')} {d.file_name}
                           </p>
                         )}
                       </div>
-                      <Badge variant="outline">Candidate</Badge>
+                      <Badge variant="outline">{tt('Kandydat', 'Candidate')}</Badge>
                     </div>
                   );
                 })}
@@ -1716,23 +1730,29 @@ export function Projects() {
               <p className="text-xs text-muted-foreground">
                 Hidden:{' '}
                 {detectedCandidatesView.hiddenExisting > 0 &&
-                  `${detectedCandidatesView.hiddenExisting} existing`}
+                  t('projects.labels.hidden_existing', {
+                    count: detectedCandidatesView.hiddenExisting,
+                  })}
                 {detectedCandidatesView.hiddenExisting > 0 &&
                   (detectedCandidatesView.hiddenExcluded > 0 ||
                     detectedCandidatesView.hiddenDuplicates > 0 ||
                     detectedCandidatesView.hiddenOverflow > 0) &&
-                  ' · '}
+                  ' Ă‚Â· '}
                 {detectedCandidatesView.hiddenExcluded > 0 &&
-                  `${detectedCandidatesView.hiddenExcluded} excluded`}
+                  t('projects.labels.hidden_excluded', {
+                    count: detectedCandidatesView.hiddenExcluded,
+                  })}
                 {detectedCandidatesView.hiddenExcluded > 0 &&
                   (detectedCandidatesView.hiddenDuplicates > 0 ||
                     detectedCandidatesView.hiddenOverflow > 0) &&
-                  ' · '}
+                  ' Ă‚Â· '}
                 {detectedCandidatesView.hiddenDuplicates > 0 &&
-                  `${detectedCandidatesView.hiddenDuplicates} duplicate names`}
+                  t('projects.labels.duplicate_names', {
+                    count: detectedCandidatesView.hiddenDuplicates,
+                  })}
                 {detectedCandidatesView.hiddenDuplicates > 0 &&
                   detectedCandidatesView.hiddenOverflow > 0 &&
-                  ' · '}
+                  ' Ă‚Â· '}
                 {detectedCandidatesView.hiddenOverflow > 0 &&
                   `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? ' (demo cap)' : ''}`}
               </p>
@@ -1748,7 +1768,7 @@ export function Projects() {
                 }
               >
                 <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                Auto-create detected projects
+                {tt('Automatycznie utwórz wykryte projekty', 'Auto-create detected projects')}
               </Button>
             </div>
           </CardContent>
@@ -1773,11 +1793,11 @@ export function Projects() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Project</DialogTitle>
+            <DialogTitle>{tt('Nowy projekt', 'New Project')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">Name</label>
+              <label className="text-sm font-medium">{tt('Nazwa', 'Name')}</label>
               <input
                 className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={name}
@@ -1785,11 +1805,11 @@ export function Projects() {
                   setName(e.target.value);
                   setCreateProjectError(null);
                 }}
-                placeholder="Project name"
+                placeholder={tt('Nazwa projektu', 'Project name')}
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Assigned Folder</label>
+              <label className="text-sm font-medium">{tt('Przypisany folder', 'Assigned Folder')}</label>
               <div className="mt-1 flex gap-2">
                 <input
                   className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -1798,19 +1818,19 @@ export function Projects() {
                     setProjectFolderPath(e.target.value);
                     setCreateProjectError(null);
                   }}
-                  placeholder="C:\projects\my-new-app"
+                  placeholder={tt('C:\\projekty\\moja-aplikacja', 'C:\\projects\\my-new-app')}
                 />
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={handleBrowseProjectCreateFolder}
                 >
-                  Browse...
+                  {tt('Przeglądaj...', 'Browse...')}
                 </Button>
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium">Color</label>
+              <label className="text-sm font-medium">{tt('Kolor', 'Color')}</label>
               <div className="mt-1 flex gap-2">
                 {COLORS.map((c) => (
                   <button
@@ -1847,3 +1867,4 @@ export function Projects() {
     </div>
   );
 }
+

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Search,
   ArrowUpDown,
@@ -27,11 +28,20 @@ import { formatDuration } from '@/lib/utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { normalizeLanguageCode } from '@/lib/user-settings';
 import type { AppWithStats, MonitoredApp, PromptConfig } from '@/lib/db-types';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
 
 export function Applications() {
+  const { i18n } = useTranslation();
+  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
+  const t = (pl: string, en?: string) => {
+    if (typeof en === 'string') {
+      return lang === 'pl' ? pl : en;
+    }
+    return i18n.t(pl);
+  };
   const { triggerRefresh, refreshKey } = useDataStore();
   const { showError } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -71,7 +81,12 @@ export function Applications() {
             'Failed to load monitored apps:',
             monitoredResult.reason,
           );
-          setMonitoredError('Failed to load monitored applications');
+          setMonitoredError(
+            t(
+              'Nie udało się wczytać monitorowanych aplikacji',
+              'Failed to load monitored applications',
+            ),
+          );
         }
       },
     );
@@ -106,12 +121,12 @@ export function Applications() {
   const handleRenameMonitoredApp = async (app: MonitoredApp) => {
     const current = app.display_name || app.exe_name;
     setPromptConfig({
-      title: 'Rename monitored application',
+      title: t('Zmień nazwę monitorowanej aplikacji', 'Rename monitored application'),
       initialValue: current,
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          showError('Application name cannot be empty.');
+          showError(t('Nazwa aplikacji nie może być pusta.', 'Application name cannot be empty.'));
           return;
         }
         if (trimmed === current) return;
@@ -121,7 +136,12 @@ export function Applications() {
           loadMonitored();
         } catch (e) {
           console.error('Failed to rename monitored app:', e);
-          showError(`Failed to rename monitored app: ${String(e)}`);
+          showError(
+            t(
+              'Nie udało się zmienić nazwy monitorowanej aplikacji:',
+              'Failed to rename monitored app:',
+            ) + ` ${String(e)}`,
+          );
         }
       },
     });
@@ -170,13 +190,13 @@ export function Applications() {
   const handleRenameApp = async (app: AppWithStats) => {
     const current = app.display_name || app.executable_name;
     setPromptConfig({
-      title: 'Rename application',
-      description: '(display name)',
+      title: t('Zmień nazwę aplikacji', 'Rename application'),
+      description: t('(nazwa wyświetlana)', '(display name)'),
       initialValue: current,
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          showError('Application name cannot be empty.');
+          showError(t('Nazwa aplikacji nie może być pusta.', 'Application name cannot be empty.'));
           return;
         }
         if (trimmed === current) return;
@@ -186,7 +206,10 @@ export function Applications() {
           triggerRefresh();
         } catch (e) {
           console.error('Failed to rename application:', e);
-          showError(`Failed to rename application: ${String(e)}`);
+          showError(
+            t('Nie udało się zmienić nazwy aplikacji:', 'Failed to rename application:') +
+              ` ${String(e)}`,
+          );
         }
       },
     });
@@ -195,7 +218,10 @@ export function Applications() {
   const handleDeleteApp = async (app: AppWithStats) => {
     const label = app.display_name || app.executable_name;
     const confirmed = await confirm(
-      `Delete application "${label}" and all related sessions/files? This will remove the app row, ${app.session_count} sessions, and related file activity records. This cannot be undone.`,
+      t(
+        `Usunąć aplikację "${label}" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, ${app.session_count} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć.`,
+        `Delete application "${label}" and all related sessions/files? This will remove the app row, ${app.session_count} sessions, and related file activity records. This cannot be undone.`,
+      ),
     );
     if (!confirmed) return;
 
@@ -204,7 +230,10 @@ export function Applications() {
       triggerRefresh();
     } catch (e) {
       console.error('Failed to delete app and data:', e);
-      showError(`Failed to delete application: ${String(e)}`);
+      showError(
+        t('Nie udało się usunąć aplikacji:', 'Failed to delete application:') +
+          ` ${String(e)}`,
+      );
     }
   };
 
@@ -223,7 +252,7 @@ export function Applications() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Shield className="h-4 w-4" />
-            Monitored Applications
+            {t('Monitorowane aplikacje', 'Monitored Applications')}
             <Badge variant="secondary" className="ml-auto">
               {monitored.length}
             </Badge>
@@ -234,14 +263,14 @@ export function Applications() {
           <div className="flex items-center gap-2">
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="exe name (e.g. code.exe)"
+              placeholder={t('nazwa exe (np. code.exe)', 'exe name (e.g. code.exe)')}
               value={newExe}
               onChange={(e) => setNewExe(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
             />
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder="Display name (optional)"
+              placeholder={t('Nazwa wyświetlana (opcjonalnie)', 'Display name (optional)')}
               value={newDisplay}
               onChange={(e) => setNewDisplay(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
@@ -253,7 +282,7 @@ export function Applications() {
               disabled={!newExe.trim()}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              Add
+              {t('Dodaj', 'Add')}
             </Button>
           </div>
           {monitoredError && (
@@ -282,7 +311,7 @@ export function Applications() {
                       size="sm"
                       className="h-7 w-7 p-0"
                       onClick={() => handleRenameMonitoredApp(app)}
-                      title="Rename monitored application"
+                      title={t('Zmień nazwę monitorowanej aplikacji', 'Rename monitored application')}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
@@ -291,7 +320,7 @@ export function Applications() {
                       size="sm"
                       className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
                       onClick={() => handleRemoveApp(app.exe_name)}
-                      title="Remove monitored application"
+                      title={t('Usuń monitorowaną aplikację', 'Remove monitored application')}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -301,7 +330,10 @@ export function Applications() {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground text-center py-2">
-              No monitored applications. Add exe names above to start tracking.
+              {t(
+                'Brak monitorowanych aplikacji. Dodaj nazwy exe powyżej, aby rozpocząć śledzenie.',
+                'No monitored applications. Add exe names above to start tracking.',
+              )}
             </p>
           )}
         </CardContent>
@@ -313,13 +345,16 @@ export function Applications() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             className="flex h-9 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            placeholder="Search applications..."
+            placeholder={t('Szukaj aplikacji...', 'Search applications...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         <p className="text-sm text-muted-foreground whitespace-nowrap">
-          {filtered.length} apps
+          {t('{{count}} aplikacji', '{{count}} apps').replace(
+            '{{count}}',
+            String(filtered.length),
+          )}
         </p>
       </div>
 
@@ -330,10 +365,10 @@ export function Applications() {
               <tr className="border-b text-muted-foreground">
                 {(
                   [
-                    ['display_name', 'Application'],
-                    ['total_seconds', 'Total Time'],
-                    ['session_count', 'Sessions'],
-                    ['last_used', 'Last Used'],
+                    ['display_name', t('Aplikacja', 'Application')],
+                    ['total_seconds', t('Łączny czas', 'Total Time')],
+                    ['session_count', t('Sesje', 'Sessions')],
+                    ['last_used', t('Ostatnio użyta', 'Last Used')],
                   ] as [SortKey, string][]
                 ).map(([key, label]) => (
                   <th key={key} className="px-4 py-3 text-left font-medium">
@@ -348,7 +383,7 @@ export function Applications() {
                     </Button>
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left font-medium">Project</th>
+                <th className="px-4 py-3 text-left font-medium">{t('Projekt', 'Project')}</th>
                 <th className="px-4 py-3 text-left font-medium w-16"></th>
               </tr>
             </thead>
@@ -369,7 +404,7 @@ export function Applications() {
                               editingColorId === app.id ? null : app.id,
                             )
                           }
-                          title="Change color"
+                          title={t('Zmień kolor', 'Change color')}
                         />
                         {editingColorId === app.id && (
                           <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
@@ -380,7 +415,7 @@ export function Applications() {
                               onChange={(e) =>
                                 handleUpdateColor(app.id, e.target.value)
                               }
-                              title="Choose color"
+                              title={t('Wybierz kolor', 'Choose color')}
                             />
                             <div className="mt-2 flex gap-1">
                               {[
@@ -413,7 +448,7 @@ export function Applications() {
                       </div>
                       {monitoredSet.has(app.executable_name) && (
                         <Badge variant="outline" className="text-xs h-5">
-                          monitored
+                          {t('monitorowana', 'monitored')}
                         </Badge>
                       )}
                       {app.is_imported === 1 && (
@@ -421,7 +456,7 @@ export function Applications() {
                           variant="secondary"
                           className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]"
                         >
-                          Imported
+                          {t('Importowana', 'Imported')}
                         </Badge>
                       )}
                     </div>
@@ -433,7 +468,7 @@ export function Applications() {
                   <td className="px-4 py-3 text-muted-foreground">
                     {app.last_used
                       ? new Date(app.last_used).toLocaleDateString()
-                      : '—'}
+                      : t('ui.common.not_available')}
                   </td>
                   <td className="px-4 py-3">
                     {app.project_name ? (
@@ -446,7 +481,7 @@ export function Applications() {
                         {app.project_name}
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted-foreground">{t('ui.common.not_available')}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -456,7 +491,7 @@ export function Applications() {
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => handleRenameApp(app)}
-                        title="Rename application"
+                        title={t('Zmień nazwę aplikacji', 'Rename application')}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -465,7 +500,7 @@ export function Applications() {
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => handleResetAppTime(app.id)}
-                        title="Reset time"
+                        title={t('Resetuj czas', 'Reset time')}
                       >
                         <TimerReset className="h-3.5 w-3.5" />
                       </Button>
@@ -474,7 +509,7 @@ export function Applications() {
                         size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-destructive"
                         onClick={() => handleDeleteApp(app)}
-                        title="Delete app and sessions"
+                        title={t('Usuń aplikację i sesje', 'Delete app and sessions')}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -488,7 +523,7 @@ export function Applications() {
                     colSpan={6}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
-                    No applications found
+                    {t('Nie znaleziono aplikacji', 'No applications found')}
                   </td>
                 </tr>
               )}
@@ -508,3 +543,4 @@ export function Applications() {
     </div>
   );
 }
+

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronLeft,
   ChevronRight,
@@ -38,6 +39,7 @@ import {
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 
 interface ContextMenu {
   x: number;
@@ -64,6 +66,8 @@ interface GroupedProject {
 type RangeMode = 'daily' | 'weekly';
 
 export function Sessions() {
+  const { t, i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
   const { showError } = useToast();
   const {
     sessionsFocusDate,
@@ -373,16 +377,18 @@ export function Sessions() {
 
       const label =
         missingIds.length === 1
-          ? 'this session'
-          : `${missingIds.length} sessions`;
+          ? t('sessions.prompts.boost_label_single')
+          : t('sessions.prompts.boost_label_multi', {
+              count: missingIds.length,
+            });
       const entered = window.prompt(
-        `Boost requires a comment. Enter a comment for ${label}:`,
+        t('sessions.prompts.boost_requires_comment_prompt', { label }),
         '',
       );
       const normalized = entered?.trim() ?? '';
 
       if (!normalized) {
-        showError('Comment is required to add boost.');
+        showError(t('sessions.prompts.boost_comment_required'));
         return false;
       }
 
@@ -399,11 +405,15 @@ export function Sessions() {
         return true;
       } catch (err) {
         console.error('Failed to save required boost comment:', err);
-        showError(`Failed to save comment required for boost: ${String(err)}`);
+        showError(
+          t('sessions.prompts.boost_comment_save_failed', {
+            error: String(err),
+          }),
+        );
         return false;
       }
     },
-    [sessions],
+    [sessions, showError, t],
   );
 
   const handleSetRateMultiplier = useCallback(
@@ -420,10 +430,12 @@ export function Sessions() {
         setCtxMenu(null);
       } catch (err) {
         console.error('Failed to update session rate multiplier:', err);
-        showError(`Failed to update session rate multiplier: ${String(err)}`);
+        showError(
+          t('sessions.errors.update_multiplier', { error: String(err) }),
+        );
       }
     },
-    [ctxMenu, ensureCommentForBoost, triggerRefresh],
+    [ctxMenu, ensureCommentForBoost, showError, t, triggerRefresh],
   );
 
   const handleCustomRateMultiplier = useCallback(async () => {
@@ -435,21 +447,21 @@ export function Sessions() {
     const suggested = current > 1 ? current : 2;
 
     setPromptConfig({
-      title: 'Set session rate multiplier',
-      description: 'Set multiplier (> 0). Use 1 to reset.',
+      title: t('sessions.prompts.multiplier_title'),
+      description: t('sessions.prompts.multiplier_desc'),
       initialValue: String(suggested),
       onConfirm: async (raw) => {
         const normalizedRaw = raw.trim().replace(',', '.');
         const parsed = Number(normalizedRaw);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          showError('Multiplier must be a positive number.');
+          showError(t('sessions.prompts.multiplier_positive'));
           return;
         }
         await handleSetRateMultiplier(parsed);
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu, handleSetRateMultiplier]);
+  }, [ctxMenu, handleSetRateMultiplier, showError, t]);
 
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu) return;
@@ -457,8 +469,8 @@ export function Sessions() {
     const sessionId = ctxMenu.session.id;
 
     setPromptConfig({
-      title: 'Session comment',
-      description: '(leave empty to remove)',
+      title: t('sessions.prompts.session_comment_title'),
+      description: t('sessions.prompts.session_comment_desc'),
       initialValue: current,
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
@@ -476,7 +488,7 @@ export function Sessions() {
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu]);
+  }, [ctxMenu, t, triggerRefresh]);
 
   const handleAcceptSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
@@ -708,20 +720,27 @@ export function Sessions() {
     },
     [projects],
   );
+  const displayProjectName = useCallback(
+    (name: string) =>
+      name.toLowerCase() === 'unassigned'
+        ? t('sessions.menu.unassigned')
+        : name,
+    [t],
+  );
 
   return (
     <div className="space-y-4">
       {/* Filters & Mode Toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3 px-1">
         <p className="text-xs text-muted-foreground font-medium flex items-baseline gap-1">
-          {sessions.length} sessions{' '}
-          <span className="opacity-40 text-[10px]">
-            ({aiSessionsCount} AI) /
-          </span>{' '}
-          {groupedByProject.length} projects
+          {t('sessions.summary', {
+            sessions: sessions.length,
+            ai: aiSessionsCount,
+            projects: groupedByProject.length,
+          })}
           {activeProjectId === 'unassigned' && (
             <span className="text-amber-400/80 ml-2 font-bold select-none">
-              UNASSIGNED ONLY
+              {t('sessions.unassigned_only')}
             </span>
           )}
         </p>
@@ -736,7 +755,7 @@ export function Sessions() {
                 setOverrideDateRange(null);
               }}
             >
-              Today
+              {t('sessions.range.today')}
             </Button>
             <Button
               variant={rangeMode === 'weekly' ? 'secondary' : 'ghost'}
@@ -747,7 +766,7 @@ export function Sessions() {
                 setOverrideDateRange(null);
               }}
             >
-              Week
+              {t('sessions.range.week')}
             </Button>
           </div>
           <div className="mx-1 h-4 w-px bg-border/40" />
@@ -762,8 +781,8 @@ export function Sessions() {
             </Button>
             <span className="text-[10px] font-mono font-bold text-muted-foreground/80 min-w-[5rem] text-center">
               {activeDateRange.start === activeDateRange.end
-                ? format(parseISO(activeDateRange.start), 'MMM d')
-                : `${format(parseISO(activeDateRange.start), 'MMM d')} – ${format(parseISO(activeDateRange.end), 'MMM d')}`}
+                ? format(parseISO(activeDateRange.start), 'MMM d', { locale })
+                : `${format(parseISO(activeDateRange.start), 'MMM d', { locale })} - ${format(parseISO(activeDateRange.end), 'MMM d', { locale })}`}
             </span>
             <Button
               variant="ghost"
@@ -781,19 +800,19 @@ export function Sessions() {
               onClick={() => setViewMode('ai_detailed')}
               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'ai_detailed' ? 'bg-violet-500/20 text-violet-300 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              AI Data
+              {t('sessions.view.ai_data')}
             </button>
             <button
               onClick={() => setViewMode('detailed')}
               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'detailed' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              Detailed
+              {t('sessions.view.detailed')}
             </button>
             <button
               onClick={() => setViewMode('compact')}
               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'compact' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              Compact
+              {t('sessions.view.compact')}
             </button>
           </div>
         </div>
@@ -806,12 +825,12 @@ export function Sessions() {
               <span className="text-[10px] font-bold text-amber-500">!</span>
             </div>
             <p className="text-[11px] text-amber-200/80 font-medium">
-              Found{' '}
               <span className="text-amber-400 font-bold">
-                {unassignedGroup.sessions.length} unassigned sessions
+                {t('sessions.banner.unassigned_sessions', {
+                  count: unassignedGroup.sessions.length,
+                })}
               </span>
-              . Click <Sparkles className="inline h-3 w-3 mx-0.5" /> to assign
-              or use context menu.
+              . {t('sessions.banner.hint')}
             </p>
             <Button
               variant="ghost"
@@ -819,7 +838,7 @@ export function Sessions() {
               className="ml-auto h-6 text-[10px] text-amber-400 hover:bg-amber-500/10"
               onClick={() => setActiveProjectId('unassigned')}
             >
-              Filter
+              {t('sessions.banner.filter')}
             </Button>
           </div>
         )}
@@ -863,18 +882,22 @@ export function Sessions() {
                           style={{ backgroundColor: group.projectColor }}
                         />
                         <span className="font-bold text-[13px] text-foreground/90 tracking-tight">
-                          {group.projectName}
+                          {displayProjectName(group.projectName)}
                         </span>
                         <Badge
                           variant="secondary"
                           className="text-[10px] h-4 px-1.5 bg-secondary/40 text-muted-foreground/80 border-none font-medium"
                         >
-                          {group.sessions.length} sessions
+                          {t('sessions.group.sessions_count', {
+                            count: group.sessions.length,
+                          })}
                         </Badge>
                         {group.boostedCount > 0 && (
                           <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400/80 border border-emerald-500/20 font-medium">
                             <CircleDollarSign className="h-3 w-3" />
-                            {group.boostedCount} boosted
+                            {t('sessions.group.boosted_count', {
+                              count: group.boostedCount,
+                            })}
                           </span>
                         )}
                       </div>
@@ -908,13 +931,15 @@ export function Sessions() {
                         style={{ backgroundColor: group.projectColor }}
                       />
                       <span className="font-bold text-lg tracking-tight select-none">
-                        {group.projectName}
+                        {displayProjectName(group.projectName)}
                       </span>
                       <Badge
                         variant="outline"
                         className="text-[10px] h-4 px-1.5 border-border/40 text-muted-foreground/60"
                       >
-                        {group.sessions.length} sessions
+                        {t('sessions.group.sessions_count', {
+                          count: group.sessions.length,
+                        })}
                       </Badge>
                     </div>
                     <span className="font-mono text-base font-bold text-foreground/70">
@@ -1002,7 +1027,7 @@ export function Sessions() {
       {sessions.length === 0 && (
         <div className="py-24 text-center">
           <p className="text-sm text-muted-foreground/30 font-medium italic">
-            No activity recorded for this period.
+            {t('sessions.empty.no_activity')}
           </p>
         </div>
       )}
@@ -1015,7 +1040,7 @@ export function Sessions() {
             className="h-8 text-[11px] font-bold text-muted-foreground/50 hover:text-foreground"
             onClick={loadMore}
           >
-            Load older sessions...
+            {t('sessions.actions.load_older')}
           </Button>
         </div>
       )}
@@ -1028,7 +1053,9 @@ export function Sessions() {
           style={{ left: ctxMenu.x, top: ctxMenu.y }}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            Session actions ({ctxMenu.session.app_name})
+            {t('sessions.menu.session_actions', {
+              app: ctxMenu.session.app_name,
+            })}
           </div>
           {ctxMenu.session.suggested_project_id !== undefined &&
             ctxMenu.session.suggested_project_name &&
@@ -1037,7 +1064,7 @@ export function Sessions() {
                 <div className="flex items-center gap-1.5">
                   <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
                   <span className="text-[11px] text-sky-200">
-                    AI suggests:{' '}
+                    {t('sessions.menu.ai_suggests')}{' '}
                     <span className="font-medium">
                       {ctxMenu.session.suggested_project_name}
                     </span>
@@ -1061,7 +1088,7 @@ export function Sessions() {
                       } as React.MouseEvent)
                     }
                   >
-                    Accept
+                    {t('sessions.menu.accept')}
                   </button>
                   <button
                     className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
@@ -1071,14 +1098,14 @@ export function Sessions() {
                       } as React.MouseEvent)
                     }
                   >
-                    Reject
+                    {t('sessions.menu.reject')}
                   </button>
                 </div>
               </div>
             )}
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            Rate multiplier (default x2):{' '}
+            {t('sessions.menu.rate_multiplier')}{' '}
             <span className="font-mono">
               {formatMultiplierLabel(ctxMenu.session.rate_multiplier)}
             </span>
@@ -1088,13 +1115,13 @@ export function Sessions() {
               className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
               onClick={() => void handleSetRateMultiplier(2)}
             >
-              Boost x2
+              {t('sessions.menu.boost_x2')}
             </button>
             <button
               className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
               onClick={() => void handleCustomRateMultiplier()}
             >
-              Custom...
+              {t('sessions.menu.custom')}
             </button>
           </div>
           <div className="h-px bg-border my-1" />
@@ -1104,12 +1131,14 @@ export function Sessions() {
           >
             <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
             <span>
-              {ctxMenu.session.comment ? 'Edit comment' : 'Add comment'}
+              {ctxMenu.session.comment
+                ? t('sessions.menu.edit_comment')
+                : t('sessions.menu.add_comment')}
             </span>
           </button>
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            Assign to project
+            {t('sessions.menu.assign_to_project')}
           </div>
           <div className="max-h-[58vh] overflow-y-auto pr-1">
             <button
@@ -1117,11 +1146,11 @@ export function Sessions() {
               onClick={() => handleAssign(null, 'manual_session_unassign')}
             >
               <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-              <span className="truncate">Unassigned</span>
+              <span className="truncate">{t('sessions.menu.unassigned')}</span>
             </button>
             {projects.filter((p) => !p.frozen_at).length === 0 ? (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                No projects available
+                {t('sessions.menu.no_projects')}
               </div>
             ) : (
               projects
@@ -1151,9 +1180,9 @@ export function Sessions() {
           style={{ left: projectCtxMenu.x, top: projectCtxMenu.y }}
         >
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            Project:{' '}
+            {t('sessions.menu.project_label')}{' '}
             <span className="font-medium text-foreground">
-              {projectCtxMenu.projectName}
+              {displayProjectName(projectCtxMenu.projectName)}
             </span>
           </div>
           <button
@@ -1168,8 +1197,8 @@ export function Sessions() {
             }}
           >
             {projectCtxMenu.projectId == null
-              ? 'No linked project card'
-              : 'Go to project card'}
+              ? t('sessions.menu.no_linked_project_card')
+              : t('sessions.menu.go_to_project_card')}
           </button>
         </div>
       )}
@@ -1185,3 +1214,4 @@ export function Sessions() {
     </div>
   );
 }
+

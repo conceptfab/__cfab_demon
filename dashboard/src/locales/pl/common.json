@@ -1,4 +1,319 @@
 {
+  "ui": {
+    "common": {
+      "not_available": "—"
+    },
+    "buttons": {
+      "ok": "OK",
+      "cancel": "Anuluj",
+      "confirm": "Potwierdź"
+    },
+    "date_presets": {
+      "today": "Dziś",
+      "week": "Tydzień",
+      "month": "Miesiąc",
+      "all": "Cały okres"
+    },
+    "app": {
+      "loading": "Ładowanie...",
+      "error_title": "Coś poszło nie tak",
+      "try_again": "Spróbuj ponownie"
+    }
+  },
+  "topbar": {
+    "aria": {
+      "minimize": "Zminimalizuj okno",
+      "restore": "Przywróć okno",
+      "maximize": "Zmaksymalizuj okno",
+      "close": "Zamknij okno"
+    }
+  },
+  "layout": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "sessions": "Sesje",
+      "projects": "Projekty",
+      "estimates": "Wyceny",
+      "applications": "Aplikacje",
+      "analysis": "Analiza czasu",
+      "ai": "AI i model",
+      "data": "Dane",
+      "daemon": "Demon"
+    },
+    "status": {
+      "daemon": "Demon",
+      "sync": "Synchronizacja",
+      "ai_mode": "Tryb AI",
+      "ai": "AI",
+      "backup": "Kopia",
+      "running": "Uruchomiony",
+      "stopped": "Zatrzymany",
+      "training": "Trening",
+      "new_data": "Nowe dane",
+      "safe": "Bezpiecznie",
+      "off": "wył."
+    },
+    "tooltips": {
+      "unassigned_today": "{{count}} nieprzypisanych sesji dzisiaj",
+      "unassigned_all_dates": "{{count}} nieprzypisanych sesji (cały okres)",
+      "unassigned_short": "{{count}} nieprzypisanych",
+      "new_assignments_since_training": "{{count}} nowych przypisań od ostatniego treningu",
+      "last_backup": "Ostatnia kopia: {{date}}",
+      "never": "Nigdy",
+      "version_incompatibility": "NIEZGODNOŚĆ WERSJI! Demon: v{{version}}",
+      "bughunter": "BugHunter - zgłoś błąd",
+      "quick_start": "Quick Start",
+      "help": "Pomoc (F1)",
+      "settings": "Ustawienia"
+    }
+  },
+  "date_range_toolbar": {
+    "all_time": "Cały okres",
+    "previous_period": "Poprzedni okres",
+    "next_period": "Następny okres"
+  },
+  "dashboard": {
+    "actions": {
+      "refresh": "Odśwież",
+      "refreshing": "Odświeżanie...",
+      "open_sessions": "Otwórz sesje"
+    },
+    "auto_import": {
+      "importing": "Importowanie danych z demona...",
+      "failed": "Auto-import nie powiódł się: {{error}}",
+      "imported_summary": "Zaimportowano automatycznie {{imported}} plik(i) ({{archived}} zarchiwizowano).",
+      "already_in_database": "{{skipped}} już w bazie danych.",
+      "errors_count": "{{count}} błędów"
+    },
+    "unassigned_banner": {
+      "message": "{{sessionCount}} sesji ({{duration}}) nie jest przypisanych w {{appCount}} aplikacjach na dzień {{date}}. Przypisz je ręcznie."
+    },
+    "metrics": {
+      "total_tracked": "Łącznie śledzone",
+      "applications": "Aplikacje",
+      "projects": "Projekty",
+      "active_projects": "aktywnych projektów",
+      "avg_daily": "Śr. dziennie"
+    },
+    "sections": {
+      "top_5_projects": "Top 5 projektów"
+    }
+  },
+  "components": {
+    "top_apps": {
+      "title": "Top aplikacje",
+      "no_data": "Brak danych."
+    },
+    "top_projects": {
+      "no_projects": "Nie znaleziono projektów.",
+      "click_to_view": "Kliknij, aby zobaczyć sesje dla: {{name}}",
+      "sessions_count": "{{count}} sesji",
+      "apps_count": "{{count}} aplikacji",
+      "manual_sessions_count": "{{count}} sesji ręcznych",
+      "boosted_sessions_count": "{{count}} sesji z mnożnikiem"
+    },
+    "all_projects": {
+      "title": "Wszystkie projekty",
+      "sort_name": "Nazwa / Folder",
+      "sort_most_time": "Najwięcej czasu",
+      "no_projects": "Nie znaleziono projektów.",
+      "tooltip_time": "Czas"
+    },
+    "timeline_chart": {
+      "default_title": "Oś aktywności",
+      "boosted_activity": "AKTYWNOŚĆ Z MNOŻNIKIEM",
+      "manual_data_included": "DANE RĘCZNE UWZGLĘDNIONE"
+    },
+    "prompt_modal": {
+      "confirm_default": "OK",
+      "cancel_default": "Anuluj"
+    },
+    "manual_session_dialog": {
+      "session_types": {
+        "meeting": "Spotkanie",
+        "call": "Rozmowa",
+        "other": "Inne"
+      },
+      "confirm_delete": "Czy na pewno chcesz usunąć tę sesję?",
+      "errors": {
+        "delete": "Błąd usuwania",
+        "save": "Błąd zapisu",
+        "title_required": "Podaj tytuł",
+        "project_required": "Wybierz projekt",
+        "time_required": "Podaj czas startu i końca",
+        "end_after_start": "Czas zakończenia musi być po czasie startu"
+      },
+      "title_edit": "Edytuj sesję",
+      "title_add": "Dodaj sesję ręczną",
+      "fields": {
+        "title": "Tytuł",
+        "type": "Typ",
+        "project": "Projekt",
+        "application": "Aplikacja",
+        "start": "Start",
+        "end": "Koniec",
+        "allow_multi_day": "Pozwól rozciągnąć sesję na wiele dni"
+      },
+      "placeholders": {
+        "title": "np. Daily standup",
+        "select_project": "Wybierz projekt",
+        "manual_no_app": "Sesja ręczna (bez aplikacji)"
+      },
+      "actions": {
+        "delete": "Usuń",
+        "saving": "Zapisywanie...",
+        "save": "Zapisz",
+        "add": "Dodaj sesję"
+      }
+    },
+    "bughunter": {
+      "errors": {
+        "file_too_large": "Plik {{name}} jest za duży (maks. 5MB)",
+        "send_failed": "Wysyłanie nie powiodło się: {{error}}",
+        "send_report_failed": "Nie udało się wysłać zgłoszenia"
+      },
+      "title": "BugHunter",
+      "description": "Znalazłeś błąd albo masz pomysł? Daj nam znać.",
+      "sent": "Zgłoszenie zostało wysłane!",
+      "fields": {
+        "subject": "Temat (wersja {{version}})",
+        "subject_placeholder": "Krótki opis błędu...",
+        "details": "Szczegóły zgłoszenia",
+        "details_placeholder": "Opisz błąd albo pomysł... Zajmiemy się tym.",
+        "attachments": "Załączniki (maks. 5MB/plik)"
+      },
+      "actions": {
+        "add_files": "DODAJ PLIKI",
+        "cancel": "Anuluj",
+        "sending": "Wysyłanie...",
+        "send_report": "Wyślij zgłoszenie"
+      }
+    }
+  },
+  "sessions": {
+    "summary": "{{sessions}} sesji ({{ai}} AI) / {{projects}} projektów",
+    "unassigned_only": "TYLKO NIEPRZYPISANE",
+    "range": {
+      "today": "Dziś",
+      "week": "Tydzień"
+    },
+    "view": {
+      "ai_data": "Dane AI",
+      "detailed": "Szczegółowy",
+      "compact": "Kompaktowy"
+    },
+    "banner": {
+      "unassigned_sessions": "{{count}} nieprzypisanych sesji",
+      "hint": "Kliknij ikonę iskier, aby przypisać, albo użyj menu kontekstowego.",
+      "filter": "Filtruj"
+    },
+    "group": {
+      "sessions_count": "{{count}} sesji",
+      "boosted_count": "{{count}} z mnożnikiem"
+    },
+    "empty": {
+      "no_activity": "Brak aktywności w wybranym okresie."
+    },
+    "actions": {
+      "load_older": "Wczytaj starsze sesje..."
+    },
+    "menu": {
+      "session_actions": "Akcje sesji ({{app}})",
+      "ai_suggests": "AI sugeruje:",
+      "accept": "Akceptuj",
+      "reject": "Odrzuć",
+      "rate_multiplier": "Mnożnik stawki (domyślnie x2):",
+      "boost_x2": "Podbij x2",
+      "custom": "Własny...",
+      "edit_comment": "Edytuj komentarz",
+      "add_comment": "Dodaj komentarz",
+      "assign_to_project": "Przypisz do projektu",
+      "unassigned": "Nieprzypisane",
+      "no_projects": "Brak dostępnych projektów",
+      "project_label": "Projekt:",
+      "no_linked_project_card": "Brak powiązanej karty projektu",
+      "go_to_project_card": "Przejdź do karty projektu"
+    },
+    "prompts": {
+      "boost_label_single": "tej sesji",
+      "boost_label_multi": "{{count}} sesji",
+      "boost_requires_comment_prompt": "Mnożnik wymaga komentarza. Wpisz komentarz dla {{label}}:",
+      "boost_comment_required": "Komentarz jest wymagany do dodania mnożnika.",
+      "boost_comment_save_failed": "Nie udało się zapisać komentarza wymaganego do mnożnika: {{error}}",
+      "multiplier_title": "Ustaw mnożnik stawki sesji",
+      "multiplier_desc": "Ustaw mnożnik (> 0). Użyj 1, aby zresetować.",
+      "multiplier_positive": "Mnożnik musi być dodatnią liczbą.",
+      "session_comment_title": "Komentarz sesji",
+      "session_comment_desc": "(zostaw puste, aby usunąć)"
+    },
+    "errors": {
+      "update_multiplier": "Nie udało się zaktualizować mnożnika stawki sesji: {{error}}"
+    },
+    "row": {
+      "idle": "bezczynność",
+      "loading_short": "ładowanie...",
+      "no_ai_data_short": "brak danych ai",
+      "ai_score_breakdown": "Rozbicie punktacji AI",
+      "manual_override": "(ręczne nadpisanie)",
+      "manual_override_active": "(ręczne nadpisanie aktywne)",
+      "loading_ai_data": "Ładowanie danych AI...",
+      "no_ai_data": "Brak danych AI",
+      "no_candidates": "Brak kandydatów",
+      "no_candidates_found": "Nie znaleziono kandydatów",
+      "no_traceable_activity": "Brak możliwej do śledzenia aktywności",
+      "ai_suggestion": "AI: {{project}} ({{confidence}}%)",
+      "final_confidence": "końcowa pewność:",
+      "margin": "margines:",
+      "total_evidence": "łącznie dowodów:",
+      "evidence_short": "{{count}}dow."
+    }
+  },
+  "projects": {
+    "errors": {
+      "project_name_required": "Nazwa projektu jest wymagana.",
+      "project_folder_required": "Folder projektu jest wymagany do identyfikacji śledzonych plików.",
+      "folder_path_required": "Podaj ścieżkę folderu"
+    },
+    "confirm": {
+      "exclude_project": "Wykluczyć ten projekt? Można go później przywrócić.",
+      "reset_project_time": "Zresetować śledzony czas dla tego projektu? Tej operacji nie można cofnąć.",
+      "compact_project_data": "Skondensować dane tego projektu? Szczegółowa historia aktywności plików zostanie usunięta, ale sesje i łączny czas zostaną zachowane. Tej operacji nie można cofnąć.",
+      "remove_project_root": "Usunąć folder z korzeni projektów? {{path}}"
+    },
+    "dialogs": {
+      "select_assigned_project_folder": "Wybierz przypisany folder projektu",
+      "select_project_folder": "Wybierz folder projektu"
+    },
+    "messages": {
+      "folder_saved": "Folder zapisany"
+    },
+    "labels": {
+      "duplicate_marker": "D",
+      "possible_duplicate_named": "Możliwy duplikat ({{groupSize}}): {{groupNames}}",
+      "possible_duplicate_normalized": "Możliwy duplikat ({{groupSize}}) po normalizacji \"_\" i \"-\"",
+      "frozen_since_click_unfreeze": "Zamrożony od {{date}} - kliknij, aby odmrozić",
+      "hot_project": "Gorący projekt - top 5 wg czasu",
+      "change_color": "Zmień kolor",
+      "choose_color": "Wybierz kolor",
+      "imported": "Importowany",
+      "reset_time": "Resetuj czas",
+      "freeze_project": "Zamroź projekt",
+      "exclude_project": "Wyklucz projekt",
+      "delete_project_permanently": "Usuń projekt na stałe",
+      "total_time_value": "ŁĄCZNY CZAS / WARTOŚĆ",
+      "comments": "Komentarze:",
+      "compacting": "Kondensowanie...",
+      "compact_project_data": "Kondensuj dane projektu",
+      "detailed": "Szczegółowy",
+      "compact": "Kompaktowy",
+      "duplicate_names": "{{count}} zduplikowanych nazw",
+      "excluded": "Wykluczony",
+      "restore": "Przywróć",
+      "delete": "Usuń",
+      "hidden_existing": "{{count}} istniejących",
+      "hidden_excluded": "{{count}} wykluczonych"
+    }
+  },
   "settings": {
     "language": {
       "title": "Język",

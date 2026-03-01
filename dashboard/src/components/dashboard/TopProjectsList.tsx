@@ -1,4 +1,5 @@
 import { FolderOpen, Flame, MousePointerClick } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { formatDuration } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import type {
@@ -24,13 +25,14 @@ export function TopProjectsList({
   boostedByProject,
   manualCountsByProject,
 }: TopProjectsListProps) {
+  const { t } = useTranslation();
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const setSessionsFocusProject = useUIStore((s) => s.setSessionsFocusProject);
 
   if (projects.length === 0) {
     return (
       <p className="py-3 text-xs text-muted-foreground text-center">
-        No projects found.
+        {t('components.top_projects.no_projects')}
       </p>
     );
   }
@@ -61,7 +63,7 @@ export function TopProjectsList({
               }
               setCurrentPage('sessions');
             }}
-            title={`Click to view sessions for ${p.name}`}
+            title={t('components.top_projects.click_to_view', { name: p.name })}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
@@ -71,10 +73,14 @@ export function TopProjectsList({
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 ml-5.5">
                   <span className="text-[10px] text-muted-foreground">
-                    {p.session_count} sessions
+                    {t('components.top_projects.sessions_count', {
+                      count: p.session_count,
+                    })}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
-                    {p.app_count} apps
+                    {t('components.top_projects.apps_count', {
+                      count: p.app_count,
+                    })}
                   </span>
                   {(() => {
                     const boosted =
@@ -86,7 +92,10 @@ export function TopProjectsList({
                         {manual > 0 && (
                           <span
                             className="inline-flex items-center gap-0.5 text-[10px] text-sky-400"
-                            title={`${manual} manual session(s)`}
+                            title={t(
+                              'components.top_projects.manual_sessions_count',
+                              { count: manual },
+                            )}
                           >
                             <MousePointerClick className="h-2.5 w-2.5" />
                             {manual}
@@ -95,7 +104,10 @@ export function TopProjectsList({
                         {boosted > 0 && (
                           <span
                             className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400"
-                            title={`${boosted} boosted session(s)`}
+                            title={t(
+                              'components.top_projects.boosted_sessions_count',
+                              { count: boosted },
+                            )}
                           >
                             <Flame className="h-2.5 w-2.5" />
                             {boosted}

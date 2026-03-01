@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,9 +18,9 @@ interface Props {
 }
 
 const SESSION_TYPES = [
-  { value: "meeting", label: "Meeting" },
-  { value: "call", label: "Call" },
-  { value: "other", label: "Other" },
+  { value: "meeting", labelKey: "components.manual_session_dialog.session_types.meeting" },
+  { value: "call", labelKey: "components.manual_session_dialog.session_types.call" },
+  { value: "other", labelKey: "components.manual_session_dialog.session_types.other" },
 ];
 
 function toLocalDatetimeValue(iso?: string): string {
@@ -48,6 +49,7 @@ export function ManualSessionDialog({
   editSession,
   onSaved,
 }: Props) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [sessionType, setSessionType] = useState("meeting");
   const [projectId, setProjectId] = useState<number | null>(null);
@@ -132,14 +134,14 @@ export function ManualSessionDialog({
   };
 
   const handleDelete = async () => {
-    if (!editSession || !confirm("Are you sure you want to delete this session?")) return;
+    if (!editSession || !confirm(t("components.manual_session_dialog.confirm_delete"))) return;
     setSaving(true);
     try {
       await deleteManualSession(editSession.id);
       onOpenChange(false);
       onSaved();
     } catch (error: unknown) {
-      setError(getErrorMessage(error, "Delete Error"));
+      setError(getErrorMessage(error, t("components.manual_session_dialog.errors.delete")));
     } finally {
       setSaving(false);
     }
@@ -147,19 +149,19 @@ export function ManualSessionDialog({
 
   const handleSave = async () => {
     if (!title.trim()) {
-      setError("Please enter a title");
+      setError(t("components.manual_session_dialog.errors.title_required"));
       return;
     }
     if (!projectId) {
-      setError("Please select a project");
+      setError(t("components.manual_session_dialog.errors.project_required"));
       return;
     }
     if (!startTime || !endTime) {
-      setError("Please enter start and end times");
+      setError(t("components.manual_session_dialog.errors.time_required"));
       return;
     }
     if (endTime <= startTime) {
-      setError("End time must be after the start time");
+      setError(t("components.manual_session_dialog.errors.end_after_start"));
       return;
     }
 
@@ -182,7 +184,7 @@ export function ManualSessionDialog({
       onOpenChange(false);
       onSaved();
     } catch (error: unknown) {
-      setError(getErrorMessage(error, "Save Error"));
+      setError(getErrorMessage(error, t("components.manual_session_dialog.errors.save")));
     } finally {
       setSaving(false);
     }
@@ -192,29 +194,29 @@ export function ManualSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{editSession ? "Edit Session" : "Add Manual Session"}</DialogTitle>
+          <DialogTitle>{editSession ? t("components.manual_session_dialog.title_edit") : t("components.manual_session_dialog.title_add")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <label className="text-sm font-medium">Title</label>
+            <label className="text-sm font-medium">{t("components.manual_session_dialog.fields.title")}</label>
             <input
               className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Daily standup"
+              placeholder={t("components.manual_session_dialog.placeholders.title")}
             />
           </div>
 
           <div>
-            <label className="text-sm font-medium">Type</label>
+            <label className="text-sm font-medium">{t("components.manual_session_dialog.fields.type")}</label>
             <Select value={sessionType} onValueChange={setSessionType}>
               <SelectTrigger className="mt-1">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {SESSION_TYPES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
+                {SESSION_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {t(type.labelKey)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -222,13 +224,13 @@ export function ManualSessionDialog({
           </div>
 
           <div>
-            <label className="text-sm font-medium">Project</label>
+            <label className="text-sm font-medium">{t("components.manual_session_dialog.fields.project")}</label>
             <Select
               value={projectId ? String(projectId) : ""}
               onValueChange={(v) => setProjectId(Number(v))}
             >
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select a project" />
+                <SelectValue placeholder={t("components.manual_session_dialog.placeholders.select_project")} />
               </SelectTrigger>
               <SelectContent>
                 {projects.filter((p) => !p.frozen_at).map((p) => (
@@ -247,16 +249,16 @@ export function ManualSessionDialog({
           </div>
 
           <div>
-            <label className="text-sm font-medium">Application</label>
+            <label className="text-sm font-medium">{t("components.manual_session_dialog.fields.application")}</label>
             <Select
               value={appId ? String(appId) : "none"}
               onValueChange={(v) => setAppId(v === "none" ? null : Number(v))}
             >
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Manual Session (no app)" />
+                <SelectValue placeholder={t("components.manual_session_dialog.placeholders.manual_no_app")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Manual Session (no app)</SelectItem>
+                <SelectItem value="none">{t("components.manual_session_dialog.placeholders.manual_no_app")}</SelectItem>
                 {apps.map((a) => (
                   <SelectItem key={a.id} value={String(a.id)}>
                     {a.display_name}
@@ -268,7 +270,7 @@ export function ManualSessionDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-sm font-medium">Start</label>
+              <label className="text-sm font-medium">{t("components.manual_session_dialog.fields.start")}</label>
               <input
                 type="datetime-local"
                 className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -277,7 +279,7 @@ export function ManualSessionDialog({
               />
             </div>
             <div>
-              <label className="text-sm font-medium">End</label>
+              <label className="text-sm font-medium">{t("components.manual_session_dialog.fields.end")}</label>
               <input
                 type="datetime-local"
                 className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -294,7 +296,7 @@ export function ManualSessionDialog({
               checked={allowMultiDay}
               onChange={(e) => handleAllowMultiDayChange(e.target.checked)}
             />
-            <span className="text-sm font-medium">Extend session across multiple days</span>
+            <span className="text-sm font-medium">{t("components.manual_session_dialog.fields.allow_multi_day")}</span>
           </label>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
@@ -302,11 +304,15 @@ export function ManualSessionDialog({
           <div className="flex gap-2">
             {editSession && (
               <Button onClick={handleDelete} variant="destructive" className="flex-1" disabled={saving}>
-                Delete
+                {t("components.manual_session_dialog.actions.delete")}
               </Button>
             )}
             <Button onClick={handleSave} className="flex-[2]" disabled={saving}>
-              {saving ? "Saving..." : editSession ? "Save" : "Add Session"}
+              {saving
+                ? t("components.manual_session_dialog.actions.saving")
+                : editSession
+                  ? t("components.manual_session_dialog.actions.save")
+                  : t("components.manual_session_dialog.actions.add")}
             </Button>
           </div>
         </div>

@@ -1,8 +1,10 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { DateRange } from '@/lib/db-types';
 import type { TimePreset } from '@/store/data-store';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 
 interface DateRangeToolbarProps {
   dateRange: DateRange;
@@ -21,10 +23,12 @@ export function DateRangeToolbar({
   canShiftForward,
   children,
 }: DateRangeToolbarProps) {
+  const { t, i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
   const dateLabel =
     dateRange.start === dateRange.end
-      ? format(parseISO(dateRange.start), 'MMM d')
-      : `${format(parseISO(dateRange.start), 'MMM d')} – ${format(parseISO(dateRange.end), 'MMM d')}`;
+      ? format(parseISO(dateRange.start), 'MMM d', { locale })
+      : `${format(parseISO(dateRange.start), 'MMM d', { locale })} - ${format(parseISO(dateRange.end), 'MMM d', { locale })}`;
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -38,7 +42,9 @@ export function DateRangeToolbar({
           onClick={() => setTimePreset(preset)}
           className="capitalize"
         >
-          {preset === 'all' ? 'All time' : preset}
+          {preset === 'all'
+            ? t('date_range_toolbar.all_time')
+            : t(`ui.date_presets.${preset}`)}
         </Button>
       ))}
 
@@ -50,7 +56,7 @@ export function DateRangeToolbar({
             size="icon"
             className="h-8 w-8"
             onClick={() => shiftDateRange(-1)}
-            title="Previous period"
+            title={t('date_range_toolbar.previous_period')}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -63,7 +69,7 @@ export function DateRangeToolbar({
             className="h-8 w-8"
             onClick={() => shiftDateRange(1)}
             disabled={!canShiftForward()}
-            title="Next period"
+            title={t('date_range_toolbar.next_period')}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>

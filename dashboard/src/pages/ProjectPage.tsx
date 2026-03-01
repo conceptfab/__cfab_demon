@@ -52,6 +52,7 @@ import { formatDuration, formatMoney, formatMultiplierLabel, cn } from '@/lib/ut
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { useInlineT } from '@/lib/inline-i18n';
 import type {
   ProjectWithStats,
   ProjectExtraInfo,
@@ -77,6 +78,7 @@ type ContextMenu =
     };
 
 export function ProjectPage() {
+  const tt = useInlineT();
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
@@ -899,7 +901,7 @@ export function ProjectPage() {
                         "{s.comment}"
                       </p>
                       <p className="text-[10px] text-muted-foreground text-right">
-                        — {s.app_name}
+                        â€” {s.app_name}
                       </p>
                     </div>
                   ))}
@@ -930,10 +932,10 @@ export function ProjectPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider font-bold">
                   <tr>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3">Duration</th>
-                    <th className="px-4 py-3">Application</th>
-                    <th className="px-4 py-3">Details / Comment</th>
+                    <th className="px-4 py-3">{tt('Data', 'Date')}</th>
+                    <th className="px-4 py-3">{tt('Czas trwania', 'Duration')}</th>
+                    <th className="px-4 py-3">{tt('Aplikacja', 'Application')}</th>
+                    <th className="px-4 py-3">{tt('SzczegĂłĹ‚y / Komentarz', 'Details / Comment')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -974,7 +976,7 @@ export function ProjectPage() {
                                 )}
                                 {format(parseISO(s.start_time), 'HH:mm')}
                                 <span className="text-[10px] opacity-20 ml-2 font-mono">
-                                  — {format(parseISO(s.end_time), 'HH:mm')}
+                                  â€” {format(parseISO(s.end_time), 'HH:mm')}
                                 </span>
                               </div>
                             </td>
@@ -1033,7 +1035,7 @@ export function ProjectPage() {
                                   <>
                                     <MessageSquare className="h-3 w-3 shrink-0 opacity-0 group-hover/comment:opacity-100 transition-opacity" />
                                     <span className="text-muted-foreground/20 group-hover/comment:text-muted-foreground/50 transition-colors">
-                                      —
+                                      â€”
                                     </span>
                                   </>
                                 )}
@@ -1090,11 +1092,11 @@ export function ProjectPage() {
                   const apps = Array.from(
                     new Set(ctxMenu.sessions.map((s) => s.app_name)),
                   ).join(', ');
-                  showInfo(`Bulk action on ${count} sessions — Apps affected: ${apps}`);
+                  showInfo(`Bulk action on ${count} sessions â€” Apps affected: ${apps}`);
                   setCtxMenu(null);
                 }}
               >
-                <span>Session details</span>
+                <span>{tt('Szczegóły sesji', 'Session details')}</span>
                 <span className="text-muted-foreground/50">
                   {ctxMenu.sessions.length}
                 </span>
@@ -1157,7 +1159,7 @@ export function ProjectPage() {
                 onClick={() => handleBulkUnassign(ctxMenu.sessions)}
               >
                 <History className="h-3.5 w-3.5 text-muted-foreground/40" />
-                <span className="truncate">Unassign group from project</span>
+                <span className="truncate">{tt('Odepnij grupę od projektu', 'Unassign group from project')}</span>
               </button>
 
               <button
@@ -1165,7 +1167,7 @@ export function ProjectPage() {
                 onClick={() => handleBulkDelete(ctxMenu.sessions)}
               >
                 <Trash2 className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100" />
-                <span>Delete Group</span>
+                <span>{tt('Usuń grupę', 'Delete Group')}</span>
               </button>
 
               <div className="h-px bg-white/5 my-1" />
@@ -1180,7 +1182,7 @@ export function ProjectPage() {
                 }}
               >
                 <Plus className="h-3.5 w-3.5 text-emerald-400" />
-                <span>Add manual session</span>
+                <span>{tt('Dodaj sesję ręczną', 'Add manual session')}</span>
               </button>
 
               {(() => {
@@ -1242,7 +1244,7 @@ export function ProjectPage() {
           ) : (
             <>
               <div className="px-2 py-2 text-[11px] font-semibold text-muted-foreground/50 border-b border-white/5 mb-1 flex items-center justify-between">
-                <span>Zone actions</span>
+                <span>{tt('Akcje strefy', 'Zone actions')}</span>
                 <span className="bg-white/5 px-1.5 py-0.5 rounded text-[10px]">
                   {new Date(ctxMenu.date).toLocaleDateString([], {
                     month: 'short',
@@ -1276,7 +1278,7 @@ export function ProjectPage() {
                 className="flex w-full items-center justify-center gap-2 rounded-sm py-1.5 text-xs text-muted-foreground/40 hover:text-muted-foreground hover:bg-white/5 cursor-pointer transition-colors"
                 onClick={() => setCtxMenu(null)}
               >
-                <span>Cancel</span>
+                <span>{tt('Anuluj', 'Cancel')}</span>
               </button>
             </>
           )}
@@ -1290,7 +1292,7 @@ export function ProjectPage() {
           style={getContextMenuStyle(ctxMenu.x, ctxMenu.y, 240)}
         >
           <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground/60 border-b border-white/5 mb-1 flex items-center justify-between">
-            <span>Session actions (1 app)</span>
+            <span>{tt('Akcje sesji (1 aplikacja)', 'Session actions (1 app)')}</span>
             <span className="text-[10px] opacity-40">1 session</span>
           </div>
 
@@ -1302,7 +1304,7 @@ export function ProjectPage() {
               setCtxMenu(null);
             }}
           >
-            <span className="font-medium text-xs ml-1">Session details</span>
+            <span className="font-medium text-xs ml-1">{tt('Szczegóły sesji', 'Session details')}</span>
             <span className="text-[10px] text-muted-foreground/50 mr-1">1</span>
           </button>
 
@@ -1356,7 +1358,7 @@ export function ProjectPage() {
             {(ctxMenu as any).session.isManual ? (
               <>
                 <PenLine className="h-3.5 w-3.5 text-emerald-400" />
-                <span>Edit manual session</span>
+                <span>{tt('Edytuj sesję ręczną', 'Edit manual session')}</span>
               </>
             ) : (
               <>
@@ -1377,7 +1379,7 @@ export function ProjectPage() {
             onClick={() => handleAssign(null)}
           >
             <History className="h-3.5 w-3.5 text-muted-foreground/40" />
-            <span className="truncate">Unassign from project</span>
+            <span className="truncate">{tt('Odepnij z projektu', 'Unassign from project')}</span>
           </button>
 
           <button
@@ -1395,7 +1397,7 @@ export function ProjectPage() {
             }}
           >
             <Trash2 className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100" />
-            <span>Delete Session</span>
+            <span>{tt('Usuń sesję', 'Delete Session')}</span>
           </button>
         </div>
       )}
@@ -1423,7 +1425,7 @@ export function ProjectPage() {
                         selectedSessionDetail.project_color || '#64748b',
                     }}
                   />
-                  <span>Session Details</span>
+                  <span>{tt('Szczegóły sesji', 'Session Details')}</span>
                 </DialogTitle>
               </DialogHeader>
 
@@ -1499,7 +1501,7 @@ export function ProjectPage() {
                     Comment
                   </p>
                   <p className="mt-1 text-sm italic text-sky-100/90 leading-relaxed">
-                    “{selectedSessionDetail.comment}”
+                    â€ś{selectedSessionDetail.comment}â€ť
                   </p>
                 </div>
               )}

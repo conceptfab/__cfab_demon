@@ -8,8 +8,10 @@ import { importJsonFiles } from '@/lib/tauri';
 import { useDataStore } from '@/store/data-store';
 import { open } from '@tauri-apps/plugin-dialog';
 import type { ImportResult } from '@/lib/db-types';
+import { useInlineT } from '@/lib/inline-i18n';
 
 export function FileDropzone() {
+  const t = useInlineT();
   const [isDragging, setIsDragging] = useState(false);
   const [importing, setImporting] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -95,21 +97,23 @@ export function FileDropzone() {
             )}
           />
           <p className="mb-2 text-sm font-medium">
-            {isDragging ? 'Drop files here' : 'Drag & drop JSON files here'}
+            {isDragging
+              ? t('Upuść pliki tutaj', 'Drop files here')
+              : t('Przeciągnij i upuść pliki JSON tutaj', 'Drag & drop JSON files here')}
           </p>
           <p className="mb-4 text-xs text-muted-foreground">
-            or click to browse
+            {t('lub kliknij, aby wybrać', 'or click to browse')}
           </p>
           <Button variant="outline" onClick={handleBrowse} disabled={importing}>
             <FileJson className="mr-2 h-4 w-4" />
-            Browse Files
+            {t('Wybierz pliki', 'Browse Files')}
           </Button>
         </CardContent>
       </Card>
 
       {importing && (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Importing...</p>
+          <p className="text-sm text-muted-foreground">{t('Importowanie...', 'Importing...')}</p>
           <Progress value={progress} />
         </div>
       )}
@@ -120,13 +124,16 @@ export function FileDropzone() {
             <div className="flex items-center gap-4 text-sm">
               {succeeded > 0 && (
                 <span className="flex items-center gap-1 text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" /> {succeeded} files
-                  imported ({totalImported} sessions)
+                  <CheckCircle2 className="h-4 w-4" />{' '}
+                  {t(
+                    `${succeeded} plików zaimportowano (${totalImported} sesji)`,
+                    `${succeeded} files imported (${totalImported} sessions)`,
+                  )}
                 </span>
               )}
               {failed > 0 && (
                 <span className="flex items-center gap-1 text-destructive">
-                  <XCircle className="h-4 w-4" /> {failed} failed
+                  <XCircle className="h-4 w-4" /> {t(`${failed} błędów`, `${failed} failed`)}
                 </span>
               )}
             </div>
@@ -139,8 +146,10 @@ export function FileDropzone() {
               ))}
             {succeeded > 0 && (
               <p className="text-xs text-muted-foreground">
-                Files imported successfully. Original JSON files can be safely
-                deleted.
+                {t(
+                  'Pliki zaimportowano pomyślnie. Oryginalne pliki JSON można bezpiecznie usunąć.',
+                  'Files imported successfully. Original JSON files can be safely deleted.',
+                )}
               </p>
             )}
           </CardContent>

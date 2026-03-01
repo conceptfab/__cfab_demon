@@ -1,4 +1,5 @@
 import { AppWindow } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CHART_PRIMARY_COLOR } from "@/lib/chart-styles";
 import { formatDuration } from "@/lib/utils";
@@ -8,17 +9,18 @@ interface Props {
 }
 
 export function TopAppsChart({ apps }: Props) {
+  const { t } = useTranslation();
   const maxSeconds = apps.length > 0 ? Math.max(...apps.map(a => a.seconds)) : 1;
 
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">Top Applications</CardTitle>
+        <CardTitle className="text-sm font-medium">{t("components.top_apps.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-0.5">
           {apps.length === 0 && (
-            <p className="py-3 text-xs text-muted-foreground text-center">No data yet.</p>
+            <p className="py-3 text-xs text-muted-foreground text-center">{t("components.top_apps.no_data")}</p>
           )}
           {apps.map((app, i) => (
             <div

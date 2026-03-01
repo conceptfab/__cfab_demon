@@ -1,4 +1,5 @@
 import React, { useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Bug, Paperclip, X, Send, Check } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -26,6 +27,7 @@ interface AttachedFile {
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
@@ -40,7 +42,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
     const newAttachments: AttachedFile[] = [];
     for (let i = 0; i < files.length; i++) {
         if (files[i].size > MAX_FILE_SIZE) {
-            alert(`File ${files[i].name} is too large (max 5MB)`);
+            alert(t("components.bughunter.errors.file_too_large", { name: files[i].name }));
             continue;
         }
         newAttachments.push({
@@ -76,7 +78,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
       });
 
       if (!result.ok) {
-        throw new Error(result.message || "Failed to send report");
+        throw new Error(result.message || t("components.bughunter.errors.send_report_failed"));
       }
 
       setIsSending(false);
@@ -91,7 +93,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
       }, 2000);
     } catch (error) {
       console.error("BugHunter failed to send:", error);
-      alert(`Sending failed: ${error}`);
+      alert(t("components.bughunter.errors.send_failed", { error: String(error) }));
       setIsSending(false);
     }
   };
@@ -106,10 +108,10 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
                 <Bug className="h-4 w-4" />
             </div>
-            <DialogTitle className="text-xl font-semibold tracking-tight">BugHunter</DialogTitle>
+            <DialogTitle className="text-xl font-semibold tracking-tight">{t("components.bughunter.title")}</DialogTitle>
           </div>
           <DialogDescription className="text-sm text-muted-foreground">
-            Found a bug or have an idea? Let us know.
+            {t("components.bughunter.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,15 +120,15 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
               <Check className="h-6 w-6 stroke-[3px]" />
             </div>
-            <p className="text-sm font-medium text-emerald-300">Report has been sent!</p>
+            <p className="text-sm font-medium text-emerald-300">{t("components.bughunter.sent")}</p>
           </div>
         ) : (
           <div className="space-y-4 pt-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="subject" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Subject (version {version})</Label>
+              <Label htmlFor="subject" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("components.bughunter.fields.subject", { version })}</Label>
               <Input
                 id="subject"
-                placeholder="Short description of the bug..."
+                placeholder={t("components.bughunter.fields.subject_placeholder")}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 className="bg-secondary/20 border-border/40 text-[13px] h-9"
@@ -134,10 +136,10 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Report details</Label>
+              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("components.bughunter.fields.details")}</Label>
               <textarea
                 id="message"
-                placeholder="Describe the bug or your idea... We'll get right on it."
+                placeholder={t("components.bughunter.fields.details_placeholder")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="flex min-h-[140px] w-full rounded-md border border-border/40 bg-secondary/20 px-3 py-2 text-[13px] shadow-sm placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-colors"
@@ -147,13 +149,13 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/60">Attachments (max 5MB/file)</Label>
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("components.bughunter.fields.attachments")}</Label>
                 <button
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-1.5 text-[10px] text-sky-400 hover:text-sky-300 transition-colors font-semibold"
                 >
                     <Paperclip className="h-3 w-3" />
-                    ADD FILES
+                    {t("components.bughunter.actions.add_files")}
                 </button>
               </div>
               <input
@@ -190,7 +192,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                 onClick={onClose}
                 className="text-xs text-muted-foreground hover:text-foreground h-9 px-4"
               >
-                Cancel
+                {t("components.bughunter.actions.cancel")}
               </Button>
               <Button
                 onClick={handleSend}
@@ -202,7 +204,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                 ) : (
                   <Send className="h-3.5 w-3.5" />
                 )}
-                {isSending ? "Sending..." : "Send report"}
+                {isSending ? t("components.bughunter.actions.sending") : t("components.bughunter.actions.send_report")}
               </Button>
             </div>
           </div>

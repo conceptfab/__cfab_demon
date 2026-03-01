@@ -26,6 +26,7 @@ import type {
 } from '@/lib/db-types';
 import { getErrorMessage } from '@/lib/utils';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
+import { useInlineT } from '@/lib/inline-i18n';
 
 const MAX_RATE = 100000;
 
@@ -42,6 +43,7 @@ function formatRateInput(value: number): string {
 }
 
 export function Estimates() {
+  const t = useInlineT();
   const { setCurrentPage, setSessionsFocusRange, setSessionsFocusProject } =
     useUIStore();
   const {
@@ -109,7 +111,10 @@ export function Estimates() {
           );
         } else {
           setGlobalError(
-            getErrorMessage(settingsRes.reason, 'Failed to load global rate'),
+            getErrorMessage(
+              settingsRes.reason,
+              t('Nie udało się wczytać stawki globalnej', 'Failed to load global rate'),
+            ),
           );
         }
 
@@ -126,7 +131,10 @@ export function Estimates() {
         } else {
           setRows([]);
           setTableError(
-            getErrorMessage(rowsRes.reason, 'Failed to load project estimates'),
+            getErrorMessage(
+              rowsRes.reason,
+              t('Nie udało się wczytać estymacji projektów', 'Failed to load project estimates'),
+            ),
           );
         }
 
@@ -135,7 +143,10 @@ export function Estimates() {
         } else {
           setSummary(null);
           setTableError(
-            getErrorMessage(summaryRes.reason, 'Failed to load summary'),
+            getErrorMessage(
+              summaryRes.reason,
+              t('Nie udało się wczytać podsumowania', 'Failed to load summary'),
+            ),
           );
         }
       })
@@ -153,7 +164,12 @@ export function Estimates() {
   const handleSaveGlobalRate = async () => {
     const parsed = parseRateInput(globalRateInput);
     if (parsed === null || parsed < 0 || parsed > MAX_RATE) {
-      setGlobalError(`Global rate must be between 0 and ${MAX_RATE}`);
+      setGlobalError(
+        t(
+          `Stawka globalna musi być między 0 a ${MAX_RATE}`,
+          `Global rate must be between 0 and ${MAX_RATE}`,
+        ),
+      );
       setGlobalMessage(null);
       return;
     }
@@ -163,10 +179,12 @@ export function Estimates() {
     setGlobalMessage(null);
     try {
       await updateGlobalHourlyRate(parsed);
-      setGlobalMessage('Global hourly rate saved');
+      setGlobalMessage(t('Globalna stawka godzinowa zapisana', 'Global hourly rate saved'));
       triggerRefresh();
     } catch (error) {
-      setGlobalError(getErrorMessage(error, 'Failed to save global rate'));
+      setGlobalError(
+        getErrorMessage(error, t('Nie udało się zapisać stawki globalnej', 'Failed to save global rate')),
+      );
     } finally {
       setSavingGlobal(false);
     }
@@ -176,7 +194,12 @@ export function Estimates() {
     const raw = drafts[projectId] ?? '';
     const parsed = parseRateInput(raw);
     if (raw.trim() && (parsed === null || parsed < 0 || parsed > MAX_RATE)) {
-      setTableError(`Project rate must be empty or between 0 and ${MAX_RATE}`);
+      setTableError(
+        t(
+          `Stawka projektu musi być pusta lub mieścić się między 0 a ${MAX_RATE}`,
+          `Project rate must be empty or between 0 and ${MAX_RATE}`,
+        ),
+      );
       setTableMessage(null);
       return;
     }
@@ -186,10 +209,12 @@ export function Estimates() {
     setTableMessage(null);
     try {
       await updateProjectHourlyRate(projectId, parsed);
-      setTableMessage('Project rate updated');
+      setTableMessage(t('Stawka projektu zaktualizowana', 'Project rate updated'));
       triggerRefresh();
     } catch (error) {
-      setTableError(getErrorMessage(error, 'Failed to update project rate'));
+      setTableError(
+        getErrorMessage(error, t('Nie udało się zaktualizować stawki projektu', 'Failed to update project rate')),
+      );
     } finally {
       setSavingProjectId(null);
     }
@@ -202,10 +227,12 @@ export function Estimates() {
     try {
       await updateProjectHourlyRate(projectId, null);
       setDrafts((prev) => ({ ...prev, [projectId]: '' }));
-      setTableMessage('Project rate reset to global');
+      setTableMessage(t('Stawka projektu zresetowana do globalnej', 'Project rate reset to global'));
       triggerRefresh();
     } catch (error) {
-      setTableError(getErrorMessage(error, 'Failed to reset project rate'));
+      setTableError(
+        getErrorMessage(error, t('Nie udało się zresetować stawki projektu', 'Failed to reset project rate')),
+      );
     } finally {
       setSavingProjectId(null);
     }
@@ -223,18 +250,18 @@ export function Estimates() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Total Hours"
+          title={t('Łączne godziny', 'Total Hours')}
           value={
             summary
-              ? `${decimal.format(summary.total_hours)} h`
+              ? `${decimal.format(summary.total_hours)} ${t('h', 'h')}`
               : loading
                 ? '...'
-                : '0.00 h'
+                : `0.00 ${t('h', 'h')}`
           }
           icon={Clock3}
         />
         <MetricCard
-          title="Estimated Value"
+          title={t('Wartość estymowana', 'Estimated Value')}
           value={
             summary
               ? currency.format(summary.total_value)
@@ -245,14 +272,14 @@ export function Estimates() {
           icon={CircleDollarSign}
         />
         <MetricCard
-          title="Active Projects"
+          title={t('Aktywne projekty', 'Active Projects')}
           value={
             summary ? String(summary.projects_count) : loading ? '...' : '0'
           }
           icon={FolderOpen}
         />
         <MetricCard
-          title="Rate Overrides"
+          title={t('Nadpisane stawki', 'Rate Overrides')}
           value={
             summary ? String(summary.overrides_count) : loading ? '...' : '0'
           }
@@ -263,7 +290,7 @@ export function Estimates() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">
-            Global Hourly Rate
+            {t('Globalna stawka godzinowa', 'Global Hourly Rate')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -288,10 +315,10 @@ export function Estimates() {
               disabled={savingGlobal}
             >
               <Save className="mr-1.5 h-3.5 w-3.5" />
-              {savingGlobal ? 'Saving...' : 'Save'}
+              {savingGlobal ? t('Zapisywanie...', 'Saving...') : t('Zapisz', 'Save')}
             </Button>
             <span className="text-xs text-muted-foreground">
-              Current: {currency.format(settings?.global_hourly_rate ?? 100)}
+              {t('Aktualna:', 'Current:')} {currency.format(settings?.global_hourly_rate ?? 100)}
             </span>
           </div>
           {globalError && (
@@ -306,7 +333,7 @@ export function Estimates() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium">
-            Project Estimates
+            {t('Estymacje projektów', 'Project Estimates')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -319,32 +346,35 @@ export function Estimates() {
 
           {loading ? (
             <p className="text-sm text-muted-foreground">
-              Loading estimates...
+              {t('Wczytywanie estymacji...', 'Loading estimates...')}
             </p>
           ) : rows.length === 0 ? (
             <div className="space-y-3 rounded-md border border-dashed p-4">
               <p className="text-sm text-muted-foreground">
-                No active project time in this date range.
+                {t(
+                  'Brak aktywnego czasu projektowego w tym zakresie dat.',
+                  'No active project time in this date range.',
+                )}
               </p>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setCurrentPage('projects')}
               >
-                Open Projects
+                {t('Otwórz projekty', 'Open Projects')}
               </Button>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <div className="min-w-[1080px] space-y-2">
                 <div className="grid grid-cols-[minmax(220px,1.5fr)_90px_90px_120px_130px_130px_260px] gap-2 px-2 text-xs text-muted-foreground">
-                  <span>Project</span>
-                  <span className="text-right">Hours</span>
-                  <span className="text-right">Billable</span>
-                  <span className="text-right">Sessions</span>
-                  <span className="text-right">Effective Rate</span>
-                  <span className="text-right">Value</span>
-                  <span>Project Rate Override</span>
+                  <span>{t('Projekt', 'Project')}</span>
+                  <span className="text-right">{t('Godziny', 'Hours')}</span>
+                  <span className="text-right">{t('Rozliczalne', 'Billable')}</span>
+                  <span className="text-right">{t('Sesje', 'Sessions')}</span>
+                  <span className="text-right">{t('Stawka efektywna', 'Effective Rate')}</span>
+                  <span className="text-right">{t('Wartość', 'Value')}</span>
+                  <span>{t('Nadpisanie stawki projektu', 'Project Rate Override')}</span>
                 </div>
 
                 {rows.map((row) => {
@@ -370,7 +400,10 @@ export function Estimates() {
                           <button
                             type="button"
                             className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0"
-                            title={`${row.multiplied_session_count} session(s) with rate multiplier — click to view`}
+                            title={t(
+                              `${row.multiplied_session_count} sesji z mnożnikiem stawki - kliknij, aby zobaczyć`,
+                              `${row.multiplied_session_count} session(s) with rate multiplier - click to view`,
+                            )}
                             onClick={() => {
                               setSessionsFocusRange(dateRange);
                               setSessionsFocusProject(row.project_id);
@@ -378,7 +411,7 @@ export function Estimates() {
                             }}
                           >
                             <CircleDollarSign className="h-3 w-3" />
-                            {row.multiplied_session_count} boosted
+                            {row.multiplied_session_count} {t('wzmocnione', 'boosted')}
                           </button>
                         )}
                       </div>
@@ -391,7 +424,10 @@ export function Estimates() {
                         className="text-right font-mono text-sm"
                         title={
                           row.weighted_hours !== row.hours
-                            ? `Includes ${decimal.format(row.multiplier_extra_seconds / 3600)} bonus hours from rate multipliers`
+                            ? t(
+                                `Zawiera ${decimal.format(row.multiplier_extra_seconds / 3600)} dodatkowych godzin z mnożników stawek`,
+                                `Includes ${decimal.format(row.multiplier_extra_seconds / 3600)} bonus hours from rate multipliers`,
+                              )
                             : undefined
                         }
                       >
@@ -430,7 +466,7 @@ export function Estimates() {
                             }))
                           }
                           className="h-8 w-24 rounded-md border bg-transparent px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="global"
+                          placeholder={t('globalna', 'global')}
                         />
                         <Button
                           size="sm"
@@ -438,7 +474,7 @@ export function Estimates() {
                           onClick={() => handleSaveProjectRate(row.project_id)}
                           disabled={isSaving}
                         >
-                          Save
+                          {t('Zapisz', 'Save')}
                         </Button>
                         <Button
                           size="sm"
@@ -446,7 +482,7 @@ export function Estimates() {
                           onClick={() => handleResetProjectRate(row.project_id)}
                           disabled={isSaving}
                         >
-                          Reset
+                          {t('Resetuj', 'Reset')}
                         </Button>
                       </div>
                     </div>

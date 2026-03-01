@@ -1,4 +1,319 @@
 {
+  "ui": {
+    "common": {
+      "not_available": "—"
+    },
+    "buttons": {
+      "ok": "OK",
+      "cancel": "Cancel",
+      "confirm": "Confirm"
+    },
+    "date_presets": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month",
+      "all": "All time"
+    },
+    "app": {
+      "loading": "Loading...",
+      "error_title": "Something went wrong",
+      "try_again": "Try again"
+    }
+  },
+  "topbar": {
+    "aria": {
+      "minimize": "Minimize window",
+      "restore": "Restore window",
+      "maximize": "Maximize window",
+      "close": "Close window"
+    }
+  },
+  "layout": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "sessions": "Sessions",
+      "projects": "Projects",
+      "estimates": "Estimates",
+      "applications": "Applications",
+      "analysis": "Time Analysis",
+      "ai": "AI & Model",
+      "data": "Data",
+      "daemon": "Daemon"
+    },
+    "status": {
+      "daemon": "Daemon",
+      "sync": "Sync",
+      "ai_mode": "AI Mode",
+      "ai": "AI",
+      "backup": "Backup",
+      "running": "Running",
+      "stopped": "Stopped",
+      "training": "Training",
+      "new_data": "New Data",
+      "safe": "Safe",
+      "off": "off"
+    },
+    "tooltips": {
+      "unassigned_today": "{{count}} unassigned sessions today",
+      "unassigned_all_dates": "{{count}} unassigned sessions (all dates)",
+      "unassigned_short": "{{count}} unassigned",
+      "new_assignments_since_training": "{{count}} new assignments since last training",
+      "last_backup": "Last backup: {{date}}",
+      "never": "Never",
+      "version_incompatibility": "VERSION INCOMPATIBILITY! Daemon: v{{version}}",
+      "bughunter": "BugHunter - report a bug",
+      "quick_start": "Quick Start",
+      "help": "Help (F1)",
+      "settings": "Settings"
+    }
+  },
+  "date_range_toolbar": {
+    "all_time": "All time",
+    "previous_period": "Previous period",
+    "next_period": "Next period"
+  },
+  "dashboard": {
+    "actions": {
+      "refresh": "Refresh",
+      "refreshing": "Refreshing...",
+      "open_sessions": "Open Sessions"
+    },
+    "auto_import": {
+      "importing": "Importing data from daemon...",
+      "failed": "Auto-import failed: {{error}}",
+      "imported_summary": "Auto-imported {{imported}} file(s) ({{archived}} archived).",
+      "already_in_database": "{{skipped}} already in database.",
+      "errors_count": "{{count}} error(s)"
+    },
+    "unassigned_banner": {
+      "message": "{{sessionCount}} sessions ({{duration}}) are unassigned across {{appCount}} apps on {{date}}. Please assign them manually."
+    },
+    "metrics": {
+      "total_tracked": "Total Tracked",
+      "applications": "Applications",
+      "projects": "Projects",
+      "active_projects": "active projects",
+      "avg_daily": "Avg Daily"
+    },
+    "sections": {
+      "top_5_projects": "Top 5 Projects"
+    }
+  },
+  "components": {
+    "top_apps": {
+      "title": "Top Applications",
+      "no_data": "No data yet."
+    },
+    "top_projects": {
+      "no_projects": "No projects found.",
+      "click_to_view": "Click to view sessions for {{name}}",
+      "sessions_count": "{{count}} sessions",
+      "apps_count": "{{count}} apps",
+      "manual_sessions_count": "{{count}} manual session(s)",
+      "boosted_sessions_count": "{{count}} boosted session(s)"
+    },
+    "all_projects": {
+      "title": "All Projects",
+      "sort_name": "Name / Folder",
+      "sort_most_time": "Most Time",
+      "no_projects": "No projects found.",
+      "tooltip_time": "Time"
+    },
+    "timeline_chart": {
+      "default_title": "Activity Timeline",
+      "boosted_activity": "BOOSTED ACTIVITY",
+      "manual_data_included": "MANUAL DATA INCLUDED"
+    },
+    "prompt_modal": {
+      "confirm_default": "OK",
+      "cancel_default": "Cancel"
+    },
+    "manual_session_dialog": {
+      "session_types": {
+        "meeting": "Meeting",
+        "call": "Call",
+        "other": "Other"
+      },
+      "confirm_delete": "Are you sure you want to delete this session?",
+      "errors": {
+        "delete": "Delete Error",
+        "save": "Save Error",
+        "title_required": "Please enter a title",
+        "project_required": "Please select a project",
+        "time_required": "Please enter start and end times",
+        "end_after_start": "End time must be after the start time"
+      },
+      "title_edit": "Edit Session",
+      "title_add": "Add Manual Session",
+      "fields": {
+        "title": "Title",
+        "type": "Type",
+        "project": "Project",
+        "application": "Application",
+        "start": "Start",
+        "end": "End",
+        "allow_multi_day": "Extend session across multiple days"
+      },
+      "placeholders": {
+        "title": "e.g. Daily standup",
+        "select_project": "Select a project",
+        "manual_no_app": "Manual Session (no app)"
+      },
+      "actions": {
+        "delete": "Delete",
+        "saving": "Saving...",
+        "save": "Save",
+        "add": "Add Session"
+      }
+    },
+    "bughunter": {
+      "errors": {
+        "file_too_large": "File {{name}} is too large (max 5MB)",
+        "send_failed": "Sending failed: {{error}}",
+        "send_report_failed": "Failed to send report"
+      },
+      "title": "BugHunter",
+      "description": "Found a bug or have an idea? Let us know.",
+      "sent": "Report has been sent!",
+      "fields": {
+        "subject": "Subject (version {{version}})",
+        "subject_placeholder": "Short description of the bug...",
+        "details": "Report details",
+        "details_placeholder": "Describe the bug or your idea... We'll get right on it.",
+        "attachments": "Attachments (max 5MB/file)"
+      },
+      "actions": {
+        "add_files": "ADD FILES",
+        "cancel": "Cancel",
+        "sending": "Sending...",
+        "send_report": "Send report"
+      }
+    }
+  },
+  "sessions": {
+    "summary": "{{sessions}} sessions ({{ai}} AI) / {{projects}} projects",
+    "unassigned_only": "UNASSIGNED ONLY",
+    "range": {
+      "today": "Today",
+      "week": "Week"
+    },
+    "view": {
+      "ai_data": "AI Data",
+      "detailed": "Detailed",
+      "compact": "Compact"
+    },
+    "banner": {
+      "unassigned_sessions": "{{count}} unassigned sessions",
+      "hint": "Click the sparkles icon to assign or use the context menu.",
+      "filter": "Filter"
+    },
+    "group": {
+      "sessions_count": "{{count}} sessions",
+      "boosted_count": "{{count}} boosted"
+    },
+    "empty": {
+      "no_activity": "No activity recorded for this period."
+    },
+    "actions": {
+      "load_older": "Load older sessions..."
+    },
+    "menu": {
+      "session_actions": "Session actions ({{app}})",
+      "ai_suggests": "AI suggests:",
+      "accept": "Accept",
+      "reject": "Reject",
+      "rate_multiplier": "Rate multiplier (default x2):",
+      "boost_x2": "Boost x2",
+      "custom": "Custom...",
+      "edit_comment": "Edit comment",
+      "add_comment": "Add comment",
+      "assign_to_project": "Assign to project",
+      "unassigned": "Unassigned",
+      "no_projects": "No projects available",
+      "project_label": "Project:",
+      "no_linked_project_card": "No linked project card",
+      "go_to_project_card": "Go to project card"
+    },
+    "prompts": {
+      "boost_label_single": "this session",
+      "boost_label_multi": "{{count}} sessions",
+      "boost_requires_comment_prompt": "Boost requires a comment. Enter a comment for {{label}}:",
+      "boost_comment_required": "Comment is required to add boost.",
+      "boost_comment_save_failed": "Failed to save comment required for boost: {{error}}",
+      "multiplier_title": "Set session rate multiplier",
+      "multiplier_desc": "Set multiplier (> 0). Use 1 to reset.",
+      "multiplier_positive": "Multiplier must be a positive number.",
+      "session_comment_title": "Session comment",
+      "session_comment_desc": "(leave empty to remove)"
+    },
+    "errors": {
+      "update_multiplier": "Failed to update session rate multiplier: {{error}}"
+    },
+    "row": {
+      "idle": "idle",
+      "loading_short": "loading...",
+      "no_ai_data_short": "no ai data",
+      "ai_score_breakdown": "AI Score Breakdown",
+      "manual_override": "(manual override)",
+      "manual_override_active": "(manual override active)",
+      "loading_ai_data": "Loading AI data...",
+      "no_ai_data": "No AI data",
+      "no_candidates": "No candidates",
+      "no_candidates_found": "No candidates found",
+      "no_traceable_activity": "No traceable activity",
+      "ai_suggestion": "AI: {{project}} ({{confidence}}%)",
+      "final_confidence": "final confidence:",
+      "margin": "margin:",
+      "total_evidence": "total evidence:",
+      "evidence_short": "{{count}}ev"
+    }
+  },
+  "projects": {
+    "errors": {
+      "project_name_required": "Project name is required.",
+      "project_folder_required": "Project folder is required to identify tracked files.",
+      "folder_path_required": "Please enter a folder path"
+    },
+    "confirm": {
+      "exclude_project": "Exclude this project? It can be restored later.",
+      "reset_project_time": "Reset tracked time for this project? This cannot be undone.",
+      "compact_project_data": "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
+      "remove_project_root": "Remove folder from project roots? {{path}}"
+    },
+    "dialogs": {
+      "select_assigned_project_folder": "Select Assigned Project Folder",
+      "select_project_folder": "Select Project Folder"
+    },
+    "messages": {
+      "folder_saved": "Folder saved"
+    },
+    "labels": {
+      "duplicate_marker": "D",
+      "possible_duplicate_named": "Possible duplicate ({{groupSize}}): {{groupNames}}",
+      "possible_duplicate_normalized": "Possible duplicate ({{groupSize}}) after normalizing \"_\" and \"-\"",
+      "frozen_since_click_unfreeze": "Frozen since {{date}} - click to unfreeze",
+      "hot_project": "Hot project - top 5 by time",
+      "change_color": "Change color",
+      "choose_color": "Choose color",
+      "imported": "Imported",
+      "reset_time": "Reset time",
+      "freeze_project": "Freeze project",
+      "exclude_project": "Exclude project",
+      "delete_project_permanently": "Delete project permanently",
+      "total_time_value": "TOTAL TIME / VALUE",
+      "comments": "Comments:",
+      "compacting": "Compacting...",
+      "compact_project_data": "Compact project data",
+      "detailed": "Detailed",
+      "compact": "Compact",
+      "duplicate_names": "{{count}} duplicate names",
+      "excluded": "Excluded",
+      "restore": "Restore",
+      "delete": "Delete",
+      "hidden_existing": "{{count}} existing",
+      "hidden_excluded": "{{count}} excluded"
+    }
+  },
   "settings": {
     "language": {
       "title": "Language",

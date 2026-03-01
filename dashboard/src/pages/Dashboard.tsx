@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Clock,
   AppWindow,
@@ -35,6 +36,7 @@ import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 import {
   loadWorkingHoursSettings,
   loadSessionSettings,
@@ -50,6 +52,7 @@ import type {
 } from '@/lib/db-types';
 
 function AutoImportBanner() {
+  const { t } = useTranslation();
   const result = useDataStore((s) => s.autoImportResult);
   const done = useDataStore((s) => s.autoImportDone);
 
@@ -58,7 +61,7 @@ function AutoImportBanner() {
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="flex items-center gap-2.5 p-3">
           <Archive className="h-4 w-4 text-muted-foreground animate-pulse" />
-          <span className="text-xs">Importing data from daemon...</span>
+          <span className="text-xs">{t('dashboard.auto_import.importing')}</span>
         </CardContent>
       </Card>
     );
@@ -72,7 +75,7 @@ function AutoImportBanner() {
         <CardContent className="flex items-center gap-2.5 p-3">
           <Archive className="icon-colored h-4 w-4 text-destructive" />
           <span className="text-xs text-destructive">
-            Auto-import failed: {result.errors[0]}
+            {t('dashboard.auto_import.failed', { error: result.errors[0] })}
           </span>
         </CardContent>
       </Card>
@@ -86,14 +89,18 @@ function AutoImportBanner() {
       <CardContent className="flex items-center gap-2.5 p-3">
         <Archive className="h-4 w-4 text-emerald-400" />
         <span className="text-xs text-emerald-300">
-          Auto-imported <strong>{result.files_imported}</strong> file(s) (
-          {result.files_archived} archived).
+          {t('dashboard.auto_import.imported_summary', {
+            imported: result.files_imported,
+            archived: result.files_archived,
+          })}
           {result.files_skipped > 0 &&
-            ` ${result.files_skipped} already in database.`}
+            ` ${t('dashboard.auto_import.already_in_database', { skipped: result.files_skipped })}`}
         </span>
         {result.errors.length > 0 && (
           <span className="ml-auto text-[10px] text-destructive">
-            {result.errors.length} error(s)
+            {t('dashboard.auto_import.errors_count', {
+              count: result.errors.length,
+            })}
           </span>
         )}
       </CardContent>
@@ -102,6 +109,8 @@ function AutoImportBanner() {
 }
 
 export function Dashboard() {
+  const { t, i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
   const { setCurrentPage, setSessionsFocusDate } = useUIStore();
   const {
     dateRange,
@@ -354,7 +363,9 @@ export function Dashboard() {
           disabled={refreshing}
         >
           <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-          {refreshing ? 'Refreshing...' : 'Refresh'}
+          {refreshing
+            ? t('dashboard.actions.refreshing')
+            : t('dashboard.actions.refresh')}
         </Button>
       </DateRangeToolbar>
 
@@ -366,11 +377,12 @@ export function Dashboard() {
           <CardContent className="flex flex-wrap items-center gap-2.5 p-3">
             <AlertTriangle className="icon-colored h-4 w-4 text-amber-300" />
             <span className="text-xs text-amber-100">
-              <strong>{unassignedToday.sessionCount}</strong> sessions (
-              <strong>{formatDuration(unassignedToday.seconds)}</strong>) are
-              unassigned across <strong>{unassignedToday.appCount}</strong> apps
-              on <strong>{format(parseISO(dateRange.end), 'MMM d')}</strong>.
-              Please assign them manually.
+              {t('dashboard.unassigned_banner.message', {
+                sessionCount: unassignedToday.sessionCount,
+                duration: formatDuration(unassignedToday.seconds),
+                appCount: unassignedToday.appCount,
+                date: format(parseISO(dateRange.end), 'MMM d', { locale }),
+              })}
             </span>
             <Button
               size="sm"
@@ -381,7 +393,7 @@ export function Dashboard() {
                 setCurrentPage('sessions');
               }}
             >
-              Open Sessions
+              {t('dashboard.actions.open_sessions')}
             </Button>
           </CardContent>
         </Card>
@@ -390,24 +402,32 @@ export function Dashboard() {
       {/* Metric cards */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
-          title="Total Tracked"
-          value={stats ? formatDuration(stats.total_seconds) : '—'}
+          title={t('dashboard.metrics.total_tracked')}
+          value={
+            stats
+              ? formatDuration(stats.total_seconds)
+              : t('ui.common.not_available')
+          }
           icon={Clock}
         />
         <MetricCard
-          title="Applications"
-          value={stats ? String(stats.app_count) : '—'}
+          title={t('dashboard.metrics.applications')}
+          value={stats ? String(stats.app_count) : t('ui.common.not_available')}
           icon={AppWindow}
         />
         <MetricCard
-          title="Projects"
+          title={t('dashboard.metrics.projects')}
           value={String(projectCount)}
-          subtitle="active projects"
+          subtitle={t('dashboard.metrics.active_projects')}
           icon={FolderOpen}
         />
         <MetricCard
-          title="Avg Daily"
-          value={stats ? formatDuration(stats.avg_daily_seconds) : '—'}
+          title={t('dashboard.metrics.avg_daily')}
+          value={
+            stats
+              ? formatDuration(stats.avg_daily_seconds)
+              : t('ui.common.not_available')
+          }
           icon={TrendingUp}
         />
       </div>
@@ -448,7 +468,7 @@ export function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">
-              Top 5 Projects
+              {t('dashboard.sections.top_5_projects')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -487,3 +507,4 @@ export function Dashboard() {
     </div>
   );
 }
+
