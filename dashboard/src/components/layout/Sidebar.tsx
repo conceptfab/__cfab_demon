@@ -138,12 +138,23 @@ export function Sidebar() {
   }, [currentPage, helpTab, setCurrentPage, setHelpTab]);
 
   useEffect(() => {
-    const check = () => {
+    let disposed = false;
+    let latestRequestId = 0;
+    let inFlightController: AbortController | null = null;
+
+    const check = async () => {
+      const requestId = latestRequestId + 1;
+      latestRequestId = requestId;
+      inFlightController?.abort();
+      const controller = new AbortController();
+      inFlightController = controller;
+      const { signal } = controller;
+
       const now = new Date();
       const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const minDuration =
         loadSessionSettings().minSessionDurationSeconds || undefined;
-      void Promise.allSettled([
+      const results = await Promise.allSettled([
         getDaemonStatus(minDuration),
         getAssignmentModelStatus(),
         getDatabaseSettings(),
@@ -156,21 +167,29 @@ export function Sidebar() {
           unassigned: true,
           minDuration,
         }),
-      ]).then(([daemonRes, aiRes, dbRes, todayCountRes, allCountRes]) => {
-        if (daemonRes.status === 'fulfilled') setStatus(daemonRes.value);
-        if (aiRes.status === 'fulfilled') setAiStatus(aiRes.value);
-        if (dbRes.status === 'fulfilled') setDbSettings(dbRes.value);
-        if (todayCountRes.status === 'fulfilled') {
-          setTodayUnassigned(Math.max(0, todayCountRes.value));
-        }
-        if (allCountRes.status === 'fulfilled') {
-          setAllUnassigned(Math.max(0, allCountRes.value));
-        }
-      });
+      ]);
+      if (disposed || signal.aborted || requestId !== latestRequestId) return;
+
+      const [daemonRes, aiRes, dbRes, todayCountRes, allCountRes] = results;
+      if (daemonRes.status === 'fulfilled') setStatus(daemonRes.value);
+      if (aiRes.status === 'fulfilled') setAiStatus(aiRes.value);
+      if (dbRes.status === 'fulfilled') setDbSettings(dbRes.value);
+      if (todayCountRes.status === 'fulfilled') {
+        setTodayUnassigned(Math.max(0, todayCountRes.value));
+      }
+      if (allCountRes.status === 'fulfilled') {
+        setAllUnassigned(Math.max(0, allCountRes.value));
+      }
     };
-    check();
-    const interval = setInterval(check, 10_000);
-    return () => clearInterval(interval);
+    void check();
+    const interval = window.setInterval(() => {
+      void check();
+    }, 10_000);
+    return () => {
+      disposed = true;
+      inFlightController?.abort();
+      window.clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {

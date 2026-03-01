@@ -27,7 +27,17 @@ export function DataHistory() {
   }, []);
 
   const handleDeleteArchive = async (fileName: string) => {
-    if (!confirm(t(`Czy na pewno chcesz usunąć ${fileName}?`, `Are you sure you want to delete ${fileName}?`))) return;
+    if (
+      !confirm(
+        t(
+          'Czy na pewno chcesz usunąć {{fileName}}?',
+          'Are you sure you want to delete {{fileName}}?',
+          { fileName },
+        ),
+      )
+    ) {
+      return;
+    }
     setDeleting(fileName);
     try {
       await deleteArchiveFile(fileName);

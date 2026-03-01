@@ -126,14 +126,16 @@ export function FileDropzone() {
                 <span className="flex items-center gap-1 text-emerald-400">
                   <CheckCircle2 className="h-4 w-4" />{' '}
                   {t(
-                    `${succeeded} plików zaimportowano (${totalImported} sesji)`,
-                    `${succeeded} files imported (${totalImported} sessions)`,
+                    '{{succeeded}} plików zaimportowano ({{totalImported}} sesji)',
+                    '{{succeeded}} files imported ({{totalImported}} sessions)',
+                    { succeeded, totalImported },
                   )}
                 </span>
               )}
               {failed > 0 && (
                 <span className="flex items-center gap-1 text-destructive">
-                  <XCircle className="h-4 w-4" /> {t(`${failed} błędów`, `${failed} failed`)}
+                  <XCircle className="h-4 w-4" />{' '}
+                  {t('{{failed}} błędów', '{{failed}} failed', { failed })}
                 </span>
               )}
             </div>

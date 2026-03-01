@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useDataStore } from '@/store/data-store';
 import {
   autoCreateProjectsFromDetection,
@@ -130,7 +130,6 @@ function useAutoAiAssignment() {
 function useJobPool() {
   const { autoImportDone, triggerRefresh } = useDataStore();
 
-  const startupAttemptedRef = useRef(false);
   const syncRunningRef = useRef(false);
   const refreshingRef = useRef(false);
   const lastSignatureRef = useRef<string | null>(null);
@@ -144,7 +143,7 @@ function useJobPool() {
   const localChangeSyncTimer = useRef<number | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
 
-  const runRefresh = async () => {
+  const runRefresh = useCallback(async () => {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     try {
@@ -155,9 +154,9 @@ function useJobPool() {
     } finally {
       refreshingRef.current = false;
     }
-  };
+  }, [triggerRefresh]);
 
-  const checkFileChange = async () => {
+  const checkFileChange = useCallback(async () => {
     try {
       const sig = await getTodayFileSignature();
       const key = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
@@ -172,21 +171,24 @@ function useJobPool() {
     } catch {
       // Ignore
     }
-  };
+  }, [runRefresh]);
 
-  const runSync = async (source: string, ignoreStartupToggle = true) => {
-    if (syncRunningRef.current) return;
-    syncRunningRef.current = true;
-    try {
-      const result = await runOnlineSyncOnce({ ignoreStartupToggle });
-      if (result.skipped) return;
-      if (result.ok && result.action === 'pull') triggerRefresh();
-    } catch (error) {
-      console.warn(`Online sync (${source}) failed:`, String(error));
-    } finally {
-      syncRunningRef.current = false;
-    }
-  };
+  const runSync = useCallback(
+    async (source: string, ignoreStartupToggle = true) => {
+      if (syncRunningRef.current) return;
+      syncRunningRef.current = true;
+      try {
+        const result = await runOnlineSyncOnce({ ignoreStartupToggle });
+        if (result.skipped) return;
+        if (result.ok && result.action === 'pull') triggerRefresh();
+      } catch (error) {
+        console.warn(`Online sync (${source}) failed:`, String(error));
+      } finally {
+        syncRunningRef.current = false;
+      }
+    },
+    [triggerRefresh],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -238,7 +240,7 @@ function useJobPool() {
       disposed = true;
       if (loopRef.current !== null) clearInterval(loopRef.current);
     };
-  }, [autoImportDone, triggerRefresh]);
+  }, [autoImportDone, checkFileChange, runRefresh, runSync]);
 
   useEffect(() => {
     const handleSyncSettingsChange = () => {
@@ -287,13 +289,12 @@ function useJobPool() {
       if (localChangeSyncTimer.current)
         window.clearTimeout(localChangeSyncTimer.current);
     };
-  }, [autoImportDone, triggerRefresh]);
+  }, [autoImportDone, runSync, triggerRefresh]);
 
   useEffect(() => {
-    if (!autoImportDone || startupAttemptedRef.current) return;
-    startupAttemptedRef.current = true;
+    if (!autoImportDone) return;
     void runSync('startup', false);
-  }, [autoImportDone]);
+  }, [autoImportDone, runSync]);
 }
 
 export function BackgroundServices() {

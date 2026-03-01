@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "sync:inline-i18n": "node scripts/sync-inline-i18n.cjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },

@@ -28,20 +28,14 @@ import { formatDuration } from '@/lib/utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { normalizeLanguageCode } from '@/lib/user-settings';
+import { useInlineT } from '@/lib/inline-i18n';
 import type { AppWithStats, MonitoredApp, PromptConfig } from '@/lib/db-types';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
 
 export function Applications() {
   const { i18n } = useTranslation();
-  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
-  const t = (pl: string, en?: string) => {
-    if (typeof en === 'string') {
-      return lang === 'pl' ? pl : en;
-    }
-    return i18n.t(pl);
-  };
+  const t = useInlineT();
   const { triggerRefresh, refreshKey } = useDataStore();
   const { showError } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -90,7 +84,7 @@ export function Applications() {
         }
       },
     );
-  }, [refreshKey]);
+  }, [refreshKey, t]);
 
   const monitoredSet = useMemo(
     () => new Set(monitored.map((m) => m.exe_name)),
@@ -219,8 +213,9 @@ export function Applications() {
     const label = app.display_name || app.executable_name;
     const confirmed = await confirm(
       t(
-        `Usunąć aplikację "${label}" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, ${app.session_count} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć.`,
-        `Delete application "${label}" and all related sessions/files? This will remove the app row, ${app.session_count} sessions, and related file activity records. This cannot be undone.`,
+        'Usunąć aplikację "{{label}}" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, {{sessionCount}} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć.',
+        'Delete application "{{label}}" and all related sessions/files? This will remove the app row, {{sessionCount}} sessions, and related file activity records. This cannot be undone.',
+        { label, sessionCount: app.session_count },
       ),
     );
     if (!confirmed) return;
@@ -468,7 +463,7 @@ export function Applications() {
                   <td className="px-4 py-3 text-muted-foreground">
                     {app.last_used
                       ? new Date(app.last_used).toLocaleDateString()
-                      : t('ui.common.not_available')}
+                      : i18n.t('ui.common.not_available')}
                   </td>
                   <td className="px-4 py-3">
                     {app.project_name ? (
@@ -481,7 +476,7 @@ export function Applications() {
                         {app.project_name}
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground">{t('ui.common.not_available')}</span>
+                      <span className="text-muted-foreground">{i18n.t('ui.common.not_available')}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">

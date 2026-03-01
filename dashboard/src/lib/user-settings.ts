@@ -203,6 +203,8 @@ export interface CurrencySettings {
 const CURRENCY_STORAGE_KEY = "timeflow.settings.currency";
 const LEGACY_CURRENCY_STORAGE_KEY = "cfab.settings.currency";
 
+export const SUPPORTED_CURRENCIES = ["USD", "EUR", "PLN"] as const;
+
 export const DEFAULT_CURRENCY_SETTINGS: CurrencySettings = {
   code: "PLN",
 };
@@ -220,7 +222,7 @@ export function loadCurrencySettings(): CurrencySettings {
     }
     const parsed = JSON.parse(raw) as Partial<CurrencySettings>;
     return {
-      code: parsed.code && ["USD", "EUR", "PLN"].includes(parsed.code) ? parsed.code : DEFAULT_CURRENCY_SETTINGS.code,
+      code: parsed.code && (SUPPORTED_CURRENCIES as readonly string[]).includes(parsed.code) ? parsed.code : DEFAULT_CURRENCY_SETTINGS.code,
     };
   } catch {
     return { ...DEFAULT_CURRENCY_SETTINGS };
@@ -229,7 +231,7 @@ export function loadCurrencySettings(): CurrencySettings {
 
 export function saveCurrencySettings(next: CurrencySettings): CurrencySettings {
   const normalized: CurrencySettings = {
-    code: ["USD", "EUR", "PLN"].includes(next.code) ? next.code : DEFAULT_CURRENCY_SETTINGS.code,
+    code: (SUPPORTED_CURRENCIES as readonly string[]).includes(next.code) ? next.code : DEFAULT_CURRENCY_SETTINGS.code,
   };
   if (typeof window !== "undefined") {
     window.localStorage.setItem(CURRENCY_STORAGE_KEY, JSON.stringify(normalized));

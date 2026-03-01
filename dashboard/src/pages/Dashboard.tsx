@@ -27,10 +27,7 @@ import {
   getSessions,
   getTopProjects,
   refreshToday,
-  assignSessionToProject,
   getManualSessions,
-  updateSessionRateMultiplier,
-  updateSessionComment,
 } from '@/lib/tauri';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -50,6 +47,7 @@ import type {
   SessionWithApp,
   StackedBarData,
 } from '@/lib/db-types';
+import { useSessionActions } from '@/hooks/useSessionActions';
 
 function AutoImportBanner() {
   const { t } = useTranslation();
@@ -186,54 +184,53 @@ export function Dashboard() {
         return 5;
     }
   }, [timePreset]);
+  const {
+    assignSessions,
+    updateSessionRateMultipliers,
+    updateSessionComment,
+  } = useSessionActions({
+    onAfterMutation: triggerRefresh,
+    onError: (action, error) => {
+      console.error(`Dashboard session action failed (${action}):`, error);
+    },
+  });
 
   const handleAssignSession = useCallback(
     async (sessionIds: number[], projectId: number | null) => {
       try {
-        await Promise.all(
-          sessionIds.map((sessionId) =>
-            assignSessionToProject(sessionId, projectId),
-          ),
-        );
-        triggerRefresh();
+        await assignSessions(sessionIds, projectId, 'manual_dashboard_change');
       } catch (err) {
         console.error('Failed to assign session to project:', err);
         throw err;
       }
     },
-    [triggerRefresh],
+    [assignSessions],
   );
 
   const handleUpdateSessionRateMultiplier = useCallback(
     async (sessionIds: number[], multiplier: number | null) => {
       try {
-        await Promise.all(
-          sessionIds.map((sessionId) =>
-            updateSessionRateMultiplier(sessionId, multiplier),
-          ),
-        );
-        triggerRefresh();
+        await updateSessionRateMultipliers(sessionIds, multiplier);
       } catch (err) {
         console.error('Failed to update session rate multiplier:', err);
         throw err;
       }
     },
-    [triggerRefresh],
+    [updateSessionRateMultipliers],
   );
 
-  const handleUpdateSessionComment = useCallback(
+  const handleUpdateSessionCommentAction = useCallback(
     async (sessionId: number, comment: string | null) => {
       try {
         await updateSessionComment(sessionId, comment);
         setTodaySessions((prev) =>
           prev.map((s) => (s.id === sessionId ? { ...s, comment } : s)),
         );
-        triggerRefresh();
       } catch (err) {
         console.error('Failed to update session comment:', err);
       }
     },
-    [triggerRefresh],
+    [updateSessionComment],
   );
 
   const handleRefresh = async () => {
@@ -441,7 +438,7 @@ export function Dashboard() {
           projects={projectsList}
           onAssignSession={handleAssignSession}
           onUpdateSessionRateMultiplier={handleUpdateSessionRateMultiplier}
-          onUpdateSessionComment={handleUpdateSessionComment}
+          onUpdateSessionComment={handleUpdateSessionCommentAction}
           onAddManualSession={(startTime) => {
             setSessionDialogStartTime(startTime);
             setSessionDialogOpen(true);

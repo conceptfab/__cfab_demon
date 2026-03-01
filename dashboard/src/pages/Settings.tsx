@@ -46,6 +46,8 @@ import {
   type OnlineSyncState,
 } from '@/lib/online-sync';
 import { useInlineT } from '@/lib/inline-i18n';
+import { useToast } from '@/components/ui/toast-notification';
+import { useConfirm } from '@/components/ui/confirm-dialog';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, i) =>
@@ -61,6 +63,8 @@ function splitTime(value: string): [string, string] {
 export function Settings() {
   const { i18n, t } = useTranslation();
   const tt = useInlineT();
+  const { showError, showInfo } = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const setCurrencyCode = useSettingsStore((s) => s.setCurrencyCode);
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
@@ -218,35 +222,39 @@ export function Settings() {
     setRebuilding(true);
     try {
       const merged = await rebuildSessions(sessionSettings.gapFillMinutes);
-      alert(tt(`Pomyślnie połączono ${merged} bliskich sesji.`, `Successfully merged ${merged} close sessions.`));
+      showInfo(
+        tt(
+          'Pomyślnie połączono {{merged}} bliskich sesji.',
+          'Successfully merged {{merged}} close sessions.',
+          { merged },
+        ),
+      );
       triggerRefresh();
     } catch (e) {
       console.error(e);
-      alert(tt('Błąd łączenia sesji: ', 'Error linking sessions: ') + String(e));
+      showError(tt('Błąd łączenia sesji: ', 'Error linking sessions: ') + String(e));
     } finally {
       setRebuilding(false);
     }
   };
 
   const handleClearData = async () => {
-    if (
-      !confirm(
-        tt(
-          'Czy na pewno chcesz usunąć wszystkie dane? Tej operacji nie można cofnąć.',
-          'Are you sure you want to delete all data? This cannot be undone.',
-        ),
-      )
-    )
-      return;
+    const confirmed = await confirm(
+      tt(
+        'Czy na pewno chcesz usunąć wszystkie dane? Tej operacji nie można cofnąć.',
+        'Are you sure you want to delete all data? This cannot be undone.',
+      ),
+    );
+    if (!confirmed) return;
     setClearing(true);
     try {
       await clearAllData();
       triggerRefresh();
       setClearArmed(false);
-      alert(tt('Wszystkie dane usunięte.', 'All data removed.'));
+      showInfo(tt('Wszystkie dane usunięte.', 'All data removed.'));
     } catch (e) {
       console.error(e);
-      alert(tt('Nie udało się wyczyścić danych: ', 'Failed to clear data: ') + String(e));
+      showError(tt('Nie udało się wyczyścić danych: ', 'Failed to clear data: ') + String(e));
     } finally {
       setClearing(false);
     }
@@ -299,7 +307,7 @@ export function Settings() {
       setDemoModeStatus(status);
       setManualSyncResult(null);
       triggerRefresh();
-      alert(
+      showInfo(
         status.enabled
           ? tt('Tryb demo włączony. Dashboard używa teraz bazy demo.', 'Demo mode enabled. Dashboard now uses the demo database.')
           : tt('Tryb demo wyłączony. Dashboard używa teraz głównej bazy.', 'Demo mode disabled. Dashboard now uses the primary database.'),
@@ -307,7 +315,7 @@ export function Settings() {
     } catch (e) {
       console.error(e);
       setDemoModeError(String(e));
-      alert(tt('Nie udało się przełączyć trybu demo: ', 'Failed to switch demo mode: ') + String(e));
+      showError(tt('Nie udało się przełączyć trybu demo: ', 'Failed to switch demo mode: ') + String(e));
     } finally {
       setDemoModeSwitching(false);
     }
@@ -951,16 +959,29 @@ export function Settings() {
                         ? tt('Ostatni manualny sync: pominięto (wyłączony w trybie demo)', 'Last manual sync: skipped (disabled in Demo Mode)')
                         : manualSyncResult.ackPending
                           ? tt(
-                              `Ostatni manualny sync: pull zastosowany, ACK oczekuje (${manualSyncResult.ackReason ?? manualSyncResult.reason})`,
-                              `Last manual sync: pull applied, ACK pending (${manualSyncResult.ackReason ?? manualSyncResult.reason})`,
+                              'Ostatni manualny sync: pull zastosowany, ACK oczekuje ({{detail}})',
+                              'Last manual sync: pull applied, ACK pending ({{detail}})',
+                              {
+                                detail:
+                                  manualSyncResult.ackReason ??
+                                  manualSyncResult.reason,
+                              },
                             )
                           : tt(
-                              `Ostatni manualny sync: ${manualSyncResult.action} (${manualSyncResult.reason})`,
-                              `Last manual sync: ${manualSyncResult.action} (${manualSyncResult.reason})`,
+                              'Ostatni manualny sync: {{action}} ({{reason}})',
+                              'Last manual sync: {{action}} ({{reason}})',
+                              {
+                                action: manualSyncResult.action,
+                                reason: manualSyncResult.reason,
+                              },
                             )
                       : tt(
-                          `Ostatni manualny sync nie powiódł się: ${manualSyncResult.error ?? manualSyncResult.reason}`,
-                          `Last manual sync failed: ${manualSyncResult.error ?? manualSyncResult.reason}`,
+                          'Ostatni manualny sync nie powiódł się: {{error}}',
+                          'Last manual sync failed: {{error}}',
+                          {
+                            error:
+                              manualSyncResult.error ?? manualSyncResult.reason,
+                          },
                         )}
                   </div>
                 )}
@@ -1241,6 +1262,7 @@ export function Settings() {
           </Button>
         )}
       </div>
+      <ConfirmDialog />
     </div>
   );
 }

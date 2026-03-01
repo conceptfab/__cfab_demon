@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   Brain,
@@ -28,9 +27,9 @@ import {
   loadSessionSettings,
   loadIndicatorSettings,
   saveIndicatorSettings,
-  normalizeLanguageCode,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
+import { useInlineT } from '@/lib/inline-i18n';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -56,7 +55,11 @@ function parseDate(value: string | null | undefined): Date | null {
 
 function buildTrainingReminder(
   status: AssignmentModelStatus | null,
-  translate?: (pl: string, en: string) => string,
+  translate?: (
+    pl: string,
+    en: string,
+    interpolation?: Record<string, string | number>,
+  ) => string,
 ): {
   shouldShow: boolean;
   reason: string | null;
@@ -80,13 +83,18 @@ function buildTrainingReminder(
   let reason: string | null = null;
   if (dueToFeedback) {
     reason = (translate ?? ((_: string, en: string) => en))(
-      `Masz ${status.feedback_since_train} korekt od ostatniego treningu (próg: ${FEEDBACK_TRIGGER}).`,
-      `You have ${status.feedback_since_train} corrections since last training (threshold: ${FEEDBACK_TRIGGER}).`,
+      'Masz {{feedbackCount}} korekt od ostatniego treningu (próg: {{threshold}}).',
+      'You have {{feedbackCount}} corrections since last training (threshold: {{threshold}}).',
+      {
+        feedbackCount: status.feedback_since_train,
+        threshold: FEEDBACK_TRIGGER,
+      },
     );
   } else if (dueToInterval) {
     reason = (translate ?? ((_: string, en: string) => en))(
-      `Minęło ponad ${RETRAIN_INTERVAL_HOURS}h od ostatniego treningu i są nowe korekty.`,
-      `Over ${RETRAIN_INTERVAL_HOURS}h passed since last training and there are new corrections.`,
+      'Minęło ponad {{hours}}h od ostatniego treningu i są nowe korekty.',
+      'Over {{hours}}h passed since last training and there are new corrections.',
+      { hours: RETRAIN_INTERVAL_HOURS },
     );
   } else if (coldStart) {
     reason = (translate ?? ((_: string, en: string) => en))(
@@ -108,9 +116,7 @@ function buildTrainingReminder(
 }
 
 export function AIPage() {
-  const { i18n } = useTranslation();
-  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
-  const t = useCallback((pl: string, en: string) => (lang === 'pl' ? pl : en), [lang]);
+  const t = useInlineT();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -239,8 +245,9 @@ export function AIPage() {
       );
       showInfo(
         t(
-          `Auto-safe zakończone. Przypisano ${result.assigned} z ${result.scanned} przeskanowanych sesji.`,
-          `Auto-safe completed. Assigned ${result.assigned} / ${result.scanned} scanned sessions.`,
+          'Auto-safe zakończone. Przypisano {{assigned}} z {{scanned}} przeskanowanych sesji.',
+          'Auto-safe completed. Assigned {{assigned}} / {{scanned}} scanned sessions.',
+          { assigned: result.assigned, scanned: result.scanned },
         ),
       );
       triggerRefresh();
@@ -271,8 +278,9 @@ export function AIPage() {
       const result = await rollbackLastAutoSafeRun();
       showInfo(
         t(
-          `Cofanie zakończone. Cofnięto ${result.reverted}, pominięto ${result.skipped}.`,
-          `Rollback completed. Reverted ${result.reverted}, skipped ${result.skipped}.`,
+          'Cofanie zakończone. Cofnięto {{reverted}}, pominięto {{skipped}}.',
+          'Rollback completed. Reverted {{reverted}}, skipped {{skipped}}.',
+          { reverted: result.reverted, skipped: result.skipped },
         ),
       );
       triggerRefresh();
@@ -296,8 +304,9 @@ export function AIPage() {
       syncFromStatus(nextStatus);
       showInfo(
         t(
-          `Przypomnienie odroczone na ${REMINDER_SNOOZE_HOURS}h.`,
-          `Reminder snoozed for ${REMINDER_SNOOZE_HOURS}h.`,
+          'Przypomnienie odroczone na {{hours}}h.',
+          'Reminder snoozed for {{hours}}h.',
+          { hours: REMINDER_SNOOZE_HOURS },
         ),
       );
     } catch (e) {
@@ -447,8 +456,9 @@ export function AIPage() {
                   {snoozingReminder
                     ? t('Zapisywanie...', 'Saving...')
                     : t(
-                        `Przypomnij później (${REMINDER_SNOOZE_HOURS}h)`,
-                        `Remind me later (${REMINDER_SNOOZE_HOURS}h)`,
+                        'Przypomnij później ({{hours}}h)',
+                        'Remind me later ({{hours}}h)',
+                        { hours: REMINDER_SNOOZE_HOURS },
                       )}
                 </Button>
               </div>
@@ -726,8 +736,12 @@ export function AIPage() {
               </p>
               <p className="mt-2 text-muted-foreground">
                 {t(
-                  `Przypomnienie pojawia się automatycznie, gdy masz co najmniej ${FEEDBACK_TRIGGER} nowych korekt lub minęło ponad ${RETRAIN_INTERVAL_HOURS}h od ostatniego treningu i są nowe korekty.`,
-                  `The reminder appears automatically when: you have at least ${FEEDBACK_TRIGGER} new corrections or over ${RETRAIN_INTERVAL_HOURS}h passed since last training and there are new corrections.`,
+                  'Przypomnienie pojawia się automatycznie, gdy masz co najmniej {{feedbackTrigger}} nowych korekt lub minęło ponad {{retrainHours}}h od ostatniego treningu i są nowe korekty.',
+                  'The reminder appears automatically when: you have at least {{feedbackTrigger}} new corrections or over {{retrainHours}}h passed since last training and there are new corrections.',
+                  {
+                    feedbackTrigger: FEEDBACK_TRIGGER,
+                    retrainHours: RETRAIN_INTERVAL_HOURS,
+                  },
                 )}
               </p>
             </div>

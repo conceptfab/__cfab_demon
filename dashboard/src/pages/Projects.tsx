@@ -94,6 +94,7 @@ const COLORS = [
   '#818cf8',
   '#22d3ee',
 ];
+const PROJECT_RENDER_PAGE_SIZE = 120;
 
 
 function inferDetectedProjectName(fileName: string): string {
@@ -200,6 +201,9 @@ export function Projects() {
   const [loadingExtra, setLoadingExtra] = useState(false);
   const [estimates, setEstimates] = useState<Record<number, number>>({});
   const [search, setSearch] = useState('');
+  const [projectRenderLimits, setProjectRenderLimits] = useState<
+    Record<string, number>
+  >({});
 
   const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
   const [sortBy, setSortBy] = useState(() => {
@@ -281,7 +285,7 @@ export function Projects() {
         }
       })
       .catch(() => {
-        /* ignore Ä‚ËĂ˘â€šÂ¬Ă˘â‚¬ĹĄ feature not yet compiled */
+        /* ignore: feature not yet compiled */
       });
   }, [refreshKey]);
 
@@ -679,6 +683,34 @@ export function Projects() {
     );
   }, [sortedExcludedProjects, search]);
 
+  useEffect(() => {
+    setProjectRenderLimits({});
+  }, [search, sortBy, viewMode, useFolders, refreshKey]);
+
+  const getRenderLimit = (listKey: string) =>
+    projectRenderLimits[listKey] ?? PROJECT_RENDER_PAGE_SIZE;
+
+  const getVisibleProjects = (
+    projectList: ProjectWithStats[],
+    listKey: string,
+  ) => {
+    const limit = getRenderLimit(listKey);
+    return {
+      visible: projectList.slice(0, limit),
+      hiddenCount: Math.max(0, projectList.length - limit),
+    };
+  };
+
+  const loadMoreProjects = (listKey: string, totalCount: number) => {
+    setProjectRenderLimits((prev) => ({
+      ...prev,
+      [listKey]: Math.min(
+        (prev[listKey] ?? PROJECT_RENDER_PAGE_SIZE) + PROJECT_RENDER_PAGE_SIZE,
+        totalCount,
+      ),
+    }));
+  };
+
   const handleSortChange = (val: string) => {
     setSortBy(val);
     localStorage.setItem(SORT_STORAGE_KEY, val);
@@ -868,6 +900,14 @@ export function Projects() {
     () => projects.find((p) => p.id === projectDialogId) ?? null,
     [projects, projectDialogId],
   );
+  const visibleExcludedProjects = useMemo(() => {
+    const limit = projectRenderLimits.excluded ?? PROJECT_RENDER_PAGE_SIZE;
+    return filteredExcludedProjects.slice(0, limit);
+  }, [filteredExcludedProjects, projectRenderLimits.excluded]);
+  const hiddenExcludedProjectsCount = Math.max(
+    0,
+    filteredExcludedProjects.length - visibleExcludedProjects.length,
+  );
 
   const renderDuplicateMarker = (project: ProjectWithStats) => {
     const info = duplicateProjectsView.byProjectId.get(project.id);
@@ -894,72 +934,102 @@ export function Projects() {
     );
   };
 
-  const renderProjectList = (projectList: ProjectWithStats[]) => {
+  const renderProjectList = (
+    projectList: ProjectWithStats[],
+    listKey: string,
+  ) => {
     if (projectList.length === 0) return null;
+    const { visible, hiddenCount } = getVisibleProjects(projectList, listKey);
 
     if (viewMode === 'compact') {
       return (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-          {projectList.map((p) => (
-            <div
-              key={p.id}
-              data-project-id={p.id}
-              data-project-name={p.name}
-              className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
-              onClick={() => openEdit(p)}
-            >
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
+            {visible.map((p) => (
               <div
-                className="h-3 w-3 rounded-full shrink-0"
-                style={{ backgroundColor: p.color }}
-              />
-              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                <span
-                  className={cn(
-                    'min-w-0 flex-1 truncate font-medium',
-                    p.name.length > 40
-                      ? 'text-[11px]'
-                      : p.name.length > 25
-                        ? 'text-xs'
-                        : 'text-sm',
-                  )}
-                  title={p.name}
-                >
-                  {p.name}
-                </span>
-                {p.frozen_at && (
-                  <button
-                    type="button"
-                    className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                    title={t('projects.labels.frozen_since_click_unfreeze', {
-                      date: p.frozen_at.slice(0, 10),
-                    })}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleUnfreeze(p.id);
-                    }}
-                  >
-                    <Snowflake className="h-3 w-3 shrink-0" />
-                  </button>
-                )}
-                {renderDuplicateMarker(p)}
-                {hotProjectIds.includes(p.id) && (
+                key={p.id}
+                data-project-id={p.id}
+                data-project-name={p.name}
+                className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => openEdit(p)}
+              >
+                <div
+                  className="h-3 w-3 rounded-full shrink-0"
+                  style={{ backgroundColor: p.color }}
+                />
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
                   <span
-                    title={t('projects.labels.hot_project')}
-                    className="shrink-0"
+                    className={cn(
+                      'min-w-0 flex-1 truncate font-medium',
+                      p.name.length > 40
+                        ? 'text-[11px]'
+                        : p.name.length > 25
+                          ? 'text-xs'
+                          : 'text-sm',
+                    )}
+                    title={p.name}
                   >
-                    <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
+                    {p.name}
                   </span>
-                )}
-              </span>
+                  {p.frozen_at && (
+                    <button
+                      type="button"
+                      className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                      title={t('projects.labels.frozen_since_click_unfreeze', {
+                        date: p.frozen_at.slice(0, 10),
+                      })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUnfreeze(p.id);
+                      }}
+                    >
+                      <Snowflake className="h-3 w-3 shrink-0" />
+                    </button>
+                  )}
+                  {renderDuplicateMarker(p)}
+                  {hotProjectIds.includes(p.id) && (
+                    <span
+                      title={t('projects.labels.hot_project')}
+                      className="shrink-0"
+                    >
+                      <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+          {hiddenCount > 0 && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => loadMoreProjects(listKey, projectList.length)}
+              >
+                {tt('Wczytaj więcej projektów', 'Load more projects')} ({hiddenCount})
+              </Button>
             </div>
-          ))}
+          )}
         </div>
       );
     }
 
     return (
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {projectList.map((p) => renderProjectCard(p))}
+      <div className="space-y-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {visible.map((p) => renderProjectCard(p))}
+        </div>
+        {hiddenCount > 0 && (
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => loadMoreProjects(listKey, projectList.length)}
+            >
+              {tt('Wczytaj więcej projektów', 'Load more projects')} ({hiddenCount})
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -1186,7 +1256,7 @@ export function Projects() {
                     <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">
-                          {tt('PoĹ‚Ä…czone aplikacje:', 'Apps Linked:')}
+                          {tt('Połączone aplikacje:', 'Apps Linked:')}
                         </span>
                         <span className="text-xs font-bold text-emerald-400">
                           {p.app_count}
@@ -1201,7 +1271,7 @@ export function Projects() {
                         }
                         disabled={isDeleting}
                       >
-                        {tt('ZarzÄ…dzaj aplikacjami', 'Manage Apps')}
+                        {tt('Zarządzaj aplikacjami', 'Manage Apps')}
                       </Button>
                     </div>
                   </div>
@@ -1240,7 +1310,7 @@ export function Projects() {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{tt('RÄ™czne:', 'Manual:')}</span>
+                      <span className="text-muted-foreground">{tt('Ręczne:', 'Manual:')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.manual_session_count || 0}
                       </span>
@@ -1430,10 +1500,13 @@ export function Projects() {
                 {formatPathForDisplay(section.rootPath)}
               </p>
               {section.projects.length > 0 ? (
-                renderProjectList(section.projects)
+                renderProjectList(
+                  section.projects,
+                  `folder:${section.rootPath}`,
+                )
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {tt('Brak projektĂłw dla tego folderu', 'No projects for this folder')}
+                  {tt('Brak projektów dla tego folderu', 'No projects for this folder')}
                 </p>
               )}
             </div>
@@ -1443,12 +1516,12 @@ export function Projects() {
               <p className="text-xs font-medium text-muted-foreground">
                 {tt('Inne projekty', 'Other projects')}
               </p>
-              {renderProjectList(projectsByFolder.outside)}
+              {renderProjectList(projectsByFolder.outside, 'folder:outside')}
             </div>
           )}
         </div>
       ) : (
-        renderProjectList(filteredProjects)
+        renderProjectList(filteredProjects, 'main')
       )}
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1459,7 +1532,7 @@ export function Projects() {
         >
           Expand all
         </button>
-        <span>Ä‚â€šĂ‚Â·</span>
+        <span>|</span>
         <button
           type="button"
           onClick={collapseAllSections}
@@ -1493,7 +1566,7 @@ export function Projects() {
               </p>
             ) : (
               <div className="space-y-2">
-                {filteredExcludedProjects.map((p) => (
+                {visibleExcludedProjects.map((p) => (
                   <div
                     key={p.id}
                     className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs"
@@ -1527,6 +1600,23 @@ export function Projects() {
                     </Button>
                   </div>
                 ))}
+                {hiddenExcludedProjectsCount > 0 && (
+                  <div className="flex justify-center pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        loadMoreProjects(
+                          'excluded',
+                          filteredExcludedProjects.length,
+                        )
+                      }
+                    >
+                      {tt('Wczytaj więcej projektów', 'Load more projects')} (
+                      {hiddenExcludedProjectsCount})
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -1650,7 +1740,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              {tt('Kandydaci projektĂłw z folderĂłw', 'Folder Project Candidates')}
+              {tt('Kandydaci projektów z folderów', 'Folder Project Candidates')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1691,7 +1781,7 @@ export function Projects() {
             )}
             {hiddenRegisteredFolderCandidatesCount > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                {tt('Ukryte juĹĽ zarejestrowane foldery:', 'Hidden already registered folders:')}{' '}
+                {tt('Ukryte już zarejestrowane foldery:', 'Hidden already registered folders:')}{' '}
                 {hiddenRegisteredFolderCandidatesCount}
               </p>
             )}
@@ -1721,7 +1811,7 @@ export function Projects() {
               <p className="text-xs text-muted-foreground">
                 {detectedProjects.length === 0
                   ? tt('Brak wykrytych projektów', 'No detected projects')
-                  : tt('Brak projektĂłw kandydujÄ…cych (wykryte elementy pasujÄ… juĹĽ do istniejÄ…cych/wykluczonych projektĂłw).', 'No candidate projects (detected items already match existing/excluded projects).')}
+                  : tt('Brak projektów kandydujących (wykryte elementy pasują już do istniejących/wykluczonych projektów).', 'No candidate projects (detected items already match existing/excluded projects).')}
               </p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto">
@@ -1736,7 +1826,7 @@ export function Projects() {
                           {d.inferredProjectName}
                         </p>
                         <p className="truncate text-muted-foreground">
-                          {d.occurrence_count} opens Ä‚â€šĂ‚Â·{' '}
+                          {d.occurrence_count} opens -{' '}
                           {formatDuration(d.total_seconds)}
                         </p>
                         {d.inferredProjectName !== d.file_name && (
@@ -1768,7 +1858,7 @@ export function Projects() {
                   (detectedCandidatesView.hiddenExcluded > 0 ||
                     detectedCandidatesView.hiddenDuplicates > 0 ||
                     detectedCandidatesView.hiddenOverflow > 0) &&
-                  ' Ă‚Â· '}
+                  ' | '}
                 {detectedCandidatesView.hiddenExcluded > 0 &&
                   t('projects.labels.hidden_excluded', {
                     count: detectedCandidatesView.hiddenExcluded,
@@ -1776,14 +1866,14 @@ export function Projects() {
                 {detectedCandidatesView.hiddenExcluded > 0 &&
                   (detectedCandidatesView.hiddenDuplicates > 0 ||
                     detectedCandidatesView.hiddenOverflow > 0) &&
-                  ' Ă‚Â· '}
+                  ' | '}
                 {detectedCandidatesView.hiddenDuplicates > 0 &&
                   t('projects.labels.duplicate_names', {
                     count: detectedCandidatesView.hiddenDuplicates,
                   })}
                 {detectedCandidatesView.hiddenDuplicates > 0 &&
                   detectedCandidatesView.hiddenOverflow > 0 &&
-                  ' Ă‚Â· '}
+                  ' | '}
                 {detectedCandidatesView.hiddenOverflow > 0 &&
                   `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? ' (demo cap)' : ''}`}
               </p>

@@ -13,10 +13,6 @@ import { Button } from '@/components/ui/button';
 import {
   getSessions,
   getProjects,
-  assignSessionToProject,
-  deleteSession,
-  updateSessionRateMultiplier,
-  updateSessionComment,
   getSessionScoreBreakdown,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
@@ -40,6 +36,7 @@ import {
 } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { useSessionActions } from '@/hooks/useSessionActions';
 
 interface ContextMenu {
   x: number;
@@ -80,6 +77,18 @@ export function Sessions() {
     setCurrentPage,
   } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
+  const {
+    assignSessions,
+    updateSessionRateMultipliers,
+    updateSessionComments,
+    updateSessionComment: updateOneSessionComment,
+    deleteSessions,
+  } = useSessionActions({
+    onAfterMutation: triggerRefresh,
+    onError: (action, error) => {
+      console.error(`Session action failed (${action}):`, error);
+    },
+  });
   const [rangeMode, setRangeMode] = useState<RangeMode>('daily');
   const [anchorDate, setAnchorDate] = useState<string>(
     () => sessionsFocusDate ?? format(new Date(), 'yyyy-MM-dd'),
@@ -354,14 +363,13 @@ export function Sessions() {
     async (projectId: number | null, source?: string) => {
       if (!ctxMenu) return;
       try {
-        await assignSessionToProject(ctxMenu.session.id, projectId, source);
-        triggerRefresh();
+        await assignSessions(ctxMenu.session.id, projectId, source);
       } catch (err) {
         console.error('Failed to assign session to project:', err);
       }
       setCtxMenu(null);
     },
-    [ctxMenu, triggerRefresh],
+    [assignSessions, ctxMenu],
   );
 
   const ensureCommentForBoost = useCallback(
@@ -393,9 +401,7 @@ export function Sessions() {
       }
 
       try {
-        await Promise.all(
-          missingIds.map((id) => updateSessionComment(id, normalized)),
-        );
+        await updateSessionComments(missingIds, normalized);
         const missingSet = new Set(missingIds);
         setSessions((prev) =>
           prev.map((s) =>
@@ -413,7 +419,7 @@ export function Sessions() {
         return false;
       }
     },
-    [sessions, showError, t],
+    [sessions, showError, t, updateSessionComments],
   );
 
   const handleSetRateMultiplier = useCallback(
@@ -425,8 +431,7 @@ export function Sessions() {
           const ok = await ensureCommentForBoost([sessionId]);
           if (!ok) return;
         }
-        await updateSessionRateMultiplier(sessionId, multiplier);
-        triggerRefresh();
+        await updateSessionRateMultipliers(sessionId, multiplier);
         setCtxMenu(null);
       } catch (err) {
         console.error('Failed to update session rate multiplier:', err);
@@ -435,7 +440,13 @@ export function Sessions() {
         );
       }
     },
-    [ctxMenu, ensureCommentForBoost, showError, t, triggerRefresh],
+    [
+      ctxMenu,
+      ensureCommentForBoost,
+      showError,
+      t,
+      updateSessionRateMultipliers,
+    ],
   );
 
   const handleCustomRateMultiplier = useCallback(async () => {
@@ -475,26 +486,25 @@ export function Sessions() {
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
         try {
-          await updateSessionComment(sessionId, trimmed || null);
+          await updateOneSessionComment(sessionId, trimmed || null);
           setSessions((prev) =>
             prev.map((s) =>
               s.id === sessionId ? { ...s, comment: trimmed || null } : s,
             ),
           );
-          triggerRefresh();
         } catch (err) {
           console.error('Failed to update session comment:', err);
         }
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu, t, triggerRefresh]);
+  }, [ctxMenu, t, updateOneSessionComment]);
 
   const handleAcceptSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
       e.stopPropagation();
       try {
-        await assignSessionToProject(
+        await assignSessions(
           session.id,
           session.suggested_project_id ?? null,
           'ai_suggestion_accept',
@@ -504,19 +514,18 @@ export function Sessions() {
           next.delete(session.id);
           return next;
         });
-        triggerRefresh();
       } catch (err) {
         console.error('Failed to accept AI suggestion:', err);
       }
     },
-    [triggerRefresh],
+    [assignSessions],
   );
 
   const handleRejectSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
       e.stopPropagation();
       try {
-        await assignSessionToProject(session.id, null, 'ai_suggestion_reject');
+        await assignSessions(session.id, null, 'ai_suggestion_reject');
         setDismissedSuggestions((prev) => {
           const next = new Set(prev);
           next.add(session.id);
@@ -534,12 +543,11 @@ export function Sessions() {
               : item,
           ),
         );
-        triggerRefresh();
       } catch (err) {
         console.error('Failed to reject AI suggestion:', err);
       }
     },
-    [triggerRefresh],
+    [assignSessions],
   );
 
   const handleToggleScoreBreakdown = useCallback(
@@ -975,8 +983,7 @@ export function Sessions() {
                         ? scoreBreakdown.data
                         : (aiBreakdowns.get(s.id) ?? null)
                     }
-                    deleteSession={deleteSession}
-                    triggerRefresh={triggerRefresh}
+                    deleteSession={deleteSessions}
                     handleContextMenu={handleContextMenu}
                     isCompact={true}
                     indicators={indicators}
@@ -1006,8 +1013,7 @@ export function Sessions() {
                         ? scoreBreakdown.data
                         : (aiBreakdowns.get(s.id) ?? null)
                     }
-                    deleteSession={deleteSession}
-                    triggerRefresh={triggerRefresh}
+                    deleteSession={deleteSessions}
                     handleContextMenu={handleContextMenu}
                     indicators={indicators}
                     forceShowScoreBreakdown={rowViewMode === 'ai_detailed'}

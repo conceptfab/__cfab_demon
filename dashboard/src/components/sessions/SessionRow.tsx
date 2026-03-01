@@ -24,7 +24,8 @@ function formatTime(t: string) {
 
 function formatDate(t: string, locale: Locale) {
   try {
-    return format(parseISO(t), 'MMM d, yyyy', { locale });
+    const dateFormat = locale.code?.startsWith('pl') ? 'd MMM yyyy' : 'MMM d, yyyy';
+    return format(parseISO(t), dateFormat, { locale });
   } catch {
     return t;
   }
@@ -37,7 +38,6 @@ export interface SessionRowProps {
   scoreBreakdownSessionId: number | null;
   scoreBreakdownData: ScoreBreakdown | null;
   deleteSession: (id: number) => Promise<void>;
-  triggerRefresh: () => void;
   handleContextMenu: (e: React.MouseEvent, s: SessionWithApp) => void;
   isCompact?: boolean;
   indicators: SessionIndicatorSettings;
@@ -53,7 +53,6 @@ export const SessionRow = memo(function SessionRow({
   scoreBreakdownSessionId,
   scoreBreakdownData,
   deleteSession,
-  triggerRefresh,
   handleContextMenu,
   isCompact,
   indicators: ind,
@@ -191,7 +190,6 @@ export const SessionRow = memo(function SessionRow({
                   e.stopPropagation();
                   try {
                     await deleteSession(s.id);
-                    triggerRefresh();
                   } catch (error) {
                     console.error('Failed to delete session:', error);
                   }
@@ -356,7 +354,6 @@ export const SessionRow = memo(function SessionRow({
                 e.stopPropagation();
                 try {
                   await deleteSession(s.id);
-                  triggerRefresh();
                 } catch (error) {
                   console.error('Failed to delete session:', error);
                 }

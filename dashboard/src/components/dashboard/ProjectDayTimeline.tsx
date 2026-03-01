@@ -817,13 +817,13 @@ export function ProjectDayTimeline({
                       ? `[Manual] ${segment.manualTitle}`
                       : segment.appName;
                     const titleFragments = hasManyFragments
-                      ? ` Ă˘â‚¬Ë ${fragmentCount} sessions`
+                      ? ` - ${fragmentCount} sessions`
                       : "";
                     const titleRate = hasBoostedRate || segment.mixedRateMultiplier
-                      ? ` Ă˘â‚¬Ë ($) ${multiplierLabel}`
+                      ? ` - ($) ${multiplierLabel}`
                       : "";
                     const titleSuggestion = segment.hasSuggestion && !segment.isManual && segment.suggestedProjectName
-                      ? ` Ă˘â‚¬Ë AI Suggests: ${segment.suggestedProjectName}${segment.suggestedConfidence != null ? ` (${(segment.suggestedConfidence * 100).toFixed(0)}%)` : ""} (Right-click to assign)`
+                      ? ` - AI Suggests: ${segment.suggestedProjectName}${segment.suggestedConfidence != null ? ` (${(segment.suggestedConfidence * 100).toFixed(0)}%)` : ""} (Right-click to assign)`
                       : "";
                     return (
                       <div
@@ -908,8 +908,8 @@ export function ProjectDayTimeline({
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
             {tt('Akcje sesji', 'Session actions')} ({ctxMenu.segment.appName})
             {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
-              <span className="ml-1 text-[10px] font-normal">
-                Ă‚Â· {(ctxMenu.segment.fragmentCount ?? 1)} sessions
+                <span className="ml-1 text-[10px] font-normal">
+                - {(ctxMenu.segment.fragmentCount ?? 1)} sessions
               </span>
             ) : null}
           </div>
@@ -959,7 +959,7 @@ export function ProjectDayTimeline({
             className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-between rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
             onClick={handleOpenClusterDetails}
           >
-            <span>{tt('SzczegĂłĹ‚y sesji', 'Session details')}</span>
+            <span>{tt('Szczegóły sesji', 'Session details')}</span>
             {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
               <span className="font-mono text-[10px] opacity-80">
                 {(ctxMenu.segment.fragmentCount ?? 1)}
@@ -971,7 +971,11 @@ export function ProjectDayTimeline({
               <div className="h-px bg-border my-1" />
               {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 && (
                 <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                  {tt(`Dotyczy wszystkich ${(ctxMenu.segment.fragmentCount ?? 1)} sesji w tym wizualnym segmencie`, `Applies to all ${(ctxMenu.segment.fragmentCount ?? 1)} sessions in this visual chunk`)}
+                  {tt(
+                    'Dotyczy wszystkich {{count}} sesji w tym wizualnym segmencie',
+                    'Applies to all {{count}} sessions in this visual chunk',
+                    { count: ctxMenu.segment.fragmentCount ?? 1 },
+                  )}
                 </div>
               )}
               <div className="px-2 py-1 text-[11px] text-muted-foreground">
@@ -1005,7 +1009,7 @@ export function ProjectDayTimeline({
                 className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
                 onClick={() => void handleEditComment()}
               >
-                <span className="h-4 w-4 shrink-0 text-center text-muted-foreground">Ä‘Ĺşâ€™Â¬</span>
+                <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <span>{ctxMenu.segment.comment ? tt('Edytuj komentarz', 'Edit comment') : tt('Dodaj komentarz', 'Add comment')}</span>
               </button>
             </>
@@ -1092,7 +1096,7 @@ export function ProjectDayTimeline({
                   </p>
                 </div>
                 <div className="rounded-md border p-3">
-                  <p className="text-[11px] text-muted-foreground">{tt('AktywnoĹ›Ä‡', 'Activity')}</p>
+                  <p className="text-[11px] text-muted-foreground">{tt('Aktywność', 'Activity')}</p>
                   <p className="text-sm font-mono">
                     {formatDuration(Math.round(clusterDetailsSummary.unionMs / 1000))}
                   </p>
@@ -1150,7 +1154,7 @@ export function ProjectDayTimeline({
                             )}
                           </div>
                           <p className="font-mono text-[11px] text-muted-foreground">
-                            {fmtHourMinute(f.startMs)} - {fmtHourMinute(f.endMs)} Ă‚Â· id {f.sessionId}
+                            {fmtHourMinute(f.startMs)} - {fmtHourMinute(f.endMs)} - id {f.sessionId}
                           </p>
                         </div>
                         <div className="text-right">
@@ -1177,7 +1181,11 @@ export function ProjectDayTimeline({
             className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
             onClick={handleAddSession}
           >
-            {ctxMenu.editSession ? tt('Edytuj/usuń sesję', 'Edit/Delete Session') : tt(`Dodaj sesję (${fmtHourMinute(ctxMenu.timeMs)})`, `Add Session (${fmtHourMinute(ctxMenu.timeMs)})`)}
+            {ctxMenu.editSession
+              ? tt('Edytuj/usuń sesję', 'Edit/Delete Session')
+              : tt('Dodaj sesję ({{time}})', 'Add Session ({{time}})', {
+                  time: fmtHourMinute(ctxMenu.timeMs),
+                })}
           </button>
         </div>
       )}

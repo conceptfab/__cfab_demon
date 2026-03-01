@@ -42,11 +42,6 @@ import {
   getSessions,
   getManualSessions,
   getProjectTimeline,
-  updateSessionComment,
-  updateSessionRateMultiplier,
-  assignSessionToProject,
-  deleteSession,
-  deleteManualSession,
   updateProject,
 } from '@/lib/tauri';
 import { formatDuration, formatMoney, formatMultiplierLabel, cn } from '@/lib/utils';
@@ -62,6 +57,7 @@ import type {
   StackedBarData,
   PromptConfig,
 } from '@/lib/db-types';
+import { useSessionActions } from '@/hooks/useSessionActions';
 
 type ContextMenu =
   | {
@@ -96,6 +92,19 @@ export function ProjectPage() {
   const { currencyCode } = useSettingsStore();
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const {
+    assignSessions,
+    updateSessionRateMultipliers,
+    updateSessionComments,
+    updateSessionComment,
+    deleteSessions,
+    deleteManualSessions,
+  } = useSessionActions({
+    onAfterMutation: triggerRefresh,
+    onError: (action, error) => {
+      console.error(`Project page session action failed (${action}):`, error);
+    },
+  });
 
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
@@ -364,9 +373,7 @@ export function ProjectPage() {
     }
 
     try {
-      await Promise.all(
-        missingIds.map((id) => updateSessionComment(id, normalized)),
-      );
+      await updateSessionComments(missingIds, normalized);
       const missingSet = new Set(missingIds);
       setRecentSessions((prev) =>
         prev.map((s) =>
@@ -394,10 +401,7 @@ export function ProjectPage() {
         const ok = await ensureCommentForBoost(autoSessionIds);
         if (!ok) return;
       }
-      await Promise.all(
-        autoSessionIds.map((id) => updateSessionRateMultiplier(id, multiplier)),
-      );
-      triggerRefresh();
+      await updateSessionRateMultipliers(autoSessionIds, multiplier);
     } catch (err) {
       console.error(err);
     }
@@ -416,10 +420,10 @@ export function ProjectPage() {
         onConfirm: async (raw) => {
           const trimmed = raw.trim();
           try {
-            await Promise.all(
-              sessions.map((s) => updateSessionComment(s.id, trimmed || null)),
+            await updateSessionComments(
+              sessions.map((s) => s.id),
+              trimmed || null,
             );
-            triggerRefresh();
           } catch (err) {
             console.error(err);
           }
@@ -440,12 +444,11 @@ export function ProjectPage() {
     if (!await confirm(`Unassign ${autoSessions.length} automatic sessions from this project?`))
       return;
     try {
-      await Promise.all(
-        autoSessions.map((s) =>
-          assignSessionToProject(s.id, null, 'bulk_unassign'),
-        ),
+      await assignSessions(
+        autoSessions.map((s) => s.id),
+        null,
+        'bulk_unassign',
       );
-      triggerRefresh();
     } catch (err) {
       console.error(err);
     }
@@ -458,12 +461,12 @@ export function ProjectPage() {
     if (!await confirm(`Permanently delete ${sessions.length} sessions?`))
       return;
     try {
-      await Promise.all(
-        sessions.map((s) =>
-          s.isManual ? deleteManualSession(s.id) : deleteSession(s.id),
-        ),
-      );
-      triggerRefresh();
+      const manualIds = sessions.filter((s) => s.isManual).map((s) => s.id);
+      const autoIds = sessions.filter((s) => !s.isManual).map((s) => s.id);
+      await Promise.all([
+        deleteManualSessions(manualIds),
+        deleteSessions(autoIds),
+      ]);
     } catch (err) {
       console.error(err);
     }
@@ -483,7 +486,6 @@ export function ProjectPage() {
         const trimmed = raw.trim();
         try {
           await updateSessionComment(sessionId, trimmed || null);
-          triggerRefresh();
         } catch (err) {
           console.error(err);
         }
@@ -525,12 +527,11 @@ export function ProjectPage() {
   const handleAssign = async (projectId: number | null) => {
     if (!ctxMenu || ctxMenu.type === 'chart') return;
     try {
-      await assignSessionToProject(
+      await assignSessions(
         ctxMenu.session.id,
         projectId,
         'manual_project_card_change',
       );
-      triggerRefresh();
     } catch (err) {
       console.error(err);
     }
@@ -950,7 +951,7 @@ export function ProjectPage() {
                         "{s.comment}"
                       </p>
                       <p className="text-[10px] text-muted-foreground text-right">
-                        â€” {s.app_name}
+                        - {s.app_name}
                       </p>
                     </div>
                   ))}
@@ -984,7 +985,7 @@ export function ProjectPage() {
                     <th className="px-4 py-3">{tt('Data', 'Date')}</th>
                     <th className="px-4 py-3">{tt('Czas trwania', 'Duration')}</th>
                     <th className="px-4 py-3">{tt('Aplikacja', 'Application')}</th>
-                    <th className="px-4 py-3">{tt('SzczegĂłĹ‚y / Komentarz', 'Details / Comment')}</th>
+                    <th className="px-4 py-3">{tt('Szczegóły / Komentarz', 'Details / Comment')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
@@ -1025,7 +1026,7 @@ export function ProjectPage() {
                                 )}
                                 {format(parseISO(s.start_time), 'HH:mm')}
                                 <span className="text-[10px] opacity-20 ml-2 font-mono">
-                                  â€” {format(parseISO(s.end_time), 'HH:mm')}
+                                  - {format(parseISO(s.end_time), 'HH:mm')}
                                 </span>
                               </div>
                             </td>
@@ -1084,7 +1085,7 @@ export function ProjectPage() {
                                   <>
                                     <MessageSquare className="h-3 w-3 shrink-0 opacity-0 group-hover/comment:opacity-100 transition-opacity" />
                                     <span className="text-muted-foreground/20 group-hover/comment:text-muted-foreground/50 transition-colors">
-                                      â€”
+                                      -
                                     </span>
                                   </>
                                 )}
@@ -1141,7 +1142,7 @@ export function ProjectPage() {
                   const apps = Array.from(
                     new Set(ctxMenu.sessions.map((s) => s.app_name)),
                   ).join(', ');
-                  showInfo(`Bulk action on ${count} sessions â€” Apps affected: ${apps}`);
+                  showInfo(`Bulk action on ${count} sessions - Apps affected: ${apps}`);
                   setCtxMenu(null);
                 }}
               >
@@ -1436,8 +1437,7 @@ export function ProjectPage() {
             onClick={async () => {
               if (await confirm('Delete this session?')) {
                 try {
-                  await deleteSession((ctxMenu as any).session.id);
-                  triggerRefresh();
+                  await deleteSessions((ctxMenu as any).session.id);
                   setCtxMenu(null);
                 } catch (err) {
                   console.error(err);
@@ -1550,7 +1550,7 @@ export function ProjectPage() {
                     Comment
                   </p>
                   <p className="mt-1 text-sm italic text-sky-100/90 leading-relaxed">
-                    â€ś{selectedSessionDetail.comment}â€ť
+                    "{selectedSessionDetail.comment}"
                   </p>
                 </div>
               )}

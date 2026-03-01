@@ -35,9 +35,19 @@ export function ExportPanel() {
         allTime ? undefined : dateStart,
         allTime ? undefined : dateEnd
       );
-      showInfo(t(`Eksport zapisany: ${result}`, `Export saved: ${result}`));
+      showInfo(
+        t('Eksport zapisany: {{result}}', 'Export saved: {{result}}', {
+          result,
+        }),
+      );
     } catch (e) {
-      showError(t(`Eksport nie powiódł się: ${String(e)}`, `Export failed: ${String(e)}`));
+      showError(
+        t(
+          'Eksport nie powiódł się: {{error}}',
+          'Export failed: {{error}}',
+          { error: String(e) },
+        ),
+      );
     } finally {
       setLoading(false);
     }

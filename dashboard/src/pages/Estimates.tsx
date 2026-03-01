@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CircleDollarSign,
   Clock3,
@@ -63,12 +63,14 @@ export function Estimates() {
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [globalRateInput, setGlobalRateInput] = useState('100');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [savingGlobal, setSavingGlobal] = useState(false);
   const [savingProjectId, setSavingProjectId] = useState<number | null>(null);
   const [globalMessage, setGlobalMessage] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [tableMessage, setTableMessage] = useState<string | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
+  const hasLoadedOnceRef = useRef(false);
 
   const currency = useMemo(
     () =>
@@ -90,8 +92,11 @@ export function Estimates() {
 
   useEffect(() => {
     let cancelled = false;
-    if (rows.length === 0) {
+    const isInitialLoad = !hasLoadedOnceRef.current;
+    if (isInitialLoad) {
       setLoading(true);
+    } else {
+      setRefreshing(true);
     }
     setGlobalError(null);
     setTableError(null);
@@ -152,7 +157,11 @@ export function Estimates() {
       })
       .finally(() => {
         if (!cancelled) {
-          setLoading(false);
+          if (isInitialLoad) {
+            hasLoadedOnceRef.current = true;
+            setLoading(false);
+          }
+          setRefreshing(false);
         }
       });
 
@@ -166,8 +175,9 @@ export function Estimates() {
     if (parsed === null || parsed < 0 || parsed > MAX_RATE) {
       setGlobalError(
         t(
-          `Stawka globalna musi być między 0 a ${MAX_RATE}`,
-          `Global rate must be between 0 and ${MAX_RATE}`,
+          'Stawka globalna musi być między 0 a {{maxRate}}',
+          'Global rate must be between 0 and {{maxRate}}',
+          { maxRate: MAX_RATE },
         ),
       );
       setGlobalMessage(null);
@@ -196,8 +206,9 @@ export function Estimates() {
     if (raw.trim() && (parsed === null || parsed < 0 || parsed > MAX_RATE)) {
       setTableError(
         t(
-          `Stawka projektu musi być pusta lub mieścić się między 0 a ${MAX_RATE}`,
-          `Project rate must be empty or between 0 and ${MAX_RATE}`,
+          'Stawka projektu musi być pusta lub mieścić się między 0 a {{maxRate}}',
+          'Project rate must be empty or between 0 and {{maxRate}}',
+          { maxRate: MAX_RATE },
         ),
       );
       setTableMessage(null);
@@ -332,9 +343,16 @@ export function Estimates() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">
-            {t('Estymacje projektów', 'Project Estimates')}
-          </CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle className="text-sm font-medium">
+              {t('Estymacje projektów', 'Project Estimates')}
+            </CardTitle>
+            {refreshing && (
+              <span className="text-[11px] text-muted-foreground">
+                {t('Odświeżanie...', 'Refreshing...')}
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {tableError && (
@@ -401,8 +419,9 @@ export function Estimates() {
                             type="button"
                             className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0"
                             title={t(
-                              `${row.multiplied_session_count} sesji z mnożnikiem stawki - kliknij, aby zobaczyć`,
-                              `${row.multiplied_session_count} session(s) with rate multiplier - click to view`,
+                              '{{count}} sesji z mnożnikiem stawki - kliknij, aby zobaczyć',
+                              '{{count}} session(s) with rate multiplier - click to view',
+                              { count: row.multiplied_session_count },
                             )}
                             onClick={() => {
                               setSessionsFocusRange(dateRange);
@@ -425,8 +444,13 @@ export function Estimates() {
                         title={
                           row.weighted_hours !== row.hours
                             ? t(
-                                `Zawiera ${decimal.format(row.multiplier_extra_seconds / 3600)} dodatkowych godzin z mnożników stawek`,
-                                `Includes ${decimal.format(row.multiplier_extra_seconds / 3600)} bonus hours from rate multipliers`,
+                                'Zawiera {{bonusHours}} dodatkowych godzin z mnożników stawek',
+                                'Includes {{bonusHours}} bonus hours from rate multipliers',
+                                {
+                                  bonusHours: decimal.format(
+                                    row.multiplier_extra_seconds / 3600,
+                                  ),
+                                },
                               )
                             : undefined
                         }

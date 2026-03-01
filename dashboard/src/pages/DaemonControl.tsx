@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import {
   Play,
   Square,
@@ -20,14 +19,13 @@ import {
   stopDaemon,
   restartDaemon,
 } from "@/lib/tauri";
-import { loadSessionSettings, normalizeLanguageCode } from "@/lib/user-settings";
+import { loadSessionSettings } from "@/lib/user-settings";
+import { useInlineT } from '@/lib/inline-i18n';
 import { formatPathForDisplay, cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
 
 export function DaemonControl() {
-  const { i18n } = useTranslation();
-  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
-  const t = (pl: string, en: string) => (lang === "pl" ? pl : en);
+  const t = useInlineT();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [filteredUnassigned, setFilteredUnassigned] = useState<number>(0);
   const [logs, setLogs] = useState("");
@@ -164,8 +162,9 @@ export function DaemonControl() {
                 <span className="font-semibold mr-1">*</span>
                 <span>
                   {t(
-                    `${filteredUnassigned} nieprzypisanych sesji. Przypisz je w Sesjach/Osi czasu.`,
-                    `${filteredUnassigned} unassigned sessions. Assign them in Sessions/Timeline.`,
+                    '{{count}} nieprzypisanych sesji. Przypisz je w Sesjach/Osi czasu.',
+                    '{{count}} unassigned sessions. Assign them in Sessions/Timeline.',
+                    { count: filteredUnassigned },
                   )}
                 </span>
               </div>

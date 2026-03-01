@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { getTimeline, getProjectTimeline, getProjects } from "@/lib/tauri";
 import {
   addDays, addMonths, subMonths, format, parseISO, subDays,
@@ -39,6 +39,12 @@ export function useTimeAnalysisData() {
     }
   }, [rangeMode, anchorDate]);
 
+  const setRangeModeWithLoading = useCallback((next: RangeMode) => {
+    setLoadError(null);
+    setIsLoading(true);
+    setRangeMode(next);
+  }, []);
+
   const shiftDateRange = (direction: -1 | 1) => {
     const current = parseISO(anchorDate);
     let next: string;
@@ -49,13 +55,13 @@ export function useTimeAnalysisData() {
       next = format(addDays(current, direction * step), "yyyy-MM-dd");
     }
     if (next > today) return;
+    setLoadError(null);
+    setIsLoading(true);
     setAnchorDate(next);
   };
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(true);
-    setLoadError(null);
 
     const hpPromise = rangeMode === "monthly"
       ? getProjectTimeline(activeDateRange, 10, "day")
@@ -348,7 +354,7 @@ export function useTimeAnalysisData() {
 
   return {
     rangeMode,
-    setRangeMode,
+    setRangeMode: setRangeModeWithLoading,
     canShiftForward,
     shiftDateRange,
     dateLabel,

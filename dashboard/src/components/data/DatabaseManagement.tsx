@@ -59,7 +59,11 @@ export function DatabaseManagement() {
       showInfo(t("Vacuum bazy zakończony pomyślnie", "Database vacuumed successfully"));
       loadAll();
     } catch (e) {
-      showError(t(`Vacuum nie powiódł się: ${e}`, `Vacuum failed: ${e}`));
+      showError(
+        t('Vacuum nie powiódł się: {{error}}', 'Vacuum failed: {{error}}', {
+          error: String(e),
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -72,7 +76,13 @@ export function DatabaseManagement() {
       showInfo(t("Baza zoptymalizowana pomyślnie", "Database optimized successfully"));
       loadAll();
     } catch (e) {
-      showError(t(`Optymalizacja nie powiodła się: ${e}`, `Optimization failed: ${e}`));
+      showError(
+        t(
+          'Optymalizacja nie powiodła się: {{error}}',
+          'Optimization failed: {{error}}',
+          { error: String(e) },
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -86,10 +96,18 @@ export function DatabaseManagement() {
     setLoading(true);
     try {
       const path = await performManualBackup();
-      showInfo(t(`Utworzono backup: ${path}`, `Backup created: ${path}`));
+      showInfo(
+        t('Utworzono backup: {{path}}', 'Backup created: {{path}}', {
+          path,
+        }),
+      );
       loadAll();
     } catch (e) {
-      showError(t(`Backup nie powiódł się: ${e}`, `Backup failed: ${e}`));
+      showError(
+        t('Backup nie powiódł się: {{error}}', 'Backup failed: {{error}}', {
+          error: String(e),
+        }),
+      );
     } finally {
       setLoading(false);
     }
@@ -118,7 +136,13 @@ export function DatabaseManagement() {
           showInfo(t("Ścieżka backupu zaktualizowana", "Backup path updated"));
           loadAll();
         } catch (e: unknown) {
-          showError(t(`Nie udało się zapisać ścieżki: ${e}`, `Failed to save path: ${e}`));
+          showError(
+            t(
+              'Nie udało się zapisać ścieżki: {{error}}',
+              'Failed to save path: {{error}}',
+              { error: String(e) },
+            ),
+          );
         }
       }
     } catch (e: unknown) {
@@ -186,7 +210,13 @@ export function DatabaseManagement() {
             await restoreDatabaseFromFile(selected);
             showInfo(t("Baza przywrócona. Uruchom ponownie aplikację.", "Database restored. Please restart the app."));
           } catch (e: unknown) {
-            showError(t(`Przywracanie nie powiodło się: ${e}`, `Restore failed: ${e}`));
+            showError(
+              t(
+                'Przywracanie nie powiodło się: {{error}}',
+                'Restore failed: {{error}}',
+                { error: String(e) },
+              ),
+            );
           } finally {
             setLoading(false);
           }
