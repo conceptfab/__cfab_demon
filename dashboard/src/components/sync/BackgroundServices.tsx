@@ -25,9 +25,7 @@ function useAutoImporter() {
 
   useEffect(() => {
     if (autoImportDone) return;
-    let longRunningWarned = false;
     const warnTimer = setTimeout(() => {
-      longRunningWarned = true;
       console.warn('Auto-import is still running (longer than 8s)...');
     }, 8_000);
 
@@ -200,7 +198,7 @@ function useJobPool() {
         .then((sig) => {
           lastSignatureRef.current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
         })
-        .catch(() => {});
+        .catch(() => { });
     });
 
     // Universal Event Loop (1 second tick)
