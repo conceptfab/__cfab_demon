@@ -47,6 +47,7 @@ import {
   assignSessionToProject,
   deleteSession,
   deleteManualSession,
+  updateProject,
 } from '@/lib/tauri';
 import { formatDuration, formatMoney, formatMultiplierLabel, cn } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
@@ -76,6 +77,17 @@ type ContextMenu =
       date: string;
       sessions: SessionWithApp[];
     };
+
+const COLORS = [
+  '#38bdf8',
+  '#a78bfa',
+  '#34d399',
+  '#fb923c',
+  '#f87171',
+  '#fbbf24',
+  '#818cf8',
+  '#22d3ee',
+];
 
 export function ProjectPage() {
   const tt = useInlineT();
@@ -153,6 +165,7 @@ export function ProjectPage() {
 
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [editingColor, setEditingColor] = useState(false);
   const ctxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -547,10 +560,46 @@ export function ProjectPage() {
           data-project-name={project.name}
           className="text-xl font-semibold flex items-center gap-2"
         >
-          <div
-            className="h-3 w-3 rounded-full"
-            style={{ backgroundColor: project.color }}
-          />
+          <div className="relative group">
+            <div
+              className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+              style={{ backgroundColor: project.color }}
+              onClick={() => setEditingColor(!editingColor)}
+              title={tt('Zmień kolor', 'Change color')}
+            />
+            {editingColor && (
+              <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
+                <input
+                  type="color"
+                  defaultValue={project.color}
+                  className="w-16 h-8 border border-border rounded cursor-pointer"
+                  onChange={async (e) => {
+                    await updateProject(project.id, e.target.value);
+                    setProject({ ...project, color: e.target.value });
+                    setEditingColor(false);
+                    triggerRefresh();
+                  }}
+                  title={tt('Wybierz kolor', 'Choose color')}
+                />
+                <div className="mt-2 flex gap-1">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c}
+                      className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: c }}
+                      onClick={async () => {
+                        await updateProject(project.id, c);
+                        setProject({ ...project, color: c });
+                        setEditingColor(false);
+                        triggerRefresh();
+                      }}
+                      title={c}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           {project.name}
         </h1>
       </div>

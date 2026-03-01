@@ -508,6 +508,14 @@ export function Help() {
                     'Wykluczanie (Exclude) – usuwaj projekty z widoku bez ich permanentnego skasowania z bazy.',
                     'Exclude – remove projects from view without permanently deleting them from the database.',
                   ),
+                  t(
+                    'Wyszukiwanie – filtruj projekty po nazwie lub ścieżce folderu w czasie rzeczywistym.',
+                    'Search – filter projects by name or folder path in real time.',
+                  ),
+                  t(
+                    'Zmiana koloru – kliknij kropkę koloru w karcie projektu, aby zmienić kolor projektu (paleta presetów + dowolny kolor).',
+                    'Color change – click the color dot on the project card to change the project color (preset palette + custom color).',
+                  ),
                 ]}
               />
             </TabsContent>

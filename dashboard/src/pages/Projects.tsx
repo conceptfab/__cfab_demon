@@ -20,6 +20,7 @@ import {
   Folders,
   Save,
   MousePointerClick,
+  Search,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -198,6 +199,7 @@ export function Projects() {
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [loadingExtra, setLoadingExtra] = useState(false);
   const [estimates, setEstimates] = useState<Record<number, number>>({});
+  const [search, setSearch] = useState('');
 
   const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
   const [sortBy, setSortBy] = useState(() => {
@@ -657,6 +659,26 @@ export function Projects() {
     });
   }, [excludedProjects, sortBy, estimates]);
 
+  const filteredProjects = useMemo(() => {
+    if (!search) return sortedProjects;
+    const q = search.toLowerCase();
+    return sortedProjects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.assigned_folder_path && p.assigned_folder_path.toLowerCase().includes(q)),
+    );
+  }, [sortedProjects, search]);
+
+  const filteredExcludedProjects = useMemo(() => {
+    if (!search) return sortedExcludedProjects;
+    const q = search.toLowerCase();
+    return sortedExcludedProjects.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.assigned_folder_path && p.assigned_folder_path.toLowerCase().includes(q)),
+    );
+  }, [sortedExcludedProjects, search]);
+
   const handleSortChange = (val: string) => {
     setSortBy(val);
     localStorage.setItem(SORT_STORAGE_KEY, val);
@@ -762,7 +784,7 @@ export function Projects() {
     }
 
     const outside: ProjectWithStats[] = [];
-    for (const project of sortedProjects) {
+    for (const project of filteredProjects) {
       // 1. Exact match by candidate name
       const root = rootByProjectName.get(project.name.toLowerCase());
       if (root && grouped.has(root)) {
@@ -788,7 +810,7 @@ export function Projects() {
       })),
       outside,
     };
-  }, [sortedProjects, projectFolders, folderCandidates]);
+  }, [filteredProjects, projectFolders, folderCandidates]);
 
   const duplicateProjectsView = useMemo(() => {
     const groups = new Map<string, ProjectWithStats[]>();
@@ -1306,6 +1328,15 @@ export function Projects() {
           )}
         </div>
         <div className="flex items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              className="flex h-9 w-48 rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              placeholder={tt('Szukaj projektów...', 'Search projects...')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
           <div className="flex items-center gap-1.5 bg-secondary/40 p-1 rounded-md border border-border/40">
             <Button
               variant="ghost"
@@ -1417,7 +1448,7 @@ export function Projects() {
           )}
         </div>
       ) : (
-        renderProjectList(sortedProjects)
+        renderProjectList(filteredProjects)
       )}
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1456,13 +1487,13 @@ export function Projects() {
         </CardHeader>
         {sectionOpen.excluded && (
           <CardContent>
-            {sortedExcludedProjects.length === 0 ? (
+            {filteredExcludedProjects.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 No excluded projects
               </p>
             ) : (
               <div className="space-y-2">
-                {sortedExcludedProjects.map((p) => (
+                {filteredExcludedProjects.map((p) => (
                   <div
                     key={p.id}
                     className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs"

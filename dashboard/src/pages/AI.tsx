@@ -110,7 +110,7 @@ function buildTrainingReminder(
 export function AIPage() {
   const { i18n } = useTranslation();
   const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
-  const t = (pl: string, en: string) => (lang === 'pl' ? pl : en);
+  const t = useCallback((pl: string, en: string) => (lang === 'pl' ? pl : en), [lang]);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
