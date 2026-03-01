@@ -17,6 +17,7 @@ import {
   Rocket,
   ArrowRight,
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -29,6 +30,7 @@ import {
 } from '@/lib/help-navigation';
 import { normalizeLanguageCode } from '@/lib/user-settings';
 import { useTranslation } from 'react-i18next';
+import { getDaemonStatus } from '@/lib/tauri';
 
 type Language = 'pl' | 'en';
 
@@ -42,6 +44,11 @@ export function Help() {
     setHelpTab: setActiveTab,
     setCurrentPage,
   } = useUIStore();
+
+  const [version, setVersion] = useState<string>('');
+  useEffect(() => {
+    getDaemonStatus().then((s) => setVersion(s.dashboard_version ?? '')).catch(() => {});
+  }, []);
 
   const t = (pl: string, en: string) => (lang === 'pl' ? pl : en);
   const activeTabValue = normalizeHelpTab(activeTab, 'dashboard');
@@ -63,9 +70,11 @@ export function Help() {
               />
               <span className="font-semibold tracking-[0.2em]">TIMEFLOW</span>
             </div>
-            <span className="ml-2 font-medium text-sm text-muted-foreground/70 tracking-normal antialiased self-end mb-1">
-              β v0.1.32
-            </span>
+            {version && (
+              <span className="ml-2 font-medium text-sm text-muted-foreground/70 tracking-normal antialiased self-end mb-1">
+                β v{version}
+              </span>
+            )}
           </h1>
           <div className="text-[11px] text-muted-foreground/70 tracking-wide ml-1 mt-1 flex items-center gap-2">
             <span className="uppercase font-extralight tracking-[0.15em]">
