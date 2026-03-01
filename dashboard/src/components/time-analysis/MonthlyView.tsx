@@ -12,7 +12,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { useAppStore } from '@/store/app-store';
+import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { PALETTE } from './types';
@@ -33,7 +33,7 @@ export function MonthlyBarChart({
   monthTotalHours,
   stackedBarColorMap,
 }: MonthlyViewProps) {
-  const isAnimationActive = useAppStore((s) => s.chartAnimations);
+  const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useAppStore } from '@/store/app-store';
+import { useUIStore } from '@/store/ui-store';
 
 interface ProjectMenuState {
   x: number;
@@ -30,8 +30,8 @@ function clampToViewport(x: number, y: number) {
 export function ProjectContextMenu() {
   const [menu, setMenu] = useState<ProjectMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const setProjectPageId = useAppStore((s) => s.setProjectPageId);
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
+  const setProjectPageId = useUIStore((s) => s.setProjectPageId);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
 
   useEffect(() => {
     const handleContextMenu = (event: MouseEvent) => {

@@ -1,4 +1,4 @@
-import { useAppStore } from '@/store/app-store';
+import { useSettingsStore } from '@/store/settings-store';
 
 type AnimationEasing = 'ease-out';
 
@@ -27,7 +27,7 @@ export function getRechartsAnimationConfig({
   minDuration = 170,
   maxDuration = 340,
 }: RechartsAnimationOptions): RechartsAnimationConfig {
-  const chartAnimationsActive = useAppStore.getState().chartAnimations;
+  const chartAnimationsActive = useSettingsStore.getState().chartAnimations;
   if (!chartAnimationsActive) {
     return {
       isAnimationActive: false,

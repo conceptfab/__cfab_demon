@@ -47,7 +47,9 @@ import {
   deleteManualSession,
 } from '@/lib/tauri';
 import { formatDuration, formatMoney, cn } from '@/lib/utils';
-import { useAppStore } from '@/store/app-store';
+import { useUIStore } from '@/store/ui-store';
+import { useDataStore } from '@/store/data-store';
+import { useSettingsStore } from '@/store/settings-store';
 import type {
   ProjectWithStats,
   ProjectExtraInfo,
@@ -91,14 +93,9 @@ interface PromptConfig {
 }
 
 export function ProjectPage() {
-  const {
-    projectPageId,
-    setProjectPageId,
-    setCurrentPage,
-    refreshKey,
-    triggerRefresh,
-    currencyCode,
-  } = useAppStore();
+  const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
+  const { refreshKey, triggerRefresh } = useDataStore();
+  const { currencyCode } = useSettingsStore();
 
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);

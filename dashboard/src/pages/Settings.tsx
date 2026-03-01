@@ -10,7 +10,8 @@ import {
   setDemoMode,
 } from '@/lib/tauri';
 import type { DemoModeStatus } from '@/lib/db-types';
-import { useAppStore } from '@/store/app-store';
+import { useDataStore } from '@/store/data-store';
+import { useSettingsStore } from '@/store/settings-store';
 import {
   type AppLanguageCode,
   type LanguageSettings,
@@ -58,9 +59,9 @@ function splitTime(value: string): [string, string] {
 
 export function Settings() {
   const { i18n, t } = useTranslation();
-  const triggerRefresh = useAppStore((s) => s.triggerRefresh);
-  const setCurrencyCode = useAppStore((s) => s.setCurrencyCode);
-  const setChartAnimations = useAppStore((s) => s.setChartAnimations);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+  const setCurrencyCode = useSettingsStore((s) => s.setCurrencyCode);
+  const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
   const [clearing, setClearing] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
   const [clearArmed, setClearArmed] = useState(false);

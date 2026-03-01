@@ -1,7 +1,11 @@
-import { FolderOpen, Flame, MousePointerClick } from "lucide-react";
-import { formatDuration } from "@/lib/utils";
-import { useAppStore } from "@/store/app-store";
-import type { ProjectTimeRow, ProjectWithStats, DateRange } from "@/lib/db-types";
+import { FolderOpen, Flame, MousePointerClick } from 'lucide-react';
+import { formatDuration } from '@/lib/utils';
+import { useUIStore } from '@/store/ui-store';
+import type {
+  ProjectTimeRow,
+  ProjectWithStats,
+  DateRange,
+} from '@/lib/db-types';
 
 interface TopProjectsListProps {
   projects: ProjectTimeRow[];
@@ -20,8 +24,8 @@ export function TopProjectsList({
   boostedByProject,
   manualCountsByProject,
 }: TopProjectsListProps) {
-  const setCurrentPage = useAppStore((s) => s.setCurrentPage);
-  const setSessionsFocusProject = useAppStore((s) => s.setSessionsFocusProject);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const setSessionsFocusProject = useUIStore((s) => s.setSessionsFocusProject);
 
   if (projects.length === 0) {
     return (
@@ -37,9 +41,9 @@ export function TopProjectsList({
     <div className="space-y-0.5">
       {projects.map((p, i) => {
         const linkedProject =
-          p.name === "Unassigned"
+          p.name === 'Unassigned'
             ? null
-            : allProjectsList.find((x) => x.name === p.name) ?? null;
+            : (allProjectsList.find((x) => x.name === p.name) ?? null);
         return (
           <div
             key={`${p.name}-${i}`}
@@ -48,14 +52,14 @@ export function TopProjectsList({
             className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
             onClick={() => {
               setSessionsFocusDate(dateRange.end);
-              if (p.name === "Unassigned") {
-                setSessionsFocusProject("unassigned");
+              if (p.name === 'Unassigned') {
+                setSessionsFocusProject('unassigned');
               } else if (linkedProject) {
                 setSessionsFocusProject(linkedProject.id);
               } else {
                 setSessionsFocusProject(null);
               }
-              setCurrentPage("sessions");
+              setCurrentPage('sessions');
             }}
             title={`Click to view sessions for ${p.name}`}
           >
@@ -73,18 +77,26 @@ export function TopProjectsList({
                     {p.app_count} apps
                   </span>
                   {(() => {
-                    const boosted = boostedByProject?.get(p.name.toLowerCase()) ?? 0;
-                    const manual = manualCountsByProject?.get(p.name.toLowerCase()) ?? 0;
+                    const boosted =
+                      boostedByProject?.get(p.name.toLowerCase()) ?? 0;
+                    const manual =
+                      manualCountsByProject?.get(p.name.toLowerCase()) ?? 0;
                     return (
                       <div className="flex items-center gap-1.5 ml-auto">
                         {manual > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-sky-400" title={`${manual} manual session(s)`}>
+                          <span
+                            className="inline-flex items-center gap-0.5 text-[10px] text-sky-400"
+                            title={`${manual} manual session(s)`}
+                          >
                             <MousePointerClick className="h-2.5 w-2.5" />
                             {manual}
                           </span>
                         )}
                         {boosted > 0 && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400" title={`${boosted} boosted session(s)`}>
+                          <span
+                            className="inline-flex items-center gap-0.5 text-[10px] text-emerald-400"
+                            title={`${boosted} boosted session(s)`}
+                          >
                             <Flame className="h-2.5 w-2.5" />
                             {boosted}
                           </span>
@@ -101,7 +113,10 @@ export function TopProjectsList({
             <div className="ml-5.5 h-1 rounded-full bg-secondary/30">
               <div
                 className="h-full rounded-full transition-all"
-                style={{ width: `${(p.seconds / maxSeconds) * 100}%`, backgroundColor: p.color }}
+                style={{
+                  width: `${(p.seconds / maxSeconds) * 100}%`,
+                  backgroundColor: p.color,
+                }}
               />
             </div>
           </div>

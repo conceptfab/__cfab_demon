@@ -12,7 +12,9 @@ import { format, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { useAppStore } from '@/store/app-store';
+import { useUIStore } from '@/store/ui-store';
+import { useDataStore } from '@/store/data-store';
+import { useSettingsStore } from '@/store/settings-store';
 import {
   getEstimateSettings,
   getEstimatesSummary,
@@ -47,6 +49,8 @@ function formatRateInput(value: number): string {
 }
 
 export function Estimates() {
+  const { setCurrentPage, setSessionsFocusRange, setSessionsFocusProject } =
+    useUIStore();
   const {
     dateRange,
     refreshKey,
@@ -55,11 +59,8 @@ export function Estimates() {
     shiftDateRange,
     canShiftForward,
     triggerRefresh,
-    setCurrentPage,
-    setSessionsFocusRange,
-    setSessionsFocusProject,
-    currencyCode,
-  } = useAppStore();
+  } = useDataStore();
+  const { currencyCode } = useSettingsStore();
 
   const [settings, setSettings] = useState<EstimateSettings | null>(null);
   const [summary, setSummary] = useState<EstimateSummary | null>(null);

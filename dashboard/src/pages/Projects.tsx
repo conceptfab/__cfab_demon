@@ -65,7 +65,9 @@ import {
   formatMoney,
   cn,
 } from '@/lib/utils';
-import { useAppStore } from '@/store/app-store';
+import { useUIStore } from '@/store/ui-store';
+import { useDataStore } from '@/store/data-store';
+import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
 import type {
   ProjectWithStats,
@@ -152,13 +154,9 @@ function renderDuration(seconds: number) {
 }
 
 export function Projects() {
-  const {
-    refreshKey,
-    triggerRefresh,
-    currencyCode,
-    setProjectPageId,
-    setCurrentPage,
-  } = useAppStore();
+  const { setProjectPageId, setCurrentPage } = useUIStore();
+  const { refreshKey, triggerRefresh } = useDataStore();
+  const { currencyCode } = useSettingsStore();
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>(
     [],

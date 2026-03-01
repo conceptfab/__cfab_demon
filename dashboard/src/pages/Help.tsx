@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { useAppStore } from '@/store/app-store';
+import { useUIStore } from '@/store/ui-store';
 import {
   normalizeHelpTab,
   pageForHelpTab,
@@ -41,7 +41,7 @@ export function Help() {
     helpTab: activeTab,
     setHelpTab: setActiveTab,
     setCurrentPage,
-  } = useAppStore();
+  } = useUIStore();
 
   const t = (pl: string, en: string) => (lang === 'pl' ? pl : en);
   const activeTabValue = normalizeHelpTab(activeTab, 'dashboard');

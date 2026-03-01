@@ -12,7 +12,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { useAppStore } from '@/store/app-store';
+import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { PALETTE } from './types';
 import type { HourSlot } from './types';
@@ -29,7 +29,7 @@ export function DailyBarChart({
   dailyTotalHours,
   stackedBarColorMap,
 }: DailyViewProps) {
-  const isAnimationActive = useAppStore((s) => s.chartAnimations);
+  const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">

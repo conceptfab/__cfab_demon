@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { Brain, Eye, PlayCircle, RotateCcw, Save, WandSparkles } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast-notification";
-import { useAppStore } from "@/store/app-store";
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Brain,
+  Eye,
+  PlayCircle,
+  RotateCcw,
+  Save,
+  WandSparkles,
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/toast-notification';
+import { useDataStore } from '@/store/data-store';
 import {
   getAssignmentModelStatus,
   rollbackLastAutoSafeRun,
@@ -13,21 +20,21 @@ import {
   trainAssignmentModel,
   getFeedbackWeight,
   setFeedbackWeight as setFeedbackWeightApi,
-} from "@/lib/tauri";
-import type { AssignmentMode, AssignmentModelStatus } from "@/lib/db-types";
+} from '@/lib/tauri';
+import type { AssignmentMode, AssignmentModelStatus } from '@/lib/db-types';
 import {
   loadSessionSettings,
   loadIndicatorSettings,
   saveIndicatorSettings,
   type SessionIndicatorSettings,
-} from "@/lib/user-settings";
+} from '@/lib/user-settings';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
 const REMINDER_SNOOZE_HOURS = 24;
 
 function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "Never";
+  if (!value) return 'Never';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString();
@@ -70,7 +77,7 @@ function buildTrainingReminder(status: AssignmentModelStatus | null): {
   } else if (dueToInterval) {
     reason = `Over ${RETRAIN_INTERVAL_HOURS}h passed since last training and there are new corrections.`;
   } else if (coldStart) {
-    reason = "The model has correction data but has never been trained.";
+    reason = 'The model has correction data but has never been trained.';
   }
 
   if (!reason) {
@@ -86,7 +93,7 @@ function buildTrainingReminder(status: AssignmentModelStatus | null): {
 }
 
 export function AIPage() {
-  const triggerRefresh = useAppStore((s) => s.triggerRefresh);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
 
   const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
@@ -97,13 +104,15 @@ export function AIPage() {
   const [rollingBack, setRollingBack] = useState(false);
   const [snoozingReminder, setSnoozingReminder] = useState(false);
 
-  const [mode, setMode] = useState<AssignmentMode>("suggest");
+  const [mode, setMode] = useState<AssignmentMode>('suggest');
   const [suggestConf, setSuggestConf] = useState<number>(0.6);
   const [autoConf, setAutoConf] = useState<number>(0.85);
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
   const [autoLimit, setAutoLimit] = useState<number>(500);
   const [feedbackWeight, setFeedbackWeight] = useState<number>(5.0);
-  const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() => loadIndicatorSettings());
+  const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
+    loadIndicatorSettings(),
+  );
 
   const syncFromStatus = (nextStatus: AssignmentModelStatus) => {
     setStatus(nextStatus);
@@ -113,7 +122,10 @@ export function AIPage() {
     setAutoEvidence(nextStatus.min_evidence_auto);
   };
 
-  const trainingReminder = useMemo(() => buildTrainingReminder(status), [status]);
+  const trainingReminder = useMemo(
+    () => buildTrainingReminder(status),
+    [status],
+  );
 
   const fetchStatus = async (silent = false) => {
     if (!silent) setLoadingStatus(true);
@@ -145,10 +157,15 @@ export function AIPage() {
       const normalizedAuto = clampNumber(autoConf, 0, 1);
       const normalizedEvidence = Math.round(clampNumber(autoEvidence, 1, 50));
 
-      await setAssignmentMode(mode, normalizedSuggest, normalizedAuto, normalizedEvidence);
+      await setAssignmentMode(
+        mode,
+        normalizedSuggest,
+        normalizedAuto,
+        normalizedEvidence,
+      );
       const clampedFw = Math.max(1, Math.min(50, feedbackWeight));
       await setFeedbackWeightApi(clampedFw);
-      showInfo("Model settings saved.");
+      showInfo('Model settings saved.');
       await fetchStatus(true);
     } catch (e) {
       console.error(e);
@@ -163,7 +180,7 @@ export function AIPage() {
     try {
       const nextStatus = await trainAssignmentModel(true);
       syncFromStatus(nextStatus);
-      showInfo("Model training completed.");
+      showInfo('Model training completed.');
     } catch (e) {
       console.error(e);
       showError(`Model training failed: ${String(e)}`);
@@ -173,21 +190,24 @@ export function AIPage() {
   };
 
   const handleRunAutoSafe = async () => {
-    if (status?.mode !== "auto_safe") {
-      showError("Auto-safe is disabled. Set mode to auto_safe and save settings.");
+    if (status?.mode !== 'auto_safe') {
+      showError(
+        'Auto-safe is disabled. Set mode to auto_safe and save settings.',
+      );
       return;
     }
 
     setRunningAuto(true);
     try {
-      const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+      const minDuration =
+        loadSessionSettings().minSessionDurationSeconds || undefined;
       const result = await runAutoSafeAssignment(
         Math.round(clampNumber(autoLimit, 1, 10_000)),
         undefined,
-        minDuration
+        minDuration,
       );
       showInfo(
-        `Auto-safe completed. Assigned ${result.assigned} / ${result.scanned} scanned sessions.`
+        `Auto-safe completed. Assigned ${result.assigned} / ${result.scanned} scanned sessions.`,
       );
       triggerRefresh();
       await fetchStatus(true);
@@ -203,14 +223,16 @@ export function AIPage() {
     if (!status?.can_rollback_last_auto_run) return;
 
     const confirmed = window.confirm(
-      "Rollback the last auto-safe batch? This will only revert sessions that haven't been manually changed since."
+      "Rollback the last auto-safe batch? This will only revert sessions that haven't been manually changed since.",
     );
     if (!confirmed) return;
 
     setRollingBack(true);
     try {
       const result = await rollbackLastAutoSafeRun();
-      showInfo(`Rollback completed. Reverted ${result.reverted}, skipped ${result.skipped}.`);
+      showInfo(
+        `Rollback completed. Reverted ${result.reverted}, skipped ${result.skipped}.`,
+      );
       triggerRefresh();
       await fetchStatus(true);
     } catch (e) {
@@ -224,7 +246,9 @@ export function AIPage() {
   const handleSnoozeReminder = async () => {
     setSnoozingReminder(true);
     try {
-      const nextStatus = await setAssignmentModelCooldown(REMINDER_SNOOZE_HOURS);
+      const nextStatus = await setAssignmentModelCooldown(
+        REMINDER_SNOOZE_HOURS,
+      );
       syncFromStatus(nextStatus);
       showInfo(`Reminder snoozed for ${REMINDER_SNOOZE_HOURS}h.`);
     } catch (e) {
@@ -248,34 +272,46 @@ export function AIPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
               <p className="text-xs text-muted-foreground">Mode</p>
-              <p className="mt-1 font-medium">{status?.mode ?? "-"}</p>
+              <p className="mt-1 font-medium">{status?.mode ?? '-'}</p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
               <p className="text-xs text-muted-foreground">Training State</p>
-              <p className="mt-1 font-medium">{status?.is_training ? "In progress" : "Idle"}</p>
-            </div>
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Last Training</p>
-              <p className="mt-1 font-medium">{formatDateTime(status?.last_train_at)}</p>
-            </div>
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Corrections since last training</p>
-              <p className="mt-1 font-medium">{status?.feedback_since_train ?? 0}</p>
-            </div>
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Last training metrics</p>
               <p className="mt-1 font-medium">
-                {(status?.last_train_samples ?? 0) > 0
-                  ? `${status?.last_train_samples} samples / ${status?.last_train_duration_ms ?? 0} ms`
-                  : "No data"}
+                {status?.is_training ? 'In progress' : 'Idle'}
               </p>
             </div>
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="text-xs text-muted-foreground">Last auto-safe run</p>
+              <p className="text-xs text-muted-foreground">Last Training</p>
+              <p className="mt-1 font-medium">
+                {formatDateTime(status?.last_train_at)}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/70 bg-background/35 p-3">
+              <p className="text-xs text-muted-foreground">
+                Corrections since last training
+              </p>
+              <p className="mt-1 font-medium">
+                {status?.feedback_since_train ?? 0}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/70 bg-background/35 p-3">
+              <p className="text-xs text-muted-foreground">
+                Last training metrics
+              </p>
+              <p className="mt-1 font-medium">
+                {(status?.last_train_samples ?? 0) > 0
+                  ? `${status?.last_train_samples} samples / ${status?.last_train_duration_ms ?? 0} ms`
+                  : 'No data'}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/70 bg-background/35 p-3">
+              <p className="text-xs text-muted-foreground">
+                Last auto-safe run
+              </p>
               <p className="mt-1 font-medium">
                 {status?.last_auto_run_at
                   ? `${formatDateTime(status.last_auto_run_at)} (${status.last_auto_assigned_count} assigned)`
-                  : "Never"}
+                  : 'Never'}
               </p>
             </div>
           </div>
@@ -288,7 +324,8 @@ export function AIPage() {
 
           {trainingReminder.cooldownUntil && !trainingReminder.shouldShow && (
             <div className="rounded-md border border-border/70 bg-background/35 px-3 py-2 text-xs text-muted-foreground">
-              Training reminder snoozed until: {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
+              Training reminder snoozed until:{' '}
+              {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
             </div>
           )}
 
@@ -300,7 +337,7 @@ export function AIPage() {
               disabled={training || status?.is_training}
             >
               <PlayCircle className="mr-2 h-4 w-4" />
-              {training || status?.is_training ? "Training..." : "Train Now"}
+              {training || status?.is_training ? 'Training...' : 'Train Now'}
             </Button>
             <Button
               variant="outline"
@@ -323,7 +360,9 @@ export function AIPage() {
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p className="text-amber-100/90">{trainingReminder.reason}</p>
-            <p className="text-xs text-amber-100/80">Estimated cost: light training, usually under 10 seconds.</p>
+            <p className="text-xs text-amber-100/80">
+              Estimated cost: light training, usually under 10 seconds.
+            </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 className="h-8"
@@ -331,7 +370,7 @@ export function AIPage() {
                 disabled={training || status?.is_training}
               >
                 <PlayCircle className="mr-2 h-4 w-4" />
-                {training || status?.is_training ? "Training..." : "Train Now"}
+                {training || status?.is_training ? 'Training...' : 'Train Now'}
               </Button>
               <Button
                 variant="outline"
@@ -340,7 +379,7 @@ export function AIPage() {
                 disabled={snoozingReminder}
               >
                 {snoozingReminder
-                  ? "Saving..."
+                  ? 'Saving...'
                   : `Remind me later (${REMINDER_SNOOZE_HOURS}h)`}
               </Button>
             </div>
@@ -350,12 +389,16 @@ export function AIPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Mode and Thresholds</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            Mode and Thresholds
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">Model operation mode</span>
+              <span className="text-xs text-muted-foreground">
+                Model operation mode
+              </span>
               <select
                 className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                 value={mode}
@@ -368,7 +411,9 @@ export function AIPage() {
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">Suggest Min Confidence (0..1)</span>
+              <span className="text-xs text-muted-foreground">
+                Suggest Min Confidence (0..1)
+              </span>
               <input
                 type="number"
                 min={0}
@@ -384,7 +429,9 @@ export function AIPage() {
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">Auto-safe Min Confidence (0..1)</span>
+              <span className="text-xs text-muted-foreground">
+                Auto-safe Min Confidence (0..1)
+              </span>
               <input
                 type="number"
                 min={0}
@@ -400,7 +447,9 @@ export function AIPage() {
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">Auto-safe Min Evidence (1..50)</span>
+              <span className="text-xs text-muted-foreground">
+                Auto-safe Min Evidence (1..50)
+              </span>
               <input
                 type="number"
                 min={1}
@@ -416,7 +465,9 @@ export function AIPage() {
             </label>
 
             <label className="space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">Feedback Weight (1..50)</span>
+              <span className="text-xs text-muted-foreground">
+                Feedback Weight (1..50)
+              </span>
               <input
                 type="number"
                 min={1}
@@ -433,9 +484,13 @@ export function AIPage() {
           </div>
 
           <div className="flex justify-end">
-            <Button className="h-9 min-w-[9rem]" onClick={handleSaveMode} disabled={savingMode}>
+            <Button
+              className="h-9 min-w-[9rem]"
+              onClick={handleSaveMode}
+              disabled={savingMode}
+            >
               <Save className="mr-2 h-4 w-4" />
-              {savingMode ? "Saving..." : "Save model settings"}
+              {savingMode ? 'Saving...' : 'Save model settings'}
             </Button>
           </div>
         </CardContent>
@@ -450,17 +505,41 @@ export function AIPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Configure which AI indicators and feedback controls are visible on session rows.
+            Configure which AI indicators and feedback controls are visible on
+            session rows.
           </p>
           <div className="space-y-3">
-            {([
-              { key: "showAiBadge" as const, label: "AI badge", desc: "Show sparkle icon on sessions assigned by AI auto-safe" },
-              { key: "showThumbsOnAi" as const, label: "Thumbs on AI sessions", desc: "Show confirm/reject buttons on AI-assigned sessions" },
-              { key: "showThumbsOnAll" as const, label: "Thumbs on all sessions", desc: "Show feedback buttons on every assigned session (not just AI)" },
-              { key: "showSuggestions" as const, label: "AI suggestions", desc: "Show project suggestions for unassigned sessions" },
-              { key: "showScoreBreakdown" as const, label: "Score breakdown button", desc: "Show the score details button (BarChart3) on each session" },
-            ]).map(({ key, label, desc }) => (
-              <label key={key} className="flex items-start gap-3 cursor-pointer group">
+            {[
+              {
+                key: 'showAiBadge' as const,
+                label: 'AI badge',
+                desc: 'Show sparkle icon on sessions assigned by AI auto-safe',
+              },
+              {
+                key: 'showThumbsOnAi' as const,
+                label: 'Thumbs on AI sessions',
+                desc: 'Show confirm/reject buttons on AI-assigned sessions',
+              },
+              {
+                key: 'showThumbsOnAll' as const,
+                label: 'Thumbs on all sessions',
+                desc: 'Show feedback buttons on every assigned session (not just AI)',
+              },
+              {
+                key: 'showSuggestions' as const,
+                label: 'AI suggestions',
+                desc: 'Show project suggestions for unassigned sessions',
+              },
+              {
+                key: 'showScoreBreakdown' as const,
+                label: 'Score breakdown button',
+                desc: 'Show the score details button (BarChart3) on each session',
+              },
+            ].map(({ key, label, desc }) => (
+              <label
+                key={key}
+                className="flex items-start gap-3 cursor-pointer group"
+              >
                 <input
                   type="checkbox"
                   className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
@@ -472,7 +551,9 @@ export function AIPage() {
                   }}
                 />
                 <div>
-                  <span className="text-sm font-medium group-hover:text-foreground transition-colors">{label}</span>
+                  <span className="text-sm font-medium group-hover:text-foreground transition-colors">
+                    {label}
+                  </span>
                   <p className="text-xs text-muted-foreground">{desc}</p>
                 </div>
               </label>
@@ -483,11 +564,15 @@ export function AIPage() {
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Batch auto-safe actions</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            Batch auto-safe actions
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="block max-w-xs space-y-1.5 text-sm">
-            <span className="text-xs text-muted-foreground">Session limit per run</span>
+            <span className="text-xs text-muted-foreground">
+              Session limit per run
+            </span>
             <input
               type="number"
               min={1}
@@ -506,10 +591,10 @@ export function AIPage() {
             <Button
               className="h-9"
               onClick={handleRunAutoSafe}
-              disabled={runningAuto || status?.mode !== "auto_safe"}
+              disabled={runningAuto || status?.mode !== 'auto_safe'}
             >
               <WandSparkles className="mr-2 h-4 w-4" />
-              {runningAuto ? "Starting..." : "Run auto-safe"}
+              {runningAuto ? 'Starting...' : 'Run auto-safe'}
             </Button>
 
             <Button
@@ -519,64 +604,82 @@ export function AIPage() {
               disabled={rollingBack || !status?.can_rollback_last_auto_run}
             >
               <RotateCcw className="mr-2 h-4 w-4" />
-              {rollingBack ? "Rolling back..." : "Rollback last auto-safe batch"}
+              {rollingBack
+                ? 'Rolling back...'
+                : 'Rollback last auto-safe batch'}
             </Button>
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Rollback only reverts sessions that have not been manually changed since the auto-safe run.
+            Rollback only reverts sessions that have not been manually changed
+            since the auto-safe run.
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">How to train and configure</CardTitle>
+          <CardTitle className="text-base font-semibold">
+            How to train and configure
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm leading-6">
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
             <p className="font-medium">When to train the model</p>
             <p className="text-muted-foreground">
-              Train after a larger series of manual corrections, after importing new data, or when the reminder
-              indicates that the model needs refreshing.
+              Train after a larger series of manual corrections, after importing
+              new data, or when the reminder indicates that the model needs
+              refreshing.
             </p>
             <p className="mt-2 text-muted-foreground">
-              The reminder appears automatically when: you have at least {FEEDBACK_TRIGGER} new corrections or over
-              {RETRAIN_INTERVAL_HOURS}h passed since last training and there are new corrections.
+              The reminder appears automatically when: you have at least{' '}
+              {FEEDBACK_TRIGGER} new corrections or over
+              {RETRAIN_INTERVAL_HOURS}h passed since last training and there are
+              new corrections.
             </p>
           </div>
 
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
             <p className="font-medium">What parameters mean</p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Mode</strong>: <code>off</code> disables suggestions, <code>suggest</code> shows suggestions without
-              auto-changes, <code>auto_safe</code> allows automatic assignments only with high confidence.
+              <strong>Mode</strong>: <code>off</code> disables suggestions,{' '}
+              <code>suggest</code> shows suggestions without auto-changes,{' '}
+              <code>auto_safe</code> allows automatic assignments only with high
+              confidence.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Suggest Min Confidence</strong>: minimum confidence to show suggestion in sessions.
+              <strong>Suggest Min Confidence</strong>: minimum confidence to
+              show suggestion in sessions.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Auto-safe Min Confidence</strong>: required confidence threshold for automatic assignment.
+              <strong>Auto-safe Min Confidence</strong>: required confidence
+              threshold for automatic assignment.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Auto-safe Min Evidence</strong>: how many signals (e.g. app/token/time history) must confirm decision.
+              <strong>Auto-safe Min Evidence</strong>: how many signals (e.g.
+              app/token/time history) must confirm decision.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Session Limit</strong>: how many unassigned sessions auto-safe will scan in one batch.
+              <strong>Session Limit</strong>: how many unassigned sessions
+              auto-safe will scan in one batch.
             </p>
             <p className="mt-2 text-muted-foreground">
-              <strong>Feedback Weight</strong>: how much manual corrections (thumbs up/down, reassignments) influence the model during training. Higher = corrections dominate more. Default: 5.
+              <strong>Feedback Weight</strong>: how much manual corrections
+              (thumbs up/down, reassignments) influence the model during
+              training. Higher = corrections dominate more. Default: 5.
             </p>
           </div>
 
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
             <p className="font-medium">Recommended starting settings</p>
             <p className="text-muted-foreground">
-              Start with <code>mode=suggest</code>, <code>suggest=0.60</code>, <code>auto=0.85</code>,{" "}
-              <code>evidence=3</code>. When suggestions are accurate, enable <code>auto_safe</code>.
+              Start with <code>mode=suggest</code>, <code>suggest=0.60</code>,{' '}
+              <code>auto=0.85</code>, <code>evidence=3</code>. When suggestions
+              are accurate, enable <code>auto_safe</code>.
             </p>
             <p className="mt-2 text-muted-foreground">
-              If auto-safe makes wrong assignments: raise <code>Auto-safe Min Confidence</code> to 0.9+ or{" "}
+              If auto-safe makes wrong assignments: raise{' '}
+              <code>Auto-safe Min Confidence</code> to 0.9+ or{' '}
               <code>Min Evidence</code> to 4-5.
             </p>
           </div>

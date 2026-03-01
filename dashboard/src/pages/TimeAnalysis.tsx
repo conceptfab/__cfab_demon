@@ -20,10 +20,10 @@ import {
   MonthlyBarChart,
   MonthlyHeatmap,
 } from '@/components/time-analysis/MonthlyView';
-import { useAppStore } from '@/store/app-store';
+import { useSettingsStore } from '@/store/settings-store';
 
 export function TimeAnalysis() {
-  const isAnimationActive = useAppStore((s) => s.chartAnimations);
+  const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
   const d = useTimeAnalysisData();
   const hasPieProjectData = d.pieData.length > 0;
   const pieChartData = hasPieProjectData
