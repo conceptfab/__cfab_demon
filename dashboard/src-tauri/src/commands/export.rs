@@ -5,7 +5,7 @@ use super::types::{
 };
 use crate::db;
 use rfd::AsyncFileDialog;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use tauri::AppHandle;
 
@@ -242,7 +242,7 @@ fn build_export_archive(
         }
 
         // 6. Fetch Daily JSON Files
-        let mut daily_files = HashMap::new();
+        let mut daily_files = BTreeMap::new();
         let data_dir = timeflow_data_dir()?.join("data");
         if data_dir.exists() {
             for entry in fs::read_dir(data_dir).map_err(|e| e.to_string())? {
@@ -258,7 +258,7 @@ fn build_export_archive(
                         if let Ok(daily) = serde_json::from_str::<DailyData>(&content) {
                             // If single project, filter apps in daily data
                             if project_id.is_some() {
-                                let filtered_apps: HashMap<String, AppDailyData> = daily
+                                let filtered_apps: BTreeMap<String, AppDailyData> = daily
                                     .apps
                                     .into_iter()
                                     .filter(|(exe, _)| {

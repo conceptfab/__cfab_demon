@@ -35,6 +35,31 @@ const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
 const REMINDER_SNOOZE_HOURS = 24;
 
+const AUTO_LIMIT_STORAGE_KEY = 'timeflow.ai.auto-limit';
+const DEFAULT_AUTO_LIMIT = 500;
+
+function loadAutoLimit(): number {
+  try {
+    if (typeof window === 'undefined') return DEFAULT_AUTO_LIMIT;
+    const raw = window.localStorage.getItem(AUTO_LIMIT_STORAGE_KEY);
+    if (!raw) return DEFAULT_AUTO_LIMIT;
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 1 && n <= 10_000 ? n : DEFAULT_AUTO_LIMIT;
+  } catch {
+    return DEFAULT_AUTO_LIMIT;
+  }
+}
+
+function saveAutoLimit(value: number): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(AUTO_LIMIT_STORAGE_KEY, String(value));
+    }
+  } catch {
+    // ignore
+  }
+}
+
 function formatDateTime(value: string | null | undefined): string {
   if (!value) return '';
   const parsed = new Date(value);
@@ -133,7 +158,7 @@ export function AIPage() {
   const [suggestConf, setSuggestConf] = useState<number>(0.6);
   const [autoConf, setAutoConf] = useState<number>(0.85);
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
-  const [autoLimit, setAutoLimit] = useState<number>(500);
+  const [autoLimit, setAutoLimit] = useState<number>(loadAutoLimit);
   const [feedbackWeight, setFeedbackWeight] = useState<number>(5.0);
   const dirtyRef = useRef(false);
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
@@ -692,7 +717,9 @@ export function AIPage() {
                 value={autoLimit}
                 onChange={(e) => {
                   const next = Number.parseInt(e.target.value, 10);
-                  setAutoLimit(Number.isNaN(next) ? 1 : next);
+                  const value = Number.isNaN(next) ? DEFAULT_AUTO_LIMIT : next;
+                  setAutoLimit(value);
+                  saveAutoLimit(value);
                 }}
               />
             </label>

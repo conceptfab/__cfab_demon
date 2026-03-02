@@ -900,6 +900,7 @@ async function postAckWithRetries(
     payloadSha256: string;
   },
   apiToken: string,
+  log?: SyncFileLogger | null,
 ): Promise<SyncAckResponse> {
   const maxAttempts = 3;
 
@@ -917,10 +918,17 @@ async function postAckWithRetries(
         throw error;
       }
 
+      const msg = error instanceof Error ? error.message : String(error);
       console.warn(
         `[online-sync] ACK transient failure (attempt ${attempt}/${maxAttempts}), retrying`,
-        error instanceof Error ? error.message : String(error),
+        msg,
       );
+      log?.warn(`ACK transient failure, retrying`, {
+        attempt,
+        maxAttempts,
+        error: msg,
+        delayMs: 250 * attempt,
+      });
       await delay(250 * attempt);
     }
   }
@@ -1067,6 +1075,7 @@ async function flushPendingAck(
   settings: OnlineSyncSettings,
   state: OnlineSyncState,
   apiToken: string = '',
+  log?: SyncFileLogger | null,
 ): Promise<FlushPendingAckResult> {
   if (!state.pendingAck) {
     return {
@@ -1078,15 +1087,29 @@ async function flushPendingAck(
   }
 
   const pendingAck: OnlineSyncPendingAck = { ...state.pendingAck };
+  log?.info('Sending ACK', {
+    revision: pendingAck.revision,
+    payloadSha256: pendingAck.payloadSha256.substring(0, 12),
+    previousRetries: pendingAck.retries,
+  });
 
   try {
+    const t0 = Date.now();
     const ackRes = await postAckWithRetries(settings, {
       userId: settings.userId,
       deviceId: settings.deviceId,
       revision: pendingAck.revision,
       payloadSha256: pendingAck.payloadSha256,
-    }, apiToken);
+    }, apiToken, log);
+    const ackDurationMs = Date.now() - t0;
 
+    log?.info('ACK response received', {
+      accepted: ackRes.accepted,
+      isLatest: ackRes.isLatest,
+      reason: ackRes.reason,
+      serverRevision: ackRes.serverRevision,
+      durationMs: ackDurationMs,
+    });
     logSyncDiagnostic('ack', {
       reason: ackRes.reason,
       accepted: ackRes.accepted,
@@ -1146,8 +1169,22 @@ async function handleServerSnapshotPruned(
   local: LocalDatasetState,
   statusRes: SyncStatusResponse,
   apiToken: string = '',
+  log?: SyncFileLogger | null,
 ): Promise<OnlineSyncRunResult> {
+  log?.info('Handling server_snapshot_pruned', {
+    hasArchive: local.archive !== null,
+    hasReseedData: local.hasReseedData,
+    exportOk: local.exportOk,
+    exportError: local.exportError ?? null,
+  });
+
   if (local.archive && local.hasReseedData) {
+    const reseedPayloadSize = JSON.stringify(local.archive).length;
+    log?.info('Reseeding: pushing full archive to server', {
+      payloadSizeKB: Math.round(reseedPayloadSize / 1024),
+      knownServerRevision: statusRes.serverRevision ?? null,
+    });
+    const t0 = Date.now();
     const push = await postJson<SyncPushResponse>(
       settings.serverUrl,
       '/api/sync/push',
@@ -1162,8 +1199,15 @@ async function handleServerSnapshotPruned(
     );
 
     if (push.accepted === false) {
+      log?.error('Reseed push rejected', { reason: push.reason });
       throw new Error('reseed push rejected after server_snapshot_pruned');
     }
+
+    log?.info('Reseed push accepted', {
+      revision: push.revision,
+      noOp: push.noOp ?? false,
+      durationMs: Date.now() - t0,
+    });
 
     state.localRevision = push.revision;
     state.localHash = push.payloadSha256;
@@ -1182,6 +1226,12 @@ async function handleServerSnapshotPruned(
     };
   }
 
+  log?.error('Reseed impossible: no local data available', {
+    exportOk: local.exportOk,
+    hasArchive: local.archive !== null,
+    hasReseedData: local.hasReseedData,
+    exportError: local.exportError ?? null,
+  });
   state.needsReseed = true;
   saveOnlineSyncState(state, settings);
   return {
@@ -1202,6 +1252,7 @@ export async function runOnlineSyncOnce(
   options: RunOnlineSyncOptions = {},
 ): Promise<OnlineSyncRunResult> {
   if (_syncRunning) {
+    console.info('[online-sync] Skipped: already running');
     return { ok: true, skipped: true, action: 'none', reason: 'already_running', serverRevision: null };
   }
   _syncRunning = true;
@@ -1273,7 +1324,10 @@ async function _runOnlineSyncOnceImpl(
 
   log?.info('Connecting to server', {
     serverUrl: settings.serverUrl,
+    userId: settings.userId,
     deviceId: settings.deviceId,
+    hasToken: Boolean(secureApiToken),
+    requestTimeoutMs: settings.requestTimeoutMs,
   });
 
   emitOnlineSyncIndicatorSnapshot({
@@ -1291,7 +1345,7 @@ async function _runOnlineSyncOnceImpl(
     log?.info('Flushing pending ACK', {
       hasPendingAck: state.pendingAck !== null,
     });
-    const pendingAckResult = await flushPendingAck(settings, state, secureApiToken);
+    const pendingAckResult = await flushPendingAck(settings, state, secureApiToken, log);
     log?.info('Pending ACK result', {
       attempted: pendingAckResult.attempted,
       accepted: pendingAckResult.accepted,
@@ -1319,7 +1373,17 @@ async function _runOnlineSyncOnceImpl(
       return result;
     }
 
+    log?.info('Loaded sync state', {
+      serverRevision: state.serverRevision,
+      serverHash: shortHash(state.serverHash),
+      localRevision: state.localRevision,
+      localHash: shortHash(state.localHash),
+      hasPendingAck: state.pendingAck !== null,
+      needsReseed: state.needsReseed,
+    });
+
     log?.info('Exporting local dataset');
+    const exportT0 = Date.now();
     const local = await getLocalDatasetState(state);
     log?.info('Local dataset state', {
       exportOk: local.exportOk,
@@ -1327,6 +1391,7 @@ async function _runOnlineSyncOnceImpl(
       revision: local.revision,
       hash: local.payloadSha256?.substring(0, 12) ?? null,
       exportError: local.exportError ?? null,
+      durationMs: Date.now() - exportT0,
     });
     if (local.exportOk) {
       state.localRevision = local.revision;
@@ -1334,7 +1399,12 @@ async function _runOnlineSyncOnceImpl(
       saveOnlineSyncState(state, settings);
     }
 
-    log?.info('Checking server status');
+    const clientHashForStatus = local.payloadSha256 ?? state.localHash;
+    log?.info('Checking server status', {
+      clientRevision: state.localRevision,
+      clientHash: clientHashForStatus?.substring(0, 12) ?? null,
+    });
+    const statusT0 = Date.now();
     const status = await postJson<SyncStatusResponse>(
       settings.serverUrl,
       '/api/sync/status',
@@ -1342,7 +1412,7 @@ async function _runOnlineSyncOnceImpl(
         userId: settings.userId,
         deviceId: settings.deviceId,
         clientRevision: state.localRevision,
-        clientHash: local.payloadSha256 ?? state.localHash,
+        clientHash: clientHashForStatus,
       },
       settings.requestTimeoutMs,
       secureApiToken,
@@ -1353,6 +1423,8 @@ async function _runOnlineSyncOnceImpl(
       shouldPull: status.shouldPull,
       shouldPush: status.shouldPush,
       serverRevision: status.serverRevision,
+      serverHash: shortHash(status.serverHash),
+      durationMs: Date.now() - statusT0,
     });
 
     logSyncDiagnostic('status', {
@@ -1374,6 +1446,7 @@ async function _runOnlineSyncOnceImpl(
         local,
         status,
         secureApiToken,
+        log,
       );
       log?.info('Sync finished (server_snapshot_pruned)', {
         ok: result.ok,
@@ -1385,7 +1458,8 @@ async function _runOnlineSyncOnceImpl(
     }
 
     if (status.shouldPull) {
-      log?.info('Pulling from server');
+      log?.info('Pulling from server', { clientRevision: state.localRevision });
+      const pullT0 = Date.now();
       const pull = await postJson<SyncPullResponse>(
         settings.serverUrl,
         '/api/sync/pull',
@@ -1402,6 +1476,7 @@ async function _runOnlineSyncOnceImpl(
         reason: pull.reason,
         hasUpdate: pull.hasUpdate,
         revision: pull.revision,
+        durationMs: Date.now() - pullT0,
       });
 
       logSyncDiagnostic('pull', {
@@ -1418,6 +1493,7 @@ async function _runOnlineSyncOnceImpl(
           local,
           status,
           secureApiToken,
+          log,
         );
         log?.info('Sync finished (pull server_snapshot_pruned)', {
           ok: result.ok,
@@ -1435,11 +1511,13 @@ async function _runOnlineSyncOnceImpl(
         }
 
         log?.info('Importing pulled archive', { revision: pull.revision });
+        const importT0 = Date.now();
         const importSummary = await importDataArchive(pull.archive);
         log?.info('Import complete', {
           sessions_imported: importSummary.sessions_imported,
           sessions_merged: importSummary.sessions_merged,
           projects_created: importSummary.projects_created,
+          durationMs: Date.now() - importT0,
         });
 
         state.localRevision = pull.revision;
@@ -1456,7 +1534,7 @@ async function _runOnlineSyncOnceImpl(
         saveOnlineSyncState(state, settings);
 
         log?.info('Flushing post-pull ACK');
-        const ackResult = await flushPendingAck(settings, state, secureApiToken);
+        const ackResult = await flushPendingAck(settings, state, secureApiToken, log);
         log?.info('Post-pull ACK result', {
           accepted: ackResult.accepted,
           reason: ackResult.reason,
@@ -1556,6 +1634,7 @@ async function _runOnlineSyncOnceImpl(
         payloadSizeKB: Math.round(pushPayloadSize / 1024),
         timeoutMs: settings.requestTimeoutMs,
       });
+      const pushT0 = Date.now();
       const push = await postJson<SyncPushResponse>(
         settings.serverUrl,
         '/api/sync/push',
@@ -1570,13 +1649,14 @@ async function _runOnlineSyncOnceImpl(
       );
 
       if (push.accepted === false) {
-        log?.error('Push rejected', { reason: push.reason });
+        log?.error('Push rejected', { reason: push.reason, durationMs: Date.now() - pushT0 });
         throw new Error(`push rejected: ${push.reason}`);
       }
 
       log?.info('Push accepted', {
         revision: push.revision,
         noOp: push.noOp ?? false,
+        durationMs: Date.now() - pushT0,
       });
 
       state.localRevision = push.revision;

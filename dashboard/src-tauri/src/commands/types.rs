@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ==================== JSON Import Types ====================
 
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 pub(crate) struct DailyData {
     #[allow(dead_code)]
     pub date: String,
-    pub apps: HashMap<String, AppDailyData>,
+    pub apps: BTreeMap<String, AppDailyData>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -420,7 +420,7 @@ pub struct ExportData {
     pub applications: Vec<ApplicationRow>,
     pub sessions: Vec<SessionRow>,
     pub manual_sessions: Vec<ManualSession>,
-    pub daily_files: HashMap<String, DailyData>,
+    pub daily_files: BTreeMap<String, DailyData>,
     pub tombstones: Vec<Tombstone>,
 }
 

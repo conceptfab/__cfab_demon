@@ -448,6 +448,10 @@ pub async fn import_data_archive(
     // Online sync pull should converge to exactly the server snapshot.
     // Replace synchronized tables first to avoid legacy merge conflicts
     // (e.g. stale boosts/comments/manual-session duplicates).
+    //
+    // AI configuration keys (mode, confidence thresholds, feedback_weight, cooldown_until)
+    // are local user preferences not included in the sync payload — preserve them
+    // so a pull does not revert the user's AI settings to defaults.
     {
         let conn = db::get_connection(&app)?;
         conn.execute_batch(
@@ -463,7 +467,15 @@ pub async fn import_data_archive(
              DELETE FROM assignment_model_app;
              DELETE FROM assignment_model_token;
              DELETE FROM assignment_model_time;
-             DELETE FROM assignment_model_state;",
+             DELETE FROM assignment_model_state
+               WHERE key NOT IN (
+                 'mode',
+                 'min_confidence_suggest',
+                 'min_confidence_auto',
+                 'min_evidence_auto',
+                 'feedback_weight',
+                 'cooldown_until'
+               );",
         )
         .map_err(|e| e.to_string())?;
     }
