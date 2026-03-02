@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { FileDropzone } from "@/components/import/FileDropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AppTooltip } from "@/components/ui/app-tooltip";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles } from "@/lib/tauri";
 import type { ArchivedFile } from "@/lib/db-types";
 import { useInlineT } from "@/lib/inline-i18n";
@@ -68,16 +69,17 @@ export function ImportPage() {
               {archive.map((f) => (
                 <div key={f.file_name} className="flex items-center justify-between gap-2 text-xs py-1">
                   <span className="truncate text-muted-foreground">{f.file_name}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-destructive"
-                    onClick={() => handleDeleteArchive(f.file_name)}
-                    disabled={deleting === f.file_name}
-                    title={t("Usuń z archiwum", "Delete from archive")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <AppTooltip content={t("Usuń z archiwum", "Delete from archive")}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-destructive"
+                      onClick={() => handleDeleteArchive(f.file_name)}
+                      disabled={deleting === f.file_name}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </AppTooltip>
                 </div>
               ))}
             </div>

@@ -10,6 +10,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AppTooltip } from "@/components/ui/app-tooltip";
 import {
   getDaemonStatus,
   getDaemonLogs,
@@ -142,12 +143,14 @@ export function DaemonControl() {
               </div>
               <div className="ml-auto flex items-center gap-2">
                 {status?.version && (
-                  <span className={cn(
-                    "text-[10px] font-mono",
-                    status.is_compatible ? "text-muted-foreground/50" : "text-destructive font-bold"
-                  )} title={status.is_compatible ? t("Wersja demona", "Daemon version") : t("NIEZGODNOŚĆ WERSJI!", "VERSION INCOMPATIBILITY!")}>
-                    v{status.version} {!status.is_compatible && "!"}
-                  </span>
+                  <AppTooltip content={status.is_compatible ? t("Wersja demona", "Daemon version") : t("NIEZGODNOŚĆ WERSJI!", "VERSION INCOMPATIBILITY!")}>
+                    <span className={cn(
+                      "text-[10px] font-mono cursor-default",
+                      status.is_compatible ? "text-muted-foreground/50" : "text-destructive font-bold"
+                    )}>
+                      v{status.version} {!status.is_compatible && "!"}
+                    </span>
+                  </AppTooltip>
                 )}
                 <Badge
                   variant={status?.running ? "default" : "destructive"}

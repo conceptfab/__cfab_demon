@@ -21,6 +21,7 @@ import {
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useUIStore } from '@/store/ui-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
@@ -80,38 +81,39 @@ function StatusIndicator({
   pulse,
 }: StatusIndicatorProps) {
   return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className={cn(
-        'group flex w-full items-center gap-2.5 rounded-md border border-transparent px-2.5 py-1 transition-all text-[11px] font-medium',
-        onClick ? 'hover:bg-accent/40' : 'cursor-default',
-      )}
-      title={title}
-    >
-      <div className="relative shrink-0">
-        <Icon
-          className={cn(
-            'h-3.5 w-3.5',
-            colorClass || 'text-muted-foreground/70',
-          )}
-        />
-        {pulse && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-1.5 w-1.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500"></span>
-          </span>
+    <AppTooltip content={title} side="right">
+      <button
+        onClick={onClick}
+        disabled={!onClick}
+        className={cn(
+          'group flex w-full items-center gap-2.5 rounded-md border border-transparent px-2.5 py-1 transition-all text-[11px] font-medium',
+          onClick ? 'hover:bg-accent/40' : 'cursor-default',
         )}
-      </div>
-      <div className="flex min-w-0 flex-col items-start gap-0.5 leading-none">
-        <span className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground/45">
-          {label}
-        </span>
-        <span className="truncate text-[10px] text-muted-foreground group-hover:text-foreground/90">
-          {statusText}
-        </span>
-      </div>
-    </button>
+      >
+        <div className="relative shrink-0">
+          <Icon
+            className={cn(
+              'h-3.5 w-3.5',
+              colorClass || 'text-muted-foreground/70',
+            )}
+          />
+          {pulse && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+            </span>
+          )}
+        </div>
+        <div className="flex min-w-0 flex-col items-start gap-0.5 leading-none">
+          <span className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground/45">
+            {label}
+          </span>
+          <span className="truncate text-[10px] text-muted-foreground group-hover:text-foreground/90">
+            {statusText}
+          </span>
+        </div>
+      </button>
+    </AppTooltip>
   );
 }
 
@@ -247,10 +249,9 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 p-2">
         {navItems.map((item) => (
+          <AppTooltip key={item.id} content={item.id === 'sessions' ? sessionsAttentionTitle : undefined} side="right">
           <button
-            key={item.id}
             onClick={() => setCurrentPage(item.id)}
-            title={item.id === 'sessions' ? sessionsAttentionTitle : undefined}
             className={cn(
               'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
               currentPage === item.id ||
@@ -269,6 +270,7 @@ export function Sidebar() {
               </span>
             )}
           </button>
+          </AppTooltip>
         ))}
       </nav>
 
@@ -375,76 +377,77 @@ export function Sidebar() {
               v{status?.dashboard_version || '?.?.?'}
             </span>
             {status?.version && !status.is_compatible && (
-              <span
-                className="text-[9px] font-mono text-destructive font-bold"
-                title={t('layout.tooltips.version_incompatibility', {
-                  version: status.version,
-                })}
-              >
-                !
-              </span>
+              <AppTooltip content={t('layout.tooltips.version_incompatibility', { version: status.version })}>
+                <span className="text-[9px] font-mono text-destructive font-bold cursor-default">
+                  !
+                </span>
+              </AppTooltip>
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsBugHunterOpen(true)}
-              className={cn(
-                'transition-all text-muted-foreground/30 hover:text-destructive active:scale-90',
-              )}
-              title={t('layout.tooltips.bughunter')}
-            >
-              <Bug className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => {
-                setCurrentPage('quickstart');
-              }}
-              className={cn(
-                'relative transition-all',
-                currentPage === 'quickstart'
-                  ? 'text-primary scale-110'
-                  : 'text-muted-foreground/30 hover:text-primary',
-              )}
-              title={t('layout.tooltips.quick_start')}
-            >
-              <Rocket
+            <AppTooltip content={t('layout.tooltips.bughunter')}>
+              <button
+                onClick={() => setIsBugHunterOpen(true)}
                 className={cn(
-                  'h-4 w-4',
-                  firstRun &&
-                    'animate-bounce text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.8)]',
+                  'transition-all text-muted-foreground/30 hover:text-destructive active:scale-90',
                 )}
-              />
-              {firstRun && (
-                <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
-              )}
-            </button>
-            <button
-              onClick={openContextHelp}
-              className={cn(
-                'transition-all',
-                currentPage === 'help'
-                  ? 'text-primary scale-110'
-                  : 'text-muted-foreground/30 hover:text-foreground',
-              )}
-              title={t('layout.tooltips.help')}
-            >
-              <HelpCircle className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setCurrentPage('settings')}
-              className={cn(
-                'transition-all',
-                currentPage === 'settings'
-                  ? 'text-primary scale-110'
-                  : 'text-muted-foreground/30 hover:text-foreground',
-              )}
-              title={t('layout.tooltips.settings')}
-            >
-              <Settings className="h-4 w-4" />
-            </button>
+              >
+                <Bug className="h-4 w-4" />
+              </button>
+            </AppTooltip>
+            <AppTooltip content={t('layout.tooltips.quick_start')}>
+              <button
+                onClick={() => {
+                  setCurrentPage('quickstart');
+                }}
+                className={cn(
+                  'relative transition-all',
+                  currentPage === 'quickstart'
+                    ? 'text-primary scale-110'
+                    : 'text-muted-foreground/30 hover:text-primary',
+                )}
+              >
+                <Rocket
+                  className={cn(
+                    'h-4 w-4',
+                    firstRun &&
+                      'animate-bounce text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.8)]',
+                  )}
+                />
+                {firstRun && (
+                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                  </span>
+                )}
+              </button>
+            </AppTooltip>
+            <AppTooltip content={t('layout.tooltips.help')}>
+              <button
+                onClick={openContextHelp}
+                className={cn(
+                  'transition-all',
+                  currentPage === 'help'
+                    ? 'text-primary scale-110'
+                    : 'text-muted-foreground/30 hover:text-foreground',
+                )}
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
+            </AppTooltip>
+            <AppTooltip content={t('layout.tooltips.settings')}>
+              <button
+                onClick={() => setCurrentPage('settings')}
+                className={cn(
+                  'transition-all',
+                  currentPage === 'settings'
+                    ? 'text-primary scale-110'
+                    : 'text-muted-foreground/30 hover:text-foreground',
+                )}
+              >
+                <Settings className="h-4 w-4" />
+              </button>
+            </AppTooltip>
           </div>
         </div>
       </div>

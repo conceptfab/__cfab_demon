@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
@@ -404,14 +405,14 @@ export function Estimates() {
                           {row.project_name}
                         </span>
                         {row.multiplied_session_count > 0 && (
-                          <button
-                            type="button"
-                            className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0"
-                            title={t(
+                          <AppTooltip content={t(
                               '{{count}} sesji z mnożnikiem stawki - kliknij, aby zobaczyć',
                               '{{count}} session(s) with rate multiplier - click to view',
                               { count: row.multiplied_session_count },
-                            )}
+                            )}>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300 hover:bg-emerald-500/20 transition-colors cursor-pointer shrink-0"
                             onClick={() => {
                               setSessionsFocusRange(dateRange);
                               setSessionsFocusProject(row.project_id);
@@ -421,6 +422,7 @@ export function Estimates() {
                             <CircleDollarSign className="h-3 w-3" />
                             {row.multiplied_session_count} {t('wzmocnione', 'boosted')}
                           </button>
+                          </AppTooltip>
                         )}
                       </div>
 

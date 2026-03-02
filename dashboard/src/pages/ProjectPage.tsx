@@ -20,6 +20,7 @@ import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -619,12 +620,13 @@ export function ProjectPage() {
           className="text-xl font-semibold flex items-center gap-2"
         >
           <div className="relative group">
-            <div
-              className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-              style={{ backgroundColor: project.color }}
-              onClick={() => setEditingColor(!editingColor)}
-              title={tt('Zmień kolor', 'Change color')}
-            />
+            <AppTooltip content={tt('Zmień kolor', 'Change color')}>
+              <div
+                className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+                style={{ backgroundColor: project.color }}
+                onClick={() => setEditingColor(!editingColor)}
+              />
+            </AppTooltip>
             {editingColor && (
               <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
                 <input

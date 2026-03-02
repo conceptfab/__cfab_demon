@@ -62,9 +62,20 @@
       "never": "Nigdy",
       "version_incompatibility": "NIEZGODNOŚĆ WERSJI! Demon: v{{version}}",
       "bughunter": "BugHunter - zgłoś błąd",
-      "quick_start": "Quick Start",
+      "quick_start": "Szybki start",
       "help": "Pomoc (F1)",
-      "settings": "Ustawienia"
+      "settings": "Ustawienia",
+      "previous_period": "Poprzedni okres",
+      "next_period": "Następny okres",
+      "save_optimize_interval": "Zapisz interwał optymalizacji",
+      "save_backup_interval": "Zapisz interwał backupu",
+      "delete_from_archive": "Usuń z archiwum",
+      "saved_view_enabled": "Zapisany widok włączony",
+      "saved_view_disabled": "Zapisany widok wyłączony",
+      "boosted_sessions": "{{count}} wzmocniona(-ych) sesji",
+      "working_hours": "Godziny pracy: {{label}}",
+      "manual_sessions": "Sesje manualne: {{count}}",
+      "remove_folder": "Usuń folder"
     }
   },
   "date_range_toolbar": {
@@ -311,7 +322,13 @@
       "restore": "Przywróć",
       "delete": "Usuń",
       "hidden_existing": "{{count}} istniejących",
-      "hidden_excluded": "{{count}} wykluczonych"
+      "hidden_excluded": "{{count}} wykluczonych",
+      "add_manual_session": "Dodaj sesję ręczną",
+      "project_card": "Karta projektu",
+      "sort_abc": "ABC (przełącz kierunek)",
+      "sort_value": "Wartość (przełącz kierunek)",
+      "sort_time": "Czas (przełącz kierunek)",
+      "toggle_folder_grouping": "Przełącz grupowanie folderów"
     }
   },
   "settings": {

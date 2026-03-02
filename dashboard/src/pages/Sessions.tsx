@@ -10,6 +10,7 @@ import {
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import {
   getSessions,
   getProjects,
@@ -779,28 +780,32 @@ export function Sessions() {
           </div>
           <div className="mx-1 h-4 w-px bg-border/40" />
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => shiftDateRange(-1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-            </Button>
+            <AppTooltip content={t('layout.tooltips.previous_period')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => shiftDateRange(-1)}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+            </AppTooltip>
             <span className="text-[10px] font-mono font-bold text-muted-foreground/80 min-w-[5rem] text-center">
               {activeDateRange.start === activeDateRange.end
                 ? format(parseISO(activeDateRange.start), 'MMM d', { locale })
                 : `${format(parseISO(activeDateRange.start), 'MMM d', { locale })} - ${format(parseISO(activeDateRange.end), 'MMM d', { locale })}`}
             </span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => shiftDateRange(1)}
-              disabled={!canShiftForward}
-            >
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
+            <AppTooltip content={t('layout.tooltips.next_period')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => shiftDateRange(1)}
+                disabled={!canShiftForward}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </AppTooltip>
           </div>
           <div className="mx-1 h-4 w-px bg-border/40" />
           <div className="flex bg-secondary/30 p-0.5 rounded border border-border/20">

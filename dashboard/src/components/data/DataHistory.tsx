@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles, getBackupFiles } from "@/lib/tauri";
 import type { ArchivedFile, ImportedFile, BackupFile } from "@/lib/db-types";
+import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useInlineT } from "@/lib/inline-i18n";
 
 export function DataHistory() {
@@ -158,15 +159,17 @@ export function DataHistory() {
                       <FileJson className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="truncate font-medium" title={f.file_path}>{f.file_name}</span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
-                      onClick={() => handleDeleteArchive(f.file_name)}
-                      disabled={deleting === f.file_name}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <AppTooltip content={t('Usuń z archiwum', 'Delete from archive')}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                        onClick={() => handleDeleteArchive(f.file_name)}
+                        disabled={deleting === f.file_name}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </AppTooltip>
                   </div>
                 ))}
               </div>

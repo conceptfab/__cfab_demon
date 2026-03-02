@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Eye, EyeOff, Languages, TimerReset } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useTranslation } from 'react-i18next';
 import {
   clearAllData,
@@ -864,13 +865,13 @@ export function Settings() {
                     setSavedSettings(false);
                   }}
                 />
+                <AppTooltip content={showOnlineSyncToken ? tt('Ukryj token', 'Hide token') : tt('Pokaż token', 'Show token')}>
                 <Button
                   type="button"
                   variant="outline"
                   className="h-9 w-10 px-0"
                   onClick={() => setShowOnlineSyncToken((prev) => !prev)}
                   aria-label={showOnlineSyncToken ? tt('Ukryj token', 'Hide token') : tt('Pokaż token', 'Show token')}
-                  title={showOnlineSyncToken ? tt('Ukryj token', 'Hide token') : tt('Pokaż token', 'Show token')}
                 >
                   {showOnlineSyncToken ? (
                     <EyeOff className="h-4 w-4" />
@@ -878,6 +879,7 @@ export function Settings() {
                     <Eye className="h-4 w-4" />
                   )}
                 </Button>
+                </AppTooltip>
               </div>
               <p className="text-xs text-muted-foreground">
                 {tt(

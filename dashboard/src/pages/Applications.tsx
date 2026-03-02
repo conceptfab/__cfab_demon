@@ -24,6 +24,7 @@ import {
   renameApplication,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { formatDuration } from '@/lib/utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
@@ -301,24 +302,26 @@ export function Applications() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => handleRenameMonitoredApp(app)}
-                      title={t('Zmień nazwę monitorowanej aplikacji', 'Rename monitored application')}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleRemoveApp(app.exe_name)}
-                      title={t('Usuń monitorowaną aplikację', 'Remove monitored application')}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                    <AppTooltip content={t('Zmień nazwę monitorowanej aplikacji', 'Rename monitored application')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        onClick={() => handleRenameMonitoredApp(app)}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    </AppTooltip>
+                    <AppTooltip content={t('Usuń monitorowaną aplikację', 'Remove monitored application')}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => handleRemoveApp(app.exe_name)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </AppTooltip>
                   </div>
                 </div>
               ))}
@@ -391,16 +394,17 @@ export function Applications() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="relative group">
-                        <div
-                          className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                          style={{ backgroundColor: app.color }}
-                          onClick={() =>
-                            setEditingColorId(
-                              editingColorId === app.id ? null : app.id,
-                            )
-                          }
-                          title={t('Zmień kolor', 'Change color')}
-                        />
+                        <AppTooltip content={t('Zmień kolor', 'Change color')}>
+                          <div
+                            className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+                            style={{ backgroundColor: app.color }}
+                            onClick={() =>
+                              setEditingColorId(
+                                editingColorId === app.id ? null : app.id,
+                              )
+                            }
+                          />
+                        </AppTooltip>
                         {editingColorId === app.id && (
                           <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
                             <input
@@ -481,33 +485,36 @@ export function Applications() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleRenameApp(app)}
-                        title={t('Zmień nazwę aplikacji', 'Rename application')}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handleResetAppTime(app.id)}
-                        title={t('Resetuj czas', 'Reset time')}
-                      >
-                        <TimerReset className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteApp(app)}
-                        title={t('Usuń aplikację i sesje', 'Delete app and sessions')}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      <AppTooltip content={t('Zmień nazwę aplikacji', 'Rename application')}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleRenameApp(app)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </AppTooltip>
+                      <AppTooltip content={t('Resetuj czas', 'Reset time')}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleResetAppTime(app.id)}
+                        >
+                          <TimerReset className="h-3.5 w-3.5" />
+                        </Button>
+                      </AppTooltip>
+                      <AppTooltip content={t('Usuń aplikację i sesje', 'Delete app and sessions')}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteApp(app)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AppTooltip>
                     </div>
                   </td>
                 </tr>

@@ -27,6 +27,7 @@ import {
 import type { DbInfo, DatabaseSettings } from "@/lib/db-types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/ui/toast-notification";
+import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useInlineT } from "@/lib/inline-i18n";
 
 export function DatabaseManagement() {
@@ -318,15 +319,17 @@ export function DatabaseManagement() {
                     }
                     className="h-8 text-[11px]"
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={saveOptimizeInterval}
-                    disabled={saving}
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                  </Button>
+                  <AppTooltip content={t('Zapisz interwał optymalizacji', 'Save optimize interval')}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={saveOptimizeInterval}
+                      disabled={saving}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                    </Button>
+                  </AppTooltip>
                 </div>
               </div>
 
@@ -426,15 +429,17 @@ export function DatabaseManagement() {
                     onChange={(e) => handleBackupIntervalChange(e.target.value)}
                     className="h-8 text-[11px]"
                   />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                    onClick={saveBackupInterval}
-                    disabled={saving}
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                  </Button>
+                  <AppTooltip content={t('Zapisz interwał backupu', 'Save backup interval')}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={saveBackupInterval}
+                      disabled={saving}
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                    </Button>
+                  </AppTooltip>
                 </div>
               </div>
               <div className="space-y-1">

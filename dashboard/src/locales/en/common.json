@@ -64,7 +64,18 @@
       "bughunter": "BugHunter - report a bug",
       "quick_start": "Quick Start",
       "help": "Help (F1)",
-      "settings": "Settings"
+      "settings": "Settings",
+      "previous_period": "Previous period",
+      "next_period": "Next period",
+      "save_optimize_interval": "Save optimization interval",
+      "save_backup_interval": "Save backup interval",
+      "delete_from_archive": "Delete from archive",
+      "saved_view_enabled": "Saved view enabled",
+      "saved_view_disabled": "Saved view disabled",
+      "boosted_sessions": "{{count}} boosted session(s)",
+      "working_hours": "Working hours: {{label}}",
+      "manual_sessions": "Manual sessions: {{count}}",
+      "remove_folder": "Remove folder"
     }
   },
   "date_range_toolbar": {
@@ -311,7 +322,13 @@
       "restore": "Restore",
       "delete": "Delete",
       "hidden_existing": "{{count}} existing",
-      "hidden_excluded": "{{count}} excluded"
+      "hidden_excluded": "{{count}} excluded",
+      "add_manual_session": "Add manual session",
+      "project_card": "Project card",
+      "sort_abc": "ABC (toggle direction)",
+      "sort_value": "Value (toggle direction)",
+      "sort_time": "Time (toggle direction)",
+      "toggle_folder_grouping": "Toggle folder grouping"
     }
   },
   "settings": {

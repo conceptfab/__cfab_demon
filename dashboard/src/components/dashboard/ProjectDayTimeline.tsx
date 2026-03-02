@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Flame, MessageSquare, MousePointerClick, Clock3, Type, Save } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { AppTooltip } from "@/components/ui/app-tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PromptModal } from "@/components/ui/prompt-modal";
 import { useToast } from "@/components/ui/toast-notification";
@@ -701,46 +702,49 @@ export function ProjectDayTimeline({
           <span>{title === "Activity Timeline" ? tt('Oś aktywności', 'Activity Timeline') : title}</span>
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
-              <button
-                type="button"
-                className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                  sortMode === "time_desc"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setSortMode("time_desc")}
-                title={tt("Sortuj po czasie", "Sort by time")}
-                aria-label={tt("Sortuj po czasie", "Sort by time")}
-              >
-                <Clock3 className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                  sortMode === "alpha_asc"
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => setSortMode("alpha_asc")}
-                title={tt("Sortuj alfabetycznie", "Sort alphabetically")}
-                aria-label={tt("Sortuj alfabetycznie", "Sort alphabetically")}
-              >
-                <Type className="h-3.5 w-3.5" />
-              </button>
+              <AppTooltip content={tt("Sortuj po czasie", "Sort by time")}>
+                <button
+                  type="button"
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                    sortMode === "time_desc"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setSortMode("time_desc")}
+                  aria-label={tt("Sortuj po czasie", "Sort by time")}
+                >
+                  <Clock3 className="h-3.5 w-3.5" />
+                </button>
+              </AppTooltip>
+              <AppTooltip content={tt("Sortuj alfabetycznie", "Sort alphabetically")}>
+                <button
+                  type="button"
+                  className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                    sortMode === "alpha_asc"
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => setSortMode("alpha_asc")}
+                  aria-label={tt("Sortuj alfabetycznie", "Sort alphabetically")}
+                >
+                  <Type className="h-3.5 w-3.5" />
+                </button>
+              </AppTooltip>
             </div>
-            <button
-              type="button"
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-sm border transition-colors cursor-pointer ${
-                saveView
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : "border-border/70 bg-secondary/20 text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setSaveView((prev) => !prev)}
-              title={saveView ? "Saved view enabled" : "Saved view disabled"}
-              aria-label={saveView ? "Saved view enabled" : "Saved view disabled"}
-            >
-              <Save className="h-3.5 w-3.5" />
-            </button>
+            <AppTooltip content={saveView ? tt("Zapisany widok włączony", "Saved view enabled") : tt("Zapisany widok wyłączony", "Saved view disabled")}>
+              <button
+                type="button"
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-sm border transition-colors cursor-pointer ${
+                  saveView
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : "border-border/70 bg-secondary/20 text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => setSaveView((prev) => !prev)}
+                aria-label={saveView ? tt("Zapisany widok włączony", "Saved view enabled") : tt("Zapisany widok wyłączony", "Saved view disabled")}
+              >
+                <Save className="h-3.5 w-3.5" />
+              </button>
+            </AppTooltip>
             <span className="text-xs text-muted-foreground">
               {model ? `Total: ${formatDuration(model.totalSeconds)}` : "No data"}
             </span>
@@ -779,9 +783,11 @@ export function ProjectDayTimeline({
                   <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
                   <span className="truncate">{row.name}</span>
                   {row.boostedCount > 0 && (
-                    <span className="shrink-0" title={`${row.boostedCount} boosted session(s)`}>
-                      <Flame className="h-3 w-3 text-emerald-400" />
-                    </span>
+                    <AppTooltip content={tt(`${row.boostedCount} wzmocniona(-ych) sesji`, `${row.boostedCount} boosted session(s)`)}>
+                      <span className="shrink-0">
+                        <Flame className="h-3 w-3 text-emerald-400" />
+                      </span>
+                    </AppTooltip>
                   )}
                 </div>
                 <div

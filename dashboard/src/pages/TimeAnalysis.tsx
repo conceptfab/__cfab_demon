@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_TOOLTIP_TEXT_COLOR,
@@ -59,28 +60,30 @@ export function TimeAnalysis() {
             {t('Miesiąc', 'Month')}
           </Button>
           <div className="mx-1 h-5 w-px bg-border" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => d.shiftDateRange(-1)}
-            title={t('Poprzedni okres', 'Previous period')}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          <AppTooltip content={t('Poprzedni okres', 'Previous period')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => d.shiftDateRange(-1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </AppTooltip>
           <span className="text-xs text-muted-foreground min-w-[5rem] text-center">
             {d.dateLabel}
           </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => d.shiftDateRange(1)}
-            disabled={!d.canShiftForward}
-            title={t('Następny okres', 'Next period')}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <AppTooltip content={t('Następny okres', 'Next period')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => d.shiftDateRange(1)}
+              disabled={!d.canShiftForward}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </AppTooltip>
         </div>
       </div>
 

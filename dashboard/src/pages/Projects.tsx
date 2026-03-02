@@ -60,6 +60,7 @@ import {
   compactProjectData,
   getProjectEstimates,
 } from '@/lib/tauri';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import {
   formatDuration,
@@ -972,28 +973,28 @@ export function Projects() {
                     {p.name}
                   </span>
                   {p.frozen_at && (
-                    <button
-                      type="button"
-                      className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                      title={t('projects.labels.frozen_since_click_unfreeze', {
-                        date: p.frozen_at.slice(0, 10),
-                      })}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleUnfreeze(p.id);
-                      }}
-                    >
-                      <Snowflake className="h-3 w-3 shrink-0" />
-                    </button>
+                    <AppTooltip content={t('projects.labels.frozen_since_click_unfreeze', {
+                      date: p.frozen_at.slice(0, 10),
+                    })}>
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleUnfreeze(p.id);
+                        }}
+                      >
+                        <Snowflake className="h-3 w-3 shrink-0" />
+                      </button>
+                    </AppTooltip>
                   )}
                   {renderDuplicateMarker(p)}
                   {hotProjectIds.includes(p.id) && (
-                    <span
-                      title={t('projects.labels.hot_project')}
-                      className="shrink-0"
-                    >
-                      <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
-                    </span>
+                    <AppTooltip content={t('projects.labels.hot_project')}>
+                      <span className="shrink-0">
+                        <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
+                      </span>
+                    </AppTooltip>
                   )}
                 </span>
               </div>
@@ -1046,14 +1047,15 @@ export function Projects() {
         >
           <div className="flex items-center gap-2">
             <div className="relative group">
-              <div
-                className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                style={{ backgroundColor: p.color }}
-                onClick={() =>
-                  setEditingColorId(editingColorId === p.id ? null : p.id)
-                }
-                title={t('projects.labels.change_color')}
-              />
+              <AppTooltip content={t('projects.labels.change_color')}>
+                <div
+                  className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+                  style={{ backgroundColor: p.color }}
+                  onClick={() =>
+                    setEditingColorId(editingColorId === p.id ? null : p.id)
+                  }
+                />
+              </AppTooltip>
               {editingColorId === p.id && (
                 <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
                   <input
@@ -1067,13 +1069,13 @@ export function Projects() {
                   />
                   <div className="mt-2 flex gap-1">
                     {COLORS.map((c) => (
-                      <button
-                        key={c}
-                        className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
-                        style={{ backgroundColor: c }}
-                        onClick={() => handleUpdateProjectColor(p.id, c)}
-                        title={c}
-                      />
+                      <AppTooltip key={c} content={c}>
+                        <button
+                          className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
+                          style={{ backgroundColor: c }}
+                          onClick={() => handleUpdateProjectColor(p.id, c)}
+                        />
+                      </AppTooltip>
                     ))}
                   </div>
                 </div>
@@ -1103,54 +1105,58 @@ export function Projects() {
             </CardTitle>
           </div>
           <div className={`flex gap-1 ${options?.inDialog ? 'mr-8' : ''}`}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => handleResetProjectTime(p.id)}
-              title={t('projects.labels.reset_time')}
-              disabled={isDeleting}
-            >
-              <TimerReset className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className={`h-7 w-7 ${p.frozen_at ? 'text-blue-400 bg-blue-500/10' : 'text-muted-foreground'}`}
-              onClick={() =>
-                p.frozen_at ? handleUnfreeze(p.id) : handleFreeze(p.id)
-              }
-              title={
-                p.frozen_at
-                  ? t('projects.labels.frozen_since_click_unfreeze', {
-                      date: p.frozen_at.slice(0, 10),
-                    })
-                  : t('projects.labels.freeze_project')
-              }
-              disabled={isDeleting}
-            >
-              <Snowflake className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive"
-              onClick={() => handleExclude(p.id)}
-              title={t('projects.labels.exclude_project')}
-              disabled={isDeleting}
-            >
-              <CircleOff className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive"
-              onClick={() => void handleDeleteProject(p)}
-              title={t('projects.labels.delete_project_permanently')}
-              disabled={isDeleting}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            <AppTooltip content={t('projects.labels.reset_time')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => handleResetProjectTime(p.id)}
+                disabled={isDeleting}
+              >
+                <TimerReset className="h-3.5 w-3.5" />
+              </Button>
+            </AppTooltip>
+            <AppTooltip content={
+              p.frozen_at
+                ? t('projects.labels.frozen_since_click_unfreeze', {
+                    date: p.frozen_at.slice(0, 10),
+                  })
+                : t('projects.labels.freeze_project')
+            }>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-7 w-7 ${p.frozen_at ? 'text-blue-400 bg-blue-500/10' : 'text-muted-foreground'}`}
+                onClick={() =>
+                  p.frozen_at ? handleUnfreeze(p.id) : handleFreeze(p.id)
+                }
+                disabled={isDeleting}
+              >
+                <Snowflake className="h-3.5 w-3.5" />
+              </Button>
+            </AppTooltip>
+            <AppTooltip content={t('projects.labels.exclude_project')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-destructive"
+                onClick={() => handleExclude(p.id)}
+                disabled={isDeleting}
+              >
+                <CircleOff className="h-3.5 w-3.5" />
+              </Button>
+            </AppTooltip>
+            <AppTooltip content={t('projects.labels.delete_project_permanently')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-destructive"
+                onClick={() => void handleDeleteProject(p)}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </AppTooltip>
           </div>
         </CardHeader>
         <CardContent>
@@ -1168,58 +1174,62 @@ export function Projects() {
 
                 <span className="ml-1 flex items-center gap-2">
                   {hotProjectIds.includes(p.id) && (
-                    <span title={t('projects.labels.hot_project')}>
-                      <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />
-                    </span>
+                    <AppTooltip content={t('projects.labels.hot_project')}>
+                      <span>
+                        <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />
+                      </span>
+                    </AppTooltip>
                   )}
                   {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
-                    <span
-                      title={`Manual sessions: ${extraInfo.db_stats.manual_session_count}`}
-                    >
-                      <MousePointerClick className="h-4 w-4 text-sky-400 fill-sky-400/10" />
-                    </span>
+                    <AppTooltip content={t('layout.tooltips.manual_sessions', { count: extraInfo.db_stats.manual_session_count })}>
+                      <span>
+                        <MousePointerClick className="h-4 w-4 text-sky-400 fill-sky-400/10" />
+                      </span>
+                    </AppTooltip>
                   )}
                   {extraInfo && extraInfo.db_stats.comment_count > 0 && (
-                    <span
-                      title={`${t('projects.labels.comments')} ${extraInfo.db_stats.comment_count}`}
-                    >
-                      <MessageSquare className="h-4 w-4 text-blue-400 fill-blue-400/20" />
-                    </span>
+                    <AppTooltip content={`${t('projects.labels.comments')} ${extraInfo.db_stats.comment_count}`}>
+                      <span>
+                        <MessageSquare className="h-4 w-4 text-blue-400 fill-blue-400/20" />
+                      </span>
+                    </AppTooltip>
                   )}
                 </span>
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSessionDialogProjectId(p.id);
-                  setSessionDialogOpen(true);
-                }}
-                title="Add manual session"
-                className="shrink-0 h-9 w-9"
-                disabled={isDeleting}
-              >
-                <CalendarPlus className="h-4 w-4" />
-              </Button>
+              <AppTooltip content={t('projects.labels.add_manual_session')}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSessionDialogProjectId(p.id);
+                    setSessionDialogOpen(true);
+                  }}
+                  className="shrink-0 h-9 w-9"
+                  disabled={isDeleting}
+                >
+                  <CalendarPlus className="h-4 w-4" />
+                </Button>
+              </AppTooltip>
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setProjectPageId(p.id);
-                  setCurrentPage('project-card');
-                }}
-                title="Karta projektu"
-                className="shrink-0 h-9 w-9"
-                disabled={isDeleting}
-              >
-                <LayoutDashboard className="h-4 w-4" />
-              </Button>
+              <AppTooltip content={t('projects.labels.project_card')}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setProjectPageId(p.id);
+                    setCurrentPage('project-card');
+                  }}
+                  className="shrink-0 h-9 w-9"
+                  disabled={isDeleting}
+                >
+                  <LayoutDashboard className="h-4 w-4" />
+                </Button>
+              </AppTooltip>
             </div>
           </div>
 
@@ -1408,55 +1418,59 @@ export function Projects() {
             />
           </div>
           <div className="flex items-center gap-1.5 bg-secondary/40 p-1 rounded-md border border-border/40">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                handleSortChange(
-                  sortBy === 'name-asc' ? 'name-desc' : 'name-asc',
-                )
-              }
-              className={`h-7 w-8 p-0 ${sortBy.startsWith('name') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              title="ABC (toggle direction)"
-            >
-              <Type className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                handleSortChange(
-                  sortBy === 'value-desc' ? 'value-asc' : 'value-desc',
-                )
-              }
-              className={`h-7 w-8 p-0 ${sortBy.startsWith('value') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-              title="Value (toggle direction)"
-            >
-              <CircleDollarSign className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                handleSortChange(
-                  sortBy === 'time-desc' ? 'time-asc' : 'time-desc',
-                )
-              }
-              className={`h-7 w-8 p-0 ${sortBy.startsWith('time') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-              title="Time (toggle direction)"
-            >
-              <Clock className="h-4 w-4" />
-            </Button>
+            <AppTooltip content={t('projects.labels.sort_abc')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  handleSortChange(
+                    sortBy === 'name-asc' ? 'name-desc' : 'name-asc',
+                  )
+                }
+                className={`h-7 w-8 p-0 ${sortBy.startsWith('name') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                <Type className="h-4 w-4" />
+              </Button>
+            </AppTooltip>
+            <AppTooltip content={t('projects.labels.sort_value')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  handleSortChange(
+                    sortBy === 'value-desc' ? 'value-asc' : 'value-desc',
+                  )
+                }
+                className={`h-7 w-8 p-0 ${sortBy.startsWith('value') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+              >
+                <CircleDollarSign className="h-4 w-4" />
+              </Button>
+            </AppTooltip>
+            <AppTooltip content={t('projects.labels.sort_time')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  handleSortChange(
+                    sortBy === 'time-desc' ? 'time-asc' : 'time-desc',
+                  )
+                }
+                className={`h-7 w-8 p-0 ${sortBy.startsWith('time') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+              >
+                <Clock className="h-4 w-4" />
+              </Button>
+            </AppTooltip>
             <div className="w-[1px] h-4 bg-border/40 mx-0.5" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleFolders}
-              className={`h-7 w-8 p-0 ${useFolders ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-              title="Toggle folder grouping"
-            >
-              <Folders className="h-4 w-4" />
-            </Button>
+            <AppTooltip content={t('projects.labels.toggle_folder_grouping')}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleFolders}
+                className={`h-7 w-8 p-0 ${useFolders ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
+              >
+                <Folders className="h-4 w-4" />
+              </Button>
+            </AppTooltip>
           </div>
 
           <div className="flex bg-secondary/50 p-1 rounded-md text-sm">
@@ -1474,14 +1488,15 @@ export function Projects() {
             </button>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleSaveDefaults}
-            title={tt('Zapisz widok jako domyślny', 'Save view as default')}
-          >
-            <Save className="h-4 w-4" />
-          </Button>
+          <AppTooltip content={tt('Zapisz widok jako domyślny', 'Save view as default')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleSaveDefaults}
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+          </AppTooltip>
 
           <Button size="sm" onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> {tt('Nowy projekt', 'New Project')}
@@ -1588,16 +1603,17 @@ export function Projects() {
                     >
                       {t('projects.labels.restore')}
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive"
-                      onClick={() => void handleDeleteProject(p)}
-                      disabled={busy === `delete-project:${p.id}`}
-                      title={t('projects.labels.delete_project_permanently')}
-                    >
-                      {t('projects.labels.delete')}
-                    </Button>
+                    <AppTooltip content={t('projects.labels.delete_project_permanently')}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => void handleDeleteProject(p)}
+                        disabled={busy === `delete-project:${p.id}`}
+                      >
+                        {t('projects.labels.delete')}
+                      </Button>
+                    </AppTooltip>
                   </div>
                 ))}
                 {hiddenExcludedProjectsCount > 0 && (
@@ -1694,16 +1710,17 @@ export function Projects() {
                     >
                       {formatPathForDisplay(f.path)}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive"
-                      onClick={() => handleRemoveFolder(f.path)}
-                      disabled={busy === `remove-folder:${f.path}`}
-                      title="Remove folder"
-                    >
-                      <CircleOff className="h-3.5 w-3.5" />
-                    </Button>
+                    <AppTooltip content={t('layout.tooltips.remove_folder')}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive"
+                        onClick={() => handleRemoveFolder(f.path)}
+                        disabled={busy === `remove-folder:${f.path}`}
+                      >
+                        <CircleOff className="h-3.5 w-3.5" />
+                      </Button>
+                    </AppTooltip>
                   </div>
                 ))}
               </div>

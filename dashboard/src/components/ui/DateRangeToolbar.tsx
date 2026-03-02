@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import type { DateRange } from '@/lib/db-types';
 import type { TimePreset } from '@/store/data-store';
 import { resolveDateFnsLocale } from '@/lib/date-locale';
@@ -51,28 +52,30 @@ export function DateRangeToolbar({
       {timePreset !== 'all' && (
         <>
           <div className="mx-0.5 h-4 w-px bg-border" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => shiftDateRange(-1)}
-            title={t('date_range_toolbar.previous_period')}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          <AppTooltip content={t('date_range_toolbar.previous_period')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => shiftDateRange(-1)}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          </AppTooltip>
           <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
             {dateLabel}
           </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => shiftDateRange(1)}
-            disabled={!canShiftForward()}
-            title={t('date_range_toolbar.next_period')}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+          <AppTooltip content={t('date_range_toolbar.next_period')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => shiftDateRange(1)}
+              disabled={!canShiftForward()}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </AppTooltip>
         </>
       )}
     </div>
