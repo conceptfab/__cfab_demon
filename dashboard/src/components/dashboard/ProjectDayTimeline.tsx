@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Sparkles, Flame, MessageSquare, MousePointerClick, Clock3, Type, Save } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -269,6 +270,7 @@ export function ProjectDayTimeline({
   onEditManualSession,
 }: Props) {
   const tt = useInlineT();
+  const { t } = useTranslation();
   const { showError, showInfo } = useToast();
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
@@ -384,15 +386,19 @@ export function ProjectDayTimeline({
 
       const label =
         missingIds.length === 1
-          ? "this session"
-          : `${missingIds.length} sessions in this chunk`;
-      const entered = window.prompt(
-        `Boost requires a comment. Enter a comment for ${label}:`,
-        ""
-      );
+          ? t('sessions.prompts.boost_label_single')
+          : t('sessions.prompts.boost_label_multi', { count: missingIds.length });
+      const entered = await new Promise<string | null>((resolve) => {
+        setPromptConfig({
+          title: t('sessions.prompts.boost_requires_comment_prompt', { label }),
+          initialValue: '',
+          onConfirm: (val) => resolve(val),
+          onCancel: () => resolve(null),
+        });
+      });
       const normalized = entered?.trim() ?? "";
       if (!normalized) {
-        showError("Comment is required to add boost.");
+        showError(t('sessions.prompts.boost_comment_required'));
         return false;
       }
 
@@ -1197,7 +1203,12 @@ export function ProjectDayTimeline({
       )}
       <PromptModal
         open={promptConfig !== null}
-        onOpenChange={(open) => !open && setPromptConfig(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            promptConfig?.onCancel?.();
+            setPromptConfig(null);
+          }
+        }}
         title={promptConfig?.title ?? ""}
         description={promptConfig?.description}
         initialValue={promptConfig?.initialValue ?? ""}

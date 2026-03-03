@@ -1,465 +1,565 @@
-# Raport analizy kodu — TIMEFLOW Dashboard
-
-**Data:** 2026-03-01
-**Gałąź:** `claude/distracted-gates`
-**Zakres:** Cały kod dashboardu (`dashboard/src/`)
+# TIMEFLOW — Raport analizy kodu
+*Data: 2026-03-03 | Wersja analizy: kompletna*
 
 ---
 
 ## Spis treści
-
-1. [Struktura projektu](#1-struktura-projektu)
-2. [Krytyczne problemy](#2-krytyczne-problemy)
-3. [Błędy logiczne](#3-błędy-logiczne)
-4. [Niespójności UX](#4-niespójności-ux)
-5. [Problemy wydajnościowe](#5-problemy-wydajnościowe)
-6. [Nadmiarowy / zduplikowany kod](#6-nadmiarowy--zduplikowany-kod)
-7. [Brakujące tłumaczenia](#7-brakujące-tłumaczenia)
-8. [Podsumowanie i priorytety](#8-podsumowanie-i-priorytety)
-
----
-
-## 1. Struktura projektu
-
-```
-dashboard/src/
-├── App.tsx                          # Root: routing (PageRouter), ErrorBoundary, providers
-├── main.tsx                         # Punkt wejścia React (StrictMode włączony)
-├── i18n.ts                          # Konfiguracja i18next
-├── pages/
-│   ├── Dashboard.tsx                # Strona główna: metryki, wykresy, timeline
-│   ├── Sessions.tsx                 # Lista i zarządzanie sesjami (~800 linii)
-│   ├── Projects.tsx                 # Zarządzanie projektami (~1000 linii)
-│   ├── ProjectPage.tsx              # Karta pojedynczego projektu
-│   ├── Applications.tsx             # Aplikacje monitorowane
-│   ├── Estimates.tsx                # Wyceny i stawki
-│   ├── TimeAnalysis.tsx             # Analiza czasu (daily/weekly/monthly)
-│   ├── AI.tsx                       # Model AI i ustawienia
-│   ├── DaemonControl.tsx            # Kontrola demona
-│   ├── Settings.tsx                 # Wszystkie ustawienia użytkownika
-│   ├── Data.tsx                     # Zarządzanie danymi / import / eksport
-│   ├── ImportPage.tsx               # Strona importu
-│   ├── Help.tsx                     # Panel pomocy z zakładkami
-│   └── QuickStart.tsx               # Ekran startowy (onboarding)
-├── components/
-│   ├── ManualSessionDialog.tsx
-│   ├── dashboard/                   # Wykresy i widgety dashboardu
-│   ├── data/                        # Komponenty zarządzania danymi
-│   ├── import/FileDropzone.tsx
-│   ├── layout/                      # Shell: MainLayout, Sidebar, TopBar, BugHunter
-│   ├── project/ProjectContextMenu.tsx
-│   ├── sessions/SessionRow.tsx
-│   ├── sync/BackgroundServices.tsx  # Wszystkie background joby
-│   ├── time-analysis/               # Widoki i hook danych analizy czasu
-│   └── ui/                          # Shadcn/UI primitives + shared components
-├── store/
-│   ├── data-store.ts                # Zakres dat, preset, refreshKey, autoImport
-│   ├── settings-store.ts            # Waluta, animacje wykresów
-│   └── ui-store.ts                  # Aktywna strona, fokusy, firstRun
-├── lib/
-│   ├── tauri.ts                     # Wszystkie invoke() do backendu Rust
-│   ├── db-types.ts                  # Kontrakty typów TS ↔ Rust
-│   ├── user-settings.ts             # Load/save localStorage (6 kategorii)
-│   ├── online-sync.ts               # Logika synchronizacji online
-│   ├── sync-events.ts               # CustomEvent LOCAL_DATA_CHANGED
-│   ├── help-navigation.ts           # Mapowanie strona ↔ zakładka pomocy
-│   ├── inline-i18n.ts               # Hook useInlineT() (pl/en inline)
-│   ├── date-locale.ts               # date-fns locale resolver
-│   └── utils.ts                     # cn, formatDuration, formatMoney, etc.
-└── locales/
-    ├── en/common.json               # ~334 linie, ~120 kluczy
-    └── pl/common.json               # Identyczna struktura kluczy
-```
-
-### Routing i architektura danych
-
-Projekt używa routingu opartego na Zustand (`useUIStore.currentPage`) zamiast React Router. Wszystkie strony poza `Dashboard` są lazy-loaded przez `React.lazy`. Przepływ danych:
-
-```
-UI Component → lib/tauri.ts (invoke) → emituje LOCAL_DATA_CHANGED_EVENT
-    → BackgroundServices.tsx → triggerRefresh() → data-store.refreshKey++
-    → Wszystkie komponenty reagują na refreshKey w deps useEffect
-```
+1. [Podsumowanie wykonawcze](#1-podsumowanie-wykonawcze)
+2. [Logika — błędy i problemy](#2-logika--błędy-i-problemy)
+3. [Wydajność — problemy i optymalizacje](#3-wydajność--problemy-i-optymalizacje)
+4. [Nadmiarowy kod i duplikacje](#4-nadmiarowy-kod-i-duplikacje)
+5. [Brakujące tłumaczenia i i18n](#5-brakujące-tłumaczenia-i-i18n)
+6. [Bezpieczeństwo](#6-bezpieczeństwo)
+7. [Architektura AI — ocena i sugestie](#7-architektura-ai--ocena-i-sugestie)
+8. [Sugestie priorytetowe](#8-sugestie-priorytetowe)
 
 ---
 
-## 2. Krytyczne problemy
+## 1. Podsumowanie wykonawcze
 
-### 2.1 Podwójny system i18n — 60% tekstów poza kontrolą
+Aplikacja działa poprawnie i ma solidną architekturę (Tauri + React + SQLite + Rust). Kod jest ogólnie czytelny, ale zawiera kilka istotnych problemów logicznych i wydajnościowych. Największe ryzyka to:
 
-**Pliki:** `AI.tsx`, `DaemonControl.tsx`, `Applications.tsx`, `TimeAnalysis.tsx`, `Estimates.tsx`, `Settings.tsx`, `Help.tsx`, `QuickStart.tsx`, `Projects.tsx` (częściowo), `ProjectPage.tsx` (częściowo)
-
-W projekcie współistnieją dwa niezależne systemy tłumaczeń:
-
-**System 1 — i18next (oficjalny):**
-```typescript
-const { t } = useTranslation();
-t('sessions.menu.session_actions', { app: s.app_name })
-// Zasięg: ManualSessionDialog, SessionRow, Sidebar, TopBar, BugHunter, Dashboard, DateRangeToolbar
-```
-
-**System 2 — inline (custom hook):**
-```typescript
-const t = useInlineT();
-t('Trening modelu zakończony.', 'Model training completed.')
-// lub lokalna lambda w każdym pliku:
-const t = (pl: string, en: string) => (lang === 'pl' ? pl : en);
-```
-
-**Skutki:**
-- Teksty z Systemu 2 NIE są w plikach JSON — nie można ich zmienić bez modyfikacji kodu źródłowego.
-- Brakuje kluczy w `common.json` dla całych sekcji: `ai.*`, `daemon.*`, `applications.*`, `time_analysis.*`, `estimates.*`, `help.*` (poza `language_hint`).
-- `Applications.tsx` ma lokalną `t()` która _próbuje_ łączyć oba systemy, co tworzy trzeci wariant:
-
-```typescript
-// Applications.tsx linia 38-44
-const t = (pl: string, en?: string) => {
-  if (typeof en === 'string') return lang === 'pl' ? pl : en;
-  return i18n.t(pl); // ← fallback do i18next gdy brak 2. arg
-};
-```
-
-**Rekomendacja:** Migracja wszystkich tekstów do plików JSON i18next. Priorytet: strony AI, DaemonControl, Applications, TimeAnalysis. `useInlineT()` należy oznaczyć jako deprecated i docelowo usunąć.
+- **Brakujące debounce** na wyszukiwaniu i auto-odświeżaniu powodują zbędne zapytania do DB
+- **N+1 query pattern** w AI score prefetch dla sesji
+- **Mieszany system i18n** — `useInlineT()` oznaczony jako `@deprecated` wciąż dominuje w kluczowych stronach
+- **Puste date range** `2100-01-01` używane jako "nieskończoność" to hack, który może powodować problemy przy filtrowaniu
+- **Model AI** ma poprawną architekturę, ale confidence formula ma istotny problem
 
 ---
 
-### 2.2 Format daty niezgodny z locale polskim
-
-**Plik:** `dashboard/src/components/sessions/SessionRow.tsx:28`
-
-```typescript
-function formatDate(t: string, locale: Locale) {
-  try {
-    return format(parseISO(t), 'MMM d, yyyy', { locale });
-  } catch {
-    return t;
-  }
-}
-```
-
-Format `'MMM d, yyyy'` z `locale=pl` daje wynik np. `"sty 5, 2025"` — polska nazwa miesiąca z angielską interpunkcją (przecinek po dniu, rok po nim). Poprawny format dla polskiego to `'d MMM yyyy'` → `"5 sty 2025"`.
-
-**Fix:**
-```typescript
-// Wariant warunkowy (zachowuje EN bez zmian):
-const dateFormat = locale.code?.startsWith('pl') ? 'd MMM yyyy' : 'MMM d, yyyy';
-return format(parseISO(t), dateFormat, { locale });
-
-// lub prościej — format neutralny dla obu locale:
-return format(parseISO(t), 'd MMM yyyy', { locale });
-```
+> **Uwaga:** Raport łączy dwie niezależne analizy dla pełnego pokrycia.
 
 ---
 
-## 3. Błędy logiczne
+## 2. Logika — błędy i problemy
 
-### 3.1 `Estimates.tsx` — brak stanu ładowania przy re-fetchu
+### 2.1 KRYTYCZNY: Błąd w formule confidence modelu AI
 
-**Plik:** `dashboard/src/pages/Estimates.tsx:93`
+**Plik:** `dashboard/src-tauri/src/commands/assignment_model.rs:500–504`
 
-```typescript
-// Tylko pierwsze ładowanie ustawia loading=true
-if (rows.length === 0) {
-  setLoading(true);
-}
+```rust
+let evidence_factor = ((evidence_count as f64) / 3.0).min(1.0);
+let sigmoid_margin = 1.0 / (1.0 + (-margin).exp());
+let confidence = sigmoid_margin * evidence_factor;
 ```
 
-Gdy tabela zawiera już dane i użytkownik zmienia zakres dat (`refreshKey++`), `loading` pozostaje `false`. Tabela nie pokazuje stanu ładowania — dane wyglądają na "zamrożone" do czasu powrotu odpowiedzi.
+**Problem:** Gdy `evidence_count = 1` (co jest często, szczególnie dla nowych projektów), `evidence_factor = 0.33`, więc nawet przy marginesie 1.0 maksymalna confidence wynosi tylko ~0.33. Przy domyślnym progu `suggest = 0.60` model **nigdy nie zasugeruje projektu** jeśli ma tylko 1 dowód.
 
-**Fix:**
-```typescript
-// Przed wywołaniem backendu, zawsze:
-setLoading(true);
-try {
-  const result = await fetchEstimates(...);
-  setRows(result);
-} finally {
-  setLoading(false);
-}
-```
+**Skutek:** Model przy małej liczbie danych jest zbyt zachowawczy. Użytkownik widzi "brak sugestii" mimo że dane są wystarczające.
+
+**Sugestia:** Rozważyć addytywną formułę lub zmianę evidence_factor na miękkie skalowanie (np. `0.5 + 0.5 * (1 - exp(-evidence/3))`).
 
 ---
 
-### 3.2 `BackgroundServices.tsx` — stale closure w `setInterval`
+### 2.2 POWAŻNY: Race condition w Sessions.tsx — auto-odświeżanie nadpisuje dane
 
-**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:191-241`
+**Plik:** `dashboard/src/pages/Sessions.tsx:296–315`
 
-```typescript
+```ts
+// Auto-refresh sessions every 15 seconds
 useEffect(() => {
-  loopRef.current = window.setInterval(() => {
-    if (autoImportDone) {  // ← capture z closure przy tworzeniu
-      const syncSettings = loadOnlineSyncSettings();
-      if (syncSettings.enabled) {
-        if (nextSyncIntervalRef.current === 0) {
-          nextSyncIntervalRef.current = now + syncIntervalMs;
-        }
-      }
-    }
-  }, 5000);
-  return () => clearInterval(loopRef.current);
-}, [autoImportDone, triggerRefresh]); // efekt restartuje się gdy autoImportDone zmienia się
+  const interval = setInterval(() => {
+    getSessions({ ... }).then((data) => setSessions(data))
+    ...
+  }, 15_000);
 ```
 
-Gdy `syncSettings.enabled` zmieni się z `false` na `true` bez restartu komponentu (np. przez zapis w Settings), `nextSyncIntervalRef.current` może być niezerowy z poprzedniej wartości i pierwsza synchronizacja nie zostanie zaplanowana. Obsługa `ONLINE_SYNC_SETTINGS_CHANGED_EVENT` (linia ~244) resetuje ref — ale tylko jeśli ten event jest emitowany przy każdej zmianie ustawień synca.
+**Problem:** Auto-odświeżanie co 15s może nadpisać stan sesji w trakcie, gdy użytkownik otworzył context menu lub modyfikuje sesję. Brak anulacji poprzedniego requestu (AbortController), brak blokady gdy coś jest w toku.
 
-**Weryfikacja:** Upewnić się, że `Settings.tsx` emituje `ONLINE_SYNC_SETTINGS_CHANGED_EVENT` przy każdym zapisie ustawień online sync.
+**Sugestia:** Dodać `useRef` flagę `isMutating` i pomijać auto-refresh gdy flag jest ustawiona.
 
 ---
 
-### 3.3 `BackgroundServices.tsx` — potencjalny wyciek interwału przy React StrictMode
+### 2.3 Auto-freeze nowych projektów (już naprawione)
 
-**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:133`
-
-```typescript
-const startupAttemptedRef = useRef(false);
-
-useEffect(() => {
-  if (!autoImportDone || startupAttemptedRef.current) return;
-  startupAttemptedRef.current = true;
-  void runSync('startup', false);
-}, [autoImportDone]);
-```
-
-W React StrictMode (aktywny w `main.tsx`) efekty są wywoływane dwukrotnie przy mountowaniu. `useRef` persystuje wartość między pierwszym a drugim wywołaniem w StrictMode, przez co `startupAttemptedRef.current = true` z pierwszego wywołania blokuje drugie. W środowisku produkcyjnym (StrictMode wyłączony) zachowanie jest prawidłowe, ale to może maskować rzeczywiste błędy w development.
+**Plik:** `dashboard/src-tauri/src/commands/projects.rs:533`
+Poprawka dodana w tym samym dniu — warunek `julianday('now') - julianday(created_at) >= threshold_days`.
 
 ---
 
-### 3.4 `Applications.tsx` — `t` pominięta w dependency array useEffect
+### 2.4 POWAŻNY: Sessions.tsx — ignorowane błędy ładowania
 
-**Plik:** `dashboard/src/pages/Applications.tsx:65`
+**Plik:** `dashboard/src/pages/Sessions.tsx:212–230`
 
-```typescript
-const t = (pl: string, en?: string) => { ... }; // lokalna funkcja — tworzy się przy każdym renderze
-
-useEffect(() => {
-  Promise.allSettled([getApplications(), getMonitoredApps()]).then((results) => {
-    setMonitoredError(t('Nie udało się...', 'Failed to...'));
-  });
-}, [refreshKey]); // ← brakuje t w deps
+```ts
+getSessions({ ... })
+  .then((data) => { setSessions(data); setHasMore(data.length >= PAGE_SIZE); })
+  .catch(console.error);  // ← tylko log, brak feedback dla użytkownika
 ```
 
-`t` jest lokalną funkcją closurowaną nad `lang` — tworzy się na nowo przy każdym renderze. Brak jej w `deps` nie powoduje błędu w praktyce (bo `lang` jest stały po inicjalizacji), ale ESLint `react-hooks/exhaustive-deps` powinien to oznaczyć jako warning.
+**Problem:** Błąd ładowania sesji jest cicho logowany. Użytkownik widzi pustą listę bez żadnego komunikatu błędu.
 
-**Fix:** Przenieść `t` na poziom modułu (stała) lub użyć `useCallback`, albo docelowo — migować do `useTranslation()`.
+**Sugestia:** Dodać stan `error` i wyświetlić komunikat w UI.
 
 ---
 
-## 4. Niespójności UX
+### 2.5 Data range "2100-01-01" jako nieskończoność
 
-### 4.1 `Settings.tsx` — natywny `alert()` i `confirm()` zamiast komponentów UI
+**Pliki:** `Projects.tsx:307`, `Projects.tsx:361`
 
-**Plik:** `dashboard/src/pages/Settings.tsx:221-250`
+```ts
+getDetectedProjects({ start: '2020-01-01', end: '2100-01-01' })
+getProjectEstimates({ start: '2020-01-01', end: '2100-01-01' })
+```
 
-```typescript
-const handleRebuildSessions = async () => {
-  try {
-    const merged = await rebuildSessions(...);
-    alert(tt(`Pomyślnie połączono ${merged}...`, `Successfully merged ${merged}...`));
-  } catch (e) {
-    alert(tt('Błąd łączenia...', 'Error linking...'));
-  }
-};
+**Problem:** Hardcodowana data w przyszłości jako "all time" to hack. Jeśli zapis daty w DB używa ISO8601 z timezone, filtr `<= '2100-01-01'` może zachować się niepoprawnie przy datach z UTC-offset.
 
-const handleResetAllData = () => {
-  if (!confirm(tt('Czy na pewno chcesz...', 'Are you sure you want...'))) return;
+**Sugestia:** Dodać stałą `ALL_TIME_RANGE = { start: '2020-01-01', end: '2099-12-31' }` lub lepiej — obsłużyć `null` jako "bez limitu" po stronie Rust.
+
+---
+
+### 2.6 Dashboard.tsx — `loadSessionSettings()` wywołane wewnątrz efektu bez memoizacji
+
+**Plik:** `dashboard/src/pages/Dashboard.tsx:267`
+
+```ts
+minDuration: loadSessionSettings().minSessionDurationSeconds || undefined,
+```
+
+Wywołane przy każdym renderze efektu, ale odczytuje z `localStorage`. Przy częstych refreshKey zmianach generuje zbędny odczyt. Identyczny problem w `Sessions.tsx:138–142` (już zmemoizowany poprawnie) — warto ujednolicić podejście.
+
+---
+
+### 2.7 useEffect w Projects.tsx — getProjectEstimates wywołane zagnieżdżone
+
+**Plik:** `dashboard/src/pages/Projects.tsx:361–369`
+
+```ts
+Promise.allSettled([...]).then(([...]) => {
   // ...
+  getProjectEstimates(...)  // ← wywołane w .then() zamiast razem z allSettled
+    .then(...)
+    .catch(console.error);
+});
+```
+
+**Problem:** `getProjectEstimates` jest wywoływany dopiero po zakończeniu `allSettled`, co wydłuża całkowity czas ładowania strony. Powinien być w tablicy `allSettled`.
+
+---
+
+### 2.8 AI.tsx — `buildTrainingReminder` używa literałów PL/EN zamiast i18n
+
+**Plik:** `dashboard/src/pages/AI.tsx:81–141`
+
+Funkcja `buildTrainingReminder` przyjmuje `translate?` jako parametr, ale sam jej sygnatura i wywołania w środku używają inline PL/EN par. Oznacza to, że gdy `translate` jest `undefined`, zawsze zwraca angielski tekst.
+
+---
+
+### 2.9 Projects.tsx — `isNewProject` oblicza Date.now() wielokrotnie
+
+**Plik:** `dashboard/src/pages/Projects.tsx:431–434`
+
+```ts
+const isNewProject = (created_at: string) => {
+  const age = Date.now() - new Date(created_at).getTime();
+  return age < 7 * 24 * 60 * 60 * 1000;
 };
 ```
 
-Aplikacja posiada dedykowane komponenty: `useToast()` (w `toast-notification.tsx`) i `useConfirm()` (w `confirm-dialog.tsx`). Używanie natywnych `alert()`/`confirm()` jest stylowo niespójne z resztą UI i nie dostosowuje się do motywu aplikacji (dark mode itp.).
-
-**Fix:**
-```typescript
-const { toast } = useToast();
-const confirm = useConfirm();
-
-const handleRebuildSessions = async () => {
-  try {
-    const merged = await rebuildSessions(...);
-    toast({ title: tt('Pomyślnie połączono...', '...'), variant: 'success' });
-  } catch (e) {
-    toast({ title: tt('Błąd łączenia...', '...'), variant: 'destructive' });
-  }
-};
-
-const handleResetAllData = async () => {
-  const ok = await confirm({ title: tt('Czy na pewno...', '...') });
-  if (!ok) return;
-  // ...
-};
-```
+Zdefiniowana wewnątrz komponentu — tworzona na nowo przy każdym renderze. Powinna być `useCallback` lub funkcją pomocniczą poza komponentem.
 
 ---
 
-## 5. Problemy wydajnościowe
+### 2.10 window.prompt() zamiast PromptModal — 3 miejsca
 
-### 5.1 `Projects.tsx` i `Sessions.tsx` — brak paginacji przy dużej liczbie rekordów
+**Pliki:**
 
-**Pliki:** `dashboard/src/pages/Projects.tsx`, `dashboard/src/pages/Sessions.tsx`
+- `Sessions.tsx:393` — boost comment prompt
+- `ProjectPage.tsx:417` — `"Boost requires a comment. Enter a comment for ${label}:"` (hardcoded EN)
+- `ProjectDayTimeline.tsx:387-388` — `"this session"` / `"${count} sessions in this chunk"` (hardcoded EN)
 
-Obie strony ładują wszystkie rekordy z backendu i renderują je w pętli bez wirtualizacji ani paginacji. Przy dużej bazie danych (np. rok pracy = >50 000 sesji) może to powodować:
-- Długi czas ładowania komponentu
-- Duże zużycie pamięci DOM
-- Wolne re-rendery przy filtracji
-
-**Rekomendacja:** Rozważyć paginację po stronie backendu (Tauri) lub wirtualizację listy (np. `@tanstack/virtual` / `react-window`) dla `SessionRow` jeśli liczba sesji przekracza ~1000.
+**Problem:** Natywny `window.prompt()` nie jest stylizowany, nie wspiera i18n, i działa inaczej niż reszta UI. Projekt już posiada gotowy `<PromptModal>` — powinien być użyty.
 
 ---
 
-### 5.2 `Sidebar.tsx` — polling co 3s bez debounce'a przy nawigacji
+### 2.11 Data.tsx — własna implementacja t() poza i18next
 
-**Plik:** `dashboard/src/components/layout/Sidebar.tsx`
+**Plik:** `dashboard/src/pages/Data.tsx:12`
 
-Sidebar odpytuje backend co 3 sekundy (status demona, status AI, status synca). Jeśli strona jest często zmieniana (szybka nawigacja), mogą nakładać się poprzednie requesty (brak `AbortController`). Refs (`isFetchingRef`) chronią przed równoległymi wywołaniami, ale brak jest mechanizmu czyszczenia pending promise przy unmount.
-
----
-
-### 5.3 `useTimeAnalysisData.ts` — brak memoizacji kosztownych agregacji
-
-**Plik:** `dashboard/src/components/time-analysis/useTimeAnalysisData.ts`
-
-Hook przetwarza i agreguje dane sesji do widoków daily/weekly/monthly. Agregacje są przeliczane przy każdym renderze komponentu nadrzędnego. Brak `useMemo` dla kosztownych transformacji danych.
-
-**Rekomendacja:** Owrapować przeliczenia w `useMemo` z deps na dane surowe.
-
----
-
-## 6. Nadmiarowy / zduplikowany kod
-
-### 6.1 Logika operacji na sesjach zduplikowana w 3 miejscach
-
-**Pliki:** `Sessions.tsx`, `ProjectPage.tsx`, `Dashboard.tsx`
-
-Operacje `assign session`, `update comment`, `update multiplier`, `delete session` są implementowane niezależnie w każdym z tych plików. Każdy zawiera własne:
-- Stan `contextMenu` (pozycja x/y, docelowa sesja)
-- Obsługę keydown dla Escape
-- Wywołania `assignSession()`, `updateSessionComment()`, `deleteSession()` z `lib/tauri.ts`
-- Logikę odświeżania po mutacji
-
-**Rekomendacja:** Wydzielić `useSessionActions()` hook zawierający wspólną logikę mutacji + stan menu kontekstowego. `ProjectContextMenu.tsx` już istnieje jako komponent — można go rozszerzyć.
-
----
-
-### 6.2 `renderDuration()` w `Projects.tsx` vs `formatDuration()` w `utils.ts`
-
-**Pliki:** `dashboard/src/pages/Projects.tsx:111-151`, `dashboard/src/lib/utils.ts`
-
-`renderDuration()` w `Projects.tsx` reimplementuje logikę obliczania godzin/minut/sekund z `utils.ts::formatDuration()`, ale zwraca JSX z wystylizowanymi jednostkami (`<span>`). To jest świadoma decyzja stylowa — jednak warto rozważyć wydzielenie jej do osobnego komponentu `DurationDisplay` w `components/ui/`, by nie powtarzać formatu w innych miejscach jeśli zajdzie potrzeba.
-
----
-
-### 6.3 Lokalna lambda `t()` w każdym pliku korzystającym z Systemu 2
-
-**Pliki:** `AI.tsx`, `DaemonControl.tsx`, `Applications.tsx`, `Help.tsx`, `QuickStart.tsx`
-
-Każdy z tych plików definiuje własną wersję lambdy tłumaczącej:
-
-```typescript
-// AI.tsx
-const t = useCallback((pl: string, en: string) => (lang === 'pl' ? pl : en), [lang]);
-
-// DaemonControl.tsx
+```ts
 const t = (pl: string, en: string) => (lang === "pl" ? pl : en);
-
-// Applications.tsx
-const t = (pl: string, en?: string) => {
-  if (typeof en === 'string') return lang === 'pl' ? pl : en;
-  return i18n.t(pl);
-};
 ```
 
-`useInlineT()` istnieje właśnie po to, by ujednolicić tę logikę — ale nie jest używany wszędzie. Przynajmniej `DaemonControl.tsx` i `AI.tsx` powinny używać `useInlineT()` zamiast własnych wariantów.
+Własna funkcja tłumaczenia zamiast `useTranslation()` — niezgodna z systemem i18n, nie wspiera interpolacji, nie korzysta z `common.json`.
 
 ---
 
-### 6.4 `user-settings.ts` — lista walut hardkodowana dwukrotnie
+## 3. Wydajność — problemy i optymalizacje
 
-**Plik:** `dashboard/src/lib/user-settings.ts`
+### 3.1 KRYTYCZNY: N+1 query w prefetch AI breakdown
 
-```typescript
-// linia ~222 (loadCurrencySettings)
-code: parsed.code && ["USD", "EUR", "PLN"].includes(parsed.code) ? parsed.code : ...
+**Plik:** `dashboard/src/pages/Sessions.tsx:240–294`
 
-// linia ~241 (saveCurrencySettings lub walidacja)
-// ten sam array ["USD", "EUR", "PLN"] pojawia się ponownie
+```ts
+const promises = sessions.map(async (s) => {
+  const data = await getSessionScoreBreakdown(s.id);  // ← jedno zapytanie na sesję!
+  ...
+});
+await Promise.allSettled(promises);
 ```
 
-**Fix:**
-```typescript
-const SUPPORTED_CURRENCIES = ["USD", "EUR", "PLN"] as const;
-// używać SUPPORTED_CURRENCIES w obu miejscach
+Dla 100 sesji (PAGE_SIZE=100) generuje 100 równoległych zapytań Tauri → SQLite. Choć są wykonywane równolegle przez `Promise.allSettled`, obciąża to wątek Rust i SQLite connection pool.
+
+**Sugestia:** Dodać Rust command `get_sessions_score_breakdowns(ids: Vec<i64>)` zwracający batch wyników.
+
+---
+
+### 3.2 POWAŻNY: Brak debounce na wyszukiwaniu projektów
+
+**Plik:** `dashboard/src/pages/Projects.tsx:204`
+
+```ts
+const [search, setSearch] = useState('');
 ```
 
----
-
-## 7. Brakujące tłumaczenia
-
-### 7.1 Sekcje całkowicie nieobecne w plikach JSON
-
-Poniższe strony używają wyłącznie inline strings — w `common.json` brakuje dla nich kluczy:
-
-| Strona / komponent | Szacowana liczba brakujących kluczy |
-|---|---|
-| `AI.tsx` | ~30 kluczy (status, przyciski, komunikaty, opisy) |
-| `DaemonControl.tsx` | ~20 kluczy (statusy, akcje, opisy) |
-| `Applications.tsx` | ~15 kluczy (nagłówki, błędy, komunikaty) |
-| `TimeAnalysis.tsx` + `DailyView/WeeklyView/MonthlyView` | ~25 kluczy (nagłówki, legendy, filtry) |
-| `Estimates.tsx` | ~15 kluczy (nagłówki kolumn, błędy, komunikaty) |
-| `Help.tsx` (poza `language_hint`) | ~50 kluczy (tytuły zakładek, opisy funkcji) |
-| `QuickStart.tsx` (poza `language_hint`) | ~20 kluczy (opisy kroków, przyciski) |
-| `ProjectPage.tsx` | ~10 kluczy |
-
-**Łącznie:** ~185 brakujących kluczy w plikach JSON.
+Wyszukiwanie jest filtrowane po stronie frontu (useMemo), ale brak debounce oznacza ciągłe przeliczanie przy każdym keystroke. Przy >500 projektach to odczuwalny koszt.
 
 ---
 
-### 7.2 Klucze niezdefiniowane w `common.json` (wg analizy kodu)
+### 3.3 Projects.tsx — `hotProjectIds` re-sortuje cały array projektów przy każdym renderze
 
-Używane w kodzie przez `useTranslation()` / `t('klucz')`, ale nieobecne lub niekompletne w JSON:
+**Plik:** `dashboard/src/pages/Projects.tsx:293–298`
 
-| Klucz | Używany w | Status |
-|---|---|---|
-| `sessions.row.duration_tooltip` | `SessionRow.tsx` | Do weryfikacji |
-| `projects.labels.*` (dynamiczne) | `Projects.tsx` | Częściowy |
-| `settings.sections.*` | `Settings.tsx` | Brak całej sekcji |
+```ts
+const hotProjectIds = useMemo(() => {
+  return [...projects]
+    .sort((a, b) => b.total_seconds - a.total_seconds)
+    .slice(0, 5)
+    .map((p) => p.id);
+}, [projects]);
+```
 
-> Uwaga: pełna weryfikacja wymagałaby uruchomienia skryptu wyciągającego wszystkie wywołania `t('...')` z kodu i porównania z plikami JSON.
-
----
-
-### 7.3 Klucze istniejące w EN ale bez odpowiednika w PL (lub odwrotnie)
-
-Na podstawie analizy struktury obu plików `common.json` — klucze są identyczne. Różnice wymagają weryfikacji wartości (nie tylko kluczy). Szczególnie sprawdzić: ciągi z interpolacją (`{{variable}}`), gdzie wartość EN i PL powinny mieć te same zmienne.
+To poprawne użycie `useMemo`, ale sortowanie wszystkich projektów dla wyznaczenia top-5 to O(n log n) zamiast O(n). Można zastąpić algorytmem selekcji k-największych.
 
 ---
 
-## 8. Podsumowanie i priorytety
+### 3.4 retrain_model_sync — pełne załadowanie `file_activities` do pamięci
 
-### Wysoki priorytet (błędy lub regresje UX)
+**Plik:** `dashboard/src-tauri/src/commands/assignment_model.rs:799–810`
 
-| # | Problem | Plik | Linia | Opis | Status (2026-03-01) |
-|---|---|---|---|---|---|
-| H1 | **Format daty PL** | `SessionRow.tsx` | 28 | `'MMM d, yyyy'` → `'d MMM yyyy'` dla locale PL | ✅ Zrobione |
-| H2 | **`alert()`/`confirm()`** | `Settings.tsx` | 221, 233 | Zastąpić `useToast()` / `useConfirm()` | ✅ Zrobione |
-| H3 | **Brak loading przy re-fetch** | `Estimates.tsx` | 93 | `setLoading(true)` tylko dla pustej tablicy | ✅ Zrobione |
+```rust
+let mut file_stmt = tx.prepare(
+    "SELECT file_name, project_id FROM file_activities WHERE project_id IS NOT NULL",
+)?;
+```
 
-### Średni priorytet (dług techniczny / niespójność)
+Przy dużych bazach (tysiące wpisów file_activities) całość jest ładowana do pamięci RAM w `HashMap<(String, i64), i64>`. Nie ma limitu ani paginacji.
 
-| # | Problem | Status |
-|---|---|---|
-| M1 | **Migracja ~185 kluczy inline do plików JSON i18next** | ✅ Zrobione (etap przejściowy): automatyczna synchronizacja inline → i18next (`inline.*`), 457 par PL/EN w `common.json`, `skipped dynamic templates: 0` |
-| M2 | **Wydzielenie `useSessionActions()` hook** | ✅ Zrobione |
-| M4 | **Stale closure w `BackgroundServices.tsx`** | ✅ Zweryfikowane: `saveOnlineSyncSettings()` emituje `ONLINE_SYNC_SETTINGS_CHANGED_EVENT` |
-
-### Niski priorytet (do rozważenia / clean code)
-
-| # | Problem | Status |
-|---|---|---|
-| L1 | **Paginacja/wirtualizacja sesji i projektów** | ✅ Zrobione: sesje działają na limicie/offset + `react-virtuoso`, projekty renderowane stronicowane (`Load more`) per sekcja/lista |
-| L3 | **Ujednolicenie lambdy `t()` w `AI.tsx`, `DaemonControl.tsx`** | ✅ Zrobione (`useInlineT`) |
-| L4 | **Brak `AbortController` w Sidebar polling** | ✅ Zrobione |
-| L5 | **Brak `useMemo` w `useTimeAnalysisData.ts`** | ✅ Zrobione |
+**Sugestia:** Przetworzyć tokenizację po stronie SQL (np. ograniczyć do ostatnich N dni aktywności).
 
 ---
 
-*Raport wygenerowany automatycznie przez analizę kodu — wymaga weryfikacji przez dewelopera.*
+### 3.5 assign_sessions wysyła N osobnych requestów Tauri
+
+**Plik:** `dashboard/src/hooks/useSessionActions.ts:48–54`
+
+```ts
+await Promise.all(
+  sessionIds.map((sessionId) =>
+    assignSessionToProject(sessionId, projectId, source),
+  ),
+);
+```
+
+Każde przypisanie to osobny Tauri IPC call → osobna transakcja SQLite. Przy bulk-assign (np. przypisaniu całej grupy sesji) to N transakcji zamiast 1.
+
+**Sugestia:** Dodać `assign_sessions_bulk(ids: Vec<i64>, project_id: Option<i64>)` na poziomie Rust.
+
+---
+
+### 3.6 Dashboard.tsx — 7 równoległych zapytań na każdy `refreshKey`
+
+**Plik:** `dashboard/src/pages/Dashboard.tsx:250–274`
+
+```ts
+Promise.allSettled([
+  getDashboardStats(dateRange),
+  getProjects(),
+  getTopProjects(dateRange, 5),
+  getDashboardProjects(dateRange),
+  getProjectTimeline(...),
+  getSessions(...),
+  getManualSessions(...),
+])
+```
+
+To poprawny pattern (allSettled), ale warto sprawdzić czy `getProjects()` nie jest też wywoływane w innych komponentach renderowanych na dashboardzie (duplicate fetch).
+
+---
+
+### 3.7 check_manual_override — 2 osobne zapytania SQLite per sesja
+
+**Plik:** `dashboard/src-tauri/src/commands/assignment_model.rs:193–249`
+
+Funkcja wykonuje 2 zapytania: najpierw pobiera metadane sesji, potem szuka override. Te 2 można połączyć w 1 JOIN.
+
+---
+
+## 4. Nadmiarowy kod i duplikacje
+
+### 4.1 `renderDuration` vs `formatDuration` — dwie implementacje
+
+**Pliki:** `dashboard/src/pages/Projects.tsx:113–153`, `dashboard/src/lib/utils.ts`
+
+`renderDuration` w Projects.tsx to specjalna JSX-owa wersja z jednostkami jako sub-spanami. `formatDuration` w utils.ts zwraca string. Obie są potrzebne w różnych kontekstach, ale warto to udokumentować.
+
+---
+
+### 4.2 Storage keys rozrzucone po komponentach
+
+Stałe localStorage zdefiniowane inline w komponentach:
+- `Projects.tsx:194` — `VIEW_MODE_STORAGE_KEY`
+- `Projects.tsx:209` — `SORT_STORAGE_KEY`
+- `Projects.tsx:214` — `FOLDERS_STORAGE_KEY`
+- `Projects.tsx:219` — `SECTION_STORAGE_KEY`
+- `ProjectDayTimeline.tsx:75` — `TIMELINE_SORT_STORAGE_KEY`
+- `AI.tsx:38` — `AUTO_LIMIT_STORAGE_KEY`
+
+**Sugestia:** Przenieść wszystkie storage keys do `user-settings.ts` lub osobnego `storage-keys.ts`.
+
+---
+
+### 4.3 Wzorzec `persist*` powtarzany wielokrotnie
+
+`persistSectionOpen`, `saveViewMode`, `saveSortBy` — każdy to wariant tego samego wzorca `localStorage.setItem(key, JSON.stringify(value))`. Można wydzielić ogólny hook `useLocalStorage<T>(key, defaultValue)`.
+
+---
+
+### 4.4 `VIEW_MODE_STORAGE_KEY` stała zdefiniowana wewnątrz funkcji komponentu
+
+**Plik:** `dashboard/src/pages/Projects.tsx:194`
+
+```ts
+const VIEW_MODE_STORAGE_KEY = 'timeflow-dashboard-projects-view-mode';
+```
+
+Stała zdefiniowana wewnątrz ciała komponentu — tworzona na nowo przy każdym renderze. Powinna być na poziomie modułu.
+
+---
+
+### 4.5 Zduplikowana logika date range w `data-store.ts`
+
+`inferPreset` i `presetToRange` działają na zasadzie "jaka data odpowiada jakiemu presetowi". Przy zmianie logiki (np. "tydzień" = 5 dni roboczych) trzeba modyfikować obie funkcje symetrycznie.
+
+---
+
+### 4.6 Zakomentowany kod w sessions.rs
+
+**Plik:** `dashboard/src-tauri/src/commands/sessions.rs`
+
+Sprawdzić czy są zakomentowane fragmenty (CREATE TABLE w runtime — linia 46–62) — tabela `session_manual_overrides` jest tworzona przy każdym wywołaniu `upsert_manual_session_override`. Powinno to być w migracji DB, nie w kodzie operacyjnym.
+
+---
+
+### 4.7 `formatDateTime` w AI.tsx — lokalna funkcja
+
+**Plik:** `dashboard/src/pages/AI.tsx:63–68`
+
+```ts
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+```
+
+Lokalna utility bez i18n (używa `toLocaleString()` bez locale). Powinna używać `date-fns` z locale lub być w utils.ts.
+
+---
+
+## 5. Brakujące tłumaczenia i i18n
+
+### 5.1 Stan systemu i18n
+
+Aplikacja używa **dwóch systemów równolegle**:
+1. **Właściwy i18n** — `useTranslation()` + `common.json` (nowoczesny)
+2. **Inline i18n** — `useInlineT()` / `tt('PL', 'EN')` + `inline.*` klucze w JSON (legacy, oznaczony `@deprecated`)
+
+System inline jest akceptowalny jako mostek migracyjny, ale **AI.tsx, Settings.tsx, Projects.tsx wciąż używają głównie `useInlineT()`** zamiast migrować do `useTranslation()`.
+
+---
+
+### 5.2 Hardcodowane teksty angielskie — brak tłumaczenia
+
+| Plik | Linia | Tekst |
+|------|-------|-------|
+| `AI.tsx` | 193 | `'Failed to load AI model status:'` — poza tt() |
+| `Projects.tsx` | 444 | `'Permanently delete project "${projectLabel}"?...'` — pełne zdanie po angielsku zamiast klucza i18n |
+| `Projects.tsx` | ~337 | Błąd folderError: `'Failed to load project folders'` |
+| `ProjectPage.tsx` | 701 | `'Unfreeze project'` / `'Freeze project'` — hardcode en |
+| `Sessions.tsx` | 90 | `console.error` komunikaty — ok jako dev output |
+| `Dashboard.tsx` | 194 | `'Dashboard session action failed...'` — ok jako dev |
+
+---
+
+### 5.3 AI.tsx — `buildTrainingReminder` z mieszanym PL/EN
+
+**Plik:** `dashboard/src/pages/AI.tsx:109–128`
+
+```ts
+reason = (translate ?? ((_: string, en: string) => en))(
+  'Masz {{feedbackCount}} korekt...',  // PL
+  'You have {{feedbackCount}} corrections...',  // EN
+  ...
+```
+
+To poprawny inline-i18n pattern, ale `buildTrainingReminder` jest **czystą funkcją** wywoływaną poza hookami — nie może używać `useInlineT()`. Fallback `((_: string, en: string) => en)` powoduje, że jeśli `translate` jest undefined, zawsze zwraca EN. Ten problem nie jest krytyczny ale warto go udokumentować.
+
+---
+
+### 5.4 Brakujące klucze w `en/common.json` (nie ma polskiego odpowiednika)
+
+Pliki JSON są symetryczne — obie wersje językowe mają identyczne klucze. Brak desynchronizacji.
+
+---
+
+### 5.5 Sekcja `settings` w common.json jest wyjątkowo szczupła
+
+`settings` w `common.json` ma tylko `language.*` — cała reszta Settings.tsx używa inline-i18n. Docelowo Settings powinno być w pełni zmigrowane.
+
+---
+
+### 5.6 Help.tsx i QuickStart.tsx — mieszane języki
+
+**Plik:** `dashboard/src/pages/Help.tsx:498, 501`
+
+```ts
+"Auto-freezing – the system automatically 'freezes'...",  // EN
+'Odmrażanie (Unfreeze) – ikona płomienia...',  // PL
+```
+
+W tym samym renderze Help.tsx mieszają się angielskie i polskie teksty. Wymaga audytu Help.tsx pod kątem spójności językowej.
+
+---
+
+## 6. Bezpieczeństwo
+
+### 6.1 SQL injection — dynamiczne budowanie zapytań
+
+**Pliki:**
+- `sessions.rs:8–38` — `apply_session_filters` buduje SQL z `format!()` dla warunków, ale używa parametrów `?{}` — **bezpieczne**
+- `assignment_model.rs:454–464` — `format!("... WHERE token IN ({})", placeholders)` — **bezpieczne** (placeholders to tylko `?` znaki)
+
+Ogólnie: dynamiczne SQL jest bezpieczne — używa parametryzowanych zapytań.
+
+---
+
+### 6.2 Token API przechowywany w secure store
+
+**Plik:** `dashboard/src/lib/online-sync.ts`, `commands/secure_store.rs`
+
+Dobra praktyka — token nie jest w localStorage.
+
+---
+
+### 6.3 BugHunter — brak sanitizacji attachmentów po stronie klienta (poza rozmiarem)
+
+**Plik:** `dashboard/src/components/layout/BugHunter.tsx`
+
+Walidacja tylko rozmiaru pliku (5MB), brak walidacji typu MIME. Niska krytyczność (aplikacja desktopowa, użytkownik = właściciel).
+
+---
+
+### 6.4 Demo mode — dane live i demo w tej samej aplikacji
+
+**Plik:** `dashboard/src-tauri/src/commands/database.rs`
+
+Tryb demo przełącza ścieżkę DB. Ryzyko: jeśli błąd w logice przełączania spowoduje zapis do live DB w trybie demo. Warto mieć test weryfikujący że `is_demo_mode()` jest sprawdzany przed zapisami.
+
+---
+
+## 7. Architektura AI — ocena i sugestie
+
+### 7.1 Architektura modelu — ocena ogólna
+
+Model używa 4-warstwowego scoringu (file_overlap > token_matching > app_history > time_patterns). To solidna, interpretowalna architektura. Główne zalety:
+- Deterministyczna, przewidywalna
+- Szybka (brak sieci neuronowych)
+- Łatwa do debugowania (ScoreBreakdown UI)
+
+### 7.2 Problemy w architekturze AI
+
+**A) Confidence formula — patrz punkt 2.1**
+
+**B) Token matching w Layer 3 nie uwzględnia wagi pliku**
+
+```rust
+let avg_log = (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+```
+
+Plik `README.md` i plik `my-project-core.rs` mają takie same tokeny wagowo. Nazwy plików specyficzne dla projektu (np. `timeflow_storage.rs`) powinny mieć wyższy weight niż generyczne (`index.js`, `main.rs`).
+
+**C) Brak decay historycznych danych**
+
+Sesja sprzed roku ma taką samą wagę jak sesja z zeszłego tygodnia. Po importie starych danych model może być "zatruwany" przez historyczne wzorce.
+
+**Sugestia:** W `retrain_model_sync` dodać filtr `WHERE date >= date('now', '-180 days')` lub czynnik decay `exp(-days_old / 30)`.
+
+**D) Reinforcement tylko dla `assignment_model_app`, nie dla `assignment_model_time` i `assignment_model_token`**
+
+```rust
+// Boost the correct project
+tx.execute("INSERT INTO assignment_model_app ... ON CONFLICT DO UPDATE ...")?;
+// Penalize the wrong project
+tx.execute("UPDATE assignment_model_app SET cnt = MAX(cnt - ?3, 1) ...")?;
+```
+
+Feedback reinforcement jest aplikowany **tylko** do tabeli `app`. Tabele `time` i `token` nie są korygowane przez ręczne poprawki użytkownika. Oznacza to, że jeśli model myli się przez dopasowania tokenów, training nie naprawi tego błędu.
+
+**E) `auto_accept` wykluczone z treningu**
+
+```rust
+AND COALESCE((SELECT af.source ... LIMIT 1), '') <> 'auto_accept'
+```
+
+Sesje przypisane automatycznie przez model (auto_safe) są wykluczone z danych treningowych. To celowe — ale oznacza, że im więcej auto_safe używa, tym mniej danych treningowych ma. W długim terminie model może się "degenerować".
+
+**Sugestia:** Rozważyć włączenie auto_accept z niższą wagą (np. `feedback_weight * 0.1`), tak by potwierdzone przez użytkownika auto_safe wzmacniało model.
+
+---
+
+### 7.3 UX modelu — sugestie
+
+1. **Brak widoczności dlaczego model nie dał sugestii** — użytkownik widzi "brak danych AI", ale nie wie czy to brak dowodów, za niska confidence, czy frozen project.
+
+2. **Snoozowanie przypomnienia o treningu** — gdy snooze = 24h, a RETRAIN_INTERVAL = 24h, przypomnienie może pojawiać się co godzinę po wygaśnięciu snooze.
+
+3. **Feedback thumbs up/down nie wyjaśniają co "dobra/zła" sugestia oznacza dla modelu** — warto dodać tooltip "Kliknięcie kciuka w górę wzmocni tę sugestię w przyszłości".
+
+---
+
+## 8. Sugestie priorytetowe
+
+### P1 — Krytyczne (naprawić jak najszybciej)
+
+| # | Problem | Plik | Rozwiązanie |
+|---|---------|------|-------------|
+| 1 | Confidence formula zbyt restrykcyjna | `assignment_model.rs:502` | Zmienić evidence_factor na miękkie skalowanie |
+| 2 | N+1 query w AI breakdown prefetch | `Sessions.tsx:244` | Dodać `get_sessions_score_breakdowns(ids)` w Rust |
+| 3 | Race condition auto-refresh vs mutacja | `Sessions.tsx:296` | Dodać `isMutating` blokadę |
+
+### P2 — Ważne (naprawić w ciągu 1-2 sprintów)
+
+| # | Problem | Plik | Rozwiązanie |
+|---|---------|------|-------------|
+| 4 | Feedback reinforcement tylko dla app layer | `assignment_model.rs:748` | Rozszerzyć na token layer |
+| 5 | Brak temporal decay w modelu | `assignment_model.rs:700` | Filtr 180-dniowy lub decay |
+| 6 | Assign bulk — N osobnych transakcji | `useSessionActions.ts:49` | Backend batch command |
+| 7 | getProjectEstimates poza allSettled | `Projects.tsx:361` | Przenieść do allSettled |
+| 8 | `session_manual_overrides` CREATE TABLE w runtime | `sessions.rs:46` | Przenieść do migracji DB |
+
+### P3 — Dobre praktyki (naprawić przy okazji)
+
+| # | Problem | Plik | Rozwiązanie |
+|---|---------|------|-------------|
+| 9 | Storage keys inline w komponentach | wiele | Przenieść do `storage-keys.ts` |
+| 10 | Migracja inline-i18n na useTranslation | AI.tsx, Settings.tsx | Sukcesywna migracja |
+| 11 | `isNewProject` poza komponentem | `Projects.tsx:431` | Przenieść poza komponent |
+| 12 | Help.tsx — mieszane PL/EN teksty | `Help.tsx:498,501` | Audyt i ujednolicenie |
+| 13 | `2100-01-01` jako "nieskończoność" | `Projects.tsx:307` | Stała lub `null` w Rust |
+| 14 | `formatDateTime` bez locale | `AI.tsx:63` | Użyć date-fns z locale |
+
+---
+
+*Raport wygenerowany na podstawie analizy: Projects.tsx, Sessions.tsx, Dashboard.tsx, AI.tsx, Settings.tsx, assignment_model.rs, projects.rs, sessions.rs, data-store.ts, useSessionActions.ts, inline-i18n.ts, user-settings.ts, locales/en/common.json, locales/pl/common.json*

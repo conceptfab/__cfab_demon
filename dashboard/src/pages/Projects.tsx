@@ -84,18 +84,20 @@ import type {
   DetectedProject,
   ProjectExtraInfo,
 } from '@/lib/db-types';
+import { PROJECT_COLORS } from '@/lib/project-colors';
 
-const COLORS = [
-  '#38bdf8',
-  '#a78bfa',
-  '#34d399',
-  '#fb923c',
-  '#f87171',
-  '#fbbf24',
-  '#818cf8',
-  '#22d3ee',
-];
 const PROJECT_RENDER_PAGE_SIZE = 120;
+
+const VIEW_MODE_STORAGE_KEY = 'timeflow-dashboard-projects-view-mode';
+const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
+const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
+const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
+const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
+
+function isNewProject(created_at: string): boolean {
+  const age = Date.now() - new Date(created_at).getTime();
+  return age < 7 * 24 * 60 * 60 * 1000;
+}
 
 
 function inferDetectedProjectName(fileName: string): string {
@@ -169,7 +171,7 @@ export function Projects() {
   const [projectDialogId, setProjectDialogId] = useState<number | null>(null);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
   const [name, setName] = useState('');
-  const [color, setColor] = useState(COLORS[0]);
+  const [color, setColor] = useState(PROJECT_COLORS[0]);
   const [projectFolderPath, setProjectFolderPath] = useState('');
   const [createProjectError, setCreateProjectError] = useState<string | null>(
     null,
@@ -191,7 +193,6 @@ export function Projects() {
   const [sessionDialogProjectId, setSessionDialogProjectId] = useState<
     number | null
   >(null);
-  const VIEW_MODE_STORAGE_KEY = 'timeflow-dashboard-projects-view-mode';
   const [viewMode, setViewMode] = useState<'detailed' | 'compact'>(() => {
     return (
       (localStorage.getItem(VIEW_MODE_STORAGE_KEY) as 'detailed' | 'compact') ||
@@ -206,18 +207,14 @@ export function Projects() {
     Record<string, number>
   >({});
 
-  const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
   const [sortBy, setSortBy] = useState(() => {
     return localStorage.getItem(SORT_STORAGE_KEY) || 'name-asc';
   });
 
-  const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
   const [useFolders, setUseFolders] = useState(() => {
     return localStorage.getItem(FOLDERS_STORAGE_KEY) !== 'false';
   });
 
-  const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
-  const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
   const defaultSectionOpen = {
     excluded: true,
     folders: true,
@@ -306,6 +303,7 @@ export function Projects() {
       getFolderProjectCandidates(),
       getDetectedProjects({ start: '2020-01-01', end: '2100-01-01' }),
       getDemoModeStatus(),
+      getProjectEstimates({ start: '2020-01-01', end: '2100-01-01' }),
     ]).then(
       ([
         projectsRes,
@@ -315,6 +313,7 @@ export function Projects() {
         candidatesRes,
         detectedRes,
         demoModeRes,
+        estimatesRes,
       ]) => {
         if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
         else console.error('Failed to load projects:', projectsRes.reason);
@@ -358,15 +357,14 @@ export function Projects() {
         else
           console.error('Failed to load demo mode status:', demoModeRes.reason);
 
-        getProjectEstimates({ start: '2020-01-01', end: '2100-01-01' })
-          .then((res) => {
-            const map: Record<number, number> = {};
-            res.forEach((r) => {
-              map[r.project_id] = r.estimated_value;
-            });
-            setEstimates(map);
-          })
-          .catch(console.error);
+        if (estimatesRes.status === 'fulfilled') {
+          const map: Record<number, number> = {};
+          estimatesRes.value.forEach((r) => {
+            map[r.project_id] = r.estimated_value;
+          });
+          setEstimates(map);
+        } else
+          console.error('Failed to load estimates:', estimatesRes.reason);
       },
     );
   }, [refreshKey]);
@@ -499,7 +497,7 @@ export function Projects() {
     setName('');
     setProjectFolderPath('');
     setCreateProjectError(null);
-    setColor(COLORS[projects.length % COLORS.length]);
+    setColor(PROJECT_COLORS[projects.length % PROJECT_COLORS.length]);
     setCreateDialogOpen(true);
   };
 
@@ -951,7 +949,10 @@ export function Projects() {
                 key={p.id}
                 data-project-id={p.id}
                 data-project-name={p.name}
-                className="flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors"
+                className={cn(
+                  'flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors',
+                  isNewProject(p.created_at) && 'border-yellow-400/70',
+                )}
                 onClick={() => openEdit(p)}
               >
                 <div
@@ -1041,7 +1042,12 @@ export function Projects() {
   ) => {
     const isDeleting = busy === `delete-project:${p.id}`;
     return (
-      <Card key={p.id} data-project-id={p.id} data-project-name={p.name}>
+      <Card
+        key={p.id}
+        data-project-id={p.id}
+        data-project-name={p.name}
+        className={isNewProject(p.created_at) ? 'border-yellow-400/70' : undefined}
+      >
         <CardHeader
           className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? 'pr-10' : ''}`}
         >
@@ -1068,7 +1074,7 @@ export function Projects() {
                     title={t('projects.labels.choose_color')}
                   />
                   <div className="mt-2 flex gap-1">
-                    {COLORS.map((c) => (
+                    {PROJECT_COLORS.map((c) => (
                       <AppTooltip key={c} content={c}>
                         <button
                           className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
@@ -1970,7 +1976,7 @@ export function Projects() {
             <div>
               <label className="text-sm font-medium">{tt('Kolor', 'Color')}</label>
               <div className="mt-1 flex gap-2">
-                {COLORS.map((c) => (
+                {PROJECT_COLORS.map((c) => (
                   <button
                     key={c}
                     className="h-8 w-8 rounded-full border-2 transition-transform"

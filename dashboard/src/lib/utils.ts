@@ -58,9 +58,13 @@ export function getErrorMessage(error: unknown, fallback: string): string {
 }
 
 export function formatMoney(value: number, currencyCode: string): string {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currencyCode,
-    maximumFractionDigits: 2,
-  }).format(value);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currencyCode,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return value.toFixed(2);
+  }
 }

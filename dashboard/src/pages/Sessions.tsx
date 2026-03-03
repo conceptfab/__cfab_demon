@@ -294,8 +294,11 @@ export function Sessions() {
   }, [sessions, indicators.showScoreBreakdown]);
 
   // Auto-refresh sessions every 15 seconds
+  const isAutoRefreshing = useRef(false);
   useEffect(() => {
     const interval = setInterval(() => {
+      if (isAutoRefreshing.current) return;
+      isAutoRefreshing.current = true;
       getSessions({
         dateRange: effectiveDateRange,
         limit: PAGE_SIZE,
@@ -312,7 +315,10 @@ export function Sessions() {
           setSessions(data);
           setHasMore(data.length >= PAGE_SIZE);
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => {
+          isAutoRefreshing.current = false;
+        });
     }, 15_000);
     return () => clearInterval(interval);
   }, [effectiveDateRange, activeProjectId, minDuration]);
@@ -390,10 +396,14 @@ export function Sessions() {
           : t('sessions.prompts.boost_label_multi', {
               count: missingIds.length,
             });
-      const entered = window.prompt(
-        t('sessions.prompts.boost_requires_comment_prompt', { label }),
-        '',
-      );
+      const entered = await new Promise<string | null>((resolve) => {
+        setPromptConfig({
+          title: t('sessions.prompts.boost_requires_comment_prompt', { label }),
+          initialValue: '',
+          onConfirm: (val) => resolve(val),
+          onCancel: () => resolve(null),
+        });
+      });
       const normalized = entered?.trim() ?? '';
 
       if (!normalized) {
@@ -1216,7 +1226,12 @@ export function Sessions() {
 
       <PromptModal
         open={promptConfig !== null}
-        onOpenChange={(open) => !open && setPromptConfig(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            promptConfig?.onCancel?.();
+            setPromptConfig(null);
+          }
+        }}
         title={promptConfig?.title ?? ''}
         description={promptConfig?.description}
         initialValue={promptConfig?.initialValue ?? ''}

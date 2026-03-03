@@ -499,7 +499,8 @@ fn compute_raw_suggestion(
     let second_score = sorted.get(1).map(|(_, s)| *s).unwrap_or(0.0);
     let margin = (best_score - second_score).max(0.0);
     let evidence_count = *candidate_evidence.get(&best_project_id).unwrap_or(&1);
-    let evidence_factor = ((evidence_count as f64) / 3.0).min(1.0);
+    // Soft scaling: approaches 1.0 asymptotically (count=1→0.39, count=2→0.63, count=3→0.78, count=6→0.95)
+    let evidence_factor = 1.0 - (-(evidence_count as f64) / 2.0).exp();
     let sigmoid_margin = 1.0 / (1.0 + (-margin).exp());
     let confidence = sigmoid_margin * evidence_factor;
 
@@ -731,6 +732,7 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             FROM sessions s
             WHERE s.project_id IS NOT NULL
               AND s.duration_seconds > 10
+              AND date(s.start_time) >= date('now', '-180 days')
               AND COALESCE((
                     SELECT af.source
                     FROM assignment_feedback af
@@ -794,10 +796,55 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             }
         }
 
+        // Reinforcement for time model: boost (app, hour, weekday) -> project buckets
+        // based on manual assignment feedback.
+        {
+            let mut fb_stmt = tx.prepare(
+                "SELECT app_id, to_project_id, COUNT(*) as cnt
+                 FROM assignment_feedback
+                 WHERE source IN (
+                   'manual_session_assign',
+                   'manual_session_change',
+                   'manual_project_card_change',
+                   'manual_app_assign',
+                   'ai_suggestion_accept'
+                 )
+                   AND to_project_id IS NOT NULL
+                   AND app_id IS NOT NULL
+                 GROUP BY app_id, to_project_id",
+            )?;
+            let mut fb_rows = fb_stmt.query([])?;
+            while let Some(row) = fb_rows.next()? {
+                let app_id: i64 = row.get(0)?;
+                let to_project_id: i64 = row.get(1)?;
+                let cnt: i64 = row.get(2)?;
+                let boost = (cnt as f64 * feedback_weight).round() as i64;
+                tx.execute(
+                    "INSERT INTO assignment_model_time (app_id, hour_bucket, weekday, project_id, cnt)
+                     SELECT s.app_id,
+                            CAST(strftime('%H', s.start_time) AS INTEGER),
+                            CAST(strftime('%w', s.start_time) AS INTEGER),
+                            ?2, ?3
+                     FROM sessions s
+                     WHERE s.app_id = ?1
+                       AND s.project_id = ?2
+                       AND s.duration_seconds > 10
+                     GROUP BY s.app_id,
+                              CAST(strftime('%H', s.start_time) AS INTEGER),
+                              CAST(strftime('%w', s.start_time) AS INTEGER)
+                     ON CONFLICT(app_id, hour_bucket, weekday, project_id) DO UPDATE SET
+                       cnt = assignment_model_time.cnt + ?3",
+                    rusqlite::params![app_id, to_project_id, boost],
+                )?;
+            }
+        }
+
         let mut token_counts: HashMap<(String, i64), i64> = HashMap::new();
         {
             let mut file_stmt = tx.prepare(
-                "SELECT file_name, project_id FROM file_activities WHERE project_id IS NOT NULL",
+                "SELECT file_name, project_id FROM file_activities
+                 WHERE project_id IS NOT NULL
+                   AND date >= date('now', '-180 days')",
             )?;
             let mut file_rows = file_stmt.query([])?;
             while let Some(row) = file_rows.next()? {

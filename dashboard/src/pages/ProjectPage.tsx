@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import {
   ChevronLeft,
@@ -64,6 +65,7 @@ import type {
   PromptConfig,
 } from '@/lib/db-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import { PROJECT_COLORS } from '@/lib/project-colors';
 
 type ContextMenu =
   | {
@@ -88,19 +90,10 @@ type RecentCommentItem = {
   source: string;
 };
 
-const COLORS = [
-  '#38bdf8',
-  '#a78bfa',
-  '#34d399',
-  '#fb923c',
-  '#f87171',
-  '#fbbf24',
-  '#818cf8',
-  '#22d3ee',
-];
 
 export function ProjectPage() {
   const tt = useInlineT();
+  const { t } = useTranslation();
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
@@ -412,15 +405,19 @@ export function ProjectPage() {
 
     const label =
       missingIds.length === 1
-        ? 'this session'
-        : `${missingIds.length} sessions`;
-    const entered = window.prompt(
-      `Boost requires a comment. Enter a comment for ${label}:`,
-      '',
-    );
+        ? t('sessions.prompts.boost_label_single')
+        : t('sessions.prompts.boost_label_multi', { count: missingIds.length });
+    const entered = await new Promise<string | null>((resolve) => {
+      setPromptConfig({
+        title: t('sessions.prompts.boost_requires_comment_prompt', { label }),
+        initialValue: '',
+        onConfirm: (val) => resolve(val),
+        onCancel: () => resolve(null),
+      });
+    });
     const normalized = entered?.trim() ?? '';
     if (!normalized) {
-      showError('Comment is required to add boost.');
+      showError(t('sessions.prompts.boost_comment_required'));
       return false;
     }
 
@@ -642,7 +639,7 @@ export function ProjectPage() {
                   title={tt('Wybierz kolor', 'Choose color')}
                 />
                 <div className="mt-2 flex gap-1">
-                  {COLORS.map((c) => (
+                  {PROJECT_COLORS.map((c) => (
                     <button
                       key={c}
                       className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
@@ -1529,7 +1526,12 @@ export function ProjectPage() {
 
       <PromptModal
         open={promptConfig !== null}
-        onOpenChange={(open) => !open && setPromptConfig(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            promptConfig?.onCancel?.();
+            setPromptConfig(null);
+          }
+        }}
         title={promptConfig?.title ?? ''}
         description={promptConfig?.description}
         initialValue={promptConfig?.initialValue ?? ''}

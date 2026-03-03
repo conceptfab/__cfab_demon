@@ -532,6 +532,7 @@ pub async fn auto_freeze_projects(
                  unfreeze_reason = NULL
              WHERE excluded_at IS NULL
                AND frozen_at IS NULL
+               AND julianday('now') - julianday(created_at) >= ?1
                AND id NOT IN (
                    SELECT DISTINCT s.project_id FROM sessions s
                    WHERE s.project_id IS NOT NULL
