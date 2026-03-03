@@ -7,9 +7,18 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use native_windows_gui as nwg;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 use crate::APP_NAME;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
+
+#[cfg(windows)]
+fn no_console(cmd: &mut std::process::Command) {
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+}
+#[cfg(not(windows))]
+fn no_console(_cmd: &mut std::process::Command) {}
 
 /// Tray loop exit action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,9 +46,9 @@ fn load_assignment_attention_count() -> i64 {
 fn build_tray_tip() -> String {
     let attention = load_assignment_attention_count();
     if attention > 0 {
-        format!("{} * - {} unassigned session(s)", APP_NAME, attention)
+        format!("{} * - {} nieprzypisanych sesji", APP_NAME, attention)
     } else {
-        format!("{} - running in background", APP_NAME)
+        format!("{} - działa w tle", APP_NAME)
     }
 }
 
@@ -109,21 +118,21 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 
     let mut menu_exit = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text("Exit")
+        .text("Zamknij")
         .parent(&menu)
         .build(&mut menu_exit)
         .expect("Failed to create Exit menu item");
 
     let mut menu_restart = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text("Restart")
+        .text("Uruchom ponownie")
         .parent(&menu)
         .build(&mut menu_restart)
         .expect("Failed to create Restart menu item");
 
     let mut menu_dashboard = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text("Launch Dashboard")
+        .text("Otwórz Dashboard")
         .parent(&menu)
         .build(&mut menu_dashboard)
         .expect("Failed to create Launch Dashboard menu item");
@@ -205,10 +214,9 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 }
 
 fn is_dashboard_running() -> bool {
-    let output = match std::process::Command::new("tasklist")
-        .args(["/FO", "CSV", "/NH"])
-        .output()
-    {
+    let mut cmd = std::process::Command::new("tasklist");
+    no_console(&mut cmd);
+    let output = match cmd.args(["/FO", "CSV", "/NH"]).output() {
         Ok(o) => o,
         Err(e) => {
             log::warn!("Failed to run tasklist for dashboard detection: {}", e);
@@ -280,19 +288,21 @@ fn launch_dashboard() {
     let dashboard_exe = possible_paths.iter().find(|p| p.exists());
 
     if let Some(path) = dashboard_exe {
-        match Command::new(path).spawn() {
+        let mut cmd = Command::new(path);
+        no_console(&mut cmd);
+        match cmd.spawn() {
             Ok(_) => log::info!("Dashboard started: {:?}", path),
             Err(e) => log::error!("Error starting Dashboard: {}", e),
         }
     } else {
         log::error!("Dashboard exe not found in {:?}", daemon_dir);
-        show_error_message("Dashboard not found (timeflow-dashboard.exe).\nMake sure it is located in the same folder as timeflow-demon.exe.");
+        show_error_message("Nie znaleziono TIMEFLOW Dashboard (timeflow-dashboard.exe).\nUpewnij się, że znajduje się w tym samym folderze co timeflow-demon.exe.");
     }
 }
 
 fn show_error_message(msg: &str) {
     use std::ptr;
-    let title: Vec<u16> = "TIMEFLOW Demon"
+    let title: Vec<u16> = "TIMEFLOW - Demon"
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();

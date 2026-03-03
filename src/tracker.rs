@@ -50,7 +50,7 @@ fn check_dashboard_compatibility() {
                 if !WARNING_SHOWN.load(Ordering::SeqCst) {
                     WARNING_SHOWN.store(true, Ordering::SeqCst);
                     let msg = format!(
-                        "Version mismatch!\nDaemon: {}\nDashboard: {}\n\nThe combination may not work correctly.",
+                        "Niezgodność wersji TIMEFLOW!\nDemon: {}\nDashboard: {}\n\nTo połączenie może działać nieprawidłowo.",
                         demon_version, v_dash
                     );
                     log::error!("{}", msg);
@@ -58,7 +58,7 @@ fn check_dashboard_compatibility() {
                     // Display warning without blocking the monitoring loop.
                     std::thread::spawn(move || unsafe {
                         use std::ptr;
-                        let title: Vec<u16> = "TimeFlow - Version Error"
+                        let title: Vec<u16> = "TIMEFLOW - Błąd wersji"
                             .encode_utf16()
                             .chain(std::iter::once(0))
                             .collect();

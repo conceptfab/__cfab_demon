@@ -982,7 +982,7 @@ export function ProjectPage() {
 
       <div className="grid grid-cols-1 gap-6">
         <TimelineChart
-          title="Activity Over Time"
+          title={t('project_page.timeline.activity_over_time')}
           data={filteredTimeline}
           projectColors={project ? { [project.name]: project.color } : {}}
           granularity="day"

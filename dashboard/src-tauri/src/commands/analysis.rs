@@ -420,7 +420,7 @@ pub async fn get_stacked_timeline(
              WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
              AND a.id IN (
                 SELECT app_id FROM sessions
-                WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR iS_hidden = 0)
+                WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
                 GROUP BY app_id
                 ORDER BY SUM(duration_seconds) DESC
                 LIMIT ?3

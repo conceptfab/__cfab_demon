@@ -6,6 +6,9 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 mod config;
 mod monitor;
 mod single_instance;
@@ -16,6 +19,13 @@ mod tray;
 /// Application name — single constant used everywhere
 pub const APP_NAME: &str = "TIMEFLOW Demon";
 pub const VERSION: &str = include_str!("../VERSION");
+
+#[cfg(windows)]
+fn no_console(cmd: &mut Command) {
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+}
+#[cfg(not(windows))]
+fn no_console(_cmd: &mut Command) {}
 
 fn main() {
     // Handle command-line arguments (fast path, no logging needed)
@@ -63,8 +73,11 @@ fn main() {
     log::logger().flush();
 
     if matches!(tray_action, tray::TrayExitAction::Restart) {
+        drop(_guard);
         if let Ok(exe) = std::env::current_exe() {
-            match Command::new(exe).spawn() {
+            let mut cmd = Command::new(exe);
+            no_console(&mut cmd);
+            match cmd.spawn() {
                 Ok(_) => log::info!("{} - started new instance (restart)", APP_NAME),
                 Err(e) => log::error!("{} - failed to start new instance: {}", APP_NAME, e),
             }

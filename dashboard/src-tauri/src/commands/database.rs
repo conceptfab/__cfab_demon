@@ -171,14 +171,13 @@ pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<(), String> {
+pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Result<(), String> {
     let src = Path::new(&path);
     if !src.exists() {
         return Err("Source file does not exist".to_string());
     }
 
-    let status = db::get_demo_mode_status(&app)?;
+    let status = db::get_demo_mode_status(app)?;
     let dest = Path::new(&status.active_db_path);
     if src == dest {
         return Err("Source file matches the active database path".to_string());
@@ -199,61 +198,72 @@ pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<
 
     // Restore by copying table contents through SQLite itself instead of overwriting
     // the active file. This avoids corruption risks on open/locked DB files.
-    let mut conn = db::get_connection(&app)?;
+    let mut conn = db::get_connection(app)?;
     conn.execute_batch("PRAGMA foreign_keys = OFF;")
         .map_err(|e| format!("Failed to disable foreign keys: {}", e))?;
-    conn.execute("ATTACH DATABASE ?1 AS restore_src", [path.as_str()])
-        .map_err(|e| format!("Failed to attach source database: {}", e))?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    let tables: Vec<String> = {
-        let mut stmt = tx
-            .prepare(
-                "SELECT name
-                 FROM restore_src.sqlite_master
-                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-                 ORDER BY name",
+    let result = (|| -> Result<(), String> {
+        conn.execute("ATTACH DATABASE ?1 AS restore_src", [path])
+            .map_err(|e| format!("Failed to attach source database: {}", e))?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        let tables: Vec<String> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT name
+                     FROM restore_src.sqlite_master
+                     WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                     ORDER BY name",
+                )
+                .map_err(|e| format!("Failed to enumerate source tables: {}", e))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| format!("Failed to read source table list: {}", e))?;
+            rows.filter_map(|row| row.ok()).collect()
+        };
+
+        for table_name in tables {
+            let quoted_name = table_name.replace('"', "\"\"");
+            tx.execute_batch(&format!("DELETE FROM \"{}\";", quoted_name))
+                .map_err(|e| format!("Failed to clear table '{}': {}", table_name, e))?;
+            tx.execute_batch(&format!(
+                "INSERT INTO \"{name}\" SELECT * FROM restore_src.\"{name}\";",
+                name = quoted_name
+            ))
+            .map_err(|e| format!("Failed to restore table '{}': {}", table_name, e))?;
+        }
+
+        let has_sqlite_sequence: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM restore_src.sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
+                [],
+                |row| row.get::<_, i64>(0),
             )
-            .map_err(|e| format!("Failed to enumerate source tables: {}", e))?;
-        let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| format!("Failed to read source table list: {}", e))?;
-        rows.filter_map(|row| row.ok()).collect()
-    };
+            .map(|count| count > 0)
+            .map_err(|e| format!("Failed to inspect sqlite_sequence: {}", e))?;
+        if has_sqlite_sequence {
+            let _ = tx.execute_batch(
+                "DELETE FROM sqlite_sequence;
+                 INSERT INTO sqlite_sequence(name, seq)
+                 SELECT name, seq FROM restore_src.sqlite_sequence;",
+            );
+        }
 
-    for table_name in tables {
-        let quoted_name = table_name.replace('"', "\"\"");
-        tx.execute_batch(&format!("DELETE FROM \"{}\";", quoted_name))
-            .map_err(|e| format!("Failed to clear table '{}': {}", table_name, e))?;
-        tx.execute_batch(&format!(
-            "INSERT INTO \"{name}\" SELECT * FROM restore_src.\"{name}\";",
-            name = quoted_name
-        ))
-        .map_err(|e| format!("Failed to restore table '{}': {}", table_name, e))?;
-    }
+        tx.commit()
+            .map_err(|e| format!("Failed to commit database restore: {}", e))?;
+        
+        Ok(())
+    })();
 
-    let has_sqlite_sequence: bool = tx
-        .query_row(
-            "SELECT COUNT(*) FROM restore_src.sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .map(|count| count > 0)
-        .map_err(|e| format!("Failed to inspect sqlite_sequence: {}", e))?;
-    if has_sqlite_sequence {
-        let _ = tx.execute_batch(
-            "DELETE FROM sqlite_sequence;
-             INSERT INTO sqlite_sequence(name, seq)
-             SELECT name, seq FROM restore_src.sqlite_sequence;",
-        );
-    }
+    let _ = conn.execute_batch("DETACH DATABASE restore_src;");
+    let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
 
-    tx.commit()
-        .map_err(|e| format!("Failed to commit database restore: {}", e))?;
-    conn.execute_batch("DETACH DATABASE restore_src; PRAGMA foreign_keys = ON;")
-        .map_err(|e| format!("Failed to finalize database restore: {}", e))?;
+    result
+}
 
-    Ok(())
+#[tauri::command]
+pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<(), String> {
+    restore_database_from_file_internal(&app, &path)
 }
 #[tauri::command]
 pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String> {

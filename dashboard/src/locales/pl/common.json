@@ -298,6 +298,24 @@
     "messages": {
       "folder_saved": "Folder zapisany"
     },
+    "actions": {
+      "expand_all": "Rozwiń wszystkie",
+      "collapse_all": "Zwiń wszystkie",
+      "add": "Dodaj",
+      "create": "Utwórz"
+    },
+    "sections": {
+      "excluded_projects": "Wykluczone projekty",
+      "project_folders": "Foldery projektów"
+    },
+    "empty": {
+      "no_excluded_projects": "Brak wykluczonych projektów",
+      "no_folders_configured": "Brak skonfigurowanych folderów",
+      "no_subfolder_candidates": "Nie znaleziono kandydatów podfolderów"
+    },
+    "placeholders": {
+      "project_folder_path": "C:\\projekty\\klienci"
+    },
     "labels": {
       "duplicate_marker": "D",
       "possible_duplicate_named": "Możliwy duplikat ({{groupSize}}): {{groupNames}}",
@@ -321,14 +339,22 @@
       "excluded": "Wykluczony",
       "restore": "Przywróć",
       "delete": "Usuń",
+      "hidden_prefix": "Ukryte:",
       "hidden_existing": "{{count}} istniejących",
       "hidden_excluded": "{{count}} wykluczonych",
+      "extra_candidates": "{{count}} dodatkowych kandydatów",
+      "extra_candidates_demo_cap": "{{count}} dodatkowych kandydatów (limit demo)",
       "add_manual_session": "Dodaj sesję ręczną",
       "project_card": "Karta projektu",
       "sort_abc": "ABC (przełącz kierunek)",
       "sort_value": "Wartość (przełącz kierunek)",
       "sort_time": "Czas (przełącz kierunek)",
       "toggle_folder_grouping": "Przełącz grupowanie folderów"
+    }
+  },
+  "project_page": {
+    "timeline": {
+      "activity_over_time": "Aktywność w czasie"
     }
   },
   "settings": {
@@ -344,10 +370,55 @@
     }
   },
   "help": {
-    "language_hint": "Język ustawisz w Ustawienia > Język."
+    "language_hint": "Język ustawisz w Ustawienia > Język.",
+    "sections": {
+      "dashboard": {
+        "title": "DASHBOARD"
+      },
+      "daemon": {
+        "title": "DEMON"
+      }
+    }
   },
   "quickstart": {
-    "language_hint": "Język ustawisz w Ustawienia > Język."
+    "language_hint": "Język ustawisz w Ustawienia > Język.",
+    "heading": {
+      "quick": "Szybki",
+      "start": "Start"
+    },
+    "intro": "Witaj w TIMEFLOW! Przejdźmy przez te kilka prostych kroków, aby poprawnie skonfigurować Twój system śledzenia czasu.",
+    "outro": "To wszystko! Teraz możesz cieszyć się pełną automatyzacją.",
+    "actions": {
+      "back": "Powrót",
+      "lets_go": "Zaczynamy"
+    },
+    "step_label": "Krok {{step}}",
+    "steps": {
+      "file_preparation": {
+        "title": "Przygotowanie plików",
+        "description": "Wrzuć oba pliki .exe (timeflow-dashboard.exe i timeflow-demon.exe) do jednego folderu na dysku i uruchom timeflow-dashboard.exe."
+      },
+      "projects_configuration": {
+        "title": "Konfiguracja projektów",
+        "description": "W zakładce <b>Projects</b> wskaż folder nadrzędny Twoich prac. Każdy podfolder będzie traktowany jako osobny projekt."
+      },
+      "adding_applications": {
+        "title": "Dodawanie aplikacji",
+        "description": "W zakładce <b>Applications</b> dodaj nazwy procesów (np. nazwa.exe), które chcesz śledzić. Nadaj im czytelne nazwy."
+      },
+      "starting_daemon": {
+        "title": "Uruchomienie Demona",
+        "description": "W zakładce <b>Daemon</b> uruchom go i włącz 'Autostart ON'. System zacznie pracować w tle."
+      },
+      "assigning_sessions": {
+        "title": "Przypisywanie sesji",
+        "description": "Użyj prawego przycisku myszy w zakładce <b>Dashboard</b>, aby przypisać sesje. Gwiazdka w ikonie tray oznacza nieprzypisane sesje."
+      },
+      "ai_training": {
+        "title": "Szkolenie AI",
+        "description": "Kilka ręcznych przypisań wyszkoli Twoje lokalne AI (zakładka <b>AI &amp; Model</b>), które zacznie automatyzować pracę za Ciebie."
+      }
+    }
   },
   "inline": {
     "105x3lb69x86t": "Limit sesji na przebieg",

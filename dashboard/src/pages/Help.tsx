@@ -30,11 +30,27 @@ import {
 } from '@/lib/help-navigation';
 import { useTranslation } from 'react-i18next';
 import { getDaemonStatus } from '@/lib/tauri';
-import { useInlineT } from '@/lib/inline-i18n';
+import { normalizeLanguageCode } from '@/lib/user-settings';
+
+type InlineInterpolationValue = string | number | boolean | null | undefined;
+type InlineInterpolationMap = Record<string, InlineInterpolationValue>;
 
 export function Help() {
-  const { t: t18n } = useTranslation();
-  const t = useInlineT();
+  const { t: t18n, i18n } = useTranslation();
+  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
+  const t = (
+    pl: string,
+    en: string,
+    interpolation?: InlineInterpolationMap,
+  ) => {
+    const template = lang === 'pl' ? pl : en;
+    if (!interpolation) return template;
+
+    return Object.entries(interpolation).reduce((result, [key, value]) => {
+      const replacement = value == null ? '' : String(value);
+      return result.replaceAll(`{{${key}}}`, replacement);
+    }, template);
+  };
   const {
     helpTab: activeTab,
     setHelpTab: setActiveTab,
@@ -327,7 +343,7 @@ export function Help() {
             >
               <SectionHelp
                 icon={<LayoutDashboard className="h-6 w-6" />}
-                title="DASHBOARD"
+                title={t18n('help.sections.dashboard.title')}
                 description={t(
                   'Szybki podgląd Twojej bieżącej aktywności i najważniejszych wskaźników wydajności.',
                   'Quick overview of your current activity and key performance indicators.',
@@ -930,7 +946,7 @@ export function Help() {
             >
               <SectionHelp
                 icon={<Cpu className="h-6 w-6" />}
-                title="DAEMON"
+                title={t18n('help.sections.daemon.title')}
                 description={t(
                   'Centrum sterowania procesem tła odpowiedzialnym za zbieranie danych.',
                   'Control center for the background process responsible for data collection.',

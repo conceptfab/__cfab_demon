@@ -298,6 +298,24 @@
     "messages": {
       "folder_saved": "Folder saved"
     },
+    "actions": {
+      "expand_all": "Expand all",
+      "collapse_all": "Collapse all",
+      "add": "Add",
+      "create": "Create"
+    },
+    "sections": {
+      "excluded_projects": "Excluded Projects",
+      "project_folders": "Project Folders"
+    },
+    "empty": {
+      "no_excluded_projects": "No excluded projects",
+      "no_folders_configured": "No folders configured",
+      "no_subfolder_candidates": "No subfolder candidates found"
+    },
+    "placeholders": {
+      "project_folder_path": "C:\\projects\\clients"
+    },
     "labels": {
       "duplicate_marker": "D",
       "possible_duplicate_named": "Possible duplicate ({{groupSize}}): {{groupNames}}",
@@ -321,14 +339,22 @@
       "excluded": "Excluded",
       "restore": "Restore",
       "delete": "Delete",
+      "hidden_prefix": "Hidden:",
       "hidden_existing": "{{count}} existing",
       "hidden_excluded": "{{count}} excluded",
+      "extra_candidates": "{{count}} extra candidates",
+      "extra_candidates_demo_cap": "{{count}} extra candidates (demo cap)",
       "add_manual_session": "Add manual session",
       "project_card": "Project card",
       "sort_abc": "ABC (toggle direction)",
       "sort_value": "Value (toggle direction)",
       "sort_time": "Time (toggle direction)",
       "toggle_folder_grouping": "Toggle folder grouping"
+    }
+  },
+  "project_page": {
+    "timeline": {
+      "activity_over_time": "Activity Over Time"
     }
   },
   "settings": {
@@ -344,10 +370,55 @@
     }
   },
   "help": {
-    "language_hint": "Language is managed in Settings > Language."
+    "language_hint": "Language is managed in Settings > Language.",
+    "sections": {
+      "dashboard": {
+        "title": "DASHBOARD"
+      },
+      "daemon": {
+        "title": "DAEMON"
+      }
+    }
   },
   "quickstart": {
-    "language_hint": "Language is managed in Settings > Language."
+    "language_hint": "Language is managed in Settings > Language.",
+    "heading": {
+      "quick": "Quick",
+      "start": "Start"
+    },
+    "intro": "Welcome to TIMEFLOW! Let's go through these few simple steps to properly configure your time tracking system.",
+    "outro": "That's all! Now you can enjoy full automation.",
+    "actions": {
+      "back": "Back",
+      "lets_go": "Let's Go"
+    },
+    "step_label": "Step {{step}}",
+    "steps": {
+      "file_preparation": {
+        "title": "File Preparation",
+        "description": "Place both .exe files (timeflow-dashboard.exe and timeflow-demon.exe) in the same folder and run timeflow-dashboard.exe."
+      },
+      "projects_configuration": {
+        "title": "Projects Configuration",
+        "description": "In the <b>Projects</b> tab, point to the parent folder of your work. Each subfolder will be treated as a separate project."
+      },
+      "adding_applications": {
+        "title": "Adding Applications",
+        "description": "In the <b>Applications</b> tab, add process names (e.g. name.exe) you want to track. Give them friendly names."
+      },
+      "starting_daemon": {
+        "title": "Starting the Demon",
+        "description": "In the <b>Daemon</b> tab, start it and enable 'Autostart ON'. The system will start working in the background."
+      },
+      "assigning_sessions": {
+        "title": "Assigning Sessions",
+        "description": "Right-click in the <b>Dashboard</b> tab to assign sessions. A star in the tray icon means unassigned sessions."
+      },
+      "ai_training": {
+        "title": "AI Training",
+        "description": "A few manual assignments will train your local AI (<b>AI &amp; Model</b> tab), which will then start automating the work for you."
+      }
+    }
   },
   "inline": {
     "105x3lb69x86t": "Session limit per run",

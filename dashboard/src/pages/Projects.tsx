@@ -1586,7 +1586,7 @@ export function Projects() {
           onClick={expandAllSections}
           className="hover:text-foreground underline"
         >
-          Expand all
+          {t('projects.actions.expand_all')}
         </button>
         <span>|</span>
         <button
@@ -1594,7 +1594,7 @@ export function Projects() {
           onClick={collapseAllSections}
           className="hover:text-foreground underline"
         >
-          Collapse all
+          {t('projects.actions.collapse_all')}
         </button>
       </div>
 
@@ -1610,7 +1610,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              Excluded Projects
+              {t('projects.sections.excluded_projects')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1618,7 +1618,7 @@ export function Projects() {
           <CardContent>
             {filteredExcludedProjects.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No excluded projects
+                {t('projects.empty.no_excluded_projects')}
               </p>
             ) : (
               <div className="space-y-2">
@@ -1692,7 +1692,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              Project Folders
+              {t('projects.sections.project_folders')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1707,7 +1707,7 @@ export function Projects() {
                   setFolderError(null);
                   setFolderInfo(null);
                 }}
-                placeholder="C:\\projects\\clients"
+                placeholder={t('projects.placeholders.project_folder_path')}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleAddFolder();
@@ -1728,7 +1728,7 @@ export function Projects() {
                 disabled={busy === 'add-folder'}
               >
                 <Plus className="mr-1.5 h-4 w-4" />
-                Add
+                {t('projects.actions.add')}
               </Button>
             </div>
             {folderError && (
@@ -1767,7 +1767,7 @@ export function Projects() {
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                No folders configured
+                {t('projects.empty.no_folders_configured')}
               </p>
             )}
 
@@ -1806,7 +1806,7 @@ export function Projects() {
           <CardContent>
             {visibleFolderCandidates.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                No subfolder candidates found
+                {t('projects.empty.no_subfolder_candidates')}
               </p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto">
@@ -1831,7 +1831,7 @@ export function Projects() {
                       disabled={busy === `create-folder:${c.folder_path}`}
                     >
                       <Plus className="mr-1 h-3 w-3" />
-                      Create
+                      {t('projects.actions.create')}
                     </Button>
                   </div>
                 ))}
@@ -1907,7 +1907,7 @@ export function Projects() {
               detectedCandidatesView.hiddenDuplicates > 0 ||
               detectedCandidatesView.hiddenOverflow > 0) && (
               <p className="text-xs text-muted-foreground">
-                Hidden:{' '}
+                {t('projects.labels.hidden_prefix')}{' '}
                 {detectedCandidatesView.hiddenExisting > 0 &&
                   t('projects.labels.hidden_existing', {
                     count: detectedCandidatesView.hiddenExisting,
@@ -1933,7 +1933,12 @@ export function Projects() {
                   detectedCandidatesView.hiddenOverflow > 0 &&
                   ' | '}
                 {detectedCandidatesView.hiddenOverflow > 0 &&
-                  `${detectedCandidatesView.hiddenOverflow} extra candidates${isDemoMode ? ' (demo cap)' : ''}`}
+                  t(
+                    isDemoMode
+                      ? 'projects.labels.extra_candidates_demo_cap'
+                      : 'projects.labels.extra_candidates',
+                    { count: detectedCandidatesView.hiddenOverflow },
+                  )}
               </p>
             )}
             <div className="flex justify-end">
@@ -2029,7 +2034,7 @@ export function Projects() {
               <p className="text-sm text-destructive">{createProjectError}</p>
             )}
             <Button onClick={handleSave} className="w-full mt-2">
-              Create
+              {t('projects.actions.create')}
             </Button>
           </div>
         </DialogContent>

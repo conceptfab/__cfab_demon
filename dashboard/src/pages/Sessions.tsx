@@ -63,6 +63,12 @@ interface GroupedProject {
 
 type RangeMode = 'daily' | 'weekly';
 const UNASSIGNED_GROUP_KEY = '__unassigned__';
+const EMPTY_SCORE_BREAKDOWN: ScoreBreakdown = {
+  candidates: [],
+  has_manual_override: false,
+  manual_override_project_id: null,
+  final_suggestion: null,
+};
 
 function readMinSessionDuration(): number | undefined {
   const settings = loadSessionSettings();
@@ -133,6 +139,9 @@ export function Sessions() {
   );
   const [loadingBreakdownIds, setLoadingBreakdownIds] = useState<Set<number>>(
     new Set(),
+  );
+  const scoreBreakdownRequestsRef = useRef<Map<number, Promise<ScoreBreakdown>>>(
+    new Map(),
   );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
@@ -542,6 +551,49 @@ export function Sessions() {
     [assignSessions],
   );
 
+  const loadScoreBreakdown = useCallback(
+    async (sessionId: number): Promise<ScoreBreakdown> => {
+      const cached = aiBreakdowns.get(sessionId);
+      if (cached) return cached;
+
+      const inFlight = scoreBreakdownRequestsRef.current.get(sessionId);
+      if (inFlight) return inFlight;
+
+      setLoadingBreakdownIds((prev) => {
+        const next = new Set(prev);
+        next.add(sessionId);
+        return next;
+      });
+
+      const request = getSessionScoreBreakdown(sessionId)
+        .catch((err) => {
+          console.error('Failed to load score breakdown:', err);
+          return EMPTY_SCORE_BREAKDOWN;
+        })
+        .then((data) => {
+          setAiBreakdowns((prev) => {
+            if (prev.has(sessionId)) return prev;
+            const next = new Map(prev);
+            next.set(sessionId, data);
+            return next;
+          });
+          return data;
+        })
+        .finally(() => {
+          scoreBreakdownRequestsRef.current.delete(sessionId);
+          setLoadingBreakdownIds((prev) => {
+            const next = new Set(prev);
+            next.delete(sessionId);
+            return next;
+          });
+        });
+
+      scoreBreakdownRequestsRef.current.set(sessionId, request);
+      return request;
+    },
+    [aiBreakdowns],
+  );
+
   const handleToggleScoreBreakdown = useCallback(
     async (sessionId: number, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -549,47 +601,39 @@ export function Sessions() {
         setScoreBreakdown(null);
         return;
       }
-      const cached = aiBreakdowns.get(sessionId);
-      if (cached) {
-        setScoreBreakdown({ sessionId, data: cached });
-        return;
-      }
-      setLoadingBreakdownIds((prev) => {
-        const next = new Set(prev);
-        next.add(sessionId);
-        return next;
-      });
-      try {
-        const data = await getSessionScoreBreakdown(sessionId);
-        setAiBreakdowns((prev) => {
-          const next = new Map(prev);
-          next.set(sessionId, data);
-          return next;
-        });
-        setScoreBreakdown({ sessionId, data });
-      } catch (err) {
-        console.error('Failed to load score breakdown:', err);
-        setAiBreakdowns((prev) => {
-          const next = new Map(prev);
-          const empty: ScoreBreakdown = {
-            candidates: [],
-            has_manual_override: false,
-            manual_override_project_id: null,
-            final_suggestion: null,
-          };
-          next.set(sessionId, empty);
-          return next;
-        });
-      } finally {
-        setLoadingBreakdownIds((prev) => {
-          const next = new Set(prev);
-          next.delete(sessionId);
-          return next;
-        });
-      }
+      const data = await loadScoreBreakdown(sessionId);
+      setScoreBreakdown({ sessionId, data });
     },
-    [aiBreakdowns, scoreBreakdown],
+    [loadScoreBreakdown, scoreBreakdown],
   );
+
+  useEffect(() => {
+    if (viewMode !== 'ai_detailed' || sessions.length === 0) return;
+
+    const missingIds = sessions
+      .map((s) => s.id)
+      .filter(
+        (id) =>
+          !aiBreakdowns.has(id) && !scoreBreakdownRequestsRef.current.has(id),
+      );
+    if (missingIds.length === 0) return;
+
+    let cancelled = false;
+    const BATCH_SIZE = 8;
+
+    const prefetch = async () => {
+      for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
+        if (cancelled) return;
+        const batch = missingIds.slice(i, i + BATCH_SIZE);
+        await Promise.allSettled(batch.map((sessionId) => loadScoreBreakdown(sessionId)));
+      }
+    };
+
+    void prefetch();
+    return () => {
+      cancelled = true;
+    };
+  }, [viewMode, sessions, aiBreakdowns, loadScoreBreakdown]);
 
   const loadMore = () => {
     getSessions({

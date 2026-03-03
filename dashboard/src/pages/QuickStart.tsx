@@ -13,81 +13,88 @@ import {
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/store/ui-store';
-import { normalizeLanguageCode } from '@/lib/user-settings';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 
-type Language = 'pl' | 'en';
-
-function B({ children }: { children: React.ReactNode }) {
+function B({ children }: { children?: React.ReactNode }) {
   return <strong className="text-primary font-semibold">{children}</strong>;
 }
 
 export function QuickStart() {
-  const { i18n, t: t18n } = useTranslation();
+  const { t } = useTranslation();
   const { setCurrentPage, setFirstRun } = useUIStore();
-  const lang: Language = normalizeLanguageCode(
-    i18n.resolvedLanguage ?? i18n.language,
-  );
 
   const handleStart = () => {
     setFirstRun(false);
     setCurrentPage('dashboard');
   };
 
-  const t = (pl: string, en: string) => (lang === 'pl' ? pl : en);
-
   const steps = [
     {
       icon: <Monitor className="h-6 w-6" />,
-      title: t('Przygotowanie plików', 'File Preparation'),
-      desc: lang === 'pl'
-        ? <>Wrzuć oba pliki .exe (timeflow-dashboard.exe i timeflow-demon.exe) do jednego folderu na dysku i uruchom timeflow-dashboard.exe.</>
-        : <>Place both .exe files (timeflow-dashboard.exe and timeflow-demon.exe) in the same folder and run timeflow-dashboard.exe.</>,
+      title: t('quickstart.steps.file_preparation.title'),
+      desc: (
+        <Trans i18nKey="quickstart.steps.file_preparation.description" />
+      ),
       color: 'text-blue-400',
       bg: 'bg-blue-400/10',
     },
     {
       icon: <FolderKanban className="h-6 w-6" />,
-      title: t('Konfiguracja projektów', 'Projects Configuration'),
-      desc: lang === 'pl'
-        ? <>W zakładce <B>Projects</B> wskaż folder nadrzędny Twoich prac. Każdy podfolder będzie traktowany jako osobny projekt.</>
-        : <>In the <B>Projects</B> tab, point to the parent folder of your work. Each subfolder will be treated as a separate project.</>,
+      title: t('quickstart.steps.projects_configuration.title'),
+      desc: (
+        <Trans
+          i18nKey="quickstart.steps.projects_configuration.description"
+          components={{ b: <B /> }}
+        />
+      ),
       color: 'text-emerald-400',
       bg: 'bg-emerald-400/10',
     },
     {
       icon: <AppWindow className="h-6 w-6" />,
-      title: t('Dodawanie aplikacji', 'Adding Applications'),
-      desc: lang === 'pl'
-        ? <>W zakładce <B>Applications</B> dodaj nazwy procesów (np. nazwa.exe), które chcesz śledzić. Nadaj im czytelne nazwy.</>
-        : <>In the <B>Applications</B> tab, add process names (e.g. name.exe) you want to track. Give them friendly names.</>,
+      title: t('quickstart.steps.adding_applications.title'),
+      desc: (
+        <Trans
+          i18nKey="quickstart.steps.adding_applications.description"
+          components={{ b: <B /> }}
+        />
+      ),
       color: 'text-amber-400',
       bg: 'bg-amber-400/10',
     },
     {
       icon: <Cpu className="h-6 w-6" />,
-      title: t('Uruchomienie Demona', 'Starting the Demon'),
-      desc: lang === 'pl'
-        ? <>W zakładce <B>Daemon</B> uruchom go i włącz &apos;Autostart ON&apos;. System zacznie pracować w tle.</>
-        : <>In the <B>Daemon</B> tab, start it and enable &apos;Autostart ON&apos;. The system will start working in the background.</>,
+      title: t('quickstart.steps.starting_daemon.title'),
+      desc: (
+        <Trans
+          i18nKey="quickstart.steps.starting_daemon.description"
+          components={{ b: <B /> }}
+        />
+      ),
       color: 'text-purple-400',
       bg: 'bg-purple-400/10',
     },
     {
       icon: <MousePointer2 className="h-6 w-6" />,
-      title: t('Przypisywanie sesji', 'Assigning Sessions'),
-      desc: lang === 'pl'
-        ? <>Użyj prawego przycisku myszy w zakładce <B>Dashboard</B>, aby przypisać sesje. Gwiazdka w trayu oznacza nieprzypisane sesje.</>
-        : <>Right-click in the <B>Dashboard</B> tab to assign sessions. A star in the tray icon means unassigned sessions.</>,
+      title: t('quickstart.steps.assigning_sessions.title'),
+      desc: (
+        <Trans
+          i18nKey="quickstart.steps.assigning_sessions.description"
+          components={{ b: <B /> }}
+        />
+      ),
       color: 'text-sky-400',
       bg: 'bg-sky-400/10',
     },
     {
       icon: <Brain className="h-6 w-6" />,
-      title: t('Szkolenie AI', 'AI Training'),
-      desc: lang === 'pl'
-        ? <>Kilka ręcznych przypisań wyszkoli Twoje lokalne AI (zakładka <B>AI &amp; Model</B>), które zacznie automatyzować pracę za Ciebie.</>
-        : <>A few manual assignments will train your local AI (<B>AI &amp; Model</B> tab), which will then start automating the work for you.</>,
+      title: t('quickstart.steps.ai_training.title'),
+      desc: (
+        <Trans
+          i18nKey="quickstart.steps.ai_training.description"
+          components={{ b: <B /> }}
+        />
+      ),
       color: 'text-pink-400',
       bg: 'bg-pink-400/10',
     },
@@ -103,10 +110,10 @@ export function QuickStart() {
           className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft className="h-4 w-4" />
-          {t('Powrót', 'Back')}
+          {t('quickstart.actions.back')}
         </Button>
         <span className="text-[11px] text-muted-foreground">
-          {t18n('quickstart.language_hint')}
+          {t('quickstart.language_hint')}
         </span>
       </div>
 
@@ -115,14 +122,11 @@ export function QuickStart() {
           <Rocket className="h-8 w-8" />
         </div>
         <h1 className="text-3xl font-light tracking-[0.2em] uppercase">
-          {t('Szybki', 'Quick')}{' '}
-          <span className="font-semibold">{t('Start', 'Start')}</span>
+          {t('quickstart.heading.quick')}{' '}
+          <span className="font-semibold">{t('quickstart.heading.start')}</span>
         </h1>
         <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed text-sm">
-          {t(
-            'Witaj w TIMEFLOW! Przejdźmy przez te kilka prostych kroków, aby poprawnie skonfigurować Twój system śledzenia czasu.',
-            "Welcome to TIMEFLOW! Let's go through these few simple steps to properly configure your time tracking system.",
-          )}
+          {t('quickstart.intro')}
         </p>
       </div>
 
@@ -142,7 +146,7 @@ export function QuickStart() {
             <div className="flex-1">
               <div className="flex flex-col">
                 <span className="text-[10px] font-mono text-primary/50 font-bold uppercase tracking-[0.2em]">
-                  Step {idx + 1}
+                  {t('quickstart.step_label', { step: idx + 1 })}
                 </span>
                 <h3 className="text-lg font-semibold tracking-tight text-foreground/90">
                   {step.title}
@@ -158,17 +162,14 @@ export function QuickStart() {
 
       <div className="text-center space-y-4 py-6">
         <p className="text-muted-foreground text-sm italic">
-          {t(
-            'To wszystko! Teraz możesz cieszyć się pełną automatyzacją.',
-            "That's all! Now you can enjoy full automation.",
-          )}
+          {t('quickstart.outro')}
         </p>
         <Button
           size="lg"
           onClick={handleStart}
           className="group px-12 rounded-full font-bold tracking-widest uppercase transition-all hover:scale-105 active:scale-95 bg-primary text-primary-foreground hover:bg-primary/95 shadow-lg shadow-primary/20"
         >
-          {t('Zaczynamy', "Let's Go")}
+          {t('quickstart.actions.lets_go')}
           <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
         </Button>
       </div>
