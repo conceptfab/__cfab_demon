@@ -31,7 +31,10 @@ pub fn run() {
 
             // Write version to file for daemon to check
             if let Ok(data_dir) = commands::helpers::timeflow_data_dir() {
-                let _ = std::fs::write(std::path::PathBuf::from(data_dir).join("dashboard_version.txt"), VERSION);
+                let _ = std::fs::write(
+                    std::path::PathBuf::from(data_dir).join("dashboard_version.txt"),
+                    VERSION.trim(),
+                );
             }
 
             Ok(())
@@ -62,6 +65,7 @@ pub fn run() {
             commands::sync_projects_from_folders,
             commands::auto_create_projects_from_detection,
             commands::get_dashboard_stats,
+            commands::get_activity_date_span,
             commands::get_top_projects,
             commands::get_dashboard_projects,
             commands::get_timeline,

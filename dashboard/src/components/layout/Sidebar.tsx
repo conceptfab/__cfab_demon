@@ -18,13 +18,13 @@ import {
   HelpCircle,
   Bug,
 } from 'lucide-react';
-import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useUIStore } from '@/store/ui-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
+import { tryStartWindowDrag } from '@/lib/window-drag';
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
@@ -36,7 +36,6 @@ import {
   getSessionCount,
   getAssignmentModelStatus,
   getDatabaseSettings,
-  hasTauriRuntime,
 } from '@/lib/tauri';
 import type {
   DaemonStatus,
@@ -141,56 +140,106 @@ export function Sidebar() {
 
   useEffect(() => {
     let disposed = false;
-    let latestRequestId = 0;
-    let inFlightController: AbortController | null = null;
+    let inFlight = false;
+
+    const isVisible = () =>
+      typeof document === 'undefined' || document.visibilityState === 'visible';
 
     const check = async () => {
-      const requestId = latestRequestId + 1;
-      latestRequestId = requestId;
-      inFlightController?.abort();
-      const controller = new AbortController();
-      inFlightController = controller;
-      const { signal } = controller;
-
-      const now = new Date();
-      const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const minDuration =
-        loadSessionSettings().minSessionDurationSeconds || undefined;
-      const results = await Promise.allSettled([
-        getDaemonStatus(minDuration),
-        getAssignmentModelStatus(),
-        getDatabaseSettings(),
-        getSessionCount({
-          dateRange: { start: localDate, end: localDate },
-          unassigned: true,
-          minDuration,
-        }),
-        getSessionCount({
-          unassigned: true,
-          minDuration,
-        }),
-      ]);
-      if (disposed || signal.aborted || requestId !== latestRequestId) return;
-
-      const [daemonRes, aiRes, dbRes, todayCountRes, allCountRes] = results;
-      if (daemonRes.status === 'fulfilled') setStatus(daemonRes.value);
-      if (aiRes.status === 'fulfilled') setAiStatus(aiRes.value);
-      if (dbRes.status === 'fulfilled') setDbSettings(dbRes.value);
-      if (todayCountRes.status === 'fulfilled') {
-        setTodayUnassigned(Math.max(0, todayCountRes.value));
-      }
-      if (allCountRes.status === 'fulfilled') {
-        setAllUnassigned(Math.max(0, allCountRes.value));
+      if (disposed || inFlight || !isVisible()) return;
+      inFlight = true;
+      try {
+        const now = new Date();
+        const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const minDuration =
+          loadSessionSettings().minSessionDurationSeconds || undefined;
+        const results = await Promise.allSettled([
+          getDaemonStatus(minDuration),
+          getAssignmentModelStatus(),
+          getSessionCount({
+            dateRange: { start: localDate, end: localDate },
+            unassigned: true,
+            minDuration,
+          }),
+          getSessionCount({
+            unassigned: true,
+            minDuration,
+          }),
+        ]);
+        if (disposed) return;
+        const [daemonRes, aiRes, todayCountRes, allCountRes] = results;
+        if (daemonRes.status === 'fulfilled') setStatus(daemonRes.value);
+        if (aiRes.status === 'fulfilled') setAiStatus(aiRes.value);
+        if (todayCountRes.status === 'fulfilled') {
+          setTodayUnassigned(Math.max(0, todayCountRes.value));
+        }
+        if (allCountRes.status === 'fulfilled') {
+          setAllUnassigned(Math.max(0, allCountRes.value));
+        }
+      } finally {
+        inFlight = false;
       }
     };
+
+    const onVisibilityChange = () => {
+      if (!disposed && isVisible()) {
+        void check();
+      }
+    };
+
     void check();
     const interval = window.setInterval(() => {
       void check();
     }, 10_000);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
     return () => {
       disposed = true;
-      inFlightController?.abort();
       window.clearInterval(interval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+
+    const isVisible = () =>
+      typeof document === 'undefined' || document.visibilityState === 'visible';
+
+    const loadSettings = async () => {
+      if (disposed || !isVisible()) return;
+      try {
+        const settings = await getDatabaseSettings();
+        if (!disposed) setDbSettings(settings);
+      } catch (error) {
+        if (!disposed) {
+          console.error('Failed to load database settings:', error);
+        }
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (!disposed && isVisible()) {
+        void loadSettings();
+      }
+    };
+
+    void loadSettings();
+    const interval = window.setInterval(() => {
+      void loadSettings();
+    }, 60_000);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange);
+    }
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
     };
   }, []);
 
@@ -224,15 +273,7 @@ export function Sidebar() {
 
   const handleSidebarDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
-    if (!hasTauriRuntime()) return;
-    void getCurrentWindow()
-      .startDragging()
-      .catch((error) => {
-        console.warn(
-          'Window dragging failed (permissions/capability?):',
-          error,
-        );
-      });
+    tryStartWindowDrag();
   };
 
   return (

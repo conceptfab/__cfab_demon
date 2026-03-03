@@ -29,6 +29,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/ui/toast-notification";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useInlineT } from "@/lib/inline-i18n";
+import { formatBytes } from "@/lib/utils";
 
 export function DatabaseManagement() {
   const t = useInlineT();
@@ -228,14 +229,6 @@ export function DatabaseManagement() {
     }
   };
 
-  const formatSize = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
   if (!settings || !info) return null;
 
   return (
@@ -257,7 +250,7 @@ export function DatabaseManagement() {
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                   {t("Rozmiar bazy", "Database Size")}
                 </p>
-                <p className="text-lg font-bold">{formatSize(info.size_bytes)}</p>
+                <p className="text-lg font-bold">{formatBytes(info.size_bytes)}</p>
               </div>
               <Button
                 variant="outline"

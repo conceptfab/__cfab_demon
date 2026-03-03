@@ -15,6 +15,9 @@ use crate::config;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
 
+#[path = "../shared/version_compat.rs"]
+mod version_compat;
+
 fn rebuild_file_index_cache(daily_data: &storage::DailyData) -> HashMap<String, HashMap<String, usize>> {
     let mut cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
     for (exe_name, app_data) in &daily_data.apps {
@@ -33,21 +36,6 @@ fn write_heartbeat() {
     }
 }
 
-fn check_version_compatibility(v1: &str, v2: &str) -> bool {
-    let parse = |v: &str| -> Option<(i32, i32, i32)> {
-        let parts: Vec<&str> = v.split('.').collect();
-        if parts.len() != 3 { return None; }
-        Some((parts[0].parse().ok()?, parts[1].parse().ok()?, parts[2].parse().ok()?))
-    };
-    match (parse(v1), parse(v2)) {
-        (Some((maj1, min1, rel1)), Some((maj2, min2, rel2))) => {
-            if maj1 != maj2 || min1 != min2 { return false; }
-            (rel1 - rel2).abs() <= 3
-        }
-        _ => false,
-    }
-}
-
 static WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
 
 fn check_dashboard_compatibility() {
@@ -55,27 +43,34 @@ fn check_dashboard_compatibility() {
         let path = dir.join("dashboard_version.txt");
         if let Ok(v_dash) = fs::read_to_string(&path) {
             let v_dash = v_dash.trim();
-            if !check_version_compatibility(crate::VERSION, v_dash) {
+            let demon_version = crate::VERSION.trim();
+            if !version_compat::check_version_compatibility(demon_version, v_dash) {
                 if !WARNING_SHOWN.load(Ordering::SeqCst) {
                     WARNING_SHOWN.store(true, Ordering::SeqCst);
                     let msg = format!(
                         "Version mismatch!\nDaemon: {}\nDashboard: {}\n\nThe combination may not work correctly.",
-                        crate::VERSION, v_dash
+                        demon_version, v_dash
                     );
                     log::error!("{}", msg);
-                    
-                    // Show message box (non-blocking if possible, but here it's fine since it's a separate thread)
-                    unsafe {
+
+                    // Display warning without blocking the monitoring loop.
+                    std::thread::spawn(move || unsafe {
                         use std::ptr;
-                        let title: Vec<u16> = "TimeFlow - Version Error".encode_utf16().chain(std::iter::once(0)).collect();
-                        let text: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
+                        let title: Vec<u16> = "TimeFlow - Version Error"
+                            .encode_utf16()
+                            .chain(std::iter::once(0))
+                            .collect();
+                        let text: Vec<u16> =
+                            msg.encode_utf16().chain(std::iter::once(0)).collect();
                         winapi::um::winuser::MessageBoxW(
                             ptr::null_mut(),
                             text.as_ptr(),
                             title.as_ptr(),
-                            winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONWARNING | winapi::um::winuser::MB_TOPMOST,
+                            winapi::um::winuser::MB_OK
+                                | winapi::um::winuser::MB_ICONWARNING
+                                | winapi::um::winuser::MB_TOPMOST,
                         );
-                    }
+                    });
                 }
             } else {
                 // Reset flag if versions become compatible again (e.g. after update)
@@ -240,7 +235,8 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
 
         // Calculate actual elapsed time since last poll (D-9, D-11)
         let now = Instant::now();
-        let actual_elapsed = now.duration_since(last_tracking_tick);
+        let max_elapsed = poll_interval.saturating_mul(3);
+        let actual_elapsed = now.duration_since(last_tracking_tick).min(max_elapsed);
         last_tracking_tick = now;
 
         // Poll foreground window

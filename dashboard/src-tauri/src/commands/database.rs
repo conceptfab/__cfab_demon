@@ -1,4 +1,5 @@
 use serde::{Serialize, Deserialize};
+use rusqlite::OpenFlags;
 use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
@@ -171,21 +172,75 @@ pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<
     
     let status = db::get_demo_mode_status(&app)?;
     let dest = Path::new(&status.active_db_path);
-    
-    // We can't easily hot-swap the DB because connections are open.
-    // The safest way is to copy it over while ensuring no write operations are happening, 
-    // but Rusqlite connections in the app might still be active.
-    
-    // For now, let's copy it and inform the user that a restart is recommended.
-    // Actually, in Tauri we can't easily move the file if it's locked by SQLite.
-    
-    // Alternative: VACUUM INTO is for export. For import, we might need to close all connections.
-    // Since this is a local app, we can just overwrite the file if we can.
-    
-    // Better: Tell the user to close the app, or try to force it.
-    // Realistically, we can use `std::fs::copy` and it might fail if locked.
-    
-    fs::copy(src, dest).map_err(|e| format!("Failed to restore database file. Close the app and try again if it's locked. Error: {}", e))?;
+    if src == dest {
+        return Err("Source file matches the active database path".to_string());
+    }
+
+    // Validate source DB first.
+    let src_conn = rusqlite::Connection::open_with_flags(src, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("Failed to open source database: {}", e))?;
+    let integrity: String = src_conn
+        .query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))
+        .map_err(|e| format!("Failed to validate source database: {}", e))?;
+    if !integrity.eq_ignore_ascii_case("ok") {
+        return Err(format!("Source database integrity check failed: {}", integrity));
+    }
+
+    // Restore by copying table contents through SQLite itself instead of overwriting
+    // the active file. This avoids corruption risks on open/locked DB files.
+    let mut conn = db::get_connection(&app)?;
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|e| format!("Failed to disable foreign keys: {}", e))?;
+    conn.execute("ATTACH DATABASE ?1 AS restore_src", [path.as_str()])
+        .map_err(|e| format!("Failed to attach source database: {}", e))?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    let tables: Vec<String> = {
+        let mut stmt = tx
+            .prepare(
+                "SELECT name
+                 FROM restore_src.sqlite_master
+                 WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+                 ORDER BY name",
+            )
+            .map_err(|e| format!("Failed to enumerate source tables: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| format!("Failed to read source table list: {}", e))?;
+        rows.filter_map(|row| row.ok()).collect()
+    };
+
+    for table_name in tables {
+        let quoted_name = table_name.replace('"', "\"\"");
+        tx.execute_batch(&format!("DELETE FROM \"{}\";", quoted_name))
+            .map_err(|e| format!("Failed to clear table '{}': {}", table_name, e))?;
+        tx.execute_batch(&format!(
+            "INSERT INTO \"{name}\" SELECT * FROM restore_src.\"{name}\";",
+            name = quoted_name
+        ))
+        .map_err(|e| format!("Failed to restore table '{}': {}", table_name, e))?;
+    }
+
+    let has_sqlite_sequence: bool = tx
+        .query_row(
+            "SELECT COUNT(*) FROM restore_src.sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)
+        .map_err(|e| format!("Failed to inspect sqlite_sequence: {}", e))?;
+    if has_sqlite_sequence {
+        let _ = tx.execute_batch(
+            "DELETE FROM sqlite_sequence;
+             INSERT INTO sqlite_sequence(name, seq)
+             SELECT name, seq FROM restore_src.sqlite_sequence;",
+        );
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit database restore: {}", e))?;
+    conn.execute_batch("DETACH DATABASE restore_src; PRAGMA foreign_keys = ON;")
+        .map_err(|e| format!("Failed to finalize database restore: {}", e))?;
     
     Ok(())
 }

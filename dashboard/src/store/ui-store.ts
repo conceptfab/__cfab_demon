@@ -2,6 +2,22 @@ import { create } from 'zustand';
 import type { DateRange } from '@/lib/db-types';
 import { DEFAULT_HELP_TAB, type HelpTabId } from '@/lib/help-navigation';
 
+function readFirstRunFlag(): boolean {
+  try {
+    return localStorage.getItem('timeflow_first_run') !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function writeFirstRunFlag(firstRun: boolean): void {
+  try {
+    localStorage.setItem('timeflow_first_run', firstRun ? 'true' : 'false');
+  } catch {
+    // Ignore storage errors (private mode / restricted environment).
+  }
+}
+
 interface UIState {
   currentPage: string;
   setCurrentPage: (page: string) => void;
@@ -35,9 +51,9 @@ export const useUIStore = create<UIState>((set) => ({
     set({ sessionsFocusProject: projectId }),
   projectPageId: null,
   setProjectPageId: (id) => set({ projectPageId: id }),
-  firstRun: localStorage.getItem('timeflow_first_run') !== 'false',
+  firstRun: readFirstRunFlag(),
   setFirstRun: (firstRun) => {
-    localStorage.setItem('timeflow_first_run', firstRun ? 'true' : 'false');
+    writeFirstRunFlag(firstRun);
     set({ firstRun });
   },
 }));

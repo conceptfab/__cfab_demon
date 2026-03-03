@@ -28,8 +28,8 @@ import type {
   SessionWithApp,
   ProjectWithStats,
   ScoreBreakdown,
-  PromptConfig,
 } from '@/lib/db-types';
+import type { PromptConfig } from '@/lib/ui-types';
 import {
   loadSessionSettings,
   loadIndicatorSettings,
@@ -62,6 +62,7 @@ interface GroupedProject {
 }
 
 type RangeMode = 'daily' | 'weekly';
+const UNASSIGNED_GROUP_KEY = '__unassigned__';
 
 export function Sessions() {
   const { t, i18n } = useTranslation();
@@ -238,60 +239,33 @@ export function Sessions() {
   }, [refreshKey]);
 
   useEffect(() => {
-    if (!indicators.showScoreBreakdown || sessions.length === 0) return;
-    let cancelled = false;
-    const load = async () => {
-      const promises = sessions.map(async (s) => {
-        if (cancelled || aiBreakdowns.has(s.id)) return;
-        setLoadingBreakdownIds((prev) => {
-          const next = new Set(prev);
-          next.add(s.id);
-          return next;
-        });
-        try {
-          const data = await getSessionScoreBreakdown(s.id);
-          if (!cancelled) {
-            setAiBreakdowns((prev) => {
-              const next = new Map(prev);
-              next.set(s.id, data);
-              return next;
-            });
-          }
-        } catch (err) {
-          if (!cancelled) {
-            console.error(
-              `Failed to prefetch AI score breakdown for session ${s.id}:`,
-              err,
-            );
-            setAiBreakdowns((prev) => {
-              const next = new Map(prev);
-              next.set(s.id, {
-                candidates: [],
-                has_manual_override: false,
-                manual_override_project_id: null,
-                final_suggestion: null,
-              });
-              return next;
-            });
-          }
-        } finally {
-          if (!cancelled) {
-            setLoadingBreakdownIds((prev) => {
-              const next = new Set(prev);
-              next.delete(s.id);
-              return next;
-            });
-          }
+    if (!indicators.showScoreBreakdown) {
+      setLoadingBreakdownIds(new Set());
+      return;
+    }
+    const visibleSessionIds = new Set(sessions.map((s) => s.id));
+    setAiBreakdowns((prev) => {
+      const next = new Map<number, ScoreBreakdown>();
+      prev.forEach((value, sessionId) => {
+        if (visibleSessionIds.has(sessionId)) {
+          next.set(sessionId, value);
         }
       });
-      await Promise.allSettled(promises);
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, indicators.showScoreBreakdown]);
+      return next;
+    });
+    setLoadingBreakdownIds((prev) => {
+      const next = new Set<number>();
+      prev.forEach((sessionId) => {
+        if (visibleSessionIds.has(sessionId)) {
+          next.add(sessionId);
+        }
+      });
+      return next;
+    });
+    if (scoreBreakdown && !visibleSessionIds.has(scoreBreakdown.sessionId)) {
+      setScoreBreakdown(null);
+    }
+  }, [sessions, indicators.showScoreBreakdown, scoreBreakdown]);
 
   // Auto-refresh sessions every 15 seconds
   const isAutoRefreshing = useRef(false);
@@ -633,10 +607,15 @@ export function Sessions() {
   const groupedByProject = useMemo(() => {
     const groups = new Map<string, GroupedProject>();
     for (const session of sessions) {
-      const projectName = session.project_name ?? 'Unassigned';
+      const isUnassigned = session.project_id == null;
+      const projectName = session.project_name ?? t('sessions.menu.unassigned');
       const projectId = session.project_id;
       const projectColor = session.project_color ?? '#64748b';
-      const key = projectName.toLowerCase();
+      const key = isUnassigned
+        ? UNASSIGNED_GROUP_KEY
+        : typeof projectId === 'number' && projectId > 0
+          ? `id:${projectId}`
+          : `name:${projectName.trim().toLowerCase()}`;
       if (!groups.has(key)) {
         groups.set(key, {
           projectId,
@@ -660,12 +639,12 @@ export function Sessions() {
       group.sessions.push(session);
     }
     return Array.from(groups.values()).sort((a, b) => {
-      const aUnassigned = a.projectName.toLowerCase() === 'unassigned';
-      const bUnassigned = b.projectName.toLowerCase() === 'unassigned';
+      const aUnassigned = a.projectId == null;
+      const bUnassigned = b.projectId == null;
       if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
       return b.totalSeconds - a.totalSeconds;
     });
-  }, [sessions]);
+  }, [sessions, t]);
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }
     | {
@@ -697,7 +676,7 @@ export function Sessions() {
   }, [groupedByProject, viewMode]);
 
   const unassignedGroup = groupedByProject.find(
-    (g) => g.projectName.toLowerCase() === 'unassigned',
+    (g) => g.projectId == null,
   );
   const aiSessionsCount = useMemo(
     () =>
@@ -712,7 +691,7 @@ export function Sessions() {
   );
   const resolveGroupProjectId = useCallback(
     (group: GroupedProject) => {
-      if (group.projectName.toLowerCase() === 'unassigned') return null;
+      if (group.projectId == null) return null;
       if (typeof group.projectId === 'number' && group.projectId > 0)
         return group.projectId;
 
@@ -740,10 +719,8 @@ export function Sessions() {
     [projects],
   );
   const displayProjectName = useCallback(
-    (name: string) =>
-      name.toLowerCase() === 'unassigned'
-        ? t('sessions.menu.unassigned')
-        : name,
+    (name: string, projectId: number | null = null) =>
+      projectId == null ? t('sessions.menu.unassigned') : name,
     [t],
   );
 
@@ -886,7 +863,7 @@ export function Sessions() {
                       className="flex items-center justify-between gap-4 px-2 py-1 leading-none group/hdr cursor-pointer"
                       onClick={() =>
                         setActiveProjectId(
-                          group.projectName === 'Unassigned'
+                          projectMenuId == null
                             ? 'unassigned'
                             : projectMenuId,
                         )
@@ -905,7 +882,7 @@ export function Sessions() {
                           style={{ backgroundColor: group.projectColor }}
                         />
                         <span className="font-bold text-[13px] text-foreground/90 tracking-tight">
-                          {displayProjectName(group.projectName)}
+                          {displayProjectName(group.projectName, projectMenuId)}
                         </span>
                         <Badge
                           variant="secondary"
@@ -954,7 +931,7 @@ export function Sessions() {
                         style={{ backgroundColor: group.projectColor }}
                       />
                       <span className="font-bold text-lg tracking-tight select-none">
-                        {displayProjectName(group.projectName)}
+                        {displayProjectName(group.projectName, projectMenuId)}
                       </span>
                       <Badge
                         variant="outline"
@@ -1203,7 +1180,10 @@ export function Sessions() {
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
             {t('sessions.menu.project_label')}{' '}
             <span className="font-medium text-foreground">
-              {displayProjectName(projectCtxMenu.projectName)}
+              {displayProjectName(
+                projectCtxMenu.projectName,
+                projectCtxMenu.projectId,
+              )}
             </span>
           </div>
           <button

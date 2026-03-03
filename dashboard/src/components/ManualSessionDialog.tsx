@@ -98,7 +98,7 @@ export function ManualSessionDialog({
       const [year, month, day] = dateStr.split("-").map(Number);
       const [hours, minutes] = timeStr.split(":").map(Number);
       const startDate = new Date(year, month - 1, day, hours + 1, minutes);
-      const endStr = `${String(startDate.getFullYear()).padStart(4, "0")}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}T${String(startDate.getHours()).padStart(2, "0")}:${String(startDate.getHours()).padStart(2, "0")}`;
+      const endStr = `${String(startDate.getFullYear()).padStart(4, "0")}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}T${String(startDate.getHours()).padStart(2, "0")}:${String(startDate.getMinutes()).padStart(2, "0")}`;
       setEndTime(endStr);
       setAllowMultiDay(false);
     }

@@ -20,18 +20,16 @@ pub async fn send_bug_report(
     attachments: Vec<(String, Vec<u8>)>
 ) -> Result<BugReportResponse, String> {
     
-    // --- KONFIGURACJA SMTP ---
-    // Dane pobierane podczas kompilacji ze zmiennych środowiskowych.
-    // Build MUSI dostarczyć SMTP_USER i SMTP_PASS — brak wartości = błąd runtime.
-    let smtp_server = "host372606.hostido.net.pl";
-    let smtp_user = match option_env!("SMTP_USER") {
-        Some(u) if !u.is_empty() => u,
-        _ => return Err("SMTP_USER not configured at build time".into()),
-    };
-    let smtp_pass = match option_env!("SMTP_PASS") {
-        Some(p) if !p.is_empty() && p != "REPLACE_ME" => p,
-        _ => return Err("SMTP_PASS not configured at build time".into()),
-    };
+    // --- SMTP CONFIG ---
+    // Use runtime environment variables so credentials are not embedded in the binary.
+    let smtp_server = std::env::var("TIMEFLOW_SMTP_SERVER")
+        .unwrap_or_else(|_| "host372606.hostido.net.pl".to_string());
+    let smtp_user = std::env::var("TIMEFLOW_SMTP_USER")
+        .or_else(|_| std::env::var("SMTP_USER"))
+        .map_err(|_| "SMTP user not configured (TIMEFLOW_SMTP_USER)".to_string())?;
+    let smtp_pass = std::env::var("TIMEFLOW_SMTP_PASS")
+        .or_else(|_| std::env::var("SMTP_PASS"))
+        .map_err(|_| "SMTP password not configured (TIMEFLOW_SMTP_PASS)".to_string())?;
     let recipient = "michal@conceptfab.com";
     // -------------------------
 
@@ -65,11 +63,11 @@ pub async fn send_bug_report(
 
     let creds = Credentials::new(smtp_user.to_string(), smtp_pass.to_string());
 
-    let tls_parameters = TlsParameters::new(smtp_server.to_string())
+    let tls_parameters = TlsParameters::new(smtp_server.clone())
         .map_err(|e| format!("TLS configuration error: {}", e))?;
 
     // Przełączamy na 587 (STARTTLS)
-    let mailer: AsyncSmtpTransport<Tokio1Executor> = AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_server)
+    let mailer: AsyncSmtpTransport<Tokio1Executor> = AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_server)
         .map_err(|e| format!("SMTP configuration error: {}", e))?
         .port(587)
         .tls(Tls::Required(tls_parameters))

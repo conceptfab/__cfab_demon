@@ -169,7 +169,9 @@ CREATE TABLE IF NOT EXISTS session_manual_overrides (
 CREATE INDEX IF NOT EXISTS idx_sessions_app_id ON sessions(app_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
+CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
+CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
 CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
 ON session_manual_overrides(executable_name, start_time, end_time);
 
@@ -1191,7 +1193,9 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
     db.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_file_activities_app_id ON file_activities(app_id);
          CREATE INDEX IF NOT EXISTS idx_file_activities_date ON file_activities(date);
-         CREATE INDEX IF NOT EXISTS idx_file_activities_app_date ON file_activities(app_id, date);",
+         CREATE INDEX IF NOT EXISTS idx_file_activities_app_date ON file_activities(app_id, date);
+         CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
+         CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);",
     )?;
 
     let has_manual_overrides: bool = db

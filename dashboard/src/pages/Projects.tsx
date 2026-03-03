@@ -93,6 +93,7 @@ const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
 const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
 const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
 const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
+const ALL_TIME_DATE_RANGE = { start: '2020-01-01', end: '2100-01-01' } as const;
 
 function isNewProject(created_at: string): boolean {
   const age = Date.now() - new Date(created_at).getTime();
@@ -296,43 +297,44 @@ export function Projects() {
   }, [projects]);
 
   useEffect(() => {
+    let cancelled = false;
     Promise.allSettled([
       getProjects(),
       getExcludedProjects(),
       getApplications(),
-      getProjectFolders(),
-      getFolderProjectCandidates(),
-      getDetectedProjects({ start: '2020-01-01', end: '2100-01-01' }),
       getDemoModeStatus(),
-      getProjectEstimates({ start: '2020-01-01', end: '2100-01-01' }),
-    ]).then(
-      ([
-        projectsRes,
-        excludedRes,
-        appsRes,
-        foldersRes,
-        candidatesRes,
-        detectedRes,
-        demoModeRes,
-        estimatesRes,
-      ]) => {
-        if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
-        else console.error('Failed to load projects:', projectsRes.reason);
+    ]).then(([projectsRes, excludedRes, appsRes, demoModeRes]) => {
+      if (cancelled) return;
 
-        if (excludedRes.status === 'fulfilled')
-          setExcludedProjects(excludedRes.value);
-        else
-          console.error(
-            'Failed to load excluded projects:',
-            excludedRes.reason,
-          );
+      if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
+      else console.error('Failed to load projects:', projectsRes.reason);
 
-        if (appsRes.status === 'fulfilled') setApps(appsRes.value);
-        else console.error('Failed to load applications:', appsRes.reason);
+      if (excludedRes.status === 'fulfilled')
+        setExcludedProjects(excludedRes.value);
+      else
+        console.error('Failed to load excluded projects:', excludedRes.reason);
 
-        if (foldersRes.status === 'fulfilled')
+      if (appsRes.status === 'fulfilled') setApps(appsRes.value);
+      else console.error('Failed to load applications:', appsRes.reason);
+
+      if (demoModeRes.status === 'fulfilled')
+        setIsDemoMode(demoModeRes.value.enabled);
+      else console.error('Failed to load demo mode status:', demoModeRes.reason);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([getProjectFolders(), getFolderProjectCandidates()]).then(
+      ([foldersRes, candidatesRes]) => {
+        if (cancelled) return;
+        if (foldersRes.status === 'fulfilled') {
           setProjectFolders(foldersRes.value);
-        else {
+          setFolderError(null);
+        } else {
           console.error('Failed to load project folders:', foldersRes.reason);
           setFolderError('Failed to load project folders');
         }
@@ -344,30 +346,45 @@ export function Projects() {
             'Failed to load folder candidates:',
             candidatesRes.reason,
           );
-
-        if (detectedRes.status === 'fulfilled')
-          setDetectedProjects(detectedRes.value);
-        else
-          console.error(
-            'Failed to load detected projects:',
-            detectedRes.reason,
-          );
-
-        if (demoModeRes.status === 'fulfilled')
-          setIsDemoMode(demoModeRes.value.enabled);
-        else
-          console.error('Failed to load demo mode status:', demoModeRes.reason);
-
-        if (estimatesRes.status === 'fulfilled') {
-          const map: Record<number, number> = {};
-          estimatesRes.value.forEach((r) => {
-            map[r.project_id] = r.estimated_value;
-          });
-          setEstimates(map);
-        } else
-          console.error('Failed to load estimates:', estimatesRes.reason);
       },
     );
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDetectedProjects(ALL_TIME_DATE_RANGE)
+      .then((data) => {
+        if (!cancelled) setDetectedProjects(data);
+      })
+      .catch((reason) => {
+        if (!cancelled)
+          console.error('Failed to load detected projects:', reason);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getProjectEstimates(ALL_TIME_DATE_RANGE)
+      .then((rows) => {
+        if (cancelled) return;
+        const map: Record<number, number> = {};
+        rows.forEach((r) => {
+          map[r.project_id] = r.estimated_value;
+        });
+        setEstimates(map);
+      })
+      .catch((reason) => {
+        if (!cancelled) console.error('Failed to load estimates:', reason);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshKey]);
 
   useEffect(() => {
@@ -376,10 +393,7 @@ export function Projects() {
       return;
     }
     setLoadingExtra(true);
-    getProjectExtraInfo(projectDialogId, {
-      start: '2020-01-01',
-      end: '2100-01-01',
-    })
+    getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
       .then(setExtraInfo)
       .catch(console.error)
       .finally(() => setLoadingExtra(false));
@@ -476,10 +490,7 @@ export function Projects() {
     try {
       await compactProjectData(id);
       triggerRefresh();
-      const info = await getProjectExtraInfo(id, {
-        start: '2020-01-01',
-        end: '2100-01-01',
-      });
+      const info = await getProjectExtraInfo(id, ALL_TIME_DATE_RANGE);
       setExtraInfo(info);
     } catch (e) {
       console.error('Failed to compact project data:', e);
@@ -604,7 +615,7 @@ export function Projects() {
     setBusy('auto-detect');
     try {
       await autoCreateProjectsFromDetection(
-        { start: '2020-01-01', end: '2100-01-01' },
+        ALL_TIME_DATE_RANGE,
         2,
       );
       triggerRefresh();

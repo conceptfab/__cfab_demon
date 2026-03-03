@@ -15,8 +15,6 @@ export const ONLINE_SYNC_SETTINGS_CHANGED_EVENT =
   'timeflow:online-sync-settings-changed';
 const LEGACY_ONLINE_SYNC_SETTINGS_KEY = 'cfab.settings.online-sync';
 const LEGACY_ONLINE_SYNC_STATE_KEY = 'cfab.sync.state';
-const LEGACY_ONLINE_SYNC_SETTINGS_CHANGED_EVENT =
-  'cfab:online-sync-settings-changed';
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
   'https://cfabserver-production.up.railway.app';
 
@@ -297,9 +295,6 @@ function writeJsonStorage<T>(key: string, value: T): void {
 function emitOnlineSyncSettingsChanged(): void {
   if (!hasWindow()) return;
   window.dispatchEvent(new CustomEvent(ONLINE_SYNC_SETTINGS_CHANGED_EVENT));
-  window.dispatchEvent(
-    new CustomEvent(LEGACY_ONLINE_SYNC_SETTINGS_CHANGED_EVENT),
-  );
 }
 
 function shortHash(hash: string | null): string {

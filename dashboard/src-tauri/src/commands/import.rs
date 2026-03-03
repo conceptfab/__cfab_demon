@@ -234,7 +234,7 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
             .ok()
             .flatten();
 
-        if filter_enabled && !monitored_exes.contains(&exe_lower) && app_project_id.is_some() {
+        if filter_enabled && !monitored_exes.contains(&exe_lower) && app_project_id.is_none() {
             continue;
         }
 

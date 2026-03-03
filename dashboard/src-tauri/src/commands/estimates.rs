@@ -4,6 +4,7 @@ use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
+use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{DateRange, EstimateProjectRow, EstimateSettings, EstimateSummary};
 use crate::db;
 
@@ -79,67 +80,24 @@ fn query_project_session_counts(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
 ) -> Result<HashMap<String, i64>, String> {
+    let sql = format!(
+        "{SESSION_PROJECT_CTE},
+         combined AS (
+             SELECT COALESCE(p.name, 'Unassigned') as project_name, 1 as session_count
+             FROM session_projects sp
+             LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
+             UNION ALL
+             SELECT p.name as project_name, 1 as session_count
+             FROM manual_sessions ms
+             JOIN projects p ON p.id = ms.project_id
+             WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
+         )
+         SELECT project_name, SUM(session_count) as session_count
+         FROM combined
+         GROUP BY project_name"
+    );
     let mut stmt = conn
-        .prepare_cached(
-            "WITH session_project_overlap AS (
-                SELECT s.id as session_id,
-                       fa.project_id as project_id,
-                       SUM(
-                           MAX(
-                               0,
-                               MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
-                               MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
-                           )
-                       ) as overlap_seconds,
-                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
-                FROM sessions s
-                JOIN file_activities fa
-                  ON fa.app_id = s.app_id
-                 AND fa.date = s.date
-                 AND fa.project_id IS NOT NULL
-                 AND fa.last_seen > s.start_time
-                 AND fa.first_seen < s.end_time
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                GROUP BY s.id, fa.project_id
-            ),
-            ranked_overlap AS (
-                SELECT session_id, project_id, overlap_seconds, span_seconds,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY session_id
-                           ORDER BY overlap_seconds DESC, project_id ASC
-                       ) as rn,
-                       COUNT(*) OVER (PARTITION BY session_id) as project_count
-                FROM session_project_overlap
-            ),
-            session_projects AS (
-                SELECT s.id,
-                       CASE
-                           WHEN s.project_id IS NOT NULL THEN s.project_id
-                           WHEN ro.project_count = 1
-                            AND ro.overlap_seconds * 2 >= ro.span_seconds
-                           THEN ro.project_id
-                           ELSE NULL
-                       END as project_id
-                FROM sessions s
-                LEFT JOIN ranked_overlap ro
-                  ON ro.session_id = s.id
-                 AND ro.rn = 1
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-            ),
-            combined AS (
-                SELECT COALESCE(p.name, 'Unassigned') as project_name, 1 as session_count
-                FROM session_projects sp
-                LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
-                UNION ALL
-                SELECT p.name as project_name, 1 as session_count
-                FROM manual_sessions ms
-                JOIN projects p ON p.id = ms.project_id
-                WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
-            )
-            SELECT project_name, SUM(session_count) as session_count
-            FROM combined
-            GROUP BY project_name",
-        )
+        .prepare_cached(&sql)
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
@@ -163,79 +121,30 @@ fn query_project_multiplier_extra_seconds(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
 ) -> Result<HashMap<String, MultiplierInfo>, String> {
+    let sql = format!(
+        "{SESSION_PROJECT_CTE},
+         combined AS (
+             SELECT COALESCE(p.name, 'Unassigned') as project_name,
+                    CASE
+                        WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
+                        ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
+                    END as extra_seconds
+             FROM session_projects sp
+             LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
+             UNION ALL
+             SELECT p.name as project_name, 0.0 as extra_seconds
+             FROM manual_sessions ms
+             JOIN projects p ON p.id = ms.project_id
+             WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
+         )
+         SELECT project_name,
+                SUM(extra_seconds) as extra_seconds,
+                SUM(CASE WHEN extra_seconds > 0.0 THEN 1 ELSE 0 END) as multiplied_count
+         FROM combined
+         GROUP BY project_name"
+    );
     let mut stmt = conn
-        .prepare_cached(
-            "WITH session_project_overlap AS (
-                SELECT s.id as session_id,
-                       fa.project_id as project_id,
-                       SUM(
-                           MAX(
-                               0,
-                               MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
-                               MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
-                           )
-                       ) as overlap_seconds,
-                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
-                FROM sessions s
-                JOIN file_activities fa
-                  ON fa.app_id = s.app_id
-                 AND fa.date = s.date
-                 AND fa.project_id IS NOT NULL
-                 AND fa.last_seen > s.start_time
-                 AND fa.first_seen < s.end_time
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                GROUP BY s.id, fa.project_id
-            ),
-            ranked_overlap AS (
-                SELECT session_id, project_id, overlap_seconds, span_seconds,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY session_id
-                           ORDER BY overlap_seconds DESC, project_id ASC
-                       ) as rn,
-                       COUNT(*) OVER (PARTITION BY session_id) as project_count
-                FROM session_project_overlap
-            ),
-            session_projects AS (
-                SELECT s.id,
-                       CASE
-                           WHEN s.project_id IS NOT NULL THEN s.project_id
-                           WHEN ro.project_count = 1
-                            AND ro.overlap_seconds * 2 >= ro.span_seconds
-                           THEN ro.project_id
-                           ELSE NULL
-                       END as project_id,
-                       CAST(s.duration_seconds AS REAL) as duration_seconds,
-                       CASE
-                           WHEN s.rate_multiplier IS NULL OR s.rate_multiplier <= 0 THEN 1.0
-                           ELSE s.rate_multiplier
-                       END as rate_multiplier
-                FROM sessions s
-                LEFT JOIN ranked_overlap ro
-                  ON ro.session_id = s.id
-                 AND ro.rn = 1
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-            ),
-            combined AS (
-                SELECT COALESCE(p.name, 'Unassigned') as project_name,
-                       CASE
-                           WHEN sp.rate_multiplier <= 1.0 THEN 0.0
-                           ELSE (sp.duration_seconds * (sp.rate_multiplier - 1.0))
-                       END as extra_seconds
-                FROM session_projects sp
-                LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
-                UNION ALL
-                SELECT p.name as project_name,
-                       0.0 as extra_seconds
-                FROM manual_sessions ms
-                JOIN projects p ON p.id = ms.project_id
-                WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
-            )
-            SELECT project_name,
-                   SUM(extra_seconds) as extra_seconds,
-                   SUM(CASE WHEN extra_seconds > 0.0 THEN 1 ELSE 0 END) as multiplied_count
-            FROM combined
-            GROUP BY project_name",
-        )
+        .prepare_cached(&sql)
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {

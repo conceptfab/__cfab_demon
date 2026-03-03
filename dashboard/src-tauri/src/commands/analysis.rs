@@ -5,6 +5,7 @@ use chrono::{
 use std::collections::{BTreeMap, HashMap};
 use tauri::AppHandle;
 
+use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{DateRange, HeatmapCell, StackedBarData};
 use crate::db;
 
@@ -126,66 +127,33 @@ pub(crate) fn compute_project_activity_unique(
     )
     .ok_or_else(|| "Invalid end date in local timezone".to_string())?;
 
+    let sql = format!(
+        "{SESSION_PROJECT_CTE}
+         SELECT sp.start_time,
+                sp.end_time,
+                COALESCE(p.name, 'Unassigned') as project_name,
+                sp.multiplier,
+                0 as is_manual,
+                sp.project_id,
+                sp.comment
+         FROM session_projects sp
+         LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
+         WHERE ?4 IS NULL OR sp.project_id = ?4
+         UNION ALL
+         SELECT ms.start_time,
+                ms.end_time,
+                p.name as project_name,
+                1.0 as multiplier,
+                1 as is_manual,
+                ms.project_id,
+                ms.title as comment
+         FROM manual_sessions ms
+         JOIN projects p ON p.id = ms.project_id
+         WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)
+           AND (?4 IS NULL OR ms.project_id = ?4)"
+    );
     let mut stmt = conn
-        .prepare_cached(
-            "WITH session_project_overlap AS (
-                 SELECT s.id as session_id,
-                        fa.project_id as project_id,
-                        SUM(
-                            MAX(
-                                0,
-                                MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
-                                MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
-                            )
-                        ) as overlap_seconds,
-                        (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
-                 FROM sessions s
-                 JOIN file_activities fa
-                   ON fa.app_id = s.app_id
-                  AND fa.date = s.date
-                  AND fa.project_id IS NOT NULL
-                  AND fa.last_seen > s.start_time
-                  AND fa.first_seen < s.end_time
-                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                 GROUP BY s.id, fa.project_id
-             ),
-             ranked_overlap AS (
-                 SELECT session_id, project_id, overlap_seconds, span_seconds,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY session_id
-                            ORDER BY overlap_seconds DESC, project_id ASC
-                        ) as rn,
-                        COUNT(*) OVER (PARTITION BY session_id) as project_count
-                 FROM session_project_overlap
-             ),
-             session_projects AS (
-                 SELECT s.id, s.start_time, s.end_time,
-                        CASE
-                            WHEN s.project_id IS NOT NULL THEN s.project_id
-                            WHEN ro.project_count = 1
-                             AND ro.overlap_seconds * 2 >= ro.span_seconds
-                            THEN ro.project_id
-                            ELSE NULL
-                        END as project_id,
-                         COALESCE(s.rate_multiplier, 1.0) as multiplier,
-                         s.comment
-                  FROM sessions s
-                  LEFT JOIN ranked_overlap ro
-                    ON ro.session_id = s.id
-                   AND ro.rn = 1
-                  WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-              )
-              SELECT sp.start_time, sp.end_time, COALESCE(p.name, 'Unassigned') as project_name, sp.multiplier, 0 as is_manual, sp.project_id, sp.comment
-              FROM session_projects sp
-              LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
-              WHERE ?4 IS NULL OR sp.project_id = ?4
-              UNION ALL
-              SELECT ms.start_time, ms.end_time, p.name as project_name, 1.0 as multiplier, 1 as is_manual, ms.project_id, ms.title as comment
-              FROM manual_sessions ms
-              JOIN projects p ON p.id = ms.project_id
-              WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)
-                AND (?4 IS NULL OR ms.project_id = ?4)",
-        )
+        .prepare_cached(&sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt

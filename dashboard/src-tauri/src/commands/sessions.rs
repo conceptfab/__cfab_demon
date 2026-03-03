@@ -43,24 +43,6 @@ pub(crate) fn upsert_manual_session_override(
     session_id: i64,
     project_id: Option<i64>,
 ) -> Result<(), String> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS session_manual_overrides (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             session_id INTEGER,
-             executable_name TEXT NOT NULL,
-             start_time TEXT NOT NULL,
-             end_time TEXT NOT NULL,
-             project_name TEXT,
-             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-             UNIQUE(executable_name, start_time, end_time)
-         );
-         CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
-         ON session_manual_overrides(executable_name, start_time, end_time);
-         CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
-         ON session_manual_overrides(session_id);",
-    )
-    .map_err(|e| e.to_string())?;
-
     let session_meta = conn
         .query_row(
             "SELECT a.executable_name, s.start_time, s.end_time
@@ -134,24 +116,6 @@ pub(crate) fn upsert_manual_session_override(
 pub(crate) fn apply_manual_session_overrides(
     conn: &rusqlite::Connection,
 ) -> Result<i64, String> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS session_manual_overrides (
-             id INTEGER PRIMARY KEY AUTOINCREMENT,
-             session_id INTEGER,
-             executable_name TEXT NOT NULL,
-             start_time TEXT NOT NULL,
-             end_time TEXT NOT NULL,
-             project_name TEXT,
-             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-             UNIQUE(executable_name, start_time, end_time)
-         );
-         CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
-         ON session_manual_overrides(executable_name, start_time, end_time);
-         CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
-         ON session_manual_overrides(session_id);",
-    )
-    .map_err(|e| e.to_string())?;
-
     let mut total_reapplied = 0_i64;
 
     let overrides: Vec<(Option<i64>, String, String, String, Option<String>)> = {
@@ -1055,24 +1019,6 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
     }
 
     {
-        tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS session_manual_overrides (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 session_id INTEGER,
-                 executable_name TEXT NOT NULL,
-                 start_time TEXT NOT NULL,
-                 end_time TEXT NOT NULL,
-                 project_name TEXT,
-                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                 UNIQUE(executable_name, start_time, end_time)
-             );
-             CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
-             ON session_manual_overrides(executable_name, start_time, end_time);
-             CREATE UNIQUE INDEX IF NOT EXISTS idx_session_manual_overrides_session_id
-             ON session_manual_overrides(session_id);",
-        )
-        .map_err(|e| e.to_string())?;
-
         for (from_session_id, to_session_id) in &merged_into {
             if from_session_id == to_session_id {
                 continue;

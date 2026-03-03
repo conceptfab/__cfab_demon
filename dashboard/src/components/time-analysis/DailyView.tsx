@@ -12,13 +12,13 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
+import { useInlineT } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { PALETTE } from './types';
 import type { HourSlot } from './types';
 
-interface DailyViewProps {
-  dailyHourlyGrid: { hours: HourSlot[]; allProjects: string[]; maxVal: number };
+interface DailyBarChartProps {
   dailyBarData: { data: Record<string, unknown>[]; projectNames: string[] };
   dailyTotalHours: number;
   stackedBarColorMap: Map<string, string>;
@@ -28,13 +28,18 @@ export function DailyBarChart({
   dailyBarData,
   dailyTotalHours,
   stackedBarColorMap,
-}: DailyViewProps) {
+}: DailyBarChartProps) {
+  const t = useInlineT();
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {`Hourly Activity — ${dailyTotalHours.toFixed(1)}h total`}
+        {t(
+          'Aktywność godzinowa — {{hours}}h łącznie',
+          'Hourly Activity — {{hours}}h total',
+          { hours: dailyTotalHours.toFixed(1) },
+        )}
       </h3>
       <div className="h-64 px-2">
         <ResponsiveContainer width="100%" height="100%">
@@ -80,7 +85,13 @@ export function DailyBarChart({
   );
 }
 
-export function DailyHeatmap({ dailyHourlyGrid }: DailyViewProps) {
+interface DailyHeatmapProps {
+  dailyHourlyGrid: { hours: HourSlot[] };
+}
+
+export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
+  const t = useInlineT();
+
   return (
     <div className="min-w-[600px]">
       {/* Hour labels */}
@@ -108,7 +119,7 @@ export function DailyHeatmap({ dailyHourlyGrid }: DailyViewProps) {
               title={
                 hasData
                   ? `${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
-                  : `${slot.hour}:00 — No activity`
+                  : `${slot.hour}:00 — ${t('Brak aktywności', 'No activity')}`
               }
             >
               {hasData && (

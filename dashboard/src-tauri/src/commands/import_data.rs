@@ -104,7 +104,9 @@ pub async fn validate_import(
     }
 
     Ok(ImportValidation {
-        valid: true,
+        valid: missing_projects.is_empty()
+            && missing_applications.is_empty()
+            && overlapping_sessions.is_empty(),
         missing_projects,
         missing_applications,
         overlapping_sessions,

@@ -63,8 +63,8 @@ import type {
   SessionWithApp,
   ManualSessionWithProject,
   StackedBarData,
-  PromptConfig,
 } from '@/lib/db-types';
+import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { PROJECT_COLORS } from '@/lib/project-colors';
 

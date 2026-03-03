@@ -539,7 +539,7 @@
     "1qzwvf51scqut4": "Uruchomiony",
     "1rbmrl69tv35j": "Ostatni manualny sync: pominięto (wyłączony w trybie demo)",
     "1rkp3l7ad64h": "Archiwum JSON",
-    "1rtovin9rp4l5": "Potwierdzenie",
+    "1rtovin9rp4l5": "Potwierdź",
     "1s67jdg1hh6bqi": "Tryb i progi",
     "1sf4zeuew5brw": "Brakujące aplikacje",
     "1sgie8tqc582p": "Eksport zapisany: {{result}}",
@@ -742,7 +742,7 @@
     "qgo1mzs23zz7": "Godziny pracy",
     "qm6t9a1obnak": "Przypomnienie odroczone na {{hours}}h.",
     "qo7z4n5r4m4v": "Aktualna:",
-    "qqv1i717go2bo": "e",
+    "qqv1i717go2bo": "sek",
     "r4c52a480b8t": "Anuluj",
     "r5qqb0v5pht9": "(nazwa wyświetlana)",
     "rc6xc1lapwo1": "Nie skonfigurowano",
@@ -808,3 +808,4 @@
     "zy1pqmpl4t0g": "wzmocnione"
   }
 }
+

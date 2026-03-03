@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { Database, Clock, Briefcase, Layout } from "lucide-react";
-import { getDashboardStats, getProjects } from "@/lib/tauri";
+import { getActivityDateSpan, getDashboardStats, getProjects } from "@/lib/tauri";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDurationSlim } from "@/lib/utils";
+import { useInlineT } from "@/lib/inline-i18n";
 
 export function DataStats() {
+  const t = useInlineT();
   const [stats, setStats] = useState<{
     sessions: number;
     projects: number;
@@ -13,14 +15,26 @@ export function DataStats() {
   }>({ sessions: 0, projects: 0, apps: 0, totalTime: 0 });
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       try {
-        const range = { start: "2000-01-01", end: "2100-01-01" };
-        const [dStats, projects] = await Promise.all([
-          getDashboardStats(range),
-          getProjects()
-        ]);
-        
+        const [range, projects] = await Promise.all([getActivityDateSpan(), getProjects()]);
+        if (cancelled) return;
+
+        if (!range) {
+          setStats({
+            sessions: 0,
+            projects: projects.length,
+            apps: 0,
+            totalTime: 0,
+          });
+          return;
+        }
+
+        const dStats = await getDashboardStats(range);
+        if (cancelled) return;
+
         setStats({
           sessions: dStats.session_count,
           projects: projects.length,
@@ -32,13 +46,17 @@ export function DataStats() {
       }
     };
     load();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const items = [
-    { label: "Total Sessions", value: stats.sessions, icon: Database, color: "text-blue-500" },
-    { label: "Projects", value: stats.projects, icon: Briefcase, color: "text-emerald-500" },
-    { label: "Applications", value: stats.apps, icon: Layout, color: "text-purple-500" },
-    { label: "Total Time", value: formatDurationSlim(stats.totalTime), icon: Clock, color: "text-amber-500" },
+    { label: t("Total Sessions", "Total Sessions"), value: stats.sessions, icon: Database, color: "text-blue-500" },
+    { label: t("Projects", "Projects"), value: stats.projects, icon: Briefcase, color: "text-emerald-500" },
+    { label: t("Applications", "Applications"), value: stats.apps, icon: Layout, color: "text-purple-500" },
+    { label: t("Total Time", "Total Time"), value: formatDurationSlim(stats.totalTime), icon: Clock, color: "text-amber-500" },
   ];
 
   return (

@@ -6,12 +6,14 @@ import {
   isBefore, isAfter, getWeek,
 } from "date-fns";
 import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
+import { useInlineT } from "@/lib/inline-i18n";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 
 export type RangeMode = "daily" | "weekly" | "monthly";
 
 export function useTimeAnalysisData() {
+  const t = useInlineT();
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -24,7 +26,13 @@ export function useTimeAnalysisData() {
   }>({ timeline: [], hourlyProjects: [], projectColors: new Map() });
   const { timeline, hourlyProjects, projectColors } = data;
 
-  const today = useMemo(() => format(new Date(), "yyyy-MM-dd"), []);
+  const [today, setToday] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setToday(format(new Date(), "yyyy-MM-dd"));
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const canShiftForward = anchorDate < today;
 
   const activeDateRange = useMemo<DateRange>(() => {
@@ -132,12 +140,27 @@ export function useTimeAnalysisData() {
   );
 
   const pieFallbackMessage = useMemo(() => {
-    if (isLoading) return "Loading chart data...";
-    if (loadError) return "Unable to load chart data. Try changing period or refreshing.";
-    if (totalRangeSeconds <= 0) return "No tracked activity in selected period.";
-    if (hourlyProjects.length === 0) return "No project timeline data for selected period.";
-    return "No project distribution data available.";
-  }, [isLoading, loadError, totalRangeSeconds, hourlyProjects.length]);
+    if (isLoading) return t("Ładowanie danych wykresu...", "Loading chart data...");
+    if (loadError) {
+      return t(
+        "Nie udało się załadować danych wykresu. Zmień okres lub odśwież.",
+        "Unable to load chart data. Try changing period or refreshing.",
+      );
+    }
+    if (totalRangeSeconds <= 0) {
+      return t(
+        "Brak zarejestrowanej aktywności w wybranym okresie.",
+        "No tracked activity in selected period.",
+      );
+    }
+    if (hourlyProjects.length === 0) {
+      return t(
+        "Brak danych osi projektów dla wybranego okresu.",
+        "No project timeline data for selected period.",
+      );
+    }
+    return t("Brak danych rozkładu projektów.", "No project distribution data available.");
+  }, [hourlyProjects.length, isLoading, loadError, t, totalRangeSeconds]);
 
   // Weekly heatmap grid
   const weeklyHourlyGrid = useMemo(() => {
@@ -177,7 +200,13 @@ export function useTimeAnalysisData() {
       if (!perDay.has(datePart)) perDay.set(datePart, {});
       const bucket = perDay.get(datePart)!;
       for (const [key, val] of Object.entries(row)) {
-        if (key === "date" || typeof val !== "number") continue;
+        if (
+          key === "date" ||
+          key === "has_boost" ||
+          key === "has_manual" ||
+          key === "comments" ||
+          typeof val !== "number"
+        ) continue;
         bucket[key] = (bucket[key] || 0) + val / 3600;
         projectSet.add(key);
       }
@@ -268,7 +297,14 @@ export function useTimeAnalysisData() {
       const datePart = row.date.split("T")[0] || row.date;
       const projects: ProjectSlot[] = [];
       Object.entries(row).forEach(([name, val]) => {
-        if (name !== "date" && typeof val === "number" && val > 0) {
+        if (
+          name !== "date" &&
+          name !== "has_boost" &&
+          name !== "has_manual" &&
+          name !== "comments" &&
+          typeof val === "number" &&
+          val > 0
+        ) {
           projects.push({
             name,
             seconds: val,

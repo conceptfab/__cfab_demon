@@ -68,3 +68,15 @@ export function formatMoney(value: number, currencyCode: string): string {
     return value.toFixed(2);
   }
 }
+
+export function formatBytes(bytes: number, fractionDigits = 2): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const base = 1024;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const unitIndex = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(base)),
+  );
+  const value = bytes / Math.pow(base, unitIndex);
+  return `${value.toFixed(fractionDigits)} ${units[unitIndex]}`;
+}

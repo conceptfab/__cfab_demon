@@ -30,7 +30,7 @@ function hashInlinePair(input: string): string {
   return `${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
 }
 
-export function buildInlineI18nKey(pl: string, en: string): string {
+function buildInlineI18nKey(pl: string, en: string): string {
   return `inline.${hashInlinePair(`${pl}\u0000${en}`)}`;
 }
 

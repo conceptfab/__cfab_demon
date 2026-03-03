@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+#[path = "../shared/timeflow_paths.rs"]
+mod timeflow_paths;
+
 /// Pojedyncza monitorowana aplikacja
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct MonitoredApp {
@@ -56,42 +59,12 @@ pub struct Config {
 pub fn ensure_app_dirs() -> Result<()> {
     let appdata = std::env::var("APPDATA").context("Brak zmiennej APPDATA")?;
     let appdata_path = PathBuf::from(&appdata);
-    let base = appdata_path.join("TimeFlow");
-    let legacy_bases = [
-        appdata_path.join("conceptfab"),
-        appdata_path.join("CfabDemon"),
-        appdata_path.join("TimeFlowDemon"),
-    ];
-
-    // One-time migration from legacy folder names.
-    if !base.exists() {
-        for legacy_base in legacy_bases {
-            if !legacy_base.exists() {
-                continue;
-            }
-            match std::fs::rename(&legacy_base, &base) {
-                Ok(_) => {
-                    log::info!(
-                        "Migrated app directory {:?} -> {:?}",
-                        legacy_base, base
-                    );
-                    break;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to migrate directory {:?} -> {:?}: {}",
-                        legacy_base, base, e
-                    );
-                }
-            }
-        }
-    }
+    let base = timeflow_paths::ensure_timeflow_base_dir(&appdata_path)
+        .with_context(|| format!("Nie można przygotować katalogu: {:?}", appdata_path))?;
 
     let data = base.join("data");
     let import = base.join("import");
     let archive = base.join("archive");
-    std::fs::create_dir_all(&base)
-        .with_context(|| format!("Nie można utworzyć katalogu: {:?}", base))?;
     std::fs::create_dir_all(&data)
         .with_context(|| format!("Nie można utworzyć katalogu danych: {:?}", data))?;
     std::fs::create_dir_all(&import)

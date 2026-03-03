@@ -16,6 +16,8 @@ export type WeekDaySlot = {
 export type CalendarDay = { date: string; seconds: number; inMonth: boolean; projects: ProjectSlot[] };
 export type CalendarWeek = { label: string; subLabel: string; days: CalendarDay[] };
 
+const NON_PROJECT_ROW_KEYS = new Set(["date", "has_boost", "has_manual", "comments"]);
+
 /** Parse StackedBarData[] into a date->hour->projects lookup */
 export function parseHourlyProjects(
   rows: StackedBarData[],
@@ -23,8 +25,10 @@ export function parseHourlyProjects(
 ) {
   const projectSet = new Set<string>();
   for (const row of rows) {
-    for (const key of Object.keys(row)) {
-      if (key !== "date") projectSet.add(key);
+    for (const [key, val] of Object.entries(row)) {
+      if (!NON_PROJECT_ROW_KEYS.has(key) && typeof val === "number" && Number.isFinite(val) && val > 0) {
+        projectSet.add(key);
+      }
     }
   }
   const allProjects = Array.from(projectSet);
@@ -47,7 +51,7 @@ export function parseHourlyProjects(
     if (!byDateHour.has(datePart)) byDateHour.set(datePart, new Map());
     const projects: ProjectSlot[] = [];
     for (const [key, val] of Object.entries(row)) {
-      if (key === "date" || typeof val !== "number") continue;
+      if (NON_PROJECT_ROW_KEYS.has(key) || typeof val !== "number" || !Number.isFinite(val) || val <= 0) continue;
       projects.push({ name: key, seconds: val, color: colorMap.get(key) || PALETTE[0] });
     }
     projects.sort((a, b) => b.seconds - a.seconds);

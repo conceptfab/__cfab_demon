@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
+use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
     AppWithStats, DashboardStats, DateRange, HourlyData, ProjectTimeRow, TimelinePoint, TopApp,
     TopProject,
@@ -14,8 +15,11 @@ pub async fn get_dashboard_stats(
     date_range: DateRange,
 ) -> Result<DashboardStats, String> {
     let conn = db::get_connection(&app)?;
+    let (_, project_totals, _, _) =
+        compute_project_activity_unique(&conn, &date_range, false, true, None)?;
+    let total_seconds = project_totals.values().copied().sum::<f64>().round() as i64;
 
-    let (total_seconds, app_count, session_count, day_count) =
+    let (app_count, session_count, day_count) =
         query_dashboard_counters(&conn, &date_range.start, &date_range.end)?;
 
     let avg_daily = if day_count == 0 {
@@ -58,8 +62,6 @@ pub async fn get_dashboard_stats(
         })
         .collect();
 
-    let (_, project_totals, _, _) =
-        compute_project_activity_unique(&conn, &date_range, false, true, None)?;
     let project_colors = query_project_color_map(&conn)?;
     let top_project = project_totals
         .into_iter()
@@ -87,14 +89,7 @@ fn query_dashboard_counters(
     conn: &rusqlite::Connection,
     start: &str,
     end: &str,
-) -> Result<(i64, i64, i64, i64), String> {
-    let date_range = DateRange {
-        start: start.to_string(),
-        end: end.to_string(),
-    };
-    let (_, totals, _, _) = compute_project_activity_unique(conn, &date_range, false, true, None)?;
-    let total_seconds = totals.values().copied().sum::<f64>().round() as i64;
-
+) -> Result<(i64, i64, i64), String> {
     let (app_count, session_count, day_count): (i64, i64, i64) = conn
         .query_row(
             "SELECT
@@ -122,7 +117,7 @@ fn query_dashboard_counters(
         )
         .map_err(|e| e.to_string())?;
 
-    Ok((total_seconds, app_count, session_count, day_count))
+    Ok((app_count, session_count, day_count))
 }
 
 fn query_project_color_map(conn: &rusqlite::Connection) -> Result<HashMap<String, String>, String> {
@@ -148,68 +143,30 @@ fn query_project_counts(
     end: &str,
     active_only: bool,
 ) -> Result<HashMap<String, (i64, i64)>, String> {
+    let sql = format!(
+        "{SESSION_PROJECT_CTE},
+         combined AS (
+             SELECT COALESCE(p.name, 'Unassigned') as project_name,
+                    sp.app_id as app_id,
+                    1 as session_count
+             FROM session_projects sp
+             LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
+             UNION ALL
+             SELECT p.name as project_name,
+                    NULL as app_id,
+                    1 as session_count
+             FROM manual_sessions ms
+             JOIN projects p ON p.id = ms.project_id
+             WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)
+         )
+         SELECT project_name,
+                SUM(session_count) as session_count,
+                COUNT(DISTINCT app_id) as app_count
+         FROM combined
+         GROUP BY project_name"
+    );
     let mut stmt = conn
-        .prepare_cached(
-            "WITH session_project_overlap AS (
-                SELECT s.id as session_id,
-                       s.app_id as app_id,
-                       fa.project_id as project_id,
-                       SUM(
-                           MAX(
-                               0,
-                               MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
-                               MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
-                           )
-                       ) as overlap_seconds,
-                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
-                FROM sessions s
-                JOIN file_activities fa
-                  ON fa.app_id = s.app_id
-                 AND fa.date = s.date
-                 AND fa.project_id IS NOT NULL
-                 AND fa.last_seen > s.start_time
-                 AND fa.first_seen < s.end_time
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                GROUP BY s.id, s.app_id, fa.project_id
-            ),
-            ranked_overlap AS (
-                SELECT session_id, app_id, project_id, overlap_seconds, span_seconds,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY session_id
-                           ORDER BY overlap_seconds DESC, project_id ASC
-                       ) as rn,
-                       COUNT(*) OVER (PARTITION BY session_id) as project_count
-                FROM session_project_overlap
-            ),
-            session_projects AS (
-                SELECT s.id, s.app_id as app_id,
-                       CASE
-                           WHEN s.project_id IS NOT NULL THEN s.project_id
-                           WHEN ro.project_count = 1
-                            AND ro.overlap_seconds * 2 >= ro.span_seconds
-                           THEN ro.project_id
-                           ELSE NULL
-                       END as project_id
-                FROM sessions s
-                LEFT JOIN ranked_overlap ro
-                  ON ro.session_id = s.id
-                 AND ro.rn = 1
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-            ),
-            combined AS (
-                SELECT COALESCE(p.name, 'Unassigned') as project_name, sp.app_id as app_id, 1 as session_count
-                FROM session_projects sp
-                LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
-                UNION ALL
-                SELECT p.name as project_name, NULL as app_id, 1 as session_count
-                FROM manual_sessions ms
-                JOIN projects p ON p.id = ms.project_id
-                WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)
-            )
-            SELECT project_name, SUM(session_count) as session_count, COUNT(DISTINCT app_id) as app_count
-            FROM combined
-            GROUP BY project_name",
-        )
+        .prepare_cached(&sql)
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![start, end, active_only as i32], |row| {
@@ -226,6 +183,31 @@ fn query_project_counts(
         out.insert(row.0.to_lowercase(), (row.1, row.2));
     }
     Ok(out)
+}
+
+#[tauri::command]
+pub async fn get_activity_date_span(app: AppHandle) -> Result<Option<DateRange>, String> {
+    let conn = db::get_connection(&app)?;
+    let (start, end): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT MIN(d), MAX(d)
+             FROM (
+                 SELECT date as d
+                 FROM sessions
+                 WHERE (is_hidden IS NULL OR is_hidden = 0)
+                 UNION ALL
+                 SELECT date as d
+                 FROM manual_sessions
+             )",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    match (start, end) {
+        (Some(start), Some(end)) => Ok(Some(DateRange { start, end })),
+        _ => Ok(None),
+    }
 }
 
 #[tauri::command]
@@ -440,24 +422,40 @@ pub async fn get_applications(
         .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
         .collect();
 
-    // Fill in missing colors
+    // Fill in missing colors.
+    // Persist generated colors with a single bulk UPDATE to avoid N+1 writes.
     let mut final_apps = Vec::with_capacity(apps.len());
+    let mut missing_colors: Vec<(i64, String)> = Vec::new();
     for mut app in apps {
         if app.color.is_none() {
             let color = generate_color_for_app(&app.display_name);
             app.color = Some(color.clone());
-            // Optionally update DB here, but to avoid multiple writes in a loop
-            // we'll just return it and let the DB stay NULL until manually changed
-            // or if the user wants it persisted. The requirement was "auto and manual".
-            // Let's persist it to avoid re-generation every time.
-            if let Err(e) = conn.execute(
-                "UPDATE applications SET color = ?1 WHERE id = ?2",
-                rusqlite::params![color, app.id],
-            ) {
-                log::warn!("Failed to auto-persist app color: {}", e);
-            }
+            missing_colors.push((app.id, color));
         }
         final_apps.push(app);
+    }
+
+    if !missing_colors.is_empty() {
+        let mut sql = String::from("UPDATE applications SET color = CASE id");
+        for _ in &missing_colors {
+            sql.push_str(" WHEN ? THEN ?");
+        }
+        sql.push_str(" ELSE color END WHERE id IN (");
+        sql.push_str(&vec!["?"; missing_colors.len()].join(","));
+        sql.push(')');
+
+        let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(missing_colors.len() * 3);
+        for (id, color) in &missing_colors {
+            params.push((*id).into());
+            params.push(color.clone().into());
+        }
+        for (id, _) in &missing_colors {
+            params.push((*id).into());
+        }
+
+        if let Err(e) = conn.execute(&sql, rusqlite::params_from_iter(params.iter())) {
+            log::warn!("Failed to persist generated app colors in bulk: {}", e);
+        }
     }
 
     Ok(final_apps)

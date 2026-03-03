@@ -15,6 +15,7 @@ mod projects;
 mod secure_store;
 mod sessions;
 mod settings;
+mod sql_fragments;
 mod sync_log;
 mod types;
 

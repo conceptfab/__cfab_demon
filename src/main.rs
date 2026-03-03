@@ -21,7 +21,7 @@ fn main() {
     // Handle command-line arguments (fast path, no logging needed)
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|arg| arg == "--version" || arg == "-v") {
-        println!("{}", VERSION);
+        println!("{}", VERSION.trim());
         return;
     }
 

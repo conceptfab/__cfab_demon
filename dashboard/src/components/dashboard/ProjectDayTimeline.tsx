@@ -14,7 +14,8 @@ import {
   timeToMinutes,
   type WorkingHoursSettings,
 } from "@/lib/user-settings";
-import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject, PromptConfig } from "@/lib/db-types";
+import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
+import type { PromptConfig } from "@/lib/ui-types";
 
 interface Props {
   sessions: SessionWithApp[];

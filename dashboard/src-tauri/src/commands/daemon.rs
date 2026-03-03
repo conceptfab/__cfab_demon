@@ -2,6 +2,9 @@ use std::io::{Read, Seek, SeekFrom};
 use std::process::Command;
 use tauri::AppHandle;
 
+#[path = "../../../../shared/version_compat.rs"]
+mod version_compat;
+
 use super::helpers::{no_console, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
 use super::types::DaemonStatus;
 use crate::db;
@@ -197,7 +200,7 @@ pub async fn get_daemon_status(app: AppHandle, min_duration: Option<i64>) -> Res
     }
 
     let is_compatible = if let Some(ref dv) = daemon_version {
-        check_version_compatibility(dv, crate::VERSION)
+        version_compat::check_version_compatibility(dv, crate::VERSION.trim())
     } else {
         true // If we can't find daemon version, we'll assume it's okay or handle it in UI
     };
@@ -211,33 +214,9 @@ pub async fn get_daemon_status(app: AppHandle, min_duration: Option<i64>) -> Res
         unassigned_sessions,
         unassigned_apps,
         version: daemon_version,
-        dashboard_version: crate::VERSION.to_string(),
+        dashboard_version: crate::VERSION.trim().to_string(),
         is_compatible,
     })
-}
-
-fn check_version_compatibility(v_demon: &str, v_dash: &str) -> bool {
-    let parse = |v: &str| -> Option<(i32, i32, i32)> {
-        let parts: Vec<&str> = v.split('.').collect();
-        if parts.len() != 3 {
-            return None;
-        }
-        Some((
-            parts[0].parse().ok()?,
-            parts[1].parse().ok()?,
-            parts[2].parse().ok()?,
-        ))
-    };
-
-    match (parse(v_demon), parse(v_dash)) {
-        (Some((maj1, min1, rel1)), Some((maj2, min2, rel2))) => {
-            if maj1 != maj2 || min1 != min2 {
-                return false;
-            }
-            (rel1 - rel2).abs() <= 3
-        }
-        _ => false,
-    }
 }
 
 #[tauri::command]

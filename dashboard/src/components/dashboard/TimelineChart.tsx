@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Flame,
@@ -184,7 +184,7 @@ export function TimelineChart({
       return 0;
     }
   }, [dateRange]);
-  const xTickFormatter = (v: unknown) => {
+  const xTickFormatter = useCallback((v: unknown) => {
     const raw = String(v);
     try {
       if (isHourly) return format(parseISO(raw), "HH:mm");
@@ -193,8 +193,8 @@ export function TimelineChart({
     } catch {
       return raw;
     }
-  };
-  const xLabelFormatter = (v: unknown) => {
+  }, [isHourly, daySpan, locale]);
+  const xLabelFormatter = useCallback((v: unknown) => {
     const raw = String(v);
     try {
       return format(
@@ -205,9 +205,9 @@ export function TimelineChart({
     } catch {
       return raw;
     }
-  };
+  }, [isHourly, locale]);
 
-  const renderTooltip = (props: unknown) => {
+  const renderTooltip = useCallback((props: unknown) => {
     const { active, label, payload } = (props ?? {}) as {
       active?: boolean;
       label?: unknown;
@@ -281,9 +281,9 @@ export function TimelineChart({
         )}
       </div>
     );
-  };
+  }, [t, xLabelFormatter]);
 
-  const renderCustomAxisTick = (props: any) => {
+  const renderCustomAxisTick = useCallback((props: any) => {
     const { x, y, payload } = props;
     const dateKey = String(payload.value);
     const row = chartDataByDate.get(dateKey);
@@ -323,7 +323,7 @@ export function TimelineChart({
         )}
       </g>
     );
-  };
+  }, [chartDataByDate, xTickFormatter]);
 
   return (
     <Card>

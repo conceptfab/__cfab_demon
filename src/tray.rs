@@ -95,7 +95,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 
     let mut menu_version = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text(&format!("{} v{}", APP_NAME, crate::VERSION))
+        .text(&format!("{} v{}", APP_NAME, crate::VERSION.trim()))
         .disabled(true)
         .parent(&menu)
         .build(&mut menu_version)
@@ -205,18 +205,29 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 }
 
 fn is_dashboard_running() -> bool {
-    use sysinfo::{System, ProcessRefreshKind, RefreshKind};
-    let s = System::new_with_specifics(
-        RefreshKind::new().with_processes(ProcessRefreshKind::new()),
-    );
-    s.processes().values().any(|p| {
-        let name = p.name().to_lowercase();
-        (name == "timeflow"
-            || name.contains("timeflow-dashboard")
-            || name.contains("timeflow_dashboard")
-            || name.contains("timeflowdashboard"))
-            && !name.contains("timeflow-demon")
-    })
+    let output = match std::process::Command::new("tasklist")
+        .args(["/FO", "CSV", "/NH"])
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            log::warn!("Failed to run tasklist for dashboard detection: {}", e);
+            return false;
+        }
+    };
+
+    if !output.status.success() {
+        log::warn!(
+            "tasklist failed while checking dashboard process: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return false;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
+    stdout.contains("\"timeflow-dashboard.exe\"")
+        || stdout.contains("\"timeflow.exe\"")
+        || stdout.contains("\"timeflow_dashboard.exe\"")
 }
 
 fn launch_dashboard() {

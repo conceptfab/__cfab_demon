@@ -12,33 +12,35 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
+import { useInlineT } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { PALETTE } from './types';
 import type { CalendarWeek } from './types';
 
-const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-interface MonthlyViewProps {
-  monthCalendar: { weeks: CalendarWeek[]; maxVal: number };
+interface MonthlyBarChartProps {
   monthlyBarData: { data: Record<string, unknown>[]; projectNames: string[] };
   monthTotalHours: number;
   stackedBarColorMap: Map<string, string>;
-  projectColors: Map<string, string>;
 }
 
 export function MonthlyBarChart({
   monthlyBarData,
   monthTotalHours,
   stackedBarColorMap,
-}: MonthlyViewProps) {
+}: MonthlyBarChartProps) {
+  const t = useInlineT();
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {`Daily Activity — ${monthTotalHours.toFixed(1)}h total`}
+        {t(
+          'Aktywność dzienna — {{hours}}h łącznie',
+          'Daily Activity — {{hours}}h total',
+          { hours: monthTotalHours.toFixed(1) },
+        )}
       </h3>
       <div className="h-64 px-2">
         <ResponsiveContainer width="100%" height="100%">
@@ -97,11 +99,26 @@ export function MonthlyBarChart({
   );
 }
 
-export function MonthlyHeatmap({ monthCalendar }: MonthlyViewProps) {
+interface MonthlyHeatmapProps {
+  monthCalendar: { weeks: CalendarWeek[] };
+}
+
+export function MonthlyHeatmap({ monthCalendar }: MonthlyHeatmapProps) {
+  const t = useInlineT();
+  const weekDays = [
+    t('Pon', 'Mon'),
+    t('Wt', 'Tue'),
+    t('Śr', 'Wed'),
+    t('Czw', 'Thu'),
+    t('Pt', 'Fri'),
+    t('Sob', 'Sat'),
+    t('Niedz', 'Sun'),
+  ];
+
   return (
     <div className="min-w-[400px]">
       <div className="flex text-xs text-muted-foreground mb-1 pl-16">
-        {WEEK_DAYS.map((d) => (
+        {weekDays.map((d) => (
           <div key={d} className="flex-1 text-center">
             {d}
           </div>
@@ -139,7 +156,7 @@ export function MonthlyHeatmap({ monthCalendar }: MonthlyViewProps) {
                     hasData
                       ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${formatDuration(day.seconds)}\n${day.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
                       : day.inMonth
-                        ? `${format(parseISO(day.date), 'EEE, MMM d')} — No activity`
+                        ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${t('Brak aktywności', 'No activity')}`
                         : ''
                   }
                 >

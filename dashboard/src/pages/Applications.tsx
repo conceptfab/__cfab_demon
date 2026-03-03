@@ -31,7 +31,8 @@ import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useInlineT } from '@/lib/inline-i18n';
-import type { AppWithStats, MonitoredApp, PromptConfig } from '@/lib/db-types';
+import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
+import type { PromptConfig } from '@/lib/ui-types';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
 

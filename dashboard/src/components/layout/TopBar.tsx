@@ -5,6 +5,7 @@ import { Copy, Minus, Square, X } from "lucide-react";
 import { hasTauriRuntime } from "@/lib/tauri";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useTranslation } from "react-i18next";
+import { tryStartWindowDrag } from "@/lib/window-drag";
 
 export function TopBar() {
   const { t } = useTranslation();
@@ -61,7 +62,7 @@ export function TopBar() {
 
   const handleDragMouseDown = (event: MouseEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
-    withWindow((appWindow) => appWindow.startDragging());
+    tryStartWindowDrag();
   };
 
   const stopTitlebarButtonMouseDown = (event: MouseEvent<HTMLButtonElement>) => {

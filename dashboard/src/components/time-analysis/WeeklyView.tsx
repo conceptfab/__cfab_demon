@@ -12,18 +12,14 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
+import { useInlineT } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { PALETTE } from './types';
 import type { WeekDaySlot } from './types';
 
-interface WeeklyViewProps {
-  weeklyHourlyGrid: {
-    days: WeekDaySlot[];
-    allProjects: string[];
-    maxVal: number;
-  };
+interface WeeklyBarChartProps {
   weeklyBarData: { data: Record<string, unknown>[]; projectNames: string[] };
   weeklyTotalHours: number;
   stackedBarColorMap: Map<string, string>;
@@ -33,13 +29,18 @@ export function WeeklyBarChart({
   weeklyBarData,
   weeklyTotalHours,
   stackedBarColorMap,
-}: WeeklyViewProps) {
+}: WeeklyBarChartProps) {
+  const t = useInlineT();
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {`Daily Activity — ${weeklyTotalHours.toFixed(1)}h total`}
+        {t(
+          'Aktywność dzienna — {{hours}}h łącznie',
+          'Daily Activity — {{hours}}h total',
+          { hours: weeklyTotalHours.toFixed(1) },
+        )}
       </h3>
       <div className="h-64 px-2">
         <ResponsiveContainer width="100%" height="100%">
@@ -98,7 +99,15 @@ export function WeeklyBarChart({
   );
 }
 
-export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyViewProps) {
+interface WeeklyHeatmapProps {
+  weeklyHourlyGrid: {
+    days: WeekDaySlot[];
+  };
+}
+
+export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyHeatmapProps) {
+  const t = useInlineT();
+
   return (
     <div className="min-w-[600px]">
       {/* Hour labels */}
@@ -136,7 +145,7 @@ export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyViewProps) {
                   title={
                     hasData
                       ? `${day.dayLabel} ${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
-                      : `${day.dayLabel} ${slot.hour}:00 — No activity`
+                      : `${day.dayLabel} ${slot.hour}:00 — ${t('Brak aktywności', 'No activity')}`
                   }
                 >
                   {hasData && (

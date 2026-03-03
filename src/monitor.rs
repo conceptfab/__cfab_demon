@@ -343,8 +343,18 @@ pub fn measure_cpu_for_app(
     let mut all_pids = root_pids.clone();
     let mut visited = std::collections::HashSet::new();
     for &root in &root_pids {
-        collect_descendants(&proc_snap.tree, root, &mut all_pids, &mut visited);
+        visited.insert(root);
     }
+    for &root in &root_pids {
+        if let Some(children) = proc_snap.tree.get(&root) {
+            for &child in children {
+                all_pids.push(child);
+                collect_descendants(&proc_snap.tree, child, &mut all_pids, &mut visited);
+            }
+        }
+    }
+    all_pids.sort_unstable();
+    all_pids.dedup();
 
     let now = Instant::now();
     let total_time = sum_cpu_times(&all_pids);

@@ -6,6 +6,7 @@ import { deleteArchiveFile, getArchiveFiles, getImportedFiles, getBackupFiles } 
 import type { ArchivedFile, ImportedFile, BackupFile } from "@/lib/db-types";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useInlineT } from "@/lib/inline-i18n";
+import { formatBytes } from "@/lib/utils";
 
 export function DataHistory() {
   const t = useInlineT();
@@ -48,14 +49,6 @@ export function DataHistory() {
     } finally {
       setDeleting(null);
     }
-  };
-
-  const formatSize = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   };
 
   return (
@@ -123,7 +116,7 @@ export function DataHistory() {
                         <File className="h-3 w-3 text-emerald-500/70 shrink-0" />
                         <span className="truncate font-medium">{f.name}</span>
                       </div>
-                      <span className="shrink-0 text-[9px] font-mono text-muted-foreground">{formatSize(f.size_bytes)}</span>
+                      <span className="shrink-0 text-[9px] font-mono text-muted-foreground">{formatBytes(f.size_bytes, 1)}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground/70">
                       <Clock className="h-2.5 w-2.5" />

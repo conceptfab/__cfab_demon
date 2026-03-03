@@ -71,7 +71,7 @@ function invokeMutation<T>(command: string, args?: Record<string, unknown>): Pro
 
 // Import
 export const importJsonFiles = (filePaths: string[]) =>
-  invoke<ImportResult[]>("import_json_files", { filePaths });
+  invokeMutation<ImportResult[]>("import_json_files", { filePaths });
 
 
 export const getImportedFiles = () =>
@@ -79,7 +79,7 @@ export const getImportedFiles = () =>
 export const getArchiveFiles = () =>
   invoke<ArchivedFile[]>("get_archive_files");
 export const deleteArchiveFile = (fileName: string) =>
-  invoke<void>("delete_archive_file", { fileName });
+  invokeMutation<void>("delete_archive_file", { fileName });
 
 // Projects
 export const getProjects = (dateRange?: DateRange) =>
@@ -140,6 +140,8 @@ export const autoCreateProjectsFromDetection = (
   });
 
 // Dashboard
+export const getActivityDateSpan = () =>
+  invoke<DateRange | null>("get_activity_date_span");
 export const getDashboardStats = (dateRange: DateRange) =>
   invoke<DashboardStats>("get_dashboard_stats", { dateRange });
 export const getTopProjects = (dateRange: DateRange, limit = 8) =>
@@ -286,11 +288,11 @@ export const restartDaemon = () => invoke<void>("restart_daemon");
 // Monitored Apps (daemon config)
 export const getMonitoredApps = () => invoke<MonitoredApp[]>("get_monitored_apps");
 export const addMonitoredApp = (exeName: string, displayName: string) =>
-  invoke<void>("add_monitored_app", { exeName, displayName });
+  invokeMutation<void>("add_monitored_app", { exeName, displayName });
 export const removeMonitoredApp = (exeName: string) =>
-  invoke<void>("remove_monitored_app", { exeName });
+  invokeMutation<void>("remove_monitored_app", { exeName });
 export const renameMonitoredApp = (exeName: string, displayName: string) =>
-  invoke<void>("rename_monitored_app", { exeName, displayName });
+  invokeMutation<void>("rename_monitored_app", { exeName, displayName });
 
 // Refresh & Reset
 export const refreshToday = () =>
@@ -384,7 +386,7 @@ export const getDatabaseSettings = () =>
   invoke<DatabaseSettings>("get_database_settings");
 
 export const updateDatabaseSettings = (settings: DatabaseSettings) =>
-  invoke<void>("update_database_settings", {
+  invokeMutation<void>("update_database_settings", {
     vacuumOnStartup: settings.vacuum_on_startup,
     backupEnabled: settings.backup_enabled,
     backupPath: settings.backup_path,

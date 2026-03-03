@@ -247,98 +247,121 @@ export function Dashboard() {
   };
 
   useEffect(() => {
+    let cancelled = false;
     Promise.allSettled([
       getDashboardStats(dateRange),
-      getProjects(),
       getTopProjects(dateRange, 5),
       getDashboardProjects(dateRange),
-      getProjectTimeline(
-        dateRange,
-        projectTimelineSeriesLimit,
-        timelineGranularity,
-        undefined,
-      ),
-      timePreset === 'today'
-        ? getSessions({
-            dateRange,
-            limit: 500,
-            offset: 0,
-            minDuration:
-              loadSessionSettings().minSessionDurationSeconds || undefined,
-            includeAiSuggestions: false,
-          })
-        : Promise.resolve([] as SessionWithApp[]),
-      timePreset === 'today'
-        ? getManualSessions({ dateRange })
-        : Promise.resolve([] as ManualSessionWithProject[]),
-    ]).then(
-      ([
-        statsRes,
-        projectsCountRes,
-        topProjectsRes,
-        allProjectsRes,
-        timelineRes,
-        todaySessionsRes,
-        manualSessionsRes,
-      ]) => {
-        if (statsRes.status === 'fulfilled') setStats(statsRes.value);
-        else console.error('Failed to load dashboard stats:', statsRes.reason);
+    ]).then(([statsRes, topProjectsRes, allProjectsRes]) => {
+      if (cancelled) return;
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value);
+      else console.error('Failed to load dashboard stats:', statsRes.reason);
 
-        if (projectsCountRes.status === 'fulfilled') {
-          setProjectCount(projectsCountRes.value.length);
-          setProjectsList(projectsCountRes.value);
-        } else
-          console.error(
-            'Failed to load projects count:',
-            projectsCountRes.reason,
-          );
+      if (topProjectsRes.status === 'fulfilled')
+        setTopProjects(topProjectsRes.value);
+      else console.error('Failed to load top projects:', topProjectsRes.reason);
 
-        if (topProjectsRes.status === 'fulfilled')
-          setTopProjects(topProjectsRes.value);
-        else
-          console.error('Failed to load top projects:', topProjectsRes.reason);
+      if (allProjectsRes.status === 'fulfilled')
+        setAllProjects(allProjectsRes.value);
+      else
+        console.error(
+          'Failed to load all projects for chart:',
+          allProjectsRes.reason,
+        );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dateRange, refreshKey]);
 
-        if (allProjectsRes.status === 'fulfilled')
-          setAllProjects(allProjectsRes.value);
-        else
-          console.error(
-            'Failed to load all projects for chart:',
-            allProjectsRes.reason,
-          );
-
-        if (timelineRes.status === 'fulfilled')
-          setProjectTimeline(timelineRes.value);
-        else
-          console.error('Failed to load project timeline:', timelineRes.reason);
-
-        if (todaySessionsRes.status === 'fulfilled')
-          setTodaySessions(todaySessionsRes.value);
-        else {
-          setTodaySessions([]);
-          console.error(
-            'Failed to load today sessions for timeline:',
-            todaySessionsRes.reason,
-          );
+  useEffect(() => {
+    let cancelled = false;
+    getProjects()
+      .then((projects) => {
+        if (cancelled) return;
+        setProjectCount(projects.length);
+        setProjectsList(projects);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          console.error('Failed to load projects count:', reason);
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
 
-        if (manualSessionsRes.status === 'fulfilled')
-          setManualSessions(manualSessionsRes.value);
-        else {
-          setManualSessions([]);
-          console.error(
-            'Failed to load manual sessions:',
-            manualSessionsRes.reason,
-          );
-        }
-      },
-    );
+  useEffect(() => {
+    let cancelled = false;
+    getProjectTimeline(
+      dateRange,
+      projectTimelineSeriesLimit,
+      timelineGranularity,
+      undefined,
+    )
+      .then((timeline) => {
+        if (!cancelled) setProjectTimeline(timeline);
+      })
+      .catch((reason) => {
+        if (!cancelled)
+          console.error('Failed to load project timeline:', reason);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [
     dateRange,
     refreshKey,
-    timelineGranularity,
-    timePreset,
     projectTimelineSeriesLimit,
+    timelineGranularity,
   ]);
+
+  useEffect(() => {
+    if (timePreset !== 'today') {
+      setTodaySessions([]);
+      setManualSessions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+    Promise.allSettled([
+      getSessions({
+        dateRange,
+        limit: 500,
+        offset: 0,
+        minDuration,
+        includeAiSuggestions: false,
+      }),
+      getManualSessions({ dateRange }),
+    ]).then(([todaySessionsRes, manualSessionsRes]) => {
+      if (cancelled) return;
+      if (todaySessionsRes.status === 'fulfilled')
+        setTodaySessions(todaySessionsRes.value);
+      else {
+        setTodaySessions([]);
+        console.error(
+          'Failed to load today sessions for timeline:',
+          todaySessionsRes.reason,
+        );
+      }
+
+      if (manualSessionsRes.status === 'fulfilled')
+        setManualSessions(manualSessionsRes.value);
+      else {
+        setManualSessions([]);
+        console.error(
+          'Failed to load manual sessions:',
+          manualSessionsRes.reason,
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [dateRange, refreshKey, timePreset]);
 
   useEffect(() => {
     setWorkingHours(loadWorkingHoursSettings());

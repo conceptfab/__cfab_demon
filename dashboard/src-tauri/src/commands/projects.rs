@@ -4,6 +4,7 @@ use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
 use super::helpers::{LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
+use super::sql_fragments::{SESSION_PROJECT_CTE, SESSION_PROJECT_CTE_ALL_TIME};
 use super::types::{
     DateRange, FolderProjectCandidate, Project, ProjectDbStats, ProjectExtraInfo, ProjectFolder,
     ProjectWithStats, TopApp,
@@ -1078,63 +1079,19 @@ pub async fn get_project_extra_info(
     // Helper to get weighted extra seconds for a date range and SPECIFIC project ID
     let get_extra_secs =
         |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
+            let sql = format!(
+                "{SESSION_PROJECT_CTE}
+                 SELECT SUM(
+                     CASE
+                         WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
+                         ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
+                     END
+                 )
+                 FROM session_projects sp
+                 WHERE sp.project_id = ?3"
+            );
             conn.query_row(
-                "WITH session_project_overlap AS (
-                SELECT s.id as session_id,
-                       fa.project_id as project_id,
-                       SUM(
-                           MAX(
-                               0,
-                               MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
-                               MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
-                           )
-                       ) as overlap_seconds,
-                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
-                FROM sessions s
-                JOIN file_activities fa
-                  ON fa.app_id = s.app_id
-                 AND fa.date = s.date
-                 AND fa.project_id IS NOT NULL
-                 AND fa.last_seen > s.start_time
-                 AND fa.first_seen < s.end_time
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                GROUP BY s.id, fa.project_id
-            ),
-            ranked_overlap AS (
-                SELECT session_id, project_id, overlap_seconds, span_seconds,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY session_id
-                           ORDER BY overlap_seconds DESC, project_id ASC
-                       ) as rn,
-                       COUNT(*) OVER (PARTITION BY session_id) as project_count
-                FROM session_project_overlap
-            ),
-            session_projects AS (
-                SELECT s.id,
-                       CASE
-                           WHEN s.project_id IS NOT NULL THEN s.project_id
-                           WHEN ro.project_count = 1
-                            AND ro.overlap_seconds * 2 >= ro.span_seconds
-                           THEN ro.project_id
-                           ELSE NULL
-                       END as project_id,
-                       CAST(s.duration_seconds AS REAL) as duration_seconds,
-                       CASE
-                           WHEN s.rate_multiplier IS NULL OR s.rate_multiplier <= 0 THEN 1.0
-                           ELSE s.rate_multiplier
-                       END as rate_multiplier
-                FROM sessions s
-                LEFT JOIN ranked_overlap ro
-                  ON ro.session_id = s.id
-                 AND ro.rn = 1
-                WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-            )
-            SELECT SUM(CASE 
-                        WHEN sp.rate_multiplier <= 1.0 THEN 0.0 
-                        ELSE (sp.duration_seconds * (sp.rate_multiplier - 1.0)) 
-                       END)
-            FROM session_projects sp
-            WHERE sp.project_id = ?3",
+                &sql,
                 rusqlite::params![start, end, p_id],
                 |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0)),
             )
@@ -1202,58 +1159,15 @@ pub async fn get_project_extra_info(
         )
         .map_err(|e| e.to_string())?;
 
+    let comment_and_boost_sql = format!(
+        "{SESSION_PROJECT_CTE_ALL_TIME}
+         SELECT
+             COUNT(*) FILTER (WHERE sp.project_id = ?1 AND sp.comment IS NOT NULL AND sp.comment <> ''),
+             COUNT(*) FILTER (WHERE sp.project_id = ?1 AND sp.safe_rate_multiplier > 1.000001)
+         FROM session_projects sp"
+    );
     let (comment_count, boosted_session_count): (i64, i64) = conn
-        .query_row(
-            "WITH session_project_overlap AS (
-                SELECT s.id as session_id,
-                       fa.project_id as project_id,
-                       MAX(
-                           0,
-                           MIN(strftime('%s', s.end_time), strftime('%s', fa.last_seen)) -
-                           MAX(strftime('%s', s.start_time), strftime('%s', fa.first_seen))
-                       ) as overlap_seconds,
-                       (strftime('%s', s.end_time) - strftime('%s', s.start_time)) as span_seconds
-                FROM sessions s
-                JOIN file_activities fa
-                  ON fa.app_id = s.app_id
-                 AND fa.date = s.date
-                 AND fa.project_id IS NOT NULL
-                 AND fa.last_seen > s.start_time
-                 AND fa.first_seen < s.end_time
-                WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
-                GROUP BY s.id, fa.project_id
-            ),
-            ranked_overlap AS (
-                SELECT session_id, project_id, overlap_seconds, span_seconds,
-                       ROW_NUMBER() OVER (
-                           PARTITION BY session_id
-                           ORDER BY overlap_seconds DESC, project_id ASC
-                       ) as rn,
-                       COUNT(*) OVER (PARTITION BY session_id) as project_count
-                FROM session_project_overlap
-            ),
-            session_projects AS (
-                SELECT s.id, s.comment, s.rate_multiplier,
-                       CASE
-                           WHEN s.project_id IS NOT NULL THEN s.project_id
-                           WHEN ro.project_count = 1
-                            AND ro.overlap_seconds * 2 >= ro.span_seconds
-                           THEN ro.project_id
-                           ELSE NULL
-                       END as project_id
-                FROM sessions s
-                LEFT JOIN ranked_overlap ro
-                  ON ro.session_id = s.id
-                 AND ro.rn = 1
-                WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
-            )
-            SELECT 
-                COUNT(*) FILTER (WHERE sp.project_id = ?1 AND comment IS NOT NULL AND comment <> ''),
-                COUNT(*) FILTER (WHERE sp.project_id = ?1 AND rate_multiplier > 1.000001)
-            FROM session_projects sp",
-            [id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+        .query_row(&comment_and_boost_sql, [id], |row| Ok((row.get(0)?, row.get(1)?)))
         .map_err(|e| e.to_string())?;
 
     // Estimating size: sessions ~150b, file_activities ~150b, manual ~150b, comments +100b
