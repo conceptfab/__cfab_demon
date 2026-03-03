@@ -13,7 +13,7 @@ FINAL_NAME = "timeflow-dashboard.exe"
 
 
 def main():
-    # Zaladuj .env do srodowiska (dla makra option_env! w Rust)
+    # Zaladuj .env do srodowiska procesu buildu (runtime app config during build/run scripts).
     env_file = ROOT / ".env"
     if env_file.exists():
         print(f"   Laduje zmienne z {env_file}")
@@ -59,4 +59,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

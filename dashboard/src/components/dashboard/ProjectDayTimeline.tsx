@@ -76,6 +76,55 @@ type TimelineSortMode = "time_desc" | "alpha_asc";
 
 const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
 const TIMELINE_SAVE_VIEW_STORAGE_KEY = "timeflow-dashboard-activity-timeline-save-view";
+const CONTEXT_MENU_EDGE_PADDING = 8;
+const ASSIGN_MENU_FALLBACK_WIDTH = 320;
+const ASSIGN_MENU_FALLBACK_HEIGHT = 520;
+const TIMELINE_MENU_FALLBACK_WIDTH = 200;
+const TIMELINE_MENU_FALLBACK_HEIGHT = 64;
+
+interface ContextMenuPlacement {
+  left: number;
+  top: number;
+  maxHeight: number;
+}
+
+function normalizeProjectName(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveContextMenuPlacement(
+  menu: CtxMenu,
+  viewportWidth: number,
+  viewportHeight: number,
+  menuSize?: { width: number; height: number } | null
+): ContextMenuPlacement {
+  const fallbackWidth =
+    menu.type === "assign" ? ASSIGN_MENU_FALLBACK_WIDTH : TIMELINE_MENU_FALLBACK_WIDTH;
+  const fallbackHeight =
+    menu.type === "assign" ? ASSIGN_MENU_FALLBACK_HEIGHT : TIMELINE_MENU_FALLBACK_HEIGHT;
+
+  const width = Math.max(fallbackWidth, menuSize?.width ?? 0);
+  const maxHeight = Math.max(180, viewportHeight - CONTEXT_MENU_EDGE_PADDING * 2);
+  const height = Math.min(Math.max(fallbackHeight, menuSize?.height ?? 0), maxHeight);
+
+  const maxLeft = Math.max(
+    CONTEXT_MENU_EDGE_PADDING,
+    viewportWidth - width - CONTEXT_MENU_EDGE_PADDING
+  );
+  const left = Math.min(Math.max(menu.x, CONTEXT_MENU_EDGE_PADDING), maxLeft);
+
+  const overflowsDown = menu.y + height > viewportHeight - CONTEXT_MENU_EDGE_PADDING;
+  const canFlipUp = menu.y - height >= CONTEXT_MENU_EDGE_PADDING;
+  const maxTop = Math.max(
+    CONTEXT_MENU_EDGE_PADDING,
+    viewportHeight - height - CONTEXT_MENU_EDGE_PADDING
+  );
+  const top = overflowsDown && canFlipUp
+    ? menu.y - height
+    : Math.min(Math.max(menu.y, CONTEXT_MENU_EDGE_PADDING), maxTop);
+
+  return { left, top, maxHeight };
+}
 
 function loadTimelineSortMode(): TimelineSortMode {
   if (typeof window === "undefined") return "time_desc";
@@ -278,6 +327,7 @@ export function ProjectDayTimeline({
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [sortMode, setSortMode] = useState<TimelineSortMode>(() => loadTimelineSortMode());
   const [saveView, setSaveView] = useState<boolean>(() => loadTimelineSaveView());
+  const [ctxMenuPlacement, setCtxMenuPlacement] = useState<ContextMenuPlacement | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -307,6 +357,47 @@ export function ProjectDayTimeline({
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
+    };
+  }, [ctxMenu]);
+
+  useEffect(() => {
+    if (!ctxMenu || typeof window === "undefined") {
+      setCtxMenuPlacement(null);
+      return;
+    }
+
+    const updatePlacement = () => {
+      const size = ctxRef.current
+        ? {
+          width: ctxRef.current.offsetWidth,
+          height: ctxRef.current.offsetHeight,
+        }
+        : null;
+      const next = resolveContextMenuPlacement(
+        ctxMenu,
+        window.innerWidth,
+        window.innerHeight,
+        size
+      );
+      setCtxMenuPlacement((prev) => {
+        if (
+          prev &&
+          prev.left === next.left &&
+          prev.top === next.top &&
+          prev.maxHeight === next.maxHeight
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
+
+    updatePlacement();
+    const raf = window.requestAnimationFrame(updatePlacement);
+    window.addEventListener("resize", updatePlacement);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener("resize", updatePlacement);
     };
   }, [ctxMenu]);
 
@@ -599,6 +690,13 @@ export function ProjectDayTimeline({
       : null;
 
     const byProject = new Map<string, TimelineRow>();
+    const projectById = new Map<number, ProjectWithStats>();
+    const projectIdByNormalizedName = new Map<string, number>();
+    for (const project of projects ?? []) {
+      projectById.set(project.id, project);
+      projectIdByNormalizedName.set(normalizeProjectName(project.name), project.id);
+    }
+
     for (const item of valid) {
       const projectName = item.s.project_name ?? tt("Nieprzypisane", "Unassigned");
       const projectColor = item.s.project_color ?? "#64748b";
@@ -618,11 +716,27 @@ export function ProjectDayTimeline({
       const row = byProject.get(key)!;
       row.totalSeconds += item.s.duration_seconds;
       if ((item.s.rate_multiplier ?? 1) > 1.000_001) row.boostedCount++;
-      const suggestedProject = projects?.find(p => p.id === item.s.suggested_project_id);
-      const suggestedName = item.s.suggested_project_name && item.s.suggested_project_name !== "?"
-        ? item.s.suggested_project_name
-        : suggestedProject?.name || "Unknown";
-      const hasValidSuggestion = item.s.suggested_project_id != null;
+
+      const rawSuggestedName = (item.s.suggested_project_name ?? "").trim();
+      const normalizedSuggestedName =
+        rawSuggestedName.length > 0 && rawSuggestedName !== "?"
+          ? rawSuggestedName
+          : undefined;
+      const suggestedIdFromName = normalizedSuggestedName
+        ? projectIdByNormalizedName.get(normalizeProjectName(normalizedSuggestedName))
+        : undefined;
+      const resolvedSuggestedProjectId =
+        suggestedIdFromName ?? item.s.suggested_project_id ?? undefined;
+      const hasValidSuggestion = Boolean(
+        resolvedSuggestedProjectId != null &&
+        projectById.has(resolvedSuggestedProjectId)
+      );
+      const suggestedName =
+        normalizedSuggestedName
+        ?? (resolvedSuggestedProjectId != null
+          ? projectById.get(resolvedSuggestedProjectId)?.name
+          : undefined)
+        ?? "Unknown";
 
       row.segments.push({
         sessionId: item.s.id,
@@ -634,7 +748,7 @@ export function ProjectDayTimeline({
         comment: item.s.comment,
         hasSuggestion: hasValidSuggestion,
         suggestedProjectName: suggestedName,
-        suggestedProjectId: item.s.suggested_project_id,
+        suggestedProjectId: hasValidSuggestion ? resolvedSuggestedProjectId : undefined,
         suggestedConfidence: item.s.suggested_confidence,
       });
     }
@@ -692,7 +806,7 @@ export function ProjectDayTimeline({
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
     for (const project of projects ?? []) {
-      map.set(project.name.toLowerCase(), project.id);
+      map.set(normalizeProjectName(project.name), project.id);
     }
     return map;
   }, [projects]);
@@ -782,7 +896,7 @@ export function ProjectDayTimeline({
             {model.rows.map((row) => (
               <div key={row.name} className="grid grid-cols-[170px_1fr_90px] items-center gap-3">
                 <div
-                  data-project-id={row.isUnassigned ? undefined : projectIdByName.get(row.name.toLowerCase())}
+                  data-project-id={row.isUnassigned ? undefined : projectIdByName.get(normalizeProjectName(row.name))}
                   data-project-name={row.isUnassigned ? undefined : row.name}
                   className={`flex items-center gap-1 text-xs ${row.isUnassigned ? "text-amber-300" : "text-muted-foreground"}`}
                   title={row.name}
@@ -915,8 +1029,12 @@ export function ProjectDayTimeline({
       {ctxMenu && ctxMenu.type === "assign" && (
         <div
           ref={ctxRef}
-          className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          className="fixed z-50 min-w-[240px] max-w-[min(92vw,30rem)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+          style={{
+            left: ctxMenuPlacement?.left ?? ctxMenu.x,
+            top: ctxMenuPlacement?.top ?? ctxMenu.y,
+            maxHeight: `${ctxMenuPlacement?.maxHeight ?? 560}px`,
+          }}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
             {tt('Akcje sesji', 'Session actions')} ({ctxMenu.segment.appName})
@@ -941,25 +1059,13 @@ export function ProjectDayTimeline({
                 <div className="flex items-center gap-1 mt-1.5">
                   <button
                     className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
-                    onClick={() => {
-                      const sessionIds = getSegmentSessionIds(ctxMenu.segment);
-                      if (sessionIds.length > 0 && ctxMenu.segment.suggestedProjectId !== undefined) {
-                        void onAssignSession(sessionIds, ctxMenu.segment.suggestedProjectId);
-                      }
-                      setCtxMenu(null);
-                    }}
+                    onClick={() => void handleAssign(ctxMenu.segment.suggestedProjectId ?? null)}
                   >
                     {tt("Akceptuj", "Accept")}
                   </button>
                   <button
                     className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
-                    onClick={() => {
-                      const sessionIds = getSegmentSessionIds(ctxMenu.segment);
-                      if (sessionIds.length > 0) {
-                        void onAssignSession(sessionIds, null);
-                      }
-                      setCtxMenu(null);
-                    }}
+                    onClick={() => void handleAssign(null)}
                   >
                     {tt("Odrzuć", "Reject")}
                   </button>
@@ -1033,7 +1139,10 @@ export function ProjectDayTimeline({
               <div className="px-2 py-1 text-[11px] text-muted-foreground">
                 {tt('Przypisz do projektu', 'Assign to project')}
               </div>
-              <div className="max-h-[58vh] overflow-y-auto pr-1">
+              <div
+                className="max-h-[min(42vh,20rem)] overflow-y-auto pr-1"
+                style={{ scrollbarGutter: "stable" }}
+              >
                 <button
                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
                   onClick={() => handleAssign(null)}
@@ -1187,8 +1296,11 @@ export function ProjectDayTimeline({
       {ctxMenu && ctxMenu.type === "timeline" && onAddManualSession && (
         <div
           ref={ctxRef}
-          className="fixed z-50 min-w-[180px] rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          className="fixed z-50 min-w-[180px] max-w-[min(92vw,22rem)] rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+          style={{
+            left: ctxMenuPlacement?.left ?? ctxMenu.x,
+            top: ctxMenuPlacement?.top ?? ctxMenu.y,
+          }}
         >
           <button
             className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"

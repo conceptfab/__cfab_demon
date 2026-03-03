@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-# Load .env into environment (for option_env! macro in Rust build)
+# Load .env into process environment for local dev runtime.
 env_file = ROOT / ".env"
 if env_file.exists():
     with open(env_file, "r") as f:

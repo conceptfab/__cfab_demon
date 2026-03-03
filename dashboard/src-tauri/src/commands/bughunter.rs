@@ -21,16 +21,19 @@ pub async fn send_bug_report(
 ) -> Result<BugReportResponse, String> {
     
     // --- SMTP CONFIG ---
-    // Use runtime environment variables so credentials are not embedded in the binary.
+    // Use runtime environment variables so credentials are never embedded in the binary.
     let smtp_server = std::env::var("TIMEFLOW_SMTP_SERVER")
-        .unwrap_or_else(|_| "host372606.hostido.net.pl".to_string());
+        .or_else(|_| std::env::var("SMTP_SERVER"))
+        .map_err(|_| "SMTP server not configured (TIMEFLOW_SMTP_SERVER)".to_string())?;
     let smtp_user = std::env::var("TIMEFLOW_SMTP_USER")
         .or_else(|_| std::env::var("SMTP_USER"))
         .map_err(|_| "SMTP user not configured (TIMEFLOW_SMTP_USER)".to_string())?;
     let smtp_pass = std::env::var("TIMEFLOW_SMTP_PASS")
         .or_else(|_| std::env::var("SMTP_PASS"))
         .map_err(|_| "SMTP password not configured (TIMEFLOW_SMTP_PASS)".to_string())?;
-    let recipient = "michal@conceptfab.com";
+    let recipient = std::env::var("TIMEFLOW_BUGREPORT_RECIPIENT")
+        .or_else(|_| std::env::var("BUGREPORT_RECIPIENT"))
+        .map_err(|_| "Bug report recipient not configured (TIMEFLOW_BUGREPORT_RECIPIENT)".to_string())?;
     // -------------------------
 
     // Sanityzacja nagłówków email — usuwamy \r i \n z subject aby zapobiec header injection
