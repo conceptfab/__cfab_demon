@@ -58,7 +58,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let icon = embed
         .icon_str("APP_ICON", None)
         .expect("APP_ICON not found in resources");
-    
+
     let icon_attention = embed
         .icon_str("APP_ICON_ATTENTION", None)
         .unwrap_or_else(|| {
@@ -157,10 +157,10 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                 if handle == tip_timer_handle {
                     let attention = load_assignment_attention_count();
                     let refreshed_tip = build_tray_tip();
-                    
+
                     let tray = tray_clone.borrow_mut();
                     tray.set_tip(&refreshed_tip);
-                    
+
                     if attention > 0 {
                         tray.set_icon(&icon_attention);
                     } else {
@@ -306,4 +306,3 @@ fn show_error_message(msg: &str) {
         );
     }
 }
-

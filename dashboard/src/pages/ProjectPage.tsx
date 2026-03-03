@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import {
@@ -68,19 +68,28 @@ import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { PROJECT_COLORS } from '@/lib/project-colors';
 
+type AutoSessionRow = SessionWithApp & { isManual: false };
+
+type ManualSessionRow = SessionWithApp &
+  ManualSessionWithProject & {
+    isManual: true;
+  };
+
+type ProjectSessionRow = AutoSessionRow | ManualSessionRow;
+
 type ContextMenu =
   | {
       x: number;
       y: number;
-      session: SessionWithApp;
-      type?: 'session';
+      session: ProjectSessionRow;
+      type: 'session';
     }
   | {
       x: number;
       y: number;
       type: 'chart';
       date: string;
-      sessions: SessionWithApp[];
+      sessions: ProjectSessionRow[];
     };
 
 type RecentCommentItem = {
@@ -129,32 +138,54 @@ export function ProjectPage() {
     }
     return byId;
   }, [recentSessions]);
+  const sessionCountLabel = (count: number) =>
+    `${count} ${tt(
+      count === 1 ? 'sesja' : 'sesji',
+      count === 1 ? 'session' : 'sessions',
+    )}`;
+  const appCountLabel = (count: number) =>
+    `${count} ${tt(
+      count === 1 ? 'aplikacja' : 'aplikacje',
+      count === 1 ? 'app' : 'apps',
+    )}`;
+  const toAutoSessionRow = useCallback(
+    (session: SessionWithApp): AutoSessionRow => ({
+      ...session,
+      isManual: false,
+    }),
+    [],
+  );
+  const toManualSessionRow = useCallback(
+    (session: ManualSessionWithProject): ManualSessionRow => ({
+      ...session,
+      app_id: session.app_id ?? 0,
+      app_name: tt('Sesja ręczna', 'Manual Session'),
+      executable_name: 'manual',
+      project_id: session.project_id,
+      project_name: session.project_name,
+      project_color: session.project_color,
+      comment: session.title,
+      files: [],
+      isManual: true,
+    }),
+    [tt],
+  );
 
   const groupedSessions = useMemo(() => {
     const groups: {
-      [date: string]: (SessionWithApp & { isManual?: boolean })[];
+      [date: string]: ProjectSessionRow[];
     } = {};
 
     recentSessions.forEach((s) => {
       const date = s.start_time.substring(0, 10);
       if (!groups[date]) groups[date] = [];
-      groups[date].push({ ...s, isManual: false });
+      groups[date].push(toAutoSessionRow(s));
     });
 
     manualSessions.forEach((m) => {
       const date = m.start_time.substring(0, 10);
       if (!groups[date]) groups[date] = [];
-      groups[date].push({
-        ...m,
-        app_name: 'Manual Session',
-        executable_name: 'manual',
-        project_id: m.project_id,
-        project_name: m.project_name,
-        project_color: m.project_color,
-        comment: m.title,
-        files: [],
-        isManual: true,
-      } as any);
+      groups[date].push(toManualSessionRow(m));
     });
 
     return Object.entries(groups)
@@ -165,7 +196,7 @@ export function ProjectPage() {
           b.start_time.localeCompare(a.start_time),
         ), // Most recent sessions first within day
       }));
-  }, [recentSessions, manualSessions]);
+  }, [recentSessions, manualSessions, toAutoSessionRow, toManualSessionRow]);
 
   const recentComments = useMemo<RecentCommentItem[]>(() => {
     const automatic = recentSessions
@@ -191,7 +222,7 @@ export function ProjectPage() {
           start_time: m.start_time,
           duration_seconds: m.duration_seconds,
           comment: text,
-          source: 'Manual Session',
+          source: tt('Sesja ręczna', 'Manual Session'),
         };
       })
       .filter((item): item is RecentCommentItem => item !== null);
@@ -199,7 +230,7 @@ export function ProjectPage() {
     return [...automatic, ...manual]
       .sort((a, b) => b.start_time.localeCompare(a.start_time))
       .slice(0, 5);
-  }, [recentSessions, manualSessions]);
+  }, [recentSessions, manualSessions, tt]);
 
   const [estimate, setEstimate] = useState<number>(0);
   const [loading, setLoading] = useState(true);
@@ -207,7 +238,7 @@ export function ProjectPage() {
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
   const [selectedSessionDetail, setSelectedSessionDetail] =
-    useState<SessionWithApp | null>(null);
+    useState<ProjectSessionRow | null>(null);
   const [sessionDialogDate, setSessionDialogDate] = useState<
     string | undefined
   >();
@@ -351,7 +382,10 @@ export function ProjectPage() {
     if (!project) return;
     if (
       !(await confirm(
-        "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
+        tt(
+          'Skompaktować dane tego projektu? Usunie to szczegółową historię aktywności plików, ale zachowa sesje i łączny czas. Tej operacji nie można cofnąć.',
+          "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
+        ),
       ))
     ) {
       return;
@@ -382,7 +416,7 @@ export function ProjectPage() {
 
   const handleContextMenu = (
     e: React.MouseEvent,
-    s: SessionWithApp & { isManual?: boolean },
+    s: ProjectSessionRow,
   ) => {
     e.preventDefault();
     setCtxMenu({
@@ -434,7 +468,12 @@ export function ProjectPage() {
       return true;
     } catch (err) {
       console.error('Failed to save required boost comment:', err);
-      showError(`Failed to save comment required for boost: ${String(err)}`);
+      showError(
+        `${tt(
+          'Nie udało się zapisać wymaganego komentarza dla boosta:',
+          'Failed to save comment required for boost:',
+        )} ${String(err)}`,
+      );
       return false;
     }
   };
@@ -465,8 +504,15 @@ export function ProjectPage() {
     } else if (ctxMenu.type === 'chart' && ctxMenu.sessions.length > 0) {
       const sessions = ctxMenu.sessions;
       setPromptConfig({
-        title: `Comment for ${sessions.length} sessions`,
-        description: 'Apply this comment to all sessions in this group.',
+        title: tt(
+          'Komentarz dla {{count}} sesji',
+          'Comment for {{count}} sessions',
+          { count: sessions.length },
+        ),
+        description: tt(
+          'Zastosuj ten komentarz do wszystkich sesji w tej grupie.',
+          'Apply this comment to all sessions in this group.',
+        ),
         initialValue: sessions[0].comment || '',
         onConfirm: async (raw) => {
           const trimmed = raw.trim();
@@ -485,18 +531,27 @@ export function ProjectPage() {
   };
 
   const handleBulkUnassign = async (
-    sessions: (SessionWithApp & { isManual?: boolean })[],
+    sessions: ProjectSessionRow[],
   ) => {
-    const autoSessions = sessions.filter((s) => !s.isManual);
+    const autoSessions = sessions.filter(
+      (s): s is AutoSessionRow => !s.isManual,
+    );
     if (autoSessions.length === 0) {
       showInfo(
-        'Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.',
+        tt(
+          'Sesji ręcznych nie można odpiąć od projektu (muszą należeć do projektu). Zamiast tego usuń je.',
+          'Manual sessions cannot be unassigned (they must belong to a project). Delete them instead.',
+        ),
       );
       return;
     }
     if (
       !(await confirm(
-        `Unassign ${autoSessions.length} automatic sessions from this project?`,
+        tt(
+          'Odpiąć {{count}} automatycznych sesji z tego projektu?',
+          'Unassign {{count}} automatic sessions from this project?',
+          { count: autoSessions.length },
+        ),
       ))
     )
       return;
@@ -513,13 +568,25 @@ export function ProjectPage() {
   };
 
   const handleBulkDelete = async (
-    sessions: (SessionWithApp & { isManual?: boolean })[],
+    sessions: ProjectSessionRow[],
   ) => {
-    if (!(await confirm(`Permanently delete ${sessions.length} sessions?`)))
+    if (
+      !(await confirm(
+        tt(
+          'Trwale usunąć {{count}} sesji?',
+          'Permanently delete {{count}} sessions?',
+          { count: sessions.length },
+        ),
+      ))
+    )
       return;
     try {
-      const manualIds = sessions.filter((s) => s.isManual).map((s) => s.id);
-      const autoIds = sessions.filter((s) => !s.isManual).map((s) => s.id);
+      const manualIds = sessions
+        .filter((s): s is ManualSessionRow => s.isManual)
+        .map((s) => s.id);
+      const autoIds = sessions
+        .filter((s): s is AutoSessionRow => !s.isManual)
+        .map((s) => s.id);
       await Promise.all([
         deleteManualSessions(manualIds),
         deleteSessions(autoIds),
@@ -527,7 +594,6 @@ export function ProjectPage() {
     } catch (err) {
       console.error(err);
     }
-    setCtxMenu({} as any); // Close menu
     setCtxMenu(null);
   };
 
@@ -536,8 +602,11 @@ export function ProjectPage() {
     const sessionId = session.id;
 
     setPromptConfig({
-      title: 'Session Comment',
-      description: 'Enter a comment for this session (leave empty to remove).',
+      title: tt('Komentarz sesji', 'Session Comment'),
+      description: tt(
+        'Wpisz komentarz do tej sesji (puste pole usunie komentarz).',
+        'Enter a comment for this session (leave empty to remove).',
+      ),
       initialValue: current,
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
@@ -554,9 +623,7 @@ export function ProjectPage() {
     if (!ctxMenu) return;
     const ids =
       ctxMenu.type === 'chart'
-        ? ctxMenu.sessions
-            .filter((s) => !(s as any).isManual)
-            .map((s: SessionWithApp) => s.id)
+        ? ctxMenu.sessions.filter((s) => !s.isManual).map((s) => s.id)
         : [ctxMenu.session.id];
     const currentMultiplier =
       ctxMenu.type === 'session'
@@ -566,11 +633,16 @@ export function ProjectPage() {
           : 1;
 
     setPromptConfig({
-      title: 'Set rate multiplier',
+      title: tt('Ustaw mnożnik stawki', 'Set rate multiplier'),
       description:
         ctxMenu.type === 'chart'
-          ? `Apply to ${ids.length} sessions`
-          : 'Multiplier must be > 0. Use 1 to reset.',
+          ? tt('Zastosuj do {{count}} sesji', 'Apply to {{count}} sessions', {
+              count: ids.length,
+            })
+          : tt(
+              'Mnożnik musi być > 0. Użyj 1, aby zresetować.',
+              'Multiplier must be > 0. Use 1 to reset.',
+            ),
       initialValue: String(currentMultiplier > 1 ? currentMultiplier : 2),
       onConfirm: async (raw) => {
         const parsed = Number(raw.trim().replace(',', '.'));
@@ -598,7 +670,7 @@ export function ProjectPage() {
   if (loading && !project) {
     return (
       <div className="flex h-64 items-center justify-center text-muted-foreground">
-        Loading project details...
+        {tt('Ładowanie szczegółów projektu...', 'Loading project details...')}
       </div>
     );
   }
@@ -610,7 +682,7 @@ export function ProjectPage() {
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" onClick={handleBack} className="h-8">
           <ChevronLeft className="mr-1 h-4 w-4" />
-          Back to Projects
+          {tt('Powrót do projektów', 'Back to Projects')}
         </Button>
         <div className="h-4 w-[1px] bg-border" />
         <h1
@@ -685,7 +757,7 @@ export function ProjectPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Project Overview
+              {tt('Przegląd projektu', 'Project Overview')}
             </CardTitle>
             <div className="flex gap-2">
               <Button
@@ -694,10 +766,13 @@ export function ProjectPage() {
                 onClick={() =>
                   handleAction(
                     () => resetProjectTime(project.id),
-                    'Reset tracked time for this project? This cannot be undone.',
+                    tt(
+                      'Zresetować naliczony czas dla tego projektu? Tej operacji nie można cofnąć.',
+                      'Reset tracked time for this project? This cannot be undone.',
+                    ),
                   )
                 }
-                title="Reset time"
+                title={tt('Zresetuj czas', 'Reset time')}
               >
                 <TimerReset className="h-4 w-4" />
               </Button>
@@ -715,7 +790,9 @@ export function ProjectPage() {
                   )
                 }
                 title={
-                  project.frozen_at ? 'Unfreeze project' : 'Freeze project'
+                  project.frozen_at
+                    ? tt('Odmroź projekt', 'Unfreeze project')
+                    : tt('Zamroź projekt', 'Freeze project')
                 }
               >
                 <Snowflake className="h-4 w-4" />
@@ -727,10 +804,10 @@ export function ProjectPage() {
                 onClick={() =>
                   handleAction(
                     () => excludeProject(project.id),
-                    'Exclude this project?',
+                    tt('Wykluczyć ten projekt?', 'Exclude this project?'),
                   )
                 }
-                title="Exclude project"
+                title={tt('Wyklucz projekt', 'Exclude project')}
               >
                 <CircleOff className="h-4 w-4" />
               </Button>
@@ -739,7 +816,7 @@ export function ProjectPage() {
           <CardContent className="space-y-6">
             <div className="flex flex-col gap-1">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                Total Time / Value
+                {tt('Łączny czas / wartość', 'Total Time / Value')}
               </p>
               <div className="flex items-baseline gap-4">
                 <p className="text-4xl font-[200] text-emerald-400">
@@ -755,7 +832,7 @@ export function ProjectPage() {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div className="rounded-lg bg-secondary/20 p-4 border border-border/40">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  Sessions
+                  {tt('Sesje', 'Sessions')}
                 </p>
                 <p className="text-2xl font-light">
                   {extraInfo?.db_stats.session_count || 0}
@@ -763,7 +840,7 @@ export function ProjectPage() {
               </div>
               <div className="rounded-lg bg-secondary/20 p-4 border border-border/40">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  File Edits
+                  {tt('Edycje plików', 'File Edits')}
                 </p>
                 <p className="text-2xl font-light">
                   {extraInfo?.db_stats.file_activity_count || 0}
@@ -771,7 +848,7 @@ export function ProjectPage() {
               </div>
               <div className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  Manual Sessions
+                  {tt('Sesje ręczne', 'Manual Sessions')}
                 </p>
                 <p className="text-2xl font-light flex items-center justify-between">
                   <span>{extraInfo?.db_stats.manual_session_count || 0}</span>
@@ -784,7 +861,7 @@ export function ProjectPage() {
               </div>
               <div className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  Comments
+                  {tt('Komentarze', 'Comments')}
                 </p>
                 <p className="text-2xl font-light flex items-center justify-between">
                   <span>{extraInfo?.db_stats.comment_count || 0}</span>
@@ -797,7 +874,7 @@ export function ProjectPage() {
               </div>
               <div className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  Boosted Sessions
+                  {tt('Podbite sesje', 'Boosted Sessions')}
                 </p>
                 <p className="text-2xl font-light flex items-center justify-between">
                   <span>{extraInfo?.db_stats.boosted_session_count || 0}</span>
@@ -813,7 +890,7 @@ export function ProjectPage() {
             {project.assigned_folder_path && (
               <div className="space-y-1">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold">
-                  Assigned Folder
+                  {tt('Przypisany folder', 'Assigned Folder')}
                 </p>
                 <p
                   className="text-sm font-mono bg-secondary/30 p-2 rounded truncate transition-colors hover:bg-secondary/50 cursor-default"
@@ -829,7 +906,7 @@ export function ProjectPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              Top Applications
+              {tt('Najczęstsze aplikacje', 'Top Applications')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -853,7 +930,10 @@ export function ProjectPage() {
               ))}
               {(!extraInfo?.top_apps || extraInfo.top_apps.length === 0) && (
                 <p className="text-sm text-muted-foreground italic text-center py-4">
-                  No application data yet
+                  {tt(
+                    'Brak danych o aplikacjach.',
+                    'No application data yet',
+                  )}
                 </p>
               )}
             </div>
@@ -861,7 +941,7 @@ export function ProjectPage() {
             <div className="mt-6 pt-6 border-t border-dashed border-border/60">
               <div className="flex items-center justify-between mb-4">
                 <span className="text-xs text-muted-foreground uppercase font-bold">
-                  Data Management
+                  {tt('Zarządzanie danymi', 'Data Management')}
                 </span>
                 <Badge variant="outline" className="text-[10px] opacity-70">
                   ~
@@ -887,11 +967,13 @@ export function ProjectPage() {
                 ) : (
                   <LayoutDashboard className="mr-2 h-3.5 w-3.5" />
                 )}
-                Compact Detailed Records
+                {tt('Kompaktuj szczegółowe rekordy', 'Compact Detailed Records')}
               </Button>
               <p className="text-[10px] text-muted-foreground mt-2 px-1 leading-tight">
-                Compaction removes detailed file-level history while preserving
-                sessions and total time.
+                {tt(
+                  'Kompakcja usuwa szczegółową historię na poziomie plików, zachowując sesje i łączny czas.',
+                  'Compaction removes detailed file-level history while preserving sessions and total time.',
+                )}
               </p>
             </div>
           </CardContent>
@@ -912,23 +994,10 @@ export function ProjectPage() {
           onBarContextMenu={(date, x, y) => {
             const dayLogSessions = recentSessions
               .filter((s) => s.start_time.startsWith(date))
-              .map((s) => ({ ...s, isManual: false }));
+              .map(toAutoSessionRow);
             const dayManualSessions = manualSessions
               .filter((s) => s.start_time.startsWith(date))
-              .map(
-                (m) =>
-                  ({
-                    ...m,
-                    app_name: 'Manual Session',
-                    executable_name: 'manual',
-                    project_id: m.project_id,
-                    project_name: m.project_name,
-                    project_color: m.project_color,
-                    comment: m.title,
-                    files: [],
-                    isManual: true,
-                  }) as any,
-              );
+              .map(toManualSessionRow);
             const daySessions = [...dayLogSessions, ...dayManualSessions];
             setCtxMenu({
               type: 'chart',
@@ -944,10 +1013,10 @@ export function ProjectPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MousePointerClick className="h-4 w-4 text-sky-400" />
-                  Manual Sessions
-                </div>
+                  <div className="flex items-center gap-2">
+                    <MousePointerClick className="h-4 w-4 text-sky-400" />
+                    {tt('Sesje ręczne', 'Manual Sessions')}
+                  </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -958,7 +1027,7 @@ export function ProjectPage() {
                   }}
                   className="h-6 text-[10px] font-bold text-sky-400 hover:bg-sky-400/10"
                 >
-                  + Add Manual
+                  {tt('+ Dodaj ręczną', '+ Add Manual')}
                 </Button>
               </CardTitle>
             </CardHeader>
@@ -984,14 +1053,17 @@ export function ProjectPage() {
                         {formatDuration(ms.duration_seconds)}
                       </p>
                       <p className="text-[10px] text-muted-foreground uppercase">
-                        Value Added
+                        {tt('Wartość dodana', 'Value Added')}
                       </p>
                     </div>
                   </div>
                 ))}
                 {manualSessions.length === 0 && (
                   <p className="text-sm text-muted-foreground italic text-center py-4">
-                    No manual sessions recorded
+                    {tt(
+                      'Brak zapisanych sesji ręcznych',
+                      'No manual sessions recorded',
+                    )}
                   </p>
                 )}
               </div>
@@ -1002,7 +1074,7 @@ export function ProjectPage() {
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-sky-500" />
-                Recent Comments
+                {tt('Ostatnie komentarze', 'Recent Comments')}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1030,7 +1102,7 @@ export function ProjectPage() {
                   ))}
                 {recentComments.length === 0 && (
                   <p className="text-sm text-muted-foreground italic text-center py-4">
-                    No comments found
+                    {tt('Brak komentarzy', 'No comments found')}
                   </p>
                 )}
               </div>
@@ -1040,15 +1112,18 @@ export function ProjectPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4" />
-                Detailed Session List
-              </div>
-              <span className="text-xs font-normal lowercase text-muted-foreground">
-                right-click to edit sessions
-              </span>
-            </CardTitle>
+              <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4" />
+                  {tt('Szczegółowa lista sesji', 'Detailed Session List')}
+                </div>
+                <span className="text-xs font-normal lowercase text-muted-foreground">
+                  {tt(
+                    'kliknij prawym, aby edytować sesje',
+                    'right-click to edit sessions',
+                  )}
+                </span>
+              </CardTitle>
           </CardHeader>
           <CardContent className="p-0 pb-4">
             <div className="overflow-x-auto text-muted-foreground">
@@ -1075,9 +1150,9 @@ export function ProjectPage() {
                           <div className="flex items-center gap-3">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/30 select-none">
                               {isToday(parseISO(date))
-                                ? 'Today'
+                                ? tt('Dzisiaj', 'Today')
                                 : isYesterday(parseISO(date))
-                                  ? 'Yesterday'
+                                  ? tt('Wczoraj', 'Yesterday')
                                   : format(
                                       parseISO(date),
                                       'EEEE, do MMMM yyyy',
@@ -1085,13 +1160,13 @@ export function ProjectPage() {
                             </span>
                             <div className="h-[1px] flex-1 bg-border/5" />
                             <span className="text-[9px] font-medium text-muted-foreground/20 font-mono italic">
-                              {sessions.length} sessions
+                              {sessionCountLabel(sessions.length)}
                             </span>
                           </div>
                         </td>
                       </tr>
                       {sessions.map((s) => {
-                        const isManual = (s as any).isManual;
+                        const isManual = s.isManual;
                         return (
                           <tr
                             key={`${isManual ? 'm' : 's'}-${s.id}`}
@@ -1129,7 +1204,7 @@ export function ProjectPage() {
                                 />
                                 {isManual ? (
                                   <span className="text-emerald-400 font-medium">
-                                    Manual Session
+                                    {tt('Sesja ręczna', 'Manual Session')}
                                   </span>
                                 ) : (
                                   s.app_name
@@ -1141,18 +1216,24 @@ export function ProjectPage() {
                                 className="flex items-center gap-2 text-sky-200 italic truncate max-w-xs cursor-pointer hover:text-sky-100 transition-colors"
                                 onClick={() => {
                                   if (isManual) {
-                                    setEditManualSession(s as any);
+                                    setEditManualSession(s);
                                     setSessionDialogOpen(true);
                                   } else {
                                     handleEditCommentForSession(s);
                                   }
                                 }}
-                                title={
-                                  s.comment
-                                    ? 'Click to edit'
-                                    : 'Click to add comment'
-                                }
-                              >
+                                  title={
+                                    s.comment
+                                    ? tt(
+                                        'Kliknij, aby edytować',
+                                        'Click to edit',
+                                      )
+                                    : tt(
+                                        'Kliknij, aby dodać komentarz',
+                                        'Click to add comment',
+                                      )
+                                  }
+                                >
                                 {s.comment ? (
                                   <>
                                     <MessageSquare className="h-3 w-3 shrink-0" />
@@ -1182,7 +1263,10 @@ export function ProjectPage() {
                         colSpan={4}
                         className="px-4 py-8 text-center text-muted-foreground italic"
                       >
-                        No sessions found for this project.
+                        {tt(
+                          'Nie znaleziono sesji dla tego projektu.',
+                          'No sessions found for this project.',
+                        )}
                       </td>
                     </tr>
                   )}
@@ -1203,15 +1287,15 @@ export function ProjectPage() {
             <>
               <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground/60 border-b border-white/5 mb-1 flex items-center justify-between">
                 <span>
-                  Session actions (
-                  {
+                  {tt('Akcje sesji', 'Session actions')} (
+                  {appCountLabel(
                     Array.from(new Set(ctxMenu.sessions.map((s) => s.app_name)))
-                      .length
-                  }{' '}
-                  apps)
+                      .length,
+                  )}
+                  )
                 </span>
                 <span className="text-[10px] opacity-40">
-                  {ctxMenu.sessions.length} sessions
+                  {sessionCountLabel(ctxMenu.sessions.length)}
                 </span>
               </div>
 
@@ -1223,7 +1307,11 @@ export function ProjectPage() {
                     new Set(ctxMenu.sessions.map((s) => s.app_name)),
                   ).join(', ');
                   showInfo(
-                    `Bulk action on ${count} sessions - Apps affected: ${apps}`,
+                    tt(
+                      'Akcja grupowa na {{count}} sesjach - Dotknięte aplikacje: {{apps}}',
+                      'Bulk action on {{count}} sessions - Apps affected: {{apps}}',
+                      { count, apps },
+                    ),
                   );
                   setCtxMenu(null);
                 }}
@@ -1238,11 +1326,17 @@ export function ProjectPage() {
 
               <div className="px-3 py-2 space-y-2">
                 <p className="text-[10px] text-muted-foreground/50 leading-tight italic">
-                  Applies to all {ctxMenu.sessions.length} sessions in this
-                  visual chunk
+                  {tt(
+                    'Dotyczy wszystkich {{count}} sesji w tym fragmencie wykresu',
+                    'Applies to all {{count}} sessions in this visual chunk',
+                    { count: ctxMenu.sessions.length },
+                  )}
                 </p>
                 <p className="text-[10px] text-muted-foreground/80 font-medium">
-                  Rate multiplier (default x2):{' '}
+                  {tt(
+                    'Mnożnik stawki (domyślnie x2):',
+                    'Rate multiplier (default x2):',
+                  )}{' '}
                   <span className="text-emerald-400 font-mono">
                     {formatMultiplierLabel(
                       ctxMenu.sessions[0]?.rate_multiplier,
@@ -1259,13 +1353,13 @@ export function ProjectPage() {
                       )
                     }
                   >
-                    Boost x2
+                    {tt('Podbij x2', 'Boost x2')}
                   </button>
                   <button
                     className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/15 active:scale-95 cursor-pointer"
                     onClick={handleCustomRateMultiplier}
                   >
-                    Custom...
+                    {tt('Własny...', 'Custom...')}
                   </button>
                 </div>
               </div>
@@ -1279,8 +1373,8 @@ export function ProjectPage() {
                 <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
                 <span>
                   {ctxMenu.sessions[0]?.comment
-                    ? 'Edit comment'
-                    : 'Add comment'}
+                    ? tt('Edytuj komentarz', 'Edit comment')
+                    : tt('Dodaj komentarz', 'Add comment')}
                 </span>
               </button>
 
@@ -1324,7 +1418,7 @@ export function ProjectPage() {
 
               {(() => {
                 const manuals = ctxMenu.sessions.filter(
-                  (s) => (s as any).isManual,
+                  (s): s is ManualSessionRow => s.isManual,
                 );
                 if (manuals.length === 0) return null;
                 return (
@@ -1334,28 +1428,31 @@ export function ProjectPage() {
                       <button
                         className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 cursor-pointer transition-colors border border-emerald-500/20"
                         onClick={() => {
-                          setEditManualSession(manuals[0] as any);
+                          setEditManualSession(manuals[0]);
                           setSessionDialogOpen(true);
                           setCtxMenu(null);
                         }}
                       >
                         <PenLine className="h-3.5 w-3.5" />
                         <span className="font-bold uppercase tracking-tight">
-                          Edit Manual Session:{' '}
-                          {manuals[0].comment || 'Time log'}
+                          {tt('Edytuj sesję ręczną:', 'Edit Manual Session:')}{' '}
+                          {manuals[0].comment || tt('Log czasu', 'Time log')}
                         </span>
                       </button>
                     ) : (
                       <>
                         <div className="px-3 py-1 text-[9px] uppercase tracking-wider text-emerald-400/50 font-bold">
-                          Manual Sessions (click to edit)
+                          {tt(
+                            'Sesje ręczne (kliknij, aby edytować)',
+                            'Manual Sessions (click to edit)',
+                          )}
                         </div>
                         {manuals.map((ms) => (
                           <button
                             key={ms.id}
                             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors group/ms"
                             onClick={() => {
-                              setEditManualSession(ms as any);
+                              setEditManualSession(ms);
                               setSessionDialogOpen(true);
                               setCtxMenu(null);
                             }}
@@ -1363,11 +1460,12 @@ export function ProjectPage() {
                             <PenLine className="h-3.5 w-3.5 text-emerald-400" />
                             <div className="flex flex-col items-start leading-none truncate">
                               <span className="font-medium">
-                                Edit: {ms.comment || 'Manual Session'}
+                                {tt('Edytuj:', 'Edit:')}{' '}
+                                {ms.comment || tt('Sesja ręczna', 'Manual Session')}
                               </span>
                               <span className="text-[9px] text-muted-foreground mt-0.5">
-                                {formatDuration(ms.duration_seconds)} manual
-                                record
+                                {formatDuration(ms.duration_seconds)}{' '}
+                                {tt('wpis ręczny', 'manual record')}
                               </span>
                             </div>
                           </button>
@@ -1403,10 +1501,13 @@ export function ProjectPage() {
                 </div>
                 <div className="flex flex-col items-start leading-none text-left">
                   <span className="font-medium text-xs">
-                    Add manual session
+                    {tt('Dodaj sesję ręczną', 'Add manual session')}
                   </span>
                   <span className="text-[10px] text-muted-foreground">
-                    Log time for this slot
+                    {tt(
+                      'Zarejestruj czas dla tego przedziału',
+                      'Log time for this slot',
+                    )}
                   </span>
                 </div>
               </button>
@@ -1422,7 +1523,7 @@ export function ProjectPage() {
         </div>
       )}
 
-      {ctxMenu && (ctxMenu.type === 'session' || !ctxMenu.type) && (
+      {ctxMenu?.type === 'session' && (
         <div
           ref={ctxRef}
           className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-y-auto rounded-md border border-white/10 bg-[#1a1b26]/95 p-1 text-popover-foreground shadow-2xl animate-in fade-in-0 zoom-in-95 backdrop-blur-xl"
@@ -1432,13 +1533,15 @@ export function ProjectPage() {
             <span>
               {tt('Akcje sesji (1 aplikacja)', 'Session actions (1 app)')}
             </span>
-            <span className="text-[10px] opacity-40">1 session</span>
+            <span className="text-[10px] opacity-40">
+              {sessionCountLabel(1)}
+            </span>
           </div>
 
           <button
             className="flex w-full items-center justify-between rounded-sm px-2 py-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
             onClick={() => {
-              setSelectedSessionDetail((ctxMenu as any).session);
+              setSelectedSessionDetail(ctxMenu.session);
               setSessionDetailOpen(true);
               setCtxMenu(null);
             }}
@@ -1449,33 +1552,39 @@ export function ProjectPage() {
             <span className="text-[10px] text-muted-foreground/50 mr-1">1</span>
           </button>
 
-          {!(ctxMenu as any).session.isManual && (
+          {!ctxMenu.session.isManual && (
             <>
               <div className="px-3 py-2 space-y-2">
                 <p className="text-[10px] text-muted-foreground/50 leading-tight">
-                  Applies to this session record
+                  {tt(
+                    'Dotyczy tego rekordu sesji',
+                    'Applies to this session record',
+                  )}
                 </p>
                 <p className="text-[10px] text-muted-foreground/80 font-medium">
-                  Rate multiplier (default x2):{' '}
+                  {tt(
+                    'Mnożnik stawki (domyślnie x2):',
+                    'Rate multiplier (default x2):',
+                  )}{' '}
                   <span className="text-emerald-400">
                     x
-                    {((ctxMenu as any).session.rate_multiplier || 1).toFixed(1)}
+                    {(ctxMenu.session.rate_multiplier || 1).toFixed(1)}
                   </span>
                 </p>
                 <div className="flex gap-2">
                   <button
                     className="flex-1 flex items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 cursor-pointer"
                     onClick={() =>
-                      handleSetRateMultiplier(2, [(ctxMenu as any).session.id])
+                      handleSetRateMultiplier(2, [ctxMenu.session.id])
                     }
                   >
-                    Boost x2
+                    {tt('Podbij x2', 'Boost x2')}
                   </button>
                   <button
                     className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/10 active:scale-95 cursor-pointer"
                     onClick={handleCustomRateMultiplier}
                   >
-                    Custom...
+                    {tt('Własny...', 'Custom...')}
                   </button>
                 </div>
               </div>
@@ -1486,7 +1595,7 @@ export function ProjectPage() {
           <button
             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
             onClick={() => {
-              const s = (ctxMenu as any).session;
+              const s = ctxMenu.session;
               if (s.isManual) {
                 setEditManualSession(s);
                 setSessionDialogOpen(true);
@@ -1496,7 +1605,7 @@ export function ProjectPage() {
               setCtxMenu(null);
             }}
           >
-            {(ctxMenu as any).session.isManual ? (
+            {ctxMenu.session.isManual ? (
               <>
                 <PenLine className="h-3.5 w-3.5 text-emerald-400" />
                 <span>{tt('Edytuj sesję ręczną', 'Edit manual session')}</span>
@@ -1505,9 +1614,9 @@ export function ProjectPage() {
               <>
                 <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
                 <span>
-                  {(ctxMenu as any).session.comment
-                    ? 'Edit comment'
-                    : 'Add comment'}
+                  {ctxMenu.session.comment
+                    ? tt('Edytuj komentarz', 'Edit comment')
+                    : tt('Dodaj komentarz', 'Add comment')}
                 </span>
               </>
             )}
@@ -1528,9 +1637,17 @@ export function ProjectPage() {
           <button
             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-red-500/10 text-red-400/70 hover:text-red-400 cursor-pointer transition-colors group"
             onClick={async () => {
-              if (await confirm('Delete this session?')) {
+              if (
+                await confirm(
+                  tt('Usunąć tę sesję?', 'Delete this session?'),
+                )
+              ) {
                 try {
-                  await deleteSessions((ctxMenu as any).session.id);
+                  if (ctxMenu.session.isManual) {
+                    await deleteManualSessions(ctxMenu.session.id);
+                  } else {
+                    await deleteSessions(ctxMenu.session.id);
+                  }
                   setCtxMenu(null);
                 } catch (err) {
                   console.error(err);
@@ -1556,7 +1673,7 @@ export function ProjectPage() {
         description={promptConfig?.description}
         initialValue={promptConfig?.initialValue ?? ''}
         onConfirm={promptConfig?.onConfirm ?? (() => {})}
-        confirmLabel="Save"
+        confirmLabel={tt('Zapisz', 'Save')}
       />
 
       <Dialog open={sessionDetailOpen} onOpenChange={setSessionDetailOpen}>
@@ -1579,25 +1696,26 @@ export function ProjectPage() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mt-4">
                 <div className="rounded-md border border-white/5 bg-white/5 p-3">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    Project
+                    {tt('Projekt', 'Project')}
                   </p>
                   <p className="truncate text-sm font-medium mt-1">
-                    {selectedSessionDetail.project_name || 'Unassigned'}
+                    {selectedSessionDetail.project_name ||
+                      tt('Nieprzypisane', 'Unassigned')}
                   </p>
                 </div>
                 <div className="rounded-md border border-white/5 bg-white/5 p-3">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    App / Activity
+                    {tt('Aplikacja / Aktywność', 'App / Activity')}
                   </p>
                   <p className="truncate text-sm font-medium mt-1">
-                    {(selectedSessionDetail as any).isManual
-                      ? 'Manual Session'
+                    {selectedSessionDetail.isManual
+                      ? tt('Sesja ręczna', 'Manual Session')
                       : selectedSessionDetail.app_name}
                   </p>
                 </div>
                 <div className="rounded-md border border-white/5 bg-white/5 p-3">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    Time Range
+                    {tt('Zakres czasu', 'Time Range')}
                   </p>
                   <p className="text-sm font-mono mt-1">
                     {format(
@@ -1616,7 +1734,7 @@ export function ProjectPage() {
                 </div>
                 <div className="rounded-md border border-white/5 bg-white/5 p-3">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    Duration
+                    {tt('Czas trwania', 'Duration')}
                   </p>
                   <p className="text-sm font-mono mt-1 text-emerald-400">
                     {formatDuration(selectedSessionDetail.duration_seconds)}
@@ -1624,7 +1742,7 @@ export function ProjectPage() {
                 </div>
                 <div className="rounded-md border border-white/5 bg-white/5 p-3">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    Rate Multiplier
+                    {tt('Mnożnik stawki', 'Rate Multiplier')}
                   </p>
                   <p className="text-sm font-medium mt-1">
                     x{(selectedSessionDetail.rate_multiplier || 1).toFixed(2)}
@@ -1636,7 +1754,9 @@ export function ProjectPage() {
                   </p>
                   <p className="text-sm font-mono mt-1 text-muted-foreground">
                     #{selectedSessionDetail.id}{' '}
-                    {(selectedSessionDetail as any).isManual ? '(Manual)' : ''}
+                    {selectedSessionDetail.isManual
+                      ? tt('(Ręczna)', '(Manual)')
+                      : ''}
                   </p>
                 </div>
               </div>
@@ -1645,7 +1765,7 @@ export function ProjectPage() {
                 <div className="mt-4 rounded-md border border-sky-500/20 bg-sky-500/5 p-3">
                   <p className="text-[10px] uppercase tracking-wider text-sky-400 font-bold flex items-center gap-1.5">
                     <MessageSquare className="h-3 w-3" />
-                    Comment
+                    {tt('Komentarz', 'Comment')}
                   </p>
                   <p className="mt-1 text-sm italic text-sky-100/90 leading-relaxed">
                     "{selectedSessionDetail.comment}"
@@ -1657,7 +1777,7 @@ export function ProjectPage() {
                 selectedSessionDetail.files.length > 0 && (
                   <div className="mt-4 space-y-2">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                      Files Accessed
+                      {tt('Użyte pliki', 'Files Accessed')}
                     </p>
                     <div className="max-h-[200px] overflow-y-auto rounded-md border border-white/5 bg-white/5 p-2 space-y-1">
                       {selectedSessionDetail.files.map((f, i) => (
@@ -1686,18 +1806,18 @@ export function ProjectPage() {
                   className="border-white/10"
                   onClick={() => setSessionDetailOpen(false)}
                 >
-                  Close
+                  {tt('Zamknij', 'Close')}
                 </Button>
-                {(selectedSessionDetail as any).isManual ? (
+                {selectedSessionDetail.isManual ? (
                   <Button
                     className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     onClick={() => {
-                      setEditManualSession(selectedSessionDetail as any);
+                      setEditManualSession(selectedSessionDetail);
                       setSessionDetailOpen(false);
                       setSessionDialogOpen(true);
                     }}
                   >
-                    Edit Manual Session
+                    {tt('Edytuj sesję ręczną', 'Edit Manual Session')}
                   </Button>
                 ) : (
                   <Button
@@ -1707,7 +1827,7 @@ export function ProjectPage() {
                       setSessionDetailOpen(false);
                     }}
                   >
-                    Edit Comment
+                    {tt('Edytuj komentarz', 'Edit Comment')}
                   </Button>
                 )}
               </div>

@@ -65,20 +65,36 @@ fn daily_path(date: NaiveDate) -> Result<PathBuf> {
 
 /// Ścieżka do pliku dziennego w archive/
 fn archive_path(date: NaiveDate) -> Result<PathBuf> {
-    Ok(config::config_dir()?.join("archive").join(format!("{}.json", date.format("%Y-%m-%d"))))
+    Ok(config::config_dir()?
+        .join("archive")
+        .join(format!("{}.json", date.format("%Y-%m-%d"))))
 }
 
 #[cfg(windows)]
 fn atomic_replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     // Atomic replace using MoveFileExW — no window where the target file is missing
-    let from_wide: Vec<u16> = from.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-    let to_wide: Vec<u16> = to.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+    let from_wide: Vec<u16> = from
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let to_wide: Vec<u16> = to
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
     const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
     extern "system" {
         fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
     }
-    let ret = unsafe { MoveFileExW(from_wide.as_ptr(), to_wide.as_ptr(), MOVEFILE_REPLACE_EXISTING) };
+    let ret = unsafe {
+        MoveFileExW(
+            from_wide.as_ptr(),
+            to_wide.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING,
+        )
+    };
     if ret == 0 {
         Err(std::io::Error::last_os_error())
     } else {
@@ -138,13 +154,16 @@ fn load_from_archive_or_empty(date: NaiveDate) -> DailyData {
                 log::warn!("Error parsing daily file from archive/: {}", e);
                 empty_daily(date)
             });
-            
+
             // Jeśli udało się załadować z archive, przywróć do data/ żeby demon mógł kontynuować
-            log::info!("Przywracanie danych z archive/ do data/ dla daty {}", date.format("%Y-%m-%d"));
+            log::info!(
+                "Przywracanie danych z archive/ do data/ dla daty {}",
+                date.format("%Y-%m-%d")
+            );
             if let Err(e) = save_daily(&mut data) {
                 log::warn!("Failed to restore data from archive/: {}", e);
             }
-            
+
             data
         }
         Err(e) => {
@@ -178,7 +197,12 @@ pub fn save_daily(data: &mut DailyData) -> Result<()> {
         .with_context(|| format!("Zapis tymczasowy: {:?}", tmp_path))?;
     if let Err(e) = atomic_replace_file(&tmp_path, &path) {
         // Przy błędzie rename NIE usuwamy tmp — plik może służyć do odzyskania danych
-        log::error!("Rename {:?} → {:?} nie powiódł się: {}. Plik tmp pozostaje.", tmp_path, path, e);
+        log::error!(
+            "Rename {:?} → {:?} nie powiódł się: {}. Plik tmp pozostaje.",
+            tmp_path,
+            path,
+            e
+        );
         return Err(e.into());
     }
 
@@ -221,4 +245,3 @@ pub(crate) fn format_duration(seconds: u64) -> String {
     let s = seconds % 60;
     format!("{}h {}m {}s", h, m, s)
 }
-

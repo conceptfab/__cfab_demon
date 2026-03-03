@@ -152,7 +152,8 @@ fn load_state_map(conn: &rusqlite::Connection) -> Result<HashMap<String, String>
         .map_err(|e| e.to_string())?;
 
     let mut state = HashMap::new();
-    for row in rows.flatten() {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read assignment_model_state row: {}", e))?;
         state.insert(row.0, row.1);
     }
     Ok(state)
@@ -191,7 +192,7 @@ fn increment_feedback_counter(conn: &rusqlite::Connection) {
 /// Check if a session has a manual override that forces it to a specific project.
 /// Returns Some(project_id) if override exists and target project is valid, None otherwise.
 fn check_manual_override(conn: &rusqlite::Connection, session_id: i64) -> Option<i64> {
-    let meta = conn
+    let meta = match conn
         .query_row(
             "SELECT a.executable_name, s.start_time, s.end_time
              FROM sessions s
@@ -207,12 +208,21 @@ fn check_manual_override(conn: &rusqlite::Connection, session_id: i64) -> Option
             },
         )
         .optional()
-        .ok()
-        .flatten()?;
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Failed to read session metadata for manual override check (session_id={}): {}",
+                session_id,
+                e
+            );
+            return None;
+        }
+    }?;
 
     let (exe_name, start_time, end_time) = meta;
 
-    let project_name: Option<String> = conn
+    let project_name: Option<String> = match conn
         .query_row(
             "SELECT project_name
              FROM session_manual_overrides
@@ -229,23 +239,42 @@ fn check_manual_override(conn: &rusqlite::Connection, session_id: i64) -> Option
             |row| row.get(0),
         )
         .optional()
-        .ok()
-        .flatten()?;
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Failed to read manual override mapping (session_id={}): {}",
+                session_id,
+                e
+            );
+            return None;
+        }
+    };
 
     let project_name = project_name?;
 
-    conn.query_row(
-        "SELECT id FROM projects
+    match conn
+        .query_row(
+            "SELECT id FROM projects
          WHERE lower(name) = lower(?1)
            AND excluded_at IS NULL
            AND frozen_at IS NULL
          LIMIT 1",
-        rusqlite::params![project_name],
-        |row| row.get::<_, i64>(0),
-    )
-    .optional()
-    .ok()
-    .flatten()
+            rusqlite::params![project_name],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Failed to resolve target project for manual override (session_id={}): {}",
+                session_id,
+                e
+            );
+            None
+        }
+    }
 }
 
 fn is_project_active(conn: &rusqlite::Connection, project_id: i64) -> bool {
@@ -569,7 +598,8 @@ fn fetch_unassigned_session_ids(
     let rows = stmt
         .query_map(params_ref.as_slice(), |row| row.get::<_, i64>(0))
         .map_err(|e| e.to_string())?;
-    Ok(rows.flatten().collect())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read unassigned session id row: {}", e))
 }
 
 #[command]
@@ -983,7 +1013,8 @@ pub(crate) fn suggest_projects_for_sessions_with_status(
     }
 
     for &session_id in session_ids {
-        if let Some(suggestion) = suggest_project_for_session_with_status(conn, status, session_id)? {
+        if let Some(suggestion) = suggest_project_for_session_with_status(conn, status, session_id)?
+        {
             out.insert(session_id, suggestion);
         }
     }
@@ -1420,7 +1451,8 @@ pub async fn apply_deterministic_assignment(
                 Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
             })
             .map_err(|e| e.to_string())?;
-        rows.filter_map(|r| r.ok()).collect()
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read deterministic app rule row: {}", e))?
     };
 
     let apps_with_rules = app_rules.len() as i64;
@@ -1474,7 +1506,8 @@ pub async fn apply_deterministic_assignment(
                     ))
                 })
                 .map_err(|e| e.to_string())?;
-            rows.filter_map(|r| r.ok()).collect()
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("Failed to read deterministic session row: {}", e))?
         };
 
         for (session_id, date, start_time, end_time) in &session_ids {

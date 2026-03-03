@@ -64,6 +64,13 @@ interface GroupedProject {
 type RangeMode = 'daily' | 'weekly';
 const UNASSIGNED_GROUP_KEY = '__unassigned__';
 
+function readMinSessionDuration(): number | undefined {
+  const settings = loadSessionSettings();
+  return settings.minSessionDurationSeconds > 0
+    ? settings.minSessionDurationSeconds
+    : undefined;
+}
+
 export function Sessions() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
@@ -135,11 +142,11 @@ export function Sessions() {
     if (el) scrollParentRef.current = el;
   }, []);
   const PAGE_SIZE = 100;
-  const minDuration = useMemo(() => {
-    const s = loadSessionSettings();
-    return s.minSessionDurationSeconds > 0
-      ? s.minSessionDurationSeconds
-      : undefined;
+  const [minDuration, setMinDuration] = useState<number | undefined>(() =>
+    readMinSessionDuration(),
+  );
+  useEffect(() => {
+    setMinDuration(readMinSessionDuration());
   }, [refreshKey]);
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
   const canShiftForward = anchorDate < today;

@@ -516,9 +516,9 @@ export function AIPage() {
                   value={mode}
                   onChange={(e) => { setMode(e.target.value as AssignmentMode); dirtyRef.current = true; }}
                 >
-                  <option value="off">off</option>
-                  <option value="suggest">suggest</option>
-                  <option value="auto_safe">auto_safe</option>
+                  <option value="off">{t('Wyłączony (ręczny)', 'Off (manual)')}</option>
+                  <option value="suggest">{t('Sugestie AI', 'AI suggestions')}</option>
+                  <option value="auto_safe">{t('Auto-safe', 'Auto-safe')}</option>
                 </select>
               </label>
 

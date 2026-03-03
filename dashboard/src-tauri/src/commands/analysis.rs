@@ -95,12 +95,15 @@ pub(crate) fn compute_project_activity_unique(
     hourly: bool,
     active_only: bool,
     project_id_filter: Option<i64>,
-) -> Result<(
-    BTreeMap<String, HashMap<String, f64>>,
-    HashMap<String, f64>,
-    HashMap<String, (bool, bool)>,
-    HashMap<String, Vec<String>>,
-), String> {
+) -> Result<
+    (
+        BTreeMap<String, HashMap<String, f64>>,
+        HashMap<String, f64>,
+        HashMap<String, (bool, bool)>,
+        HashMap<String, Vec<String>>,
+    ),
+    String,
+> {
     let bucket_kind = if hourly {
         BucketKind::Hour
     } else {
@@ -152,25 +155,32 @@ pub(crate) fn compute_project_activity_unique(
          WHERE ms.date >= ?1 AND ms.date <= ?2 AND (?3 = 0 OR p.excluded_at IS NULL)
            AND (?4 IS NULL OR ms.project_id = ?4)"
     );
-    let mut stmt = conn
-        .prepare_cached(&sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![date_range.start, date_range.end, active_only as i32, project_id_filter], |row| {
-            Ok((
-                row.get::<_, String>(0)?, // start_time
-                row.get::<_, String>(1)?, // end_time
-                row.get::<_, String>(2)?, // project_name
-                row.get::<_, f64>(3)?,    // multiplier
-                row.get::<_, i32>(4)?,    // is_manual
-                row.get::<_, Option<String>>(6)?, // comment
-            ))
-        })
+        .query_map(
+            rusqlite::params![
+                date_range.start,
+                date_range.end,
+                active_only as i32,
+                project_id_filter
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,         // start_time
+                    row.get::<_, String>(1)?,         // end_time
+                    row.get::<_, String>(2)?,         // project_name
+                    row.get::<_, f64>(3)?,            // multiplier
+                    row.get::<_, i32>(4)?,            // is_manual
+                    row.get::<_, Option<String>>(6)?, // comment
+                ))
+            },
+        )
         .map_err(|e| e.to_string())?;
 
     let mut intervals: Vec<IntervalRow> = Vec::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project activity row: {}", e))?;
         let Some(start) = parse_local_timestamp(&row.0) else {
             continue;
         };
@@ -196,7 +206,12 @@ pub(crate) fn compute_project_activity_unique(
     }
 
     if intervals.is_empty() {
-        return Ok((BTreeMap::new(), HashMap::new(), HashMap::new(), HashMap::new()));
+        return Ok((
+            BTreeMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+            HashMap::new(),
+        ));
     }
 
     let mut bucket_pieces: BTreeMap<String, Vec<BucketPiece>> = BTreeMap::new();
@@ -257,8 +272,12 @@ pub(crate) fn compute_project_activity_unique(
         let mut has_manual = false;
         let mut comments = Vec::new();
         for s in &slices {
-            if s.multiplier > 1.000_001 { has_boost = true; }
-            if s.is_manual { has_manual = true; }
+            if s.multiplier > 1.000_001 {
+                has_boost = true;
+            }
+            if s.is_manual {
+                has_manual = true;
+            }
             if let Some(c) = &s.comment {
                 if !c.trim().is_empty() {
                     comments.push(c.clone());
@@ -277,7 +296,12 @@ pub(crate) fn compute_project_activity_unique(
             if slice.end_ms <= slice.start_ms {
                 continue;
             }
-            events.push((slice.start_ms, 1, slice.project_name.clone(), slice.multiplier));
+            events.push((
+                slice.start_ms,
+                1,
+                slice.project_name.clone(),
+                slice.multiplier,
+            ));
             events.push((slice.end_ms, -1, slice.project_name, slice.multiplier));
         }
         if events.is_empty() {
@@ -296,9 +320,15 @@ pub(crate) fn compute_project_activity_unique(
                 let delta_seconds = (current_ms - prev_ms) as f64 / 1000.0;
                 let active_items: Vec<(String, f64)> = active
                     .iter()
-                    .filter_map(|(name, (count, mult))| if *count > 0 { Some((name.clone(), *mult)) } else { None })
+                    .filter_map(|(name, (count, mult))| {
+                        if *count > 0 {
+                            Some((name.clone(), *mult))
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
-                
+
                 if !active_items.is_empty() {
                     let share = delta_seconds / active_items.len() as f64;
                     for (name, mult) in active_items {
@@ -371,9 +401,8 @@ pub async fn get_heatmap(
         })
         .map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read heatmap row: {}", e))
 }
 
 #[tauri::command]
@@ -417,13 +446,23 @@ pub async fn get_stacked_timeline(
     let mut date_map: std::collections::BTreeMap<String, HashMap<String, i64>> =
         std::collections::BTreeMap::new();
 
-    for row in rows.filter_map(|r| r.ok()) {
-        date_map.entry(row.0).or_default().insert(row.1, row.2.round() as i64);
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read stacked timeline row: {}", e))?;
+        date_map
+            .entry(row.0)
+            .or_default()
+            .insert(row.1, row.2.round() as i64);
     }
 
     Ok(date_map
         .into_iter()
-        .map(|(date, data)| StackedBarData { date, data, has_boost: false, has_manual: false, comments: Vec::new() })
+        .map(|(date, data)| StackedBarData {
+            date,
+            data,
+            has_boost: false,
+            has_manual: false,
+            comments: Vec::new(),
+        })
         .collect())
 }
 
@@ -481,7 +520,13 @@ pub async fn get_project_timeline(
         }
         let (has_boost, has_manual) = bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
         let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
-        output.push(StackedBarData { date: bucket, data, has_boost, has_manual, comments });
+        output.push(StackedBarData {
+            date: bucket,
+            data,
+            has_boost,
+            has_manual,
+            comments,
+        });
     }
 
     Ok(output)

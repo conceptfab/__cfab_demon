@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
@@ -11,8 +11,6 @@ use super::types::{
 };
 use crate::db;
 use rusqlite::OptionalExtension;
-
-
 
 pub(crate) fn load_project_folders_from_db(
     conn: &rusqlite::Connection,
@@ -28,9 +26,8 @@ pub(crate) fn load_project_folders_from_db(
             })
         })
         .map_err(|e| e.to_string())?;
-    Ok(rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read project_folders row: {}", e))
 }
 
 fn cleanup_missing_project_folders(conn: &rusqlite::Connection) -> Result<usize, String> {
@@ -206,6 +203,7 @@ pub(crate) fn create_project_if_missing(
 /// Checks if the file path suggests it belongs to a project
 fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> Option<String> {
     let path = std::path::Path::new(file_path);
+    let normalized_path = path.to_string_lossy().replace('\\', "/").to_lowercase();
 
     // Check each project folder
     for root in project_roots {
@@ -220,6 +218,27 @@ fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> 
                 }
             }
             Err(_) => {}
+        }
+
+        // Windows filesystems are commonly case-insensitive, but strip_prefix is not.
+        // Fallback to a normalized lowercase comparison to avoid missed matches.
+        if cfg!(windows) {
+            let normalized_root = root_path
+                .to_string_lossy()
+                .replace('\\', "/")
+                .to_lowercase();
+            let prefix = if normalized_root.ends_with('/') {
+                normalized_root.clone()
+            } else {
+                format!("{}/", normalized_root)
+            };
+            if let Some(relative_path) = normalized_path.strip_prefix(&prefix) {
+                if let Some(first_component) =
+                    relative_path.split('/').find(|segment| !segment.is_empty())
+                {
+                    return Some(first_component.to_string());
+                }
+            }
         }
     }
     None
@@ -415,8 +434,8 @@ fn query_projects_with_stats(
         })
         .map_err(|e| e.to_string())?;
     let mut out: Vec<ProjectWithStats> = rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect();
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read project stats row: {}", e))?;
 
     if excluded {
         out.sort_by(|a, b| {
@@ -989,16 +1008,21 @@ pub async fn auto_create_projects_from_detection(
         .map_err(|e| e.to_string())?;
 
     // Load app display names to avoid creating projects from app names
-    let app_names: Vec<String> = conn
-        .prepare_cached("SELECT LOWER(display_name) FROM applications")
-        .and_then(|mut s| {
-            s.query_map([], |row| row.get::<_, String>(0))
-                .map(|rows| rows.filter_map(|r| r.ok()).collect())
-        })
-        .unwrap_or_default();
+    let app_names: HashSet<String> = {
+        let mut stmt = conn
+            .prepare_cached("SELECT LOWER(display_name) FROM applications")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<HashSet<_>, _>>()
+            .map_err(|e| format!("Failed to read application display_name row: {}", e))?
+    };
 
     let mut created = 0usize;
-    for file_name in rows.filter_map(|r| r.ok()) {
+    for file_name in rows {
+        let file_name =
+            file_name.map_err(|e| format!("Failed to read file_activities row: {}", e))?;
         let candidate = file_name.trim();
         if candidate.is_empty() || candidate.len() > 200 || candidate.contains(['/', '\\', '\0']) {
             continue;
@@ -1090,11 +1114,9 @@ pub async fn get_project_extra_info(
                  FROM session_projects sp
                  WHERE sp.project_id = ?3"
             );
-            conn.query_row(
-                &sql,
-                rusqlite::params![start, end, p_id],
-                |row| Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0)),
-            )
+            conn.query_row(&sql, rusqlite::params![start, end, p_id], |row| {
+                Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
+            })
             .map_err(|e| e.to_string())
         };
 
@@ -1167,7 +1189,9 @@ pub async fn get_project_extra_info(
          FROM session_projects sp"
     );
     let (comment_count, boosted_session_count): (i64, i64) = conn
-        .query_row(&comment_and_boost_sql, [id], |row| Ok((row.get(0)?, row.get(1)?)))
+        .query_row(&comment_and_boost_sql, [id], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
         .map_err(|e| e.to_string())?;
 
     // Estimating size: sessions ~150b, file_activities ~150b, manual ~150b, comments +100b
@@ -1198,8 +1222,8 @@ pub async fn get_project_extra_info(
             })
         })
         .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read top app row: {}", e))?;
 
     Ok(ProjectExtraInfo {
         current_value,

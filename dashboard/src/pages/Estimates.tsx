@@ -165,7 +165,7 @@ export function Estimates() {
     return () => {
       cancelled = true;
     };
-  }, [dateRange.start, dateRange.end, refreshKey]);
+  }, [dateRange, refreshKey, t]);
 
   const handleSaveGlobalRate = async () => {
     const parsed = parseRateInput(globalRateInput);

@@ -458,7 +458,7 @@ export function ProjectDayTimeline({
         setCtxMenu(null);
       }
     },
-    [ctxMenu, onAssignSession]
+    [ctxMenu, onAssignSession, showError]
   );
 
   const ensureCommentForBoost = useCallback(
@@ -505,7 +505,7 @@ export function ProjectDayTimeline({
         return false;
       }
     },
-    [onUpdateSessionComment, sessions]
+    [onUpdateSessionComment, sessions, showError, showInfo, t]
   );
 
   const handleSetRateMultiplier = useCallback(
@@ -525,7 +525,7 @@ export function ProjectDayTimeline({
         showError(`Failed to update session rate multiplier: ${String(err)}`);
       }
     },
-    [ctxMenu, ensureCommentForBoost, onUpdateSessionRateMultiplier]
+    [ctxMenu, ensureCommentForBoost, onUpdateSessionRateMultiplier, showError]
   );
 
   const handleCustomRateMultiplier = useCallback(async () => {
@@ -551,7 +551,7 @@ export function ProjectDayTimeline({
       }
     });
     setCtxMenu(null);
-  }, [ctxMenu, handleSetRateMultiplier]);
+  }, [ctxMenu, handleSetRateMultiplier, showError]);
 
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu || ctxMenu.type !== "assign" || !onUpdateSessionComment) return;
@@ -801,7 +801,7 @@ export function ProjectDayTimeline({
 
     const totalSeconds = rows.reduce((acc, row) => acc + row.totalSeconds, 0);
     return { rows, ticks, rangeStart, rangeSpan, totalSeconds, workingRange };
-  }, [sessions, manualSessions, workingHours, projects, sortMode]);
+  }, [sessions, manualSessions, workingHours, projects, sortMode, tt]);
 
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();

@@ -45,6 +45,36 @@ interface Props {
 
 const PALETTE = TOKYO_NIGHT_CHART_PALETTE;
 
+type AxisTickProps = {
+  x?: number;
+  y?: number;
+  payload?: { value?: string | number };
+};
+
+type ChartInteractionState = {
+  activeLabel?: string | number;
+  activePayload?: Array<{ payload?: { date?: string } }>;
+};
+
+type BarShapeProps = {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  fill?: string;
+  payload?: { has_manual?: boolean };
+  radius?: number | [number, number, number, number];
+};
+
+function extractDateFromChartState(state: unknown): string | null {
+  const chartState = (state ?? {}) as ChartInteractionState;
+  const activeLabel =
+    typeof chartState.activeLabel === "string" ? chartState.activeLabel : null;
+  const payloadDate = chartState.activePayload?.[0]?.payload?.date;
+  const date = activeLabel ?? payloadDate ?? null;
+  return typeof date === "string" && date.length > 0 ? date : null;
+}
+
 export function TimelineChart({
   data,
   projectColors = {},
@@ -283,9 +313,9 @@ export function TimelineChart({
     );
   }, [t, xLabelFormatter]);
 
-  const renderCustomAxisTick = useCallback((props: any) => {
-    const { x, y, payload } = props;
-    const dateKey = String(payload.value);
+  const renderCustomAxisTick = useCallback((props: unknown) => {
+    const { x = 0, y = 0, payload } = (props ?? {}) as AxisTickProps;
+    const dateKey = String(payload?.value ?? "");
     const row = chartDataByDate.get(dateKey);
     if (!row) return null;
 
@@ -343,15 +373,14 @@ export function TimelineChart({
           <ResponsiveContainer width="100%" height="100%">
             <BarChart 
                 data={chartData}
-                onMouseMove={(state: any) => {
-                    const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
-                    hoveredDateRef.current = typeof date === "string" && date.length > 0 ? date : null;
+                onMouseMove={(state: unknown) => {
+                    hoveredDateRef.current = extractDateFromChartState(state);
                 }}
                 onMouseLeave={() => {
                   hoveredDateRef.current = null;
                 }}
-                onClick={(state: any) => {
-                  const date = state?.activeLabel || (state?.activePayload?.[0]?.payload?.date);
+                onClick={(state: unknown) => {
+                  const date = extractDateFromChartState(state);
                   if (date) onBarClick?.(date);
                 }}
                 accessibilityLayer={false}
@@ -406,9 +435,20 @@ export function TimelineChart({
                       shape={
                         useSimpleRendering
                           ? undefined
-                          : ((props: any) => {
-                              const { x, y, width, height, fill, payload, radius } = props;
-                              if (!height || height <= 0) return null;
+                          : ((props: unknown) => {
+                              const {
+                                x = 0,
+                                y = 0,
+                                width = 0,
+                                height = 0,
+                                fill,
+                                payload,
+                                radius,
+                              } = (props ?? {}) as BarShapeProps;
+                              if (height <= 0 || width <= 0) return null;
+                              const cornerRadius = Array.isArray(radius)
+                                ? (radius[0] ?? 0)
+                                : (radius ?? 0);
                               return (
                                 <g>
                                   <rect
@@ -417,7 +457,7 @@ export function TimelineChart({
                                     width={width}
                                     height={height}
                                     fill={fill}
-                                    rx={radius?.[0] || 0}
+                                    rx={cornerRadius}
                                   />
                                   {payload?.has_manual && (
                                     <rect
@@ -426,7 +466,7 @@ export function TimelineChart({
                                       width={width}
                                       height={height}
                                       fill="url(#hatch)"
-                                      rx={radius?.[0] || 0}
+                                      rx={cornerRadius}
                                       style={{ pointerEvents: "none" }}
                                     />
                                   )}

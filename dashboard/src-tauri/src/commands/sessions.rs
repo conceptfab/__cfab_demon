@@ -105,7 +105,13 @@ pub(crate) fn upsert_manual_session_override(
                end_time = excluded.end_time,
                project_name = excluded.project_name,
                updated_at = excluded.updated_at",
-            rusqlite::params![session_id, executable_name, start_time, end_time, project_name],
+            rusqlite::params![
+                session_id,
+                executable_name,
+                start_time,
+                end_time,
+                project_name
+            ],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -113,9 +119,7 @@ pub(crate) fn upsert_manual_session_override(
     Ok(())
 }
 
-pub(crate) fn apply_manual_session_overrides(
-    conn: &rusqlite::Connection,
-) -> Result<i64, String> {
+pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Result<i64, String> {
     let mut total_reapplied = 0_i64;
 
     let overrides: Vec<(Option<i64>, String, String, String, Option<String>)> = {
@@ -137,7 +141,8 @@ pub(crate) fn apply_manual_session_overrides(
                 ))
             })
             .map_err(|e| e.to_string())?;
-        rows.filter_map(|r| r.ok()).collect()
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read session_manual_overrides row: {}", e))?
     };
 
     for (override_session_id, exe_name, start_time, end_time, project_name) in overrides {
@@ -201,7 +206,9 @@ pub(crate) fn apply_manual_session_overrides(
                         ))
                     })
                     .map_err(|e| e.to_string())?;
-                rows.filter_map(|r| r.ok()).collect()
+                rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
+                    format!("Failed to read sessions row for manual override: {}", e)
+                })?
             };
 
         for (session_id, app_id, date, s_start, s_end, current_project_id) in sessions_to_update {
@@ -341,21 +348,22 @@ pub async fn get_sessions(
             .map_err(|e| e.to_string())?;
 
         let mut sessions: Vec<SessionWithApp> = Vec::new();
-        for r in rows.flatten() {
+        for r in rows {
+            let r = r.map_err(|e| format!("Failed to read session row: {}", e))?;
             explicit_pids.insert(r.0.id, r.1);
             sessions.push(r.0);
         }
 
         // Load file activities in one batch (avoid N+1 queries), keyed by (app_id, date).
         let mut keys: Vec<(i64, String)> = Vec::new();
+        let mut key_set: HashSet<(i64, String)> = HashSet::new();
         for s in &sessions {
             let date = s.start_time.split('T').next().unwrap_or("").to_string();
-            if !date.is_empty()
-                && !keys
-                    .iter()
-                    .any(|(app_id, d)| *app_id == s.app_id && d == &date)
-            {
-                keys.push((s.app_id, date));
+            if !date.is_empty() {
+                let key = (s.app_id, date);
+                if key_set.insert(key.clone()) {
+                    keys.push(key);
+                }
             }
         }
 
@@ -408,7 +416,9 @@ pub async fn get_sessions(
                 })
                 .map_err(|e| e.to_string())?;
 
-            for (app_id, date, activity) in rows.flatten() {
+            for row in rows {
+                let (app_id, date, activity) =
+                    row.map_err(|e| format!("Failed to read file_activities row: {}", e))?;
                 files_by_key
                     .entry((app_id, date))
                     .or_default()
@@ -535,20 +545,20 @@ pub async fn get_sessions(
         let status = crate::commands::get_assignment_model_status(app.clone()).await?;
         if status.mode != "off" {
             let conn = db::get_connection(&app)?;
-            let mut suggestions = super::assignment_model::suggest_projects_for_sessions_with_status(
-                &conn,
-                &status,
-                &needs_suggestion,
-            )?;
+            let mut suggestions =
+                super::assignment_model::suggest_projects_for_sessions_with_status(
+                    &conn,
+                    &status,
+                    &needs_suggestion,
+                )?;
 
             if suggestions.len() < needs_suggestion.len() {
+                let needs_suggestion_set: HashSet<i64> = needs_suggestion.iter().copied().collect();
                 let assigned_without_threshold: Vec<i64> = sessions
                     .iter()
                     .filter(|s| s.project_name.is_some())
                     .map(|s| s.id)
-                    .filter(|id| {
-                        needs_suggestion.contains(id) && !suggestions.contains_key(id)
-                    })
+                    .filter(|id| needs_suggestion_set.contains(id) && !suggestions.contains_key(id))
                     .collect();
 
                 if !assigned_without_threshold.is_empty() {
@@ -572,9 +582,11 @@ pub async fn get_sessions(
                 let mut project_name_by_id: HashMap<i64, String> = HashMap::new();
                 if !suggested_project_ids.is_empty() {
                     let pid_list: Vec<i64> = suggested_project_ids.into_iter().collect();
-                    let placeholders =
-                        pid_list.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-                    let sql = format!("SELECT id, name FROM projects WHERE id IN ({})", placeholders);
+                    let placeholders = pid_list.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                    let sql = format!(
+                        "SELECT id, name FROM projects WHERE id IN ({})",
+                        placeholders
+                    );
                     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
                     let params: Vec<&dyn rusqlite::types::ToSql> = pid_list
                         .iter()
@@ -920,7 +932,10 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
             })
             .map_err(|e| e.to_string())?;
 
-        rows.flatten()
+        let rows = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read sessions row during rebuild: {}", e))?;
+        rows.into_iter()
             .filter(|r| r.start_ms > 0 && r.end_ms > 0)
             .collect()
     };

@@ -18,7 +18,9 @@ use crate::storage::{self, AppDailyData, FileEntry, Session};
 #[path = "../shared/version_compat.rs"]
 mod version_compat;
 
-fn rebuild_file_index_cache(daily_data: &storage::DailyData) -> HashMap<String, HashMap<String, usize>> {
+fn rebuild_file_index_cache(
+    daily_data: &storage::DailyData,
+) -> HashMap<String, HashMap<String, usize>> {
     let mut cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
     for (exe_name, app_data) in &daily_data.apps {
         let file_map = cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
@@ -60,8 +62,7 @@ fn check_dashboard_compatibility() {
                             .encode_utf16()
                             .chain(std::iter::once(0))
                             .collect();
-                        let text: Vec<u16> =
-                            msg.encode_utf16().chain(std::iter::once(0)).collect();
+                        let text: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
                         winapi::um::winuser::MessageBoxW(
                             ptr::null_mut(),
                             text.as_ptr(),
@@ -82,9 +83,7 @@ fn check_dashboard_compatibility() {
 
 /// Starts the monitor thread. Returns a JoinHandle.
 /// `stop_signal` — set to true to stop the thread.
-pub fn start(
-    stop_signal: Arc<AtomicBool>,
-) -> thread::JoinHandle<()> {
+pub fn start(stop_signal: Arc<AtomicBool>) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         log::info!("Monitor thread started");
         run_loop(stop_signal);
@@ -241,7 +240,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
 
         // Poll foreground window
         let foreground_exe = monitor::get_foreground_info(&mut pid_cache).and_then(|info| {
-            log::debug!("Detected window: {} (PID: {}) [{}]", info.exe_name, info.pid, info.window_title);
+            log::debug!(
+                "Detected window: {} (PID: {}) [{}]",
+                info.exe_name,
+                info.pid,
+                info.window_title
+            );
             if monitor_all || monitored.contains(&info.exe_name) {
                 Some(info)
             } else {
@@ -276,14 +280,16 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             for exe_name in &monitored {
                 if recorded_this_tick.contains(exe_name) {
                     // Already counted by foreground — just update CPU snapshot
-                    let (_, snapshot) = monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), &proc_snap);
+                    let (_, snapshot) =
+                        monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), &proc_snap);
                     cpu_state.insert(exe_name.clone(), snapshot);
                     continue;
                 }
 
                 let prev = cpu_state.get(exe_name);
                 let had_prev = prev.is_some();
-                let (cpu_fraction, snapshot) = monitor::measure_cpu_for_app(exe_name, prev, &proc_snap);
+                let (cpu_fraction, snapshot) =
+                    monitor::measure_cpu_for_app(exe_name, prev, &proc_snap);
                 cpu_state.insert(exe_name.clone(), snapshot);
 
                 if had_prev && cpu_fraction > cpu_thresh {
@@ -337,7 +343,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
         if elapsed_since_tick < poll_interval {
             let remain = poll_interval - elapsed_since_tick;
             let sleep_chunks = (remain.as_secs_f32().ceil() as u32).max(1);
-            
+
             for _ in 0..sleep_chunks {
                 if stop_signal.load(Ordering::Relaxed) {
                     break;

@@ -1,10 +1,10 @@
-use serde::{Serialize, Deserialize};
+use crate::db;
+use chrono::{DateTime, Local};
 use rusqlite::OpenFlags;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
-use crate::db;
-use chrono::{DateTime, Local};
 
 #[derive(Serialize)]
 pub struct BackupFile {
@@ -37,7 +37,7 @@ pub async fn get_db_info(app: AppHandle) -> Result<DbInfo, String> {
     let status = db::get_demo_mode_status(&app)?;
     let path = status.active_db_path;
     let meta = fs::metadata(&path).map_err(|e| format!("Failed to read DB metadata: {}", e))?;
-    
+
     Ok(DbInfo {
         path,
         size_bytes: meta.len(),
@@ -57,33 +57,33 @@ pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, S
     let vacuum_on_startup = db::get_system_setting(&app, "vacuum_on_startup")?
         .map(|v| v == "true")
         .unwrap_or(false);
-    
+
     let backup_enabled = db::get_system_setting(&app, "backup_enabled")?
         .map(|v| v == "true")
         .unwrap_or(false);
-    
-    let backup_path = db::get_system_setting(&app, "backup_path")?
-        .unwrap_or_default();
-    
+
+    let backup_path = db::get_system_setting(&app, "backup_path")?.unwrap_or_default();
+
     let backup_interval_days = db::get_system_setting(&app, "backup_interval_days")?
         .and_then(|v| v.parse().ok())
         .unwrap_or(7);
-        
+
     let last_backup_at = db::get_system_setting(&app, "last_backup_at")?;
 
     let auto_optimize_enabled = db::get_system_setting(&app, "auto_optimize_enabled")?
         .map(|v| v == "true")
         .unwrap_or(true);
 
-    let auto_optimize_interval_hours = db::get_system_setting(&app, "auto_optimize_interval_hours")?
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(24);
+    let auto_optimize_interval_hours =
+        db::get_system_setting(&app, "auto_optimize_interval_hours")?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(24);
 
     let last_optimize_at = db::get_system_setting(&app, "last_optimize_at")?;
 
     log::info!("Loaded database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
         vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, auto_optimize_interval_hours);
-        
+
     Ok(DatabaseSettings {
         vacuum_on_startup,
         backup_enabled,
@@ -109,12 +109,20 @@ pub async fn update_database_settings(
     let normalized_auto_optimize_interval_hours = auto_optimize_interval_hours.clamp(1, 24 * 30);
     log::info!("Updating database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
         vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, normalized_auto_optimize_interval_hours);
-    
+
     db::set_system_setting(&app, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
     db::set_system_setting(&app, "backup_enabled", &backup_enabled.to_string())?;
     db::set_system_setting(&app, "backup_path", &backup_path)?;
-    db::set_system_setting(&app, "backup_interval_days", &backup_interval_days.to_string())?;
-    db::set_system_setting(&app, "auto_optimize_enabled", &auto_optimize_enabled.to_string())?;
+    db::set_system_setting(
+        &app,
+        "backup_interval_days",
+        &backup_interval_days.to_string(),
+    )?;
+    db::set_system_setting(
+        &app,
+        "auto_optimize_enabled",
+        &auto_optimize_enabled.to_string(),
+    )?;
     db::set_system_setting(
         &app,
         "auto_optimize_interval_hours",
@@ -135,13 +143,13 @@ pub async fn perform_manual_backup(app: AppHandle) -> Result<String, String> {
     if settings.backup_path.is_empty() {
         return Err("Backup path is not configured".to_string());
     }
-    
+
     let conn = db::get_connection(&app)?;
     let result = db::perform_backup_internal(&conn, &settings.backup_path)?;
-    
+
     let now = chrono::Local::now().to_rfc3339();
     db::set_system_setting(&app, "last_backup_at", &now)?;
-    
+
     Ok(result)
 }
 
@@ -150,7 +158,7 @@ pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
     let status = db::get_demo_mode_status(&app)?;
     let path = Path::new(&status.active_db_path);
     let folder = path.parent().ok_or("Invalid DB path")?;
-    
+
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
@@ -159,7 +167,7 @@ pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
             .spawn()
             .map_err(|e| e.to_string())?;
     }
-    
+
     Ok(())
 }
 
@@ -169,7 +177,7 @@ pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<
     if !src.exists() {
         return Err("Source file does not exist".to_string());
     }
-    
+
     let status = db::get_demo_mode_status(&app)?;
     let dest = Path::new(&status.active_db_path);
     if src == dest {
@@ -183,7 +191,10 @@ pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<
         .query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))
         .map_err(|e| format!("Failed to validate source database: {}", e))?;
     if !integrity.eq_ignore_ascii_case("ok") {
-        return Err(format!("Source database integrity check failed: {}", integrity));
+        return Err(format!(
+            "Source database integrity check failed: {}",
+            integrity
+        ));
     }
 
     // Restore by copying table contents through SQLite itself instead of overwriting
@@ -241,23 +252,22 @@ pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<
         .map_err(|e| format!("Failed to commit database restore: {}", e))?;
     conn.execute_batch("DETACH DATABASE restore_src; PRAGMA foreign_keys = ON;")
         .map_err(|e| format!("Failed to finalize database restore: {}", e))?;
-    
+
     Ok(())
 }
 #[tauri::command]
 pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String> {
-    let backup_path_str = db::get_system_setting(&app, "backup_path")?
-        .unwrap_or_default();
-    
+    let backup_path_str = db::get_system_setting(&app, "backup_path")?.unwrap_or_default();
+
     if backup_path_str.is_empty() {
         return Ok(vec![]);
     }
-    
+
     let backup_path = Path::new(&backup_path_str);
     if !backup_path.exists() || !backup_path.is_dir() {
         return Ok(vec![]);
     }
-    
+
     let mut files = vec![];
     if let Ok(entries) = fs::read_dir(backup_path) {
         for entry in entries.flatten() {
@@ -277,7 +287,7 @@ pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String>
             }
         }
     }
-    
+
     files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
     Ok(files)
 }

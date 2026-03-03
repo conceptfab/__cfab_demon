@@ -214,16 +214,135 @@ pub struct ResolvedIntervals {
     pub cpu_threshold: f64,
 }
 
+const POLL_DEFAULT_SECS: u64 = 10;
+const SAVE_DEFAULT_SECS: u64 = 5 * 60;
+const CACHE_EVICT_DEFAULT_SECS: u64 = 10 * 60;
+const CACHE_MAX_AGE_DEFAULT_SECS: u64 = 3 * 60;
+const SESSION_GAP_DEFAULT_SECS: u64 = 5 * 60;
+const CONFIG_RELOAD_DEFAULT_SECS: u64 = 30;
+const CPU_THRESHOLD_DEFAULT: f64 = 0.05;
+
+fn clamp_interval_secs(name: &str, value: u64, min: u64, max: u64) -> u64 {
+    if value < min {
+        log::warn!(
+            "Invalid interval '{}': {}s is below minimum {}s. Using {}s.",
+            name,
+            value,
+            min,
+            min
+        );
+        return min;
+    }
+    if value > max {
+        log::warn!(
+            "Invalid interval '{}': {}s is above maximum {}s. Using {}s.",
+            name,
+            value,
+            max,
+            max
+        );
+        return max;
+    }
+    value
+}
+
+fn clamp_cpu_threshold(value: f64) -> f64 {
+    if !value.is_finite() {
+        log::warn!(
+            "Invalid cpu_threshold '{}': non-finite value. Using default {}.",
+            value,
+            CPU_THRESHOLD_DEFAULT
+        );
+        return CPU_THRESHOLD_DEFAULT;
+    }
+    let min = 0.001;
+    let max = 1.0;
+    if value < min {
+        log::warn!(
+            "Invalid cpu_threshold '{}': below minimum {}. Using {}.",
+            value,
+            min,
+            min
+        );
+        return min;
+    }
+    if value > max {
+        log::warn!(
+            "Invalid cpu_threshold '{}': above maximum {}. Using {}.",
+            value,
+            max,
+            max
+        );
+        return max;
+    }
+    value
+}
+
 /// Zwraca interwały z domyślnymi wartościami dla brakujących pól.
 pub fn intervals(config: &Config) -> ResolvedIntervals {
+    let poll_secs = clamp_interval_secs(
+        "poll_secs",
+        config.intervals.poll_secs.unwrap_or(POLL_DEFAULT_SECS),
+        1,
+        300,
+    );
+    let save_secs = clamp_interval_secs(
+        "save_secs",
+        config.intervals.save_secs.unwrap_or(SAVE_DEFAULT_SECS),
+        10,
+        86_400,
+    );
+    let cache_evict_secs = clamp_interval_secs(
+        "cache_evict_secs",
+        config
+            .intervals
+            .cache_evict_secs
+            .unwrap_or(CACHE_EVICT_DEFAULT_SECS),
+        10,
+        86_400,
+    );
+    let cache_max_age_secs = clamp_interval_secs(
+        "cache_max_age_secs",
+        config
+            .intervals
+            .cache_max_age_secs
+            .unwrap_or(CACHE_MAX_AGE_DEFAULT_SECS),
+        30,
+        86_400,
+    );
+    let session_gap_secs = clamp_interval_secs(
+        "session_gap_secs",
+        config
+            .intervals
+            .session_gap_secs
+            .unwrap_or(SESSION_GAP_DEFAULT_SECS),
+        10,
+        86_400,
+    );
+    let config_reload_secs = clamp_interval_secs(
+        "config_reload_secs",
+        config
+            .intervals
+            .config_reload_secs
+            .unwrap_or(CONFIG_RELOAD_DEFAULT_SECS),
+        5,
+        3600,
+    );
+    let cpu_threshold = clamp_cpu_threshold(
+        config
+            .intervals
+            .cpu_threshold
+            .unwrap_or(CPU_THRESHOLD_DEFAULT),
+    );
+
     ResolvedIntervals {
-        poll_secs: config.intervals.poll_secs.unwrap_or(10),
-        save_secs: config.intervals.save_secs.unwrap_or(5 * 60),
-        cache_evict_secs: config.intervals.cache_evict_secs.unwrap_or(10 * 60),
-        cache_max_age_secs: config.intervals.cache_max_age_secs.unwrap_or(3 * 60),
-        session_gap_secs: config.intervals.session_gap_secs.unwrap_or(5 * 60),
-        config_reload_secs: config.intervals.config_reload_secs.unwrap_or(30),
-        cpu_threshold: config.intervals.cpu_threshold.unwrap_or(0.05),
+        poll_secs,
+        save_secs,
+        cache_evict_secs,
+        cache_max_age_secs,
+        session_gap_secs,
+        config_reload_secs,
+        cpu_threshold,
     }
 }
 
@@ -236,4 +355,3 @@ pub fn display_name_for(config: &Config, exe_name: &str) -> String {
         .map(|a| a.display_name.clone())
         .unwrap_or_else(|| exe_name.to_string())
 }
-

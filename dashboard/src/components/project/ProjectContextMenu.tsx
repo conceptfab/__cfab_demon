@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useUIStore } from '@/store/ui-store';
+import { useInlineT } from '@/lib/inline-i18n';
 
 interface ProjectMenuState {
   x: number;
@@ -28,6 +29,7 @@ function clampToViewport(x: number, y: number) {
 }
 
 export function ProjectContextMenu() {
+  const tt = useInlineT();
   const [menu, setMenu] = useState<ProjectMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const setProjectPageId = useUIStore((s) => s.setProjectPageId);
@@ -114,7 +116,7 @@ export function ProjectContextMenu() {
       style={{ left: menu.x, top: menu.y }}
     >
       <div className="px-2 py-1 text-[11px] text-muted-foreground">
-        Project:{' '}
+        {tt('Projekt:', 'Project:')}{' '}
         <span className="font-medium text-foreground">{menu.projectName}</span>
       </div>
       <button
@@ -126,7 +128,7 @@ export function ProjectContextMenu() {
           setMenu(null);
         }}
       >
-        Go to project card
+        {tt('Przejdź do karty projektu', 'Go to project card')}
       </button>
     </div>
   );

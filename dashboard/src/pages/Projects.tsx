@@ -287,7 +287,7 @@ export function Projects() {
       .catch(() => {
         /* ignore: feature not yet compiled */
       });
-  }, [refreshKey]);
+  }, [refreshKey, triggerRefresh]);
 
   const hotProjectIds = useMemo(() => {
     return [...projects]
@@ -324,7 +324,7 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, triggerRefresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -351,7 +351,7 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [refreshKey, triggerRefresh]);
 
   useEffect(() => {
     let cancelled = false;

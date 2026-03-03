@@ -1,13 +1,13 @@
 use super::helpers::timeflow_data_dir;
-use tauri::AppHandle;
 use std::fs;
+use tauri::AppHandle;
 
 #[cfg(windows)]
-use windows_sys::Win32::Security::Cryptography::{
-    CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN,
-};
-#[cfg(windows)]
 use windows_sys::Win32::Foundation::LocalFree;
+#[cfg(windows)]
+use windows_sys::Win32::Security::Cryptography::{
+    CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+};
 
 const SECURE_TOKEN_FILE: &str = "sync_token.dat";
 
@@ -58,8 +58,7 @@ pub async fn set_secure_token(_app: AppHandle, token: String) -> Result<(), Stri
     #[cfg(windows)]
     {
         let encrypted = encrypt_token_bytes_windows(trimmed)?;
-        fs::write(&path, encrypted)
-            .map_err(|e| format!("Failed to write secure token: {}", e))
+        fs::write(&path, encrypted).map_err(|e| format!("Failed to write secure token: {}", e))
     }
 
     #[cfg(not(windows))]
@@ -102,7 +101,8 @@ fn encrypt_token_bytes_windows(token: &str) -> Result<Vec<u8>, String> {
         ));
     }
 
-    let bytes = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec();
+    let bytes =
+        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec();
     unsafe {
         LocalFree(output.pbData as _);
     }
@@ -138,7 +138,8 @@ fn decrypt_token_bytes_windows(raw: &[u8]) -> Result<String, String> {
         ));
     }
 
-    let bytes = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec();
+    let bytes =
+        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) }.to_vec();
     unsafe {
         LocalFree(output.pbData as _);
     }

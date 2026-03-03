@@ -70,7 +70,8 @@ fn query_project_meta(
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project metadata row: {}", e))?;
         out.insert(row.1.to_lowercase(), row);
     }
     Ok(out)
@@ -96,9 +97,7 @@ fn query_project_session_counts(
          FROM combined
          GROUP BY project_name"
     );
-    let mut stmt = conn
-        .prepare_cached(&sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
@@ -106,7 +105,8 @@ fn query_project_session_counts(
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project session count row: {}", e))?;
         out.insert(row.0.to_lowercase(), row.1);
     }
     Ok(out)
@@ -143,9 +143,7 @@ fn query_project_multiplier_extra_seconds(
          FROM combined
          GROUP BY project_name"
     );
-    let mut stmt = conn
-        .prepare_cached(&sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
             Ok((
@@ -157,7 +155,8 @@ fn query_project_multiplier_extra_seconds(
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read multiplier aggregate row: {}", e))?;
         out.insert(
             row.0.to_lowercase(),
             MultiplierInfo {

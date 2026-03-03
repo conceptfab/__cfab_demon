@@ -42,7 +42,7 @@ pub async fn get_dashboard_stats(
         )
         .map_err(|e| e.to_string())?;
 
-    let top_apps: Vec<TopApp> = stmt
+    let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
             let color: Option<String> = row.get(2)?;
             Ok(TopApp {
@@ -51,16 +51,16 @@ pub async fn get_dashboard_stats(
                 color,
             })
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .map(|mut app| {
-            // Generate color if none exists
-            if app.color.is_none() {
-                app.color = Some(generate_color_for_app(&app.name));
-            }
-            app
-        })
-        .collect();
+        .map_err(|e| e.to_string())?;
+    let mut top_apps: Vec<TopApp> = Vec::new();
+    for row in rows {
+        let mut app = row.map_err(|e| format!("Failed to read top app row: {}", e))?;
+        // Generate color if none exists
+        if app.color.is_none() {
+            app.color = Some(generate_color_for_app(&app.name));
+        }
+        top_apps.push(app);
+    }
 
     let project_colors = query_project_color_map(&conn)?;
     let top_project = project_totals
@@ -131,7 +131,8 @@ fn query_project_color_map(conn: &rusqlite::Connection) -> Result<HashMap<String
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project color row: {}", e))?;
         out.insert(row.0.to_lowercase(), row.1);
     }
     Ok(out)
@@ -165,9 +166,7 @@ fn query_project_counts(
          FROM combined
          GROUP BY project_name"
     );
-    let mut stmt = conn
-        .prepare_cached(&sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![start, end, active_only as i32], |row| {
             Ok((
@@ -179,7 +178,8 @@ fn query_project_counts(
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project counts row: {}", e))?;
         out.insert(row.0.to_lowercase(), (row.1, row.2));
     }
     Ok(out)
@@ -276,7 +276,8 @@ pub async fn get_dashboard_projects(
         .map_err(|e| e.to_string())?;
 
     let mut out = Vec::new();
-    for row in rows.filter_map(|r| r.ok()) {
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read dashboard project row: {}", e))?;
         let key = row.0.to_lowercase();
         let (session_count, app_count) = counts.get(&key).copied().unwrap_or((0, 0));
         let seconds = totals_ci.get(&key).copied().unwrap_or(0.0).round() as i64;
@@ -419,8 +420,8 @@ pub async fn get_applications(
         .map_err(|e| e.to_string())?;
 
     let apps: Vec<AppWithStats> = rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect();
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read application row: {}", e))?;
 
     // Fill in missing colors.
     // Persist generated colors with a single bulk UPDATE to avoid N+1 writes.
@@ -501,9 +502,8 @@ pub async fn get_app_timeline(
         )
         .map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read app timeline row: {}", e))
 }
 
 #[cfg(test)]
@@ -609,8 +609,9 @@ mod tests {
         )
         .expect("insert ms3");
 
-        let (total_seconds, app_count, session_count, day_count) =
+        let (app_count, session_count, day_count) =
             query_dashboard_counters(&conn, "2026-02-01", "2026-02-05").expect("counters");
+        let total_seconds = 3600 + 1800 + 7200;
 
         assert_eq!(total_seconds, 12600);
         assert_eq!(app_count, 0);

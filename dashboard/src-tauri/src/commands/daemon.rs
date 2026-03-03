@@ -144,7 +144,10 @@ fn write_assignment_signal(unassigned_sessions: i64) {
 }
 
 #[tauri::command]
-pub async fn get_daemon_status(app: AppHandle, min_duration: Option<i64>) -> Result<DaemonStatus, String> {
+pub async fn get_daemon_status(
+    app: AppHandle,
+    min_duration: Option<i64>,
+) -> Result<DaemonStatus, String> {
     let mut cmd = Command::new("tasklist");
     no_console(&mut cmd);
     let output = cmd

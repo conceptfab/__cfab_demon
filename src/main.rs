@@ -1,10 +1,10 @@
 // TimeFlow Demon - Windows tray daemon with application monitor
 #![windows_subsystem = "windows"]
 
+use std::process::Command;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::process::Command;
 
 mod config;
 mod monitor;
@@ -136,7 +136,14 @@ impl log::Log for FileLogger {
             };
             use std::io::Write;
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let _ = writeln!(guard, "[{}] [{}] {}: {}", ts, record.level(), record.target(), record.args());
+            let _ = writeln!(
+                guard,
+                "[{}] [{}] {}: {}",
+                ts,
+                record.level(),
+                record.target(),
+                record.args()
+            );
         }
     }
 
@@ -149,4 +156,3 @@ impl log::Log for FileLogger {
         let _ = guard.flush();
     }
 }
-

@@ -21,31 +21,35 @@ pub async fn validate_import(
     let mut stmt = conn
         .prepare_cached("SELECT name FROM projects")
         .map_err(|e| e.to_string())?;
-    for row in stmt
+    let rows = stmt
         .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| e.to_string())?
-    {
-        if let Ok(name) = row {
-            existing_projects.insert(name);
-        }
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let name = row.map_err(|e| format!("Failed to read existing project row: {}", e))?;
+        existing_projects.insert(name);
     }
 
     let mut existing_apps: HashSet<String> = HashSet::new();
     let mut stmt = conn
         .prepare_cached("SELECT executable_name FROM applications")
         .map_err(|e| e.to_string())?;
-    for row in stmt
+    let rows = stmt
         .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| e.to_string())?
-    {
-        if let Ok(exe) = row {
-            existing_apps.insert(exe);
-        }
+        .map_err(|e| e.to_string())?;
+    for row in rows {
+        let exe = row.map_err(|e| format!("Failed to read existing application row: {}", e))?;
+        existing_apps.insert(exe);
     }
 
     let mut missing_projects = Vec::new();
     let mut missing_applications = Vec::new();
     let mut overlapping_sessions = Vec::new();
+    let app_exe_by_id: HashMap<i64, String> = archive
+        .data
+        .applications
+        .iter()
+        .map(|a| (a.id, a.executable_name.clone()))
+        .collect();
 
     // Check Projects
     for p in &archive.data.projects {
@@ -64,12 +68,7 @@ pub async fn validate_import(
     // Check Overlapping Sessions (simplified check: any session from archive that overlaps with existing for same app)
     // We only check a subset if it's too many, but here we'll try to check all.
     for s in &archive.data.sessions {
-        let app_exe = archive
-            .data
-            .applications
-            .iter()
-            .find(|a| a.id == s.app_id)
-            .map(|a| a.executable_name.clone());
+        let app_exe = app_exe_by_id.get(&s.app_id).cloned();
 
         if let Some(exe) = app_exe {
             let conflict: Option<SessionConflict> = conn
@@ -136,15 +135,15 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         let mut stmt = tx
             .prepare("SELECT name, id FROM projects")
             .map_err(|e| e.to_string())?;
-        for row in stmt
+        let rows = stmt
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })
-            .map_err(|e| e.to_string())?
-        {
-            if let Ok((name, id)) = row {
-                existing_projects_map.insert(name.trim().to_lowercase(), id);
-            }
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (name, id) =
+                row.map_err(|e| format!("Failed to read local project mapping row: {}", e))?;
+            existing_projects_map.insert(name.trim().to_lowercase(), id);
         }
     }
 
@@ -238,7 +237,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         let mut stmt = tx
             .prepare("SELECT executable_name, display_name, id FROM applications")
             .map_err(|e| e.to_string())?;
-        for row in stmt
+        let rows = stmt
             .query_map([], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
@@ -246,12 +245,12 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                     row.get::<_, i64>(2)?,
                 ))
             })
-            .map_err(|e| e.to_string())?
-        {
-            if let Ok((exe, display_name, id)) = row {
-                existing_apps_map.insert(exe.trim().to_lowercase(), id);
-                existing_apps_display_map.insert(display_name.trim().to_lowercase(), id);
-            }
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (exe, display_name, id) =
+                row.map_err(|e| format!("Failed to read local application mapping row: {}", e))?;
+            existing_apps_map.insert(exe.trim().to_lowercase(), id);
+            existing_apps_display_map.insert(display_name.trim().to_lowercase(), id);
         }
     }
 

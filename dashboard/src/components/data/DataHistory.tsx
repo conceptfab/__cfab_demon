@@ -44,7 +44,7 @@ export function DataHistory() {
     try {
       await deleteArchiveFile(fileName);
       loadData();
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
     } finally {
       setDeleting(null);

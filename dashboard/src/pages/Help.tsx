@@ -28,17 +28,13 @@ import {
   pageForHelpTab,
   type HelpTabId,
 } from '@/lib/help-navigation';
-import { normalizeLanguageCode } from '@/lib/user-settings';
 import { useTranslation } from 'react-i18next';
 import { getDaemonStatus } from '@/lib/tauri';
-
-type Language = 'pl' | 'en';
+import { useInlineT } from '@/lib/inline-i18n';
 
 export function Help() {
-  const { i18n, t: t18n } = useTranslation();
-  const lang: Language = normalizeLanguageCode(
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t: t18n } = useTranslation();
+  const t = useInlineT();
   const {
     helpTab: activeTab,
     setHelpTab: setActiveTab,
@@ -50,7 +46,6 @@ export function Help() {
     getDaemonStatus().then((s) => setVersion(s.dashboard_version ?? '')).catch(() => {});
   }, []);
 
-  const t = (pl: string, en: string) => (lang === 'pl' ? pl : en);
   const activeTabValue = normalizeHelpTab(activeTab, 'dashboard');
   const openActiveSection = () => {
     setCurrentPage(pageForHelpTab(activeTabValue));
@@ -222,52 +217,52 @@ export function Help() {
             <HelpTabTrigger
               value="dashboard"
               icon={<LayoutDashboard className="h-3.5 w-3.5" />}
-              label="Dashboard"
+              label={t('Dashboard', 'Dashboard')}
             />
             <HelpTabTrigger
               value="sessions"
               icon={<List className="h-3.5 w-3.5" />}
-              label="Sessions"
+              label={t('Sesje', 'Sessions')}
             />
             <HelpTabTrigger
               value="projects"
               icon={<FolderKanban className="h-3.5 w-3.5" />}
-              label="Projects"
+              label={t('Projekty', 'Projects')}
             />
             <HelpTabTrigger
               value="estimates"
               icon={<CircleDollarSign className="h-3.5 w-3.5" />}
-              label="Estimates"
+              label={t('Wyceny', 'Estimates')}
             />
             <HelpTabTrigger
               value="apps"
               icon={<AppWindow className="h-3.5 w-3.5" />}
-              label="Applications"
+              label={t('Aplikacje', 'Applications')}
             />
             <HelpTabTrigger
               value="analysis"
               icon={<BarChart3 className="h-3.5 w-3.5" />}
-              label="Time Analysis"
+              label={t('Analiza czasu', 'Time Analysis')}
             />
             <HelpTabTrigger
               value="ai"
               icon={<Brain className="h-3.5 w-3.5" />}
-              label="AI & Model"
+              label={t('AI i model', 'AI & Model')}
             />
             <HelpTabTrigger
               value="data"
               icon={<Import className="h-3.5 w-3.5" />}
-              label="Data"
+              label={t('Dane', 'Data')}
             />
             <HelpTabTrigger
               value="daemon"
               icon={<Cpu className="h-3.5 w-3.5" />}
-              label="Daemon"
+              label={t('Daemon', 'Daemon')}
             />
             <HelpTabTrigger
               value="settings"
               icon={<Settings className="h-3.5 w-3.5" />}
-              label="Settings"
+              label={t('Ustawienia', 'Settings')}
             />
           </TabsList>
 
@@ -465,7 +460,9 @@ export function Help() {
                       )}
                     </li>
                     <li>
-                      <strong className="text-foreground">Penalty:</strong>{' '}
+                      <strong className="text-foreground">
+                        {t('Penalty (Kara):', 'Penalty:')}
+                      </strong>{' '}
                       {t(
                         'Punkty ujemne, jeśli model wykrył cechy wskazujące, że przypisanie może być mętne pomimo innych mocnych sygnałów.',
                         'Negative points if the model detected traits suggesting the assignment could be murky despite other strong signals.',
@@ -647,7 +644,7 @@ export function Help() {
             <TabsContent value="ai" className="m-0 focus-visible:outline-none">
               <SectionHelp
                 icon={<Brain className="h-6 w-6" />}
-                title="AI & Model"
+                title={t('AI i model', 'AI & Model')}
                 description={t(
                   'Autorski, lokalny silnik ML (Rust) analizujący kontekst aplikacji, pory dnia oraz tokeny z nazw plików i okien. Działa w 100% offline.',
                   'Proprietary local ML engine (Rust) analyzing app context, time of day, and file/window tokens. Works 100% offline.',
@@ -778,14 +775,14 @@ export function Help() {
                     </h4>
                     <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
                       <li>
-                        <strong>Suggest:</strong>{' '}
+                        <strong>{t('Suggest (Sugestie):', 'Suggest:')}</strong>{' '}
                         {t(
                           'Podpowiada projekt w menu (wymaga >60% pewności).',
                           'Suggests a project in the menu (requires >60% confidence).',
                         )}
                       </li>
                       <li>
-                        <strong>Auto-Safe:</strong>{' '}
+                        <strong>{t('Auto-Safe:', 'Auto-Safe:')}</strong>{' '}
                         {t(
                           'Samodzielnie przypisuje sesje (wymaga >85% pewności i silnych dowodów).',
                           'Automatically assigns sessions (requires >85% confidence and strong evidence).',
@@ -803,7 +800,12 @@ export function Help() {
                     </h4>
                     <div className="space-y-3 pl-2 text-muted-foreground">
                       <div>
-                        <strong>1. Model operation mode: suggest</strong>
+                        <strong>
+                          {t(
+                            '1. Tryb działania modelu: suggest',
+                            '1. Model operation mode: suggest',
+                          )}
+                        </strong>
                         <p className="mt-1 leading-relaxed">
                           {t(
                             `Pozostaw ten tryb. AI będzie podsuwać Ci propozycje powiązań/kategorii, ale nie przypisze ich automatycznie. Twoje ręczne akceptacje (lub odrzucenia/korekty) to najważniejszy element budowania "wiedzy" modelu. (W trybie auto, model nie pytałby o zdanie w pewnych przypadkach, tracąc potencjalną szansę na upewnienie).`,
@@ -859,7 +861,12 @@ export function Help() {
                             )}
                           </li>
                           <li>
-                            <strong>Auto-safe Min Evidence: 5</strong>{' '}
+                            <strong>
+                              {t(
+                                'Auto-safe Min Evidence: 5',
+                                'Auto-safe Min Evidence: 5',
+                              )}
+                            </strong>{' '}
                             {t(
                               '(podnieś z 3. Oznacza to, że model musi mieć mocne potwierdzenie w min. 5 podobnych, wcześniej zatwierdzonych przez Ciebie sesjach, by zadziałać bez Twojej zgody).',
                               '(increase from 3. This means the model must have strong confirmation in at least 5 similar, previously user-approved sessions to act without your consent).',

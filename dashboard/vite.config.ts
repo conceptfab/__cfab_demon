@@ -12,6 +12,26 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("recharts")) return "charts";
+          if (id.includes("date-fns")) return "date";
+          if (id.includes("i18next") || id.includes("react-i18next")) {
+            return "i18n";
+          }
+          if (id.includes("@tauri-apps")) return "tauri";
+          if (id.includes("react-virtuoso")) return "virtual-list";
+          if (id.includes("lucide-react")) {
+            return "ui-kit";
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   clearScreen: false,
   server: {
     port: 5173,

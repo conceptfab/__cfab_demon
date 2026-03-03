@@ -1,11 +1,11 @@
 // Single instance lock via Windows Named Mutex
 
 use std::ptr;
-use winapi::um::synchapi::CreateMutexW;
+use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::handleapi::CloseHandle;
+use winapi::um::synchapi::CreateMutexW;
 use winapi::um::winnt::HANDLE;
-use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
 
 const MUTEX_NAME: &str = "Global\\TimeFlowDemon_SingleInstance";
 
@@ -30,16 +30,16 @@ impl Drop for SingleInstanceGuard {
 /// Attempts to acquire the mutex. Returns `Ok(guard)` if this is the only instance,
 /// `Err(msg)` if another instance is already running.
 pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
-    let wide_name: Vec<u16> = MUTEX_NAME.encode_utf16().chain(std::iter::once(0)).collect();
+    let wide_name: Vec<u16> = MUTEX_NAME
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
 
     unsafe {
         let handle = CreateMutexW(ptr::null_mut(), 1, wide_name.as_ptr());
 
         if handle.is_null() {
-            return Err(format!(
-                "Failed to create mutex (error {})",
-                GetLastError()
-            ));
+            return Err(format!("Failed to create mutex (error {})", GetLastError()));
         }
 
         // SAFETY: GetLastError() is safe here — no WinAPI function
@@ -53,4 +53,3 @@ pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
         Ok(SingleInstanceGuard { handle })
     }
 }
-

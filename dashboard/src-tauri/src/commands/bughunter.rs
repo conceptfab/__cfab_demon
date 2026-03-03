@@ -1,9 +1,9 @@
-use tauri::AppHandle;
-use serde::Serialize;
+use lettre::message::{Attachment, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::transport::smtp::client::{Tls, TlsParameters};
-use lettre::{Message, AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
-use lettre::message::{MultiPart, SinglePart, Attachment};
+use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
+use serde::Serialize;
+use tauri::AppHandle;
 
 #[derive(Serialize)]
 pub struct BugReportResponse {
@@ -17,9 +17,8 @@ pub async fn send_bug_report(
     subject: String,
     message: String,
     version: String,
-    attachments: Vec<(String, Vec<u8>)>
+    attachments: Vec<(String, Vec<u8>)>,
 ) -> Result<BugReportResponse, String> {
-    
     // --- SMTP CONFIG ---
     // Use runtime environment variables so credentials are never embedded in the binary.
     let smtp_server = std::env::var("TIMEFLOW_SMTP_SERVER")
@@ -33,7 +32,9 @@ pub async fn send_bug_report(
         .map_err(|_| "SMTP password not configured (TIMEFLOW_SMTP_PASS)".to_string())?;
     let recipient = std::env::var("TIMEFLOW_BUGREPORT_RECIPIENT")
         .or_else(|_| std::env::var("BUGREPORT_RECIPIENT"))
-        .map_err(|_| "Bug report recipient not configured (TIMEFLOW_BUGREPORT_RECIPIENT)".to_string())?;
+        .map_err(|_| {
+            "Bug report recipient not configured (TIMEFLOW_BUGREPORT_RECIPIENT)".to_string()
+        })?;
     // -------------------------
 
     // Sanityzacja nagłówków email — usuwamy \r i \n z subject aby zapobiec header injection
@@ -46,20 +47,29 @@ pub async fn send_bug_report(
         version, sanitized_subject, message
     );
 
-    let mut multipart = MultiPart::mixed()
-        .singlepart(SinglePart::plain(body_text));
+    let mut multipart = MultiPart::mixed().singlepart(SinglePart::plain(body_text));
 
     // Dodawanie załączników
     for (filename, content) in attachments {
         multipart = multipart.singlepart(
-            Attachment::new(filename)
-                .body(content, "application/octet-stream".parse().expect("valid MIME literal"))
+            Attachment::new(filename).body(
+                content,
+                "application/octet-stream"
+                    .parse()
+                    .expect("valid MIME literal"),
+            ),
         );
     }
 
     let email = Message::builder()
-        .from(smtp_user.parse().map_err(|e| format!("Invalid from: {}", e))?)
-        .to(recipient.parse().map_err(|e| format!("Invalid recipient: {}", e))?)
+        .from(
+            smtp_user
+                .parse()
+                .map_err(|e| format!("Invalid from: {}", e))?,
+        )
+        .to(recipient
+            .parse()
+            .map_err(|e| format!("Invalid recipient: {}", e))?)
         .subject(email_subject)
         .multipart(multipart)
         .map_err(|e| format!("Failed to build message: {}", e))?;
@@ -70,13 +80,14 @@ pub async fn send_bug_report(
         .map_err(|e| format!("TLS configuration error: {}", e))?;
 
     // Przełączamy na 587 (STARTTLS)
-    let mailer: AsyncSmtpTransport<Tokio1Executor> = AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_server)
-        .map_err(|e| format!("SMTP configuration error: {}", e))?
-        .port(587)
-        .tls(Tls::Required(tls_parameters))
-        .credentials(creds)
-        .authentication(vec![Mechanism::Login, Mechanism::Plain])
-        .build();
+    let mailer: AsyncSmtpTransport<Tokio1Executor> =
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&smtp_server)
+            .map_err(|e| format!("SMTP configuration error: {}", e))?
+            .port(587)
+            .tls(Tls::Required(tls_parameters))
+            .credentials(creds)
+            .authentication(vec![Mechanism::Login, Mechanism::Plain])
+            .build();
 
     // Wysyłka
     match mailer.send(email).await {

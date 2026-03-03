@@ -5,8 +5,11 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast-notification';
 import { useUIStore } from '@/store/ui-store';
-import { Dashboard } from '@/pages/Dashboard';
 import { BackgroundServices } from '@/components/sync/BackgroundServices';
+
+const Dashboard = lazy(() =>
+  import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })),
+);
 
 const Projects = lazy(() =>
   import('@/pages/Projects').then((m) => ({ default: m.Projects })),
