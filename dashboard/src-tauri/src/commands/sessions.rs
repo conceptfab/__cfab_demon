@@ -327,6 +327,7 @@ pub async fn get_sessions(
                     SessionWithApp {
                         id,
                         app_id: row.get(1)?,
+                        project_id: explicit_pid,
                         start_time: row.get(2)?,
                         end_time: row.get(3)?,
                         duration_seconds: row.get(4)?,

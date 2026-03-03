@@ -92,6 +92,7 @@ pub struct AppWithStats {
 pub struct SessionWithApp {
     pub id: i64,
     pub app_id: i64,
+    pub project_id: Option<i64>,
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,

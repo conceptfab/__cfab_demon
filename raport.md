@@ -1,282 +1,539 @@
-# Raport analizy kodu TIMEFLOW
+# TIMEFLOW — Raport z przeglądu kodu
 
-Data analizy: 2026-03-03  
-Zakres: daemon Rust (`src/`), backend Tauri (`dashboard/src-tauri/`), frontend React (`dashboard/src/`), skrypty pomocnicze.
-
-## 1. Metodyka i weryfikacje
-
-- Przegląd statyczny kodu (logika, odporność na błędy, i18n, potencjalne hot-pathy).
-- Skan wzorców ryzykownych (`rows.flatten()`, `filter_map(|r| r.ok())`, `unwrap/expect`, hardcoded UI strings).
-- Walidacja kompilacji:
-  - `cargo check` (daemon): **OK**
-  - `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`: **OK**
-  - `npm run build` (dashboard): **OK**, ale z ostrzeżeniem o dużym chunku (`~963 kB`).
-  - `cargo test --manifest-path dashboard/src-tauri/Cargo.toml --no-run`: **BŁĄD** (szczegóły poniżej).
+**Data:** 2026-03-03
+**Zakres:** Cały projekt (daemon Rust, backend Tauri, frontend React/TS, tłumaczenia i18n)
 
 ---
 
-## 2. Najważniejsze problemy (priorytety)
+## Spis treści
 
-## P0 / krytyczne
-
-### P0-1: Testy backendu Tauri nie kompilują się
-- Lokalizacja: `dashboard/src-tauri/src/commands/dashboard.rs:612-613`
-- Objaw: destrukturyzacja 4-elementowej krotki z funkcji, która zwraca 3 elementy.
-- Skutek:
-  - `cargo test --no-run` dla dashboardu kończy się błędem kompilacji.
-  - Brak możliwości uruchomienia pełnej walidacji testowej w CI.
-- Rekomendacja:
-  - Naprawić test (dopasować liczbę elementów do sygnatury `query_dashboard_counters`).
-  - Dodać check w pipeline: `cargo test --no-run` dla obu crate’ów.
-
-## P1 / wysokie
-
-### P1-1: Ciche ignorowanie błędów z bazy danych (utrata spójności wyników)
-- Przykłady lokalizacji:
-  - `dashboard/src-tauri/src/commands/sessions.rs:344-347`, `411-416`, `923-925`
-  - `dashboard/src-tauri/src/commands/assignment_model.rs:155-157`, `572`
-  - `dashboard/src-tauri/src/commands/projects.rs:31-33`, `417-419`
-  - analogiczny wzorzec występuje też w innych modułach (`filter_map(|r| r.ok())`, `rows.flatten()`).
-- Problem:
-  - Błędy mapowania/odczytu wierszy są pomijane, a funkcje zwracają częściowe dane bez sygnału błędu.
-- Skutek:
-  - Trudna diagnostyka.
-  - Potencjalnie niepełne listy sesji/projektów/sugestii AI.
-- Rekomendacja:
-  - W warstwach krytycznych biznesowo traktować błąd wiersza jako błąd całego zapytania (`collect::<Result<Vec<_>, _>>()` + `map_err`).
-  - Jeśli częściowe wyniki są dopuszczalne, raportować licznik pominiętych rekordów do loga/telemetrii.
-
-### P1-2: Brak walidacji interwałów monitoringu może wejść w pętlę „busy loop”
-- Lokalizacja:
-  - `src/config.rs:220-227` (brak clamp/zakresów)
-  - `src/tracker.rs:191-197`, `337-350`
-- Problem:
-  - Konfiguracja z `poll_secs=0` (lub podobnie dla innych interwałów) nie jest odrzucana.
-- Skutek:
-  - Potencjalnie bardzo wysoki CPU, zalew logów i nadmiar operacji I/O.
-- Rekomendacja:
-  - Wprowadzić walidację i clamp minimalnych wartości (np. `poll_secs >= 1`, `save_secs >= 10`, itp.).
-  - Przy wykryciu wartości spoza zakresu logować ostrzeżenie i przechodzić na bezpieczne defaulty.
+1. [Podsumowanie](#podsumowanie)
+2. [Krytyczne problemy](#1-krytyczne-problemy)
+3. [Ważne problemy](#2-ważne-problemy)
+4. [Optymalizacje i wydajność](#3-optymalizacje-i-wydajność)
+5. [Nadmiarowy kod](#4-nadmiarowy-kod)
+6. [Brakujące tłumaczenia i niespójności i18n](#5-brakujące-tłumaczenia-i-niespójności-i18n)
+7. [Sugerowane rozwiązania — priorytet napraw](#6-sugerowane-rozwiązania--priorytet-napraw)
 
 ---
 
-## 3. Poprawność logiki i ryzyka funkcjonalne
+## Podsumowanie
 
-### 3.1. Heurystyka mapowania ścieżek jest case-sensitive na Windows
-- Lokalizacja: `dashboard/src-tauri/src/commands/projects.rs:207-214`
-- Problem:
-  - `strip_prefix` na ścieżkach może nie zadziałać przy różnicy wielkości liter.
-- Skutek:
-  - Gorsza skuteczność automatycznego wykrywania projektu z file-path.
-- Rekomendacja:
-  - Normalizować ścieżki dla Windows (np. canonical + lowercase do porównania logicznego).
-
-### 3.2. Startup daemona może panicować przez `expect` przy brakujących zasobach ikony
-- Lokalizacja: `src/tray.rs:50-60`, `67-78`, `87-94` itd.
-- Problem:
-  - Inicjalizacja tray używa `expect` w wielu miejscach.
-- Skutek:
-  - Awaryjne zakończenie procesu przy uszkodzonych zasobach/środowisku.
-- Rekomendacja:
-  - Zastąpić `expect` kontrolowanym błędem i fallbackiem (log + komunikat + clean exit).
-
-### 3.3. Frontend: kontekstowe akcje sesji zawierają hardcoded logikę „1 session”
-- Lokalizacja: `dashboard/src/pages/ProjectPage.tsx:1435`
-- Problem:
-  - Wartość i fraza są stałe, mimo że komponent jest dynamiczny.
-- Skutek:
-  - Nieścisłość UX i niespójność tłumaczeń.
-- Rekomendacja:
-  - Podłączyć pod licznik i pluralizację i18n.
+| Kategoria | Krytyczne | Ważne | Optymalizacje | Kosmetyczne |
+|-----------|:---------:|:-----:|:-------------:|:-----------:|
+| Daemon (Rust) | 1 | 3 | 3 | 2 |
+| Backend Tauri (Rust) | 3 | 5 | 2 | 2 |
+| Frontend (React/TS) | 3 | 6 | 4 | — |
+| Tłumaczenia (i18n) | — | 2 | — | 3 |
+| **Razem** | **7** | **16** | **9** | **7** |
 
 ---
 
-## 4. Wydajność i optymalizacje
+## 1. Krytyczne problemy
 
-### 4.1. O(n²) w budowaniu kluczy sesji
-- Lokalizacja: `dashboard/src-tauri/src/commands/sessions.rs:350-357`
-- Problem:
-  - Deduplikacja par `(app_id, date)` przez `keys.iter().any(...)` dla każdej sesji.
-- Rekomendacja:
-  - Zastąpić przez `HashSet<(i64, String)>`.
+### K-1. Literówka `iS_hidden` w SQL — crash lub błędne wyniki
 
-### 4.2. O(n²) przy filtrowaniu `needs_suggestion`
-- Lokalizacja: `dashboard/src-tauri/src/commands/sessions.rs:545-552`
-- Problem:
-  - `needs_suggestion.contains(id)` na `Vec` w pętli.
-- Rekomendacja:
-  - Konwersja `needs_suggestion` do `HashSet<i64>` przed filtrowaniem.
+**Plik:** `dashboard/src-tauri/src/commands/analysis.rs:423`
 
-### 4.3. O(n*m) w walidacji importu
-- Lokalizacja: `dashboard/src-tauri/src/commands/import_data.rs:66-72`
-- Problem:
-  - Dla każdej sesji wyszukiwanie appki przez `.iter().find(...)`.
-- Rekomendacja:
-  - Jednorazowo zbudować mapę `app_id -> executable_name`.
+```sql
+AND (is_hidden IS NULL OR iS_hidden = 0)
+```
 
-### 4.4. Duży bundle frontendu
-- Objaw z buildu:
-  - `dist/assets/index-*.js` ~ `962.94 kB` (minified, przed gzip).
-- Rekomendacja:
-  - Dalszy code-splitting (`manualChunks`) dla ciężkich bibliotek/widoków.
-  - Rozważyć lazy-loading danych i chartów tam, gdzie możliwe.
+SQLite może zgłosić `no such column: iS_hidden` lub zwrócić błędne wyniki. Ranking aplikacji w `get_stacked_timeline` nie filtruje ukrytych sesji.
+
+**Naprawa:** Zmienić `iS_hidden` → `is_hidden`.
 
 ---
 
-## 5. Nadmiarowy kod / dług techniczny
+### K-2. Podmiana pliku DB z otwartym połączeniem — ryzyko korupcji SQLite
 
-### 5.1. Duplikacja parserów timestampów
-- Lokalizacje:
-  - `dashboard/src-tauri/src/commands/assignment_model.rs:288-314`
-  - `dashboard/src-tauri/src/commands/sessions.rs:879-904`, `968-1006`
-  - `dashboard/src-tauri/src/commands/analysis.rs:44-63`
-- Problem:
-  - Kilka niezależnych implementacji tej samej logiki.
-- Ryzyko:
-  - Rozjechanie zachowania, trudniejsze poprawki i testowanie.
-- Rekomendacja:
-  - Wydzielić wspólny moduł helperów daty/czasu i pokryć testami brzegowymi.
+**Plik:** `dashboard/src-tauri/src/commands/import_data.rs:776-810` (`restore_db_from_backup`)
 
-### 5.2. Niespójny styl i18n (`i18next` + inline PL/EN + lokalne helpery)
-- Przykłady:
-  - `useTranslation` + klucze locale,
-  - `useInlineT`,
-  - lokalne `tt(...)` / `t(pl,en)` (np. `QuickStart`).
-- Skutek:
-  - Wyższy koszt utrzymania i większe ryzyko pominięcia tłumaczeń.
-- Rekomendacja:
-  - Ujednolicić na jeden standard i18n (preferencyjnie klucze w locale JSON).
+```rust
+if wal_path.exists() {
+    let _ = fs::remove_file(&wal_path);  // usuwamy WAL aktywnej bazy
+}
+fs::copy(backup_path, &active_db_path)?;  // podmiana pliku bazy
+```
+
+Połączenie w `Mutex<Connection>` jest nadal otwarte. Usunięcie WAL i podmiana pliku `.db` przy aktywnym połączeniu to klasyczny przepis na korupcję SQLite.
+
+**Naprawa:** Przed podmianą pliku należy jawnie zamknąć/unieważnić aktywne połączenie z poola (drop Mutex guard + reinicjalizacja poola). Alternatywnie: użyć SQLite online backup API.
 
 ---
 
-## 6. Brakujące / niekompletne tłumaczenia
+### K-3. Foreign keys wyłączone bez re-enable po błędzie przy restore
 
-## 6.1. `ProjectPage` ma wiele hardcoded angielskich etykiet
-- Lokalizacje (przykładowe, nie wyczerpujące):
-  - `dashboard/src/pages/ProjectPage.tsx:1185`
-  - `1206-1215`, `1226`, `1241-1246`, `1262`, `1268`, `1282-1283`
-  - `1366-1370`, `1406-1410`, `1435`, `1456-1460`, `1472`, `1478`
-  - `1509-1510`, `1531`, `1559`
-  - `1582-1595`, `1600`, `1619`, `1627`, `1648`, `1660`, `1689`, `1700`, `1710`
-- Problem:
-  - Część tekstów jest przez `tt(...)`, część pozostaje na sztywno po angielsku.
-- Rekomendacja:
-  - Przenieść wszystkie teksty UI do i18n; użyć pluralizacji dla „session/sessions”.
+**Plik:** `dashboard/src-tauri/src/commands/database.rs:203-253`
 
-## 6.2. `ProjectContextMenu` bez i18n
-- Lokalizacja: `dashboard/src/components/project/ProjectContextMenu.tsx:117`, `129`
-- Teksty:
-  - `Project:`
-  - `Go to project card`
+```rust
+conn.execute_batch("PRAGMA foreign_keys = OFF;")?;
+// ... operacje ...
+tx.commit()?;  // jeśli to failuje — FK zostaje OFF
+conn.execute_batch("PRAGMA foreign_keys = ON;");
+```
 
-## 6.3. `Help` ma sekcje częściowo po angielsku
-- Lokalizacja: `dashboard/src/pages/Help.tsx:468`, `781`, `788`, `806`, `862`
-- Problem:
-  - Pojedyncze stałe labelki nie przechodzą przez `t(...)`.
+Jeśli `tx.commit()` zwróci błąd, kolejne operacje na tym samym połączeniu (z Mutex poola) działają bez ograniczeń FK — ryzyko osieroconych wierszy.
 
-## 6.4. `AI` pokazuje surowe wartości techniczne zamiast etykiet użytkowych
-- Lokalizacja: `dashboard/src/pages/AI.tsx:519-521`
-- Teksty:
-  - `off`, `suggest`, `auto_safe`
-- Rekomendacja:
-  - Label tłumaczony, wartość techniczna tylko jako `value`.
+**Naprawa:** Użyć RAII wrappera lub `finally`-style `let _ = conn.execute_batch("PRAGMA foreign_keys = ON;")` przed każdym `return Err(...)`.
 
 ---
 
-## 7. Plan naprawczy (rekomendowana kolejność)
+### K-4. Race condition: brak `cancelled` guard w Sessions.tsx
 
-1. **Naprawa P0**: test `dashboard.rs` (kompilacja testów).  
-2. **Uszczelnienie błędów DB**: usunąć ciche `flatten()/ok()` w krytycznych ścieżkach (`sessions`, `assignment_model`, `projects`).  
-3. **Walidacja konfiguracji interwałów** w daemonie (bezpieczne minimum + fallback).  
-4. **Pakiet i18n**:
-   - `ProjectPage` + `ProjectContextMenu` + `Help` + etykiety `AI`.
-   - Dodać zasadę: brak hardcoded tekstów UI poza i18n.
-5. **Optymalizacje hot-path** (`HashSet` dla deduplikacji i lookupów).  
-6. **Refactor parserów timestampów** do wspólnego helpera + testy.
+**Plik:** `dashboard/src/pages/Sessions.tsx:220-238`
 
----
+```tsx
+useEffect(() => {
+  getSessions({ ... })
+    .then((data) => {
+      setSessions(data);        // brak guard "if (cancelled)"
+      setHasMore(data.length >= PAGE_SIZE);
+    });
+}, [effectiveDateRange, refreshKey, activeProjectId, minDuration]);
+```
 
-## 8. Podsumowanie
+Przy szybkiej zmianie filtrów stary wynik nadpisze nowy (race condition). Wzorzec `cancelled` jest konsekwentnie używany w Dashboard i useTimeAnalysisData, ale tutaj go brakuje.
 
-Architektura jest ogólnie dojrzała i aplikacja kompiluje się oraz buduje poprawnie, ale są 3 obszary wymagające pilnej poprawy:
-
-- niedziałający build testów Tauri,
-- ciche pomijanie błędów danych w backendzie,
-- wyraźne luki i niespójność i18n (szczególnie `ProjectPage`).
-
-Po ich domknięciu największy zwrot da stabilizacja warstwy danych (jawne błędy zamiast „partial success”) oraz porządny cleanup tłumaczeń.
-
----
-
-## 9. Status wdrożenia (2026-03-03)
-
-Wdrożone:
-
-1. Uszczelnienie odczytów DB (bez cichego `flatten()/ok()`) w kluczowych komendach:
-   - `dashboard/src-tauri/src/commands/sessions.rs`
-   - `dashboard/src-tauri/src/commands/assignment_model.rs`
-   - `dashboard/src-tauri/src/commands/projects.rs`
-   - dodatkowo `dashboard/src-tauri/src/commands/import_data.rs` (spójność importu/validacji).
-   - dodatkowo pełny sweep modułów:
-     - `dashboard/src-tauri/src/commands/analysis.rs`
-     - `dashboard/src-tauri/src/commands/dashboard.rs`
-     - `dashboard/src-tauri/src/commands/estimates.rs`
-   - status po sweepie: brak wzorca `filter_map(|r| r.ok())` / `rows.flatten()` w `dashboard/src-tauri/src/commands/`.
-2. Walidacja i clamp interwałów monitoringu:
-   - `src/config.rs` (`poll_secs`, `save_secs`, `cache_*`, `session_gap_secs`, `config_reload_secs`, `cpu_threshold`).
-   - eliminacja ryzyka `poll_secs=0` i busy loop.
-3. Optymalizacje wydajności:
-   - `sessions.rs`: deduplikacja kluczy przez `HashSet` (zamiast O(n²)),
-   - `sessions.rs`: filtrowanie `needs_suggestion` przez `HashSet`,
-   - `import_data.rs`: mapa `app_id -> executable_name` (zamiast O(n*m) `.iter().find(...)`).
-4. i18n (brakujące tłumaczenia):
-   - `dashboard/src/pages/ProjectPage.tsx`
-   - `dashboard/src/components/project/ProjectContextMenu.tsx`
-   - `dashboard/src/pages/Help.tsx`
-   - `dashboard/src/pages/AI.tsx` (etykiety trybów modelu).
-
-Weryfikacja po wdrożeniu:
-
-- `cargo check` (daemon): OK  
-- `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`: OK  
-- `npm run build` (dashboard): OK (warning o dużym chunku nadal obecny)  
-- `cargo test --manifest-path dashboard/src-tauri/Cargo.toml --no-run`: nadal FAIL na istniejącym wcześniej błędzie testu `dashboard.rs` (niedopasowanie krotki 3 vs 4).
-
-## 10. Plan naprawczy krok po kroku (dalsze domknięcie)
-
-1. Naprawić niedziałający test `dashboard/src-tauri/src/commands/dashboard.rs` (tuple mismatch).
-2. Rozszerzyć uszczelnienie DB o pozostałe moduły (`analysis.rs`, `dashboard.rs`, `estimates.rs`), gdzie nadal występują wzorce `filter_map(|r| r.ok())`.
-3. Dodać testy jednostkowe dla walidacji interwałów (`config::intervals`) z przypadkami brzegowymi.
-4. Dokończyć i18n cleanup:
-   - stopniowe przejście z inline tłumaczeń na klucze i18next,
-   - reguła lint/code review: brak nowych hardcoded stringów UI.
-5. Domknąć optymalizację bundla frontendu:
-   - podział chunków (`manualChunks`),
-   - dalszy lazy-loading cięższych widoków.
+**Naprawa:**
+```tsx
+useEffect(() => {
+  let cancelled = false;
+  getSessions({ ... })
+    .then((data) => {
+      if (cancelled) return;
+      setSessions(data);
+      setHasMore(data.length >= PAGE_SIZE);
+    });
+  return () => { cancelled = true; };
+}, [...]);
+```
 
 ---
 
-## 11. Re-weryfikacja końcowa (2026-03-03, po poprawkach lint/typowania)
+### K-5. Auto-refresh interwał ignoruje `refreshKey`
 
-Aktualizacja statusu względem sekcji 8-10:
+**Plik:** `dashboard/src/pages/Sessions.tsx:279-305`
 
-- wcześniejsza informacja o błędzie testu Tauri (`dashboard.rs`, tuple mismatch) jest **nieaktualna**;
-- po obecnym przebiegu walidacji testy i kompilacja przechodzą poprawnie.
+```tsx
+useEffect(() => {
+  const interval = setInterval(() => {
+    getSessions({ ... }).then(...)
+  }, 15_000);
+  return () => clearInterval(interval);
+}, [effectiveDateRange, activeProjectId, minDuration]); // brak refreshKey!
+```
 
-Wyniki bieżących kontroli:
+Po ręcznym odświeżeniu (np. po przypisaniu projektu) stary interwał może nadpisać odświeżony stan.
 
-- `npm run lint` (dashboard): **OK** (0 errors, 0 warnings).
-- `npm run build` (dashboard): **OK**.
-  - po podziale chunków (`manualChunks`) i lazy-load `Dashboard`:
-    - największy chunk spadł z ~`963 kB` do ~`412 kB` (`index-*.js`),
-    - chunk `charts-*.js`: ~`364 kB`,
-    - brak ostrzeżenia Vite o chunkach > 500 kB.
-- `cargo check` (daemon): **OK**.
-- `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`: **OK**.
-- `cargo test` (daemon): **OK** (7/7).
-- `cargo test --manifest-path dashboard/src-tauri/Cargo.toml`: **OK** (6/6).
-- `cargo fmt --check` + `cargo fmt --manifest-path dashboard/src-tauri/Cargo.toml --all --check`: **OK**.
+**Naprawa:** Dodać `refreshKey` do tablicy zależności.
 
-Co zostało do domknięcia (bez blokowania działania aplikacji):
+---
 
-1. Dalsze strojenie chunkingu pod cache/runtime (opcjonalnie, już bez krytycznych warningów).
+### K-6. Brak walidacji pustych dat w ExportPanel
+
+**Plik:** `dashboard/src/components/data/ExportPanel.tsx:33-37`
+
+```tsx
+const result = await exportData(
+  exportType === "single" ? parseInt(selectedProject, 10) : undefined,
+  allTime ? undefined : dateStart,   // dateStart może być ""
+  allTime ? undefined : dateEnd      // dateEnd może być ""
+);
+```
+
+Gdy `allTime === false`, użytkownik może kliknąć "Eksportuj" z pustymi polami dat. Backend dostaje `""` zamiast dat.
+
+**Naprawa:** Guard: `if (!allTime && (!dateStart || !dateEnd)) { showError(...); return; }`
+
+---
+
+### K-7. Race condition restart demona — mutex nie zwolniony przed spawn
+
+**Plik:** `src/main.rs:59-73`
+
+Mutex guard nie jest jawnie zwolniony przed `Command::new(exe).spawn()`. Jeśli nowy proces wystartuje zanim stary zwolni mutex, może dojść do konfliktu.
+
+**Naprawa:** Dodać `drop(_guard)` przed `Command::new(exe).spawn()`.
+
+---
+
+## 2. Ważne problemy
+
+### W-1. `has_boost` / `has_manual` zawsze `false` w `get_stacked_timeline`
+
+**Plik:** `dashboard/src-tauri/src/commands/analysis.rs:457-466`
+
+```rust
+Ok(date_map.into_iter().map(|(date, data)| StackedBarData {
+    date, data,
+    has_boost: false,    // zawsze false
+    has_manual: false,   // zawsze false
+    comments: Vec::new(),
+}).collect())
+```
+
+W przeciwieństwie do `get_project_timeline`, ta funkcja nie wypełnia tych pól. Jeśli UI wyświetla boosty/manual na tym wykresie, nigdy ich nie zobaczy.
+
+---
+
+### W-2. Tombstones przetwarzane po tworzeniu projektów (nieprawidłowa kolejność)
+
+**Plik:** `dashboard/src-tauri/src/commands/import_data.rs:132-179`
+
+Tombstones (usuwanie) są wykonywane PO mapowaniu i tworzeniu projektów. Jeśli tombstone usuwa projekt który jest jednocześnie w archiwum, projekt zostanie od razu wstawiony z powrotem.
+
+**Naprawa:** Przenieść obsługę tombstones (linia 150) PRZED tworzenie projektów (linia 133).
+
+---
+
+### W-3. N+1 zapytania SQL w `validate_import`
+
+**Plik:** `dashboard/src-tauri/src/commands/import_data.rs:70-103`
+
+Dla każdej sesji w archiwum osobne zapytanie SQL. Przy tysiącach sesji — tysiące round-tripów.
+
+**Naprawa:** Załadować istniejące sesje do tymczasowej tabeli i sprawdzić kolizje jednym JOINem.
+
+---
+
+### W-4. Brak indeksu na tymczasowej tabeli `_fa_keys`
+
+**Plik:** `dashboard/src-tauri/src/commands/sessions.rs:373-378`
+
+```rust
+conn.execute_batch("CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)")?;
+```
+
+Brak indeksu — JOIN na tej tabeli to pełny skan przy dużej liczbie sesji.
+
+**Naprawa:** Dodać `CREATE INDEX IF NOT EXISTS _idx_fa_keys ON _fa_keys(app_id, date)`.
+
+---
+
+### W-5. Polling wersji demona przy każdym `get_daemon_status`
+
+**Plik:** `dashboard/src-tauri/src/commands/daemon.rs:194-203`
+
+Przy każdym wywołaniu startowany jest nowy proces demona z `--version`. UI polluje status regularnie — to niepotrzebne obciążenie.
+
+**Naprawa:** Cache'ować wynik wersji w `OnceCell` z TTL.
+
+---
+
+### W-6. `today` nigdy nie aktualizuje się po północy w Sessions.tsx
+
+**Plik:** `dashboard/src/pages/Sessions.tsx:151`
+
+```tsx
+const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+```
+
+`useMemo` z `[]` wylicza `today` tylko przy mount. Jeśli aplikacja jest otwarta przez północ, data pozostanie dniem poprzednim.
+
+**Naprawa:** Użyć `useState` + `setInterval` jak w `useTimeAnalysisData.ts`.
+
+---
+
+### W-7. Natywny `confirm()` zamiast `useConfirm()` w ManualSessionDialog
+
+**Plik:** `dashboard/src/components/ManualSessionDialog.tsx:137`
+
+```tsx
+if (!editSession || !confirm(t("..."))) return;
+```
+
+Reszta aplikacji używa `useConfirm()`. Natywny `confirm()` blokuje wątek JS i jest niespójny.
+
+**Naprawa:** Zamienić na `useConfirm()`.
+
+---
+
+### W-8. Hard-coded `'Unassigned'` w porównaniu
+
+**Plik:** `dashboard/src/components/dashboard/TopProjectsList.tsx:46`
+
+```tsx
+const linkedProject = p.name === 'Unassigned' ? null : ...;
+```
+
+Porównanie do angielskiego literału — niespójne z mechaniką tłumaczeń (w PL backend może zwrócić inną nazwę).
+
+**Naprawa:** Porównywać po ID lub specjalnym kluczu, nie po nazwie wyświetlanej.
+
+---
+
+### W-9. Pierwszy tick demona dodaje 0 sekund aktywności
+
+**Plik:** `src/tracker.rs:180,236`
+
+`last_tracking_tick` inicjalizowane do `Instant::now()` tuż przed pętlą. Pierwsze `actual_elapsed` będzie ~0.
+
+**Naprawa:** `let mut last_tracking_tick = Instant::now() - poll_interval;`
+
+---
+
+### W-10. `apps_active_count` liczy wszystkie klucze, nie tylko aktywne
+
+**Plik:** `src/storage.rs:238`
+
+```rust
+data.summary.apps_active_count = data.apps.len();
+```
+
+Liczy wszystkie historyczne aplikacje załadowane z JSON, nie tylko te z aktywnością danego dnia.
+
+**Naprawa:** `data.apps.values().filter(|a| a.total_seconds > 0).count()`
+
+---
+
+### W-11. SQL injection potencjał w `VACUUM INTO`
+
+**Plik:** `dashboard/src-tauri/src/commands/settings.rs:303-306`
+
+```rust
+let escaped_path = path.replace('\'', "''");
+let vacuum_sql = format!("VACUUM INTO '{}'", escaped_path);
+```
+
+Ręczne escapowanie jest kruche. Rusqlite 0.30+ wspiera parametryzowany `VACUUM INTO`.
+
+**Naprawa:** `conn.execute("VACUUM INTO ?1", rusqlite::params![path])?;`
+
+---
+
+### W-12. `dismissedSuggestions` reset na złej zależności
+
+**Plik:** `dashboard/src/pages/Sessions.tsx:240-242`
+
+```tsx
+useEffect(() => {
+  setDismissedSuggestions(new Set());
+}, [activeDateRange.start, activeDateRange.end]); // zamiast effectiveDateRange
+```
+
+Przy przełączaniu na tryb "unassigned" suggestions nie są czyszczone mimo nowych sesji.
+
+---
+
+### W-13. Restart pętli BackgroundServices przy `autoImportDone`
+
+**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:193-243`
+
+Zmiana `autoImportDone` z `false` → `true` niszczy i odtwarza cały interwał, resetując timery odświeżeń.
+
+---
+
+## 3. Optymalizacje i wydajność
+
+### O-1. `tasklist` zamiast WinAPI do detekcji dashboardu
+
+**Plik:** `src/tray.rs:207-231`
+
+`tasklist /FO CSV` to osobny proces (~50ms, ~10MB RAM). Projekt ma już `build_process_snapshot()` w `monitor.rs`.
+
+**Naprawa:** Użyć istniejącego `build_process_snapshot()` lub bezpośrednio toolhelp32.
+
+---
+
+### O-2. Podwójne `to_lowercase()` w `monitored_exe_names`
+
+**Plik:** `src/config.rs:202`
+
+Dane są już znormalizowane podczas ładowania, ale `monitored_exe_names()` normalizuje je ponownie.
+
+**Naprawa:** Usunąć redundantne `.trim().to_lowercase()`.
+
+---
+
+### O-3. Redundancja przy budowaniu drzewa PID
+
+**Plik:** `src/monitor.rs:352-364`
+
+Ręczne budowanie drzewa zamiast reużycia `collect_descendants`. Można uprościć.
+
+---
+
+### O-4. N+1 `prepare` w pętli merge sesji
+
+**Plik:** `dashboard/src-tauri/src/commands/import_data.rs:560`
+
+`tx.prepare(...)` wywoływane wewnątrz `loop`. Przy dużych importach tworzy wielokrotne przygotowania tego samego SQL.
+
+**Naprawa:** Wyciągnąć `prepare` / użyć `prepare_cached` przed pętlą.
+
+---
+
+### O-5. `localStorage` parsowane co sekundę w BackgroundServices
+
+**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:219`
+
+`loadOnlineSyncSettings()` parsuje JSON z localStorage w każdym ticku 1s. Wystarczy używać stanu z istniejącego `useEffect` na event `ONLINE_SYNC_SETTINGS_CHANGED_EVENT`.
+
+---
+
+### O-6. Brak `useMemo` dla animation config w AllProjectsChart
+
+**Plik:** `dashboard/src/components/dashboard/AllProjectsChart.tsx:34-39`
+
+`getRechartsAnimationConfig` wyliczane przy każdym renderze. Zależy tylko od `sorted.length`.
+
+**Naprawa:** Opakować w `useMemo`.
+
+---
+
+### O-7. `display_name_for` — liniowe przeszukiwanie przy każdym poll
+
+**Plik:** `src/config.rs:350-357`
+
+`config.apps.iter().find(...)` przy każdej nowej aplikacji. Przy >100 wpisach O(n).
+
+**Naprawa:** Zbudować `HashMap<String, String>` po załadowaniu konfiguracji.
+
+---
+
+### O-8. Duplikacja `parse_time_to_ms` w `rebuild_sessions`
+
+**Plik:** `dashboard/src-tauri/src/commands/sessions.rs:892-917 i 984-1021`
+
+Ta sama logika parsowania timestampów (5 formatów) powielona dwa razy. `parse_local_timestamp` istnieje już w `analysis.rs`.
+
+**Naprawa:** Wyodrębnić wspólną funkcję do modułu `helpers`.
+
+---
+
+### O-9. Mutable module-level state w data-store przy HMR
+
+**Plik:** `dashboard/src/store/data-store.ts:31-32`
+
+```ts
+let lastRefreshAtMs = 0;
+let scheduledRefreshTimer = null;
+```
+
+Przeżywają HMR — throttle blokuje pierwsze odświeżenie po hot-reload. Mniejszy problem w produkcji.
+
+---
+
+## 4. Nadmiarowy kod
+
+### N-1. Nieużywana zależność `sysinfo` w Cargo.toml demona
+
+**Plik:** `Cargo.toml:31`
+
+`sysinfo = "0.30"` nie jest używane w żadnym pliku `.rs` demona.
+
+**Naprawa:** Usunąć z `[dependencies]`.
+
+---
+
+### N-2. Zduplikowany obiekt filtrów sesji
+
+**Plik:** `dashboard/src/pages/Sessions.tsx:221-232 i 283-293`
+
+Ten sam obiekt filtrów dosłownie skopiowany w dwóch `useEffect`. Źródło buga K-5.
+
+**Naprawa:** Wyodrębnić do `useMemo`.
+
+---
+
+### N-3. IIFE w renderze TopProjectsList
+
+**Plik:** `dashboard/src/components/dashboard/TopProjectsList.tsx:85-118`
+
+`(() => { ... })()` w JSX tworzy nową funkcję przy każdym renderze każdego wiersza.
+
+**Naprawa:** Wyodrębnić do zmiennej lokalnej lub osobnego komponentu.
+
+---
+
+### N-4. `session_count` liczy przetworzone, nie zaimportowane sesje
+
+**Plik:** `dashboard/src-tauri/src/commands/import.rs:269`
+
+`session_count += 1` inkrementowane niezależnie od tego czy INSERT był nowy czy ON CONFLICT DO UPDATE. Dezorientujący `ImportResult`.
+
+---
+
+## 5. Brakujące tłumaczenia i niespójności i18n
+
+### Pliki tłumaczeń EN/PL — zsynchronizowane
+
+Oba pliki (`locales/en/common.json` i `locales/pl/common.json`) mają identyczne klucze. Brak brakujących kluczy.
+
+### Hardkodowane teksty wymagające i18n
+
+| Plik | Linia | Tekst | Problem |
+|------|-------|-------|---------|
+| `pages/QuickStart.tsx` | 145 | `Step {idx + 1}` | Hardkodowane "Step" po angielsku |
+| `pages/Help.tsx` | 330 | `title="DASHBOARD"` | Hardkodowane zamiast `t()` |
+| `pages/Help.tsx` | 933 | `title="DAEMON"` | Hardkodowane zamiast `t()` |
+| `pages/ProjectPage.tsx` | 985 | `title="Activity Over Time"` | Hardkodowany angielski tytuł wykresu |
+| `pages/Projects.tsx` | 1710 | `placeholder="C:\\projects\\clients"` | Placeholder ścieżki |
+
+### Niespójności systemów tłumaczeń
+
+1. **`QuickStart.tsx`** — używa własnej lokalnej funkcji `t(pl, en)` zamiast `useInlineT()` lub kluczy i18next. Teksty nie są zarządzane centralnie.
+
+2. **`Help.tsx`** — miesza trzy systemy: `useTranslation()`, `useInlineT()` i hardkodowane stringi. Dwa tytuły sekcji hardkodowane, 9 pozostałych przez `t()`.
+
+3. **System `inline-i18n.ts`** oznaczony jako `@deprecated` — ponad 450 hashowanych wpisów w sekcji `inline` powinno być docelowo zmigrowanych na czytelne klucze i18next.
+
+### Niespójny branding/język w demonzie
+
+**Pliki:** `src/tray.rs`, `src/tracker.rs`
+
+Komunikaty wyświetlane użytkownikowi (MessageBoxW) są po angielsku i mieszają branding. Wg CLAUDE.md: "Nazwa produktu w UI, komunikatach: zawsze `TIMEFLOW`".
+
+---
+
+## 6. Sugerowane rozwiązania — priorytet napraw
+
+### Priorytet 1 — natychmiastowe (ryzyko utraty danych / korupcji)
+
+| # | Problem | Plik | Estymacja |
+|---|---------|------|-----------|
+| K-1 | Literówka `iS_hidden` → `is_hidden` | `analysis.rs:423` | 1 min |
+| K-2 | Zamknąć połączenie DB przed podmianą pliku | `import_data.rs:776-810` | 30 min |
+| K-3 | RAII wrapper na `PRAGMA foreign_keys` | `database.rs:203-253` | 15 min |
+| K-7 | `drop(_guard)` przed spawn restart | `main.rs:59-73` | 5 min |
+| W-11 | Parametryzowany `VACUUM INTO` | `settings.rs:303-306` | 5 min |
+
+### Priorytet 2 — ważne (race conditions, błędne dane w UI)
+
+| # | Problem | Plik | Estymacja |
+|---|---------|------|-----------|
+| K-4 | Dodać `cancelled` guard w Sessions | `Sessions.tsx:220` | 5 min |
+| K-5 | Dodać `refreshKey` do auto-refresh | `Sessions.tsx:279` | 2 min |
+| K-6 | Walidacja dat w ExportPanel | `ExportPanel.tsx:33` | 5 min |
+| W-1 | Wypełnić `has_boost`/`has_manual` | `analysis.rs:457` | 20 min |
+| W-2 | Kolejność tombstones vs projekty | `import_data.rs:132` | 10 min |
+| W-6 | `today` auto-update po północy | `Sessions.tsx:151` | 5 min |
+| W-7 | Natywny `confirm` → `useConfirm` | `ManualSessionDialog.tsx:137` | 5 min |
+| W-8 | Hardcoded 'Unassigned' | `TopProjectsList.tsx:46` | 10 min |
+| W-9 | Pierwszy tick 0 sekund | `tracker.rs:180` | 2 min |
+| W-10 | `apps_active_count` filter | `storage.rs:238` | 2 min |
+
+### Priorytet 3 — optymalizacje i jakość
+
+| # | Problem | Plik | Estymacja |
+|---|---------|------|-----------|
+| O-1 | WinAPI zamiast `tasklist` | `tray.rs:207` | 20 min |
+| O-3 | N+1 validate_import | `import_data.rs:70` | 30 min |
+| O-4 | Brak indeksu `_fa_keys` | `sessions.rs:374` | 2 min |
+| O-5 | Cache wersji demona | `daemon.rs:194` | 15 min |
+| O-8 | Wspólna `parse_time_to_ms` | `sessions.rs` | 15 min |
+| N-1 | Usunąć `sysinfo` z Cargo.toml | `Cargo.toml:31` | 1 min |
+| N-2 | Wyodrębnić filtry sesji do useMemo | `Sessions.tsx` | 10 min |
+
+### Priorytet 4 — tłumaczenia
+
+| # | Problem | Plik |
+|---|---------|------|
+| T-1 | Hardkodowane "Step", "DASHBOARD", "DAEMON", "Activity Over Time" | QuickStart, Help, ProjectPage |
+| T-2 | Unifikacja systemów tłumaczeń (usunięcie inline-i18n) | Cały frontend |
+| T-3 | Komunikaty demona — polskie tłumaczenia + branding TIMEFLOW | tray.rs, tracker.rs |
+
+---
+
+*Raport wygenerowany automatycznie na podstawie analizy statycznej kodu.*

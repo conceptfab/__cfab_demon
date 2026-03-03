@@ -13,11 +13,7 @@ TODO ??
 
 Tak, zostało jeszcze kilka rzeczy „quality”, ale bez blokera działania.
 
-Odporność traya na awarie: w src/tray.rs nadal są liczne expect(...) (ryzyko panic przy brakach zasobów).
-Refactor parserów czasu: nadal są duplikacje logiki parsowania w analysis.rs, assignment_model.rs, sessions.rs.
-i18n nadal mieszany: w części ekranów dalej współistnieją useInlineT i useTranslation (np. ProjectPage.tsx, Settings.tsx).
-Frontend bundle: nadal warning o dużym chunku (index ~963 kB) przy npm run build (warto domknąć manualChunks/lazy loading).
-Jeśli chcesz, mogę teraz od razu zrobić punkt 1 (tray bez expect) albo punkt 4 (podział bundla).
+
 
 
 

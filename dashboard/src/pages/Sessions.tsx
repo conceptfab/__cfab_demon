@@ -611,12 +611,29 @@ export function Sessions() {
       .catch(console.error);
   };
 
+  const projectIdByName = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const project of projects) {
+      const key = project.name.trim().toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, project.id);
+      }
+    }
+    return map;
+  }, [projects]);
+
   const groupedByProject = useMemo(() => {
     const groups = new Map<string, GroupedProject>();
     for (const session of sessions) {
-      const isUnassigned = session.project_id == null;
       const projectName = session.project_name ?? t('sessions.menu.unassigned');
-      const projectId = session.project_id;
+      const normalizedProjectName = projectName.trim().toLowerCase();
+      const inferredProjectId =
+        session.project_id ??
+        (normalizedProjectName
+          ? (projectIdByName.get(normalizedProjectName) ?? null)
+          : null);
+      const isUnassigned = inferredProjectId == null;
+      const projectId = inferredProjectId;
       const projectColor = session.project_color ?? '#64748b';
       const key = isUnassigned
         ? UNASSIGNED_GROUP_KEY
@@ -636,10 +653,10 @@ export function Sessions() {
       const group = groups.get(key)!;
       if (
         group.projectId == null &&
-        typeof session.project_id === 'number' &&
-        session.project_id > 0
+        typeof projectId === 'number' &&
+        projectId > 0
       ) {
-        group.projectId = session.project_id;
+        group.projectId = projectId;
       }
       group.totalSeconds += session.duration_seconds;
       if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
@@ -651,7 +668,7 @@ export function Sessions() {
       if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
       return b.totalSeconds - a.totalSeconds;
     });
-  }, [sessions, t]);
+  }, [sessions, t, projectIdByName]);
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }
     | {
@@ -698,7 +715,6 @@ export function Sessions() {
   );
   const resolveGroupProjectId = useCallback(
     (group: GroupedProject) => {
-      if (group.projectId == null) return null;
       if (typeof group.projectId === 'number' && group.projectId > 0)
         return group.projectId;
 
