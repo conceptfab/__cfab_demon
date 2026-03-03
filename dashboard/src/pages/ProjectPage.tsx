@@ -16,6 +16,7 @@ import {
   Trash2,
   Plus,
   PenLine,
+  Save,
 } from 'lucide-react';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
@@ -216,6 +217,7 @@ export function ProjectPage() {
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [editingColor, setEditingColor] = useState(false);
+  const [pendingColor, setPendingColor] = useState<string | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -620,24 +622,41 @@ export function ProjectPage() {
             <AppTooltip content={tt('Zmień kolor', 'Change color')}>
               <div
                 className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                style={{ backgroundColor: project.color }}
-                onClick={() => setEditingColor(!editingColor)}
+                style={{ backgroundColor: pendingColor && editingColor ? pendingColor : project.color }}
+                onClick={() => {
+                  setEditingColor(!editingColor);
+                  setPendingColor(null);
+                }}
               />
             </AppTooltip>
             {editingColor && (
               <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
-                <input
-                  type="color"
-                  defaultValue={project.color}
-                  className="w-16 h-8 border border-border rounded cursor-pointer"
-                  onChange={async (e) => {
-                    await updateProject(project.id, e.target.value);
-                    setProject({ ...project, color: e.target.value });
-                    setEditingColor(false);
-                    triggerRefresh();
-                  }}
-                  title={tt('Wybierz kolor', 'Choose color')}
-                />
+                <div className="flex items-center gap-1">
+                  <input
+                    type="color"
+                    defaultValue={project.color}
+                    className="w-16 h-8 border border-border rounded cursor-pointer"
+                    onChange={(e) => setPendingColor(e.target.value)}
+                    title={tt('Wybierz kolor', 'Choose color')}
+                  />
+                  {pendingColor && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-green-500 hover:text-green-400"
+                      onClick={async () => {
+                        await updateProject(project.id, pendingColor);
+                        setProject({ ...project, color: pendingColor });
+                        setEditingColor(false);
+                        setPendingColor(null);
+                        triggerRefresh();
+                      }}
+                      title={tt('Zapisz kolor', 'Save color')}
+                    >
+                      <Save className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
                 <div className="mt-2 flex gap-1">
                   {PROJECT_COLORS.map((c) => (
                     <button
@@ -648,6 +667,7 @@ export function ProjectPage() {
                         await updateProject(project.id, c);
                         setProject({ ...project, color: c });
                         setEditingColor(false);
+                        setPendingColor(null);
                         triggerRefresh();
                       }}
                       title={c}

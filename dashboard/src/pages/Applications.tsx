@@ -8,6 +8,7 @@ import {
   Shield,
   TimerReset,
   Pencil,
+  Save,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,7 @@ export function Applications() {
   const [sortKey, setSortKey] = useState<SortKey>('total_seconds');
   const [sortAsc, setSortAsc] = useState(false);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
+  const [pendingColor, setPendingColor] = useState<string | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
 
   // Monitored apps state
@@ -397,25 +399,43 @@ export function Applications() {
                         <AppTooltip content={t('Zmień kolor', 'Change color')}>
                           <div
                             className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                            style={{ backgroundColor: app.color }}
-                            onClick={() =>
-                              setEditingColorId(
-                                editingColorId === app.id ? null : app.id,
-                              )
-                            }
+                            style={{ backgroundColor: pendingColor && editingColorId === app.id ? pendingColor : app.color }}
+                            onClick={() => {
+                              if (editingColorId === app.id) {
+                                setEditingColorId(null);
+                                setPendingColor(null);
+                              } else {
+                                setEditingColorId(app.id);
+                                setPendingColor(null);
+                              }
+                            }}
                           />
                         </AppTooltip>
                         {editingColorId === app.id && (
                           <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
-                            <input
-                              type="color"
-                              defaultValue={app.color || '#38bdf8'}
-                              className="w-16 h-8 border border-border rounded cursor-pointer"
-                              onChange={(e) =>
-                                handleUpdateColor(app.id, e.target.value)
-                              }
-                              title={t('Wybierz kolor', 'Choose color')}
-                            />
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="color"
+                                defaultValue={app.color || '#38bdf8'}
+                                className="w-16 h-8 border border-border rounded cursor-pointer"
+                                onChange={(e) => setPendingColor(e.target.value)}
+                                title={t('Wybierz kolor', 'Choose color')}
+                              />
+                              {pendingColor && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-green-500 hover:text-green-400"
+                                  onClick={() => {
+                                    handleUpdateColor(app.id, pendingColor);
+                                    setPendingColor(null);
+                                  }}
+                                  title={t('Zapisz kolor', 'Save color')}
+                                >
+                                  <Save className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
                             <div className="mt-2 flex gap-1">
                               {[
                                 '#38bdf8',
@@ -431,7 +451,10 @@ export function Applications() {
                                   key={c}
                                   className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                                   style={{ backgroundColor: c }}
-                                  onClick={() => handleUpdateColor(app.id, c)}
+                                  onClick={() => {
+                                    handleUpdateColor(app.id, c);
+                                    setPendingColor(null);
+                                  }}
                                   title={c}
                                 />
                               ))}

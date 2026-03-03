@@ -170,6 +170,7 @@ export function Projects() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [projectDialogId, setProjectDialogId] = useState<number | null>(null);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
+  const [pendingColor, setPendingColor] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [color, setColor] = useState(PROJECT_COLORS[0]);
   const [projectFolderPath, setProjectFolderPath] = useState('');
@@ -1056,30 +1057,53 @@ export function Projects() {
               <AppTooltip content={t('projects.labels.change_color')}>
                 <div
                   className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                  style={{ backgroundColor: p.color }}
-                  onClick={() =>
-                    setEditingColorId(editingColorId === p.id ? null : p.id)
-                  }
+                  style={{ backgroundColor: pendingColor && editingColorId === p.id ? pendingColor : p.color }}
+                  onClick={() => {
+                    if (editingColorId === p.id) {
+                      setEditingColorId(null);
+                      setPendingColor(null);
+                    } else {
+                      setEditingColorId(p.id);
+                      setPendingColor(null);
+                    }
+                  }}
                 />
               </AppTooltip>
               {editingColorId === p.id && (
                 <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
-                  <input
-                    type="color"
-                    defaultValue={p.color}
-                    className="w-16 h-8 border border-border rounded cursor-pointer"
-                    onChange={(e) =>
-                      handleUpdateProjectColor(p.id, e.target.value)
-                    }
-                    title={t('projects.labels.choose_color')}
-                  />
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="color"
+                      defaultValue={p.color}
+                      className="w-16 h-8 border border-border rounded cursor-pointer"
+                      onChange={(e) => setPendingColor(e.target.value)}
+                      title={t('projects.labels.choose_color')}
+                    />
+                    {pendingColor && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-green-500 hover:text-green-400"
+                        onClick={() => {
+                          handleUpdateProjectColor(p.id, pendingColor);
+                          setPendingColor(null);
+                        }}
+                        title={t('projects.labels.save')}
+                      >
+                        <Save className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                   <div className="mt-2 flex gap-1">
                     {PROJECT_COLORS.map((c) => (
                       <AppTooltip key={c} content={c}>
                         <button
                           className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                           style={{ backgroundColor: c }}
-                          onClick={() => handleUpdateProjectColor(p.id, c)}
+                          onClick={() => {
+                            handleUpdateProjectColor(p.id, c);
+                            setPendingColor(null);
+                          }}
                         />
                       </AppTooltip>
                     ))}
