@@ -115,7 +115,7 @@ export const SessionRow = memo(function SessionRow({
               {ind.showSuggestions && isSuggested && (
                 <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
                   <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
-                  <span className="text-[9px] text-sky-300 font-medium truncate max-w-[80px]">
+                  <span className="text-[9px] text-sky-300 font-medium truncate max-w-[200px]" title={s.suggested_project_name}>
                     {s.suggested_project_name}
                     {s.suggested_confidence != null &&
                       ` ${(s.suggested_confidence * 100).toFixed(0)}%`}
@@ -129,12 +129,19 @@ export const SessionRow = memo(function SessionRow({
                 (() => {
                   const bdCandidate =
                     scoreBreakdownData?.candidates?.[0] ?? null;
+                  const bdCandidate2 =
+                    scoreBreakdownData?.candidates?.[1] ?? null;
+                  const isTied =
+                    bdCandidate != null &&
+                    bdCandidate2 != null &&
+                    bdCandidate.total_score === bdCandidate2.total_score;
                   const bdConf =
                     scoreBreakdownData?.final_suggestion?.confidence ?? null;
-                  const targetName =
-                    s.suggested_project_name ??
-                    bdCandidate?.project_name ??
-                    (s.ai_assigned ? s.project_name : null);
+                  const targetName = isTied
+                    ? `${bdCandidate!.project_name} / ${bdCandidate2!.project_name}`
+                    : (s.suggested_project_name ??
+                      bdCandidate?.project_name ??
+                      (s.ai_assigned ? s.project_name : null));
                   const conf =
                     s.suggested_confidence ??
                     bdConf ??
@@ -149,7 +156,10 @@ export const SessionRow = memo(function SessionRow({
                           {t('sessions.row.loading_short')}
                         </span>
                       ) : targetName ? (
-                        <span className="text-[8px] text-violet-300 font-medium truncate max-w-[70px]">
+                        <span
+                          className={`text-[8px] font-medium truncate max-w-[180px] ${isTied ? 'text-amber-300' : 'text-violet-300'}`}
+                          title={targetName ?? undefined}
+                        >
                           {targetName}
                         </span>
                       ) : (
@@ -165,8 +175,9 @@ export const SessionRow = memo(function SessionRow({
                               conf != null
                                 ? `${Math.max(8, conf * 100)}%`
                                 : '0%',
-                            backgroundColor:
-                              conf != null
+                            backgroundColor: isTied
+                              ? '#eab308'
+                              : conf != null
                                 ? conf >= 0.8
                                   ? '#22c55e'
                                   : conf >= 0.5
@@ -225,26 +236,30 @@ export const SessionRow = memo(function SessionRow({
               </p>
             ) : (
               <div className="space-y-0.5">
-                {scoreBreakdownData?.candidates.slice(0, 3).map((c, i) => (
-                  <div
-                    key={c.project_id}
-                    className={`flex items-center gap-2 text-[8px] ${
-                      i === 0
-                        ? 'text-sky-300/80 font-medium'
-                        : 'text-muted-foreground/40'
-                    }`}
-                  >
-                    <span className="truncate max-w-[100px]">
-                      {c.project_name}
-                    </span>
-                    <span className="font-mono">
-                      {c.total_score.toFixed(2)}
-                    </span>
-                    <span className="text-muted-foreground/20">
-                      ({t('sessions.row.evidence_short', { count: c.evidence_count })})
-                    </span>
-                  </div>
-                ))}
+                {(() => {
+                  const topScore =
+                    scoreBreakdownData?.candidates?.[0]?.total_score;
+                  return scoreBreakdownData?.candidates.slice(0, 3).map((c) => (
+                    <div
+                      key={c.project_id}
+                      className={`flex items-center gap-2 text-[8px] ${
+                        c.total_score === topScore
+                          ? 'text-sky-300/80 font-medium'
+                          : 'text-muted-foreground/40'
+                      }`}
+                    >
+                      <span className="truncate max-w-[100px]">
+                        {c.project_name}
+                      </span>
+                      <span className="font-mono">
+                        {c.total_score.toFixed(2)}
+                      </span>
+                      <span className="text-muted-foreground/20">
+                        ({t('sessions.row.evidence_short', { count: c.evidence_count })})
+                      </span>
+                    </div>
+                  ));
+                })()}
               </div>
             )}
           </div>
@@ -276,13 +291,20 @@ export const SessionRow = memo(function SessionRow({
           {ind.showScoreBreakdown &&
             (() => {
               const bdCandidate = scoreBreakdownData?.candidates?.[0] ?? null;
+              const bdCandidate2 =
+                scoreBreakdownData?.candidates?.[1] ?? null;
+              const isTied =
+                bdCandidate != null &&
+                bdCandidate2 != null &&
+                bdCandidate.total_score === bdCandidate2.total_score;
               const bdConf =
                 scoreBreakdownData?.final_suggestion?.confidence ?? null;
 
-              const targetName =
-                s.suggested_project_name ??
-                bdCandidate?.project_name ??
-                (s.ai_assigned ? s.project_name : null);
+              const targetName = isTied
+                ? `${bdCandidate!.project_name} / ${bdCandidate2!.project_name}`
+                : (s.suggested_project_name ??
+                  bdCandidate?.project_name ??
+                  (s.ai_assigned ? s.project_name : null));
               const conf =
                 s.suggested_confidence ??
                 bdConf ??
@@ -300,7 +322,10 @@ export const SessionRow = memo(function SessionRow({
                       {t('sessions.row.loading_short')}
                     </span>
                   ) : targetName ? (
-                    <span className="text-[11px] text-violet-300 font-medium truncate max-w-[100px]">
+                    <span
+                      className={`text-[11px] font-medium truncate max-w-[240px] ${isTied ? 'text-amber-300' : 'text-violet-300'}`}
+                      title={targetName ?? undefined}
+                    >
                       {targetName}
                     </span>
                   ) : (
@@ -314,8 +339,9 @@ export const SessionRow = memo(function SessionRow({
                       style={{
                         width:
                           conf != null ? `${Math.max(8, conf * 100)}%` : '0%',
-                        backgroundColor:
-                          conf != null
+                        backgroundColor: isTied
+                          ? '#eab308'
+                          : conf != null
                             ? conf >= 0.8
                               ? '#22c55e'
                               : conf >= 0.5
@@ -441,11 +467,14 @@ export const SessionRow = memo(function SessionRow({
             </p>
           ) : (
             <div className="space-y-0.5">
-              {scoreBreakdownData?.candidates.slice(0, 5).map((c, i) => (
+              {(() => {
+                const topScore =
+                  scoreBreakdownData?.candidates?.[0]?.total_score;
+                return scoreBreakdownData?.candidates.slice(0, 5).map((c) => (
                 <div
                   key={c.project_id}
                   className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
-                    i === 0
+                    c.total_score === topScore
                       ? 'text-sky-300/80 font-medium'
                       : 'text-muted-foreground/40'
                   }`}
@@ -480,7 +509,8 @@ export const SessionRow = memo(function SessionRow({
                     })}
                   </span>
                 </div>
-              ))}
+              ));
+              })()}
               {scoreBreakdownData?.final_suggestion && (
                 <div className="flex gap-4 text-[11px] text-muted-foreground/30 mt-1 pt-1 border-t border-border/5">
                   <span>

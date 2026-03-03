@@ -491,7 +491,11 @@ fn compute_raw_suggestion(
     }
 
     let mut sorted = candidate_scores.into_iter().collect::<Vec<_>>();
-    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+    sorted.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
     let Some((best_project_id, best_score)) = sorted.first().copied() else {
         return Ok(None);
     };
@@ -1737,6 +1741,7 @@ pub async fn get_session_score_breakdown(
         b.total_score
             .partial_cmp(&a.total_score)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.project_id.cmp(&b.project_id))
     });
 
     let final_suggestion = compute_raw_suggestion(&conn, &context)?;
