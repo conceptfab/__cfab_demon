@@ -148,7 +148,8 @@ pub fn run() {
             commands::restore_database_from_file,
             commands::get_backup_files,
             commands::get_secure_token,
-            commands::set_secure_token
+            commands::set_secure_token,
+            commands::persist_language_for_daemon
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

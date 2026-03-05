@@ -10,8 +10,25 @@ use native_windows_gui as nwg;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+use crate::i18n::{self, Lang, TrayText};
 use crate::APP_NAME;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
+
+/// Zmienia tekst menu item przez WinAPI (NWG nie ma set_text na MenuItem).
+fn set_menu_item_text(item: &nwg::MenuItem, text: &str) {
+    if let Some((hmenu, id)) = item.handle.hmenu_item() {
+        let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            winapi::um::winuser::ModifyMenuW(
+                hmenu,
+                id,
+                winapi::um::winuser::MF_BYCOMMAND | winapi::um::winuser::MF_STRING,
+                id as usize,
+                wide.as_ptr(),
+            );
+        }
+    }
+}
 
 #[cfg(windows)]
 fn no_console(cmd: &mut std::process::Command) {
@@ -43,12 +60,17 @@ fn load_assignment_attention_count() -> i64 {
         .unwrap_or(0)
 }
 
-fn build_tray_tip() -> String {
+fn build_tray_tip(lang: Lang) -> String {
     let attention = load_assignment_attention_count();
     if attention > 0 {
-        format!("{} * - {} nieprzypisanych sesji", APP_NAME, attention)
+        format!(
+            "{} * - {} {}",
+            APP_NAME,
+            attention,
+            lang.t(TrayText::UnassignedSessions)
+        )
     } else {
-        format!("{} - działa w tle", APP_NAME)
+        format!("{} - {}", APP_NAME, lang.t(TrayText::RunningInBackground))
     }
 }
 
@@ -57,6 +79,8 @@ fn build_tray_tip() -> String {
 /// Returns whether the user requested a restart.
 pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     nwg::init().expect("Failed to initialize NWG");
+
+    let initial_lang = i18n::load_language();
 
     let mut window = nwg::MessageWindow::default();
     nwg::MessageWindow::builder()
@@ -76,7 +100,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                 .expect("APP_ICON not found in resources")
         });
 
-    let tip = build_tray_tip();
+    let tip = build_tray_tip(initial_lang);
 
     let mut tray_obj = nwg::TrayNotification::default();
     nwg::TrayNotification::builder()
@@ -118,21 +142,21 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 
     let mut menu_exit = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text("Zamknij")
+        .text(initial_lang.t(TrayText::Close))
         .parent(&menu)
         .build(&mut menu_exit)
         .expect("Failed to create Exit menu item");
 
     let mut menu_restart = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text("Uruchom ponownie")
+        .text(initial_lang.t(TrayText::Restart))
         .parent(&menu)
         .build(&mut menu_restart)
         .expect("Failed to create Restart menu item");
 
     let mut menu_dashboard = nwg::MenuItem::default();
     nwg::MenuItem::builder()
-        .text("Otwórz Dashboard")
+        .text(initial_lang.t(TrayText::OpenDashboard))
         .parent(&menu)
         .build(&mut menu_dashboard)
         .expect("Failed to create Launch Dashboard menu item");
@@ -147,6 +171,16 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let menu_clone = menu.clone();
     let tray_clone = tray.clone();
 
+    let current_lang: Rc<std::cell::Cell<Lang>> = Rc::new(std::cell::Cell::new(initial_lang));
+    let lang_clone = current_lang.clone();
+
+    let menu_exit = Rc::new(RefCell::new(menu_exit));
+    let menu_restart = Rc::new(RefCell::new(menu_restart));
+    let menu_dashboard = Rc::new(RefCell::new(menu_dashboard));
+    let menu_exit_clone = menu_exit.clone();
+    let menu_restart_clone = menu_restart.clone();
+    let menu_dashboard_clone = menu_dashboard.clone();
+
     let stop_clone = stop_signal.clone();
     let action = Arc::new(Mutex::new(TrayExitAction::Exit));
     let action_clone = action.clone();
@@ -155,7 +189,8 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         nwg::full_bind_event_handler(&window_handle, move |evt, _evt_data, handle| match evt {
             nwg::Event::OnContextMenu => {
                 if handle == tray_handle {
-                    let refreshed_tip = build_tray_tip();
+                    let lang = lang_clone.get();
+                    let refreshed_tip = build_tray_tip(lang);
                     tray_clone.borrow_mut().set_tip(&refreshed_tip);
                     let (x, y) = nwg::GlobalCursor::position();
                     menu_clone.popup(x, y);
@@ -164,8 +199,27 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 
             nwg::Event::OnTimerTick => {
                 if handle == tip_timer_handle {
+                    let new_lang = i18n::load_language();
+                    let old_lang = lang_clone.get();
+                    if new_lang != old_lang {
+                        lang_clone.set(new_lang);
+                        set_menu_item_text(
+                            &menu_exit_clone.borrow(),
+                            new_lang.t(TrayText::Close),
+                        );
+                        set_menu_item_text(
+                            &menu_restart_clone.borrow(),
+                            new_lang.t(TrayText::Restart),
+                        );
+                        set_menu_item_text(
+                            &menu_dashboard_clone.borrow(),
+                            new_lang.t(TrayText::OpenDashboard),
+                        );
+                    }
+
+                    let lang = lang_clone.get();
                     let attention = load_assignment_attention_count();
-                    let refreshed_tip = build_tray_tip();
+                    let refreshed_tip = build_tray_tip(lang);
 
                     let tray = tray_clone.borrow_mut();
                     tray.set_tip(&refreshed_tip);
@@ -192,7 +246,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                     nwg::stop_thread_dispatch();
                 } else if handle == dashboard_handle {
                     log::info!("Launching Dashboard from tray menu");
-                    launch_dashboard();
+                    launch_dashboard(lang_clone.get());
                 }
             }
 
@@ -238,7 +292,7 @@ fn is_dashboard_running() -> bool {
         || stdout.contains("\"timeflow_dashboard.exe\"")
 }
 
-fn launch_dashboard() {
+fn launch_dashboard(lang: Lang) {
     use std::process::Command;
 
     if is_dashboard_running() {
@@ -296,7 +350,7 @@ fn launch_dashboard() {
         }
     } else {
         log::error!("Dashboard exe not found in {:?}", daemon_dir);
-        show_error_message("Nie znaleziono TIMEFLOW Dashboard (timeflow-dashboard.exe).\nUpewnij się, że znajduje się w tym samym folderze co timeflow-demon.exe.");
+        show_error_message(lang.t(TrayText::DashboardNotFound));
     }
 }
 

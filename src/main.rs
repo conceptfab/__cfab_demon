@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::os::windows::process::CommandExt;
 
 mod config;
+mod i18n;
 mod monitor;
 mod single_instance;
 mod storage;

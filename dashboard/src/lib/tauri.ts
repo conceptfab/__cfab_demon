@@ -412,3 +412,7 @@ export const getSecureToken = () =>
 
 export const setSecureToken = (token: string) =>
   invoke<void>("set_secure_token", { token });
+
+// Language persistence for daemon (shared file in %APPDATA%/TimeFlow/)
+export const persistLanguageForDaemon = (code: string) =>
+  invoke<void>("persist_language_for_daemon", { code });

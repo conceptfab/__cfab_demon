@@ -310,3 +310,16 @@ pub async fn restart_daemon() -> Result<(), String> {
         .map_err(|e| format!("Failed to start daemon: {}", e))?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn persist_language_for_daemon(code: String) -> Result<(), String> {
+    let base_dir = timeflow_data_dir()?;
+    let lang_file = base_dir.join("language.json");
+    let normalized = if code.to_lowercase().starts_with("pl") {
+        "pl"
+    } else {
+        "en"
+    };
+    let content = format!("{{\"code\":\"{}\"}}", normalized);
+    std::fs::write(&lang_file, content).map_err(|e| format!("Failed to write language.json: {}", e))
+}

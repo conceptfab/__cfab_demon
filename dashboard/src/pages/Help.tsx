@@ -973,6 +973,10 @@ export function Help() {
                     'Wgląd w wersję – informacja o kompatybilności wersji Daemona i Dashboardu.',
                     'Version Insight – information on the compatibility of Daemon and Dashboard versions.',
                   ),
+                  t(
+                    'Lokalizacja – menu tray Daemona automatycznie przełącza się między PL/EN na podstawie ustawień języka w Dashboardzie (Ustawienia > Język).',
+                    'Localization – the Daemon tray menu automatically switches between PL/EN based on the language setting in the Dashboard (Settings > Language).',
+                  ),
                 ]}
               />
             </TabsContent>

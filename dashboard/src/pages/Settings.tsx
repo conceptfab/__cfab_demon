@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import {
   clearAllData,
   getDemoModeStatus,
+  persistLanguageForDaemon,
   rebuildSessions,
   setDemoMode,
 } from '@/lib/tauri';
@@ -207,6 +208,9 @@ export function Settings() {
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
     const savedLanguage = saveLanguageSettings(languageSettings);
+    void persistLanguageForDaemon(savedLanguage.code).catch((err) => {
+      console.warn('Failed to persist language for daemon:', err);
+    });
     const savedAppearance = saveAppearanceSettings(appearanceSettings);
 
     setWorkingHours(savedWorking);
