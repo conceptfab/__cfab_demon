@@ -17,6 +17,7 @@ import {
   Rocket,
   HelpCircle,
   Bug,
+  FileText,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -67,6 +68,7 @@ const navItems = [
   { id: 'analysis', labelKey: 'layout.nav.analysis', icon: BarChart3 },
   { id: 'ai', labelKey: 'layout.nav.ai', icon: Brain },
   { id: 'data', labelKey: 'layout.nav.data', icon: Import },
+  { id: 'reports', labelKey: 'layout.nav.reports', icon: FileText },
   { id: 'daemon', labelKey: 'layout.nav.daemon', icon: Cpu },
 ];
 
@@ -290,27 +292,33 @@ export function Sidebar() {
 
       <nav className="flex-1 space-y-0.5 p-2">
         {navItems.map((item) => (
-          <AppTooltip key={item.id} content={item.id === 'sessions' ? sessionsAttentionTitle : undefined} side="right">
-          <button
-            onClick={() => setCurrentPage(item.id)}
-            className={cn(
-              'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
-              currentPage === item.id ||
-                (item.id === 'projects' && currentPage === 'project-card')
-                ? 'border-border/40 bg-accent/75 text-card-foreground'
-                : 'border-transparent text-muted-foreground hover:border-border/35 hover:bg-accent/50 hover:text-accent-foreground',
-            )}
+          <AppTooltip
+            key={item.id}
+            content={
+              item.id === 'sessions' ? sessionsAttentionTitle : undefined
+            }
+            side="right"
           >
-            <span className="flex items-center gap-2.5">
-              <item.icon className="h-3.5 w-3.5" />
-              <span>{t(item.labelKey)}</span>
-            </span>
-            {item.id === 'sessions' && unassignedSessions > 0 && (
-              <span className="rounded-sm border border-destructive/25 bg-destructive/10 px-1.5 py-0 text-[10px] font-medium text-destructive">
-                *{sessionsBadge}
+            <button
+              onClick={() => setCurrentPage(item.id)}
+              className={cn(
+                'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
+                currentPage === item.id ||
+                  (item.id === 'projects' && currentPage === 'project-card')
+                  ? 'border-border/40 bg-accent/75 text-card-foreground'
+                  : 'border-transparent text-muted-foreground hover:border-border/35 hover:bg-accent/50 hover:text-accent-foreground',
+              )}
+            >
+              <span className="flex items-center gap-2.5">
+                <item.icon className="h-3.5 w-3.5" />
+                <span>{t(item.labelKey)}</span>
               </span>
-            )}
-          </button>
+              {item.id === 'sessions' && unassignedSessions > 0 && (
+                <span className="rounded-sm border border-destructive/25 bg-destructive/10 px-1.5 py-0 text-[10px] font-medium text-destructive">
+                  *{sessionsBadge}
+                </span>
+              )}
+            </button>
           </AppTooltip>
         ))}
       </nav>
@@ -418,7 +426,11 @@ export function Sidebar() {
               v{status?.dashboard_version || '?.?.?'}
             </span>
             {status?.version && !status.is_compatible && (
-              <AppTooltip content={t('layout.tooltips.version_incompatibility', { version: status.version })}>
+              <AppTooltip
+                content={t('layout.tooltips.version_incompatibility', {
+                  version: status.version,
+                })}
+              >
                 <span className="text-[9px] font-mono text-destructive font-bold cursor-default">
                   !
                 </span>

@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast-notification';
 import { useUIStore } from '@/store/ui-store';
 import { BackgroundServices } from '@/components/sync/BackgroundServices';
+import { SplashScreen } from '@/components/layout/SplashScreen';
 
 const Dashboard = lazy(() =>
   import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })),
@@ -50,6 +51,12 @@ const Help = lazy(() =>
 const ProjectPage = lazy(() =>
   import('@/pages/ProjectPage').then((m) => ({ default: m.ProjectPage })),
 );
+const Reports = lazy(() =>
+  import('@/pages/Reports').then((m) => ({ default: m.Reports })),
+);
+const ReportView = lazy(() =>
+  import('@/pages/ReportView').then((m) => ({ default: m.ReportView })),
+);
 
 function PageRouter() {
   const currentPage = useUIStore((s) => s.currentPage);
@@ -84,6 +91,9 @@ function PageRouter() {
         return <QuickStart />;
       case 'project-card':
         return <ProjectPage />;
+      case 'reports':
+        return <Reports />;
+
       default:
         return <Dashboard />;
     }
@@ -121,7 +131,9 @@ class ErrorBoundary extends Component<
       return (
         <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-200">
           <div className="max-w-md space-y-4 text-center">
-            <h1 className="text-xl font-semibold">{i18n.t('ui.app.error_title')}</h1>
+            <h1 className="text-xl font-semibold">
+              {i18n.t('ui.app.error_title')}
+            </h1>
             <p className="text-sm text-slate-400">{this.state.error.message}</p>
             <button
               className="rounded bg-sky-600 px-4 py-2 text-sm hover:bg-sky-500"
@@ -138,10 +150,34 @@ class ErrorBoundary extends Component<
 }
 
 export default function App() {
+  const currentPage = useUIStore((s) => s.currentPage);
+
+  // Report-view renders full-screen (no sidebar, no topbar)
+  if (currentPage === 'report-view') {
+    return (
+      <ErrorBoundary>
+        <ToastProvider>
+          <TooltipProvider>
+            <Suspense
+              fallback={
+                <div className="flex h-64 items-center justify-center text-muted-foreground">
+                  Loading...
+                </div>
+              }
+            >
+              <ReportView />
+            </Suspense>
+          </TooltipProvider>
+        </ToastProvider>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <ToastProvider>
         <TooltipProvider>
+          <SplashScreen />
           <BackgroundServices />
           <MainLayout>
             <PageRouter />

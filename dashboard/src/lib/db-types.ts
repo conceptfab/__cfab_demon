@@ -138,6 +138,14 @@ export interface ProjectSuggestion {
   confidence: number;
   evidence_count: number;
   margin: number;
+  breakdown?: SuggestionBreakdown;
+}
+
+export interface SuggestionBreakdown {
+  file_score: number;
+  app_score: number;
+  time_score: number;
+  token_score: number;
 }
 
 export interface ScoreBreakdown {

@@ -17,6 +17,7 @@ import {
   Plus,
   PenLine,
   Save,
+  FileText,
 } from 'lucide-react';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
@@ -99,7 +100,6 @@ type RecentCommentItem = {
   comment: string;
   source: string;
 };
-
 
 export function ProjectPage() {
   const tt = useInlineT();
@@ -414,10 +414,7 @@ export function ProjectPage() {
     }
   };
 
-  const handleContextMenu = (
-    e: React.MouseEvent,
-    s: ProjectSessionRow,
-  ) => {
+  const handleContextMenu = (e: React.MouseEvent, s: ProjectSessionRow) => {
     e.preventDefault();
     setCtxMenu({
       type: 'session',
@@ -530,9 +527,7 @@ export function ProjectPage() {
     setCtxMenu(null);
   };
 
-  const handleBulkUnassign = async (
-    sessions: ProjectSessionRow[],
-  ) => {
+  const handleBulkUnassign = async (sessions: ProjectSessionRow[]) => {
     const autoSessions = sessions.filter(
       (s): s is AutoSessionRow => !s.isManual,
     );
@@ -567,9 +562,7 @@ export function ProjectPage() {
     setCtxMenu(null);
   };
 
-  const handleBulkDelete = async (
-    sessions: ProjectSessionRow[],
-  ) => {
+  const handleBulkDelete = async (sessions: ProjectSessionRow[]) => {
     if (
       !(await confirm(
         tt(
@@ -694,7 +687,10 @@ export function ProjectPage() {
             <AppTooltip content={tt('Zmień kolor', 'Change color')}>
               <div
                 className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                style={{ backgroundColor: pendingColor && editingColor ? pendingColor : project.color }}
+                style={{
+                  backgroundColor:
+                    pendingColor && editingColor ? pendingColor : project.color,
+                }}
                 onClick={() => {
                   setEditingColor(!editingColor);
                   setPendingColor(null);
@@ -812,6 +808,18 @@ export function ProjectPage() {
                 <CircleOff className="h-4 w-4" />
               </Button>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-2 border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
+              onClick={() => {
+                setProjectPageId(project.id);
+                setCurrentPage('report-view');
+              }}
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              {tt('Generuj raport (PDF)', 'Generate report (PDF)')}
+            </Button>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col gap-1">
@@ -930,10 +938,7 @@ export function ProjectPage() {
               ))}
               {(!extraInfo?.top_apps || extraInfo.top_apps.length === 0) && (
                 <p className="text-sm text-muted-foreground italic text-center py-4">
-                  {tt(
-                    'Brak danych o aplikacjach.',
-                    'No application data yet',
-                  )}
+                  {tt('Brak danych o aplikacjach.', 'No application data yet')}
                 </p>
               )}
             </div>
@@ -967,7 +972,10 @@ export function ProjectPage() {
                 ) : (
                   <LayoutDashboard className="mr-2 h-3.5 w-3.5" />
                 )}
-                {tt('Kompaktuj szczegółowe rekordy', 'Compact Detailed Records')}
+                {tt(
+                  'Kompaktuj szczegółowe rekordy',
+                  'Compact Detailed Records',
+                )}
               </Button>
               <p className="text-[10px] text-muted-foreground mt-2 px-1 leading-tight">
                 {tt(
@@ -1013,10 +1021,10 @@ export function ProjectPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <MousePointerClick className="h-4 w-4 text-sky-400" />
-                    {tt('Sesje ręczne', 'Manual Sessions')}
-                  </div>
+                <div className="flex items-center gap-2">
+                  <MousePointerClick className="h-4 w-4 text-sky-400" />
+                  {tt('Sesje ręczne', 'Manual Sessions')}
+                </div>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1080,26 +1088,24 @@ export function ProjectPage() {
             <CardContent>
               <div className="space-y-3">
                 {recentComments.map((s) => (
-                    <div
-                      key={s.key}
-                      className="p-3 rounded-lg bg-secondary/20 border border-border/40 space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] uppercase font-bold text-muted-foreground">
-                          {new Date(s.start_time).toLocaleDateString()}
-                        </span>
-                        <span className="text-[10px] font-mono text-emerald-400/70">
-                          {formatDuration(s.duration_seconds)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-sky-100 italic">
-                        "{s.comment}"
-                      </p>
-                      <p className="text-[10px] text-muted-foreground text-right">
-                        - {s.source}
-                      </p>
+                  <div
+                    key={s.key}
+                    className="p-3 rounded-lg bg-secondary/20 border border-border/40 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                        {new Date(s.start_time).toLocaleDateString()}
+                      </span>
+                      <span className="text-[10px] font-mono text-emerald-400/70">
+                        {formatDuration(s.duration_seconds)}
+                      </span>
                     </div>
-                  ))}
+                    <p className="text-sm text-sky-100 italic">"{s.comment}"</p>
+                    <p className="text-[10px] text-muted-foreground text-right">
+                      - {s.source}
+                    </p>
+                  </div>
+                ))}
                 {recentComments.length === 0 && (
                   <p className="text-sm text-muted-foreground italic text-center py-4">
                     {tt('Brak komentarzy', 'No comments found')}
@@ -1112,18 +1118,18 @@ export function ProjectPage() {
 
         <Card>
           <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <History className="h-4 w-4" />
-                  {tt('Szczegółowa lista sesji', 'Detailed Session List')}
-                </div>
-                <span className="text-xs font-normal lowercase text-muted-foreground">
-                  {tt(
-                    'kliknij prawym, aby edytować sesje',
-                    'right-click to edit sessions',
-                  )}
-                </span>
-              </CardTitle>
+            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                {tt('Szczegółowa lista sesji', 'Detailed Session List')}
+              </div>
+              <span className="text-xs font-normal lowercase text-muted-foreground">
+                {tt(
+                  'kliknij prawym, aby edytować sesje',
+                  'right-click to edit sessions',
+                )}
+              </span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0 pb-4">
             <div className="overflow-x-auto text-muted-foreground">
@@ -1222,8 +1228,8 @@ export function ProjectPage() {
                                     handleEditCommentForSession(s);
                                   }
                                 }}
-                                  title={
-                                    s.comment
+                                title={
+                                  s.comment
                                     ? tt(
                                         'Kliknij, aby edytować',
                                         'Click to edit',
@@ -1232,8 +1238,8 @@ export function ProjectPage() {
                                         'Kliknij, aby dodać komentarz',
                                         'Click to add comment',
                                       )
-                                  }
-                                >
+                                }
+                              >
                                 {s.comment ? (
                                   <>
                                     <MessageSquare className="h-3 w-3 shrink-0" />
@@ -1461,7 +1467,8 @@ export function ProjectPage() {
                             <div className="flex flex-col items-start leading-none truncate">
                               <span className="font-medium">
                                 {tt('Edytuj:', 'Edit:')}{' '}
-                                {ms.comment || tt('Sesja ręczna', 'Manual Session')}
+                                {ms.comment ||
+                                  tt('Sesja ręczna', 'Manual Session')}
                               </span>
                               <span className="text-[9px] text-muted-foreground mt-0.5">
                                 {formatDuration(ms.duration_seconds)}{' '}
@@ -1567,8 +1574,7 @@ export function ProjectPage() {
                     'Rate multiplier (default x2):',
                   )}{' '}
                   <span className="text-emerald-400">
-                    x
-                    {(ctxMenu.session.rate_multiplier || 1).toFixed(1)}
+                    x{(ctxMenu.session.rate_multiplier || 1).toFixed(1)}
                   </span>
                 </p>
                 <div className="flex gap-2">
@@ -1638,9 +1644,7 @@ export function ProjectPage() {
             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-red-500/10 text-red-400/70 hover:text-red-400 cursor-pointer transition-colors group"
             onClick={async () => {
               if (
-                await confirm(
-                  tt('Usunąć tę sesję?', 'Delete this session?'),
-                )
+                await confirm(tt('Usunąć tę sesję?', 'Delete this session?'))
               ) {
                 try {
                   if (ctxMenu.session.isManual) {

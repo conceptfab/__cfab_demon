@@ -65,6 +65,15 @@ pub struct ProjectSuggestion {
     pub confidence: f64,
     pub evidence_count: i64,
     pub margin: f64,
+    pub breakdown: Option<SuggestionBreakdown>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SuggestionBreakdown {
+    pub file_score: f64,
+    pub app_score: f64,
+    pub time_score: f64,
+    pub token_score: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -420,6 +429,11 @@ fn compute_raw_suggestion(
     let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
     let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
 
+    let mut candidate_file_scores: HashMap<i64, f64> = HashMap::new();
+    let mut candidate_app_scores: HashMap<i64, f64> = HashMap::new();
+    let mut candidate_time_scores: HashMap<i64, f64> = HashMap::new();
+    let mut candidate_token_scores: HashMap<i64, f64> = HashMap::new();
+
     // Layer 0 (strongest): direct file-activity project evidence
     // If file_activities overlapping the session already have assigned project_ids,
     // this is the most reliable signal – it mirrors what the frontend shows.
@@ -427,6 +441,7 @@ fn compute_raw_suggestion(
         if is_project_active_cached(conn, &mut active_project_cache, pid) {
             let score = 0.80;
             *candidate_scores.entry(pid).or_insert(0.0) += score;
+            *candidate_file_scores.entry(pid).or_insert(0.0) += score;
             *candidate_evidence.entry(pid).or_insert(0) += 2; // counts as strong evidence
         }
     }
@@ -446,6 +461,7 @@ fn compute_raw_suggestion(
         let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
         let score = 0.30 * (1.0 + cnt).ln();
         *candidate_scores.entry(project_id).or_insert(0.0) += score;
+        *candidate_app_scores.entry(project_id).or_insert(0.0) += score;
         *candidate_evidence.entry(project_id).or_insert(0) += 1;
     }
 
@@ -472,6 +488,7 @@ fn compute_raw_suggestion(
         let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
         let score = 0.10 * (1.0 + cnt).ln();
         *candidate_scores.entry(project_id).or_insert(0.0) += score;
+        *candidate_time_scores.entry(project_id).or_insert(0.0) += score;
         *candidate_evidence.entry(project_id).or_insert(0) += 1;
     }
 
@@ -511,6 +528,7 @@ fn compute_raw_suggestion(
                 (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
             let score = 0.30 * avg_log;
             *candidate_scores.entry(project_id).or_insert(0.0) += score;
+            *candidate_token_scores.entry(project_id).or_insert(0.0) += score;
             *candidate_evidence.entry(project_id).or_insert(0) += 1;
         }
     }
@@ -537,11 +555,19 @@ fn compute_raw_suggestion(
     let sigmoid_margin = 1.0 / (1.0 + (-margin).exp());
     let confidence = sigmoid_margin * evidence_factor;
 
+    let breakdown = SuggestionBreakdown {
+        file_score: *candidate_file_scores.get(&best_project_id).unwrap_or(&0.0),
+        app_score: *candidate_app_scores.get(&best_project_id).unwrap_or(&0.0),
+        time_score: *candidate_time_scores.get(&best_project_id).unwrap_or(&0.0),
+        token_score: *candidate_token_scores.get(&best_project_id).unwrap_or(&0.0),
+    };
+
     Ok(Some(ProjectSuggestion {
         project_id: best_project_id,
         confidence,
         evidence_count,
         margin,
+        breakdown: Some(breakdown),
     }))
 }
 
@@ -766,7 +792,7 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             FROM sessions s
             WHERE s.project_id IS NOT NULL
               AND s.duration_seconds > 10
-              AND date(s.start_time) >= date('now', '-180 days')
+              AND date(s.start_time) >= date('now', '-730 days')
               AND COALESCE((
                     SELECT af.source
                     FROM assignment_feedback af
@@ -878,7 +904,7 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             let mut file_stmt = tx.prepare(
                 "SELECT file_name, project_id FROM file_activities
                  WHERE project_id IS NOT NULL
-                   AND date >= date('now', '-180 days')",
+                   AND date >= date('now', '-730 days')",
             )?;
             let mut file_rows = file_stmt.query([])?;
             while let Some(row) = file_rows.next()? {

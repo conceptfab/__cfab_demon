@@ -15,6 +15,7 @@ import {
   getSessions,
   getProjects,
   getSessionScoreBreakdown,
+  splitSession as splitSessionInvoke,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { formatDuration, formatMultiplierLabel } from '@/lib/utils';
@@ -23,6 +24,7 @@ import { useDataStore } from '@/store/data-store';
 import { addDays, format, parseISO, subDays } from 'date-fns';
 import { Virtuoso } from 'react-virtuoso';
 import { SessionRow } from '@/components/sessions/SessionRow';
+import { SplitSessionModal } from '@/components/sessions/SplitSessionModal';
 import type {
   DateRange,
   SessionWithApp,
@@ -127,6 +129,7 @@ export function Sessions() {
     'detailed' | 'compact' | 'ai_detailed'
   >('detailed');
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [splitSession, setSplitSession] = useState<SessionWithApp | null>(null);
   const [indicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
@@ -140,9 +143,9 @@ export function Sessions() {
   const [loadingBreakdownIds, setLoadingBreakdownIds] = useState<Set<number>>(
     new Set(),
   );
-  const scoreBreakdownRequestsRef = useRef<Map<number, Promise<ScoreBreakdown>>>(
-    new Map(),
-  );
+  const scoreBreakdownRequestsRef = useRef<
+    Map<number, Promise<ScoreBreakdown>>
+  >(new Map());
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
   const scrollParentRef = useRef<HTMLElement | null>(null);
@@ -625,7 +628,9 @@ export function Sessions() {
       for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
         if (cancelled) return;
         const batch = missingIds.slice(i, i + BATCH_SIZE);
-        await Promise.allSettled(batch.map((sessionId) => loadScoreBreakdown(sessionId)));
+        await Promise.allSettled(
+          batch.map((sessionId) => loadScoreBreakdown(sessionId)),
+        );
       }
     };
 
@@ -743,9 +748,7 @@ export function Sessions() {
     return list;
   }, [groupedByProject, viewMode]);
 
-  const unassignedGroup = groupedByProject.find(
-    (g) => g.projectId == null,
-  );
+  const unassignedGroup = groupedByProject.find((g) => g.projectId == null);
   const aiSessionsCount = useMemo(
     () =>
       sessions.filter(
@@ -930,9 +933,7 @@ export function Sessions() {
                       className="flex items-center justify-between gap-4 px-2 py-1 leading-none group/hdr cursor-pointer"
                       onClick={() =>
                         setActiveProjectId(
-                          projectMenuId == null
-                            ? 'unassigned'
-                            : projectMenuId,
+                          projectMenuId == null ? 'unassigned' : projectMenuId,
                         )
                       }
                       onContextMenu={(e) =>
@@ -1048,6 +1049,8 @@ export function Sessions() {
                     indicators={indicators}
                     forceShowScoreBreakdown={false}
                     isLoadingScoreBreakdown={loadingBreakdownIds.has(s.id)}
+                    onAcceptSuggestion={handleAcceptSuggestion}
+                    onRejectSuggestion={handleRejectSuggestion}
                     className="!mb-0"
                   />
                   {isLastInGroup && <div className="h-4" />}
@@ -1080,6 +1083,8 @@ export function Sessions() {
                       rowViewMode === 'ai_detailed' &&
                       loadingBreakdownIds.has(s.id)
                     }
+                    onAcceptSuggestion={handleAcceptSuggestion}
+                    onRejectSuggestion={handleRejectSuggestion}
                     className="!mb-0"
                   />
                 </div>
@@ -1201,6 +1206,15 @@ export function Sessions() {
                 : t('sessions.menu.add_comment')}
             </span>
           </button>
+          <button
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+            onClick={() => {
+              setSplitSession(ctxMenu.session);
+              setCtxMenu(null);
+            }}
+          >
+            <span>✂️ {t('sessions.menu.split_session', 'Podziel sesję')}</span>
+          </button>
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
             {t('sessions.menu.assign_to_project')}
@@ -1284,7 +1298,24 @@ export function Sessions() {
         initialValue={promptConfig?.initialValue ?? ''}
         onConfirm={promptConfig?.onConfirm ?? (() => {})}
       />
+
+      {splitSession && (
+        <SplitSessionModal
+          session={splitSession}
+          projects={projects}
+          onConfirm={async (ratio, projectAId, projectBId) => {
+            await splitSessionInvoke(
+              splitSession.id,
+              ratio,
+              projectAId,
+              projectBId,
+            );
+            setSplitSession(null);
+            void triggerRefresh();
+          }}
+          onCancel={() => setSplitSession(null)}
+        />
+      )}
     </div>
   );
 }
-

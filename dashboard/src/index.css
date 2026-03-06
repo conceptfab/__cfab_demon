@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   --color-background: #16161e;
@@ -21,8 +21,10 @@
   --color-input: #2f3549;
   --color-ring: #8b93a7;
   --radius: 0.375rem;
-  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI', 'Geist', 'Inter', ui-sans-serif,
+    system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 @layer base {
@@ -80,8 +82,12 @@
 
 @layer utilities {
   @keyframes shine {
-    0% { background-position: -200% center; }
-    100% { background-position: 200% center; }
+    0% {
+      background-position: -200% center;
+    }
+    100% {
+      background-position: 200% center;
+    }
   }
   .animate-shine {
     background: linear-gradient(
@@ -107,10 +113,10 @@
   }
 
   /* Kill Recharts white focus border - ABSOLUTE KILLER VERSION */
-  .recharts-wrapper, 
-  .recharts-wrapper svg, 
-  .recharts-surface, 
-  .recharts-layer, 
+  .recharts-wrapper,
+  .recharts-wrapper svg,
+  .recharts-surface,
+  .recharts-layer,
   .recharts-rectangle,
   .recharts-accessibility-layer {
     outline: none !important;
@@ -122,5 +128,53 @@
   /* Universal focus kill for chart area */
   .recharts-wrapper *:focus {
     outline: none !important;
+  }
+}
+
+/* Print styles for Reports page */
+@media print {
+  aside,
+  header,
+  .print\\:hidden {
+    display: none !important;
+  }
+  body,
+  html,
+  #root {
+    background: white !important;
+    color: black !important;
+  }
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .ml-56 {
+    margin-left: 0 !important;
+  }
+  .rounded-xl {
+    border-radius: 0 !important;
+  }
+  .bg-card,
+  .bg-popover,
+  .bg-background,
+  .bg-secondary\\/30 {
+    background: white !important;
+  }
+  .border-border {
+    border-color: #ccc !important;
+  }
+  .text-foreground,
+  .text-card-foreground {
+    color: black !important;
+  }
+  .text-muted-foreground {
+    color: #555 !important;
+  }
+  .font-bold {
+    color: black !important;
+  }
+  .print\\:break-inside-avoid {
+    break-inside: avoid;
   }
 }

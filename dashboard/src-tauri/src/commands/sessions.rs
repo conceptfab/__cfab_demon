@@ -1068,3 +1068,204 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
 
     Ok(to_delete.len() as i64)
 }
+
+#[tauri::command]
+pub async fn split_session(
+    app: AppHandle,
+    session_id: i64,
+    ratio: f64,
+    project_a_id: Option<i64>,
+    project_b_id: Option<i64>,
+) -> Result<(), String> {
+    if ratio <= 0.0 || ratio >= 1.0 {
+        return Err("Ratio must be strictly between 0.0 and 1.0".to_string());
+    }
+
+    let mut conn = db::get_connection(&app)?;
+    let session = conn
+        .query_row(
+            "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment
+             FROM sessions WHERE id = ?1",
+            [session_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, f64>(5)?,
+                    row.get::<_, Option<i64>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let Some((app_id, start_time, end_time, duration_seconds, date_str, rate_multiplier, _orig_project_id, comment)) = session else {
+        return Err("Session not found".to_string());
+    };
+
+    let start_dt = chrono::DateTime::parse_from_rfc3339(&start_time)
+        .map_err(|e| format!("Invalid start time: {}", e))?;
+    let end_dt = chrono::DateTime::parse_from_rfc3339(&end_time)
+        .map_err(|e| format!("Invalid end time: {}", e))?;
+
+    let total_ms = (end_dt.timestamp_millis() - start_dt.timestamp_millis()).max(0);
+    let duration_a_ms = (total_ms as f64 * ratio).round() as i64;
+
+    let split_point = start_dt + chrono::Duration::milliseconds(duration_a_ms);
+    let split_time_str = split_point.to_rfc3339();
+
+    let duration_a_secs = (duration_seconds as f64 * ratio).round() as i64;
+    let duration_b_secs = duration_seconds - duration_a_secs;
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Step 1: Hide original session
+    // We add an "is_hidden" column if it doesn't exist, though it should from other logic.
+    tx.execute(
+        "UPDATE sessions SET is_hidden = 1 WHERE id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Step 2: Insert part A
+    tx.execute(
+        "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            app_id,
+            start_time,
+            split_time_str,
+            duration_a_secs,
+            date_str,
+            rate_multiplier,
+            project_a_id,
+            comment.as_deref().map(|c| format!("{} (Split 1/2)", c)).unwrap_or_else(|| "Split 1/2".to_string())
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Step 3: Insert part B
+    tx.execute(
+        "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            app_id,
+            split_time_str,
+            end_time,
+            duration_b_secs,
+            date_str,
+            rate_multiplier,
+            project_b_id,
+            comment.as_deref().map(|c| format!("{} (Split 2/2)", c)).unwrap_or_else(|| "Split 2/2".to_string())
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct SplitSuggestion {
+    pub project_a_id: Option<i64>,
+    pub project_a_name: Option<String>,
+    pub project_b_id: Option<i64>,
+    pub project_b_name: Option<String>,
+    pub suggested_ratio: f64,
+    pub confidence: f64,
+}
+
+/// Analyzes file activities for a session's app + date to suggest an automatic split.
+/// Returns which two projects dominate the file time and a ratio between them.
+#[tauri::command]
+pub async fn suggest_session_split(
+    app: AppHandle,
+    session_id: i64,
+) -> Result<SplitSuggestion, String> {
+    let conn = db::get_connection(&app)?;
+
+    // Get session info
+    let (app_id, date, current_project_id, suggested_project_id): (i64, String, Option<i64>, Option<i64>) = conn
+        .query_row(
+            "SELECT app_id, date, project_id,
+                    (SELECT af.project_id FROM assignment_feedback af WHERE af.session_id = sessions.id ORDER BY af.created_at DESC LIMIT 1)
+             FROM sessions WHERE id = ?1",
+            [session_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .map_err(|e| format!("Session not found: {}", e))?;
+
+    // Query file activities for this app on this date, grouped by project
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
+             FROM file_activities fa
+             LEFT JOIN projects p ON p.id = fa.project_id
+             WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
+             GROUP BY fa.project_id
+             ORDER BY total DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let projects: Vec<(i64, String, i64)> = stmt
+        .query_map(rusqlite::params![app_id, date], |row| {
+            Ok((row.get(0)?, row.get::<_, String>(1).unwrap_or_default(), row.get(2)?))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // If we have ≥2 projects from file activities, use those
+    if projects.len() >= 2 {
+        let total_time: i64 = projects.iter().map(|(_, _, t)| *t).sum();
+        let ratio = if total_time > 0 {
+            (projects[0].2 as f64 / total_time as f64).clamp(0.05, 0.95)
+        } else {
+            0.5
+        };
+        return Ok(SplitSuggestion {
+            project_a_id: Some(projects[0].0),
+            project_a_name: Some(projects[0].1.clone()),
+            project_b_id: Some(projects[1].0),
+            project_b_name: Some(projects[1].1.clone()),
+            suggested_ratio: ratio,
+            confidence: 0.8,
+        });
+    }
+
+    // Fallback: use current project + AI suggested project
+    if let (Some(cur), Some(sug)) = (current_project_id, suggested_project_id) {
+        if cur != sug {
+            let name_a: String = conn
+                .query_row("SELECT name FROM projects WHERE id = ?1", [cur], |r| r.get(0))
+                .unwrap_or_default();
+            let name_b: String = conn
+                .query_row("SELECT name FROM projects WHERE id = ?1", [sug], |r| r.get(0))
+                .unwrap_or_default();
+            return Ok(SplitSuggestion {
+                project_a_id: Some(cur),
+                project_a_name: Some(name_a),
+                project_b_id: Some(sug),
+                project_b_name: Some(name_b),
+                suggested_ratio: 0.5,
+                confidence: 0.4,
+            });
+        }
+    }
+
+    // No suggestion possible
+    Ok(SplitSuggestion {
+        project_a_id: current_project_id,
+        project_a_name: None,
+        project_b_id: None,
+        project_b_name: None,
+        suggested_ratio: 0.5,
+        confidence: 0.0,
+    })
+}

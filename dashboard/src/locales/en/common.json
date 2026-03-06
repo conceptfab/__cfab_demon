@@ -38,6 +38,7 @@
       "analysis": "Time Analysis",
       "ai": "AI & Model",
       "data": "Data",
+      "reports": "Reports",
       "daemon": "Daemon"
     },
     "status": {

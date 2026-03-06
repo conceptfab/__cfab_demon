@@ -24,7 +24,9 @@ function formatTime(t: string) {
 
 function formatDate(t: string, locale: Locale) {
   try {
-    const dateFormat = locale.code?.startsWith('pl') ? 'd MMM yyyy' : 'MMM d, yyyy';
+    const dateFormat = locale.code?.startsWith('pl')
+      ? 'd MMM yyyy'
+      : 'MMM d, yyyy';
     return format(parseISO(t), dateFormat, { locale });
   } catch {
     return t;
@@ -43,6 +45,8 @@ export interface SessionRowProps {
   indicators: SessionIndicatorSettings;
   forceShowScoreBreakdown?: boolean;
   isLoadingScoreBreakdown?: boolean;
+  onAcceptSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
+  onRejectSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
   className?: string;
 }
 
@@ -58,6 +62,8 @@ export const SessionRow = memo(function SessionRow({
   indicators: ind,
   forceShowScoreBreakdown,
   isLoadingScoreBreakdown,
+  onAcceptSuggestion,
+  onRejectSuggestion,
   className = '',
 }: SessionRowProps) {
   const { t, i18n } = useTranslation();
@@ -115,11 +121,40 @@ export const SessionRow = memo(function SessionRow({
               {ind.showSuggestions && isSuggested && (
                 <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
                   <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
-                  <span className="text-[9px] text-sky-300 font-medium truncate max-w-[200px]" title={s.suggested_project_name}>
+                  <span
+                    className="text-[9px] text-sky-300 font-medium truncate max-w-[150px]"
+                    title={s.suggested_project_name}
+                  >
                     {s.suggested_project_name}
                     {s.suggested_confidence != null &&
                       ` ${(s.suggested_confidence * 100).toFixed(0)}%`}
                   </span>
+                  <div className="flex items-center gap-0.5 ml-1 border-l border-sky-500/20 pl-1.5">
+                    {onAcceptSuggestion && (
+                      <button
+                        title={t(
+                          'sessions.menu.accept_suggestion',
+                          'Potwierdź (👍)',
+                        )}
+                        className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100"
+                        onClick={(e) => onAcceptSuggestion(s, e)}
+                      >
+                        👍
+                      </button>
+                    )}
+                    {onRejectSuggestion && (
+                      <button
+                        title={t(
+                          'sessions.menu.reject_suggestion',
+                          'Odrzuć (👎)',
+                        )}
+                        className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100"
+                        onClick={(e) => onRejectSuggestion(s, e)}
+                      >
+                        👎
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
               {ind.showAiBadge && s.ai_assigned && !isSuggested && (
@@ -255,7 +290,11 @@ export const SessionRow = memo(function SessionRow({
                         {c.total_score.toFixed(2)}
                       </span>
                       <span className="text-muted-foreground/20">
-                        ({t('sessions.row.evidence_short', { count: c.evidence_count })})
+                        (
+                        {t('sessions.row.evidence_short', {
+                          count: c.evidence_count,
+                        })}
+                        )
                       </span>
                     </div>
                   ));
@@ -291,8 +330,7 @@ export const SessionRow = memo(function SessionRow({
           {ind.showScoreBreakdown &&
             (() => {
               const bdCandidate = scoreBreakdownData?.candidates?.[0] ?? null;
-              const bdCandidate2 =
-                scoreBreakdownData?.candidates?.[1] ?? null;
+              const bdCandidate2 = scoreBreakdownData?.candidates?.[1] ?? null;
               const isTied =
                 bdCandidate != null &&
                 bdCandidate2 != null &&
@@ -365,12 +403,38 @@ export const SessionRow = memo(function SessionRow({
           {ind.showSuggestions && isSuggested && (
             <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
               <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
-              <span className="text-[9px] text-sky-300 italic font-medium">
+              <button
+                className="text-[9px] text-sky-300 italic font-medium hover:underline cursor-pointer"
+                onClick={(e) => handleToggleScoreBreakdown(s.id, e)}
+              >
                 {t('sessions.row.ai_suggestion', {
                   project: s.suggested_project_name,
                   confidence: ((s.suggested_confidence ?? 0) * 100).toFixed(0),
                 })}
-              </span>
+              </button>
+              <div className="flex items-center gap-0.5 ml-1 border-l border-sky-500/20 pl-1.5">
+                {onAcceptSuggestion && (
+                  <button
+                    title={t(
+                      'sessions.menu.accept_suggestion',
+                      'Potwierdź (👍)',
+                    )}
+                    className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100 text-[10px]"
+                    onClick={(e) => onAcceptSuggestion(s, e)}
+                  >
+                    👍
+                  </button>
+                )}
+                {onRejectSuggestion && (
+                  <button
+                    title={t('sessions.menu.reject_suggestion', 'Odrzuć (👎)')}
+                    className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100 text-[10px]"
+                    onClick={(e) => onRejectSuggestion(s, e)}
+                  >
+                    👎
+                  </button>
+                )}
+              </div>
             </div>
           )}
           <div className="flex items-center">
@@ -393,7 +457,9 @@ export const SessionRow = memo(function SessionRow({
 
       <div className="grid grid-cols-[140px_1fr] gap-x-4 border-t border-border/5 pt-1.5">
         <div className="flex flex-col text-[10px] text-muted-foreground/40 font-medium leading-tight border-r border-border/5 pr-2">
-          <p className="text-muted-foreground/60">{formatDate(s.start_time, locale)}</p>
+          <p className="text-muted-foreground/60">
+            {formatDate(s.start_time, locale)}
+          </p>
           <p>
             {formatTime(s.start_time)} - {formatTime(s.end_time)}
           </p>
@@ -471,45 +537,45 @@ export const SessionRow = memo(function SessionRow({
                 const topScore =
                   scoreBreakdownData?.candidates?.[0]?.total_score;
                 return scoreBreakdownData?.candidates.slice(0, 5).map((c) => (
-                <div
-                  key={c.project_id}
-                  className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
-                    c.total_score === topScore
-                      ? 'text-sky-300/80 font-medium'
-                      : 'text-muted-foreground/40'
-                  }`}
-                >
-                  <span className="truncate">{c.project_name}</span>
-                  <span className="text-right font-mono">
-                    {c.layer0_file_score > 0
-                      ? c.layer0_file_score.toFixed(2)
-                      : '-'}
-                  </span>
-                  <span className="text-right font-mono">
-                    {c.layer1_app_score > 0
-                      ? c.layer1_app_score.toFixed(2)
-                      : '-'}
-                  </span>
-                  <span className="text-right font-mono">
-                    {c.layer2_time_score > 0
-                      ? c.layer2_time_score.toFixed(2)
-                      : '-'}
-                  </span>
-                  <span className="text-right font-mono">
-                    {c.layer3_token_score > 0
-                      ? c.layer3_token_score.toFixed(2)
-                      : '-'}
-                  </span>
-                  <span className="text-right font-mono font-bold">
-                    {c.total_score.toFixed(3)}
-                  </span>
-                  <span className="text-right font-mono">
-                    {t('sessions.row.evidence_short', {
-                      count: c.evidence_count,
-                    })}
-                  </span>
-                </div>
-              ));
+                  <div
+                    key={c.project_id}
+                    className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
+                      c.total_score === topScore
+                        ? 'text-sky-300/80 font-medium'
+                        : 'text-muted-foreground/40'
+                    }`}
+                  >
+                    <span className="truncate">{c.project_name}</span>
+                    <span className="text-right font-mono">
+                      {c.layer0_file_score > 0
+                        ? c.layer0_file_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span className="text-right font-mono">
+                      {c.layer1_app_score > 0
+                        ? c.layer1_app_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span className="text-right font-mono">
+                      {c.layer2_time_score > 0
+                        ? c.layer2_time_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span className="text-right font-mono">
+                      {c.layer3_token_score > 0
+                        ? c.layer3_token_score.toFixed(2)
+                        : '-'}
+                    </span>
+                    <span className="text-right font-mono font-bold">
+                      {c.total_score.toFixed(3)}
+                    </span>
+                    <span className="text-right font-mono">
+                      {t('sessions.row.evidence_short', {
+                        count: c.evidence_count,
+                      })}
+                    </span>
+                  </div>
+                ));
               })()}
               {scoreBreakdownData?.final_suggestion && (
                 <div className="flex gap-4 text-[11px] text-muted-foreground/30 mt-1 pt-1 border-t border-border/5">
@@ -543,5 +609,3 @@ export const SessionRow = memo(function SessionRow({
     </div>
   );
 });
-
-

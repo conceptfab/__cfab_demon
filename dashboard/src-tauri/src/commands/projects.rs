@@ -1234,7 +1234,9 @@ pub async fn get_project_extra_info(
 
     let file_activity_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM file_activities WHERE project_id = ?1",
+            "SELECT COUNT(DISTINCT LOWER(TRIM(fa.file_name))) FROM file_activities fa
+             LEFT JOIN applications a ON a.id = fa.app_id
+             WHERE COALESCE(fa.project_id, a.project_id) = ?1",
             [id],
             |row| row.get(0),
         )
@@ -1276,7 +1278,7 @@ pub async fn get_project_extra_info(
          WHERE a.project_id = ?1 OR s.project_id = ?1
          GROUP BY COALESCE(a.display_name, 'Unknown App')
          ORDER BY total DESC
-         LIMIT 3",
+         LIMIT 15",
         )
         .map_err(|e| e.to_string())?;
 
