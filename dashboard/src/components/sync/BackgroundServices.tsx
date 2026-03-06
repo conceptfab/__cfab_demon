@@ -204,7 +204,7 @@ function useJobPool() {
         .then((sig) => {
           lastSignatureRef.current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
         })
-        .catch(() => { });
+        .catch(() => {});
     });
 
     // Universal Event Loop (1 second tick)
@@ -233,7 +233,7 @@ function useJobPool() {
           }
 
           if (now >= nextSyncPollRef.current) {
-            nextSyncPollRef.current = now + 20_000;
+            nextSyncPollRef.current = now + 120_000;
             void runSync('poll');
           }
         }
@@ -251,7 +251,7 @@ function useJobPool() {
       const syncSettings = loadOnlineSyncSettings();
       nextSyncIntervalRef.current =
         Date.now() + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
-      nextSyncPollRef.current = Date.now() + 20_000;
+      nextSyncPollRef.current = Date.now() + 120_000;
     };
 
     const handleLocalDataChange = () => {

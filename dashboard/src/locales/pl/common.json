@@ -293,14 +293,16 @@
       "exclude_project": "Wykluczyć ten projekt? Można go później przywrócić.",
       "reset_project_time": "Zresetować śledzony czas dla tego projektu? Tej operacji nie można cofnąć.",
       "compact_project_data": "Skondensować dane tego projektu? Szczegółowa historia aktywności plików zostanie usunięta, ale sesje i łączny czas zostaną zachowane. Tej operacji nie można cofnąć.",
-      "remove_project_root": "Usunąć folder z korzeni projektów? {{path}}"
+      "remove_project_root": "Usunąć folder z korzeni projektów? {{path}}",
+      "delete_project_permanent": "Trwale usunąć projekt \"{{projectLabel}}\"? Usunie to rekord projektu, odepnie powiązane elementy i skasuje ręczne sesje. Tej operacji nie można cofnąć."
     },
     "dialogs": {
       "select_assigned_project_folder": "Wybierz przypisany folder projektu",
       "select_project_folder": "Wybierz folder projektu"
     },
     "messages": {
-      "folder_saved": "Folder zapisany"
+      "folder_saved": "Folder zapisany",
+      "view_settings_saved": "Ustawienia widoku zapisane jako domyślne"
     },
     "actions": {
       "expand_all": "Rozwiń wszystkie",
@@ -883,4 +885,3 @@
     "zy1pqmpl4t0g": "wzmocnione"
   }
 }
-

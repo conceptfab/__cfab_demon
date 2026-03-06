@@ -29,7 +29,7 @@ Weź na warsztat caly system AI:
 
 - dodac szyforwanie danych - np tokenem
 
-- podzial sesji na kawałki jeśli sa dowowody na realizacje kilku projektów
+- podzial sesji na kawałki jeśli sa dowody na realizacje kilku projektów
 -
 
 - koszty dodatkowe w ramach projektu

@@ -356,7 +356,9 @@ fn launch_dashboard(lang: Lang) {
 
 fn show_error_message(msg: &str) {
     use std::ptr;
-    let title: Vec<u16> = "TIMEFLOW - Demon"
+    let lang_obj = crate::i18n::load_language();
+    let title_text = lang_obj.t(crate::i18n::TrayText::DemonErrorTitle).to_string();
+    let title: Vec<u16> = title_text
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();

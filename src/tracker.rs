@@ -49,16 +49,17 @@ fn check_dashboard_compatibility() {
             if !version_compat::check_version_compatibility(demon_version, v_dash) {
                 if !WARNING_SHOWN.load(Ordering::SeqCst) {
                     WARNING_SHOWN.store(true, Ordering::SeqCst);
-                    let msg = format!(
-                        "Niezgodność wersji TIMEFLOW!\nDemon: {}\nDashboard: {}\n\nTo połączenie może działać nieprawidłowo.",
-                        demon_version, v_dash
-                    );
+                    let lang_obj = crate::i18n::load_language();
+                    let msg = lang_obj.t(crate::i18n::TrayText::VersionMismatchTemplate)
+                        .replacen("{}", demon_version, 1)
+                        .replacen("{}", v_dash, 1);
                     log::error!("{}", msg);
 
                     // Display warning without blocking the monitoring loop.
                     std::thread::spawn(move || unsafe {
                         use std::ptr;
-                        let title: Vec<u16> = "TIMEFLOW - Błąd wersji"
+                        let title_text = lang_obj.t(crate::i18n::TrayText::VersionErrorTitle).to_string();
+                        let title: Vec<u16> = title_text
                             .encode_utf16()
                             .chain(std::iter::once(0))
                             .collect();

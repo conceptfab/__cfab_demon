@@ -293,14 +293,16 @@
       "exclude_project": "Exclude this project? It can be restored later.",
       "reset_project_time": "Reset tracked time for this project? This cannot be undone.",
       "compact_project_data": "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
-      "remove_project_root": "Remove folder from project roots? {{path}}"
+      "remove_project_root": "Remove folder from project roots? {{path}}",
+      "delete_project_permanent": "Permanently delete project \"{{projectLabel}}\"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone."
     },
     "dialogs": {
       "select_assigned_project_folder": "Select Assigned Project Folder",
       "select_project_folder": "Select Project Folder"
     },
     "messages": {
-      "folder_saved": "Folder saved"
+      "folder_saved": "Folder saved",
+      "view_settings_saved": "View settings saved as default"
     },
     "actions": {
       "expand_all": "Expand all",
