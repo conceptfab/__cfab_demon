@@ -129,7 +129,7 @@ export const getFolderProjectCandidates = () =>
 export const createProjectFromFolder = (folderPath: string) =>
   invokeMutation<Project>("create_project_from_folder", { folderPath });
 export const syncProjectsFromFolders = () =>
-  invokeMutation<number>("sync_projects_from_folders");
+  invokeMutation<{ created_projects: string[]; scanned_folders: number }>("sync_projects_from_folders");
 export const autoCreateProjectsFromDetection = (
   dateRange: DateRange,
   minOccurrences = 2

@@ -106,6 +106,44 @@ function AutoImportBanner() {
   );
 }
 
+function DiscoveredProjectsBanner() {
+  const { t } = useTranslation();
+  const projects = useDataStore((s) => s.discoveredProjects);
+  const dismissed = useDataStore((s) => s.discoveredProjectsDismissed);
+  const dismiss = useDataStore((s) => s.dismissDiscoveredProjects);
+  const { setCurrentPage } = useUIStore();
+
+  if (dismissed || projects.length === 0) return null;
+
+  return (
+    <Card className="border-sky-500/30 bg-sky-500/5">
+      <CardContent className="flex items-center gap-2.5 p-3">
+        <FolderOpen className="h-4 w-4 text-sky-400 shrink-0" />
+        <span className="text-xs text-sky-300">
+          {t('dashboard.discovered_projects.summary', { count: projects.length })}
+          {': '}
+          <span className="font-medium">{projects.slice(0, 5).join(', ')}</span>
+          {projects.length > 5 && ` (+${projects.length - 5})`}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            className="text-[10px] text-sky-400 hover:text-sky-300 underline"
+            onClick={() => setCurrentPage('projects')}
+          >
+            {t('dashboard.discovered_projects.view')}
+          </button>
+          <button
+            className="text-[10px] text-muted-foreground hover:text-foreground"
+            onClick={dismiss}
+          >
+            ✕
+          </button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function Dashboard() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
@@ -391,6 +429,7 @@ export function Dashboard() {
 
       {/* Auto-import status banner */}
       <AutoImportBanner />
+      <DiscoveredProjectsBanner />
 
       {timePreset === 'today' && unassignedToday.sessionCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/10">

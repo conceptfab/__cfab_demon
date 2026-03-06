@@ -11,6 +11,7 @@ import { formatDuration, formatMultiplierLabel } from "@/lib/utils";
 import { useInlineT } from "@/lib/inline-i18n";
 import {
   normalizeHexColor,
+  loadFreezeSettings,
   timeToMinutes,
   type WorkingHoursSettings,
 } from "@/lib/user-settings";
@@ -73,9 +74,12 @@ interface ClusterDetailsState {
 }
 
 type TimelineSortMode = "time_desc" | "alpha_asc";
+type AssignProjectListMode = "alpha_active" | "new_top_rest" | "top_new_rest";
 
 const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
 const TIMELINE_SAVE_VIEW_STORAGE_KEY = "timeflow-dashboard-activity-timeline-save-view";
+const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY = "timeflow-dashboard-assign-project-list-mode";
+const TOP_PROJECTS_LIMIT = 5;
 const CONTEXT_MENU_EDGE_PADDING = 8;
 const ASSIGN_MENU_FALLBACK_WIDTH = 320;
 const ASSIGN_MENU_FALLBACK_HEIGHT = 520;
@@ -145,6 +149,30 @@ function loadTimelineSaveView(): boolean {
   } catch {
     return true;
   }
+}
+
+function loadAssignProjectListMode(): AssignProjectListMode {
+  if (typeof window === "undefined") return "alpha_active";
+  try {
+    const raw = window.localStorage.getItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY);
+    if (raw === "new_top_rest" || raw === "top_new_rest" || raw === "alpha_active") {
+      return raw;
+    }
+    return "alpha_active";
+  } catch {
+    return "alpha_active";
+  }
+}
+
+function compareProjectsByName(a: ProjectWithStats, b: ProjectWithStats): number {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+}
+
+function isNewProjectForAssignList(project: ProjectWithStats, maxAgeMs: number): boolean {
+  const createdAtMs = new Date(project.created_at).getTime();
+  if (!Number.isFinite(createdAtMs)) return false;
+  const ageMs = Date.now() - createdAtMs;
+  return ageMs >= 0 && ageMs < maxAgeMs;
 }
 
 const HATCH_STYLE: React.CSSProperties = {
@@ -327,6 +355,9 @@ export function ProjectDayTimeline({
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [sortMode, setSortMode] = useState<TimelineSortMode>(() => loadTimelineSortMode());
   const [saveView, setSaveView] = useState<boolean>(() => loadTimelineSaveView());
+  const [assignProjectListMode, setAssignProjectListMode] = useState<AssignProjectListMode>(() =>
+    loadAssignProjectListMode()
+  );
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<ContextMenuPlacement | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
@@ -337,10 +368,11 @@ export function ProjectDayTimeline({
       if (saveView) {
         window.localStorage.setItem(TIMELINE_SORT_STORAGE_KEY, sortMode);
       }
+      window.localStorage.setItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY, assignProjectListMode);
     } catch {
       // ignore localStorage failures
     }
-  }, [saveView, sortMode]);
+  }, [saveView, sortMode, assignProjectListMode]);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -811,6 +843,96 @@ export function ProjectDayTimeline({
     return map;
   }, [projects]);
 
+  const assignProjectSections = useMemo(() => {
+    const activeProjects = (projects ?? []).filter((p) => !p.frozen_at);
+    const activeAlpha = [...activeProjects].sort(compareProjectsByName);
+    const { thresholdDays } = loadFreezeSettings();
+    const newProjectMaxAgeMs = Math.max(1, thresholdDays) * 24 * 60 * 60 * 1000;
+
+    if (assignProjectListMode === "alpha_active") {
+      return [
+        {
+          key: "all",
+          label: tt("Aktywne projekty (A-Z)", "Active projects (A-Z)"),
+          projects: activeAlpha,
+        },
+      ];
+    }
+
+    const topProjectIds = new Set(
+      [...activeProjects]
+        .sort((a, b) => {
+          const byTime = b.total_seconds - a.total_seconds;
+          if (byTime !== 0) return byTime;
+          return compareProjectsByName(a, b);
+        })
+        .slice(0, TOP_PROJECTS_LIMIT)
+        .map((p) => p.id)
+    );
+    const newestAlpha = activeAlpha.filter((p) =>
+      isNewProjectForAssignList(p, newProjectMaxAgeMs)
+    );
+    const topAlpha = activeAlpha.filter((p) => topProjectIds.has(p.id));
+
+    if (assignProjectListMode === "new_top_rest") {
+      const used = new Set<number>();
+      const newest = newestAlpha;
+      newest.forEach((p) => used.add(p.id));
+      const top = topAlpha.filter((p) => !used.has(p.id));
+      top.forEach((p) => used.add(p.id));
+      const rest = activeAlpha.filter((p) => !used.has(p.id));
+
+      return [
+        {
+          key: "new",
+          label: tt("Najnowsze projekty (A-Z)", "Newest projects (A-Z)"),
+          projects: newest,
+        },
+        {
+          key: "top",
+          label: tt("Top projekty (A-Z)", "Top projects (A-Z)"),
+          projects: top,
+        },
+        {
+          key: "rest",
+          label: tt("Pozostałe aktywne (A-Z)", "Remaining active (A-Z)"),
+          projects: rest,
+        },
+      ];
+    }
+
+    const used = new Set<number>();
+    const top = topAlpha;
+    top.forEach((p) => used.add(p.id));
+    const newest = newestAlpha.filter((p) => !used.has(p.id));
+    newest.forEach((p) => used.add(p.id));
+    const rest = activeAlpha.filter((p) => !used.has(p.id));
+
+    return [
+      {
+        key: "top",
+        label: tt("Top projekty (A-Z)", "Top projects (A-Z)"),
+        projects: top,
+      },
+      {
+        key: "new",
+        label: tt("Najnowsze projekty (A-Z)", "Newest projects (A-Z)"),
+        projects: newest,
+      },
+      {
+        key: "rest",
+        label: tt("Pozostałe aktywne (A-Z)", "Remaining active (A-Z)"),
+        projects: rest,
+      },
+    ];
+  }, [assignProjectListMode, projects, tt]);
+
+  const assignProjectsCount = useMemo(
+    () => assignProjectSections.reduce((total, section) => total + section.projects.length, 0),
+    [assignProjectSections]
+  );
+  const showAssignSectionHeaders = assignProjectListMode !== "alpha_active";
+
   const clusterDetailsSummary = useMemo(() => {
     if (!clusterDetails) return null;
     return summarizeCluster(clusterDetails.segment);
@@ -1139,6 +1261,52 @@ export function ProjectDayTimeline({
               <div className="px-2 py-1 text-[11px] text-muted-foreground">
                 {tt('Przypisz do projektu', 'Assign to project')}
               </div>
+              <div className="px-2 pb-1.5">
+                <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
+                  <AppTooltip content={tt("Aktywne alfabetycznie (A-Z)", "Active alphabetical (A-Z)")}>
+                    <button
+                      type="button"
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                        assignProjectListMode === "alpha_active"
+                          ? "bg-background text-sky-200 shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => setAssignProjectListMode("alpha_active")}
+                      aria-label={tt("Aktywne alfabetycznie", "Active alphabetical")}
+                    >
+                      <Type className="h-3.5 w-3.5" />
+                    </button>
+                  </AppTooltip>
+                  <AppTooltip content={tt("Najnowsze -> Top -> Reszta (A-Z)", "Newest -> Top -> Rest (A-Z)")}>
+                    <button
+                      type="button"
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                        assignProjectListMode === "new_top_rest"
+                          ? "bg-background text-amber-300 shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => setAssignProjectListMode("new_top_rest")}
+                      aria-label={tt("Najnowsze, potem top", "Newest, then top")}
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </button>
+                  </AppTooltip>
+                  <AppTooltip content={tt("Top -> Najnowsze -> Reszta (A-Z)", "Top -> Newest -> Rest (A-Z)")}>
+                    <button
+                      type="button"
+                      className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                        assignProjectListMode === "top_new_rest"
+                          ? "bg-background text-orange-300 shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => setAssignProjectListMode("top_new_rest")}
+                      aria-label={tt("Top, potem najnowsze", "Top, then newest")}
+                    >
+                      <Flame className="h-3.5 w-3.5" />
+                    </button>
+                  </AppTooltip>
+                </div>
+              </div>
               <div
                 className="max-h-[min(42vh,20rem)] overflow-y-auto pr-1"
                 style={{ scrollbarGutter: "stable" }}
@@ -1150,19 +1318,28 @@ export function ProjectDayTimeline({
                   <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
                   <span className="truncate">{tt('Nieprzypisane', 'Unassigned')}</span>
                 </button>
-                {projects && projects.filter((p) => !p.frozen_at).length > 0 ? (
-                  projects.filter((p) => !p.frozen_at).map((p) => (
-                    <button
-                      key={p.id}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                      onClick={() => handleAssign(p.id)}
-                    >
-                      <div
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      <span className="truncate">{p.name}</span>
-                    </button>
+                {assignProjectsCount > 0 ? (
+                  assignProjectSections.map((section) => (
+                    <div key={section.key}>
+                      {showAssignSectionHeaders && section.projects.length > 0 && (
+                        <div className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                          {section.label}
+                        </div>
+                      )}
+                      {section.projects.map((p) => (
+                        <button
+                          key={p.id}
+                          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                          onClick={() => handleAssign(p.id)}
+                        >
+                          <div
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: p.color }}
+                          />
+                          <span className="truncate">{p.name}</span>
+                        </button>
+                      ))}
+                    </div>
                   ))
                 ) : (
                   <div className="px-2 py-1.5 text-sm text-muted-foreground">

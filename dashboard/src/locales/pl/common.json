@@ -96,6 +96,10 @@
       "already_in_database": "{{skipped}} już w bazie danych.",
       "errors_count": "{{count}} błędów"
     },
+    "discovered_projects": {
+      "summary": "Wykryto {{count}} nowych projektów w folderach",
+      "view": "Zobacz projekty"
+    },
     "unassigned_banner": {
       "message": "{{sessionCount}} sesji ({{duration}}) nie jest przypisanych w {{appCount}} aplikacjach na dzień {{date}}. Przypisz je ręcznie."
     },

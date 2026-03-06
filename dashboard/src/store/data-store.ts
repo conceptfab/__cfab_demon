@@ -25,6 +25,10 @@ interface DataState {
   autoImportDone: boolean;
   autoImportResult: AutoImportResult | null;
   setAutoImportDone: (done: boolean, result?: AutoImportResult | null) => void;
+  discoveredProjects: string[];
+  discoveredProjectsDismissed: boolean;
+  setDiscoveredProjects: (names: string[]) => void;
+  dismissDiscoveredProjects: () => void;
 }
 
 const REFRESH_THROTTLE_MS = 250;
@@ -150,4 +154,11 @@ export const useDataStore = create<DataState>((set, get) => ({
   autoImportResult: null,
   setAutoImportDone: (done, result) =>
     set({ autoImportDone: done, autoImportResult: result ?? null }),
+
+  discoveredProjects: [],
+  discoveredProjectsDismissed: false,
+  setDiscoveredProjects: (names) =>
+    set({ discoveredProjects: names, discoveredProjectsDismissed: false }),
+  dismissDiscoveredProjects: () =>
+    set({ discoveredProjectsDismissed: true }),
 }));

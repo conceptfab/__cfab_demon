@@ -96,6 +96,10 @@
       "already_in_database": "{{skipped}} already in database.",
       "errors_count": "{{count}} error(s)"
     },
+    "discovered_projects": {
+      "summary": "Discovered {{count}} new project(s) in folders",
+      "view": "View projects"
+    },
     "unassigned_banner": {
       "message": "{{sessionCount}} sessions ({{duration}}) are unassigned across {{appCount}} apps on {{date}}. Please assign them manually."
     },

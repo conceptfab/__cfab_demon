@@ -263,6 +263,11 @@ export interface StackedBarData {
   [appName: string]: string | number | string[] | boolean | undefined;
 }
 
+export interface FolderSyncResult {
+  created_projects: string[];
+  scanned_folders: number;
+}
+
 export interface AutoImportResult {
   files_found: number;
   files_imported: number;

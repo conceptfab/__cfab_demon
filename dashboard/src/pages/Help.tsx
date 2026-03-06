@@ -515,8 +515,8 @@ export function Help() {
                     'Unfreezing – use the flame icon to restore a project to the active tasks list.',
                   ),
                   t(
-                    'Synchronizacja folderów – TIMEFLOW skanuje ścieżki i automatycznie wykrywa nowe projekty.',
-                    'Folder Sync – TIMEFLOW scans paths and automatically detects new projects.',
+                    'Synchronizacja folderów – TIMEFLOW skanuje ścieżki przy każdym uruchomieniu dashboardu i automatycznie dodaje nowe projekty (w tym repozytoria .git). Na dashboardzie pojawia się powiadomienie o wykrytych projektach.',
+                    'Folder Sync – TIMEFLOW scans paths on every dashboard startup and automatically adds new projects (including .git repositories). A notification about discovered projects appears on the dashboard.',
                   ),
                   t(
                     'Detekcja kandydatów – system sugeruje utworzenie projektów na podstawie aktywności w folderach.',

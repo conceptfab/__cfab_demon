@@ -6,8 +6,8 @@ use super::analysis::compute_project_activity_unique;
 use super::helpers::{LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
 use super::sql_fragments::{SESSION_PROJECT_CTE, SESSION_PROJECT_CTE_ALL_TIME};
 use super::types::{
-    DateRange, FolderProjectCandidate, Project, ProjectDbStats, ProjectExtraInfo, ProjectFolder,
-    ProjectWithStats, TopApp,
+    DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
+    ProjectFolder, ProjectWithStats, TopApp,
 };
 use crate::db;
 use rusqlite::OptionalExtension;
@@ -198,6 +198,32 @@ pub(crate) fn create_project_if_missing(
     )
     .map_err(|e| e.to_string())?;
     Ok(true)
+}
+
+/// Creates a project if it doesn't exist, with an assigned folder path.
+/// Returns the project name if created, None if already existed or skipped.
+fn create_project_if_missing_with_folder(
+    conn: &rusqlite::Connection,
+    name: &str,
+    folder_path: &str,
+) -> Result<Option<String>, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Ok(None);
+    }
+    if project_name_is_blacklisted(conn, name) {
+        log::info!("Skipping blacklisted project name '{}'", name);
+        return Ok(None);
+    }
+    if project_row_exists_by_name(conn, name) {
+        return Ok(None);
+    }
+    conn.execute(
+        "INSERT INTO projects (name, color, assigned_folder_path) VALUES (?1, ?2, ?3)",
+        rusqlite::params![name, project_color_for_name(name), folder_path],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(Some(name.to_string()))
 }
 
 /// Checks if the file path suggests it belongs to a project
@@ -968,18 +994,59 @@ pub async fn create_project_from_folder(
 }
 
 #[tauri::command]
-pub async fn sync_projects_from_folders(app: AppHandle) -> Result<usize, String> {
+pub async fn sync_projects_from_folders(app: AppHandle) -> Result<FolderSyncResult, String> {
     let conn = db::get_connection(&app)?;
     let roots = load_project_folders_from_db(&conn)?;
-    let mut created = 0usize;
+    let mut created_projects: Vec<String> = Vec::new();
+    let mut scanned = 0usize;
 
-    for (name, _, _) in collect_project_subfolders(&roots) {
-        if create_project_if_missing(&conn, &name)? {
-            created += 1;
+    for (name, folder_path, _root) in collect_project_subfolders(&roots) {
+        scanned += 1;
+        if let Some(project_name) =
+            create_project_if_missing_with_folder(&conn, &name, &folder_path)?
+        {
+            created_projects.push(project_name);
         }
     }
 
-    Ok(created)
+    // Scan for .git repositories inside project folders (deeper discovery)
+    for root in &roots {
+        let root_path = std::path::PathBuf::from(&root.path);
+        if !root_path.exists() || !root_path.is_dir() {
+            continue;
+        }
+        let entries = match std::fs::read_dir(&root_path) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            // Check if subfolder contains .git (is a git repo)
+            let git_dir = p.join(".git");
+            if git_dir.exists() {
+                let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
+                    Some(v) if !v.trim().is_empty() => v,
+                    _ => continue,
+                };
+                let folder_path = p.to_string_lossy().to_string();
+                if let Some(project_name) =
+                    create_project_if_missing_with_folder(&conn, &name, &folder_path)?
+                {
+                    if !created_projects.contains(&project_name) {
+                        created_projects.push(project_name);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(FolderSyncResult {
+        created_projects,
+        scanned_folders: scanned,
+    })
 }
 
 #[tauri::command]

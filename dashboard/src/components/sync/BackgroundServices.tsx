@@ -56,13 +56,17 @@ function useAutoProjectSync() {
   useEffect(() => {
     const run = async () => {
       try {
-        const synced = await syncProjectsFromFolders();
+        const syncResult = await syncProjectsFromFolders();
         const detected = await autoCreateProjectsFromDetection(
           { start: '2000-01-01', end: '2100-01-01' },
           2,
         );
-        if (synced > 0 || detected > 0) {
+        const allNew = syncResult.created_projects;
+        if (allNew.length > 0 || detected > 0) {
           useDataStore.getState().triggerRefresh();
+        }
+        if (allNew.length > 0) {
+          useDataStore.getState().setDiscoveredProjects(allNew);
         }
       } catch (e) {
         console.warn('Auto project sync failed:', e);

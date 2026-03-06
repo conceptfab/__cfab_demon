@@ -286,6 +286,12 @@ pub struct FolderProjectCandidate {
 }
 
 #[derive(Serialize)]
+pub struct FolderSyncResult {
+    pub created_projects: Vec<String>,
+    pub scanned_folders: usize,
+}
+
+#[derive(Serialize)]
 pub struct AutoImportResult {
     pub files_found: usize,
     pub files_imported: usize,
