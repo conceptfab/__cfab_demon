@@ -34,6 +34,7 @@ export interface FileActivity {
   id: number;
   app_id: number;
   file_name: string;
+  file_path?: string;
   total_seconds: number;
   first_seen: string;
   last_seen: string;
@@ -243,6 +244,14 @@ export interface ProjectExtraInfo {
   period_value: number;
   db_stats: ProjectDbStats;
   top_apps: { name: string; seconds: number; color: string | null }[];
+}
+
+export interface ProjectReportData {
+  project: ProjectWithStats;
+  extra: ProjectExtraInfo;
+  estimate: number;
+  sessions: SessionWithApp[];
+  manual_sessions: ManualSessionWithProject[];
 }
 
 export interface ProjectFolder {

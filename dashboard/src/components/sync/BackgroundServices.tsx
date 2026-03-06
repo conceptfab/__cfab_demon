@@ -17,6 +17,9 @@ import {
 } from '@/lib/online-sync';
 import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
 import { loadSessionSettings } from '@/lib/user-settings';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+
+const JOB_LOOP_TICK_MS = 2000;
 
 // === BACKGROUND HOOKS ===
 
@@ -58,7 +61,7 @@ function useAutoProjectSync() {
       try {
         const syncResult = await syncProjectsFromFolders();
         const detected = await autoCreateProjectsFromDetection(
-          { start: '2000-01-01', end: '2100-01-01' },
+          ALL_TIME_DATE_RANGE,
           2,
         );
         const allNew = syncResult.created_projects;
@@ -143,9 +146,17 @@ function useJobPool() {
   const nextSigCheckRef = useRef(Date.now() + 5_000);
   const nextSyncIntervalRef = useRef(0);
   const nextSyncPollRef = useRef(Date.now() + 20_000);
+  const syncSettingsRef = useRef(loadOnlineSyncSettings());
 
   const localChangeSyncTimer = useRef<number | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
+  const refreshSyncSettingsCache = useCallback(() => {
+    const syncSettings = loadOnlineSyncSettings();
+    syncSettingsRef.current = syncSettings;
+    nextSyncIntervalRef.current =
+      Date.now() + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
+    nextSyncPollRef.current = Date.now() + 120_000;
+  }, []);
 
   const runRefresh = useCallback(async () => {
     if (refreshingRef.current) return;
@@ -196,6 +207,7 @@ function useJobPool() {
 
   useEffect(() => {
     let disposed = false;
+    refreshSyncSettingsCache();
 
     // Bootstrap initial data
     void runRefresh().then(() => {
@@ -221,12 +233,9 @@ function useJobPool() {
       }
 
       if (autoImportDone) {
-        const syncSettings = loadOnlineSyncSettings();
+        const syncSettings = syncSettingsRef.current;
         if (syncSettings.enabled) {
-          if (nextSyncIntervalRef.current === 0) {
-            nextSyncIntervalRef.current =
-              now + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
-          } else if (now >= nextSyncIntervalRef.current) {
+          if (now >= nextSyncIntervalRef.current) {
             nextSyncIntervalRef.current =
               now + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
             void runSync('interval');
@@ -238,20 +247,17 @@ function useJobPool() {
           }
         }
       }
-    }, 1000);
+    }, JOB_LOOP_TICK_MS);
 
     return () => {
       disposed = true;
       if (loopRef.current !== null) clearInterval(loopRef.current);
     };
-  }, [autoImportDone, checkFileChange, runRefresh, runSync]);
+  }, [autoImportDone, checkFileChange, runRefresh, runSync, refreshSyncSettingsCache]);
 
   useEffect(() => {
     const handleSyncSettingsChange = () => {
-      const syncSettings = loadOnlineSyncSettings();
-      nextSyncIntervalRef.current =
-        Date.now() + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
-      nextSyncPollRef.current = Date.now() + 120_000;
+      refreshSyncSettingsCache();
     };
 
     const handleLocalDataChange = () => {
@@ -293,7 +299,7 @@ function useJobPool() {
       if (localChangeSyncTimer.current)
         window.clearTimeout(localChangeSyncTimer.current);
     };
-  }, [autoImportDone, runSync, triggerRefresh]);
+  }, [autoImportDone, runSync, triggerRefresh, refreshSyncSettingsCache]);
 
   useEffect(() => {
     if (!autoImportDone) return;

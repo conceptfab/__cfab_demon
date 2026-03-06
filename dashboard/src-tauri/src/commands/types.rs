@@ -166,6 +166,15 @@ pub struct ProjectExtraInfo {
 }
 
 #[derive(Serialize)]
+pub struct ProjectReportData {
+    pub project: ProjectWithStats,
+    pub extra: ProjectExtraInfo,
+    pub estimate: f64,
+    pub sessions: Vec<SessionWithApp>,
+    pub manual_sessions: Vec<ManualSessionWithProject>,
+}
+
+#[derive(Serialize)]
 pub struct ProjectTimeRow {
     pub name: String,
     pub seconds: i64,

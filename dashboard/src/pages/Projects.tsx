@@ -76,6 +76,7 @@ import { loadFreezeSettings } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useInlineT } from '@/lib/inline-i18n';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import type {
   ProjectWithStats,
   AppWithStats,
@@ -93,11 +94,13 @@ const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
 const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
 const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
 const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
-const ALL_TIME_DATE_RANGE = { start: '2020-01-01', end: '2100-01-01' } as const;
 
-function isNewProject(created_at: string): boolean {
-  const age = Date.now() - new Date(created_at).getTime();
-  return age < 7 * 24 * 60 * 60 * 1000;
+function isNewProject(project: ProjectWithStats, maxAgeMs: number): boolean {
+  const freshnessSource = project.last_activity ?? project.created_at;
+  const sourceMs = new Date(freshnessSource).getTime();
+  if (!Number.isFinite(sourceMs)) return false;
+  const age = Date.now() - sourceMs;
+  return age >= 0 && age < maxAgeMs;
 }
 
 
@@ -208,6 +211,9 @@ export function Projects() {
   const [projectRenderLimits, setProjectRenderLimits] = useState<
     Record<string, number>
   >({});
+  const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
+  const newProjectMaxAgeMs =
+    Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
 
   const [sortBy, setSortBy] = useState(() => {
     return localStorage.getItem(SORT_STORAGE_KEY) || 'name-asc';
@@ -454,7 +460,7 @@ export function Projects() {
   const handleDeleteProject = async (project: ProjectWithStats) => {
     const projectLabel = project.name.trim() || `#${project.id}`;
     const confirmed = await confirm(
-      `Permanently delete project "${projectLabel}"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone.`,
+      t('projects.confirm.delete_project_permanent', { projectLabel }),
     );
     if (!confirmed) return;
 
@@ -963,7 +969,7 @@ export function Projects() {
                 data-project-name={p.name}
                 className={cn(
                   'flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors',
-                  isNewProject(p.created_at) && 'border-yellow-400/70',
+                  isNewProject(p, newProjectMaxAgeMs) && 'border-yellow-400/70',
                 )}
                 onClick={() => openEdit(p)}
               >
@@ -1058,7 +1064,7 @@ export function Projects() {
         key={p.id}
         data-project-id={p.id}
         data-project-name={p.name}
-        className={isNewProject(p.created_at) ? 'border-yellow-400/70' : undefined}
+        className={isNewProject(p, newProjectMaxAgeMs) ? 'border-yellow-400/70' : undefined}
       >
         <CardHeader
           className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? 'pr-10' : ''}`}
@@ -1282,7 +1288,7 @@ export function Projects() {
                 </p>
                 {loadingExtra ? (
                   <p className="text-xs text-muted-foreground italic">
-                    Loading...
+                    {t('ui.app.loading')}
                   </p>
                 ) : (
                   <div className="space-y-1.5">
@@ -1355,7 +1361,7 @@ export function Projects() {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{tt('Pliki:', 'Files:')}</span>
+                      <span className="text-muted-foreground">{tt('Unikalne pliki:', 'Unique files:')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.file_activity_count || 0}
                       </span>

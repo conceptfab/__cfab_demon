@@ -251,7 +251,7 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
 
         tx.commit()
             .map_err(|e| format!("Failed to commit database restore: {}", e))?;
-        
+
         Ok(())
     })();
 

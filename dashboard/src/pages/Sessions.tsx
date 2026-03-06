@@ -148,17 +148,15 @@ export function Sessions() {
   >(new Map());
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
-  const scrollParentRef = useRef<HTMLElement | null>(null);
-  useEffect(() => {
+  const customScrollParent = useMemo<HTMLElement | undefined>(() => {
+    if (typeof document === 'undefined') return undefined;
     const el = document.querySelector('main');
-    if (el) scrollParentRef.current = el;
+    return el instanceof HTMLElement ? el : undefined;
   }, []);
   const PAGE_SIZE = 100;
-  const [minDuration, setMinDuration] = useState<number | undefined>(() =>
-    readMinSessionDuration(),
-  );
-  useEffect(() => {
-    setMinDuration(readMinSessionDuration());
+  const minDuration = useMemo(() => {
+    void refreshKey;
+    return readMinSessionDuration();
   }, [refreshKey]);
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
   const canShiftForward = anchorDate < today;
@@ -198,23 +196,29 @@ export function Sessions() {
       sessionsFocusProject === null
     )
       return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (sessionsFocusDate) {
+        setOverrideDateRange(null);
+        setRangeMode('daily');
+        setAnchorDate(sessionsFocusDate);
+        clearSessionsFocusDate();
+      } else if (sessionsFocusRange) {
+        setOverrideDateRange(sessionsFocusRange);
+        // We set anchorDate to end of range just so navigation buttons are somewhat sane
+        setAnchorDate(sessionsFocusRange.end);
+        setSessionsFocusRange(null);
+      }
 
-    if (sessionsFocusDate) {
-      setOverrideDateRange(null);
-      setRangeMode('daily');
-      setAnchorDate(sessionsFocusDate);
-      clearSessionsFocusDate();
-    } else if (sessionsFocusRange) {
-      setOverrideDateRange(sessionsFocusRange);
-      // We set anchorDate to end of range just so navigation buttons are somewhat sane
-      setAnchorDate(sessionsFocusRange.end);
-      setSessionsFocusRange(null);
-    }
-
-    if (sessionsFocusProject !== null) {
-      setActiveProjectId(sessionsFocusProject);
-      setSessionsFocusProject(null);
-    }
+      if (sessionsFocusProject !== null) {
+        setActiveProjectId(sessionsFocusProject);
+        setSessionsFocusProject(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [
     sessionsFocusDate,
     clearSessionsFocusDate,
@@ -250,7 +254,9 @@ export function Sessions() {
   }, [effectiveDateRange, refreshKey, activeProjectId, minDuration]);
 
   useEffect(() => {
-    setDismissedSuggestions(new Set());
+    queueMicrotask(() => {
+      setDismissedSuggestions(new Set());
+    });
   }, [activeDateRange.start, activeDateRange.end]);
 
   useEffect(() => {
@@ -258,32 +264,39 @@ export function Sessions() {
   }, [refreshKey]);
 
   useEffect(() => {
-    if (!indicators.showScoreBreakdown) {
-      setLoadingBreakdownIds(new Set());
-      return;
-    }
-    const visibleSessionIds = new Set(sessions.map((s) => s.id));
-    setAiBreakdowns((prev) => {
-      const next = new Map<number, ScoreBreakdown>();
-      prev.forEach((value, sessionId) => {
-        if (visibleSessionIds.has(sessionId)) {
-          next.set(sessionId, value);
-        }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!indicators.showScoreBreakdown) {
+        setLoadingBreakdownIds(new Set());
+        return;
+      }
+      const visibleSessionIds = new Set(sessions.map((s) => s.id));
+      setAiBreakdowns((prev) => {
+        const next = new Map<number, ScoreBreakdown>();
+        prev.forEach((value, sessionId) => {
+          if (visibleSessionIds.has(sessionId)) {
+            next.set(sessionId, value);
+          }
+        });
+        return next;
       });
-      return next;
-    });
-    setLoadingBreakdownIds((prev) => {
-      const next = new Set<number>();
-      prev.forEach((sessionId) => {
-        if (visibleSessionIds.has(sessionId)) {
-          next.add(sessionId);
-        }
+      setLoadingBreakdownIds((prev) => {
+        const next = new Set<number>();
+        prev.forEach((sessionId) => {
+          if (visibleSessionIds.has(sessionId)) {
+            next.add(sessionId);
+          }
+        });
+        return next;
       });
-      return next;
+      if (scoreBreakdown && !visibleSessionIds.has(scoreBreakdown.sessionId)) {
+        setScoreBreakdown(null);
+      }
     });
-    if (scoreBreakdown && !visibleSessionIds.has(scoreBreakdown.sessionId)) {
-      setScoreBreakdown(null);
-    }
+    return () => {
+      cancelled = true;
+    };
   }, [sessions, indicators.showScoreBreakdown, scoreBreakdown]);
 
   // Auto-refresh sessions every 15 seconds
@@ -346,7 +359,7 @@ export function Sessions() {
       setProjectCtxMenu(null);
       setCtxMenu({ x: e.clientX, y: e.clientY, session });
     },
-    [],
+    [setProjectCtxMenu, setCtxMenu],
   );
 
   const handleProjectContextMenu = useCallback(
@@ -356,7 +369,7 @@ export function Sessions() {
       setCtxMenu(null);
       setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName });
     },
-    [],
+    [setCtxMenu, setProjectCtxMenu],
   );
 
   const handleAssign = useCallback(
@@ -369,7 +382,7 @@ export function Sessions() {
       }
       setCtxMenu(null);
     },
-    [assignSessions, ctxMenu],
+    [assignSessions, ctxMenu, setCtxMenu],
   );
 
   const ensureCommentForBoost = useCallback(
@@ -423,7 +436,7 @@ export function Sessions() {
         return false;
       }
     },
-    [sessions, showError, t, updateSessionComments],
+    [sessions, showError, t, updateSessionComments, setPromptConfig],
   );
 
   const handleSetRateMultiplier = useCallback(
@@ -450,6 +463,7 @@ export function Sessions() {
       showError,
       t,
       updateSessionRateMultipliers,
+      setCtxMenu,
     ],
   );
 
@@ -476,7 +490,7 @@ export function Sessions() {
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu, handleSetRateMultiplier, showError, t]);
+  }, [ctxMenu, handleSetRateMultiplier, showError, t, setPromptConfig, setCtxMenu]);
 
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu) return;
@@ -502,7 +516,7 @@ export function Sessions() {
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu, t, updateOneSessionComment]);
+  }, [ctxMenu, t, updateOneSessionComment, setPromptConfig, setCtxMenu]);
 
   const handleAcceptSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
@@ -915,7 +929,7 @@ export function Sessions() {
 
       {flattenedItems.length > 0 ? (
         <Virtuoso
-          customScrollParent={scrollParentRef.current ?? undefined}
+          customScrollParent={customScrollParent}
           data={flattenedItems}
           itemContent={(_index: number, item: FlatItem) => {
             if (item.type === 'header') {

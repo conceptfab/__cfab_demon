@@ -10,6 +10,7 @@ import {
   min as minDate,
 } from 'date-fns';
 import type { AutoImportResult, DateRange } from '@/lib/db-types';
+import { ALL_TIME_START } from '@/lib/date-ranges';
 
 export type TimePreset = 'today' | 'week' | 'month' | 'all';
 
@@ -67,7 +68,7 @@ function presetToRange(preset: TimePreset): DateRange {
     case 'month':
       return { start: format(startOfMonth(now), 'yyyy-MM-dd'), end };
     case 'all':
-      return { start: '2020-01-01', end };
+      return { start: ALL_TIME_START, end };
   }
 }
 
@@ -85,7 +86,7 @@ function inferPreset(range: DateRange): TimePreset {
     range.end === today
   )
     return 'month';
-  if (range.start === '2020-01-01' && range.end === today) return 'all';
+  if (range.start === ALL_TIME_START && range.end === today) return 'all';
   return 'week';
 }
 

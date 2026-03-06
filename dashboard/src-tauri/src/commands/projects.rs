@@ -234,16 +234,13 @@ fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> 
     // Check each project folder
     for root in project_roots {
         let root_path = std::path::Path::new(&root.path);
-        match path.strip_prefix(&root_path) {
-            Ok(relative_path) => {
-                // The file is inside a project folder
-                // Extract the project name from the path
-                if let Some(first_component) = relative_path.components().next() {
-                    let project_name = first_component.as_os_str().to_string_lossy().into_owned();
-                    return Some(project_name);
-                }
+        if let Ok(relative_path) = path.strip_prefix(root_path) {
+            // The file is inside a project folder
+            // Extract the project name from the path
+            if let Some(first_component) = relative_path.components().next() {
+                let project_name = first_component.as_os_str().to_string_lossy().into_owned();
+                return Some(project_name);
             }
-            Err(_) => {}
         }
 
         // Windows filesystems are commonly case-insensitive, but strip_prefix is not.
@@ -947,7 +944,7 @@ pub async fn get_folder_project_candidates(
         });
     }
 
-    out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    out.sort_by_key(|a| a.name.to_lowercase());
     Ok(out)
 }
 
@@ -1224,19 +1221,23 @@ pub async fn get_project_extra_info(
     let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
 
     // 4. DB Stats
+    let session_count_sql = format!(
+        "{SESSION_PROJECT_CTE_ALL_TIME}
+         SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?1"
+    );
     let session_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sessions s LEFT JOIN applications a ON a.id = s.app_id WHERE a.project_id = ?1 OR s.project_id = ?1",
-            [id],
-            |row| row.get(0),
-        )
+        .query_row(&session_count_sql, [id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
     let file_activity_count: i64 = conn
         .query_row(
-            "SELECT COUNT(DISTINCT LOWER(TRIM(fa.file_name))) FROM file_activities fa
-             LEFT JOIN applications a ON a.id = fa.app_id
-             WHERE COALESCE(fa.project_id, a.project_id) = ?1",
+            "SELECT COUNT(DISTINCT LOWER(
+                 COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
+             ))
+             FROM file_activities fa
+             WHERE fa.project_id = ?1
+               AND TRIM(fa.file_name) <> ''
+               AND LOWER(TRIM(fa.file_name)) <> '(background)'",
             [id],
             |row| row.get(0),
         )
@@ -1270,17 +1271,19 @@ pub async fn get_project_extra_info(
         + (comment_count * 100);
 
     // 5. Top 3 apps
-    let mut stmt = conn
-        .prepare(
-            "SELECT a.display_name, SUM(s.duration_seconds) as total, a.color
-         FROM sessions s
-         LEFT JOIN applications a ON a.id = s.app_id
-         WHERE a.project_id = ?1 OR s.project_id = ?1
+    let top_apps_sql = format!(
+        "{SESSION_PROJECT_CTE_ALL_TIME}
+         SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
+                SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
+                MAX(a.color) as color
+         FROM session_projects sp
+         LEFT JOIN applications a ON a.id = sp.app_id
+         WHERE sp.project_id = ?1
          GROUP BY COALESCE(a.display_name, 'Unknown App')
          ORDER BY total DESC
-         LIMIT 15",
-        )
-        .map_err(|e| e.to_string())?;
+         LIMIT 15"
+    );
+    let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
 
     let top_apps = stmt
         .query_map([id], |row| {

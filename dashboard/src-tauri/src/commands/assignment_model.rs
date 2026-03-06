@@ -1889,7 +1889,7 @@ pub async fn get_feedback_weight(app: AppHandle) -> Result<f64, String> {
 /// Set the feedback weight (how much manual corrections influence the model).
 #[command]
 pub async fn set_feedback_weight(app: AppHandle, weight: f64) -> Result<(), String> {
-    if !weight.is_finite() || weight < 1.0 || weight > 50.0 {
+    if !weight.is_finite() || !(1.0..=50.0).contains(&weight) {
         return Err("Feedback weight must be between 1.0 and 50.0".to_string());
     }
     let conn = db::get_connection(&app)?;

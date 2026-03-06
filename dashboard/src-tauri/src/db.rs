@@ -133,13 +133,14 @@ CREATE TABLE IF NOT EXISTS file_activities (
     app_id INTEGER NOT NULL,
     date TEXT NOT NULL,
     file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
     total_seconds INTEGER NOT NULL,
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     project_id INTEGER,
     FOREIGN KEY (app_id) REFERENCES applications(id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
-    UNIQUE(app_id, date, file_name)
+    UNIQUE(app_id, date, file_path)
 );
 
 CREATE TABLE IF NOT EXISTS imported_files (
@@ -172,6 +173,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
 CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
+CREATE INDEX IF NOT EXISTS idx_file_activities_file_path ON file_activities(file_path);
 CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
 ON session_manual_overrides(executable_name, start_time, end_time);
 
@@ -770,18 +772,39 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
                 app_id INTEGER NOT NULL,
                 date TEXT NOT NULL,
                 file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
                 total_seconds INTEGER NOT NULL,
                 first_seen TEXT NOT NULL,
                 last_seen TEXT NOT NULL,
+                project_id INTEGER,
                 FOREIGN KEY (app_id) REFERENCES applications(id),
-                UNIQUE(app_id, date, file_name)
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+                UNIQUE(app_id, date, file_path)
             );
 
-            INSERT OR REPLACE INTO file_activities_new (app_id, date, file_name, total_seconds, first_seen, last_seen)
-            SELECT s.app_id, s.date, fa.file_name, MAX(fa.total_seconds), MIN(fa.first_seen), MAX(fa.last_seen)
+            INSERT OR REPLACE INTO file_activities_new (
+                app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id
+            )
+            SELECT
+                s.app_id,
+                s.date,
+                MIN(fa.file_name),
+                CASE
+                    WHEN TRIM(REPLACE(fa.file_name, '\\', '/')) = '' THEN '(unknown)'
+                    ELSE TRIM(REPLACE(fa.file_name, '\\', '/'))
+                END,
+                MAX(fa.total_seconds),
+                MIN(fa.first_seen),
+                MAX(fa.last_seen),
+                MAX(a.project_id)
             FROM file_activities fa
             JOIN sessions s ON s.id = fa.session_id
-            GROUP BY s.app_id, s.date, fa.file_name;
+            LEFT JOIN applications a ON a.id = s.app_id
+            GROUP BY s.app_id, s.date,
+                CASE
+                    WHEN TRIM(REPLACE(fa.file_name, '\\', '/')) = '' THEN '(unknown)'
+                    ELSE TRIM(REPLACE(fa.file_name, '\\', '/'))
+                END;
 
             DROP TABLE file_activities;
             ALTER TABLE file_activities_new RENAME TO file_activities;
@@ -965,6 +988,122 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
              SET project_id = (SELECT project_id FROM applications WHERE applications.id = file_activities.app_id)",
             []
         )?;
+    }
+
+    // Migrate file_activities to stable file path identity and unique(app_id, date, file_path).
+    let has_file_activities_file_path: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('file_activities') WHERE name='file_path'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    let file_activities_table_sql: String = db
+        .query_row(
+            "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type='table' AND name='file_activities' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+    let normalized_file_activities_sql = file_activities_table_sql
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>()
+        .to_lowercase();
+    let uses_legacy_unique =
+        normalized_file_activities_sql.contains("unique(app_id,date,file_name)");
+
+    if !has_file_activities_file_path || uses_legacy_unique {
+        log::info!(
+            "Migrating file_activities: rebuilding with file_path identity (has_file_path={}, legacy_unique={})",
+            has_file_activities_file_path,
+            uses_legacy_unique
+        );
+        if has_file_activities_file_path {
+            db.execute_batch(
+                "CREATE TABLE IF NOT EXISTS file_activities_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    total_seconds INTEGER NOT NULL,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    project_id INTEGER,
+                    FOREIGN KEY (app_id) REFERENCES applications(id),
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+                    UNIQUE(app_id, date, file_path)
+                );
+
+                INSERT OR REPLACE INTO file_activities_new (
+                    app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id
+                )
+                SELECT
+                    app_id,
+                    date,
+                    MIN(file_name) AS file_name,
+                    CASE
+                        WHEN TRIM(REPLACE(COALESCE(file_path, file_name), '\\', '/')) = '' THEN '(unknown)'
+                        ELSE TRIM(REPLACE(COALESCE(file_path, file_name), '\\', '/'))
+                    END AS normalized_file_path,
+                    MAX(total_seconds) AS total_seconds,
+                    MIN(first_seen) AS first_seen,
+                    MAX(last_seen) AS last_seen,
+                    MAX(project_id) AS project_id
+                FROM file_activities
+                GROUP BY app_id, date,
+                    CASE
+                        WHEN TRIM(REPLACE(COALESCE(file_path, file_name), '\\', '/')) = '' THEN '(unknown)'
+                        ELSE TRIM(REPLACE(COALESCE(file_path, file_name), '\\', '/'))
+                    END;
+
+                DROP TABLE file_activities;
+                ALTER TABLE file_activities_new RENAME TO file_activities;",
+            )?;
+        } else {
+            db.execute_batch(
+                "CREATE TABLE IF NOT EXISTS file_activities_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    app_id INTEGER NOT NULL,
+                    date TEXT NOT NULL,
+                    file_name TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    total_seconds INTEGER NOT NULL,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    project_id INTEGER,
+                    FOREIGN KEY (app_id) REFERENCES applications(id),
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+                    UNIQUE(app_id, date, file_path)
+                );
+
+                INSERT OR REPLACE INTO file_activities_new (
+                    app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id
+                )
+                SELECT
+                    app_id,
+                    date,
+                    MIN(file_name) AS file_name,
+                    CASE
+                        WHEN TRIM(REPLACE(file_name, '\\', '/')) = '' THEN '(unknown)'
+                        ELSE TRIM(REPLACE(file_name, '\\', '/'))
+                    END AS normalized_file_path,
+                    MAX(total_seconds) AS total_seconds,
+                    MIN(first_seen) AS first_seen,
+                    MAX(last_seen) AS last_seen,
+                    MAX(project_id) AS project_id
+                FROM file_activities
+                GROUP BY app_id, date,
+                    CASE
+                        WHEN TRIM(REPLACE(file_name, '\\', '/')) = '' THEN '(unknown)'
+                        ELSE TRIM(REPLACE(file_name, '\\', '/'))
+                    END;
+
+                DROP TABLE file_activities;
+                ALTER TABLE file_activities_new RENAME TO file_activities;",
+            )?;
+        }
     }
 
     let has_sessions_project_id: bool = db
@@ -1195,6 +1334,7 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
          CREATE INDEX IF NOT EXISTS idx_file_activities_date ON file_activities(date);
          CREATE INDEX IF NOT EXISTS idx_file_activities_app_date ON file_activities(app_id, date);
          CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
+         CREATE INDEX IF NOT EXISTS idx_file_activities_file_path ON file_activities(file_path);
          CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);",
     )?;
 

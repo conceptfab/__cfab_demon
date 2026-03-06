@@ -161,7 +161,7 @@ export default function App() {
             <Suspense
               fallback={
                 <div className="flex h-64 items-center justify-center text-muted-foreground">
-                  Loading...
+                  {i18n.t('ui.app.loading')}
                 </div>
               }
             >

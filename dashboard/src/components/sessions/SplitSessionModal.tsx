@@ -188,7 +188,7 @@ export function SplitSessionModal({
             onClick={onCancel}
             disabled={isSubmitting}
           >
-            {t('common.cancel', 'Anuluj')}
+            {t('ui.buttons.cancel', 'Anuluj')}
           </Button>
           <Button
             size="sm"

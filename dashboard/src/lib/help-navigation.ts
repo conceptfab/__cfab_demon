@@ -8,6 +8,7 @@ export const HELP_TAB_IDS = [
   "analysis",
   "ai",
   "data",
+  "reports",
   "daemon",
   "settings",
 ] as const;
@@ -28,6 +29,7 @@ const HELP_TAB_TO_PAGE: Record<HelpTabId, string> = {
   analysis: "analysis",
   ai: "ai",
   data: "data",
+  reports: "reports",
   daemon: "daemon",
   settings: "settings",
 };
@@ -44,6 +46,8 @@ const PAGE_TO_HELP_TAB: Record<string, HelpTabId> = {
   ai: "ai",
   import: "data",
   data: "data",
+  reports: "reports",
+  "report-view": "reports",
   daemon: "daemon",
   settings: "settings",
 };

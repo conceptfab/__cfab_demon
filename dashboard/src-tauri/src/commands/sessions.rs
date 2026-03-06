@@ -2,8 +2,11 @@ use rusqlite::OptionalExtension;
 use std::collections::{HashMap, HashSet};
 use tauri::AppHandle;
 
+use super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
 use super::types::{FileActivity, SessionFilters, SessionWithApp};
 use crate::db;
+
+type ManualOverrideRow = (Option<i64>, String, String, String, Option<String>);
 
 fn apply_session_filters(
     filters: &SessionFilters,
@@ -122,7 +125,7 @@ pub(crate) fn upsert_manual_session_override(
 pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Result<i64, String> {
     let mut total_reapplied = 0_i64;
 
-    let overrides: Vec<(Option<i64>, String, String, String, Option<String>)> = {
+    let overrides: Vec<ManualOverrideRow> = {
         let mut stmt = conn
             .prepare_cached(
                 "SELECT session_id, executable_name, start_time, end_time, project_name
@@ -250,8 +253,38 @@ pub async fn get_sessions(
     let (mut sessions, needs_suggestion) = {
         let conn = db::get_connection(&app)?;
 
-        let mut sql = String::from(
-            "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
+        let project_filter = filters.project_id;
+        let mut sql = if project_filter.is_some() {
+            format!(
+                "{SESSION_PROJECT_CTE_ALL_TIME}
+                 SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
+                    COALESCE(s.rate_multiplier, 1.0),
+                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
+                    s.comment,
+                    asug_latest.suggested_confidence,
+                    asug_latest.suggested_project_id,
+                    p_sug.name
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             LEFT JOIN session_projects sp_filter ON sp_filter.id = s.id
+             LEFT JOIN projects p ON p.id = s.project_id
+             LEFT JOIN (
+                 SELECT session_id, source
+                 FROM assignment_feedback
+                 WHERE id IN (SELECT MAX(id) FROM assignment_feedback GROUP BY session_id)
+             ) af_last ON af_last.session_id = s.id
+             LEFT JOIN (
+                 SELECT session_id, suggested_confidence, suggested_project_id
+                  FROM assignment_suggestions
+                  WHERE id IN (SELECT MAX(id) FROM assignment_suggestions GROUP BY session_id)
+              ) asug_latest ON asug_latest.session_id = s.id
+              LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
+             WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)"
+            )
+        } else {
+            String::from(
+                "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
                     a.display_name, a.executable_name, s.project_id, p.name, p.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
@@ -274,21 +307,13 @@ pub async fn get_sessions(
              ) asug_latest ON asug_latest.session_id = s.id
              LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
              WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)",
-        );
+            )
+        };
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         let mut idx = 1;
-        let project_filter = filters.project_id;
 
         if let Some(pid) = project_filter {
-            sql.push_str(&format!(
-                " AND (s.project_id = ?{} OR (s.project_id IS NULL AND EXISTS (
-                    SELECT 1 FROM file_activities fa 
-                    WHERE fa.app_id = s.app_id 
-                    AND fa.date = s.date 
-                    AND fa.project_id = ?{}
-                )))",
-                idx, idx
-            ));
+            sql.push_str(&format!(" AND sp_filter.project_id = ?{}", idx));
             params.push(Box::new(pid));
             idx += 1;
         }
@@ -634,12 +659,12 @@ pub async fn get_sessions(
 pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, String> {
     if let Some(pid) = filters.project_id {
         let conn = db::get_connection(&app)?;
-        let mut sql = String::from(
-            "SELECT COUNT(DISTINCT s.id) FROM sessions s
+        let mut sql = format!(
+            "{SESSION_PROJECT_CTE_ALL_TIME}
+             SELECT COUNT(*) FROM session_projects sp
+             JOIN sessions s ON s.id = sp.id
              JOIN applications a ON a.id = s.app_id
-             LEFT JOIN file_activities fa ON fa.app_id = s.app_id AND fa.date = date(s.start_time)
-             WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
-               AND (s.project_id = ?1 OR fa.project_id = ?1)",
+             WHERE sp.project_id = ?1",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(pid)];
         let mut idx = 2;
@@ -1103,7 +1128,17 @@ pub async fn split_session(
         .optional()
         .map_err(|e| e.to_string())?;
 
-    let Some((app_id, start_time, end_time, duration_seconds, date_str, rate_multiplier, _orig_project_id, comment)) = session else {
+    let Some((
+        app_id,
+        start_time,
+        end_time,
+        duration_seconds,
+        date_str,
+        rate_multiplier,
+        _orig_project_id,
+        comment,
+    )) = session
+    else {
         return Err("Session not found".to_string());
     };
 
@@ -1215,7 +1250,11 @@ pub async fn suggest_session_split(
 
     let projects: Vec<(i64, String, i64)> = stmt
         .query_map(rusqlite::params![app_id, date], |row| {
-            Ok((row.get(0)?, row.get::<_, String>(1).unwrap_or_default(), row.get(2)?))
+            Ok((
+                row.get(0)?,
+                row.get::<_, String>(1).unwrap_or_default(),
+                row.get(2)?,
+            ))
         })
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
@@ -1243,10 +1282,14 @@ pub async fn suggest_session_split(
     if let (Some(cur), Some(sug)) = (current_project_id, suggested_project_id) {
         if cur != sug {
             let name_a: String = conn
-                .query_row("SELECT name FROM projects WHERE id = ?1", [cur], |r| r.get(0))
+                .query_row("SELECT name FROM projects WHERE id = ?1", [cur], |r| {
+                    r.get(0)
+                })
                 .unwrap_or_default();
             let name_b: String = conn
-                .query_row("SELECT name FROM projects WHERE id = ?1", [sug], |r| r.get(0))
+                .query_row("SELECT name FROM projects WHERE id = ?1", [sug], |r| {
+                    r.get(0)
+                })
                 .unwrap_or_default();
             return Ok(SplitSuggestion {
                 project_a_id: Some(cur),
@@ -1268,4 +1311,164 @@ pub async fn suggest_session_split(
         suggested_ratio: 0.5,
         confidence: 0.0,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SESSION_PROJECT_CTE_ALL_TIME;
+
+    fn setup_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE applications (
+                id INTEGER PRIMARY KEY,
+                display_name TEXT,
+                executable_name TEXT
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                project_id INTEGER,
+                rate_multiplier REAL,
+                comment TEXT,
+                is_hidden INTEGER
+            );
+            CREATE TABLE file_activities (
+                id INTEGER PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                total_seconds INTEGER NOT NULL,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                project_id INTEGER
+            );",
+        )
+        .expect("schema");
+        conn.execute(
+            "INSERT INTO applications (id, display_name, executable_name) VALUES (?1, ?2, ?3)",
+            rusqlite::params![1_i64, "Editor", "editor.exe"],
+        )
+        .expect("insert app");
+        conn
+    }
+
+    #[test]
+    fn session_project_cte_does_not_assign_non_overlapping_activity() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+            rusqlite::params![
+                1_i64,
+                1_i64,
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T11:00:00Z",
+                3600_i64,
+                "2026-01-01",
+            ],
+        )
+        .expect("insert session");
+        conn.execute(
+            "INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                1_i64,
+                1_i64,
+                "2026-01-01",
+                "main.rs",
+                1800_i64,
+                "2026-01-01T12:00:00Z",
+                "2026-01-01T12:30:00Z",
+                10_i64
+            ],
+        )
+        .expect("insert file activity");
+
+        let sql = format!(
+            "{SESSION_PROJECT_CTE_ALL_TIME}
+             SELECT project_id FROM session_projects WHERE id = ?1"
+        );
+        let project_id: Option<i64> = conn
+            .query_row(&sql, [1_i64], |row| row.get(0))
+            .expect("query cte project id");
+        assert_eq!(project_id, None);
+    }
+
+    #[test]
+    fn session_project_cte_assigns_single_project_with_major_overlap() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+            rusqlite::params![
+                1_i64,
+                1_i64,
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T11:00:00Z",
+                3600_i64,
+                "2026-01-01",
+            ],
+        )
+        .expect("insert session");
+        conn.execute(
+            "INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                1_i64,
+                1_i64,
+                "2026-01-01",
+                "main.rs",
+                1800_i64,
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T10:30:00Z",
+                10_i64
+            ],
+        )
+        .expect("insert file activity");
+
+        let sql = format!(
+            "{SESSION_PROJECT_CTE_ALL_TIME}
+             SELECT project_id FROM session_projects WHERE id = ?1"
+        );
+        let project_id: Option<i64> = conn
+            .query_row(&sql, [1_i64], |row| row.get(0))
+            .expect("query cte project id");
+        assert_eq!(project_id, Some(10));
+    }
+
+    #[test]
+    fn project_count_query_matches_overlap_and_hidden_rules() {
+        let conn = setup_conn();
+        conn.execute_batch(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden) VALUES
+                (1, 1, '2026-01-01T10:00:00Z', '2026-01-01T11:00:00Z', 3600, '2026-01-01', NULL, 1.0, NULL, 0),
+                (2, 1, '2026-01-01T11:00:00Z', '2026-01-01T12:00:00Z', 3600, '2026-01-01', 10,   1.0, NULL, 0),
+                (3, 1, '2026-01-01T12:00:00Z', '2026-01-01T13:00:00Z', 3600, '2026-01-01', NULL, 1.0, NULL, 0),
+                (4, 1, '2026-01-01T13:00:00Z', '2026-01-01T14:00:00Z', 3600, '2026-01-01', 10,   1.0, NULL, 1);
+             INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id) VALUES
+                (1, 1, '2026-01-01', 'a.txt', 1800, '2026-01-01T08:00:00Z', '2026-01-01T08:30:00Z', 10),
+                (2, 1, '2026-01-01', 'b.txt', 2400, '2026-01-01T12:10:00Z', '2026-01-01T12:50:00Z', 10);",
+        )
+        .expect("seed data");
+
+        let sql = format!(
+            "{SESSION_PROJECT_CTE_ALL_TIME}
+             SELECT COUNT(*) FROM session_projects sp
+             JOIN sessions s ON s.id = sp.id
+             JOIN applications a ON a.id = s.app_id
+             WHERE sp.project_id = ?1"
+        );
+        let count: i64 = conn
+            .query_row(&sql, [10_i64], |row| row.get(0))
+            .expect("query count");
+
+        // Session 2 counts (explicit project), Session 3 counts (overlap with project 10),
+        // Session 1 does not count (same day but no overlap), Session 4 is hidden.
+        assert_eq!(count, 2);
+    }
 }

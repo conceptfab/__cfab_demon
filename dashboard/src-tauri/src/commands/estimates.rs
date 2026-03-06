@@ -10,9 +10,11 @@ use crate::db;
 
 const DEFAULT_GLOBAL_HOURLY_RATE: f64 = 100.0;
 const MAX_HOURLY_RATE: f64 = 100000.0;
+type ProjectMetaRow = (i64, String, String, Option<f64>);
+type ProjectMetaByName = HashMap<String, ProjectMetaRow>;
 
 fn sanitize_rate(rate: f64) -> Option<f64> {
-    if rate.is_finite() && rate >= 0.0 && rate <= MAX_HOURLY_RATE {
+    if rate.is_finite() && (0.0..=MAX_HOURLY_RATE).contains(&rate) {
         Some(rate)
     } else {
         None
@@ -51,9 +53,7 @@ fn get_global_hourly_rate(conn: &rusqlite::Connection) -> Result<f64, String> {
     Ok(parsed)
 }
 
-fn query_project_meta(
-    conn: &rusqlite::Connection,
-) -> Result<HashMap<String, (i64, String, String, Option<f64>)>, String> {
+fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaByName, String> {
     let mut stmt = conn
         .prepare_cached("SELECT id, name, color, hourly_rate FROM projects")
         .map_err(|e| e.to_string())?;

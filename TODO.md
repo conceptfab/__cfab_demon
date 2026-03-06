@@ -34,17 +34,8 @@ Weź na warsztat caly system AI: -->
 
 <!-- - AI - testy
 
-- dodac szyforwanie danych - np tokenem
-
-- podzial sesji na kawałki jeśli sa dowody na realizacje kilku projektów -->
--
-
 - koszty dodatkowe w ramach projektu
 
 - menadzer projektów -> od nowa -> automatyczna lista klientow, rozpoznawanie projektów, autonumeracja, drzewa folderów
 
-<!-- - bezpieczny generator tokenów -->
-<!-- - splash screen/górne menu File/Exit, About -->
-<!-- - obsłuzone pliki JSON powinny byc archiwizowane do folderu -->
-<!-- - eksport statystyk projektu - dni/sesje/podsumowanie => czytelny PDF -->
 - aplikacja ikona/kolor do ustawienia

@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Rocket,
   ArrowRight,
+  FileText,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -271,6 +272,11 @@ export function Help() {
               label={t('Dane', 'Data')}
             />
             <HelpTabTrigger
+              value="reports"
+              icon={<FileText className="h-3.5 w-3.5" />}
+              label={t('Raporty', 'Reports')}
+            />
+            <HelpTabTrigger
               value="daemon"
               icon={<Cpu className="h-3.5 w-3.5" />}
               label={t('Daemon', 'Daemon')}
@@ -416,6 +422,10 @@ export function Help() {
                     'Batch Assign – select multiple sessions and assign them to a project with one click.',
                   ),
                   t(
+                    'Dzielenie sesji (Split Session) – z menu kontekstowego podziel jedną sesję na dwie części i przypisz je do różnych projektów.',
+                    'Split Session – from the context menu, split a single session into two parts and assign each part to a different project.',
+                  ),
+                  t(
                     'Tryby widoku: Detailed (pełne logi plików), Compact (sama lista aplikacji i sesji) oraz AI Data (precyzyjne statystyki i argumentacja modelu AI).',
                     'View modes: Detailed (full file logs), Compact (apps and sessions list only), and AI Data (precise statistics and AI model reasoning).',
                   ),
@@ -441,7 +451,7 @@ export function Help() {
                   <ul className="list-disc ml-5 space-y-2 text-muted-foreground">
                     <li>
                       <strong className="text-foreground">
-                        Confidence (Ufność):
+                        {t('Ufność:', 'Confidence:')}
                       </strong>{' '}
                       {t(
                         'Wyrażona w procentach (0-100%) pewność modelu względem dokonanego wyboru. Powyżej ustalonego progu (np. 40%) model generuje sugestię.',
@@ -450,7 +460,7 @@ export function Help() {
                     </li>
                     <li>
                       <strong className="text-foreground">
-                        Evidence Count (Dowody):
+                        {t('Dowody:', 'Evidence Count:')}
                       </strong>{' '}
                       {t(
                         'Ilość podobnych sesji w przeszłości, które ręcznie zatwierdziłeś/aś. To najtwardszy dowód dla modelu – im więcej dowodów, tym pewniejsza decyzja.',
@@ -759,7 +769,7 @@ export function Help() {
                     <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
                       <li>
                         <strong>
-                          {t('Confidence (Ufność)', 'Confidence')}:
+                          {t('Ufność', 'Confidence')}:
                         </strong>{' '}
                         {t(
                           'Wartość od 0 do 1 określaną przez funkcję sigmoidalną.',
@@ -768,7 +778,7 @@ export function Help() {
                       </li>
                       <li>
                         <strong>
-                          {t('Evidence Count', 'Evidence Count')}:
+                          {t('Dowody', 'Evidence Count')}:
                         </strong>{' '}
                         {t(
                           'Liczba historycznych „dowodów” potwierdzających decyzję.',
@@ -941,6 +951,39 @@ export function Help() {
             </TabsContent>
 
             <TabsContent
+              value="reports"
+              className="m-0 focus-visible:outline-none"
+            >
+              <SectionHelp
+                icon={<FileText className="h-6 w-6" />}
+                title={t('RAPORTY', 'REPORTS')}
+                description={t(
+                  'Tworzenie konfigurowalnych raportów projektowych do wydruku i eksportu PDF.',
+                  'Create configurable project reports for print and PDF export.',
+                )}
+                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                features={[
+                  t(
+                    'Edytor szablonu raportu – wybieraj sekcje raportu i ich kolejność (nagłówek, statystyki, finanse, aplikacje, sesje, komentarze).',
+                    'Report template editor – choose report sections and their order (header, stats, financials, apps, sessions, comments).',
+                  ),
+                  t(
+                    'Generowanie raportu z karty projektu – otwórz widok raportu i przygotuj wersję do druku.',
+                    'Generate report from a project card – open report view and prepare a print-ready version.',
+                  ),
+                  t(
+                    'Druk / PDF – raport jest zoptymalizowany pod wydruk i zapis do pliku PDF.',
+                    'Print / PDF – the report view is optimized for printing and exporting to PDF.',
+                  ),
+                  t(
+                    'Wspiera dane finansowe, top aplikacje, liczbę sesji, komentarze oraz statystyki AI dla projektu.',
+                    'Supports financial data, top apps, session counts, comments, and AI stats for the project.',
+                  ),
+                ]}
+              />
+            </TabsContent>
+
+            <TabsContent
               value="daemon"
               className="m-0 focus-visible:outline-none"
             >
@@ -1025,6 +1068,10 @@ export function Help() {
                   t(
                     'Appearance & Performance – wyłączanie animacji wykresów w celu poprawy responsywności UI.',
                     'Appearance & Performance – disable chart animations to improve UI responsiveness.',
+                  ),
+                  t(
+                    'BugHunter – ikona robaka w sidebarze umożliwia szybkie zgłaszanie błędów z załącznikami.',
+                    'BugHunter – the bug icon in the sidebar allows quick bug reporting with attachments.',
                   ),
                 ]}
               />

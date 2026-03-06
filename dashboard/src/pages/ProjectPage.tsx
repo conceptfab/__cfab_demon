@@ -43,7 +43,6 @@ import {
   freezeProject,
   unfreezeProject,
   excludeProject,
-  getSessions,
   getManualSessions,
   getProjectTimeline,
   updateProject,
@@ -68,6 +67,8 @@ import type {
 import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { PROJECT_COLORS } from '@/lib/project-colors';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import { fetchAllSessions } from '@/lib/session-pagination';
 
 type AutoSessionRow = SessionWithApp & { isManual: false };
 
@@ -260,21 +261,17 @@ export function ProjectPage() {
     setLoading(true);
     Promise.all([
       getProjects(),
-      getProjectExtraInfo(projectPageId, {
-        start: '1970-01-01',
-        end: '2100-01-01',
-      }),
-      getProjectEstimates({ start: '1970-01-01', end: '2100-01-01' }),
+      getProjectExtraInfo(projectPageId, ALL_TIME_DATE_RANGE),
+      getProjectEstimates(ALL_TIME_DATE_RANGE),
       getProjectTimeline(
-        { start: '1970-01-01', end: '2100-01-01' },
+        ALL_TIME_DATE_RANGE,
         100,
         'day',
         projectPageId,
       ).catch(() => [] as StackedBarData[]),
-      getSessions({
+      fetchAllSessions({
         projectId: projectPageId,
-        limit: 10000,
-        dateRange: { start: '1970-01-01', end: '2100-01-01' },
+        dateRange: ALL_TIME_DATE_RANGE,
         includeAiSuggestions: false,
       }),
       getManualSessions({ projectId: projectPageId }),

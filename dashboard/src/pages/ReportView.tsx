@@ -2,31 +2,15 @@ import { useEffect, useState, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  getProjects,
-  getProjectExtraInfo,
-  getProjectEstimates,
-  getSessions,
-  getManualSessions,
-} from '@/lib/tauri';
+import { getProjectReportData } from '@/lib/tauri';
 import { formatDuration, formatMoney } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useInlineT } from '@/lib/inline-i18n';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import type {
-  ProjectWithStats,
-  ProjectExtraInfo,
-  SessionWithApp,
-  ManualSessionWithProject,
+  ProjectReportData,
 } from '@/lib/db-types';
-
-interface ProjectReport {
-  project: ProjectWithStats;
-  extra: ProjectExtraInfo;
-  estimate: number;
-  sessions: SessionWithApp[];
-  manualSessions: ManualSessionWithProject[];
-}
 
 function loadTemplate(): string[] {
   try {
@@ -60,8 +44,8 @@ export function ReportView() {
   const { setCurrentPage, projectPageId } = useUIStore();
   const { currencyCode } = useSettingsStore();
 
-  const [report, setReport] = useState<ProjectReport | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [report, setReport] = useState<ProjectReportData | null>(null);
+  const [loadedProjectId, setLoadedProjectId] = useState<number | null>(null);
   const sections = useMemo(() => loadTemplate(), []);
   const has = (id: string) => sections.includes(id);
 
@@ -69,33 +53,24 @@ export function ReportView() {
 
   useEffect(() => {
     if (!projectPageId) return;
-    setLoading(true);
-    const dr = { start: '1970-01-01', end: '2100-01-01' };
-    Promise.all([getProjects(), getProjectEstimates(dr)])
-      .then(async ([projects, estimates]) => {
-        const project = projects.find((p) => p.id === projectPageId);
-        if (!project) return;
-        const [extra, sessions, manual] = await Promise.all([
-          getProjectExtraInfo(project.id, dr),
-          getSessions({
-            projectId: project.id,
-            limit: 10000,
-            dateRange: dr,
-            includeAiSuggestions: true,
-          }),
-          getManualSessions({ projectId: project.id }),
-        ]);
-        const est = estimates.find((e) => e.project_id === project.id);
-        setReport({
-          project,
-          extra,
-          estimate: est?.estimated_value || 0,
-          sessions,
-          manualSessions: manual,
-        });
+    let cancelled = false;
+    const dr = ALL_TIME_DATE_RANGE;
+    getProjectReportData(projectPageId, dr)
+      .then((data) => {
+        if (cancelled) return;
+        setReport(data);
+        setLoadedProjectId(projectPageId);
       })
-      .catch((err) => console.error('Report error:', err))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        console.error('Report error:', err);
+        if (!cancelled) {
+          setReport(null);
+          setLoadedProjectId(projectPageId);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [projectPageId]);
 
   if (!projectPageId) {
@@ -106,7 +81,7 @@ export function ReportView() {
     );
   }
 
-  if (loading) {
+  if (loadedProjectId !== projectPageId) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
         {tt('Generowanie raportu...', 'Generating report...')}
@@ -122,7 +97,7 @@ export function ReportView() {
     );
   }
 
-  const totalSessions = report.sessions.length + report.manualSessions.length;
+  const totalSessions = report.sessions.length + report.manual_sessions.length;
   const sessionsWithAI = report.sessions.filter(
     (s) => s.suggested_project_id,
   ).length;
@@ -198,7 +173,7 @@ export function ReportView() {
                   value: String(report.extra.top_apps.length),
                 },
                 {
-                  label: tt('Pliki', 'Files'),
+                  label: tt('Unikalne pliki', 'Unique files'),
                   value: String(
                     report.extra.db_stats?.file_activity_count ?? 0,
                   ),
@@ -298,7 +273,7 @@ export function ReportView() {
                   <strong>
                     {report.extra.db_stats?.file_activity_count ?? 0}
                   </strong>{' '}
-                  {tt('plików', 'files')}
+                  {tt('unikalnych plików', 'unique files')}
                 </div>
               </div>
             )}

@@ -26,6 +26,23 @@ fn mode_archive_dir(base_dir: &std::path::Path, demo_mode: bool) -> std::path::P
     }
 }
 
+fn normalize_file_path(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "(unknown)".to_string();
+    }
+    let mut normalized = trimmed.replace('\\', "/");
+    while normalized.contains("//") {
+        normalized = normalized.replace("//", "/");
+    }
+    let normalized = normalized.trim();
+    if normalized.is_empty() {
+        "(unknown)".to_string()
+    } else {
+        normalized.to_string()
+    }
+}
+
 #[tauri::command]
 pub async fn import_json_files(
     app: AppHandle,
@@ -198,9 +215,12 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
         }
     };
     let mut file_stmt = match tx.prepare_cached(
-        "INSERT INTO file_activities (app_id, date, file_name, total_seconds, first_seen, last_seen, project_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-         ON CONFLICT(app_id, date, file_name) DO UPDATE SET
+        "INSERT INTO file_activities (
+            app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         ON CONFLICT(app_id, date, file_path) DO UPDATE SET
+           file_name = excluded.file_name,
            total_seconds = excluded.total_seconds,
            first_seen = MIN(file_activities.first_seen, excluded.first_seen),
            last_seen = MAX(file_activities.last_seen, excluded.last_seen),
@@ -273,11 +293,19 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
         for file in &app_data.files {
             let file_project_id =
                 ensure_app_project_from_file_hint(&tx, &file.name, &project_roots);
+            let normalized_file_path = normalize_file_path(&file.name);
+            let file_name = file.name.trim();
+            let safe_file_name = if file_name.is_empty() {
+                normalized_file_path.as_str()
+            } else {
+                file_name
+            };
 
             if let Err(e) = file_stmt.execute(rusqlite::params![
                 app_id,
                 file_date,
-                file.name,
+                safe_file_name,
+                normalized_file_path,
                 file.total_seconds,
                 file.first_seen,
                 file.last_seen,

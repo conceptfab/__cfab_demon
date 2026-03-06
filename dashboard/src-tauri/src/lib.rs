@@ -22,19 +22,16 @@ pub fn run() {
                 tauri::async_runtime::block_on(async { db::initialize(&app_handle).await })
             {
                 log::error!("Failed to initialize database: {}", e);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Database initialization failed: {}", e),
-                )
+                return Err(std::io::Error::other(format!(
+                    "Database initialization failed: {}",
+                    e
+                ))
                 .into());
             }
 
             // Write version to file for daemon to check
             if let Ok(data_dir) = commands::helpers::timeflow_data_dir() {
-                let _ = std::fs::write(
-                    std::path::PathBuf::from(data_dir).join("dashboard_version.txt"),
-                    VERSION.trim(),
-                );
+                let _ = std::fs::write(data_dir.join("dashboard_version.txt"), VERSION.trim());
             }
 
             Ok(())
@@ -54,6 +51,7 @@ pub fn run() {
             commands::freeze_project,
             commands::unfreeze_project,
             commands::get_project_extra_info,
+            commands::get_project_report_data,
             commands::compact_project_data,
             commands::auto_freeze_projects,
             commands::assign_app_to_project,

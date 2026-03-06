@@ -33,6 +33,12 @@ struct BucketPiece {
     comment: Option<String>,
 }
 
+type BucketDurations = BTreeMap<String, HashMap<String, f64>>;
+type ProjectTotals = HashMap<String, f64>;
+type BucketFlags = HashMap<String, (bool, bool)>;
+type BucketComments = HashMap<String, Vec<String>>;
+type ProjectActivityUniqueResult = (BucketDurations, ProjectTotals, BucketFlags, BucketComments);
+
 fn local_from_naive(naive: NaiveDateTime) -> Option<DateTime<Local>> {
     match Local.from_local_datetime(&naive) {
         LocalResult::Single(v) => Some(v),
@@ -95,15 +101,7 @@ pub(crate) fn compute_project_activity_unique(
     hourly: bool,
     active_only: bool,
     project_id_filter: Option<i64>,
-) -> Result<
-    (
-        BTreeMap<String, HashMap<String, f64>>,
-        HashMap<String, f64>,
-        HashMap<String, (bool, bool)>,
-        HashMap<String, Vec<String>>,
-    ),
-    String,
-> {
+) -> Result<ProjectActivityUniqueResult, String> {
     let bucket_kind = if hourly {
         BucketKind::Hour
     } else {

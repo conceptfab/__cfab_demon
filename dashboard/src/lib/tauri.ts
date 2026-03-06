@@ -41,6 +41,7 @@ import type {
   BackupFile,
   DeterministicResult,
   ProjectExtraInfo,
+  ProjectReportData,
   ScoreBreakdown,
 } from './db-types';
 
@@ -135,6 +136,8 @@ export function assignSessionToProject(
 }
 export const getProjectExtraInfo = (id: number, dateRange: DateRange) =>
   invoke<ProjectExtraInfo>('get_project_extra_info', { id, dateRange });
+export const getProjectReportData = (projectId: number, dateRange: DateRange) =>
+  invoke<ProjectReportData>('get_project_report_data', { projectId, dateRange });
 export const compactProjectData = (id: number) =>
   invokeMutation<void>('compact_project_data', { id });
 export const deleteSession = (sessionId: number) =>

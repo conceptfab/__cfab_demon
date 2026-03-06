@@ -70,7 +70,7 @@ pub async fn set_secure_token(_app: AppHandle, token: String) -> Result<(), Stri
 
 #[cfg(windows)]
 fn encrypt_token_bytes_windows(token: &str) -> Result<Vec<u8>, String> {
-    let mut input = CRYPT_INTEGER_BLOB {
+    let input = CRYPT_INTEGER_BLOB {
         cbData: token.len() as u32,
         pbData: token.as_ptr() as *mut u8,
     };
@@ -85,7 +85,7 @@ fn encrypt_token_bytes_windows(token: &str) -> Result<Vec<u8>, String> {
 
     let ok = unsafe {
         CryptProtectData(
-            &mut input,
+            &input,
             description.as_ptr(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
@@ -111,7 +111,7 @@ fn encrypt_token_bytes_windows(token: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(windows)]
 fn decrypt_token_bytes_windows(raw: &[u8]) -> Result<String, String> {
-    let mut input = CRYPT_INTEGER_BLOB {
+    let input = CRYPT_INTEGER_BLOB {
         cbData: raw.len() as u32,
         pbData: raw.as_ptr() as *mut u8,
     };
@@ -122,7 +122,7 @@ fn decrypt_token_bytes_windows(raw: &[u8]) -> Result<String, String> {
 
     let ok = unsafe {
         CryptUnprotectData(
-            &mut input,
+            &input,
             std::ptr::null_mut(),
             std::ptr::null_mut(),
             std::ptr::null_mut(),
