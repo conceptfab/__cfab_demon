@@ -1229,18 +1229,24 @@ pub async fn get_project_extra_info(
         .query_row(&session_count_sql, [id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
+    let file_activity_count_sql = format!(
+        "{SESSION_PROJECT_CTE_ALL_TIME}
+         SELECT COUNT(DISTINCT LOWER(
+             COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
+         ))
+         FROM session_projects sp
+         JOIN sessions s ON s.id = sp.id
+         JOIN file_activities fa
+           ON fa.app_id = s.app_id
+          AND fa.date = s.date
+          AND fa.last_seen > s.start_time
+          AND fa.first_seen < s.end_time
+         WHERE sp.project_id = ?1
+           AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
+           AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
+    );
     let file_activity_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(DISTINCT LOWER(
-                 COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
-             ))
-             FROM file_activities fa
-             WHERE fa.project_id = ?1
-               AND TRIM(fa.file_name) <> ''
-               AND LOWER(TRIM(fa.file_name)) <> '(background)'",
-            [id],
-            |row| row.get(0),
-        )
+        .query_row(&file_activity_count_sql, [id], |row| row.get(0))
         .map_err(|e| e.to_string())?;
 
     let manual_session_count: i64 = conn

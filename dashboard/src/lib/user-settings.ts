@@ -398,3 +398,104 @@ export function saveIndicatorSettings(next: SessionIndicatorSettings): SessionIn
   }
   return normalized;
 }
+
+export interface ReportFontSettings {
+  fontFamily: 'system' | 'serif' | 'mono';
+  baseFontSize: number; // 10-18, domyślnie 13
+}
+
+const REPORT_FONT_STORAGE_KEY = "timeflow.settings.report-font";
+
+export const DEFAULT_REPORT_FONT_SETTINGS: ReportFontSettings = {
+  fontFamily: 'system',
+  baseFontSize: 13,
+};
+
+const FONT_FAMILIES = ['system', 'serif', 'mono'] as const;
+
+function normalizeFontSize(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return DEFAULT_REPORT_FONT_SETTINGS.baseFontSize;
+  return Math.min(18, Math.max(10, Math.round(value)));
+}
+
+export function loadReportFontSettings(): ReportFontSettings {
+  if (typeof window === "undefined") return { ...DEFAULT_REPORT_FONT_SETTINGS };
+  try {
+    const raw = window.localStorage.getItem(REPORT_FONT_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_REPORT_FONT_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<ReportFontSettings>;
+    return {
+      fontFamily: parsed.fontFamily && (FONT_FAMILIES as readonly string[]).includes(parsed.fontFamily)
+        ? parsed.fontFamily as ReportFontSettings['fontFamily']
+        : DEFAULT_REPORT_FONT_SETTINGS.fontFamily,
+      baseFontSize: normalizeFontSize(parsed.baseFontSize),
+    };
+  } catch {
+    return { ...DEFAULT_REPORT_FONT_SETTINGS };
+  }
+}
+
+export function saveReportFontSettings(next: ReportFontSettings): ReportFontSettings {
+  const normalized: ReportFontSettings = {
+    fontFamily: (FONT_FAMILIES as readonly string[]).includes(next.fontFamily)
+      ? next.fontFamily
+      : DEFAULT_REPORT_FONT_SETTINGS.fontFamily,
+    baseFontSize: normalizeFontSize(next.baseFontSize),
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(REPORT_FONT_STORAGE_KEY, JSON.stringify(normalized));
+  }
+  return normalized;
+}
+
+export interface SplitSettings {
+  maxProjectsPerSession: number;  // 2-5, domyślnie 5
+  toleranceThreshold: number;     // 0.2-1.0, domyślnie 0.8
+  autoSplitEnabled: boolean;      // domyślnie false
+}
+
+const SPLIT_STORAGE_KEY = "timeflow.settings.split";
+
+export const DEFAULT_SPLIT_SETTINGS: SplitSettings = {
+  maxProjectsPerSession: 5,
+  toleranceThreshold: 0.8,
+  autoSplitEnabled: false,
+};
+
+function normalizeMaxProjects(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return DEFAULT_SPLIT_SETTINGS.maxProjectsPerSession;
+  return Math.min(5, Math.max(2, Math.round(value)));
+}
+
+function normalizeToleranceThreshold(value: unknown): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return DEFAULT_SPLIT_SETTINGS.toleranceThreshold;
+  return Math.min(1.0, Math.max(0.2, Math.round(value * 20) / 20)); // krok 0.05
+}
+
+export function loadSplitSettings(): SplitSettings {
+  if (typeof window === "undefined") return { ...DEFAULT_SPLIT_SETTINGS };
+  try {
+    const raw = window.localStorage.getItem(SPLIT_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_SPLIT_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<SplitSettings>;
+    return {
+      maxProjectsPerSession: normalizeMaxProjects(parsed.maxProjectsPerSession),
+      toleranceThreshold: normalizeToleranceThreshold(parsed.toleranceThreshold),
+      autoSplitEnabled: typeof parsed.autoSplitEnabled === 'boolean' ? parsed.autoSplitEnabled : DEFAULT_SPLIT_SETTINGS.autoSplitEnabled,
+    };
+  } catch {
+    return { ...DEFAULT_SPLIT_SETTINGS };
+  }
+}
+
+export function saveSplitSettings(next: SplitSettings): SplitSettings {
+  const normalized: SplitSettings = {
+    maxProjectsPerSession: normalizeMaxProjects(next.maxProjectsPerSession),
+    toleranceThreshold: normalizeToleranceThreshold(next.toleranceThreshold),
+    autoSplitEnabled: !!next.autoSplitEnabled,
+  };
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(SPLIT_STORAGE_KEY, JSON.stringify(normalized));
+  }
+  return normalized;
+}

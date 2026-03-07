@@ -6,6 +6,7 @@ import {
   Trash2,
   MessageSquare,
   BarChart3,
+  Scissors,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatDuration } from '@/lib/utils';
@@ -47,6 +48,8 @@ export interface SessionRowProps {
   isLoadingScoreBreakdown?: boolean;
   onAcceptSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
   onRejectSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
+  isSplittable?: boolean;
+  onSplitClick?: (s: SessionWithApp) => void;
   className?: string;
 }
 
@@ -64,6 +67,8 @@ export const SessionRow = memo(function SessionRow({
   isLoadingScoreBreakdown,
   onAcceptSuggestion,
   onRejectSuggestion,
+  isSplittable,
+  onSplitClick,
   className = '',
 }: SessionRowProps) {
   const { t, i18n } = useTranslation();
@@ -90,6 +95,16 @@ export const SessionRow = memo(function SessionRow({
               </span>
               {(s.rate_multiplier ?? 1) > 1.000_001 && (
                 <CircleDollarSign className="h-3 w-3 text-emerald-400/80 fill-emerald-500/5 shrink-0" />
+              )}
+              {isSplittable && onSplitClick && (
+                <button
+                  type="button"
+                  className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer"
+                  onClick={(e) => { e.stopPropagation(); onSplitClick(s); }}
+                  title={t('sessions.menu.split_suggestion', 'AI sugeruje podział')}
+                >
+                  <Scissors className="h-3 w-3 shrink-0" />
+                </button>
               )}
             </div>
             <span className="font-mono text-[10px] font-bold text-foreground/30">
@@ -323,6 +338,16 @@ export const SessionRow = memo(function SessionRow({
           </span>
           {(s.rate_multiplier ?? 1) > 1.000_001 && (
             <CircleDollarSign className="h-4 w-4 text-emerald-400 fill-emerald-500/10 shrink-0" />
+          )}
+          {isSplittable && onSplitClick && (
+            <button
+              type="button"
+              className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer"
+              onClick={(e) => { e.stopPropagation(); onSplitClick(s); }}
+              title={t('sessions.menu.split_suggestion', 'AI sugeruje podział')}
+            >
+              <Scissors className="h-3.5 w-3.5 shrink-0" />
+            </button>
           )}
           {ind.showAiBadge && s.ai_assigned && !isSuggested && (
             <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />

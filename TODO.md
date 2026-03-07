@@ -11,6 +11,11 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
+-  licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik
+- poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi
+- fonty systemowe do wyboru
+- uporządkowanie settings -> Session Split wyzej logicznie poukładane!
+
 <!-- Tak, zostało jeszcze kilka rzeczy „quality”, ale bez blokera działania. -->
 
 - szablony raportów - logo aplikacji w headerze z wersja aplikacji - podobnie jak w pomoc/help

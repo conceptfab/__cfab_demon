@@ -36,6 +36,9 @@ import {
   loadAppearanceSettings,
   saveAppearanceSettings,
   type AppearanceSettings,
+  loadSplitSettings,
+  saveSplitSettings,
+  type SplitSettings,
 } from '@/lib/user-settings';
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
@@ -93,6 +96,7 @@ export function Settings() {
   );
   const [appearanceSettings, setAppearanceSettings] =
     useState<AppearanceSettings>(() => loadAppearanceSettings());
+  const [splitSettings, setSplitSettings] = useState<SplitSettings>(() => loadSplitSettings());
   const [workingHoursError, setWorkingHoursError] = useState<string | null>(
     null,
   );
@@ -232,6 +236,13 @@ export function Settings() {
     setShowSavedToast(true);
     setTimeout(() => setShowSavedToast(false), 3000);
     triggerRefresh();
+  };
+
+  const handleSplitChange = <K extends keyof SplitSettings>(key: K, value: SplitSettings[K]) => {
+    setSplitSettings(prev => {
+      const next = saveSplitSettings({ ...prev, [key]: value });
+      return next;
+    });
   };
 
   const handleRebuildSessions = async () => {
@@ -1260,6 +1271,95 @@ export function Settings() {
                 setSavedSettings(false);
               }}
             />
+          </label>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-semibold">
+            {t('settings.splitTitle', 'Session Split')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Tolerance threshold slider */}
+          <div className="rounded-md border border-border/70 bg-background/35 p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">
+                {t('settings.splitTolerance', 'Tolerance coefficient')}
+              </p>
+              <span className="text-xs font-mono text-sky-400">
+                1:{splitSettings.toleranceThreshold.toFixed(2)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={20}
+              max={100}
+              step={5}
+              value={Math.round(splitSettings.toleranceThreshold * 100)}
+              onChange={(e) => handleSplitChange('toleranceThreshold', Number(e.target.value) / 100)}
+              className="mt-2 w-full accent-sky-500"
+            />
+            <div className="mt-1 flex justify-between text-[10px] text-muted-foreground/50">
+              <span>0.20 ({t('settings.splitToleranceLow', 'loose')})</span>
+              <span>1.00 ({t('settings.splitToleranceHigh', 'strict')})</span>
+            </div>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {splitSettings.toleranceThreshold >= 0.9
+                ? t('settings.splitToleranceDesc1', 'Split only when projects have nearly identical scores.')
+                : splitSettings.toleranceThreshold >= 0.6
+                  ? t('settings.splitToleranceDesc2', `Split when second project has ≥${Math.round(splitSettings.toleranceThreshold * 100)}% of leader's score.`)
+                  : t('settings.splitToleranceDesc3', 'Split even with large score disparity.')}
+            </p>
+          </div>
+
+          {/* Max projects per session */}
+          <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {t('settings.splitMaxProjects', 'Max projects per session')}
+              </p>
+            </div>
+            <select
+              value={splitSettings.maxProjectsPerSession}
+              onChange={(e) => handleSplitChange('maxProjectsPerSession', Number(e.target.value))}
+              className="rounded border border-border bg-secondary/30 px-2 py-1 text-xs text-foreground"
+            >
+              {[2, 3, 4, 5].map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Auto-split toggle */}
+          <label
+            htmlFor="autoSplitEnabled"
+            className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
+          >
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {t('settings.splitAuto', 'Automatic split')}
+              </p>
+              <p className="text-xs leading-5 break-words text-muted-foreground">
+                {t('settings.splitAutoDesc', 'Sessions meeting split conditions will be split automatically.')}
+              </p>
+            </div>
+            <button
+              id="autoSplitEnabled"
+              type="button"
+              role="switch"
+              aria-checked={splitSettings.autoSplitEnabled}
+              onClick={() => handleSplitChange('autoSplitEnabled', !splitSettings.autoSplitEnabled)}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                splitSettings.autoSplitEnabled ? 'bg-sky-600' : 'bg-secondary'
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                  splitSettings.autoSplitEnabled ? 'translate-x-4.5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
           </label>
         </CardContent>
       </Card>

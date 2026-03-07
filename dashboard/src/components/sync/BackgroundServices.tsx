@@ -5,8 +5,11 @@ import {
   autoImportFromDataDir,
   autoRunIfNeeded,
   applyDeterministicAssignment,
+  analyzeSessionProjects,
   getTodayFileSignature,
+  getSessions,
   refreshToday,
+  splitSessionMulti,
   syncProjectsFromFolders,
   rebuildSessions,
 } from '@/lib/tauri';
@@ -16,10 +19,51 @@ import {
   runOnlineSyncOnce,
 } from '@/lib/online-sync';
 import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
-import { loadSessionSettings } from '@/lib/user-settings';
+import { loadSessionSettings, loadSplitSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
 
 const JOB_LOOP_TICK_MS = 2000;
+
+// THREADING: Prevents concurrent heavy operations (rebuild, AI train/assign)
+// from overloading the backend. Simple module-level flag — safe in single-threaded JS.
+let heavyOperationInProgress = false;
+
+async function runHeavyOperation<T>(fn_: () => Promise<T>): Promise<T | null> {
+  if (heavyOperationInProgress) return null;
+  heavyOperationInProgress = true;
+  try {
+    return await fn_();
+  } finally {
+    heavyOperationInProgress = false;
+  }
+}
+
+function buildAutoSplits(
+  analysis: MultiProjectAnalysis,
+  maxProjects: number,
+): SplitPart[] {
+  const candidates = analysis.candidates
+    .slice(0, Math.max(2, Math.min(5, maxProjects)))
+    .filter((candidate) => candidate.score > 0);
+
+  if (candidates.length < 2) return [];
+
+  const totalScore = candidates.reduce((acc, candidate) => acc + candidate.score, 0);
+  if (totalScore <= 0) return [];
+
+  const raw: SplitPart[] = candidates.map((candidate) => ({
+    project_id: candidate.project_id,
+    ratio: candidate.score / totalScore,
+  }));
+
+  const ratioSum = raw.reduce((acc, part) => acc + part.ratio, 0);
+  const drift = 1 - ratioSum;
+  if (raw.length > 0 && Math.abs(drift) > 0.000_001) {
+    raw[raw.length - 1].ratio += drift;
+  }
+  return raw;
+}
 
 // === BACKGROUND HOOKS ===
 
@@ -85,8 +129,10 @@ function useAutoSessionRebuild() {
       try {
         const settings = loadSessionSettings();
         if (settings.rebuildOnStartup && settings.gapFillMinutes > 0) {
-          const merged = await rebuildSessions(settings.gapFillMinutes);
-          if (merged > 0) {
+          const merged = await runHeavyOperation(() =>
+            rebuildSessions(settings.gapFillMinutes),
+          );
+          if (merged != null && merged > 0) {
             useDataStore.getState().triggerRefresh();
           }
         }
@@ -107,28 +153,92 @@ function useAutoAiAssignment() {
     lastProcessedKey.current = refreshKey;
 
     const run = async () => {
-      let needsRefresh = false;
-      try {
-        const det = await applyDeterministicAssignment();
-        if (det.sessions_assigned > 0) needsRefresh = true;
-      } catch (e) {
-        console.warn('Deterministic assignment failed:', e);
-      }
+      const result = await runHeavyOperation(async () => {
+        let needsRefresh = false;
+        try {
+          const det = await applyDeterministicAssignment();
+          if (det.sessions_assigned > 0) needsRefresh = true;
+        } catch (e) {
+          console.warn('Deterministic assignment failed:', e);
+        }
 
-      try {
-        const minDuration =
-          loadSessionSettings().minSessionDurationSeconds || undefined;
-        const result = await autoRunIfNeeded(minDuration);
-        if (result && result.assigned > 0) needsRefresh = true;
-      } catch (e) {
-        console.warn('AI auto-assignment failed:', e);
-      }
+        try {
+          const minDuration =
+            loadSessionSettings().minSessionDurationSeconds || undefined;
+          const aiResult = await autoRunIfNeeded(minDuration);
+          if (aiResult && aiResult.assigned > 0) needsRefresh = true;
+        } catch (e) {
+          console.warn('AI auto-assignment failed:', e);
+        }
 
-      if (needsRefresh) triggerRefresh();
+        return needsRefresh;
+      });
+
+      if (result) triggerRefresh();
     };
 
     void run();
   }, [autoImportDone, refreshKey, triggerRefresh]);
+}
+
+function useAutoSplitSessions() {
+  const { autoImportDone, triggerRefresh } = useDataStore();
+
+  const runAutoSplit = useCallback(async () => {
+    if (!autoImportDone) return;
+
+    const splitSettings = loadSplitSettings();
+    if (!splitSettings.autoSplitEnabled) return;
+
+    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+    const result = await runHeavyOperation(async () => {
+      const sessions = await getSessions({
+        limit: 50,
+        offset: 0,
+        unassigned: true,
+        includeAiSuggestions: true,
+        minDuration,
+      });
+
+      let splitCount = 0;
+      for (const session of sessions) {
+        if ((session.comment ?? '').includes('Split')) continue;
+
+        const analysis = await analyzeSessionProjects(
+          session.id,
+          splitSettings.toleranceThreshold,
+          splitSettings.maxProjectsPerSession,
+        );
+        if (!analysis.is_splittable) continue;
+
+        const splits = buildAutoSplits(
+          analysis,
+          splitSettings.maxProjectsPerSession,
+        );
+        if (splits.length < 2) continue;
+
+        await splitSessionMulti(session.id, splits);
+        splitCount += 1;
+        if (splitCount >= 5) break;
+      }
+
+      return splitCount;
+    });
+
+    if ((result ?? 0) > 0) {
+      triggerRefresh();
+    }
+  }, [autoImportDone, triggerRefresh]);
+
+  useEffect(() => {
+    if (!autoImportDone) return;
+
+    void runAutoSplit();
+    const interval = window.setInterval(() => {
+      void runAutoSplit();
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [autoImportDone, runAutoSplit]);
 }
 
 // === UNIVERSAL JOB POOL ===
@@ -312,6 +422,7 @@ export function BackgroundServices() {
   useAutoProjectSync();
   useAutoSessionRebuild();
   useAutoAiAssignment();
+  useAutoSplitSessions();
   useJobPool();
 
   return null;

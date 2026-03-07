@@ -54,6 +54,7 @@ import {
   cn,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
+import { ReportTemplateSelector } from '@/components/reports/ReportTemplateSelector';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useInlineT } from '@/lib/inline-i18n';
@@ -124,6 +125,7 @@ export function ProjectPage() {
     },
   });
 
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
@@ -744,6 +746,14 @@ export function ProjectPage() {
           </div>
           {project.name}
         </h1>
+        <Button
+          size="sm"
+          className="ml-auto bg-sky-600 hover:bg-sky-700 text-white"
+          onClick={() => setShowTemplateSelector(true)}
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          {tt('Generuj raport (PDF)', 'Generate report (PDF)')}
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -805,18 +815,6 @@ export function ProjectPage() {
                 <CircleOff className="h-4 w-4" />
               </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-2 border-sky-500/30 text-sky-400 hover:bg-sky-500/10 hover:text-sky-300"
-              onClick={() => {
-                setProjectPageId(project.id);
-                setCurrentPage('report-view');
-              }}
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              {tt('Generuj raport (PDF)', 'Generate report (PDF)')}
-            </Button>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex flex-col gap-1">
@@ -845,7 +843,7 @@ export function ProjectPage() {
               </div>
               <div className="rounded-lg bg-secondary/20 p-4 border border-border/40">
                 <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  {tt('Edycje plików', 'File Edits')}
+                  {tt('Unikalne pliki', 'Unique Files')}
                 </p>
                 <p className="text-2xl font-light">
                   {extraInfo?.db_stats.file_activity_count || 0}
@@ -1852,6 +1850,21 @@ export function ProjectPage() {
         onSaved={triggerRefresh}
       />
       <ConfirmDialog />
+      {showTemplateSelector && (
+        <ReportTemplateSelector
+          onSelect={(templateId) => {
+            setShowTemplateSelector(false);
+            useUIStore.getState().setReportTemplateId(templateId);
+            setProjectPageId(project!.id);
+            setCurrentPage('report-view');
+          }}
+          onCancel={() => setShowTemplateSelector(false)}
+          onEditTemplates={() => {
+            setShowTemplateSelector(false);
+            setCurrentPage('reports');
+          }}
+        />
+      )}
     </div>
   );
 }

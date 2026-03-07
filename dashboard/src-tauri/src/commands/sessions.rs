@@ -2,8 +2,12 @@ use rusqlite::OptionalExtension;
 use std::collections::{HashMap, HashSet};
 use tauri::AppHandle;
 
+use super::assignment_model;
 use super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
-use super::types::{FileActivity, SessionFilters, SessionWithApp};
+use super::types::{
+    FileActivity, MultiProjectAnalysis, ProjectCandidate, SessionFilters, SessionSplittableFlag,
+    SessionWithApp, SplitPart,
+};
 use crate::db;
 
 type ManualOverrideRow = (Option<i64>, String, String, String, Option<String>);
@@ -1311,6 +1315,295 @@ pub async fn suggest_session_split(
         suggested_ratio: 0.5,
         confidence: 0.0,
     })
+}
+
+/// Analyzes file activities for a session to determine which projects are present
+/// and whether the session is a candidate for multi-project splitting.
+#[tauri::command]
+pub async fn analyze_session_projects(
+    app: AppHandle,
+    session_id: i64,
+    tolerance_threshold: f64,
+    max_projects: i64,
+) -> Result<MultiProjectAnalysis, String> {
+    let normalized_max_projects = max_projects.clamp(2, 5);
+    let normalized_tolerance = tolerance_threshold.clamp(0.2, 1.0);
+
+    // Prefer 4-layer assignment model scoring if available.
+    if let Ok(score_breakdown) =
+        assignment_model::get_session_score_breakdown(app.clone(), session_id).await
+    {
+        if !score_breakdown.candidates.is_empty() {
+            let mut top = score_breakdown.candidates;
+            top.sort_by(|a, b| {
+                b.total_score
+                    .partial_cmp(&a.total_score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            top.truncate(normalized_max_projects as usize);
+
+            let leader_score = top.first().map(|c| c.total_score).unwrap_or(0.0);
+            let leader_project_id = top.first().map(|c| c.project_id);
+
+            let candidates: Vec<ProjectCandidate> = top
+                .into_iter()
+                .map(|candidate| ProjectCandidate {
+                    project_id: candidate.project_id,
+                    project_name: candidate.project_name,
+                    score: candidate.total_score,
+                    ratio_to_leader: if leader_score > 0.0 {
+                        candidate.total_score / leader_score
+                    } else {
+                        0.0
+                    },
+                })
+                .collect();
+
+            let qualifying = candidates
+                .iter()
+                .filter(|candidate| candidate.ratio_to_leader >= normalized_tolerance)
+                .count();
+
+            return Ok(MultiProjectAnalysis {
+                session_id,
+                candidates,
+                is_splittable: qualifying >= 2,
+                leader_project_id,
+                leader_score,
+            });
+        }
+    }
+
+    let conn = db::get_connection(&app)?;
+
+    // Get session info
+    let (app_id, date): (i64, String) = conn
+        .query_row(
+            "SELECT app_id, date FROM sessions WHERE id = ?1",
+            [session_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Session not found: {}", e))?;
+
+    // Query file activities for this session's app+date, grouped by project
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
+             FROM file_activities fa
+             LEFT JOIN projects p ON p.id = fa.project_id
+              WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
+              GROUP BY fa.project_id
+              ORDER BY total DESC
+              LIMIT ?3",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let candidates: Vec<(i64, String, f64)> = stmt
+        .query_map(rusqlite::params![app_id, date, normalized_max_projects], |row| {
+            Ok((
+                row.get(0)?,
+                row.get::<_, String>(1).unwrap_or_default(),
+                row.get::<_, i64>(2).unwrap_or(0) as f64,
+            ))
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if candidates.is_empty() {
+        return Ok(MultiProjectAnalysis {
+            session_id,
+            candidates: vec![],
+            is_splittable: false,
+            leader_project_id: None,
+            leader_score: 0.0,
+        });
+    }
+
+    let leader_score = candidates[0].2;
+    let leader_id = candidates[0].0;
+
+    let project_candidates: Vec<ProjectCandidate> = candidates
+        .iter()
+        .map(|(pid, name, score)| ProjectCandidate {
+            project_id: *pid,
+            project_name: name.clone(),
+            score: *score,
+            ratio_to_leader: if leader_score > 0.0 {
+                *score / leader_score
+            } else {
+                0.0
+            },
+        })
+        .collect();
+
+    // Session is splittable if at least 2 candidates have ratio >= threshold
+    let qualifying = project_candidates
+        .iter()
+        .filter(|c| c.ratio_to_leader >= normalized_tolerance)
+        .count();
+
+    Ok(MultiProjectAnalysis {
+        session_id,
+        candidates: project_candidates,
+        is_splittable: qualifying >= 2,
+        leader_project_id: Some(leader_id),
+        leader_score,
+    })
+}
+
+/// Batch variant of `analyze_session_projects` that returns only splittable flags.
+#[tauri::command]
+pub async fn analyze_sessions_splittable(
+    app: AppHandle,
+    session_ids: Vec<i64>,
+    tolerance_threshold: f64,
+    max_projects: i64,
+) -> Result<Vec<SessionSplittableFlag>, String> {
+    let mut result = Vec::with_capacity(session_ids.len());
+    for session_id in session_ids {
+        match analyze_session_projects(
+            app.clone(),
+            session_id,
+            tolerance_threshold,
+            max_projects,
+        )
+        .await
+        {
+            Ok(analysis) => result.push(SessionSplittableFlag {
+                session_id,
+                is_splittable: analysis.is_splittable,
+            }),
+            Err(error) => {
+                log::warn!(
+                    "Failed to analyze session {} for split eligibility: {}",
+                    session_id,
+                    error
+                );
+                result.push(SessionSplittableFlag {
+                    session_id,
+                    is_splittable: false,
+                });
+            }
+        }
+    }
+    Ok(result)
+}
+
+/// Splits a session into N parts (max 5) with given ratios and optional project assignments.
+#[tauri::command]
+pub async fn split_session_multi(
+    app: AppHandle,
+    session_id: i64,
+    splits: Vec<SplitPart>,
+) -> Result<(), String> {
+    if splits.is_empty() || splits.len() > 5 {
+        return Err("Splits must have 1-5 parts".to_string());
+    }
+
+    let ratio_sum: f64 = splits.iter().map(|s| s.ratio).sum();
+    if (ratio_sum - 1.0).abs() > 0.01 {
+        return Err(format!("Ratios must sum to 1.0, got {:.4}", ratio_sum));
+    }
+
+    for (i, part) in splits.iter().enumerate() {
+        if part.ratio <= 0.0 || part.ratio > 1.0 {
+            return Err(format!("Part {} ratio must be between 0 and 1", i));
+        }
+    }
+
+    let mut conn = db::get_connection(&app)?;
+    let session = conn
+        .query_row(
+            "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, comment
+             FROM sessions WHERE id = ?1 AND (is_hidden IS NULL OR is_hidden = 0)",
+            [session_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, f64>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let Some((app_id, start_time, end_time, duration_seconds, date_str, rate_multiplier, comment)) =
+        session
+    else {
+        return Err("Session not found".to_string());
+    };
+
+    let start_dt = chrono::DateTime::parse_from_rfc3339(&start_time)
+        .map_err(|e| format!("Invalid start time: {}", e))?;
+    let end_dt = chrono::DateTime::parse_from_rfc3339(&end_time)
+        .map_err(|e| format!("Invalid end time: {}", e))?;
+    let total_ms = (end_dt.timestamp_millis() - start_dt.timestamp_millis()).max(0);
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Hide original
+    tx.execute(
+        "UPDATE sessions SET is_hidden = 1 WHERE id = ?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Insert parts
+    let n = splits.len();
+    let mut cursor_ms: i64 = 0;
+    let mut cursor_secs: i64 = 0;
+
+    for (i, part) in splits.iter().enumerate() {
+        let is_last = i == n - 1;
+
+        let part_ms = if is_last {
+            total_ms - cursor_ms
+        } else {
+            (total_ms as f64 * part.ratio).round() as i64
+        };
+
+        let part_secs = if is_last {
+            duration_seconds - cursor_secs
+        } else {
+            (duration_seconds as f64 * part.ratio).round() as i64
+        };
+
+        let part_start = start_dt + chrono::Duration::milliseconds(cursor_ms);
+        let part_end = start_dt + chrono::Duration::milliseconds(cursor_ms + part_ms);
+
+        let part_comment = comment
+            .as_deref()
+            .map(|c| format!("{} (Split {}/{})", c, i + 1, n))
+            .unwrap_or_else(|| format!("Split {}/{}", i + 1, n));
+
+        tx.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                app_id,
+                part_start.to_rfc3339(),
+                part_end.to_rfc3339(),
+                part_secs,
+                date_str,
+                rate_multiplier,
+                part.project_id,
+                part_comment,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        cursor_ms += part_ms;
+        cursor_secs += part_secs;
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[cfg(test)]

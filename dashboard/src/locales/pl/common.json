@@ -388,7 +388,17 @@
         "en": "Angielski"
       },
       "rollout_note": "Teraz obejmuje Pomoc i Quick Start. Pozostałe widoki będą migrowane w kolejnych etapach i18n."
-    }
+    },
+    "splitTitle": "Podział sesji",
+    "splitTolerance": "Współczynnik tolerancji",
+    "splitToleranceLow": "luźny",
+    "splitToleranceHigh": "ścisły",
+    "splitToleranceDesc1": "Podział tylko gdy projekty mają niemal identyczne punkty.",
+    "splitToleranceDesc2": "Podział gdy drugi projekt ma ≥{{pct}}% punktów lidera.",
+    "splitToleranceDesc3": "Podział nawet przy dużej dysproporcji punktacji.",
+    "splitMaxProjects": "Maks. projektów na sesję",
+    "splitAuto": "Automatyczny podział",
+    "splitAutoDesc": "Sesje spełniające warunki zostaną podzielone automatycznie."
   },
   "help": {
     "language_hint": "Język ustawisz w Ustawienia > Język.",

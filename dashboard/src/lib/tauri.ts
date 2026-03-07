@@ -43,6 +43,9 @@ import type {
   ProjectExtraInfo,
   ProjectReportData,
   ScoreBreakdown,
+  MultiProjectAnalysis,
+  SessionSplittableFlag,
+  SplitPart,
 } from './db-types';
 
 export function hasTauriRuntime(): boolean {
@@ -506,3 +509,21 @@ export interface SplitSuggestion {
 
 export const suggestSessionSplit = (sessionId: number) =>
   invoke<SplitSuggestion>('suggest_session_split', { sessionId });
+
+// Multi-Project Session Analysis & Split
+export const analyzeSessionProjects = (sessionId: number, toleranceThreshold: number, maxProjects: number) =>
+  invoke<MultiProjectAnalysis>('analyze_session_projects', { sessionId, toleranceThreshold, maxProjects });
+
+export const analyzeSessionsSplittable = (
+  sessionIds: number[],
+  toleranceThreshold: number,
+  maxProjects: number,
+) =>
+  invoke<SessionSplittableFlag[]>('analyze_sessions_splittable', {
+    sessionIds,
+    toleranceThreshold,
+    maxProjects,
+  });
+
+export const splitSessionMulti = (sessionId: number, splits: SplitPart[]) =>
+  invokeMutation<void>('split_session_multi', { sessionId, splits });

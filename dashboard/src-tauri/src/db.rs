@@ -173,7 +173,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
 CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
-CREATE INDEX IF NOT EXISTS idx_file_activities_file_path ON file_activities(file_path);
 CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
 ON session_manual_overrides(executable_name, start_time, end_time);
 
@@ -516,7 +515,8 @@ fn active_db_path_for_mode(app: &AppHandle, demo_mode: bool) -> PathBuf {
     }
 }
 
-pub async fn initialize(app: &AppHandle) -> Result<(), String> {
+// THREADING: All operations here are synchronous (rusqlite). No async needed.
+pub fn initialize(app: &AppHandle) -> Result<(), String> {
     let demo_mode = read_persisted_demo_mode(app);
     let path = active_db_path_for_mode(app, demo_mode);
     let path_str = path.to_string_lossy().to_string();
@@ -1376,6 +1376,9 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
     Ok(())
 }
 
+// THREADING: Each call creates a new connection. WAL mode allows concurrent readers.
+// busy_timeout=5000ms prevents SQLITE_BUSY on short write contention.
+// No PRAGMA locking_mode=EXCLUSIVE — concurrent access is safe.
 fn rusqlite_open(path: &str) -> Result<rusqlite::Connection, rusqlite::Error> {
     let conn = rusqlite::Connection::open(path)?;
     conn.busy_timeout(std::time::Duration::from_millis(5000))?;
@@ -1385,6 +1388,8 @@ fn rusqlite_open(path: &str) -> Result<rusqlite::Connection, rusqlite::Error> {
     Ok(conn)
 }
 
+// THREADING: Opens a fresh connection per command. This is safe with WAL mode
+// but long transactions (VACUUM, large imports) may block other writers for up to busy_timeout.
 pub fn get_connection(app: &AppHandle) -> Result<rusqlite::Connection, String> {
     let db_path = app
         .try_state::<DbPath>()

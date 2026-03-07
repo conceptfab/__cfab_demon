@@ -388,7 +388,17 @@
         "en": "English"
       },
       "rollout_note": "Applies now to Help and Quick Start. Remaining views will be migrated in the next i18n phases."
-    }
+    },
+    "splitTitle": "Session Split",
+    "splitTolerance": "Tolerance coefficient",
+    "splitToleranceLow": "loose",
+    "splitToleranceHigh": "strict",
+    "splitToleranceDesc1": "Split only when projects have nearly identical scores.",
+    "splitToleranceDesc2": "Split when second project has ≥{{pct}}% of leader's score.",
+    "splitToleranceDesc3": "Split even with large score disparity.",
+    "splitMaxProjects": "Max projects per session",
+    "splitAuto": "Automatic split",
+    "splitAutoDesc": "Sessions meeting split conditions will be split automatically."
   },
   "help": {
     "language_hint": "Language is managed in Settings > Language.",

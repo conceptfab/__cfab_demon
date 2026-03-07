@@ -478,6 +478,37 @@ fn default_rate_multiplier() -> f64 {
     1.0
 }
 
+// ==================== Multi-Project Split Types ====================
+
+#[derive(Serialize)]
+pub struct ProjectCandidate {
+    pub project_id: i64,
+    pub project_name: String,
+    pub score: f64,
+    pub ratio_to_leader: f64,
+}
+
+#[derive(Serialize)]
+pub struct MultiProjectAnalysis {
+    pub session_id: i64,
+    pub candidates: Vec<ProjectCandidate>,
+    pub is_splittable: bool,
+    pub leader_project_id: Option<i64>,
+    pub leader_score: f64,
+}
+
+#[derive(Serialize)]
+pub struct SessionSplittableFlag {
+    pub session_id: i64,
+    pub is_splittable: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SplitPart {
+    pub project_id: Option<i64>,
+    pub ratio: f64,
+}
+
 #[derive(Serialize)]
 pub struct ImportValidation {
     pub valid: bool,

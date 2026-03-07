@@ -16,11 +16,9 @@ pub fn run() {
                 )?;
             }
 
-            // Initialize database
+            // Initialize database (sync — rusqlite has no async IO)
             let app_handle = app.handle().clone();
-            if let Err(e) =
-                tauri::async_runtime::block_on(async { db::initialize(&app_handle).await })
-            {
+            if let Err(e) = db::initialize(&app_handle) {
                 log::error!("Failed to initialize database: {}", e);
                 return Err(std::io::Error::other(format!(
                     "Database initialization failed: {}",
@@ -149,7 +147,10 @@ pub fn run() {
             commands::set_secure_token,
             commands::persist_language_for_daemon,
             commands::split_session,
-            commands::suggest_session_split
+            commands::suggest_session_split,
+            commands::analyze_session_projects,
+            commands::analyze_sessions_splittable,
+            commands::split_session_multi
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -422,8 +422,8 @@ export function Help() {
                     'Batch Assign – select multiple sessions and assign them to a project with one click.',
                   ),
                   t(
-                    'Dzielenie sesji (Split Session) – z menu kontekstowego podziel jedną sesję na dwie części i przypisz je do różnych projektów.',
-                    'Split Session – from the context menu, split a single session into two parts and assign each part to a different project.',
+                    'Dzielenie sesji (Split Session) – z menu kontekstowego lub ikony nożyczek podziel sesję na wiele części (max 5) i przypisz je do różnych projektów. AI automatycznie analizuje aktywność na plikach i sugeruje podział.',
+                    'Split Session – from the context menu or scissors icon, split a session into multiple parts (max 5) and assign each to a different project. AI automatically analyzes file activity and suggests the split.',
                   ),
                   t(
                     'Tryby widoku: Detailed (pełne logi plików), Compact (sama lista aplikacji i sesji) oraz AI Data (precyzyjne statystyki i argumentacja modelu AI).',
@@ -432,6 +432,14 @@ export function Help() {
                   t(
                     'Sortowanie i filtrowanie po aplikacji, projekcie, dacie oraz czasie trwania.',
                     'Sorting and filtering by application, project, date, and duration.',
+                  ),
+                  t(
+                    'Ustawienia podziału sesji – współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5), automatyczny podział. Konfiguracja w Ustawienia > Podział sesji.',
+                    'Session split settings – tolerance coefficient (0.2–1.0), max projects per session (2–5), automatic split. Configure in Settings > Session Split.',
+                  ),
+                  t(
+                    'Ikona nożyczek – pojawia się przy sesjach, w których AI wykrył aktywność na plikach wielu projektów. Kliknij aby podzielić sesję wg sugestii AI.',
+                    'Scissors icon – appears on sessions where AI detected file activity across multiple projects. Click to split the session based on AI suggestions.',
                   ),
                 ]}
               >
@@ -964,20 +972,28 @@ export function Help() {
                 footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
                 features={[
                   t(
-                    'Edytor szablonu raportu – wybieraj sekcje raportu i ich kolejność (nagłówek, statystyki, finanse, aplikacje, sesje, komentarze).',
-                    'Report template editor – choose report sections and their order (header, stats, financials, apps, sessions, comments).',
+                    'System szablonów – twórz, duplikuj i zarządzaj wieloma szablonami raportów. Przed generowaniem wybierz szablon z listy.',
+                    'Template system – create, duplicate, and manage multiple report templates. Choose a template before generating.',
                   ),
                   t(
-                    'Generowanie raportu z karty projektu – otwórz widok raportu i przygotuj wersję do druku.',
-                    'Generate report from a project card – open report view and prepare a print-ready version.',
+                    'Edytor szablonu raportu – wybieraj sekcje raportu i ich kolejność (nagłówek, statystyki, finanse, aplikacje, sesje, boosty, sesje manualne, komentarze, AI).',
+                    'Report template editor – choose report sections and their order (header, stats, financials, apps, sessions, boosts, manual sessions, comments, AI).',
                   ),
                   t(
-                    'Druk / PDF – raport jest zoptymalizowany pod wydruk i zapis do pliku PDF.',
-                    'Print / PDF – the report view is optimized for printing and exporting to PDF.',
+                    'Logo i wersja TIMEFLOW – nagłówek raportu zawiera logo aplikacji i numer wersji, widoczne również w wydruku PDF.',
+                    'TIMEFLOW logo and version – the report header includes the app logo and version number, visible in PDF prints.',
                   ),
                   t(
-                    'Wspiera dane finansowe, top aplikacje, liczbę sesji, komentarze oraz statystyki AI dla projektu.',
-                    'Supports financial data, top apps, session counts, comments, and AI stats for the project.',
+                    'Wybór fontu i skalowanie – zmień krój pisma (sans-serif, serif, monospace) i rozmiar tekstu (10–18px) w toolbarze raportu.',
+                    'Font selection and scaling – change font family (sans-serif, serif, monospace) and text size (10–18px) in the report toolbar.',
+                  ),
+                  t(
+                    'Generowanie raportu – przycisk w górnym pasku strony projektu. Wybierz szablon, a następnie przeglądaj, drukuj lub eksportuj do PDF.',
+                    'Report generation – button in the top toolbar of the project page. Select a template, then preview, print, or export to PDF.',
+                  ),
+                  t(
+                    'Sekcje dodatkowe: Boosty (sesje z mnożnikiem czasu), Sesje manualne (ręcznie dodane), Komentarze, Statystyki AI.',
+                    'Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.',
                   ),
                 ]}
               />

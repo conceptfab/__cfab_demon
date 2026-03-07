@@ -749,6 +749,8 @@ pub async fn set_assignment_model_cooldown(
 /// Retrain the assignment model synchronously using the given connection.
 /// This is the core training logic, callable from any module after destructive
 /// DB operations (compact, reset, import) to keep the model in sync with data.
+// THREADING: Runs on Tauri's async thread pool. Long transaction — may hold
+// a write lock for seconds on large datasets, blocking other writers until done.
 pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
     upsert_state(conn, "is_training", "true")?;
     let start_time = std::time::Instant::now();

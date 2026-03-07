@@ -2,11 +2,11 @@ import { Component, lazy, Suspense } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import i18n from '@/i18n';
 import { MainLayout } from '@/components/layout/MainLayout';
+import { SplashScreen } from '@/components/layout/SplashScreen';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ToastProvider } from '@/components/ui/toast-notification';
 import { useUIStore } from '@/store/ui-store';
 import { BackgroundServices } from '@/components/sync/BackgroundServices';
-import { SplashScreen } from '@/components/layout/SplashScreen';
 
 const Dashboard = lazy(() =>
   import('@/pages/Dashboard').then((m) => ({ default: m.Dashboard })),

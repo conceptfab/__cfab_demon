@@ -440,3 +440,30 @@ export interface BackupFile {
   size_bytes: number;
   modified_at: string;
 }
+
+// ==================== Multi-Project Split Types ====================
+
+export interface ProjectCandidate {
+  project_id: number;
+  project_name: string;
+  score: number;
+  ratio_to_leader: number;
+}
+
+export interface MultiProjectAnalysis {
+  session_id: number;
+  candidates: ProjectCandidate[];
+  is_splittable: boolean;
+  leader_project_id: number | null;
+  leader_score: number;
+}
+
+export interface SessionSplittableFlag {
+  session_id: number;
+  is_splittable: boolean;
+}
+
+export interface SplitPart {
+  project_id: number | null;
+  ratio: number;
+}

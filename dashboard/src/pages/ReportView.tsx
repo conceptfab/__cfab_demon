@@ -2,52 +2,51 @@ import { useEffect, useState, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getProjectReportData } from '@/lib/tauri';
+import { getProjectReportData, getDaemonStatus } from '@/lib/tauri';
+import logoSrc from '@/assets/logo.png';
 import { formatDuration, formatMoney } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useInlineT } from '@/lib/inline-i18n';
+import { getTemplate } from '@/lib/report-templates';
+import type { ReportFontSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import type {
   ProjectReportData,
 } from '@/lib/db-types';
 
-function loadTemplate(): string[] {
-  try {
-    const saved = localStorage.getItem('timeflow_report_template');
-    return saved
-      ? JSON.parse(saved)
-      : [
-          'header',
-          'stats',
-          'financials',
-          'apps',
-          'sessions',
-          'comments',
-          'footer',
-        ];
-  } catch {
-    return [
-      'header',
-      'stats',
-      'financials',
-      'apps',
-      'sessions',
-      'comments',
-      'footer',
-    ];
-  }
-}
-
 export function ReportView() {
   const tt = useInlineT();
-  const { setCurrentPage, projectPageId } = useUIStore();
+  const { setCurrentPage, projectPageId, reportTemplateId } = useUIStore();
   const { currencyCode } = useSettingsStore();
 
   const [report, setReport] = useState<ProjectReportData | null>(null);
   const [loadedProjectId, setLoadedProjectId] = useState<number | null>(null);
-  const sections = useMemo(() => loadTemplate(), []);
+  const [appVersion, setAppVersion] = useState('');
+  const template = useMemo(() => getTemplate(reportTemplateId || 'default'), [reportTemplateId]);
+  const sections = template.sections;
   const has = (id: string) => sections.includes(id);
+
+  const [fontSettings, setFontSettings] = useState<ReportFontSettings>(() => ({
+    fontFamily: template.fontFamily,
+    baseFontSize: template.baseFontSize,
+  }));
+
+  const fontFamilyStyle = useMemo(() => {
+    switch (fontSettings.fontFamily) {
+      case 'serif': return "'Georgia', 'Times New Roman', serif";
+      case 'mono': return "'JetBrains Mono', 'Consolas', monospace";
+      default: return "'Segoe UI', system-ui, -apple-system, sans-serif";
+    }
+  }, [fontSettings.fontFamily]);
+
+  const handleFontChange = (family: ReportFontSettings['fontFamily']) => {
+    setFontSettings(prev => ({ ...prev, fontFamily: family }));
+  };
+
+  const handleFontSizeChange = (size: number) => {
+    setFontSettings(prev => ({ ...prev, baseFontSize: size }));
+  };
 
   const generatedAt = useMemo(() => format(new Date(), 'yyyy-MM-dd HH:mm'), []);
 
@@ -72,6 +71,12 @@ export function ReportView() {
       cancelled = true;
     };
   }, [projectPageId]);
+
+  useEffect(() => {
+    getDaemonStatus()
+      .then((s) => setAppVersion(s.dashboard_version ?? ''))
+      .catch(() => {});
+  }, []);
 
   if (!projectPageId) {
     return (
@@ -119,6 +124,26 @@ export function ReportView() {
           {tt('Powrót do projektu', 'Back to project')}
         </Button>
         <div className="flex-1" />
+        <div className="flex items-center gap-2 print:hidden">
+          <select
+            value={fontSettings.fontFamily}
+            onChange={(e) => handleFontChange(e.target.value as ReportFontSettings['fontFamily'])}
+            className="rounded border border-border bg-secondary/30 px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
+          >
+            <option value="system">Sans-serif</option>
+            <option value="serif">Serif</option>
+            <option value="mono">Monospace</option>
+          </select>
+          <input
+            type="range"
+            min={10}
+            max={18}
+            value={fontSettings.baseFontSize}
+            onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+            className="w-20 accent-sky-500"
+          />
+          <span className="text-[10px] text-muted-foreground/50 w-8">{fontSettings.baseFontSize}px</span>
+        </div>
         <Button
           size="sm"
           onClick={() => window.print()}
@@ -131,10 +156,33 @@ export function ReportView() {
 
       {/* Report body — print-optimized */}
       <div className="flex-1 overflow-y-auto px-4 pt-4 print:px-0 print:pt-0 print:overflow-visible print:text-black print:bg-white">
-        <div className="max-w-[700px] mx-auto space-y-6 print:space-y-5">
+        <div
+          className="max-w-[700px] mx-auto space-y-6 print:space-y-5"
+          style={{
+            fontFamily: fontFamilyStyle,
+            fontSize: `${fontSettings.baseFontSize}px`,
+          }}
+        >
           {/* ═══ HEADER ═══ */}
           {has('header') && (
             <div className="border-b-2 border-foreground/10 pb-4 print:border-black/20">
+              {template.showLogo && (
+                <div className="flex items-center gap-2 mb-3">
+                  <img
+                    src={logoSrc}
+                    alt="TIMEFLOW"
+                    className="h-8 w-8 print:block"
+                  />
+                  <span className="text-sm font-semibold uppercase tracking-wide print:text-black">
+                    TIMEFLOW
+                  </span>
+                  {appVersion && (
+                    <span className="text-xs text-muted-foreground/50 print:text-gray-400">
+                      v{appVersion}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-3 mb-1">
                 <div
                   className="h-5 w-5 rounded-full ring-2 ring-offset-2 ring-offset-background print:ring-offset-white"
@@ -381,10 +429,122 @@ export function ReportView() {
             </div>
           )}
 
+          {/* ═══ BOOSTS ═══ */}
+          {has('boosts') && (() => {
+            const boostedSessions = report.sessions.filter(s => (s.rate_multiplier ?? 1) > 1);
+            if (boostedSessions.length === 0) return null;
+            return (
+              <div>
+                <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+                  {tt('Sesje z mnożnikiem', 'Boosted sessions')} ({boostedSessions.length})
+                </h2>
+                <table className="w-full text-[11px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-border/20 print:border-gray-300 text-left text-muted-foreground/50 print:text-gray-500">
+                      <th className="py-1 pr-2 font-medium">
+                        {tt('Data', 'Date')}
+                      </th>
+                      <th className="py-1 pr-2 font-medium">
+                        {tt('Aplikacja', 'App')}
+                      </th>
+                      <th className="py-1 pr-2 font-medium text-right">
+                        {tt('Czas', 'Time')}
+                      </th>
+                      <th className="py-1 pr-2 font-medium text-right">
+                        {tt('Mnożnik', 'Multiplier')}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boostedSessions.slice(0, 25).map((s) => (
+                      <tr
+                        key={s.id}
+                        className="border-b border-border/10 print:border-gray-100"
+                      >
+                        <td className="py-1 pr-2 font-mono text-muted-foreground/60 print:text-gray-600 whitespace-nowrap">
+                          {format(parseISO(s.start_time), 'yyyy-MM-dd')}
+                        </td>
+                        <td className="py-1 pr-2 truncate max-w-[120px] print:text-black">
+                          {s.app_name}
+                        </td>
+                        <td className="py-1 pr-2 font-mono text-right print:text-black">
+                          {formatDuration(s.duration_seconds)}
+                        </td>
+                        <td className="py-1 font-mono text-right text-amber-400 print:text-amber-700">
+                          {s.rate_multiplier}×
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {boostedSessions.length > 25 && (
+                  <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
+                    +{boostedSessions.length - 25}{' '}
+                    {tt('więcej sesji', 'more sessions')}...
+                  </p>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ═══ MANUAL SESSIONS ═══ */}
+          {has('manual_sessions') && report.manual_sessions.length > 0 && (
+            <div>
+              <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+                {tt('Sesje manualne', 'Manual sessions')} ({report.manual_sessions.length})
+              </h2>
+              <table className="w-full text-[11px] border-collapse">
+                <thead>
+                  <tr className="border-b border-border/20 print:border-gray-300 text-left text-muted-foreground/50 print:text-gray-500">
+                    <th className="py-1 pr-2 font-medium">
+                      {tt('Data', 'Date')}
+                    </th>
+                    <th className="py-1 pr-2 font-medium">
+                      {tt('Tytuł', 'Title')}
+                    </th>
+                    <th className="py-1 pr-2 font-medium">
+                      {tt('Typ', 'Type')}
+                    </th>
+                    <th className="py-1 pr-2 font-medium text-right">
+                      {tt('Czas', 'Time')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {report.manual_sessions.slice(0, 50).map((s) => (
+                    <tr
+                      key={s.id}
+                      className="border-b border-border/10 print:border-gray-100"
+                    >
+                      <td className="py-1 pr-2 font-mono text-muted-foreground/60 print:text-gray-600 whitespace-nowrap">
+                        {format(parseISO(s.start_time), 'yyyy-MM-dd')}
+                      </td>
+                      <td className="py-1 pr-2 truncate max-w-[180px] print:text-black">
+                        {s.title}
+                      </td>
+                      <td className="py-1 pr-2 text-muted-foreground/50 print:text-gray-600">
+                        {s.session_type}
+                      </td>
+                      <td className="py-1 font-mono text-right print:text-black">
+                        {formatDuration(s.duration_seconds)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {report.manual_sessions.length > 50 && (
+                <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
+                  +{report.manual_sessions.length - 50}{' '}
+                  {tt('więcej sesji', 'more sessions')}...
+                </p>
+              )}
+            </div>
+          )}
+
           {/* ═══ FOOTER ═══ */}
           {has('footer') && (
             <div className="text-center text-[10px] text-muted-foreground/30 pt-6 pb-8 border-t border-border/10 print:text-gray-400 print:border-gray-200">
-              TIMEFLOW · {report.project.name} · {generatedAt}
+              TIMEFLOW{appVersion ? ` v${appVersion}` : ''} · {report.project.name} · {generatedAt}
             </div>
           )}
         </div>
