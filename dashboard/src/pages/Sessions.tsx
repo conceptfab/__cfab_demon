@@ -6,6 +6,8 @@ import {
   Sparkles,
   MessageSquare,
   CircleDollarSign,
+  Type,
+  Flame,
 } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +42,7 @@ import {
   loadSessionSettings,
   loadIndicatorSettings,
   loadSplitSettings,
+  loadFreezeSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
@@ -69,7 +72,47 @@ interface GroupedProject {
 }
 
 type RangeMode = 'daily' | 'weekly';
+type AssignProjectListMode = 'alpha_active' | 'new_top_rest' | 'top_new_rest';
 const UNASSIGNED_GROUP_KEY = '__unassigned__';
+const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY =
+  'timeflow-sessions-assign-project-list-mode';
+const TOP_PROJECTS_LIMIT = 5;
+
+function loadAssignProjectListMode(): AssignProjectListMode {
+  if (typeof window === 'undefined') return 'alpha_active';
+  try {
+    const raw = window.localStorage.getItem(
+      ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
+    );
+    if (
+      raw === 'new_top_rest' ||
+      raw === 'top_new_rest' ||
+      raw === 'alpha_active'
+    ) {
+      return raw;
+    }
+    return 'alpha_active';
+  } catch {
+    return 'alpha_active';
+  }
+}
+
+function compareProjectsByName(
+  a: ProjectWithStats,
+  b: ProjectWithStats,
+): number {
+  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+}
+
+function isNewProjectForAssignList(
+  project: ProjectWithStats,
+  maxAgeMs: number,
+): boolean {
+  const createdAtMs = new Date(project.created_at).getTime();
+  if (!Number.isFinite(createdAtMs)) return false;
+  const ageMs = Date.now() - createdAtMs;
+  return ageMs >= 0 && ageMs < maxAgeMs;
+}
 const EMPTY_SCORE_BREAKDOWN: ScoreBreakdown = {
   candidates: [],
   has_manual_override: false,
@@ -119,7 +162,8 @@ function buildAnalysisFromBreakdown(
       ratio_to_leader:
         leaderScore > 0 ? candidate.total_score / leaderScore : 0,
     })),
-    is_splittable: leaderScore > 0 && secondScore / leaderScore >= toleranceThreshold,
+    is_splittable:
+      leaderScore > 0 && secondScore / leaderScore >= toleranceThreshold,
     leader_project_id: leader?.project_id ?? null,
     leader_score: leaderScore,
   };
@@ -200,6 +244,8 @@ export function Sessions() {
     'detailed' | 'compact' | 'ai_detailed'
   >('detailed');
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [assignProjectListMode, setAssignProjectListMode] =
+    useState<AssignProjectListMode>(() => loadAssignProjectListMode());
   const [multiSplitSession, setMultiSplitSession] =
     useState<SessionWithApp | null>(null);
   const [splitEligibilityBySession, setSplitEligibilityBySession] = useState<
@@ -507,22 +553,21 @@ export function Sessions() {
         if (cancelled) return;
         setSplitAnalysisBySession((prev) => {
           if (prev.has(sessionId)) return prev;
-          const fallback =
-            buildAnalysisFromBreakdown(
-              sessionId,
-              aiBreakdowns.get(sessionId) ??
-                (scoreBreakdown?.sessionId === sessionId
-                  ? scoreBreakdown.data
-                  : null),
-              splitSettings.toleranceThreshold,
-              splitSettings.maxProjectsPerSession,
-            ) ?? {
-              session_id: sessionId,
-              candidates: [],
-              is_splittable: false,
-              leader_project_id: null,
-              leader_score: 0,
-            };
+          const fallback = buildAnalysisFromBreakdown(
+            sessionId,
+            aiBreakdowns.get(sessionId) ??
+              (scoreBreakdown?.sessionId === sessionId
+                ? scoreBreakdown.data
+                : null),
+            splitSettings.toleranceThreshold,
+            splitSettings.maxProjectsPerSession,
+          ) ?? {
+            session_id: sessionId,
+            candidates: [],
+            is_splittable: false,
+            leader_project_id: null,
+            leader_score: 0,
+          };
           const next = new Map(prev);
           next.set(sessionId, fallback);
           return next;
@@ -854,7 +899,14 @@ export function Sessions() {
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu, handleSetRateMultiplier, showError, t, setPromptConfig, setCtxMenu]);
+  }, [
+    ctxMenu,
+    handleSetRateMultiplier,
+    showError,
+    t,
+    setPromptConfig,
+    setCtxMenu,
+  ]);
 
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu) return;
@@ -1048,6 +1100,115 @@ export function Sessions() {
     }
     return map;
   }, [projects]);
+
+  const assignProjectSections = useMemo(() => {
+    const activeProjects = projects.filter((p) => !p.frozen_at);
+    const activeAlpha = [...activeProjects].sort(compareProjectsByName);
+    const { thresholdDays } = loadFreezeSettings();
+    const newProjectMaxAgeMs = Math.max(1, thresholdDays) * 24 * 60 * 60 * 1000;
+
+    if (assignProjectListMode === 'alpha_active') {
+      return [
+        {
+          key: 'all',
+          label: t(
+            'sessions.menu.active_projects_az',
+            'Aktywne projekty (A-Z)',
+          ),
+          projects: activeAlpha,
+        },
+      ];
+    }
+
+    const topProjectIds = new Set(
+      [...activeProjects]
+        .sort((a, b) => {
+          const byTime = b.total_seconds - a.total_seconds;
+          if (byTime !== 0) return byTime;
+          return compareProjectsByName(a, b);
+        })
+        .slice(0, TOP_PROJECTS_LIMIT)
+        .map((p) => p.id),
+    );
+    const newestAlpha = activeAlpha.filter((p) =>
+      isNewProjectForAssignList(p, newProjectMaxAgeMs),
+    );
+    const topAlpha = activeAlpha.filter((p) => topProjectIds.has(p.id));
+
+    if (assignProjectListMode === 'new_top_rest') {
+      const used = new Set<number>();
+      const newest = newestAlpha;
+      newest.forEach((p) => used.add(p.id));
+      const top = topAlpha.filter((p) => !used.has(p.id));
+      top.forEach((p) => used.add(p.id));
+      const rest = activeAlpha.filter((p) => !used.has(p.id));
+
+      return [
+        {
+          key: 'new',
+          label: t(
+            'sessions.menu.newest_projects_az',
+            'Najnowsze projekty (A-Z)',
+          ),
+          projects: newest,
+        },
+        {
+          key: 'top',
+          label: t('sessions.menu.top_projects_az', 'Top projekty (A-Z)'),
+          projects: top,
+        },
+        {
+          key: 'rest',
+          label: t(
+            'sessions.menu.remaining_active_az',
+            'Pozostałe aktywne (A-Z)',
+          ),
+          projects: rest,
+        },
+      ];
+    }
+
+    const used = new Set<number>();
+    const top = topAlpha;
+    top.forEach((p) => used.add(p.id));
+    const newest = newestAlpha.filter((p) => !used.has(p.id));
+    newest.forEach((p) => used.add(p.id));
+    const rest = activeAlpha.filter((p) => !used.has(p.id));
+
+    return [
+      {
+        key: 'top',
+        label: t('sessions.menu.top_projects_az', 'Top projekty (A-Z)'),
+        projects: top,
+      },
+      {
+        key: 'new',
+        label: t(
+          'sessions.menu.newest_projects_az',
+          'Najnowsze projekty (A-Z)',
+        ),
+        projects: newest,
+      },
+      {
+        key: 'rest',
+        label: t(
+          'sessions.menu.remaining_active_az',
+          'Pozostałe aktywne (A-Z)',
+        ),
+        projects: rest,
+      },
+    ];
+  }, [assignProjectListMode, projects, t]);
+
+  const assignProjectsCount = useMemo(
+    () =>
+      assignProjectSections.reduce(
+        (total, section) => total + section.projects.length,
+        0,
+      ),
+    [assignProjectSections],
+  );
+  const showAssignSectionHeaders = assignProjectListMode !== 'alpha_active';
 
   const groupedByProject = useMemo(() => {
     const groups = new Map<string, GroupedProject>();
@@ -1633,14 +1794,101 @@ export function Sessions() {
                 openMultiSplitModal(ctxMenu.session);
               }}
             >
-              <span>✂️ {t('sessions.menu.split_session', 'Podziel sesję')}</span>
+              <span>
+                ✂️ {t('sessions.menu.split_session', 'Podziel sesję')}
+              </span>
             </button>
           )}
           <div className="h-px bg-border my-1" />
           <div className="px-2 py-1 text-[11px] text-muted-foreground">
             {t('sessions.menu.assign_to_project')}
           </div>
-          <div className="max-h-[58vh] overflow-y-auto pr-1">
+          <div className="px-2 pb-1.5">
+            <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
+              <AppTooltip
+                content={t(
+                  'sessions.menu.mode_alpha',
+                  'Aktywne alfabetycznie (A-Z)',
+                )}
+              >
+                <button
+                  type="button"
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                    assignProjectListMode === 'alpha_active'
+                      ? 'bg-background text-sky-200 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => {
+                    setAssignProjectListMode('alpha_active');
+                    try {
+                      window.localStorage.setItem(
+                        ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
+                        'alpha_active',
+                      );
+                    } catch {}
+                  }}
+                >
+                  <Type className="h-3.5 w-3.5" />
+                </button>
+              </AppTooltip>
+              <AppTooltip
+                content={t(
+                  'sessions.menu.mode_new_top',
+                  'Najnowsze -> Top -> Reszta (A-Z)',
+                )}
+              >
+                <button
+                  type="button"
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                    assignProjectListMode === 'new_top_rest'
+                      ? 'bg-background text-amber-300 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => {
+                    setAssignProjectListMode('new_top_rest');
+                    try {
+                      window.localStorage.setItem(
+                        ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
+                        'new_top_rest',
+                      );
+                    } catch {}
+                  }}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                </button>
+              </AppTooltip>
+              <AppTooltip
+                content={t(
+                  'sessions.menu.mode_top_new',
+                  'Top -> Najnowsze -> Reszta (A-Z)',
+                )}
+              >
+                <button
+                  type="button"
+                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                    assignProjectListMode === 'top_new_rest'
+                      ? 'bg-background text-orange-300 shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                  onClick={() => {
+                    setAssignProjectListMode('top_new_rest');
+                    try {
+                      window.localStorage.setItem(
+                        ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
+                        'top_new_rest',
+                      );
+                    } catch {}
+                  }}
+                >
+                  <Flame className="h-3.5 w-3.5" />
+                </button>
+              </AppTooltip>
+            </div>
+          </div>
+          <div
+            className="max-h-[min(42vh,20rem)] overflow-y-auto pr-1"
+            style={{ scrollbarGutter: 'stable' }}
+          >
             <button
               className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
               onClick={() => handleAssign(null, 'manual_session_unassign')}
@@ -1648,26 +1896,35 @@ export function Sessions() {
               <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
               <span className="truncate">{t('sessions.menu.unassigned')}</span>
             </button>
-            {projects.filter((p) => !p.frozen_at).length === 0 ? (
+            {assignProjectsCount > 0 ? (
+              assignProjectSections.map((section) => (
+                <div key={section.key}>
+                  {showAssignSectionHeaders && section.projects.length > 0 && (
+                    <div className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground/80">
+                      {section.label}
+                    </div>
+                  )}
+                  {section.projects.map((p) => (
+                    <button
+                      key={p.id}
+                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                      onClick={() =>
+                        handleAssign(p.id, 'manual_session_change')
+                      }
+                    >
+                      <div
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: p.color }}
+                      />
+                      <span className="truncate">{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              ))
+            ) : (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
                 {t('sessions.menu.no_projects')}
               </div>
-            ) : (
-              projects
-                .filter((p) => !p.frozen_at)
-                .map((p) => (
-                  <button
-                    key={p.id}
-                    className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                    onClick={() => handleAssign(p.id, 'manual_session_change')}
-                  >
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: p.color }}
-                    />
-                    <span className="truncate">{p.name}</span>
-                  </button>
-                ))
             )}
           </div>
         </div>
