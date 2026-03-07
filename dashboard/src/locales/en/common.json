@@ -246,6 +246,7 @@
       "edit_comment": "Edit comment",
       "add_comment": "Add comment",
       "split_session": "Split session",
+      "split_suggestion": "AI suggests split",
       "assign_to_project": "Assign to project",
       "unassigned": "Unassigned",
       "no_projects": "No projects available",

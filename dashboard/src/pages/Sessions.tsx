@@ -752,8 +752,9 @@ export function Sessions() {
     async (sessionIds: number[]) => {
       if (sessionIds.length === 0) return true;
 
+      const commentById = new Map(sessions.map((s) => [s.id, s.comment]));
       const missingIds = sessionIds.filter((id) => {
-        const comment = sessions.find((s) => s.id === id)?.comment;
+        const comment = commentById.get(id);
         return !comment || !comment.trim();
       });
 

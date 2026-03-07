@@ -1,253 +1,209 @@
-# Raport analizy kodu TIMEFLOW
-Data: 2026-03-06
-Zakres: `dashboard/src` (React/TS) + `dashboard/src-tauri/src` (Rust/Tauri)
+# TIMEFLOW — Raport analizy kodu
 
-## 1) Metodyka
-- Przegląd ręczny kluczowych ścieżek logiki (sesje, projekty, raporty, i18n, help).
-- Weryfikacja statyczna:
-  - `npm --prefix dashboard run lint`
-  - `cargo clippy --lib -p timeflow-dashboard -- -W clippy::all` (w `dashboard/src-tauri`)
-  - `cargo test --lib -p timeflow-dashboard` (w `dashboard/src-tauri`)
-- Weryfikacja spójności tłumaczeń en/pl i używanych kluczy `t('...')`.
+**Data**: 2026-03-07
+**Gałąź**: `next`
+**Zakres**: Frontend (React/TypeScript), backend (Rust/Tauri), tłumaczenia, dokumentacja Help
 
-## 2) Executive summary
-- Największe ryzyka logiczne:
-  - Filtrowanie sesji per projekt działa na poziomie `(app_id, date)` zamiast realnego overlapu czasowego.
-  - Licznik „Pliki” jest oparty o `DISTINCT file_name` i może zaniżać/wypaczać wynik.
-  - Statystyka `session_count` dla projektu ma inną logikę niż lista sesji i może dawać inne liczby.
-- Wydajność:
-  - Dużo zapytań „all-time” (`1970..2100`, `2000..2100`, `2020..2100`) + miejscami `limit: 10000`.
-  - Niespójne definicje zakresu „all-time” między modułami.
-- Jakość:
-  - Frontend lint: 3 błędy.
-  - Rust clippy: 12 ostrzeżeń.
-  - Testy Rust: 6/6 PASS.
-- i18n/help:
-  - Brakuje 13 kluczy i18n używanych w kodzie.
-  - Help nie pokrywa części funkcji (np. Reports, BugHunter, split sesji).
+---
 
-## 3) Kluczowe problemy logiki
+## 1. TŁUMACZENIA (i18n)
 
-### 3.1 Filtrowanie sesji per projekt oparte o dzień aplikacji, nie overlap
-**Dowody**
-- `dashboard/src-tauri/src/commands/sessions.rs:282`-`289`
-- `dashboard/src-tauri/src/commands/sessions.rs:638`-`643`
+### Stan ogólny: ✅ Dobry
 
-**Opis**
-- W `get_sessions` i `get_session_count` sesja wpada do projektu, jeśli istnieje `file_activities` dla tej samej aplikacji i daty (`app_id + date`), bez warunku overlapu `first_seen/last_seen` z czasem sesji.
+Pliki `en/common.json` i `pl/common.json` są **w pełni zsynchronizowane** — zero brakujących kluczy w obu kierunkach. Oba zawierają ~912 kluczy.
 
-**Skutek**
-- Możliwe zawyżenia/zafałszowania listy i liczników sesji per projekt (szczególnie przy wielu sesjach jednej aplikacji tego samego dnia).
+### Problem: ~40 stringów poza JSON-em (inline i18n)
 
-**Rekomendacja**
-- Ujednolicić logikę na overlap czasowy (jak w przypisywaniu ręcznym i inferencji), np. warunki:
-  - `fa.last_seen > s.start_time`
-  - `fa.first_seen < s.end_time`
-- Docelowo: wspólna CTE/funkcja SQL do „membership sesji w projekcie”, używana we wszystkich endpointach.
+Następujące komponenty używają wzorca `t('Polski tekst', 'English text')` zamiast odwoływać się do kluczy w `common.json`. Oznacza to, że te teksty nie pojawiają się w plikach lokalizacyjnych i są trudniejsze do utrzymania:
 
-### 3.2 Zliczanie „Pliki” może być zaniżone i semantycznie mylące
-**Dowody**
-- Schema: `dashboard/src-tauri/src/db.rs:131`-`143` (`file_activities` ma `file_name`, bez `file_path`)
-- Unikalność: `UNIQUE(app_id, date, file_name)` w `dashboard/src-tauri/src/db.rs:142`
-- Import: `dashboard/src-tauri/src/commands/import.rs:201`-`207`
-- Licznik: `dashboard/src-tauri/src/commands/projects.rs:1237`-`1239`
+| Plik | Liczba stringów | Przykłady |
+|------|----------------|-----------|
+| `components/sessions/SessionRow.tsx` | 3 | `'AI sugeruje podział'`, `'Potwierdź (👍)'`, `'Odrzuć (👎)'` |
+| `components/data/ImportPanel.tsx` | 9 | `'Wczytaj plik eksportu...'`, `'Import zakończony!'`, `'Brakujące projekty'` |
+| `components/sessions/MultiSplitSessionModal.tsx` | 7 | `'Podziel sesję na wiele projektów'`, `'Lider'`, `'Nieprzypisane'`, `'Część ręczna'` |
+| `components/data/ExportPanel.tsx` | 3 | `'Eksport nie powiódł się: {{error}}'`, `'Cały okres (od początku)'` |
+| `components/data/DatabaseManagement.tsx` | 14 | Komunikaty sukcesu/błędu vacuum, backup, optymalizacji |
 
-**Opis**
-- Obecna metryka to `COUNT(DISTINCT LOWER(TRIM(fa.file_name)))`.
-- Ten sam `file_name` w różnych katalogach jest traktowany jak ten sam plik.
+**Zalecenie**: Przenieść te stringi do `common.json` (sekcje `components.import`, `components.export`, `components.sessions`) i zastąpić wywołania inline kluczami JSON.
 
-**Skutek**
-- Licznik „Pliki” dla projektu może być zaniżony względem realnej liczby plików, nad którymi pracowano.
+---
 
-**Rekomendacja**
-- Minimum: doprecyzować etykietę metryki na „unikalne nazwy plików”.
-- Docelowo: migracja modelu na identyfikator pliku (`file_path`/`normalized_path`/hash) i zliczanie po nim.
+## 2. DOKUMENTACJA (Help.tsx)
 
-### 3.3 `session_count` projektu ma inną semantykę niż lista sesji
-**Dowody**
-- `dashboard/src-tauri/src/commands/projects.rs:1229` (licznik oparty o `a.project_id OR s.project_id`)
-- `dashboard/src-tauri/src/commands/sessions.rs:276` (lista sesji filtruje `is_hidden`)
+### Stan ogólny: ✅ Kompletna
 
-**Opis**
-- `session_count` w `get_project_extra_info` nie filtruje `is_hidden` i nie używa tej samej logiki membership co lista sesji.
+`Help.tsx` dokumentuje 12 sekcji pokrywając wszystkie główne funkcje aplikacji:
 
-**Skutek**
-- Rozjazdy między statystykami projektu a tym, co użytkownik widzi na liście sesji.
+- QUICK START, DASHBOARD, SESSIONS, PROJECTS, ESTIMATES
+- APPLICATIONS, TIME ANALYSIS, AI & MODEL, DATA, REPORTS
+- DAEMON, SETTINGS
 
-**Rekomendacja**
-- Zastąpić query wspólną logiką (ta sama CTE/warunki co w endpointach sesji), dodać filtr `is_hidden`.
+**Brak nieudokumentowanych funkcji** — wszystkie ekrany i tryby działania mają opis w Help.
 
-### 3.4 Status „nowy projekt” jest zaszyty na stałe (7 dni)
-**Dowody**
-- `dashboard/src/pages/Projects.tsx:98`-`100`
+---
 
-**Opis**
-- `isNewProject` używa stałego 7-dniowego okna od `created_at`.
+## 3. BŁĘDY LOGIKI I MEMORY LEAKS
 
-**Skutek**
-- Zachowanie może odbiegać od oczekiwań konfiguracji „nieaktywności” (w praktyce to osobna logika i oddzielny próg).
+### 🔴 KRYTYCZNE
 
-**Rekomendacja**
-- Albo jawnie opisać rozdział tych pojęć (nowość vs nieaktywność), albo spiąć z konfiguracją użytkownika.
+#### `pages/Settings.tsx` — setTimeout bez cleanup (~linia 237)
+```typescript
+setTimeout(() => setShowSavedToast(false), 3000)
+// Brak clearTimeout przy unmount komponentu
+```
+**Problem**: Jeśli użytkownik opuści stronę przed upływem 3 sekund, React zgłosi warning o aktualizacji stanu na odmontowanym komponencie. W React 18+ może to powodować memory leak.
+**Naprawa**:
+```typescript
+const toastTimer = useRef<ReturnType<typeof setTimeout>>();
+// przy ustawieniu:
+toastTimer.current = setTimeout(() => setShowSavedToast(false), 3000);
+// w useEffect cleanup:
+return () => clearTimeout(toastTimer.current);
+```
 
-## 4) Wydajność i optymalizacje
+---
 
-### 4.1 Ciężkie zapytania all-time + wysokie limity
-**Dowody**
-- `dashboard/src/pages/ProjectPage.tsx:263`-`279`
-- `dashboard/src/pages/ReportView.tsx:73`-`83`
-- `dashboard/src/pages/Projects.tsx:96`, `373`, `396`, `493`
+### 🟡 ŚREDNIE
 
-**Opis**
-- Częste pobieranie pełnego zakresu historycznego.
-- Dla sesji: `limit: 10000` (potencjalne obcięcie danych przy dużych projektach).
+#### `pages/Sessions.tsx` — O(n²) lookup w `ensureCommentForBoost` (~linia 755)
+```typescript
+const missingIds = boostIds.filter(id => sessions.find(s => s.id === id));
+```
+**Problem**: `sessions.find()` w pętli = O(n²). Przy 100+ sesjach zauważalne spowolnienie.
+**Naprawa**: Zbuduj `Set<number>` z ID sesji przed filtrowaniem → O(n).
 
-**Rekomendacja**
-- Paginate/stream dla sesji i danych raportowych.
-- Dodać backendowy endpoint agregujący dane raportu (jedno zapytanie zamiast wielu).
-- Wprowadzić cache na poziomie store dla all-time stats.
+#### `pages/Sessions.tsx` — Potencjalny race condition przy unmount (~linia 623)
+Auto-refresh co 15 sekund: jeśli komponent zostanie odmontowany w trakcie fetch, `isAutoRefreshing` ref może nie zostać zresetowany przed następnym cyklem.
+**Naprawa**: Dodaj flagę `isMounted` lub `AbortController` do anulowania żądań przy unmount.
 
-### 4.2 Niespójny „all-time range” w różnych miejscach
-**Dowody**
-- `dashboard/src/store/data-store.ts:70`
-- `dashboard/src/pages/Projects.tsx:96`
-- `dashboard/src/components/sync/BackgroundServices.tsx:61`
-- `dashboard/src/pages/ProjectPage.tsx:264`
-- `dashboard/src/pages/ReportView.tsx:73`
+#### `pages/Sessions.tsx` — Stare dane w mapach split eligibility (~linia 351)
+`splitEligibilityBySession` i `splitAnalysisBySession` są czyszczone na podstawie `visibleIds`, ale zmiana `activeProjectId` lub `activeDateRange` nie czyści starych wpisów.
+**Wpływ**: Długotrwałe użycie → akumulacja zbędnych danych w pamięci.
 
-**Opis**
-- Różne moduły używają różnych startów: `1970`, `2000`, `2020`.
+#### `pages/AI.tsx` — Cooldown nie jest usuwany po wygaśnięciu (~linia 94)
+`buildTrainingReminder()` sprawdza `cooldownUntil` ale nie czyści przeterminowanych cooldownów z obiektu `status`. Kolejne wywołania mogą operować na nieaktualnych danych.
 
-**Skutek**
-- Niespójne wyniki pomiędzy ekranami.
+#### `pages/AI.tsx` — Brak deduplikacji wywołań `fetchStatus` (~linia 201)
+`fetchStatus` jest wywoływana przy montażu + co 30 sekund, ale nie blokuje równoczesnych wywołań. Szybkie montowanie/odmontowanie komponentu może skutkować wielokrotnym równoczesnym zapytaniem.
 
-**Rekomendacja**
-- Jedna stała np. `ALL_TIME_START` w centralnym module + użycie wszędzie.
+#### `pages/Dashboard.tsx` — `projectColorMap` potencjalnie niezsynchronizowana (~linia 181)
+Mapa kolorów jest budowana z `allProjects`, ale gdy projekty przychodzą z `Promise.allSettled` (niedeterministyczna kolejność), mapa może być tymczasowo nieaktualna.
 
-### 4.3 Pętla background 1s i częste odczyty ustawień
-**Dowody**
-- `dashboard/src/components/sync/BackgroundServices.tsx:211` (tick 1s)
-- `dashboard/src/components/sync/BackgroundServices.tsx:224` (`loadOnlineSyncSettings()` w pętli)
+---
 
-**Opis**
-- Harmonogram oparty o 1-sekundowy loop obsługuje zadania minutowe/sekundowe.
+### 🟢 NISKIE
 
-**Rekomendacja**
-- Rozbić na osobne timery per job lub scheduler oparty o „next timeout”.
-- Cache ustawień sync i aktualizacja cache po eventach.
+#### `pages/Sessions.tsx` — Handlery w `useCallback` z częstymi zależnościami (~linia 738)
+`assignSessions` z `useSessionActions` zmienia referencję przy każdym `triggerRefresh()`. Skutkuje przebudowaniem wszystkich handlerów przy każdym odświeżeniu danych.
 
-## 5) Kod nadmiarowy / dług techniczny
+#### `pages/Settings.tsx` — Bezwarunkowy zapis przy `handleSaveSettings`
+Ustawienia są zapisywane zawsze, nawet gdy nic się nie zmieniło. Brak porównania ze stanem wyjściowym.
 
-### 5.1 Nieużywany generator raportu
-**Dowód**
-- Definicja: `dashboard/src/lib/report-generator.ts:45`
-- Brak użyć `generateProjectReport` w innych plikach.
+---
 
-**Rekomendacja**
-- Usunąć lub zintegrować z aktualnym flow `Reports`/`ReportView`.
+## 4. MARTWY KOD I NADMIAROWOŚĆ
 
-### 5.2 Duplikacja logiki raportowej
-**Dowody**
-- `dashboard/src/lib/report-generator.ts` (ładowanie template + pobieranie danych)
-- `dashboard/src/pages/ReportView.tsx:31`-`56`, `73`-`87` (analogicznie)
+### Zmienna `projectRenderLimits` — `pages/Projects.tsx` (~linia 211)
+```typescript
+const [projectRenderLimits, setProjectRenderLimits] = useState<...>();
+```
+`projectRenderLimits` jest zadeklarowane w state, ale nie jest używane w żadnym renderowanym elemencie (nie widać go w przeczytanym kodzie). Kandydat do usunięcia.
 
-**Rekomendacja**
-- Wydzielić wspólny serwis `report-data-service.ts` i używać go w jednym miejscu.
+### Zduplikowany color picker UI
+Logika wyboru koloru projektu jest zaimplementowana niezależnie w dwóch miejscach:
+- `pages/ProjectPage.tsx` (~linia 699–744)
+- `pages/Applications.tsx` (~linia 415–463)
 
-## 6) Tłumaczenia (i18n)
+**Zalecenie**: Wyekstrahować do `components/ui/ColorPicker.tsx`.
 
-### 6.1 Spójność en/pl
-- Parzystość kluczy en/pl jest dobra (brak asymetrii plików).
+### Zduplikowane parsowanie stawki (`rate`)
+- `pages/Estimates.tsx` (~linia 34) — dedykowana funkcja `parseRate()`
+- `pages/ProjectPage.tsx` (~linia 640) — ta sama logika inline
 
-### 6.2 Brakujące klucze używane w kodzie (13)
-- `common.cancel`
-- `projects.labels.save`
-- `sessions.menu.accept_suggestion`
-- `sessions.menu.reject_suggestion`
-- `sessions.menu.split_session`
-- `sessions.split.ai_suggestion`
-- `sessions.split.confirm`
-- `sessions.split.description`
-- `sessions.split.part_a`
-- `sessions.split.part_b`
-- `sessions.split.splitting`
-- `sessions.split.title`
-- `sessions.split.unassigned`
+**Zalecenie**: Przenieść `parseRate()` do `lib/utils.ts`.
 
-**Dowody użyć**
-- `dashboard/src/components/sessions/SplitSessionModal.tsx:81`, `87`, `96`, `129`, `139`, `150`, `160`, `191`, `200`, `201`
-- `dashboard/src/components/sessions/SessionRow.tsx:136`, `148`, `419`, `430`
-- `dashboard/src/pages/Sessions.tsx:1216`
-- `dashboard/src/pages/Projects.tsx:1102`
+---
 
-**Dodatkowa obserwacja**
-- `common.cancel` prawdopodobnie powinno być `ui.buttons.cancel` (istnieje: `dashboard/src/locales/en/common.json:6`-`10`).
+## 5. OBSŁUGA BŁĘDÓW
 
-### 6.3 Hardcoded stringi poza i18n
-**Dowody**
-- `dashboard/src/pages/Projects.tsx:457` (hardcoded EN confirm)
-- `dashboard/src/App.tsx:164` (`Loading...`)
+### Rozproszonych ~60 wywołań `console.error`/`console.warn`
+Błędy są logowane do konsoli bez centralnego aggregatora. Szczególnie dotkliwe miejsca:
 
-**Rekomendacja**
-- Przenieść do i18n i używać jednolitego namespace.
+| Plik | Przykład antywzorca |
+|------|---------------------|
+| `pages/Applications.tsx` (~linia 60) | `.catch(console.error)` — brak fallback state |
+| `pages/DaemonControl.tsx` (~linia 39) | `.catch(console.error)` — brak aktualizacji UI |
+| `pages/ProjectPage.tsx` (~linia 403) | `catch(e) { console.error(e) }` — brak toastu dla użytkownika |
 
-## 7) Funkcjonalności nieopisane w Help/Pomoc
+**Zalecenie**: Stworzyć prosty `logger.ts` w `lib/` (wrapping `console.*`) i tam dodać np. BugHunter integration. Przy kluczowych błędach operacyjnych — pokazać `toast` z komunikatem dla użytkownika.
 
-### 7.1 Brak sekcji Help dla modułu Reports
-**Dowody**
-- Nawigacja ma Reports: `dashboard/src/components/layout/Sidebar.tsx:71`
-- Routing ma Reports: `dashboard/src/App.tsx:94`-`95`
-- Help tabs nie mają `reports`: `dashboard/src/lib/help-navigation.ts:1`-`13`, `21`-`33`, `35`-`49`
-- W `Help.tsx` brak `value="reports"` w zakładkach.
+### Brak user feedback przy niepowodzeniu akcji
+W `pages/ProjectPage.tsx` handler `handleAction()` (~linia 403) łapie wyjątek ale nie informuje użytkownika. Użytkownik może nie wiedzieć, że operacja się nie powiodła.
 
-### 7.2 Brak opisu BugHunter w Help
-**Dowody**
-- Funkcja dostępna z sidebara: `dashboard/src/components/layout/Sidebar.tsx:441`-`449`
-- Brak dedykowanego opisu w `Help.tsx`.
+---
 
-### 7.3 Brak opisu „split session” w sekcji Sessions Help
-**Dowody**
-- Funkcja dostępna: `dashboard/src/pages/Sessions.tsx:1216`
-- Modal i logika split: `dashboard/src/components/sessions/SplitSessionModal.tsx`
-- Sekcja help dla sessions nie wymienia splitu: `dashboard/src/pages/Help.tsx:397`-`425`
+## 6. WYDAJNOŚĆ
 
-## 8) Wyniki statycznej weryfikacji
+### Wirtualizacja list
+`react-virtuoso` jest zainstalowane (`^4.18.1`), ale warto sprawdzić czy jest używane we wszystkich długich listach (Sesje, Projekty, Aplikacje). Listy bez wirtualizacji przy 1000+ elementach mogą być wolne.
 
-### 8.1 Frontend lint
-Polecenie: `npm --prefix dashboard run lint`
+### Auto-refresh w Sessions.tsx — brak incremental loading
+Co 15 sekund pobierany jest pełny `PAGE_SIZE` (100 sesji) od offsetu 0. Dla dużych baz danych jest to zbędne. Mogłoby wystarczyć sprawdzenie znacznika czasu ostatniej zmiany.
 
-Wynik: 3 błędy
-- `dashboard/src/pages/ReportView.tsx:72` (`setState` w `useEffect`)
-- `dashboard/src/pages/Sessions.tsx:918` (dostęp do `ref.current` podczas renderu; zgłoszone 2x)
+### `hotProjectIds` bez memoizacji — `pages/Projects.tsx` (~linia 298)
+```typescript
+const hotProjectIds = [...].slice(0, 5); // nowa tablica przy każdym renderze
+```
+**Naprawa**: Opakować w `useMemo`.
 
-### 8.2 Rust clippy
-Polecenie: `cargo clippy --lib -p timeflow-dashboard -- -W clippy::all`
+---
 
-Wynik: 12 ostrzeżeń
-- Główne pliki: `analysis.rs`, `assignment_model.rs`, `estimates.rs`, `projects.rs`, `secure_store.rs`, `sessions.rs`, `lib.rs`.
+## 7. JAKOŚĆ KOMPONENTÓW
 
-### 8.3 Rust testy
-Polecenie: `cargo test --lib -p timeflow-dashboard`
+### `pages/ProjectPage.tsx` — 15+ zmiennych stanu
+Komponent zarządza ~15 niezależnymi wywołaniami `useState`. Trudny w utrzymaniu, ryzyko desynchronizacji stanów.
+**Zalecenie**: Wyekstrahować logikę do customowego hooka `useProjectPageState()` lub pogrupować powiązane stany w jeden obiekt.
 
-Wynik: PASS (6/6)
+### `components/sessions/MultiSplitSessionModal.tsx` — emoji w stringach tłumaczeń
+`'Potwierdź (👍)'` i `'Odrzuć (👎)'` — emoji zahardkodowane w stringach tłumaczeń. Przy ewentualnym customizacji UI mogą sprawiać problemy.
 
-## 9) Priorytety napraw (proponowana kolejność)
+---
 
-### P1 (najpierw)
-1. Ujednolicić logikę membership sesji->projekt na overlap czasowy (backend).
-2. Poprawić metrykę plików (minimum: etykieta; docelowo: model danych z identyfikatorem pliku).
-3. Naprawić brakujące klucze i18n (13) i hardcoded stringi.
-4. Dodać sekcje Help dla: Reports, BugHunter, Split Session.
+## 8. BEZPIECZEŃSTWO I DOBRE PRAKTYKI
 
-### P2
-1. Ujednolicić ALL_TIME range i usunąć rozjazdy 1970/2000/2020.
-2. Ograniczyć ciężkie all-time fetch (agregacje + paginacja).
-3. Naprawić błędy lint (`ReportView`, `Sessions`).
+- ✅ Zero użycia `@ts-ignore` ani `as any` — doskonałe typowanie
+- ✅ Prawidłowe czyszczenie event listenerów w TopBar.tsx, ProjectPage.tsx, Sidebar.tsx
+- ✅ `Promise.allSettled()` stosowane prawidłowo przy równoległych żądaniach
+- ✅ Flaga `disposed`/`isMounted` w Sidebar.tsx zapobiega race condition
+- ✅ Brak sekretów w kodzie
+- ⚠️ Brak `aria-checked` na custom toggle w `pages/DaemonControl.tsx` (~linia 264) — minor dostępność
 
-### P3
-1. Usunąć/scalać `report-generator.ts` z `ReportView`.
-2. Posprzątać ostrzeżenia clippy.
+---
 
-## 10) Uwagi końcowe
-- Aplikacja jest funkcjonalnie używalna, ale obecnie ma kilka miejsc, gdzie liczby i przypisania mogą być niespójne między widokami.
-- Największy wpływ na jakość danych użytkownika będzie miało ujednolicenie logiki przypisywania sesji do projektów oraz doprecyzowanie metryki „Pliki”.
+## 9. PODSUMOWANIE PRIORYTETÓW
+
+| # | Problem | Plik | Pilność |
+|---|---------|------|---------|
+| 1 | `setTimeout` bez cleanup | `Settings.tsx:237` | 🔴 Wysoka |
+| 2 | O(n²) lookup w `ensureCommentForBoost` | `Sessions.tsx:755` | 🟡 Średnia |
+| 3 | ~40 stringów poza `common.json` (inline i18n) | Wiele plików | 🟡 Średnia |
+| 4 | Brak user feedback przy błędach akcji | `ProjectPage.tsx:403`, `Applications.tsx:60` | 🟡 Średnia |
+| 5 | Race condition w `fetchStatus` (AI.tsx) | `AI.tsx:201` | 🟡 Średnia |
+| 6 | Zduplikowany color picker | `ProjectPage.tsx`, `Applications.tsx` | 🟢 Niska |
+| 7 | `projectRenderLimits` — dead code | `Projects.tsx:211` | 🟢 Niska |
+| 8 | `hotProjectIds` bez `useMemo` | `Projects.tsx:298` | 🟢 Niska |
+| 9 | 15+ useState w ProjectPage | `ProjectPage.tsx` | 🟢 Niska |
+| 10 | Brak `aria-checked` na toggle | `DaemonControl.tsx:264` | 🟢 Niska |
+
+---
+
+## 10. OGÓLNA OCENA
+
+Kod jest **dobrej jakości** — poprawna architektura, spójne wzorce, brak problemów z typowaniem TypeScript. Główne obszary do poprawy to:
+
+1. Obsługa błędów (centralizacja, user feedback)
+2. Kilka memory leaków (głównie `setTimeout` bez cleanup)
+3. Migracja inline i18n do plików JSON
+4. Drobna optymalizacja wydajności (O(n²) → O(n), memoizacja)
+
+Brakuje: skonfigurowanych komend `Dev`, `Build`, `Test` w `CLAUDE.md` — bez nich nie można uruchomić linta/testów automatycznie.

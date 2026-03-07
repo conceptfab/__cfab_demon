@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, Languages, TimerReset } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -76,6 +76,7 @@ export function Settings() {
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
   const [clearing, setClearing] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [clearArmed, setClearArmed] = useState(false);
   const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
     loadWorkingHoursSettings(),
@@ -117,6 +118,10 @@ export function Settings() {
         setOnlineSyncSettings((prev) => ({ ...prev, apiToken: token }));
       }
     });
+  }, []);
+
+  useEffect(() => {
+    return () => clearTimeout(toastTimerRef.current);
   }, []);
   const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(
     null,
@@ -234,7 +239,8 @@ export function Settings() {
     setWorkingHoursError(null);
     setSavedSettings(true);
     setShowSavedToast(true);
-    setTimeout(() => setShowSavedToast(false), 3000);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setShowSavedToast(false), 3000);
     triggerRefresh();
   };
 
