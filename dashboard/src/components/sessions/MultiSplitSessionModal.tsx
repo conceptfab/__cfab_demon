@@ -39,9 +39,10 @@ function distributePercents(weights: number[]): number[] {
 
   const safe = weights.map((w) => Math.max(0, w));
   const total = safe.reduce((acc, w) => acc + w, 0);
-  const normalized = total > 0
-    ? safe.map((w) => (w / total) * 100)
-    : safe.map(() => 100 / safe.length);
+  const normalized =
+    total > 0
+      ? safe.map((w) => (w / total) * 100)
+      : safe.map(() => 100 / safe.length);
 
   const floored = normalized.map((v) => Math.floor(v));
   let remainder = 100 - floored.reduce((acc, v) => acc + v, 0);
@@ -64,7 +65,10 @@ function buildInitialParts(
   maxProjects: number,
 ): EditableSplitPart[] {
   if (!analysis || analysis.candidates.length === 0) return [];
-  const limited = analysis.candidates.slice(0, Math.max(2, Math.min(5, maxProjects)));
+  const limited = analysis.candidates.slice(
+    0,
+    Math.max(2, Math.min(5, maxProjects)),
+  );
   const percents = distributePercents(limited.map((c) => c.score));
 
   return limited.map((candidate, idx) => ({
@@ -88,6 +92,7 @@ export function MultiSplitSessionModal({
   const { t } = useTranslation();
   const [parts, setParts] = useState<EditableSplitPart[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setParts(buildInitialParts(analysis, maxProjects));
@@ -115,49 +120,50 @@ export function MultiSplitSessionModal({
     [parts],
   );
 
-  const canSubmit = !isSubmitting && nonZeroParts.length >= 2 && totalPercent === 100;
+  const canSubmit =
+    !isSubmitting && nonZeroParts.length >= 2 && totalPercent === 100;
 
   const handlePercentChange = (index: number, nextPercent: number) => {
-    setParts((prev) =>
-      prev.map((part, i) =>
-        i === index ? { ...part, percent: clampPercent(nextPercent) } : part,
-      ),
-    );
-  };
+    setParts((prev) => {
+      const safePercent = clampPercent(nextPercent);
+      const nextParts = prev.map((part, i) =>
+        i === index ? { ...part, percent: safePercent } : { ...part },
+      );
 
-  const handleProjectChange = (index: number, projectIdRaw: string) => {
-    setParts((prev) =>
-      prev.map((part, i) =>
-        i === index
-          ? {
-              ...part,
-              project_id: projectIdRaw ? Number(projectIdRaw) : null,
+      const newTotal = nextParts.reduce((acc, part) => acc + part.percent, 0);
+      if (newTotal === 100) return nextParts;
+
+      const diff = 100 - newTotal;
+      const otherIndices = nextParts
+        .map((_, i) => i)
+        .filter((i) => i !== index);
+      if (otherIndices.length === 0) return nextParts;
+
+      let remainingDiff = diff;
+      while (remainingDiff !== 0) {
+        let changed = false;
+        if (remainingDiff > 0) {
+          for (const i of otherIndices) {
+            if (nextParts[i].percent < 100) {
+              nextParts[i].percent += 1;
+              remainingDiff -= 1;
+              changed = true;
+              if (remainingDiff === 0) break;
             }
-          : part,
-      ),
-    );
-  };
-
-  const handleAddPart = () => {
-    setParts((prev) => {
-      if (prev.length >= Math.min(5, maxProjects)) return prev;
-      return [
-        ...prev,
-        {
-          project_id: null,
-          percent: 0,
-          ai_score: 0,
-          ratio_to_leader: 0,
-          from_ai: false,
-        },
-      ];
-    });
-  };
-
-  const handleRemovePart = (index: number) => {
-    setParts((prev) => {
-      if (prev.length <= 2) return prev;
-      return prev.filter((_, i) => i !== index);
+          }
+        } else {
+          for (const i of otherIndices) {
+            if (nextParts[i].percent > 0) {
+              nextParts[i].percent -= 1;
+              remainingDiff += 1;
+              changed = true;
+              if (remainingDiff === 0) break;
+            }
+          }
+        }
+        if (!changed) break;
+      }
+      return nextParts;
     });
   };
 
@@ -174,8 +180,11 @@ export function MultiSplitSessionModal({
     }
 
     setIsSubmitting(true);
+    setError(null);
     try {
       await onConfirm(splits);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setIsSubmitting(false);
     }
@@ -234,19 +243,26 @@ export function MultiSplitSessionModal({
                 </span>
               </div>
               <div className="space-y-2">
-                {analysis.candidates.slice(0, Math.min(5, maxProjects)).map((candidate) => (
-                  <div key={candidate.project_id} className="grid grid-cols-[1fr_90px] items-center gap-3 text-xs">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <Sparkles className="h-3 w-3 text-sky-400" />
-                        <span className="truncate">{candidate.project_name}</span>
+                {analysis.candidates
+                  .slice(0, Math.min(5, maxProjects))
+                  .map((candidate) => (
+                    <div
+                      key={candidate.project_id}
+                      className="grid grid-cols-[1fr_90px] items-center gap-3 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <Sparkles className="h-3 w-3 text-sky-400" />
+                          <span className="truncate">
+                            {candidate.project_name}
+                          </span>
+                        </div>
                       </div>
+                      <span className="text-right font-mono text-muted-foreground/80">
+                        {(candidate.ratio_to_leader * 100).toFixed(0)}%
+                      </span>
                     </div>
-                    <span className="text-right font-mono text-muted-foreground/80">
-                      {(candidate.ratio_to_leader * 100).toFixed(0)}%
-                    </span>
-                  </div>
-                ))}
+                  ))}
               </div>
             </div>
 
@@ -254,29 +270,38 @@ export function MultiSplitSessionModal({
               {parts.map((part, idx) => (
                 <div
                   key={`split-part-${idx}`}
-                  className="grid grid-cols-[1.3fr_1fr_80px_28px] items-center gap-2 rounded-lg border border-border/30 bg-secondary/5 px-2 py-2"
+                  className="grid grid-cols-[1.3fr_1fr_80px] items-center gap-2 rounded-lg border border-border/30 bg-secondary/5 px-3 py-2"
                 >
-                  <select
-                    value={part.project_id ?? ''}
-                    onChange={(e) => handleProjectChange(idx, e.target.value)}
-                    className="rounded border border-border/40 bg-secondary/30 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
-                  >
-                    <option value="">
-                      {t('sessions.split_multi.unassigned', 'Nieprzypisane')}
-                    </option>
-                    {activeProjects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          part.project_id != null
+                            ? (projectById.get(part.project_id)?.color ??
+                              '#64748b')
+                            : '#6b7280',
+                      }}
+                    />
+                    <span className="truncate text-sm font-medium">
+                      {part.project_id != null
+                        ? (projectById.get(part.project_id)?.name ??
+                          t(
+                            'sessions.split_multi.unknown_project',
+                            'Nieznany projekt',
+                          ))
+                        : t('sessions.split_multi.unassigned', 'Nieprzypisane')}
+                    </span>
+                  </div>
 
                   <input
                     type="range"
                     min={0}
                     max={100}
                     value={part.percent}
-                    onChange={(e) => handlePercentChange(idx, Number(e.target.value))}
+                    onChange={(e) =>
+                      handlePercentChange(idx, Number(e.target.value))
+                    }
                     className="w-full accent-sky-500"
                   />
 
@@ -285,20 +310,13 @@ export function MultiSplitSessionModal({
                     min={0}
                     max={100}
                     value={part.percent}
-                    onChange={(e) => handlePercentChange(idx, Number(e.target.value))}
-                    className="rounded border border-border/40 bg-secondary/30 px-2 py-1 text-right text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
+                    onChange={(e) =>
+                      handlePercentChange(idx, Number(e.target.value))
+                    }
+                    className="rounded border border-border/40 bg-secondary/30 px-2 py-1 text-right text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500 cursor-pointer"
                   />
 
-                  <button
-                    onClick={() => handleRemovePart(idx)}
-                    className="h-7 w-7 rounded border border-border/30 text-muted-foreground/60 hover:text-destructive disabled:opacity-30"
-                    disabled={parts.length <= 2}
-                    title={t('sessions.split_multi.remove', 'Usuń część')}
-                  >
-                    ×
-                  </button>
-
-                  <div className="col-span-4 text-[10px] text-muted-foreground/60">
+                  <div className="col-span-3 text-[10px] text-muted-foreground/60">
                     {part.from_ai
                       ? t(
                           'sessions.split_multi.ai_score',
@@ -314,16 +332,7 @@ export function MultiSplitSessionModal({
               ))}
             </div>
 
-            <div className="flex items-center justify-between gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleAddPart}
-                disabled={parts.length >= Math.min(5, maxProjects)}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                {t('sessions.split_multi.add_part', 'Dodaj część')}
-              </Button>
+            <div className="flex items-center justify-end gap-2 px-1">
               <span
                 className={`text-xs font-mono ${totalPercent === 100 ? 'text-emerald-400' : 'text-amber-400'}`}
               >
@@ -357,14 +366,30 @@ export function MultiSplitSessionModal({
           </>
         )}
 
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={isSubmitting}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={isSubmitting}
+          >
             {t('ui.buttons.cancel', 'Anuluj')}
           </Button>
           <Button
             size="sm"
             onClick={handleSubmit}
-            disabled={!canSubmit || isAnalysisLoading || !analysis || analysis.candidates.length < 2}
+            disabled={
+              !canSubmit ||
+              isAnalysisLoading ||
+              !analysis ||
+              analysis.candidates.length < 2
+            }
             className="bg-sky-600 hover:bg-sky-700 text-white"
           >
             {isSubmitting
@@ -376,4 +401,3 @@ export function MultiSplitSessionModal({
     </div>
   );
 }
-

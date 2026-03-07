@@ -59,7 +59,9 @@ function AutoImportBanner() {
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="flex items-center gap-2.5 p-3">
           <Archive className="h-4 w-4 text-muted-foreground animate-pulse" />
-          <span className="text-xs">{t('dashboard.auto_import.importing')}</span>
+          <span className="text-xs">
+            {t('dashboard.auto_import.importing')}
+          </span>
         </CardContent>
       </Card>
     );
@@ -108,8 +110,7 @@ function AutoImportBanner() {
 
 function DiscoveredProjectsBanner() {
   const { t } = useTranslation();
-  const projects = useDataStore((s) => s.discoveredProjects);
-  const dismissed = useDataStore((s) => s.discoveredProjectsDismissed);
+  const { projects, dismissed } = useDataStore((s) => s.discoveredProjects);
   const dismiss = useDataStore((s) => s.dismissDiscoveredProjects);
   const { setCurrentPage } = useUIStore();
 
@@ -120,7 +121,9 @@ function DiscoveredProjectsBanner() {
       <CardContent className="flex items-center gap-2.5 p-3">
         <FolderOpen className="h-4 w-4 text-sky-400 shrink-0" />
         <span className="text-xs text-sky-300">
-          {t('dashboard.discovered_projects.summary', { count: projects.length })}
+          {t('dashboard.discovered_projects.summary', {
+            count: projects.length,
+          })}
           {': '}
           <span className="font-medium">{projects.slice(0, 5).join(', ')}</span>
           {projects.length > 5 && ` (+${projects.length - 5})`}
@@ -222,16 +225,13 @@ export function Dashboard() {
         return 5;
     }
   }, [timePreset]);
-  const {
-    assignSessions,
-    updateSessionRateMultipliers,
-    updateSessionComment,
-  } = useSessionActions({
-    onAfterMutation: triggerRefresh,
-    onError: (action, error) => {
-      console.error(`Dashboard session action failed (${action}):`, error);
-    },
-  });
+  const { assignSessions, updateSessionRateMultipliers, updateSessionComment } =
+    useSessionActions({
+      onAfterMutation: triggerRefresh,
+      onError: (action, error) => {
+        console.error(`Dashboard session action failed (${action}):`, error);
+      },
+    });
 
   const handleAssignSession = useCallback(
     async (sessionIds: number[], projectId: number | null) => {
@@ -320,7 +320,7 @@ export function Dashboard() {
         setProjectCount(projects.length);
         setProjectsList(projects);
       })
-      .catch((reason) => {
+      .catch((reason: unknown) => {
         if (!cancelled) {
           console.error('Failed to load projects count:', reason);
         }
@@ -341,19 +341,14 @@ export function Dashboard() {
       .then((timeline) => {
         if (!cancelled) setProjectTimeline(timeline);
       })
-      .catch((reason) => {
+      .catch((reason: unknown) => {
         if (!cancelled)
           console.error('Failed to load project timeline:', reason);
       });
     return () => {
       cancelled = true;
     };
-  }, [
-    dateRange,
-    refreshKey,
-    projectTimelineSeriesLimit,
-    timelineGranularity,
-  ]);
+  }, [dateRange, refreshKey, projectTimelineSeriesLimit, timelineGranularity]);
 
   useEffect(() => {
     if (timePreset !== 'today') {
@@ -363,7 +358,8 @@ export function Dashboard() {
     }
 
     let cancelled = false;
-    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
+    const minDuration =
+      loadSessionSettings().minSessionDurationSeconds || undefined;
     Promise.allSettled([
       getSessions({
         dateRange,
@@ -567,4 +563,3 @@ export function Dashboard() {
     </div>
   );
 }
-

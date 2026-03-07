@@ -143,11 +143,12 @@ export function Sidebar() {
   useEffect(() => {
     let disposed = false;
     let inFlight = false;
+    let inFlightSettings = false;
 
     const isVisible = () =>
       typeof document === 'undefined' || document.visibilityState === 'visible';
 
-    const check = async () => {
+    const checkStatus = async () => {
       if (disposed || inFlight || !isVisible()) return;
       inFlight = true;
       try {
@@ -183,36 +184,9 @@ export function Sidebar() {
       }
     };
 
-    const onVisibilityChange = () => {
-      if (!disposed && isVisible()) {
-        void check();
-      }
-    };
-
-    void check();
-    const interval = window.setInterval(() => {
-      void check();
-    }, 10_000);
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', onVisibilityChange);
-    }
-    return () => {
-      disposed = true;
-      window.clearInterval(interval);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onVisibilityChange);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    let disposed = false;
-
-    const isVisible = () =>
-      typeof document === 'undefined' || document.visibilityState === 'visible';
-
     const loadSettings = async () => {
-      if (disposed || !isVisible()) return;
+      if (disposed || inFlightSettings || !isVisible()) return;
+      inFlightSettings = true;
       try {
         const settings = await getDatabaseSettings();
         if (!disposed) setDbSettings(settings);
@@ -220,22 +194,29 @@ export function Sidebar() {
         if (!disposed) {
           console.error('Failed to load database settings:', error);
         }
+      } finally {
+        inFlightSettings = false;
       }
+    };
+
+    const runChecks = () => {
+      void checkStatus();
+      void loadSettings();
     };
 
     const onVisibilityChange = () => {
       if (!disposed && isVisible()) {
-        void loadSettings();
+        runChecks();
       }
     };
 
-    void loadSettings();
-    const interval = window.setInterval(() => {
-      void loadSettings();
-    }, 60_000);
+    runChecks();
+    const interval = window.setInterval(runChecks, 10_000);
+
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }
+
     return () => {
       disposed = true;
       window.clearInterval(interval);

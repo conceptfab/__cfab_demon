@@ -5,7 +5,6 @@ import type {
   AssignmentModelStatus,
   AutoSafeRollbackResult,
   AutoSafeRunResult,
-  ImportResult,
   Project,
   DashboardStats,
   ProjectTimeRow,
@@ -62,9 +61,7 @@ function invoke<T>(
   args?: Record<string, unknown>,
 ): Promise<T> {
   if (!hasTauriRuntime()) {
-    return Promise.reject(
-      new Error(`Tauri runtime unavailable for command '${command}'`),
-    );
+    return Promise.reject(new Error('Tauri runtime not available'));
   }
   return tauriInvoke<T>(command, args);
 }
@@ -73,15 +70,14 @@ function invokeMutation<T>(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  return invoke<T>(command, args).then((result) => {
+  if (!hasTauriRuntime()) {
+    return Promise.reject(new Error('Tauri runtime not available'));
+  }
+  return tauriInvoke<T>(command, args).then((res) => {
     emitLocalDataChanged(command);
-    return result;
+    return res;
   });
 }
-
-// Import
-export const importJsonFiles = (filePaths: string[]) =>
-  invokeMutation<ImportResult[]>('import_json_files', { filePaths });
 
 export const getImportedFiles = () =>
   invoke<ImportedFile[]>('get_imported_files');
@@ -140,7 +136,10 @@ export function assignSessionToProject(
 export const getProjectExtraInfo = (id: number, dateRange: DateRange) =>
   invoke<ProjectExtraInfo>('get_project_extra_info', { id, dateRange });
 export const getProjectReportData = (projectId: number, dateRange: DateRange) =>
-  invoke<ProjectReportData>('get_project_report_data', { projectId, dateRange });
+  invoke<ProjectReportData>('get_project_report_data', {
+    projectId,
+    dateRange,
+  });
 export const compactProjectData = (id: number) =>
   invokeMutation<void>('compact_project_data', { id });
 export const deleteSession = (sessionId: number) =>
@@ -511,8 +510,16 @@ export const suggestSessionSplit = (sessionId: number) =>
   invoke<SplitSuggestion>('suggest_session_split', { sessionId });
 
 // Multi-Project Session Analysis & Split
-export const analyzeSessionProjects = (sessionId: number, toleranceThreshold: number, maxProjects: number) =>
-  invoke<MultiProjectAnalysis>('analyze_session_projects', { sessionId, toleranceThreshold, maxProjects });
+export const analyzeSessionProjects = (
+  sessionId: number,
+  toleranceThreshold: number,
+  maxProjects: number,
+) =>
+  invoke<MultiProjectAnalysis>('analyze_session_projects', {
+    sessionId,
+    toleranceThreshold,
+    maxProjects,
+  });
 
 export const analyzeSessionsSplittable = (
   sessionIds: number[],

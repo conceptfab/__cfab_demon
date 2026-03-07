@@ -34,6 +34,32 @@ function formatDate(t: string, locale: Locale) {
   }
 }
 
+function computeConfidence(
+  session: SessionWithApp,
+  scoreBreakdownData: ScoreBreakdown | null | undefined,
+) {
+  const bdCandidate = scoreBreakdownData?.candidates?.[0] ?? null;
+  const bdCandidate2 = scoreBreakdownData?.candidates?.[1] ?? null;
+  const isTied =
+    bdCandidate != null &&
+    bdCandidate2 != null &&
+    bdCandidate.total_score === bdCandidate2.total_score;
+  const bdConf = scoreBreakdownData?.final_suggestion?.confidence ?? null;
+
+  const targetName = isTied
+    ? `${bdCandidate!.project_name} / ${bdCandidate2!.project_name}`
+    : (session.suggested_project_name ??
+      bdCandidate?.project_name ??
+      (session.ai_assigned ? session.project_name : null));
+
+  const conf =
+    session.suggested_confidence ??
+    bdConf ??
+    (bdCandidate ? Math.min(bdCandidate.total_score / 10, 1) : null);
+
+  return { targetName, conf, isTied };
+}
+
 export interface SessionRowProps {
   session: SessionWithApp;
   dismissedSuggestions: Set<number>;
@@ -183,27 +209,10 @@ export const SessionRow = memo(function SessionRow({
               )}
               {ind.showScoreBreakdown &&
                 (() => {
-                  const bdCandidate =
-                    scoreBreakdownData?.candidates?.[0] ?? null;
-                  const bdCandidate2 =
-                    scoreBreakdownData?.candidates?.[1] ?? null;
-                  const isTied =
-                    bdCandidate != null &&
-                    bdCandidate2 != null &&
-                    bdCandidate.total_score === bdCandidate2.total_score;
-                  const bdConf =
-                    scoreBreakdownData?.final_suggestion?.confidence ?? null;
-                  const targetName = isTied
-                    ? `${bdCandidate!.project_name} / ${bdCandidate2!.project_name}`
-                    : (s.suggested_project_name ??
-                      bdCandidate?.project_name ??
-                      (s.ai_assigned ? s.project_name : null));
-                  const conf =
-                    s.suggested_confidence ??
-                    bdConf ??
-                    (bdCandidate
-                      ? Math.min(bdCandidate.total_score / 10, 1)
-                      : null);
+                  const { targetName, conf, isTied } = computeConfidence(
+                    s,
+                    scoreBreakdownData,
+                  );
 
                   return (
                     <div className="flex items-center gap-1 rounded-sm px-1 py-0.5 transform-gpu">
@@ -366,26 +375,10 @@ export const SessionRow = memo(function SessionRow({
           )}
           {ind.showScoreBreakdown &&
             (() => {
-              const bdCandidate = scoreBreakdownData?.candidates?.[0] ?? null;
-              const bdCandidate2 = scoreBreakdownData?.candidates?.[1] ?? null;
-              const isTied =
-                bdCandidate != null &&
-                bdCandidate2 != null &&
-                bdCandidate.total_score === bdCandidate2.total_score;
-              const bdConf =
-                scoreBreakdownData?.final_suggestion?.confidence ?? null;
-
-              const targetName = isTied
-                ? `${bdCandidate!.project_name} / ${bdCandidate2!.project_name}`
-                : (s.suggested_project_name ??
-                  bdCandidate?.project_name ??
-                  (s.ai_assigned ? s.project_name : null));
-              const conf =
-                s.suggested_confidence ??
-                bdConf ??
-                (bdCandidate
-                  ? Math.min(bdCandidate.total_score / 10, 1)
-                  : null);
+              const { targetName, conf, isTied } = computeConfidence(
+                s,
+                scoreBreakdownData,
+              );
 
               return (
                 <button

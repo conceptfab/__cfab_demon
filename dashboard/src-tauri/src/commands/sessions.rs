@@ -1162,32 +1162,21 @@ pub async fn split_session(
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    // Step 1: Hide original session
-    // We add an "is_hidden" column if it doesn't exist, though it should from other logic.
+    // Step 1: Update original session in-place as part A (avoids UNIQUE(app_id, start_time) conflict)
     tx.execute(
-        "UPDATE sessions SET is_hidden = 1 WHERE id = ?1",
-        rusqlite::params![session_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Step 2: Insert part A
-    tx.execute(
-        "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, project_id = ?3, comment = ?4
+         WHERE id = ?5",
         rusqlite::params![
-            app_id,
-            start_time,
             split_time_str,
             duration_a_secs,
-            date_str,
-            rate_multiplier,
             project_a_id,
-            comment.as_deref().map(|c| format!("{} (Split 1/2)", c)).unwrap_or_else(|| "Split 1/2".to_string())
+            comment.as_deref().map(|c| format!("{} (Split 1/2)", c)).unwrap_or_else(|| "Split 1/2".to_string()),
+            session_id,
         ],
     )
     .map_err(|e| e.to_string())?;
 
-    // Step 3: Insert part B
+    // Step 2: Insert part B
     tx.execute(
         "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -1547,14 +1536,6 @@ pub async fn split_session_multi(
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    // Hide original
-    tx.execute(
-        "UPDATE sessions SET is_hidden = 1 WHERE id = ?1",
-        rusqlite::params![session_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Insert parts
     let n = splits.len();
     let mut cursor_ms: i64 = 0;
     let mut cursor_secs: i64 = 0;
@@ -1582,21 +1563,37 @@ pub async fn split_session_multi(
             .map(|c| format!("{} (Split {}/{})", c, i + 1, n))
             .unwrap_or_else(|| format!("Split {}/{}", i + 1, n));
 
-        tx.execute(
-            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                app_id,
-                part_start.to_rfc3339(),
-                part_end.to_rfc3339(),
-                part_secs,
-                date_str,
-                rate_multiplier,
-                part.project_id,
-                part_comment,
-            ],
-        )
-        .map_err(|e| e.to_string())?;
+        if i == 0 {
+            // Update original session in-place → no UNIQUE(app_id, start_time) conflict
+            tx.execute(
+                "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, project_id = ?3, comment = ?4
+                 WHERE id = ?5",
+                rusqlite::params![
+                    part_end.to_rfc3339(),
+                    part_secs,
+                    part.project_id,
+                    part_comment,
+                    session_id,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        } else {
+            tx.execute(
+                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    app_id,
+                    part_start.to_rfc3339(),
+                    part_end.to_rfc3339(),
+                    part_secs,
+                    date_str,
+                    rate_multiplier,
+                    part.project_id,
+                    part_comment,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
 
         cursor_ms += part_ms;
         cursor_secs += part_secs;

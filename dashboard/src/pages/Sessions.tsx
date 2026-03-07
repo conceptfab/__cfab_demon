@@ -18,6 +18,7 @@ import {
   getProjects,
   getSessionScoreBreakdown,
   analyzeSessionProjects,
+  analyzeSessionsSplittable,
   splitSessionMulti as splitSessionMultiInvoke,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
@@ -501,38 +502,42 @@ export function Sessions() {
   ]);
 
   useEffect(() => {
-    setSplitEligibilityBySession((prev) => {
-      let changed = false;
-      const next = new Map(prev);
+    const visibleSessionIds = sessions.map((s) => s.id);
+    if (visibleSessionIds.length === 0) {
+      setSplitEligibilityBySession(new Map());
+      return;
+    }
 
-      aiBreakdowns.forEach((breakdown, sessionId) => {
-        if (
-          isSplittableFromBreakdown(
-            breakdown,
-            splitSettings.toleranceThreshold,
-          ) &&
-          next.get(sessionId) !== true
-        ) {
-          next.set(sessionId, true);
-          changed = true;
-        }
-      });
+    let cancelled = false;
+    analyzeSessionsSplittable(
+      visibleSessionIds,
+      splitSettings.toleranceThreshold,
+      splitSettings.maxProjectsPerSession,
+    )
+      .then((flags) => {
+        if (cancelled) return;
+        setSplitEligibilityBySession((prev) => {
+          const next = new Map(prev);
+          let changed = false;
+          for (const flag of flags) {
+            if (next.get(flag.session_id) !== flag.is_splittable) {
+              next.set(flag.session_id, flag.is_splittable);
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      })
+      .catch(console.error);
 
-      if (
-        scoreBreakdown &&
-        isSplittableFromBreakdown(
-          scoreBreakdown.data,
-          splitSettings.toleranceThreshold,
-        ) &&
-        next.get(scoreBreakdown.sessionId) !== true
-      ) {
-        next.set(scoreBreakdown.sessionId, true);
-        changed = true;
-      }
-
-      return changed ? next : prev;
-    });
-  }, [aiBreakdowns, scoreBreakdown, splitSettings.toleranceThreshold]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    sessions,
+    splitSettings.toleranceThreshold,
+    splitSettings.maxProjectsPerSession,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -635,24 +640,15 @@ export function Sessions() {
 
   const openMultiSplitModal = useCallback(
     (session: SessionWithApp) => {
-      const cachedBreakdown = aiBreakdowns.get(session.id);
-      const activeBreakdown =
-        scoreBreakdown?.sessionId === session.id ? scoreBreakdown.data : null;
-      const splitSuggested =
-        isSplittableFromBreakdown(
-          cachedBreakdown,
-          splitSettings.toleranceThreshold,
-        ) ||
-        isSplittableFromBreakdown(
-          activeBreakdown,
-          splitSettings.toleranceThreshold,
-        ) ||
-        (splitEligibilityBySession.get(session.id) ?? false);
+      const splitSuggested = splitEligibilityBySession.get(session.id) ?? false;
       if (!splitSuggested) return;
 
       const derivedAnalysis = buildAnalysisFromBreakdown(
         session.id,
-        cachedBreakdown ?? activeBreakdown,
+        aiBreakdowns.get(session.id) ??
+          (scoreBreakdown?.sessionId === session.id
+            ? scoreBreakdown.data
+            : null),
         splitSettings.toleranceThreshold,
         splitSettings.maxProjectsPerSession,
       );
@@ -905,7 +901,7 @@ export function Sessions() {
         return next;
       });
 
-      const request = getSessionScoreBreakdown(sessionId)
+      const request = withTimeout(getSessionScoreBreakdown(sessionId), 10_000)
         .catch((err) => {
           console.error('Failed to load score breakdown:', err);
           return EMPTY_SCORE_BREAKDOWN;
@@ -937,7 +933,6 @@ export function Sessions() {
   // Background fetch for ALL visible sessions, to bypass the Rust batch analyzer which can fail or fallback to false
   useEffect(() => {
     let cancelled = false;
-    const visibleSessionIds = new Set(sessions.map((s) => s.id));
 
     const idsToFetch = sessions
       .filter(
@@ -1193,6 +1188,9 @@ export function Sessions() {
   }, [sessions, t, projectIdByName]);
   const isSessionSplittable = useCallback(
     (session: SessionWithApp): boolean => {
+      // Already split sessions must not be split again
+      if (session.comment && /Split \d+\/\d+/.test(session.comment)) return false;
+
       const explicit = splitEligibilityBySession.get(session.id);
       if (typeof explicit === 'boolean') return explicit;
 

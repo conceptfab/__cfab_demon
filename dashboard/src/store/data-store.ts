@@ -26,8 +26,7 @@ interface DataState {
   autoImportDone: boolean;
   autoImportResult: AutoImportResult | null;
   setAutoImportDone: (done: boolean, result?: AutoImportResult | null) => void;
-  discoveredProjects: string[];
-  discoveredProjectsDismissed: boolean;
+  discoveredProjects: { projects: string[]; dismissed: boolean };
   setDiscoveredProjects: (names: string[]) => void;
   dismissDiscoveredProjects: () => void;
 }
@@ -75,6 +74,7 @@ function presetToRange(preset: TimePreset): DateRange {
 function inferPreset(range: DateRange): TimePreset {
   const now = new Date();
   const today = format(now, 'yyyy-MM-dd');
+  if (range.start === ALL_TIME_START) return 'all';
   if (range.start === today && range.end === today) return 'today';
   if (
     range.start === format(subDays(now, 6), 'yyyy-MM-dd') &&
@@ -86,7 +86,6 @@ function inferPreset(range: DateRange): TimePreset {
     range.end === today
   )
     return 'month';
-  if (range.start === ALL_TIME_START && range.end === today) return 'all';
   return 'week';
 }
 
@@ -156,10 +155,11 @@ export const useDataStore = create<DataState>((set, get) => ({
   setAutoImportDone: (done, result) =>
     set({ autoImportDone: done, autoImportResult: result ?? null }),
 
-  discoveredProjects: [],
-  discoveredProjectsDismissed: false,
+  discoveredProjects: { projects: [], dismissed: false },
   setDiscoveredProjects: (names) =>
-    set({ discoveredProjects: names, discoveredProjectsDismissed: false }),
+    set({ discoveredProjects: { projects: names, dismissed: false } }),
   dismissDiscoveredProjects: () =>
-    set({ discoveredProjectsDismissed: true }),
+    set((s) => ({
+      discoveredProjects: { ...s.discoveredProjects, dismissed: true },
+    })),
 }));

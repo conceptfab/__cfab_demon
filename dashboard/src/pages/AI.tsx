@@ -146,6 +146,7 @@ export function AIPage() {
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
+  const isFetchingRef = useRef(false);
   const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
@@ -180,23 +181,31 @@ export function AIPage() {
     [status, t],
   );
 
-  const fetchStatus = useCallback(async (silent = false) => {
-    if (!silent) setLoadingStatus(true);
-    try {
-      const nextStatus = await getAssignmentModelStatus();
-      syncFromStatus(nextStatus);
-      const fw = await getFeedbackWeight();
-      if (!dirtyRef.current) setFeedbackWeight(fw);
-    } catch (e) {
-      console.error(e);
-      showError(
-        t('Nie udało się wczytać statusu modelu AI:', 'Failed to load AI model status:') +
-          ` ${String(e)}`,
-      );
-    } finally {
-      if (!silent) setLoadingStatus(false);
-    }
-  }, [showError, t]);
+  const fetchStatus = useCallback(
+    async (silent = false) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      if (!silent) setLoadingStatus(true);
+      try {
+        const nextStatus = await getAssignmentModelStatus();
+        syncFromStatus(nextStatus);
+        const fw = await getFeedbackWeight();
+        if (!dirtyRef.current) setFeedbackWeight(fw);
+      } catch (e) {
+        console.error(e);
+        showError(
+          t(
+            'Nie udało się wczytać statusu modelu AI:',
+            'Failed to load AI model status:',
+          ) + ` ${String(e)}`,
+        );
+      } finally {
+        if (!silent) setLoadingStatus(false);
+        isFetchingRef.current = false;
+      }
+    },
+    [showError, t],
+  );
 
   useEffect(() => {
     fetchStatus();
@@ -231,8 +240,10 @@ export function AIPage() {
     } catch (e) {
       console.error(e);
       showError(
-        t('Nie udało się zapisać ustawień modelu:', 'Failed to save model settings:') +
-          ` ${String(e)}`,
+        t(
+          'Nie udało się zapisać ustawień modelu:',
+          'Failed to save model settings:',
+        ) + ` ${String(e)}`,
       );
     } finally {
       setSavingMode(false);
@@ -247,6 +258,7 @@ export function AIPage() {
       showInfo(t('Trening modelu zakończony.', 'Model training completed.'));
     } catch (e) {
       console.error(e);
+      await fetchStatus(true);
       showError(
         t('Trening modelu nie powiódł się:', 'Model training failed:') +
           ` ${String(e)}`,
@@ -345,8 +357,10 @@ export function AIPage() {
     } catch (e) {
       console.error(e);
       showError(
-        t('Nie udało się odroczyć przypomnienia:', 'Failed to snooze reminder:') +
-          ` ${String(e)}`,
+        t(
+          'Nie udało się odroczyć przypomnienia:',
+          'Failed to snooze reminder:',
+        ) + ` ${String(e)}`,
       );
     } finally {
       setSnoozingReminder(false);
@@ -366,11 +380,15 @@ export function AIPage() {
           <CardContent className="space-y-4 text-sm">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">{t('Tryb', 'Mode')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('Tryb', 'Mode')}
+                </p>
                 <p className="mt-1 font-medium">{status?.mode ?? '-'}</p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">{t('Stan treningu', 'Training State')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('Stan treningu', 'Training State')}
+                </p>
                 <p className="mt-1 font-medium">
                   {status?.is_training
                     ? t('W trakcie', 'In progress')
@@ -378,7 +396,9 @@ export function AIPage() {
                 </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">{t('Ostatni trening', 'Last Training')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('Ostatni trening', 'Last Training')}
+                </p>
                 <p className="mt-1 font-medium">
                   {formatDateTime(status?.last_train_at) || t('Nigdy', 'Never')}
                 </p>
@@ -425,7 +445,10 @@ export function AIPage() {
 
             {trainingReminder.cooldownUntil && !trainingReminder.shouldShow && (
               <div className="rounded-md border border-border/70 bg-background/35 px-3 py-2 text-xs text-muted-foreground">
-                {t('Przypomnienie o treningu odroczone do:', 'Training reminder snoozed until:')}{' '}
+                {t(
+                  'Przypomnienie o treningu odroczone do:',
+                  'Training reminder snoozed until:',
+                )}{' '}
                 {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
               </div>
             )}
@@ -514,17 +537,29 @@ export function AIPage() {
                 <select
                   className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
                   value={mode}
-                  onChange={(e) => { setMode(e.target.value as AssignmentMode); dirtyRef.current = true; }}
+                  onChange={(e) => {
+                    setMode(e.target.value as AssignmentMode);
+                    dirtyRef.current = true;
+                  }}
                 >
-                  <option value="off">{t('Wyłączony (ręczny)', 'Off (manual)')}</option>
-                  <option value="suggest">{t('Sugestie AI', 'AI suggestions')}</option>
-                  <option value="auto_safe">{t('Auto-safe', 'Auto-safe')}</option>
+                  <option value="off">
+                    {t('Wyłączony (ręczny)', 'Off (manual)')}
+                  </option>
+                  <option value="suggest">
+                    {t('Sugestie AI', 'AI suggestions')}
+                  </option>
+                  <option value="auto_safe">
+                    {t('Auto-safe', 'Auto-safe')}
+                  </option>
                 </select>
               </label>
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t('Minimalna pewność sugestii (0..1)', 'Suggest Min Confidence (0..1)')}
+                  {t(
+                    'Minimalna pewność sugestii (0..1)',
+                    'Suggest Min Confidence (0..1)',
+                  )}
                 </span>
                 <input
                   type="number"
@@ -543,7 +578,10 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t('Minimalna pewność auto-safe (0..1)', 'Auto-safe Min Confidence (0..1)')}
+                  {t(
+                    'Minimalna pewność auto-safe (0..1)',
+                    'Auto-safe Min Confidence (0..1)',
+                  )}
                 </span>
                 <input
                   type="number"
@@ -562,7 +600,10 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t('Minimalny próg dowodów auto-safe (1..50)', 'Auto-safe Min Evidence (1..50)')}
+                  {t(
+                    'Minimalny próg dowodów auto-safe (1..50)',
+                    'Auto-safe Min Evidence (1..50)',
+                  )}
                 </span>
                 <input
                   type="number"
@@ -648,7 +689,10 @@ export function AIPage() {
                 },
                 {
                   key: 'showThumbsOnAll' as const,
-                  label: t('Kciuki na wszystkich sesjach', 'Thumbs on all sessions'),
+                  label: t(
+                    'Kciuki na wszystkich sesjach',
+                    'Thumbs on all sessions',
+                  ),
                   desc: t(
                     'Pokaż przyciski feedbacku na każdej przypisanej sesji (nie tylko AI)',
                     'Show feedback buttons on every assigned session (not just AI)',
@@ -664,7 +708,10 @@ export function AIPage() {
                 },
                 {
                   key: 'showScoreBreakdown' as const,
-                  label: t('Przycisk rozbicia punktacji', 'Score breakdown button'),
+                  label: t(
+                    'Przycisk rozbicia punktacji',
+                    'Score breakdown button',
+                  ),
                   desc: t(
                     'Pokaż przycisk szczegółów punktacji (BarChart3) na każdej sesji',
                     'Show the score details button (BarChart3) on each session',
@@ -745,7 +792,10 @@ export function AIPage() {
                 <RotateCcw className="mr-2 h-4 w-4" />
                 {rollingBack
                   ? t('Cofanie...', 'Rolling back...')
-                  : t('Cofnij ostatnią paczkę auto-safe', 'Rollback last auto-safe batch')}
+                  : t(
+                      'Cofnij ostatnią paczkę auto-safe',
+                      'Rollback last auto-safe batch',
+                    )}
               </Button>
             </div>
 
@@ -766,7 +816,9 @@ export function AIPage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm leading-6">
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="font-medium">{t('Kiedy trenować model', 'When to train the model')}</p>
+              <p className="font-medium">
+                {t('Kiedy trenować model', 'When to train the model')}
+              </p>
               <p className="text-muted-foreground">
                 {t(
                   'Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.',
@@ -786,7 +838,9 @@ export function AIPage() {
             </div>
 
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="font-medium">{t('Znaczenie parametrów', 'What parameters mean')}</p>
+              <p className="font-medium">
+                {t('Znaczenie parametrów', 'What parameters mean')}
+              </p>
               <p className="mt-2 text-muted-foreground">
                 {t(
                   'Mode: off wyłącza sugestie, suggest pokazuje sugestie bez auto-zmian, auto_safe pozwala na automatyczne przypisania tylko przy wysokiej pewności.',
@@ -826,7 +880,12 @@ export function AIPage() {
             </div>
 
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="font-medium">{t('Rekomendowane ustawienia startowe', 'Recommended starting settings')}</p>
+              <p className="font-medium">
+                {t(
+                  'Rekomendowane ustawienia startowe',
+                  'Recommended starting settings',
+                )}
+              </p>
               <p className="text-muted-foreground">
                 {t(
                   'Zacznij od mode=suggest, suggest=0.60, auto=0.85, evidence=3. Gdy sugestie są trafne, włącz auto_safe.',

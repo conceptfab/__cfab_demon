@@ -27,15 +27,21 @@ const JOB_LOOP_TICK_MS = 2000;
 
 // THREADING: Prevents concurrent heavy operations (rebuild, AI train/assign)
 // from overloading the backend. Simple module-level flag — safe in single-threaded JS.
-let heavyOperationInProgress = false;
+const heavyOperations = new Map<string, boolean>();
 
-async function runHeavyOperation<T>(fn_: () => Promise<T>): Promise<T | null> {
-  if (heavyOperationInProgress) return null;
-  heavyOperationInProgress = true;
+async function runHeavyOperation<T>(
+  key: string,
+  fn_: () => Promise<T>,
+): Promise<T | null> {
+  if (heavyOperations.get(key)) {
+    console.warn(`Heavy operation '${key}' is already in progress. Skipping.`);
+    return null;
+  }
+  heavyOperations.set(key, true);
   try {
     return await fn_();
   } finally {
-    heavyOperationInProgress = false;
+    heavyOperations.set(key, false);
   }
 }
 
@@ -44,12 +50,15 @@ function buildAutoSplits(
   maxProjects: number,
 ): SplitPart[] {
   const candidates = analysis.candidates
-    .slice(0, Math.max(2, Math.min(5, maxProjects)))
-    .filter((candidate) => candidate.score > 0);
+    .filter((candidate) => candidate.score > 0)
+    .slice(0, Math.max(2, Math.min(5, maxProjects)));
 
   if (candidates.length < 2) return [];
 
-  const totalScore = candidates.reduce((acc, candidate) => acc + candidate.score, 0);
+  const totalScore = candidates.reduce(
+    (acc, candidate) => acc + candidate.score,
+    0,
+  );
   if (totalScore <= 0) return [];
 
   const raw: SplitPart[] = candidates.map((candidate) => ({
@@ -58,9 +67,10 @@ function buildAutoSplits(
   }));
 
   const ratioSum = raw.reduce((acc, part) => acc + part.ratio, 0);
-  const drift = 1 - ratioSum;
-  if (raw.length > 0 && Math.abs(drift) > 0.000_001) {
-    raw[raw.length - 1].ratio += drift;
+  if (ratioSum > 0 && Math.abs(1 - ratioSum) > 0.000_001) {
+    raw.forEach((part) => {
+      part.ratio = part.ratio / ratioSum;
+    });
   }
   return raw;
 }
@@ -129,7 +139,7 @@ function useAutoSessionRebuild() {
       try {
         const settings = loadSessionSettings();
         if (settings.rebuildOnStartup && settings.gapFillMinutes > 0) {
-          const merged = await runHeavyOperation(() =>
+          const merged = await runHeavyOperation('rebuild', () =>
             rebuildSessions(settings.gapFillMinutes),
           );
           if (merged != null && merged > 0) {
@@ -153,7 +163,7 @@ function useAutoAiAssignment() {
     lastProcessedKey.current = refreshKey;
 
     const run = async () => {
-      const result = await runHeavyOperation(async () => {
+      const result = await runHeavyOperation('ai_assignment', async () => {
         let needsRefresh = false;
         try {
           const det = await applyDeterministicAssignment();
@@ -190,8 +200,9 @@ function useAutoSplitSessions() {
     const splitSettings = loadSplitSettings();
     if (!splitSettings.autoSplitEnabled) return;
 
-    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
-    const result = await runHeavyOperation(async () => {
+    const minDuration =
+      loadSessionSettings().minSessionDurationSeconds || undefined;
+    const result = await runHeavyOperation('auto_split', async () => {
       const sessions = await getSessions({
         limit: 50,
         offset: 0,
@@ -230,84 +241,89 @@ function useAutoSplitSessions() {
     }
   }, [autoImportDone, triggerRefresh]);
 
+  const runAutoSplitRef = useRef(runAutoSplit);
+  useEffect(() => {
+    runAutoSplitRef.current = runAutoSplit;
+  }, [runAutoSplit]);
+
   useEffect(() => {
     if (!autoImportDone) return;
 
-    void runAutoSplit();
+    void runAutoSplitRef.current();
     const interval = window.setInterval(() => {
-      void runAutoSplit();
+      void runAutoSplitRef.current();
     }, 60_000);
     return () => clearInterval(interval);
-  }, [autoImportDone, runAutoSplit]);
+  }, [autoImportDone]);
 }
 
 // === UNIVERSAL JOB POOL ===
 // Replaces multiple setTimeouts/setIntervals scattered across components with a single event loop
-
 function useJobPool() {
   const { autoImportDone, triggerRefresh } = useDataStore();
+  const loopRef = useRef<number | null>(null);
+
+  const nextRefreshRef = useRef(0);
+  const nextSigCheckRef = useRef(0);
+  const nextSyncIntervalRef = useRef(0);
+  const nextSyncPollRef = useRef(0);
 
   const syncRunningRef = useRef(false);
-  const refreshingRef = useRef(false);
-  const lastSignatureRef = useRef<string | null>(null);
-
-  const loopRef = useRef<number | null>(null);
-  const nextRefreshRef = useRef(Date.now() + 30_000);
-  const nextSigCheckRef = useRef(Date.now() + 5_000);
-  const nextSyncIntervalRef = useRef(0);
-  const nextSyncPollRef = useRef(Date.now() + 20_000);
   const syncSettingsRef = useRef(loadOnlineSyncSettings());
+  const syncFailCountRef = useRef(0);
 
-  const localChangeSyncTimer = useRef<number | null>(null);
+  const lastSignatureRef = useRef<string | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
-  const refreshSyncSettingsCache = useCallback(() => {
-    const syncSettings = loadOnlineSyncSettings();
-    syncSettingsRef.current = syncSettings;
-    nextSyncIntervalRef.current =
-      Date.now() + Math.max(1, syncSettings.autoSyncIntervalMinutes) * 60_000;
-    nextSyncPollRef.current = Date.now() + 120_000;
-  }, []);
-
-  const runRefresh = useCallback(async () => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
-    try {
-      const result = await refreshToday();
-      if (result.file_found) triggerRefresh();
-    } catch {
-      // Ignore
-    } finally {
-      refreshingRef.current = false;
-    }
-  }, [triggerRefresh]);
+  const localChangeSyncTimer = useRef<number | null>(null);
 
   const checkFileChange = useCallback(async () => {
     try {
       const sig = await getTodayFileSignature();
-      const key = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
-      if (lastSignatureRef.current === null) {
-        lastSignatureRef.current = key;
-        return;
+      const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
+      if (
+        lastSignatureRef.current !== null &&
+        lastSignatureRef.current !== current
+      ) {
+        triggerRefresh();
       }
-      if (key !== lastSignatureRef.current) {
-        lastSignatureRef.current = key;
-        await runRefresh();
-      }
-    } catch {
-      // Ignore
-    }
-  }, [runRefresh]);
+      lastSignatureRef.current = current;
+    } catch {}
+  }, [triggerRefresh]);
+
+  const runRefresh = useCallback(async () => {
+    try {
+      await refreshToday();
+      triggerRefresh();
+    } catch {}
+  }, [triggerRefresh]);
+
+  const refreshSyncSettingsCache = useCallback(() => {
+    syncSettingsRef.current = loadOnlineSyncSettings();
+  }, []);
 
   const runSync = useCallback(
-    async (source: string, ignoreStartupToggle = true) => {
+    async (reason: string, isAuto = true) => {
       if (syncRunningRef.current) return;
+      const settings = syncSettingsRef.current;
+      if (isAuto && !settings.enabled) return;
+
       syncRunningRef.current = true;
       try {
-        const result = await runOnlineSyncOnce({ ignoreStartupToggle });
-        if (result.skipped) return;
-        if (result.ok && result.action === 'pull') triggerRefresh();
-      } catch (error) {
-        console.warn(`Online sync (${source}) failed:`, String(error));
+        console.log(`[useJobPool] Running online sync (reason: ${reason})`);
+        await runOnlineSyncOnce();
+        triggerRefresh();
+        syncFailCountRef.current = 0; // Reset na sukces
+      } catch (e) {
+        console.warn('Sync failed:', e);
+        syncFailCountRef.current += 1;
+
+        // Exponential backoff logic
+        const backoffSec = Math.min(
+          300,
+          30 * Math.pow(2, syncFailCountRef.current - 1),
+        );
+        console.log(`Sync backoff: retry assigned in ${backoffSec}s`);
+        nextSyncPollRef.current = Date.now() + backoffSec * 1000;
       } finally {
         syncRunningRef.current = false;
       }
@@ -316,8 +332,8 @@ function useJobPool() {
   );
 
   useEffect(() => {
+    if (!autoImportDone) return;
     let disposed = false;
-    refreshSyncSettingsCache();
 
     // Bootstrap initial data
     void runRefresh().then(() => {
@@ -363,7 +379,13 @@ function useJobPool() {
       disposed = true;
       if (loopRef.current !== null) clearInterval(loopRef.current);
     };
-  }, [autoImportDone, checkFileChange, runRefresh, runSync, refreshSyncSettingsCache]);
+  }, [
+    autoImportDone,
+    checkFileChange,
+    runRefresh,
+    runSync,
+    refreshSyncSettingsCache,
+  ]);
 
   useEffect(() => {
     const handleSyncSettingsChange = () => {

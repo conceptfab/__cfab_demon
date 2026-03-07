@@ -1,209 +1,330 @@
-# TIMEFLOW — Raport analizy kodu
+# TIMEFLOW - Raport analizy kodu
 
-**Data**: 2026-03-07
-**Gałąź**: `next`
-**Zakres**: Frontend (React/TypeScript), backend (Rust/Tauri), tłumaczenia, dokumentacja Help
-
----
-
-## 1. TŁUMACZENIA (i18n)
-
-### Stan ogólny: ✅ Dobry
-
-Pliki `en/common.json` i `pl/common.json` są **w pełni zsynchronizowane** — zero brakujących kluczy w obu kierunkach. Oba zawierają ~912 kluczy.
-
-### Problem: ~40 stringów poza JSON-em (inline i18n)
-
-Następujące komponenty używają wzorca `t('Polski tekst', 'English text')` zamiast odwoływać się do kluczy w `common.json`. Oznacza to, że te teksty nie pojawiają się w plikach lokalizacyjnych i są trudniejsze do utrzymania:
-
-| Plik | Liczba stringów | Przykłady |
-|------|----------------|-----------|
-| `components/sessions/SessionRow.tsx` | 3 | `'AI sugeruje podział'`, `'Potwierdź (👍)'`, `'Odrzuć (👎)'` |
-| `components/data/ImportPanel.tsx` | 9 | `'Wczytaj plik eksportu...'`, `'Import zakończony!'`, `'Brakujące projekty'` |
-| `components/sessions/MultiSplitSessionModal.tsx` | 7 | `'Podziel sesję na wiele projektów'`, `'Lider'`, `'Nieprzypisane'`, `'Część ręczna'` |
-| `components/data/ExportPanel.tsx` | 3 | `'Eksport nie powiódł się: {{error}}'`, `'Cały okres (od początku)'` |
-| `components/data/DatabaseManagement.tsx` | 14 | Komunikaty sukcesu/błędu vacuum, backup, optymalizacji |
-
-**Zalecenie**: Przenieść te stringi do `common.json` (sekcje `components.import`, `components.export`, `components.sessions`) i zastąpić wywołania inline kluczami JSON.
+**Data:** 2026-03-07
+**Zakres:** Poprawnosc logiki, wydajnosc, optymalizacje, nadmiarowy kod, tlumaczenia, dokumentacja Help
 
 ---
 
-## 2. DOKUMENTACJA (Help.tsx)
+## 1. PROBLEMY KRYTYCZNE
 
-### Stan ogólny: ✅ Kompletna
+### 1.1 Memory leak w BackgroundServices.tsx (linia 237-241)
 
-`Help.tsx` dokumentuje 12 sekcji pokrywając wszystkie główne funkcje aplikacji:
+**Problem:** `runAutoSplit` jest w dependency array `useEffect`, ale zmienia sie przy kazdym renderze (jego deps `triggerRefresh` zmienia sie czesto). Powoduje to resetowanie `setInterval` przy kazdym renderze — zamiast 1 intervalu, moze byc ich 12+ na minute.
 
-- QUICK START, DASHBOARD, SESSIONS, PROJECTS, ESTIMATES
-- APPLICATIONS, TIME ANALYSIS, AI & MODEL, DATA, REPORTS
-- DAEMON, SETTINGS
-
-**Brak nieudokumentowanych funkcji** — wszystkie ekrany i tryby działania mają opis w Help.
-
----
-
-## 3. BŁĘDY LOGIKI I MEMORY LEAKS
-
-### 🔴 KRYTYCZNE
-
-#### `pages/Settings.tsx` — setTimeout bez cleanup (~linia 237)
 ```typescript
-setTimeout(() => setShowSavedToast(false), 3000)
-// Brak clearTimeout przy unmount komponentu
-```
-**Problem**: Jeśli użytkownik opuści stronę przed upływem 3 sekund, React zgłosi warning o aktualizacji stanu na odmontowanym komponencie. W React 18+ może to powodować memory leak.
-**Naprawa**:
-```typescript
-const toastTimer = useRef<ReturnType<typeof setTimeout>>();
-// przy ustawieniu:
-toastTimer.current = setTimeout(() => setShowSavedToast(false), 3000);
-// w useEffect cleanup:
-return () => clearTimeout(toastTimer.current);
+useEffect(() => {
+  if (!autoImportDone) return;
+  void runAutoSplit();
+  const interval = window.setInterval(() => void runAutoSplit(), 60_000);
+  return () => clearInterval(interval);
+}, [autoImportDone, runAutoSplit]); // runAutoSplit zmienia sie co render!
 ```
 
+**Rozwiazanie:** Uzyc `useRef` do przechowywania aktualnej wersji `runAutoSplit` i w `useEffect` odwolywac sie do ref.current. Dependency array powinien zawierac tylko `autoImportDone`.
+
 ---
 
-### 🟡 ŚREDNIE
+### 1.2 Globalna flaga `heavyOperationInProgress` (BackgroundServices.tsx, linia 29-40)
 
-#### `pages/Sessions.tsx` — O(n²) lookup w `ensureCommentForBoost` (~linia 755)
+**Problem:** Jedna globalna flaga blokuje WSZYSTKIE ciezkie operacje (rebuild, train, auto-assign). Jesli rebuild trwa, user klika "Train Now" w AI.tsx — dostaje ciche niepowodzenie bez komunikatu bledu.
+
 ```typescript
-const missingIds = boostIds.filter(id => sessions.find(s => s.id === id));
+let heavyOperationInProgress = false; // Jedna flaga dla wszystkiego
 ```
-**Problem**: `sessions.find()` w pętli = O(n²). Przy 100+ sesjach zauważalne spowolnienie.
-**Naprawa**: Zbuduj `Set<number>` z ID sesji przed filtrowaniem → O(n).
 
-#### `pages/Sessions.tsx` — Potencjalny race condition przy unmount (~linia 623)
-Auto-refresh co 15 sekund: jeśli komponent zostanie odmontowany w trakcie fetch, `isAutoRefreshing` ref może nie zostać zresetowany przed następnym cyklem.
-**Naprawa**: Dodaj flagę `isMounted` lub `AbortController` do anulowania żądań przy unmount.
-
-#### `pages/Sessions.tsx` — Stare dane w mapach split eligibility (~linia 351)
-`splitEligibilityBySession` i `splitAnalysisBySession` są czyszczone na podstawie `visibleIds`, ale zmiana `activeProjectId` lub `activeDateRange` nie czyści starych wpisów.
-**Wpływ**: Długotrwałe użycie → akumulacja zbędnych danych w pamięci.
-
-#### `pages/AI.tsx` — Cooldown nie jest usuwany po wygaśnięciu (~linia 94)
-`buildTrainingReminder()` sprawdza `cooldownUntil` ale nie czyści przeterminowanych cooldownów z obiektu `status`. Kolejne wywołania mogą operować na nieaktualnych danych.
-
-#### `pages/AI.tsx` — Brak deduplikacji wywołań `fetchStatus` (~linia 201)
-`fetchStatus` jest wywoływana przy montażu + co 30 sekund, ale nie blokuje równoczesnych wywołań. Szybkie montowanie/odmontowanie komponentu może skutkować wielokrotnym równoczesnym zapytaniem.
-
-#### `pages/Dashboard.tsx` — `projectColorMap` potencjalnie niezsynchronizowana (~linia 181)
-Mapa kolorów jest budowana z `allProjects`, ale gdy projekty przychodzą z `Promise.allSettled` (niedeterministyczna kolejność), mapa może być tymczasowo nieaktualna.
+**Rozwiazanie:** Zamienic na `Map<string, boolean>` per typ operacji, lub przynajmniej informowac uzytkownika, ze operacja jest zablokowana.
 
 ---
 
-### 🟢 NISKIE
+### 1.3 Brak rate-limitingu na emitLocalDataChanged (tauri.ts, linia 72-80)
 
-#### `pages/Sessions.tsx` — Handlery w `useCallback` z częstymi zależnościami (~linia 738)
-`assignSessions` z `useSessionActions` zmienia referencję przy każdym `triggerRefresh()`. Skutkuje przebudowaniem wszystkich handlerów przy każdym odświeżeniu danych.
+**Problem:** Kazda mutacja emituje event `localDataChanged`. Przy batch operacjach (np. przypisanie 10 sesji) generuje 10 eventow, kazdy triggeruje pelny refresh danych w BackgroundServices.
 
-#### `pages/Settings.tsx` — Bezwarunkowy zapis przy `handleSaveSettings`
-Ustawienia są zapisywane zawsze, nawet gdy nic się nie zmieniło. Brak porównania ze stanem wyjściowym.
-
----
-
-## 4. MARTWY KOD I NADMIAROWOŚĆ
-
-### Zmienna `projectRenderLimits` — `pages/Projects.tsx` (~linia 211)
 ```typescript
-const [projectRenderLimits, setProjectRenderLimits] = useState<...>();
+function invokeMutation<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  return invoke<T>(command, args).then((result) => {
+    emitLocalDataChanged(command); // 10 mutacji = 10 refreshow
+    return result;
+  });
+}
 ```
-`projectRenderLimits` jest zadeklarowane w state, ale nie jest używane w żadnym renderowanym elemencie (nie widać go w przeczytanym kodzie). Kandydat do usunięcia.
 
-### Zduplikowany color picker UI
-Logika wyboru koloru projektu jest zaimplementowana niezależnie w dwóch miejscach:
-- `pages/ProjectPage.tsx` (~linia 699–744)
-- `pages/Applications.tsx` (~linia 415–463)
-
-**Zalecenie**: Wyekstrahować do `components/ui/ColorPicker.tsx`.
-
-### Zduplikowane parsowanie stawki (`rate`)
-- `pages/Estimates.tsx` (~linia 34) — dedykowana funkcja `parseRate()`
-- `pages/ProjectPage.tsx` (~linia 640) — ta sama logika inline
-
-**Zalecenie**: Przenieść `parseRate()` do `lib/utils.ts`.
+**Rozwiazanie:** Dodac debounce/throttle na `emitLocalDataChanged` (np. 300ms) lub batch mutations z jednym eventem na koniec.
 
 ---
 
-## 5. OBSŁUGA BŁĘDÓW
+### 1.4 Race condition w fetchStatus (AI.tsx, linia 183-207)
 
-### Rozproszonych ~60 wywołań `console.error`/`console.warn`
-Błędy są logowane do konsoli bez centralnego aggregatora. Szczególnie dotkliwe miejsca:
+**Problem:** `fetchStatus()` uruchamia sie co 30s w interwale, ale nie sprawdza, czy poprzedni request sie zakonczyl. Przy wolnym backendzie moze nakladac sie wiele requestow.
 
-| Plik | Przykład antywzorca |
-|------|---------------------|
-| `pages/Applications.tsx` (~linia 60) | `.catch(console.error)` — brak fallback state |
-| `pages/DaemonControl.tsx` (~linia 39) | `.catch(console.error)` — brak aktualizacji UI |
-| `pages/ProjectPage.tsx` (~linia 403) | `catch(e) { console.error(e) }` — brak toastu dla użytkownika |
-
-**Zalecenie**: Stworzyć prosty `logger.ts` w `lib/` (wrapping `console.*`) i tam dodać np. BugHunter integration. Przy kluczowych błędach operacyjnych — pokazać `toast` z komunikatem dla użytkownika.
-
-### Brak user feedback przy niepowodzeniu akcji
-W `pages/ProjectPage.tsx` handler `handleAction()` (~linia 403) łapie wyjątek ale nie informuje użytkownika. Użytkownik może nie wiedzieć, że operacja się nie powiodła.
+**Rozwiazanie:** Dodac `AbortController` lub flage `isFetching` z early return.
 
 ---
 
-## 6. WYDAJNOŚĆ
+### 1.5 Niespojnosc scoringu sesji (Sessions.tsx vs BackgroundServices.tsx)
 
-### Wirtualizacja list
-`react-virtuoso` jest zainstalowane (`^4.18.1`), ale warto sprawdzić czy jest używane we wszystkich długich listach (Sesje, Projekty, Aplikacje). Listy bez wirtualizacji przy 1000+ elementach mogą być wolne.
+**Problem:** `isSplittableFromBreakdown()` (Sessions.tsx, linia 122-134) uzywa `scoreBreakdownData` z frontendu, podczas gdy `autoSplitSessions` (BackgroundServices.tsx, linia 207-211) uzywa `analyzeSessionProjects` API call. Moga dawac rozne wyniki jesli model AI zmienil sie miedzy wywolaniami.
 
-### Auto-refresh w Sessions.tsx — brak incremental loading
-Co 15 sekund pobierany jest pełny `PAGE_SIZE` (100 sesji) od offsetu 0. Dla dużych baz danych jest to zbędne. Mogłoby wystarczyć sprawdzenie znacznika czasu ostatniej zmiany.
+**Rozwiazanie:** Ujednolicic zrodlo danych — albo zawsze z API, albo zawsze z cache.
 
-### `hotProjectIds` bez memoizacji — `pages/Projects.tsx` (~linia 298)
+---
+
+## 2. PROBLEMY SREDNIE
+
+### 2.1 Brak error recovery w handleTrainNow (AI.tsx, linia 242-257)
+
+**Problem:** Jesli trening sie nie powiedzie, status nie jest odswiezany. Uzytkownik widzi stary status.
+
+**Rozwiazanie:** W bloku `catch` dodac `fetchStatus(true)` przed `showError`.
+
+---
+
+### 2.2 Drift correction moze dac ujemne ratio (BackgroundServices.tsx, linia 60-64)
+
+**Problem:** Korekta driftu dodaje roznice do ostatniego projektu. Jesli drift jest duzy (-0.1), ostatni projekt moze dostac ujemne ratio.
+
 ```typescript
-const hotProjectIds = [...].slice(0, 5); // nowa tablica przy każdym renderze
+const drift = 1 - ratioSum;
+if (raw.length > 0 && Math.abs(drift) > 0.000_001) {
+  raw[raw.length - 1].ratio += drift; // Moze byc ujemne!
+}
 ```
-**Naprawa**: Opakować w `useMemo`.
+
+**Rozwiazanie:** Normalizowac kazdy ratio proporcjonalnie: `ratio = ratio / ratioSum`.
 
 ---
 
-## 7. JAKOŚĆ KOMPONENTÓW
+### 2.3 Brak backoff strategy dla sync (BackgroundServices.tsx, linia 310)
 
-### `pages/ProjectPage.tsx` — 15+ zmiennych stanu
-Komponent zarządza ~15 niezależnymi wywołaniami `useState`. Trudny w utrzymaniu, ryzyko desynchronizacji stanów.
-**Zalecenie**: Wyekstrahować logikę do customowego hooka `useProjectPageState()` lub pogrupować powiązane stany w jeden obiekt.
+**Problem:** Jesli synchronizacja online zawsze failuje (brak polaczenia), retry co 30s bez backoff — drain baterii i spam sieciowy.
 
-### `components/sessions/MultiSplitSessionModal.tsx` — emoji w stringach tłumaczeń
-`'Potwierdź (👍)'` i `'Odrzuć (👎)'` — emoji zahardkodowane w stringach tłumaczeń. Przy ewentualnym customizacji UI mogą sprawiać problemy.
+**Rozwiazanie:** Implementowac exponential backoff (30s, 60s, 120s, max 5min).
 
 ---
 
-## 8. BEZPIECZEŃSTWO I DOBRE PRAKTYKI
+### 2.4 Brak timeout dla score breakdown loading (SessionRow.tsx, linia 210-213)
 
-- ✅ Zero użycia `@ts-ignore` ani `as any` — doskonałe typowanie
-- ✅ Prawidłowe czyszczenie event listenerów w TopBar.tsx, ProjectPage.tsx, Sidebar.tsx
-- ✅ `Promise.allSettled()` stosowane prawidłowo przy równoległych żądaniach
-- ✅ Flaga `disposed`/`isMounted` w Sidebar.tsx zapobiega race condition
-- ✅ Brak sekretów w kodzie
-- ⚠️ Brak `aria-checked` na custom toggle w `pages/DaemonControl.tsx` (~linia 264) — minor dostępność
+**Problem:** Jesli ladowanie score breakdown zawiesi sie (timeout sieci), UI pokazuje "loading..." w nieskonczonosc. Brak stanu bledu.
+
+**Rozwiazanie:** Dodac timeout (np. 10s) i fallback do stanu bledu.
 
 ---
 
-## 9. PODSUMOWANIE PRIORYTETÓW
+### 2.5 Dwa niezalezne setInterval w Sidebar.tsx (linia 143-206)
 
-| # | Problem | Plik | Pilność |
-|---|---------|------|---------|
-| 1 | `setTimeout` bez cleanup | `Settings.tsx:237` | 🔴 Wysoka |
-| 2 | O(n²) lookup w `ensureCommentForBoost` | `Sessions.tsx:755` | 🟡 Średnia |
-| 3 | ~40 stringów poza `common.json` (inline i18n) | Wiele plików | 🟡 Średnia |
-| 4 | Brak user feedback przy błędach akcji | `ProjectPage.tsx:403`, `Applications.tsx:60` | 🟡 Średnia |
-| 5 | Race condition w `fetchStatus` (AI.tsx) | `AI.tsx:201` | 🟡 Średnia |
-| 6 | Zduplikowany color picker | `ProjectPage.tsx`, `Applications.tsx` | 🟢 Niska |
-| 7 | `projectRenderLimits` — dead code | `Projects.tsx:211` | 🟢 Niska |
-| 8 | `hotProjectIds` bez `useMemo` | `Projects.tsx:298` | 🟢 Niska |
-| 9 | 15+ useState w ProjectPage | `ProjectPage.tsx` | 🟢 Niska |
-| 10 | Brak `aria-checked` na toggle | `DaemonControl.tsx:264` | 🟢 Niska |
+**Problem:** Dwa niemal identyczne `useEffect` z `setInterval` (10s i 60s). Szybki unmount/remount moze spowodowac niezatrzymane timery.
+
+**Rozwiazanie:** Polaczyc w jeden `useEffect` lub wydzielic hook `usePollingEffect(fn, interval)`.
 
 ---
 
-## 10. OGÓLNA OCENA
+### 2.6 Throttle timer bez cleanup (data-store.ts, linia 36-57)
 
-Kod jest **dobrej jakości** — poprawna architektura, spójne wzorce, brak problemów z typowaniem TypeScript. Główne obszary do poprawy to:
+**Problem:** Zmienne `lastRefreshAtMs` i `scheduledRefreshTimer` sa na poziomie modulu. Jesli store jest zdestrukturyzowany (testy), timer zostaje w tle.
 
-1. Obsługa błędów (centralizacja, user feedback)
-2. Kilka memory leaków (głównie `setTimeout` bez cleanup)
-3. Migracja inline i18n do plików JSON
-4. Drobna optymalizacja wydajności (O(n²) → O(n), memoizacja)
+**Rozwiazanie:** Dodac cleanup mechanism lub przeniesc do store lifecycle.
 
-Brakuje: skonfigurowanych komend `Dev`, `Build`, `Test` w `CLAUDE.md` — bez nich nie można uruchomić linta/testów automatycznie.
+---
+
+### 2.7 inferPreset nigdy nie zwraca 'all' dla dat historycznych (data-store.ts, linia 75-91)
+
+**Problem:** Fallback zawsze do `'week'`. Jesli daty `start` sa starsze niz `ALL_TIME_START`, preset nie zsynchronizuje sie poprawnie.
+
+**Rozwiazanie:** Dodac obsluge dla zakresow wykraczajacych poza predefiniowane presety.
+
+---
+
+### 2.8 Brak batch save dla ustawien (Settings.tsx)
+
+**Problem:** Kazda zmiana ustawienia to osobny zapis. Jesli aplikacja crashuje miedzy zapisami, konfiguracja moze byc czesciowa.
+
+**Rozwiazanie:** Batch save przy opuszczaniu strony ustawien lub debounce z jednym zapisem.
+
+---
+
+## 3. PROBLEMY DROBNE
+
+### 3.1 Nieuzywany dirtyRef (AI.tsx, linia 163)
+
+**Problem:** `dirtyRef.current = true` ustawiany w onChange, ale `syncFromStatus()` zawsze uzywa `force=true`. Flaga jest zbedna.
+
+**Rozwiazanie:** Usunac `dirtyRef` i powiazana logike.
+
+---
+
+### 3.2 Redundancja w discoveredProjects (data-store.ts, linia 29-32)
+
+**Problem:** Dwa osobne pola stanu:
+```typescript
+discoveredProjects: string[]
+discoveredProjectsDismissed: boolean
+```
+
+**Rozwiazanie:** Polaczyc w jedno: `discoveredProjects: { projects: string[]; dismissed: boolean }`.
+
+---
+
+### 3.3 Zduplikowana logika confidence (SessionRow.tsx, linia 201-206 i 383-388)
+
+**Problem:** Identyczna kalkulacja confidence w widoku compact i normal:
+```typescript
+const conf = s.suggested_confidence ?? bdConf ??
+  (bdCandidate ? Math.min(bdCandidate.total_score / 10, 1) : null);
+```
+
+**Rozwiazanie:** Wydzielic do utility function `computeConfidence(session, breakdown)`.
+
+---
+
+### 3.4 Filtrowanie po slice w buildAutoSplits (BackgroundServices.tsx, linia 42-66)
+
+**Problem:** Kandydaci z `score <= 0` sa filtrowani PO `slice()`:
+```typescript
+const candidates = analysis.candidates
+  .slice(0, Math.max(2, Math.min(5, maxProjects)))
+  .filter((candidate) => candidate.score > 0); // Powinno byc PRZED slice
+```
+
+**Rozwiazanie:** Najpierw `.filter()`, potem `.slice()`.
+
+---
+
+### 3.5 toLocalDatetimeValue zdefiniowana w komponencie (ManualSessionDialog.tsx, linia 26-41)
+
+**Problem:** Utility function zdefiniowana wewnatrz pliku komponentu zamiast w `lib/`.
+
+**Rozwiazanie:** Przeniesc do `lib/date-utils.ts` lub `lib/utils.ts`.
+
+---
+
+## 4. NADMIAROWY KOD I DUPLIKACJE
+
+### 4.1 Powtorzony pattern w user-settings.ts (8+ razy)
+
+**Problem:** Kazde ustawienie (WorkingHours, Freeze, Session, Currency, Language, itd.) powtarza identyczny wzorzec: `STORAGE_KEY`, `LEGACY_KEY`, `loadRawSetting()`, `migrateLegacySetting()`, `loadXxxSettings()`, `saveXxxSettings()`.
+
+**Rozwiazanie:** Stworzyc generyczna fabryke:
+```typescript
+function createSettingsManager<T>(config: {
+  key: string;
+  legacyKey?: string;
+  defaults: T;
+  validate?: (raw: unknown) => T;
+}) { ... }
+```
+
+Redukcja ~200 linii powtorzonego kodu.
+
+---
+
+### 4.2 Dwa identyczne useEffect w Sidebar.tsx (linia 143-206)
+
+**Problem:** Dwa efekty z prawie identyczna struktura (disposed flag, isVisible check, interval).
+
+**Rozwiazanie:** Wydzielic hook `usePollingEffect(callback, intervalMs, deps)`.
+
+---
+
+## 5. WYDAJNOSC I OPTYMALIZACJE
+
+### 5.1 Dashboard.tsx — cztery useMemo z nakladajacymi sie deps (linia 181-224)
+
+**Problem:** `projectColorMap`, `unassignedToday`, `boostedByProject`, `manualCountsByProject` — wszystkie przeliczaja sie przy zmianie `allProjects` lub `todaySessions`.
+
+**Rozwiazanie:** Memoizowac posrednie dane na poziomie store'a (Zustand selektory z `useShallow`).
+
+---
+
+### 5.2 Brak memoizacji w ProjectDayTimeline.tsx (linia 99-115)
+
+**Problem:** Transformacja sesji do `TimelineRow` odbywa sie przy kazdym renderze.
+
+**Rozwiazanie:** Opakować w `useMemo` z zaleznosciami `[sessions, projects]`.
+
+---
+
+### 5.3 CSS keyframes w JSX (SplashScreen.tsx, linia 30-35)
+
+**Problem:** Animacje `@keyframes` zdefiniowane inline w komponencie.
+
+**Rozwiazanie:** Przeniesc do pliku CSS/Tailwind config.
+
+---
+
+## 6. TLUMACZENIA I I18N
+
+### Status: PRAWIDLOWY
+
+System tlumaczen jest **poprawnie zaimplementowany**:
+- Dwa jezyki: EN (domyslny), PL
+- Slowniki: `locales/en/common.json` i `locales/pl/common.json` (914 linii kazdy)
+- Wszystkie komponenty UI uzywaja `useTranslation()` lub `useInlineT()`
+- Help.tsx i QuickStart.tsx poprawnie tlumaczone (wyjatki od reguly "UI po angielsku")
+- Branding `TIMEFLOW` konsekwentnie wielkimi literami
+- Brak hardkodowanych tekstow bez tlumaczen
+
+### Drobna uwaga:
+- `useInlineT()` w `lib/inline-i18n.ts` jest oznaczony jako `@deprecated` — warto zaplanowac migracje do pelnego systemu i18n z plikow JSON.
+
+---
+
+## 7. DOKUMENTACJA HELP — BRAKUJACE OPISY
+
+### Funkcje NIEUDOKUMENTOWANE w Help.tsx:
+
+| # | Funkcja | Plik zrodlowy | Opis |
+|---|---------|---------------|------|
+| 1 | ImportPage (osobna strona importu) | `pages/ImportPage.tsx` | Niezalezna strona importu plikow JSON — brak w Help |
+| 2 | DataStats (statystyki bazy) | `components/data/DataStats.tsx` | Rozmiar bazy, liczba rekordow — brak w Help |
+| 3 | Currency Settings (waluta) | `pages/Settings.tsx` | Ustawienia waluty i formatu — brak w Help |
+| 4 | Language Settings (jezyk) | `pages/Settings.tsx` | Przelaczanie PL/EN — brak w Help |
+
+### Funkcje CZESCIOWO opisane:
+
+| # | Funkcja | Co brakuje |
+|---|---------|------------|
+| 1 | ReportView (pelnoekranowy raport) | Brak opisu fullscreen mode i opcji drukowania |
+| 2 | Daemon Live Logs | Brak szczegolow real-time monitorowania i 200 linii logow |
+| 3 | ProjectContextMenu | Brak opisu menu kontekstowego projektow |
+| 4 | Session Split Settings (zaawansowane) | Brak szczegolow tolerancji, auto-split |
+| 5 | Online Sync (zaawansowane) | Brak szczegolow recznej synchronizacji i zarzadzania tokenem |
+
+---
+
+## 8. PODSUMOWANIE PRIORYTETOW
+
+### PILNE (wplyw na stabilnosc):
+1. Memory leak w `useAutoSplitSessions` interval — BackgroundServices.tsx
+2. Globalna flaga `heavyOperationInProgress` bez informowania usera — BackgroundServices.tsx
+3. Brak rate-limitingu na `emitLocalDataChanged` — tauri.ts
+4. Race condition w `fetchStatus` — AI.tsx
+
+### WAZNE (wplyw na jakosc):
+5. Niespojnosc scoringu (frontend vs API) — Sessions.tsx vs BackgroundServices.tsx
+6. Brak error recovery w treningu AI — AI.tsx
+7. Drift correction z mozliwym ujemnym ratio — BackgroundServices.tsx
+8. Brak backoff w sync retry — BackgroundServices.tsx
+9. Uzupelnic Help.tsx o brakujace funkcje (ImportPage, DataStats, Currency/Language Settings)
+
+### NICE TO HAVE (czystosc kodu):
+10. Factory pattern dla user-settings.ts (~200 linii redukcji)
+11. Hook `usePollingEffect` dla powtorzonych intervalow
+12. Usunac nieuzywany `dirtyRef` z AI.tsx
+13. Migracja z `useInlineT()` na pelny system i18n
+14. Przeniesienie utility functions do `lib/`
+
+---
+
+## 9. OCENA OGOLNA
+
+| Aspekt | Ocena | Komentarz |
+|--------|-------|-----------|
+| Architektura | 8/10 | Dobra separacja (store, hooks, pages, components). Lazy loading stron. |
+| I18n | 9/10 | Pelne pokrycie, dwa jezyki, konsekwentne uzycie. |
+| Logika AI | 7/10 | Dziala, ale brak recovery, niespojnosc zrodel danych. |
+| Wydajnosc | 6/10 | Memory leaki w intervalach, brak debounce na mutacjach. |
+| Czystosc kodu | 6/10 | Duplikacje w user-settings, sidebar; zbedne zmienne. |
+| Dokumentacja Help | 7/10 | Wiekszosc funkcji opisana, ale 4 calkowicie brakuje. |
+| Obsluga bledow | 5/10 | Wiele miejsc bez recovery, brak backoff, ciche faile. |
+
+**Wniosek:** Projekt ma solidna architekture i dobrze dzialajacy system tlumaczen. Glowne obszary do poprawy to: zarzadzanie cyklem zycia asynchronicznych operacji (intervaly, race conditions), obsluga bledow (recovery, backoff, informowanie usera) oraz redukcja duplikacji kodu.
