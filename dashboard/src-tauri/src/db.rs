@@ -272,6 +272,7 @@ CREATE INDEX IF NOT EXISTS idx_assignment_model_token_token ON assignment_model_
 CREATE INDEX IF NOT EXISTS idx_assignment_model_time_key ON assignment_model_time(app_id, hour_bucket, weekday);
 CREATE INDEX IF NOT EXISTS idx_assignment_feedback_created ON assignment_feedback(created_at);
 CREATE INDEX IF NOT EXISTS idx_assignment_feedback_source ON assignment_feedback(source);
+CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_assignment_suggestions_session ON assignment_suggestions(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_assignment_suggestions_status ON assignment_suggestions(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_assignment_auto_runs_started ON assignment_auto_runs(started_at DESC);
@@ -1335,7 +1336,8 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
          CREATE INDEX IF NOT EXISTS idx_file_activities_app_date ON file_activities(app_id, date);
          CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
          CREATE INDEX IF NOT EXISTS idx_file_activities_file_path ON file_activities(file_path);
-         CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);",
+         CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+         CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);",
     )?;
 
     let has_manual_overrides: bool = db

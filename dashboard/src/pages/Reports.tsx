@@ -10,7 +10,7 @@ interface SectionDef {
   id: string;
   pl: string;
   en: string;
-  preview: () => React.ReactNode;
+  preview: (tt: ReturnType<typeof useInlineT>) => React.ReactNode;
 }
 
 const ALL_SECTIONS: SectionDef[] = [
@@ -18,13 +18,16 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'header',
     pl: 'Nagłówek i tytuł',
     en: 'Header & title',
-    preview: () => (
+    preview: (tt) => (
       <div className="text-center py-3 border-b border-dashed border-muted-foreground/20">
         <div className="text-lg font-bold text-foreground/80">
-          Nazwa Projektu — Report
+          {tt('Nazwa Projektu — Raport', 'Project Name — Report')}
         </div>
         <div className="text-[10px] text-muted-foreground/50 mt-1">
-          ● Projekt · 2026-01-01 — 2026-03-06 · Wygenerowano: 2026-03-06
+          {tt(
+            '● Projekt · 2026-01-01 — 2026-03-06 · Wygenerowano: 2026-03-06',
+            '● Project · 2026-01-01 — 2026-03-06 · Generated: 2026-03-06',
+          )}
         </div>
       </div>
     ),
@@ -33,18 +36,24 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'stats',
     pl: 'Statystyki główne',
     en: 'Main statistics',
-    preview: () => (
+    preview: (tt) => (
       <div className="grid grid-cols-3 gap-3 text-sm">
         <div>
-          <div className="text-[9px] text-muted-foreground/40">CZAS</div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {tt('CZAS', 'TIME')}
+          </div>
           <div className="font-bold text-foreground/60">24h 15m</div>
         </div>
         <div>
-          <div className="text-[9px] text-muted-foreground/40">SESJE</div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {tt('SESJE', 'SESSIONS')}
+          </div>
           <div className="font-bold text-foreground/60">142</div>
         </div>
         <div>
-          <div className="text-[9px] text-muted-foreground/40">APLIKACJE</div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {tt('APLIKACJE', 'APPLICATIONS')}
+          </div>
           <div className="font-bold text-foreground/60">8</div>
         </div>
       </div>
@@ -54,14 +63,18 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'financials',
     pl: 'Dane finansowe',
     en: 'Financial data',
-    preview: () => (
+    preview: (tt) => (
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div>
-          <div className="text-[9px] text-muted-foreground/40">WARTOŚĆ</div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {tt('WARTOŚĆ', 'VALUE')}
+          </div>
           <div className="font-bold text-emerald-400/60">4 500,00 PLN</div>
         </div>
         <div>
-          <div className="text-[9px] text-muted-foreground/40">CZAS PRACY</div>
+          <div className="text-[9px] text-muted-foreground/40">
+            {tt('CZAS PRACY', 'WORK TIME')}
+          </div>
           <div className="font-bold text-foreground/60">24h 15m</div>
         </div>
       </div>
@@ -71,12 +84,12 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'apps',
     pl: 'Top aplikacje',
     en: 'Top applications',
-    preview: () => (
+    preview: (tt) => (
       <div className="space-y-1">
         {[
-          'VS Code ██████████ 8h 20m',
-          'Chrome   ████████   6h 10m',
-          'Terminal ████       3h 05m',
+          tt('VS Code ██████████ 8h 20m', 'VS Code ██████████ 8h 20m'),
+          tt('Chrome   ████████   6h 10m', 'Chrome   ████████   6h 10m'),
+          tt('Terminal ████       3h 05m', 'Terminal ████       3h 05m'),
         ].map((line) => (
           <div
             key={line}
@@ -92,10 +105,12 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'files',
     pl: 'Pliki / aktywność',
     en: 'Files / activity',
-    preview: () => (
+    preview: (tt) => (
       <div className="text-sm text-muted-foreground/40">
-        <div className="text-[9px]">ZAREJESTROWANE PLIKI</div>
-        <div className="font-bold">47 plików</div>
+        <div className="text-[9px]">
+          {tt('ZAREJESTROWANE PLIKI', 'TRACKED FILES')}
+        </div>
+        <div className="font-bold">{tt('47 plików', '47 files')}</div>
       </div>
     ),
   },
@@ -103,14 +118,16 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'ai',
     pl: 'Dane AI (sugestie)',
     en: 'AI data (suggestions)',
-    preview: () => (
+    preview: (tt) => (
       <div className="grid grid-cols-2 gap-3 text-sm text-muted-foreground/40">
         <div>
-          <div className="text-[9px]">SUGESTIE AI</div>
+          <div className="text-[9px]">{tt('SUGESTIE AI', 'AI SUGGESTIONS')}</div>
           <div className="font-bold">23</div>
         </div>
         <div>
-          <div className="text-[9px]">PRZYPISANE PRZEZ AI</div>
+          <div className="text-[9px]">
+            {tt('PRZYPISANE PRZEZ AI', 'ASSIGNED BY AI')}
+          </div>
           <div className="font-bold">18</div>
         </div>
       </div>
@@ -120,12 +137,18 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'sessions',
     pl: 'Lista sesji',
     en: 'Session list',
-    preview: () => (
+    preview: (tt) => (
       <div className="space-y-0.5">
         {[
-          '03-06  VS Code   1h 20m  Refactoring main module',
-          '03-05  Chrome    0h 45m  Research',
-          '03-05  Terminal  0h 30m',
+          tt(
+            '03-06  VS Code   1h 20m  Refaktoryzacja głównego modułu',
+            '03-06  VS Code   1h 20m  Refactoring main module',
+          ),
+          tt(
+            '03-05  Chrome    0h 45m  Research',
+            '03-05  Chrome    0h 45m  Research',
+          ),
+          tt('03-05  Terminal  0h 30m', '03-05  Terminal  0h 30m'),
         ].map((line) => (
           <div
             key={line}
@@ -135,7 +158,7 @@ const ALL_SECTIONS: SectionDef[] = [
           </div>
         ))}
         <div className="text-[9px] text-muted-foreground/20">
-          +139 więcej...
+          {tt('+139 więcej...', '+139 more...')}
         </div>
       </div>
     ),
@@ -144,11 +167,17 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'comments',
     pl: 'Komentarze',
     en: 'Comments',
-    preview: () => (
+    preview: (tt) => (
       <div className="space-y-0.5">
         {[
-          '03-06  Zakończono refaktoring modułu AI',
-          '03-04  Poprawiono wydajność zapytań DB',
+          tt(
+            '03-06  Zakończono refaktoring modułu AI',
+            '03-06  AI module refactor completed',
+          ),
+          tt(
+            '03-04  Poprawiono wydajność zapytań DB',
+            '03-04  Improved DB query performance',
+          ),
         ].map((line) => (
           <div
             key={line}
@@ -164,11 +193,11 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'boosts',
     pl: 'Sesje z mnożnikiem (Boosty)',
     en: 'Boosted sessions',
-    preview: () => (
+    preview: (tt) => (
       <div className="space-y-0.5">
         {[
-          '03-06  VS Code   1h 20m  2×',
-          '03-05  Chrome    0h 45m  1.5×',
+          tt('03-06  VS Code   1h 20m  2×', '03-06  VS Code   1h 20m  2×'),
+          tt('03-05  Chrome    0h 45m  1.5×', '03-05  Chrome    0h 45m  1.5×'),
         ].map((line) => (
           <div
             key={line}
@@ -184,11 +213,17 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'manual_sessions',
     pl: 'Sesje manualne',
     en: 'Manual sessions',
-    preview: () => (
+    preview: (tt) => (
       <div className="space-y-0.5">
         {[
-          '03-06  Spotkanie z klientem  meeting  1h 30m',
-          '03-05  Code review           review   0h 45m',
+          tt(
+            '03-06  Spotkanie z klientem  meeting  1h 30m',
+            '03-06  Client meeting        meeting  1h 30m',
+          ),
+          tt(
+            '03-05  Code review           review   0h 45m',
+            '03-05  Code review           review   0h 45m',
+          ),
         ].map((line) => (
           <div
             key={line}
@@ -204,9 +239,12 @@ const ALL_SECTIONS: SectionDef[] = [
     id: 'footer',
     pl: 'Stopka',
     en: 'Footer',
-    preview: () => (
+    preview: (tt) => (
       <div className="text-center text-[9px] text-muted-foreground/20 border-t border-dashed border-muted-foreground/10 pt-2">
-        Nazwa Projektu — Report · 2026-03-06 14:30
+        {tt(
+          'Nazwa Projektu — Raport · 2026-03-06 14:30',
+          'Project Name — Report · 2026-03-06 14:30',
+        )}
       </div>
     ),
   },
@@ -500,7 +538,7 @@ export function Reports() {
                   <div className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/25 mb-2">
                     {tt(def.pl, def.en)}
                   </div>
-                  {def.preview()}
+                  {def.preview(tt)}
                 </div>
               );
             })}

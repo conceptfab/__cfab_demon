@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { FileText, Check, Edit2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { loadTemplates, getSelectedTemplateId, setSelectedTemplateId } from '@/lib/report-templates';
@@ -13,13 +13,8 @@ interface Props {
 
 export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: Props) {
   const tt = useInlineT();
-  const [templates, setTemplates] = useState<ReportTemplate[]>([]);
-  const [selectedId, setSelectedId] = useState('');
-
-  useEffect(() => {
-    setTemplates(loadTemplates());
-    setSelectedId(getSelectedTemplateId());
-  }, []);
+  const [templates] = useState<ReportTemplate[]>(() => loadTemplates());
+  const [selectedId, setSelectedId] = useState(() => getSelectedTemplateId());
 
   const handleSelect = () => {
     setSelectedTemplateId(selectedId);

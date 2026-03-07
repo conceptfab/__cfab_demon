@@ -11,6 +11,7 @@ export interface FetchAllSessionsFilters {
   projectId?: number;
   unassigned?: boolean;
   minDuration?: number;
+  includeFiles?: boolean;
   includeAiSuggestions?: boolean;
   pageSize?: number;
 }

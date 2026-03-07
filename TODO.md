@@ -11,6 +11,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
+- czy faktycznie dziala dzielenie sesji - do sprawdzenia
 -  licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik
 - poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi
 - fonty systemowe do wyboru

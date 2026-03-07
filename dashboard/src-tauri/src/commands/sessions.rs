@@ -253,6 +253,7 @@ pub async fn get_sessions(
     app: AppHandle,
     filters: SessionFilters,
 ) -> Result<Vec<SessionWithApp>, String> {
+    let include_files = filters.include_files.unwrap_or(true);
     let include_ai_suggestions = filters.include_ai_suggestions.unwrap_or(true);
     let (mut sessions, needs_suggestion) = {
         let conn = db::get_connection(&app)?;
@@ -387,18 +388,20 @@ pub async fn get_sessions(
         // Load file activities in one batch (avoid N+1 queries), keyed by (app_id, date).
         let mut keys: Vec<(i64, String)> = Vec::new();
         let mut key_set: HashSet<(i64, String)> = HashSet::new();
-        for s in &sessions {
-            let date = s.start_time.split('T').next().unwrap_or("").to_string();
-            if !date.is_empty() {
-                let key = (s.app_id, date);
-                if key_set.insert(key.clone()) {
-                    keys.push(key);
+        if include_files {
+            for s in &sessions {
+                let date = s.start_time.split('T').next().unwrap_or("").to_string();
+                if !date.is_empty() {
+                    let key = (s.app_id, date);
+                    if key_set.insert(key.clone()) {
+                        keys.push(key);
+                    }
                 }
             }
         }
 
         let mut files_by_key: HashMap<(i64, String), Vec<FileActivity>> = HashMap::new();
-        if !keys.is_empty() {
+        if include_files && !keys.is_empty() {
             conn.execute_batch(
                 "CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)",
             )
@@ -458,6 +461,16 @@ pub async fn get_sessions(
 
         let mut inferred_project_by_session: HashMap<i64, Option<i64>> = HashMap::new();
         for session in &mut sessions {
+            if let Some(pid) = explicit_pids.get(&session.id).copied().flatten() {
+                inferred_project_by_session.insert(session.id, Some(pid));
+            } else {
+                inferred_project_by_session.insert(session.id, None);
+            }
+
+            if !include_files {
+                continue;
+            }
+
             let session_start = match chrono::DateTime::parse_from_rfc3339(&session.start_time) {
                 Ok(dt) => dt.timestamp_millis(),
                 Err(_) => continue,
@@ -481,13 +494,10 @@ pub async fn get_sessions(
                 .cloned()
                 .unwrap_or_default();
 
-            if let Some(pid) = explicit_pids.get(&session.id).copied().flatten() {
-                inferred_project_by_session.insert(session.id, Some(pid));
+            if explicit_pids.get(&session.id).copied().flatten().is_some() {
                 continue;
             }
 
-            // Project-first attribution:
-            // assign a session only if overlapping file activity points to exactly one project.
             let mut overlap_by_project: HashMap<i64, (i64, String, String)> = HashMap::new();
             for f in &session.files {
                 let Some(pid) = f.project_id else { continue };
@@ -519,33 +529,18 @@ pub async fn get_sessions(
                 entry.0 += overlap_ms;
             }
 
-            let mut inferred_project_id: Option<i64> = None;
-            if !overlap_by_project.is_empty() {
-                // Pick project with highest overlap
-                if let Some((pid, (overlap_ms, name, _color))) = overlap_by_project
-                    .into_iter()
-                    .max_by_key(|(_, (ms, _, _))| *ms)
-                {
-                    let span_ms = session_end - session_start;
-                    // Conservative rule: assign only when project evidence covers most of the session.
-                    if overlap_ms * 2 >= span_ms {
-                        inferred_project_id = Some(pid);
-                        session.suggested_project_name = Some(name);
-                        session.suggested_project_id = Some(pid);
-                        session.suggested_confidence = Some(1.0);
-                    }
+            if let Some((pid, (overlap_ms, name, _color))) = overlap_by_project
+                .into_iter()
+                .max_by_key(|(_, (ms, _, _))| *ms)
+            {
+                let span_ms = session_end - session_start;
+                if overlap_ms * 2 >= span_ms {
+                    inferred_project_by_session.insert(session.id, Some(pid));
+                    session.suggested_project_name = Some(name);
+                    session.suggested_project_id = Some(pid);
+                    session.suggested_confidence = Some(1.0);
                 }
             }
-            inferred_project_by_session.insert(session.id, inferred_project_id);
-        }
-
-        if let Some(pid) = project_filter {
-            sessions.retain(|s| {
-                matches!(
-                    inferred_project_by_session.get(&s.id),
-                    Some(Some(inferred_pid)) if *inferred_pid == pid
-                )
-            });
         }
 
         let mut suggestion_candidate_batch: Vec<i64> = Vec::new();
@@ -1098,6 +1093,347 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
     Ok(to_delete.len() as i64)
 }
 
+#[derive(Clone, Debug)]
+struct SplitSegmentMutation {
+    session_id: i64,
+    start_time: String,
+    end_time: String,
+    project_id: Option<i64>,
+    feedback_source: String,
+}
+
+fn parse_iso_datetime(value: &str) -> Result<chrono::DateTime<chrono::FixedOffset>, String> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Ok(dt);
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
+        return Ok(chrono::DateTime::from_naive_utc_and_offset(
+            ndt,
+            chrono::FixedOffset::east_opt(0).expect("0 offset"),
+        ));
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
+        return Ok(chrono::DateTime::from_naive_utc_and_offset(
+            ndt,
+            chrono::FixedOffset::east_opt(0).expect("0 offset"),
+        ));
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S.%f") {
+        return Ok(chrono::DateTime::from_naive_utc_and_offset(
+            ndt,
+            chrono::FixedOffset::east_opt(0).expect("0 offset"),
+        ));
+    }
+    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S.%f") {
+        return Ok(chrono::DateTime::from_naive_utc_and_offset(
+            ndt,
+            chrono::FixedOffset::east_opt(0).expect("0 offset"),
+        ));
+    }
+    Err(format!("Unsupported datetime format: {}", value))
+}
+
+fn apply_split_side_effects(
+    tx: &rusqlite::Transaction<'_>,
+    app_id: i64,
+    date: &str,
+    from_project_id: Option<i64>,
+    segments: &[SplitSegmentMutation],
+) -> Result<(), String> {
+    if segments.is_empty() {
+        return Ok(());
+    }
+
+    let mut parsed_segments = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let start = parse_iso_datetime(&segment.start_time)
+            .map_err(|e| format!("Invalid split segment start_time: {}", e))?;
+        let end = parse_iso_datetime(&segment.end_time)
+            .map_err(|e| format!("Invalid split segment end_time: {}", e))?;
+        parsed_segments.push((segment, start, end));
+    }
+
+    let overall_start = segments
+        .first()
+        .map(|segment| segment.start_time.as_str())
+        .ok_or_else(|| "Missing first split segment".to_string())?;
+    let overall_end = segments
+        .last()
+        .map(|segment| segment.end_time.as_str())
+        .ok_or_else(|| "Missing last split segment".to_string())?;
+
+    let activities: Vec<(i64, String, String)> = {
+        let mut stmt = tx
+            .prepare_cached(
+                "SELECT id, first_seen, last_seen
+                 FROM file_activities
+                 WHERE app_id = ?1
+                   AND date = ?2
+                   AND last_seen > ?3
+                   AND first_seen < ?4",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![app_id, date, overall_start, overall_end], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read file_activities for split: {}", e))?
+    };
+
+    for (activity_id, first_seen, last_seen) in activities {
+        let first_dt = match parse_iso_datetime(&first_seen) {
+            Ok(value) => value,
+            Err(error) => {
+                log::warn!(
+                    "Skipping split file_activity {} due to invalid first_seen '{}': {}",
+                    activity_id,
+                    first_seen,
+                    error
+                );
+                continue;
+            }
+        };
+        let last_dt = match parse_iso_datetime(&last_seen) {
+            Ok(value) => value,
+            Err(error) => {
+                log::warn!(
+                    "Skipping split file_activity {} due to invalid last_seen '{}': {}",
+                    activity_id,
+                    last_seen,
+                    error
+                );
+                continue;
+            }
+        };
+        let midpoint = first_dt
+            + chrono::Duration::milliseconds(
+                (last_dt.timestamp_millis() - first_dt.timestamp_millis()).max(0) / 2,
+            );
+        let chosen_segment = parsed_segments
+            .iter()
+            .find(|(_, _, end)| midpoint < *end)
+            .or_else(|| parsed_segments.last())
+            .ok_or_else(|| "No parsed split segment available".to_string())?;
+        tx.execute(
+            "UPDATE file_activities SET project_id = ?1 WHERE id = ?2",
+            rusqlite::params![chosen_segment.0.project_id, activity_id],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+
+    for segment in segments {
+        tx.execute(
+            "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+            rusqlite::params![
+                segment.session_id,
+                app_id,
+                from_project_id,
+                segment.project_id,
+                segment.feedback_source
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+        if let Err(error) = upsert_manual_session_override(tx, segment.session_id, segment.project_id) {
+            log::warn!(
+                "Failed to update manual override after split for session {}: {}",
+                segment.session_id,
+                error
+            );
+        }
+    }
+
+    let feedback_count = segments.len() as i64;
+    tx.execute(
+        "INSERT INTO assignment_model_state (key, value, updated_at)
+         VALUES ('feedback_since_train', ?1, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+           value = CAST(COALESCE(NULLIF(assignment_model_state.value, ''), '0') AS INTEGER) + ?1,
+           updated_at = datetime('now')",
+        [feedback_count],
+    )
+    .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct SplitSourceSession {
+    app_id: i64,
+    start_time: String,
+    end_time: String,
+    duration_seconds: i64,
+    date_str: String,
+    rate_multiplier: f64,
+    orig_project_id: Option<i64>,
+    comment: Option<String>,
+}
+
+fn load_split_source_session(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+    only_visible: bool,
+) -> Result<SplitSourceSession, String> {
+    let sql = if only_visible {
+        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment
+         FROM sessions WHERE id = ?1 AND (is_hidden IS NULL OR is_hidden = 0)"
+    } else {
+        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment
+         FROM sessions WHERE id = ?1"
+    };
+
+    let session = conn
+        .query_row(sql, [session_id], |row| {
+            Ok(SplitSourceSession {
+                app_id: row.get::<_, i64>(0)?,
+                start_time: row.get::<_, String>(1)?,
+                end_time: row.get::<_, String>(2)?,
+                duration_seconds: row.get::<_, i64>(3)?,
+                date_str: row.get::<_, String>(4)?,
+                rate_multiplier: row.get::<_, f64>(5)?,
+                orig_project_id: row.get::<_, Option<i64>>(6)?,
+                comment: row.get::<_, Option<String>>(7)?,
+            })
+        })
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    session.ok_or_else(|| "Session not found".to_string())
+}
+
+fn validate_split_parts(splits: &[SplitPart]) -> Result<(), String> {
+    if splits.is_empty() || splits.len() > 5 {
+        return Err("Splits must have 1-5 parts".to_string());
+    }
+
+    let ratio_sum: f64 = splits.iter().map(|s| s.ratio).sum();
+    if (ratio_sum - 1.0).abs() > 0.01 {
+        return Err(format!("Ratios must sum to 1.0, got {:.4}", ratio_sum));
+    }
+
+    for (i, part) in splits.iter().enumerate() {
+        if part.ratio <= 0.0 || part.ratio > 1.0 {
+            return Err(format!("Part {} ratio must be between 0 and 1", i));
+        }
+    }
+
+    Ok(())
+}
+
+fn execute_session_split(
+    conn: &mut rusqlite::Connection,
+    session_id: i64,
+    source: &SplitSourceSession,
+    splits: &[SplitPart],
+) -> Result<(), String> {
+    validate_split_parts(splits)?;
+
+    let start_dt = parse_iso_datetime(&source.start_time)
+        .map_err(|e| format!("Invalid start time: {}", e))?;
+    let end_dt =
+        parse_iso_datetime(&source.end_time).map_err(|e| format!("Invalid end time: {}", e))?;
+    let total_ms = (end_dt.timestamp_millis() - start_dt.timestamp_millis()).max(0);
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let n = splits.len();
+    let mut cursor_ms: i64 = 0;
+    let mut cursor_secs: i64 = 0;
+    let mut split_segments: Vec<SplitSegmentMutation> = Vec::with_capacity(n);
+
+    for (i, part) in splits.iter().enumerate() {
+        let is_last = i == n - 1;
+
+        let part_ms = if is_last {
+            total_ms - cursor_ms
+        } else {
+            (total_ms as f64 * part.ratio).round() as i64
+        };
+
+        let part_secs = if is_last {
+            source.duration_seconds - cursor_secs
+        } else {
+            (source.duration_seconds as f64 * part.ratio).round() as i64
+        };
+
+        let part_start = start_dt + chrono::Duration::milliseconds(cursor_ms);
+        let part_end = start_dt + chrono::Duration::milliseconds(cursor_ms + part_ms);
+        let part_start_str = part_start.to_rfc3339();
+        let part_end_str = part_end.to_rfc3339();
+        let part_comment = source
+            .comment
+            .as_deref()
+            .map(|c| format!("{} (Split {}/{})", c, i + 1, n))
+            .unwrap_or_else(|| format!("Split {}/{}", i + 1, n));
+        let feedback_source = format!("manual_session_split_part_{}", i + 1);
+
+        if i == 0 {
+            tx.execute(
+                "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, project_id = ?3, comment = ?4
+                 WHERE id = ?5",
+                rusqlite::params![
+                    part_end_str.as_str(),
+                    part_secs,
+                    part.project_id,
+                    part_comment,
+                    session_id,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+            split_segments.push(SplitSegmentMutation {
+                session_id,
+                start_time: part_start_str,
+                end_time: part_end_str,
+                project_id: part.project_id,
+                feedback_source,
+            });
+        } else {
+            tx.execute(
+                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    source.app_id,
+                    part_start_str.as_str(),
+                    part_end_str.as_str(),
+                    part_secs,
+                    source.date_str.as_str(),
+                    source.rate_multiplier,
+                    part.project_id,
+                    part_comment,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+            split_segments.push(SplitSegmentMutation {
+                session_id: tx.last_insert_rowid(),
+                start_time: part_start_str,
+                end_time: part_end_str,
+                project_id: part.project_id,
+                feedback_source,
+            });
+        }
+
+        cursor_ms += part_ms;
+        cursor_secs += part_secs;
+    }
+
+    apply_split_side_effects(
+        &tx,
+        source.app_id,
+        &source.date_str,
+        source.orig_project_id,
+        split_segments.as_slice(),
+    )?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn split_session(
     app: AppHandle,
@@ -1111,91 +1447,18 @@ pub async fn split_session(
     }
 
     let mut conn = db::get_connection(&app)?;
-    let session = conn
-        .query_row(
-            "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment
-             FROM sessions WHERE id = ?1",
-            [session_id],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, f64>(5)?,
-                    row.get::<_, Option<i64>>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
-
-    let Some((
-        app_id,
-        start_time,
-        end_time,
-        duration_seconds,
-        date_str,
-        rate_multiplier,
-        _orig_project_id,
-        comment,
-    )) = session
-    else {
-        return Err("Session not found".to_string());
-    };
-
-    let start_dt = chrono::DateTime::parse_from_rfc3339(&start_time)
-        .map_err(|e| format!("Invalid start time: {}", e))?;
-    let end_dt = chrono::DateTime::parse_from_rfc3339(&end_time)
-        .map_err(|e| format!("Invalid end time: {}", e))?;
-
-    let total_ms = (end_dt.timestamp_millis() - start_dt.timestamp_millis()).max(0);
-    let duration_a_ms = (total_ms as f64 * ratio).round() as i64;
-
-    let split_point = start_dt + chrono::Duration::milliseconds(duration_a_ms);
-    let split_time_str = split_point.to_rfc3339();
-
-    let duration_a_secs = (duration_seconds as f64 * ratio).round() as i64;
-    let duration_b_secs = duration_seconds - duration_a_secs;
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-
-    // Step 1: Update original session in-place as part A (avoids UNIQUE(app_id, start_time) conflict)
-    tx.execute(
-        "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, project_id = ?3, comment = ?4
-         WHERE id = ?5",
-        rusqlite::params![
-            split_time_str,
-            duration_a_secs,
-            project_a_id,
-            comment.as_deref().map(|c| format!("{} (Split 1/2)", c)).unwrap_or_else(|| "Split 1/2".to_string()),
-            session_id,
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Step 2: Insert part B
-    tx.execute(
-        "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        rusqlite::params![
-            app_id,
-            split_time_str,
-            end_time,
-            duration_b_secs,
-            date_str,
-            rate_multiplier,
-            project_b_id,
-            comment.as_deref().map(|c| format!("{} (Split 2/2)", c)).unwrap_or_else(|| "Split 2/2".to_string())
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-
-    tx.commit().map_err(|e| e.to_string())?;
-
-    Ok(())
+    let source = load_split_source_session(&conn, session_id, false)?;
+    let splits = vec![
+        SplitPart {
+            project_id: project_a_id,
+            ratio,
+        },
+        SplitPart {
+            project_id: project_b_id,
+            ratio: 1.0 - ratio,
+        },
+    ];
+    execute_session_split(&mut conn, session_id, &source, splits.as_slice())
 }
 
 #[derive(serde::Serialize)]
@@ -1221,7 +1484,7 @@ pub async fn suggest_session_split(
     let (app_id, date, current_project_id, suggested_project_id): (i64, String, Option<i64>, Option<i64>) = conn
         .query_row(
             "SELECT app_id, date, project_id,
-                    (SELECT af.project_id FROM assignment_feedback af WHERE af.session_id = sessions.id ORDER BY af.created_at DESC LIMIT 1)
+                    (SELECT af.to_project_id FROM assignment_feedback af WHERE af.session_id = sessions.id ORDER BY af.created_at DESC LIMIT 1)
              FROM sessions WHERE id = ?1",
             [session_id],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
@@ -1486,131 +1749,27 @@ pub async fn split_session_multi(
     session_id: i64,
     splits: Vec<SplitPart>,
 ) -> Result<(), String> {
-    if splits.is_empty() || splits.len() > 5 {
-        return Err("Splits must have 1-5 parts".to_string());
-    }
-
-    let ratio_sum: f64 = splits.iter().map(|s| s.ratio).sum();
-    if (ratio_sum - 1.0).abs() > 0.01 {
-        return Err(format!("Ratios must sum to 1.0, got {:.4}", ratio_sum));
-    }
-
-    for (i, part) in splits.iter().enumerate() {
-        if part.ratio <= 0.0 || part.ratio > 1.0 {
-            return Err(format!("Part {} ratio must be between 0 and 1", i));
-        }
-    }
-
     let mut conn = db::get_connection(&app)?;
-    let session = conn
-        .query_row(
-            "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, comment
-             FROM sessions WHERE id = ?1 AND (is_hidden IS NULL OR is_hidden = 0)",
-            [session_id],
-            |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, String>(4)?,
-                    row.get::<_, f64>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
-
-    let Some((app_id, start_time, end_time, duration_seconds, date_str, rate_multiplier, comment)) =
-        session
-    else {
-        return Err("Session not found".to_string());
-    };
-
-    let start_dt = chrono::DateTime::parse_from_rfc3339(&start_time)
-        .map_err(|e| format!("Invalid start time: {}", e))?;
-    let end_dt = chrono::DateTime::parse_from_rfc3339(&end_time)
-        .map_err(|e| format!("Invalid end time: {}", e))?;
-    let total_ms = (end_dt.timestamp_millis() - start_dt.timestamp_millis()).max(0);
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-
-    let n = splits.len();
-    let mut cursor_ms: i64 = 0;
-    let mut cursor_secs: i64 = 0;
-
-    for (i, part) in splits.iter().enumerate() {
-        let is_last = i == n - 1;
-
-        let part_ms = if is_last {
-            total_ms - cursor_ms
-        } else {
-            (total_ms as f64 * part.ratio).round() as i64
-        };
-
-        let part_secs = if is_last {
-            duration_seconds - cursor_secs
-        } else {
-            (duration_seconds as f64 * part.ratio).round() as i64
-        };
-
-        let part_start = start_dt + chrono::Duration::milliseconds(cursor_ms);
-        let part_end = start_dt + chrono::Duration::milliseconds(cursor_ms + part_ms);
-
-        let part_comment = comment
-            .as_deref()
-            .map(|c| format!("{} (Split {}/{})", c, i + 1, n))
-            .unwrap_or_else(|| format!("Split {}/{}", i + 1, n));
-
-        if i == 0 {
-            // Update original session in-place → no UNIQUE(app_id, start_time) conflict
-            tx.execute(
-                "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, project_id = ?3, comment = ?4
-                 WHERE id = ?5",
-                rusqlite::params![
-                    part_end.to_rfc3339(),
-                    part_secs,
-                    part.project_id,
-                    part_comment,
-                    session_id,
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-        } else {
-            tx.execute(
-                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                rusqlite::params![
-                    app_id,
-                    part_start.to_rfc3339(),
-                    part_end.to_rfc3339(),
-                    part_secs,
-                    date_str,
-                    rate_multiplier,
-                    part.project_id,
-                    part_comment,
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-
-        cursor_ms += part_ms;
-        cursor_secs += part_secs;
-    }
-
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    let source = load_split_source_session(&conn, session_id, true)?;
+    execute_session_split(&mut conn, session_id, &source, splits.as_slice())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::SESSION_PROJECT_CTE_ALL_TIME;
+    use super::{
+        execute_session_split, load_split_source_session, parse_iso_datetime, SplitPart,
+        SESSION_PROJECT_CTE_ALL_TIME,
+    };
 
     fn setup_conn() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
         conn.execute_batch(
-            "CREATE TABLE applications (
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                color TEXT DEFAULT '#38bdf8'
+            );
+            CREATE TABLE applications (
                 id INTEGER PRIMARY KEY,
                 display_name TEXT,
                 executable_name TEXT
@@ -1636,6 +1795,30 @@ mod tests {
                 first_seen TEXT NOT NULL,
                 last_seen TEXT NOT NULL,
                 project_id INTEGER
+            );
+            CREATE TABLE assignment_feedback (
+                id INTEGER PRIMARY KEY,
+                session_id INTEGER,
+                app_id INTEGER,
+                from_project_id INTEGER,
+                to_project_id INTEGER,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE assignment_model_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE session_manual_overrides (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER,
+                executable_name TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                project_name TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(executable_name, start_time, end_time)
             );",
         )
         .expect("schema");
@@ -1644,6 +1827,13 @@ mod tests {
             rusqlite::params![1_i64, "Editor", "editor.exe"],
         )
         .expect("insert app");
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, color) VALUES
+                (10, 'Alpha', '#1d4ed8'),
+                (20, 'Beta', '#16a34a'),
+                (30, 'Gamma', '#d97706');",
+        )
+        .expect("insert projects");
         conn
     }
 
@@ -1760,5 +1950,279 @@ mod tests {
         // Session 2 counts (explicit project), Session 3 counts (overlap with project 10),
         // Session 1 does not count (same day but no overlap), Session 4 is hidden.
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn split_suggestion_fallback_reads_latest_to_project_id() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1.0, NULL, 0)",
+            rusqlite::params![
+                99_i64,
+                1_i64,
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T11:00:00Z",
+                3600_i64,
+                "2026-01-01",
+                10_i64,
+            ],
+        )
+        .expect("insert session");
+        conn.execute(
+            "INSERT INTO assignment_feedback (id, session_id, app_id, from_project_id, to_project_id, source, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                1_i64,
+                99_i64,
+                1_i64,
+                10_i64,
+                20_i64,
+                "manual_session_assign",
+                "2026-01-01T10:00:00Z",
+            ],
+        )
+        .expect("insert feedback");
+        conn.execute(
+            "INSERT INTO assignment_feedback (id, session_id, app_id, from_project_id, to_project_id, source, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                2_i64,
+                99_i64,
+                1_i64,
+                20_i64,
+                30_i64,
+                "manual_session_assign",
+                "2026-01-01T11:00:00Z",
+            ],
+        )
+        .expect("insert newer feedback");
+
+        let suggested_project_id: Option<i64> = conn
+            .query_row(
+                "SELECT (SELECT af.to_project_id
+                         FROM assignment_feedback af
+                         WHERE af.session_id = sessions.id
+                         ORDER BY af.created_at DESC
+                         LIMIT 1)
+                 FROM sessions
+                 WHERE id = ?1",
+                [99_i64],
+                |row| row.get(0),
+            )
+            .expect("query suggested project");
+        assert_eq!(suggested_project_id, Some(30));
+    }
+
+    #[test]
+    fn split_single_updates_feedback_files_and_duration_consistently() {
+        let mut conn = setup_conn();
+        conn.execute(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, ?7, 0)",
+            rusqlite::params![
+                1_i64,
+                1_i64,
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T11:00:00Z",
+                3600_i64,
+                "2026-01-01",
+                "Work block",
+            ],
+        )
+        .expect("insert source session");
+        conn.execute_batch(
+            "INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id) VALUES
+                (1, 1, '2026-01-01', 'a.rs', 600, '2026-01-01T10:05:00Z', '2026-01-01T10:20:00Z', NULL),
+                (2, 1, '2026-01-01', 'b.rs', 600, '2026-01-01T10:40:00Z', '2026-01-01T10:55:00Z', NULL);",
+        )
+        .expect("insert file activities");
+
+        let source = load_split_source_session(&conn, 1_i64, false).expect("load split source");
+        let splits = vec![
+            SplitPart {
+                project_id: Some(10),
+                ratio: 0.5,
+            },
+            SplitPart {
+                project_id: Some(20),
+                ratio: 0.5,
+            },
+        ];
+        execute_session_split(&mut conn, 1_i64, &source, splits.as_slice()).expect("run split");
+
+        let (session_count, total_duration): (i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) FROM sessions",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read session totals");
+        assert_eq!(session_count, 2);
+        assert_eq!(total_duration, 3600);
+
+        let first_end: String = conn
+            .query_row("SELECT end_time FROM sessions WHERE id = 1", [], |row| row.get(0))
+            .expect("read first end");
+        let first_end_ms = parse_iso_datetime(&first_end)
+            .expect("parse first end")
+            .timestamp_millis();
+        let expected_split_ms = parse_iso_datetime("2026-01-01T10:30:00Z")
+            .expect("parse expected split")
+            .timestamp_millis();
+        assert_eq!(first_end_ms, expected_split_ms);
+
+        let second_id: i64 = conn
+            .query_row("SELECT id FROM sessions WHERE id <> 1 LIMIT 1", [], |row| row.get(0))
+            .expect("read second id");
+        let (second_start, second_end, second_project): (String, String, Option<i64>) = conn
+            .query_row(
+                "SELECT start_time, end_time, project_id FROM sessions WHERE id = ?1",
+                [second_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read second session");
+        assert_eq!(
+            parse_iso_datetime(&second_start)
+                .expect("parse second start")
+                .timestamp_millis(),
+            expected_split_ms
+        );
+        assert_eq!(
+            parse_iso_datetime(&second_end)
+                .expect("parse second end")
+                .timestamp_millis(),
+            parse_iso_datetime("2026-01-01T11:00:00Z")
+                .expect("parse expected end")
+                .timestamp_millis()
+        );
+        assert_eq!(second_project, Some(20));
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT to_project_id FROM assignment_feedback
+                 WHERE session_id IN (?1, ?2)
+                 ORDER BY session_id ASC, to_project_id ASC",
+            )
+            .expect("prepare feedback query");
+        let rows = stmt
+            .query_map(rusqlite::params![1_i64, second_id], |row| row.get::<_, Option<i64>>(0))
+            .expect("query feedback rows");
+        let to_projects: Vec<Option<i64>> = rows
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect feedback projects");
+        assert_eq!(to_projects, vec![Some(10), Some(20)]);
+
+        let activities: Vec<Option<i64>> = conn
+            .prepare("SELECT project_id FROM file_activities ORDER BY id ASC")
+            .expect("prepare file activity query")
+            .query_map([], |row| row.get::<_, Option<i64>>(0))
+            .expect("query file activity projects")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect activity projects");
+        assert_eq!(activities, vec![Some(10), Some(20)]);
+
+        let feedback_since_train: String = conn
+            .query_row(
+                "SELECT value FROM assignment_model_state WHERE key = 'feedback_since_train'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read feedback_since_train");
+        assert_eq!(feedback_since_train, "2");
+    }
+
+    #[test]
+    fn split_multi_preserves_total_duration_and_writes_feedback_per_part() {
+        let mut conn = setup_conn();
+        conn.execute(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, ?7, 0)",
+            rusqlite::params![
+                5_i64,
+                1_i64,
+                "2026-01-01T10:00:00Z",
+                "2026-01-01T12:00:00Z",
+                7200_i64,
+                "2026-01-01",
+                "Long block",
+            ],
+        )
+        .expect("insert source session");
+        conn.execute_batch(
+            "INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id) VALUES
+                (1, 1, '2026-01-01', 'a.rs', 900, '2026-01-01T10:05:00Z', '2026-01-01T10:20:00Z', NULL),
+                (2, 1, '2026-01-01', 'b.rs', 1200, '2026-01-01T10:40:00Z', '2026-01-01T11:00:00Z', NULL),
+                (3, 1, '2026-01-01', 'c.rs', 1200, '2026-01-01T11:20:00Z', '2026-01-01T11:40:00Z', NULL);",
+        )
+        .expect("insert file activities");
+
+        let source = load_split_source_session(&conn, 5_i64, true).expect("load split source");
+        let splits = vec![
+            SplitPart {
+                project_id: Some(10),
+                ratio: 0.25,
+            },
+            SplitPart {
+                project_id: Some(20),
+                ratio: 0.25,
+            },
+            SplitPart {
+                project_id: Some(30),
+                ratio: 0.5,
+            },
+        ];
+        execute_session_split(&mut conn, 5_i64, &source, splits.as_slice()).expect("run split");
+
+        let (session_count, total_duration): (i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) FROM sessions",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read session totals");
+        assert_eq!(session_count, 3);
+        assert_eq!(total_duration, 7200);
+
+        let max_end: String = conn
+            .query_row("SELECT end_time FROM sessions ORDER BY end_time DESC LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .expect("read last end");
+        assert_eq!(
+            parse_iso_datetime(&max_end)
+                .expect("parse max end")
+                .timestamp_millis(),
+            parse_iso_datetime("2026-01-01T12:00:00Z")
+                .expect("parse expected end")
+                .timestamp_millis()
+        );
+
+        let feedback_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM assignment_feedback WHERE session_id IN (SELECT id FROM sessions)",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read feedback count");
+        assert_eq!(feedback_count, 3);
+
+        let feedback_since_train: String = conn
+            .query_row(
+                "SELECT value FROM assignment_model_state WHERE key = 'feedback_since_train'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read feedback_since_train");
+        assert_eq!(feedback_since_train, "3");
+
+        let activities: Vec<Option<i64>> = conn
+            .prepare("SELECT project_id FROM file_activities ORDER BY id ASC")
+            .expect("prepare file activity query")
+            .query_map([], |row| row.get::<_, Option<i64>>(0))
+            .expect("query file activity projects")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect activity projects");
+        assert_eq!(activities, vec![Some(10), Some(20), Some(30)]);
     }
 }

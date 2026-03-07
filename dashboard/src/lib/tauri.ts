@@ -34,6 +34,7 @@ import type {
   ManualSessionWithProject,
   ImportValidation,
   ImportSummary,
+  ImportResult,
   ExportArchive,
   DbInfo,
   DatabaseSettings,
@@ -223,6 +224,7 @@ export const getSessions = (filters: {
   projectId?: number;
   unassigned?: boolean;
   minDuration?: number;
+  includeFiles?: boolean;
   includeAiSuggestions?: boolean;
   limit?: number;
   offset?: number;
@@ -326,6 +328,9 @@ export const getProjectTimeline = (
   });
 
 // Auto-import
+export const importJsonFiles = (filePaths: string[]) =>
+  invokeMutation<ImportResult[]>('import_json_files', { filePaths });
+
 export const autoImportFromDataDir = () =>
   invoke<AutoImportResult>('auto_import_from_data_dir');
 

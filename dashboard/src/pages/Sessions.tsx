@@ -97,6 +97,15 @@ function loadAssignProjectListMode(): AssignProjectListMode {
   }
 }
 
+function persistAssignProjectListMode(mode: AssignProjectListMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY, mode);
+  } catch (error) {
+    console.warn('Failed to persist assign project list mode', error);
+  }
+}
+
 function compareProjectsByName(
   a: ProjectWithStats,
   b: ProjectWithStats,
@@ -261,7 +270,10 @@ export function Sessions() {
   const [indicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const splitSettings = useMemo(() => loadSplitSettings(), [refreshKey]);
+  const splitSettings = useMemo(() => {
+    void refreshKey;
+    return loadSplitSettings();
+  }, [refreshKey]);
   const [scoreBreakdown, setScoreBreakdown] = useState<{
     sessionId: number;
     data: ScoreBreakdown;
@@ -283,10 +295,7 @@ export function Sessions() {
     return el instanceof HTMLElement ? el : undefined;
   }, []);
   const PAGE_SIZE = 100;
-  const minDuration = useMemo(() => {
-    void refreshKey;
-    return readMinSessionDuration();
-  }, [refreshKey]);
+  const minDuration = readMinSessionDuration();
   const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
   const canShiftForward = anchorDate < today;
   const shiftStepDays = rangeMode === 'weekly' ? 7 : 1;
@@ -373,6 +382,7 @@ export function Sessions() {
           : (activeProjectId ?? undefined),
       unassigned: activeProjectId === 'unassigned' ? true : undefined,
       minDuration,
+      includeFiles: viewMode === 'detailed',
       includeAiSuggestions: true,
     })
       .then((data) => {
@@ -380,7 +390,7 @@ export function Sessions() {
         setHasMore(data.length >= PAGE_SIZE);
       })
       .catch(console.error);
-  }, [effectiveDateRange, refreshKey, activeProjectId, minDuration]);
+  }, [effectiveDateRange, refreshKey, activeProjectId, minDuration, viewMode]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -393,48 +403,19 @@ export function Sessions() {
   }, [refreshKey]);
 
   useEffect(() => {
-    const visibleIds = new Set(sessions.map((s) => s.id));
-    setSplitEligibilityBySession((prev) => {
-      const next = new Map<number, boolean>();
-      prev.forEach((flag, sessionId) => {
-        if (visibleIds.has(sessionId)) {
-          next.set(sessionId, flag);
-        }
-      });
-      return next;
-    });
-
-    setSplitAnalysisBySession((prev) => {
-      const next = new Map<number, MultiProjectAnalysis>();
-      prev.forEach((analysis, sessionId) => {
-        if (visibleIds.has(sessionId)) {
-          next.set(sessionId, analysis);
-        }
-      });
-      return next;
-    });
-    setSplitAnalysisLoadingIds((prev) => {
-      const next = new Set<number>();
-      prev.forEach((sessionId) => {
-        if (visibleIds.has(sessionId)) {
-          next.add(sessionId);
-        }
-      });
-      return next;
-    });
-  }, [sessions]);
-
-  useEffect(() => {
     if (!multiSplitSession) return;
     const sessionId = multiSplitSession.id;
     if (splitAnalysisBySession.has(sessionId)) return;
     if (splitAnalysisLoadingIds.has(sessionId)) return;
 
     let cancelled = false;
-    setSplitAnalysisLoadingIds((prev) => {
-      const next = new Set(prev);
-      next.add(sessionId);
-      return next;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setSplitAnalysisLoadingIds((prev) => {
+        const next = new Set(prev);
+        next.add(sessionId);
+        return next;
+      });
     });
 
     void withTimeout(
@@ -504,7 +485,6 @@ export function Sessions() {
   useEffect(() => {
     const visibleSessionIds = sessions.map((s) => s.id);
     if (visibleSessionIds.length === 0) {
-      setSplitEligibilityBySession(new Map());
       return;
     }
 
@@ -591,6 +571,7 @@ export function Sessions() {
             : (activeProjectId ?? undefined),
         unassigned: activeProjectId === 'unassigned' ? true : undefined,
         minDuration,
+        includeFiles: viewMode === 'detailed',
         includeAiSuggestions: true,
       })
         .then((data) => {
@@ -603,7 +584,7 @@ export function Sessions() {
         });
     }, 15_000);
     return () => clearInterval(interval);
-  }, [effectiveDateRange, activeProjectId, minDuration]);
+  }, [effectiveDateRange, activeProjectId, minDuration, viewMode]);
 
   // Close context menus on click outside or Escape
   useEffect(() => {
@@ -638,40 +619,29 @@ export function Sessions() {
     [setProjectCtxMenu, setCtxMenu],
   );
 
-  const openMultiSplitModal = useCallback(
-    (session: SessionWithApp) => {
-      const splitSuggested = splitEligibilityBySession.get(session.id) ?? false;
-      if (!splitSuggested) return;
+  const openMultiSplitModal = (session: SessionWithApp) => {
+    const splitSuggested = splitEligibilityBySession.get(session.id) ?? false;
+    if (!splitSuggested) return;
 
-      const derivedAnalysis = buildAnalysisFromBreakdown(
-        session.id,
-        aiBreakdowns.get(session.id) ??
-          (scoreBreakdown?.sessionId === session.id
-            ? scoreBreakdown.data
-            : null),
-        splitSettings.toleranceThreshold,
-        splitSettings.maxProjectsPerSession,
-      );
-      if (derivedAnalysis) {
-        setSplitAnalysisBySession((prev) => {
-          if (prev.has(session.id)) return prev;
-          const next = new Map(prev);
-          next.set(session.id, derivedAnalysis);
-          return next;
-        });
-      }
-
-      setCtxMenu(null);
-      setMultiSplitSession(session);
-    },
-    [
-      aiBreakdowns,
-      scoreBreakdown,
-      splitEligibilityBySession,
+    const derivedAnalysis = buildAnalysisFromBreakdown(
+      session.id,
+      aiBreakdowns.get(session.id) ??
+        (scoreBreakdown?.sessionId === session.id ? scoreBreakdown.data : null),
       splitSettings.toleranceThreshold,
       splitSettings.maxProjectsPerSession,
-    ],
-  );
+    );
+    if (derivedAnalysis) {
+      setSplitAnalysisBySession((prev) => {
+        if (prev.has(session.id)) return prev;
+        const next = new Map(prev);
+        next.set(session.id, derivedAnalysis);
+        return next;
+      });
+    }
+
+    setCtxMenu(null);
+    setMultiSplitSession(session);
+  };
 
   const handleProjectContextMenu = useCallback(
     (e: React.MouseEvent, projectId: number | null, projectName: string) => {
@@ -1010,6 +980,7 @@ export function Sessions() {
           : (activeProjectId ?? undefined),
       unassigned: activeProjectId === 'unassigned' ? true : undefined,
       minDuration,
+      includeFiles: viewMode === 'detailed',
       includeAiSuggestions: true,
     })
       .then((data) => {
@@ -1757,12 +1728,7 @@ export function Sessions() {
                   }`}
                   onClick={() => {
                     setAssignProjectListMode('alpha_active');
-                    try {
-                      window.localStorage.setItem(
-                        ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
-                        'alpha_active',
-                      );
-                    } catch {}
+                    persistAssignProjectListMode('alpha_active');
                   }}
                 >
                   <Type className="h-3.5 w-3.5" />
@@ -1783,12 +1749,7 @@ export function Sessions() {
                   }`}
                   onClick={() => {
                     setAssignProjectListMode('new_top_rest');
-                    try {
-                      window.localStorage.setItem(
-                        ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
-                        'new_top_rest',
-                      );
-                    } catch {}
+                    persistAssignProjectListMode('new_top_rest');
                   }}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
@@ -1809,12 +1770,7 @@ export function Sessions() {
                   }`}
                   onClick={() => {
                     setAssignProjectListMode('top_new_rest');
-                    try {
-                      window.localStorage.setItem(
-                        ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
-                        'top_new_rest',
-                      );
-                    } catch {}
+                    persistAssignProjectListMode('top_new_rest');
                   }}
                 >
                   <Flame className="h-3.5 w-3.5" />

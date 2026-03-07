@@ -95,7 +95,7 @@ export function duplicateTemplate(id: string): ReportTemplate[] {
   const copy: ReportTemplate = {
     ...source,
     id: generateId(),
-    name: `${source.name} (kopia)`,
+    name: `${source.name} (copy)`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

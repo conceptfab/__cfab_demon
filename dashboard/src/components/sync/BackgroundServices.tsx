@@ -207,6 +207,7 @@ function useAutoSplitSessions() {
         limit: 50,
         offset: 0,
         unassigned: true,
+        includeFiles: false,
         includeAiSuggestions: true,
         minDuration,
       });
@@ -268,7 +269,6 @@ function useJobPool() {
   const nextSyncIntervalRef = useRef(0);
   const nextSyncPollRef = useRef(0);
 
-  const syncRunningRef = useRef(false);
   const syncSettingsRef = useRef(loadOnlineSyncSettings());
   const syncFailCountRef = useRef(0);
 
@@ -287,14 +287,18 @@ function useJobPool() {
         triggerRefresh();
       }
       lastSignatureRef.current = current;
-    } catch {}
+    } catch (error) {
+      console.warn('[useJobPool] Failed to check today file signature', error);
+    }
   }, [triggerRefresh]);
 
   const runRefresh = useCallback(async () => {
     try {
       await refreshToday();
       triggerRefresh();
-    } catch {}
+    } catch (error) {
+      console.warn('[useJobPool] Refresh today failed', error);
+    }
   }, [triggerRefresh]);
 
   const refreshSyncSettingsCache = useCallback(() => {
@@ -303,11 +307,9 @@ function useJobPool() {
 
   const runSync = useCallback(
     async (reason: string, isAuto = true) => {
-      if (syncRunningRef.current) return;
       const settings = syncSettingsRef.current;
       if (isAuto && !settings.enabled) return;
 
-      syncRunningRef.current = true;
       try {
         console.log(`[useJobPool] Running online sync (reason: ${reason})`);
         await runOnlineSyncOnce();
@@ -324,8 +326,6 @@ function useJobPool() {
         );
         console.log(`Sync backoff: retry assigned in ${backoffSec}s`);
         nextSyncPollRef.current = Date.now() + backoffSec * 1000;
-      } finally {
-        syncRunningRef.current = false;
       }
     },
     [triggerRefresh],
@@ -404,7 +404,7 @@ function useJobPool() {
         if (localChangeSyncTimer.current)
           window.clearTimeout(localChangeSyncTimer.current);
         localChangeSyncTimer.current = window.setTimeout(() => {
-          if (!syncRunningRef.current) void runSync('local_change');
+          void runSync('local_change');
         }, 1_500);
       }
     };

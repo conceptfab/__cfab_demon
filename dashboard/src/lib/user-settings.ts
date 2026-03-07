@@ -29,7 +29,7 @@ function createSettingsManager<T>(config: {
   key: string;
   legacyKey?: string;
   defaults: T;
-  normalize: (parsed: Partial<T> | any) => T;
+  normalize: (parsed: Partial<T> & Record<string, unknown>) => T;
 }) {
   return {
     load: (): T => {
@@ -44,14 +44,17 @@ function createSettingsManager<T>(config: {
         ) {
           migrateLegacySetting(config.key, config.legacyKey, raw);
         }
-        const parsed = JSON.parse(raw);
+        const parsed = (JSON.parse(raw) ?? {}) as Partial<T> &
+          Record<string, unknown>;
         return config.normalize(parsed ?? {});
       } catch {
         return { ...config.defaults };
       }
     },
     save: (next: T): T => {
-      const normalized = config.normalize(next);
+      const normalized = config.normalize(
+        next as Partial<T> & Record<string, unknown>,
+      );
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(config.key, JSON.stringify(normalized));
         if (config.legacyKey) {
@@ -304,9 +307,11 @@ const reportFontManager = createSettingsManager<ReportFontSettings>({
   key: REPORT_FONT_STORAGE_KEY,
   defaults: DEFAULT_REPORT_FONT_SETTINGS,
   normalize: (parsed) => ({
-    fontFamily: (FONT_FAMILIES as readonly string[]).includes(parsed.fontFamily)
-      ? parsed.fontFamily
-      : DEFAULT_REPORT_FONT_SETTINGS.fontFamily,
+    fontFamily:
+      typeof parsed.fontFamily === 'string' &&
+      (FONT_FAMILIES as readonly string[]).includes(parsed.fontFamily)
+        ? (parsed.fontFamily as ReportFontSettings['fontFamily'])
+        : DEFAULT_REPORT_FONT_SETTINGS.fontFamily,
     baseFontSize:
       typeof parsed.baseFontSize === 'number' &&
       !Number.isNaN(parsed.baseFontSize)

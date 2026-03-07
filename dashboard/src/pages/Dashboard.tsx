@@ -366,6 +366,7 @@ export function Dashboard() {
         limit: 500,
         offset: 0,
         minDuration,
+        includeFiles: false,
         includeAiSuggestions: false,
       }),
       getManualSessions({ dateRange }),

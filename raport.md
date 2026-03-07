@@ -1,330 +1,248 @@
-# TIMEFLOW - Raport analizy kodu
-
-**Data:** 2026-03-07
-**Zakres:** Poprawnosc logiki, wydajnosc, optymalizacje, nadmiarowy kod, tlumaczenia, dokumentacja Help
-
----
-
-## 1. PROBLEMY KRYTYCZNE
-
-### 1.1 Memory leak w BackgroundServices.tsx (linia 237-241)
-
-**Problem:** `runAutoSplit` jest w dependency array `useEffect`, ale zmienia sie przy kazdym renderze (jego deps `triggerRefresh` zmienia sie czesto). Powoduje to resetowanie `setInterval` przy kazdym renderze — zamiast 1 intervalu, moze byc ich 12+ na minute.
-
-```typescript
-useEffect(() => {
-  if (!autoImportDone) return;
-  void runAutoSplit();
-  const interval = window.setInterval(() => void runAutoSplit(), 60_000);
-  return () => clearInterval(interval);
-}, [autoImportDone, runAutoSplit]); // runAutoSplit zmienia sie co render!
-```
-
-**Rozwiazanie:** Uzyc `useRef` do przechowywania aktualnej wersji `runAutoSplit` i w `useEffect` odwolywac sie do ref.current. Dependency array powinien zawierac tylko `autoImportDone`.
-
----
-
-### 1.2 Globalna flaga `heavyOperationInProgress` (BackgroundServices.tsx, linia 29-40)
-
-**Problem:** Jedna globalna flaga blokuje WSZYSTKIE ciezkie operacje (rebuild, train, auto-assign). Jesli rebuild trwa, user klika "Train Now" w AI.tsx — dostaje ciche niepowodzenie bez komunikatu bledu.
-
-```typescript
-let heavyOperationInProgress = false; // Jedna flaga dla wszystkiego
-```
-
-**Rozwiazanie:** Zamienic na `Map<string, boolean>` per typ operacji, lub przynajmniej informowac uzytkownika, ze operacja jest zablokowana.
-
----
-
-### 1.3 Brak rate-limitingu na emitLocalDataChanged (tauri.ts, linia 72-80)
-
-**Problem:** Kazda mutacja emituje event `localDataChanged`. Przy batch operacjach (np. przypisanie 10 sesji) generuje 10 eventow, kazdy triggeruje pelny refresh danych w BackgroundServices.
-
-```typescript
-function invokeMutation<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  return invoke<T>(command, args).then((result) => {
-    emitLocalDataChanged(command); // 10 mutacji = 10 refreshow
-    return result;
-  });
-}
-```
-
-**Rozwiazanie:** Dodac debounce/throttle na `emitLocalDataChanged` (np. 300ms) lub batch mutations z jednym eventem na koniec.
-
----
-
-### 1.4 Race condition w fetchStatus (AI.tsx, linia 183-207)
-
-**Problem:** `fetchStatus()` uruchamia sie co 30s w interwale, ale nie sprawdza, czy poprzedni request sie zakonczyl. Przy wolnym backendzie moze nakladac sie wiele requestow.
-
-**Rozwiazanie:** Dodac `AbortController` lub flage `isFetching` z early return.
-
----
-
-### 1.5 Niespojnosc scoringu sesji (Sessions.tsx vs BackgroundServices.tsx)
-
-**Problem:** `isSplittableFromBreakdown()` (Sessions.tsx, linia 122-134) uzywa `scoreBreakdownData` z frontendu, podczas gdy `autoSplitSessions` (BackgroundServices.tsx, linia 207-211) uzywa `analyzeSessionProjects` API call. Moga dawac rozne wyniki jesli model AI zmienil sie miedzy wywolaniami.
-
-**Rozwiazanie:** Ujednolicic zrodlo danych — albo zawsze z API, albo zawsze z cache.
-
----
-
-## 2. PROBLEMY SREDNIE
-
-### 2.1 Brak error recovery w handleTrainNow (AI.tsx, linia 242-257)
-
-**Problem:** Jesli trening sie nie powiedzie, status nie jest odswiezany. Uzytkownik widzi stary status.
-
-**Rozwiazanie:** W bloku `catch` dodac `fetchStatus(true)` przed `showError`.
-
----
-
-### 2.2 Drift correction moze dac ujemne ratio (BackgroundServices.tsx, linia 60-64)
-
-**Problem:** Korekta driftu dodaje roznice do ostatniego projektu. Jesli drift jest duzy (-0.1), ostatni projekt moze dostac ujemne ratio.
-
-```typescript
-const drift = 1 - ratioSum;
-if (raw.length > 0 && Math.abs(drift) > 0.000_001) {
-  raw[raw.length - 1].ratio += drift; // Moze byc ujemne!
-}
-```
-
-**Rozwiazanie:** Normalizowac kazdy ratio proporcjonalnie: `ratio = ratio / ratioSum`.
-
----
-
-### 2.3 Brak backoff strategy dla sync (BackgroundServices.tsx, linia 310)
-
-**Problem:** Jesli synchronizacja online zawsze failuje (brak polaczenia), retry co 30s bez backoff — drain baterii i spam sieciowy.
-
-**Rozwiazanie:** Implementowac exponential backoff (30s, 60s, 120s, max 5min).
-
----
-
-### 2.4 Brak timeout dla score breakdown loading (SessionRow.tsx, linia 210-213)
-
-**Problem:** Jesli ladowanie score breakdown zawiesi sie (timeout sieci), UI pokazuje "loading..." w nieskonczonosc. Brak stanu bledu.
-
-**Rozwiazanie:** Dodac timeout (np. 10s) i fallback do stanu bledu.
-
----
-
-### 2.5 Dwa niezalezne setInterval w Sidebar.tsx (linia 143-206)
-
-**Problem:** Dwa niemal identyczne `useEffect` z `setInterval` (10s i 60s). Szybki unmount/remount moze spowodowac niezatrzymane timery.
-
-**Rozwiazanie:** Polaczyc w jeden `useEffect` lub wydzielic hook `usePollingEffect(fn, interval)`.
-
----
-
-### 2.6 Throttle timer bez cleanup (data-store.ts, linia 36-57)
-
-**Problem:** Zmienne `lastRefreshAtMs` i `scheduledRefreshTimer` sa na poziomie modulu. Jesli store jest zdestrukturyzowany (testy), timer zostaje w tle.
-
-**Rozwiazanie:** Dodac cleanup mechanism lub przeniesc do store lifecycle.
-
----
-
-### 2.7 inferPreset nigdy nie zwraca 'all' dla dat historycznych (data-store.ts, linia 75-91)
-
-**Problem:** Fallback zawsze do `'week'`. Jesli daty `start` sa starsze niz `ALL_TIME_START`, preset nie zsynchronizuje sie poprawnie.
-
-**Rozwiazanie:** Dodac obsluge dla zakresow wykraczajacych poza predefiniowane presety.
-
----
-
-### 2.8 Brak batch save dla ustawien (Settings.tsx)
-
-**Problem:** Kazda zmiana ustawienia to osobny zapis. Jesli aplikacja crashuje miedzy zapisami, konfiguracja moze byc czesciowa.
-
-**Rozwiazanie:** Batch save przy opuszczaniu strony ustawien lub debounce z jednym zapisem.
-
----
-
-## 3. PROBLEMY DROBNE
-
-### 3.1 Nieuzywany dirtyRef (AI.tsx, linia 163)
-
-**Problem:** `dirtyRef.current = true` ustawiany w onChange, ale `syncFromStatus()` zawsze uzywa `force=true`. Flaga jest zbedna.
-
-**Rozwiazanie:** Usunac `dirtyRef` i powiazana logike.
-
----
-
-### 3.2 Redundancja w discoveredProjects (data-store.ts, linia 29-32)
-
-**Problem:** Dwa osobne pola stanu:
-```typescript
-discoveredProjects: string[]
-discoveredProjectsDismissed: boolean
-```
-
-**Rozwiazanie:** Polaczyc w jedno: `discoveredProjects: { projects: string[]; dismissed: boolean }`.
-
----
-
-### 3.3 Zduplikowana logika confidence (SessionRow.tsx, linia 201-206 i 383-388)
-
-**Problem:** Identyczna kalkulacja confidence w widoku compact i normal:
-```typescript
-const conf = s.suggested_confidence ?? bdConf ??
-  (bdCandidate ? Math.min(bdCandidate.total_score / 10, 1) : null);
-```
-
-**Rozwiazanie:** Wydzielic do utility function `computeConfidence(session, breakdown)`.
-
----
-
-### 3.4 Filtrowanie po slice w buildAutoSplits (BackgroundServices.tsx, linia 42-66)
-
-**Problem:** Kandydaci z `score <= 0` sa filtrowani PO `slice()`:
-```typescript
-const candidates = analysis.candidates
-  .slice(0, Math.max(2, Math.min(5, maxProjects)))
-  .filter((candidate) => candidate.score > 0); // Powinno byc PRZED slice
-```
-
-**Rozwiazanie:** Najpierw `.filter()`, potem `.slice()`.
-
----
-
-### 3.5 toLocalDatetimeValue zdefiniowana w komponencie (ManualSessionDialog.tsx, linia 26-41)
-
-**Problem:** Utility function zdefiniowana wewnatrz pliku komponentu zamiast w `lib/`.
-
-**Rozwiazanie:** Przeniesc do `lib/date-utils.ts` lub `lib/utils.ts`.
-
----
-
-## 4. NADMIAROWY KOD I DUPLIKACJE
-
-### 4.1 Powtorzony pattern w user-settings.ts (8+ razy)
-
-**Problem:** Kazde ustawienie (WorkingHours, Freeze, Session, Currency, Language, itd.) powtarza identyczny wzorzec: `STORAGE_KEY`, `LEGACY_KEY`, `loadRawSetting()`, `migrateLegacySetting()`, `loadXxxSettings()`, `saveXxxSettings()`.
-
-**Rozwiazanie:** Stworzyc generyczna fabryke:
-```typescript
-function createSettingsManager<T>(config: {
-  key: string;
-  legacyKey?: string;
-  defaults: T;
-  validate?: (raw: unknown) => T;
-}) { ... }
-```
-
-Redukcja ~200 linii powtorzonego kodu.
-
----
-
-### 4.2 Dwa identyczne useEffect w Sidebar.tsx (linia 143-206)
-
-**Problem:** Dwa efekty z prawie identyczna struktura (disposed flag, isVisible check, interval).
-
-**Rozwiazanie:** Wydzielic hook `usePollingEffect(callback, intervalMs, deps)`.
-
----
-
-## 5. WYDAJNOSC I OPTYMALIZACJE
-
-### 5.1 Dashboard.tsx — cztery useMemo z nakladajacymi sie deps (linia 181-224)
-
-**Problem:** `projectColorMap`, `unassignedToday`, `boostedByProject`, `manualCountsByProject` — wszystkie przeliczaja sie przy zmianie `allProjects` lub `todaySessions`.
-
-**Rozwiazanie:** Memoizowac posrednie dane na poziomie store'a (Zustand selektory z `useShallow`).
-
----
-
-### 5.2 Brak memoizacji w ProjectDayTimeline.tsx (linia 99-115)
-
-**Problem:** Transformacja sesji do `TimelineRow` odbywa sie przy kazdym renderze.
-
-**Rozwiazanie:** Opakować w `useMemo` z zaleznosciami `[sessions, projects]`.
-
----
-
-### 5.3 CSS keyframes w JSX (SplashScreen.tsx, linia 30-35)
-
-**Problem:** Animacje `@keyframes` zdefiniowane inline w komponencie.
-
-**Rozwiazanie:** Przeniesc do pliku CSS/Tailwind config.
-
----
-
-## 6. TLUMACZENIA I I18N
-
-### Status: PRAWIDLOWY
-
-System tlumaczen jest **poprawnie zaimplementowany**:
-- Dwa jezyki: EN (domyslny), PL
-- Slowniki: `locales/en/common.json` i `locales/pl/common.json` (914 linii kazdy)
-- Wszystkie komponenty UI uzywaja `useTranslation()` lub `useInlineT()`
-- Help.tsx i QuickStart.tsx poprawnie tlumaczone (wyjatki od reguly "UI po angielsku")
-- Branding `TIMEFLOW` konsekwentnie wielkimi literami
-- Brak hardkodowanych tekstow bez tlumaczen
-
-### Drobna uwaga:
-- `useInlineT()` w `lib/inline-i18n.ts` jest oznaczony jako `@deprecated` — warto zaplanowac migracje do pelnego systemu i18n z plikow JSON.
-
----
-
-## 7. DOKUMENTACJA HELP — BRAKUJACE OPISY
-
-### Funkcje NIEUDOKUMENTOWANE w Help.tsx:
-
-| # | Funkcja | Plik zrodlowy | Opis |
-|---|---------|---------------|------|
-| 1 | ImportPage (osobna strona importu) | `pages/ImportPage.tsx` | Niezalezna strona importu plikow JSON — brak w Help |
-| 2 | DataStats (statystyki bazy) | `components/data/DataStats.tsx` | Rozmiar bazy, liczba rekordow — brak w Help |
-| 3 | Currency Settings (waluta) | `pages/Settings.tsx` | Ustawienia waluty i formatu — brak w Help |
-| 4 | Language Settings (jezyk) | `pages/Settings.tsx` | Przelaczanie PL/EN — brak w Help |
-
-### Funkcje CZESCIOWO opisane:
-
-| # | Funkcja | Co brakuje |
-|---|---------|------------|
-| 1 | ReportView (pelnoekranowy raport) | Brak opisu fullscreen mode i opcji drukowania |
-| 2 | Daemon Live Logs | Brak szczegolow real-time monitorowania i 200 linii logow |
-| 3 | ProjectContextMenu | Brak opisu menu kontekstowego projektow |
-| 4 | Session Split Settings (zaawansowane) | Brak szczegolow tolerancji, auto-split |
-| 5 | Online Sync (zaawansowane) | Brak szczegolow recznej synchronizacji i zarzadzania tokenem |
-
----
-
-## 8. PODSUMOWANIE PRIORYTETOW
-
-### PILNE (wplyw na stabilnosc):
-1. Memory leak w `useAutoSplitSessions` interval — BackgroundServices.tsx
-2. Globalna flaga `heavyOperationInProgress` bez informowania usera — BackgroundServices.tsx
-3. Brak rate-limitingu na `emitLocalDataChanged` — tauri.ts
-4. Race condition w `fetchStatus` — AI.tsx
-
-### WAZNE (wplyw na jakosc):
-5. Niespojnosc scoringu (frontend vs API) — Sessions.tsx vs BackgroundServices.tsx
-6. Brak error recovery w treningu AI — AI.tsx
-7. Drift correction z mozliwym ujemnym ratio — BackgroundServices.tsx
-8. Brak backoff w sync retry — BackgroundServices.tsx
-9. Uzupelnic Help.tsx o brakujace funkcje (ImportPage, DataStats, Currency/Language Settings)
-
-### NICE TO HAVE (czystosc kodu):
-10. Factory pattern dla user-settings.ts (~200 linii redukcji)
-11. Hook `usePollingEffect` dla powtorzonych intervalow
-12. Usunac nieuzywany `dirtyRef` z AI.tsx
-13. Migracja z `useInlineT()` na pelny system i18n
-14. Przeniesienie utility functions do `lib/`
-
----
-
-## 9. OCENA OGOLNA
-
-| Aspekt | Ocena | Komentarz |
-|--------|-------|-----------|
-| Architektura | 8/10 | Dobra separacja (store, hooks, pages, components). Lazy loading stron. |
-| I18n | 9/10 | Pelne pokrycie, dwa jezyki, konsekwentne uzycie. |
-| Logika AI | 7/10 | Dziala, ale brak recovery, niespojnosc zrodel danych. |
-| Wydajnosc | 6/10 | Memory leaki w intervalach, brak debounce na mutacjach. |
-| Czystosc kodu | 6/10 | Duplikacje w user-settings, sidebar; zbedne zmienne. |
-| Dokumentacja Help | 7/10 | Wiekszosc funkcji opisana, ale 4 calkowicie brakuje. |
-| Obsluga bledow | 5/10 | Wiele miejsc bez recovery, brak backoff, ciche faile. |
-
-**Wniosek:** Projekt ma solidna architekture i dobrze dzialajacy system tlumaczen. Glowne obszary do poprawy to: zarzadzanie cyklem zycia asynchronicznych operacji (intervaly, race conditions), obsluga bledow (recovery, backoff, informowanie usera) oraz redukcja duplikacji kodu.
+# Raport audytu kodu TIMEFLOW
+
+Data audytu: 2026-03-07
+Zakres: logika, wydajnosc, optymalizacje, nadmiarowy kod, tlumaczenia i pokrycie Help/Pomoc.
+
+## 1) Metodyka i walidacja
+
+Przeglad obejmowal:
+- backend Rust (daemon + Tauri commands),
+- frontend React/TypeScript,
+- warstwe i18n,
+- zgodnosc funkcjonalnosci z dokumentacja Help.
+
+Wykonane kontrole techniczne:
+- `npm run lint` (dashboard): 12 problemow (11 error, 1 warning).
+- `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`: OK (kompilacja poprawna).
+
+## 2) Podsumowanie wykonawcze
+
+Najwazniejsze wnioski:
+1. Wystepuje krytyczny blad SQL w sugestii podzialu sesji (`suggest_session_split`) powodujacy runtime error.
+2. Logika splitowania sesji nie domyka petli uczenia AI (brak `assignment_feedback` dla splitu), a podzial nie aktualizuje mapowania `file_activities`.
+3. Widoczne sa problemy jakosciowe frontendu potwierdzone lintem (setState w `useEffect`, puste bloki `catch`, problem z memoizacja callbacku).
+4. Pliki i18n sa kompletne kluczowo (PL/EN: 757/757), ale nadal istnieja twardo zaszyte teksty i mieszanie strategii tlumaczen.
+5. Help opisuje glownie funkcje "happy path"; brakuje opisu kilku realnych zachowan produkcyjnych (ACK pending, reseed, sync logging, tryby listy projektow w Sessions).
+
+## 3) Znalezione problemy - priorytety
+
+### P0 (krytyczne)
+
+#### P0.1 - Bledna kolumna SQL w `suggest_session_split`
+- Obszar: backend / podzial sesji.
+- Dowod:
+  - `dashboard/src-tauri/src/commands/sessions.rs:1224` uzywa `af.project_id`.
+  - `dashboard/src-tauri/src/db.rs:233-234` w tabeli `assignment_feedback` istnieja `from_project_id` i `to_project_id` (brak `project_id`).
+- Wplyw:
+  - runtime SQL error (`no such column: af.project_id`) w funkcji podpowiedzi splitu,
+  - fallback splitu (current project + suggested project) przestaje dzialac.
+- Rekomendacja:
+  - zamienic `af.project_id` na `af.to_project_id` (lub jawnie zdefiniowac semantyke ostatniego feedbacku),
+  - dodac test jednostkowy dla tej sciezki zapytania.
+
+### P1 (wysokie)
+
+#### P1.1 - Split sesji nie zapisuje feedbacku do modelu i nie synchronizuje mapowania aktywnosci
+- Obszar: backend / AI quality / spojnosc danych.
+- Dowod:
+  - split modyfikuje tylko `sessions`: `dashboard/src-tauri/src/commands/sessions.rs:1167-1194` oraz `1567-1595`.
+  - standardowe przypisanie (`assign_session_to_project`) zapisuje dodatkowo:
+    - update `file_activities`: `dashboard/src-tauri/src/commands/sessions.rs:748-755`,
+    - insert `assignment_feedback`: `dashboard/src-tauri/src/commands/sessions.rs:773-776`.
+- Wplyw:
+  - po splicie AI nie dostaje sygnalu uczenia tak jak przy zwyklym przypisaniu,
+  - mozliwa niespojnosc miedzy nowymi sesjami a projektem w aktywnosciach plikow,
+  - ryzyko slabszej trafnosci sugestii po dluzszej pracy.
+- Rekomendacja:
+  - po splitcie emitowac feedback per czesc (`from_project_id -> to_project_id`),
+  - doprecyzowac strategia aktualizacji `file_activities` dla przedzialow czasu splitu,
+  - zrefaktoryzowac split do jednej wspolnej sciezki logiki (single + multi).
+
+#### P1.2 - Brak indeksu po `assignment_feedback.session_id`
+- Obszar: wydajnosc bazy.
+- Dowod:
+  - wielokrotne zapytania po `session_id`: `dashboard/src-tauri/src/commands/sessions.rs:278-279`, `304-305`, `1224`.
+  - indeksy tabeli feedback obecnie: tylko `created_at`, `source`: `dashboard/src-tauri/src/db.rs:273-274`.
+- Wplyw:
+  - skanowanie tabeli przy rosnacej historii feedbacku,
+  - rosnace opoznienia dla `get_sessions` i split suggestion.
+- Rekomendacja:
+  - dodac indeks: `CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);`.
+
+#### P1.3 - Problemy React Hooks i ryzyko cascading renders
+- Obszar: frontend / responsywnosc / stabilnosc.
+- Dowod (`npm run lint`):
+  - `react-hooks/set-state-in-effect`:
+    - `dashboard/src/components/reports/ReportTemplateSelector.tsx:20`,
+    - `dashboard/src/pages/Sessions.tsx:397`, `434`, `507`.
+  - `react-hooks/preserve-manual-memoization`:
+    - `dashboard/src/pages/Sessions.tsx:642`.
+- Wplyw:
+  - dodatkowe renderowania, niestabilne profile wydajnosci,
+  - utrudniona optymalizacja przez React Compiler.
+- Rekomendacja:
+  - inicjalizowac state w lazy initializer zamiast sync `setState` w efektach,
+  - przebudowac zaleznosci callbackow i usunac reczne memo tam, gdzie nie daje wartosci,
+  - uruchamiac lint jako gate w CI.
+
+### P2 (srednie)
+
+#### P2.1 - Puste bloki `catch` i puste bloki kodu
+- Obszar: diagnostyka i utrzymanie.
+- Dowod:
+  - `dashboard/src/components/sync/BackgroundServices.tsx:290`, `297`,
+  - `dashboard/src/pages/Sessions.tsx:1765`, `1791`, `1817`.
+- Wplyw:
+  - ciche ukrywanie bledow,
+  - trudniejsze debugowanie awarii synchro/UX.
+- Rekomendacja:
+  - logowanie z kontekstem (`warn/error`) i minimalny fallback,
+  - dla localStorage: `catch (e) { console.warn(...) }`.
+
+#### P2.2 - Problem typowania (`any`) w managerze ustawien
+- Obszar: TypeScript hygiene.
+- Dowod:
+  - `dashboard/src/lib/user-settings.ts:32` (`normalize: (parsed: Partial<T> | any) => T`).
+- Wplyw:
+  - oslabienie gwarancji typow,
+  - latwiejsze ukrycie regresji przy zmianie schematow ustawien.
+- Rekomendacja:
+  - zastapic `any` przez `unknown` + type-guardy per manager.
+
+#### P2.3 - Potencjalnie kosztowna logika `get_sessions`
+- Obszar: backend / skala danych.
+- Dowod:
+  - budowa i czyszczenie temp table `_fa_keys`: `dashboard/src-tauri/src/commands/sessions.rs:402-407`,
+  - ladowanie aktywnosci po `(app_id, date)` i klonowanie ich do kazdej sesji: `479-482`,
+  - iteracje overlap per plik i per sesja: `491-520`.
+- Wplyw:
+  - wzrost kosztu CPU i RAM przy duzych dniach/duzej liczbie plikow,
+  - duze payloady do UI (powielanie tych samych list plikow na wiele sesji).
+- Rekomendacja:
+  - rozwazyc tryb "light sessions" bez `files` dla widokow zbiorczych,
+  - przesunac czesc filtrowania overlap do SQL,
+  - cachowac preagregacje (np. per `(app_id, date)` z TTL) dla powtarzalnych zapytan.
+
+#### P2.4 - Podwojny mechanizm blokady sync
+- Obszar: architektura sync.
+- Dowod:
+  - blokada w komponencie: `dashboard/src/components/sync/BackgroundServices.tsx:271`, `306`,
+  - blokada globalna w bibliotece: `dashboard/src/lib/online-sync.ts:1242-1249`.
+- Wplyw:
+  - kod dziala, ale jest bardziej zlozony niz potrzebne,
+  - trudniejsze reasonowanie o concurrency i retry.
+- Rekomendacja:
+  - zostawic jeden "source of truth" dla locka (preferencyjnie w `online-sync.ts`).
+
+## 4) Nadmiarowy kod / dlug techniczny
+
+1. Dublowanie logiki splitu:
+- `split_session` i `split_session_multi` implementuja podobne kroki osobno (`dashboard/src-tauri/src/commands/sessions.rs:1102`, `1484`).
+- Ryzyko: naprawa w jednej sciezce nie trafia do drugiej.
+
+2. Rownolegly model i18n:
+- Hook `useInlineT` jest jawnie oznaczony jako migracyjny/deprecated (`dashboard/src/lib/inline-i18n.ts:38-40`).
+- W kodzie nadal wystepuje szeroko (30 uzyc).
+- Ryzyko: niespojna terminologia, trudniejszy audyt tlumaczen i utrzymania.
+
+3. Lokalna logika harmonogramow i timerow rozproszona po hookach `BackgroundServices`:
+- Wiele mechanizmow cyklicznych i timeoutow w jednym komponencie (`dashboard/src/components/sync/BackgroundServices.tsx`).
+- Ryzyko: zlozony lifecycle i regresje przy rozbudowie.
+
+## 5) Tlumaczenia (i18n)
+
+### 5.1 Stan kluczy
+- `dashboard/src/locales/en/common.json`: 757 kluczy.
+- `dashboard/src/locales/pl/common.json`: 757 kluczy.
+- Braki kluczy: 0 po obu stronach.
+
+### 5.2 Realne luki tlumaczen
+
+1. Twarde stringi w podgladzie sekcji raportu:
+- `dashboard/src/pages/Reports.tsx:24-29`, `39-49`, `60-66`, `97-99`, `109-114`, `138`, `150-151`, `209`.
+- Wplyw: mieszanie jezykow i niespojne UX przy zmianie jezyka.
+
+2. Twardy sufiks przy duplikowaniu szablonu:
+- `dashboard/src/lib/report-templates.ts:98` -> `"(kopia)"`.
+- Wplyw: w UI EN pojawia sie polski sufiks.
+
+3. Czesciowa migracja i18n:
+- Wiele miejsc opiera sie na inline parach PL/EN zamiast kluczy.
+- Wplyw: brak centralnego glosariusza i wieksze ryzyko niespojnosci.
+
+### 5.3 Rekomendacja i18n
+- Etap 1: usunac hardcoded stringi z `Reports.tsx` i `report-templates.ts`.
+- Etap 2: migrowac `useInlineT` -> `t('namespace.key')` (modulami).
+- Etap 3: dodac test/skript CI: wykrywanie hardcoded stringow poza katalogiem locales.
+
+## 6) Funkcjonalnosci nieopisane lub niedoprecyzowane w Help/Pomoc
+
+### 6.1 Online Sync - zbyt ogolny opis
+- Help zawiera glownie: URL + User ID + Token (`dashboard/src/pages/Help.tsx:1069-1070`).
+- W Settings i logice sync istnieja dodatkowe zachowania, ktore nie sa czytelnie opisane:
+  - `ACK pending` i statusy ack (`dashboard/src/pages/Settings.tsx:1276`, `1317-1318`; `dashboard/src/lib/online-sync.ts:549-556`),
+  - scenariusz `server_snapshot_pruned` i reseed (`dashboard/src/pages/Settings.tsx:1293-1294`; `dashboard/src/lib/online-sync.ts:1159-1238`),
+  - sync logging do pliku (`dashboard/src/pages/Settings.tsx:1073`; `dashboard/src/lib/online-sync.ts:1008-1053`),
+  - powiazanie z Demo Mode (sync disabled) (`dashboard/src/lib/online-sync.ts:508-513`).
+
+### 6.2 Sessions - brak opisu zaawansowanych trybow listy projektow
+- Funkcja obecna: tryby `alpha_active`, `new_top_rest`, `top_new_rest` (`dashboard/src/pages/Sessions.tsx:1747-1801`).
+- Brak odpowiedniego opisu w Help (sekcja Sessions opisuje split, AI, filtry, ale nie te tryby).
+
+### 6.3 Auto-split - brak opisu ograniczen operacyjnych
+- Implementacja auto-split dziala cyklicznie i ma limit per przebieg (`dashboard/src/components/sync/BackgroundServices.tsx:233`, `253-255`).
+- Help opisuje funkcje splitu, ale nie komunikuje taktowania i limitu automatu.
+
+## 7) Plan naprawczy (priorytety wdrozenia)
+
+### Etap A - natychmiast (P0/P1)
+1. Naprawa SQL w `suggest_session_split`.
+2. Dodanie indeksu `assignment_feedback(session_id, created_at DESC)`.
+3. Domkniecie split workflow: feedback + strategia synchronizacji `file_activities`.
+4. Usuniecie bledow eslint (`set-state-in-effect`, `preserve-manual-memoization`, `no-empty`, `no-explicit-any`).
+
+### Etap B - krotki horyzont
+1. Refaktoryzacja splitu do wspolnej sciezki (single/multi).
+2. Ograniczenie kosztu `get_sessions` (light mode + mniej duplikacji `files`).
+3. Uproszczenie lockowania sync do jednego mechanizmu.
+
+### Etap C - dokumentacja i i18n
+1. Aktualizacja Help (Online Sync, ACK/reseed, sync logging, tryby listy projektow, auto-split cadence).
+2. Migracja hardcoded tekstow i inline i18n do kluczy.
+
+## 8) Sugestie testow po poprawkach
+
+1. Test integracyjny `suggest_session_split` z danymi `assignment_feedback` (sprawdzenie fallbacku).
+2. Test splitu (single i multi):
+- poprawna suma czasu,
+- poprawne przypisania projektow,
+- oczekiwane wpisy feedbacku.
+3. Test wydajnosciowy `get_sessions` na wiekszym wolumenie (np. 10k sesji, 100k file_activities).
+4. Snapshot testy i18n dla PL/EN w Reports i Sessions.
+
+## 9) Ocena koncowa
+
+Kod ma dobre fundamenty (kompilacja backendu przechodzi, architektura jest modularna), ale wymaga pilnej korekty jednego bledu krytycznego SQL i kilku istotnych poprawek spojnosc/wydajnosc/jakosc frontendu. Najwiekszy zysk biznesowy i techniczny da szybkie domkniecie split workflow + porzadek w sync/i18n + aktualizacja Help pod rzeczywiste zachowania systemu.
+
+## 10) Status wdrozenia (2026-03-08)
+
+Wdrozone:
+- [x] P0.1: poprawiono SQL w `suggest_session_split` (`af.to_project_id` zamiast nieistniejacego `af.project_id`).
+- [x] P1.1: split (single + multi) zapisuje `assignment_feedback`, aktualizuje `file_activities` i odswieza manual overrides.
+- [x] P1.2: dodano indeks `idx_assignment_feedback_session(session_id, created_at DESC)` (schema + post-migration indexes).
+- [x] P1.3/P2.1/P2.2: usuniete bledy eslint (`set-state-in-effect`, `preserve-manual-memoization`, `no-empty`, `no-explicit-any`).
+- [x] Dodano test regresyjny dla fallbacku split-suggestion (`split_suggestion_fallback_reads_latest_to_project_id`).
+- [x] i18n quick-fix: suffix duplikatu szablonu zmieniony z `"(kopia)"` na `"(copy)"`.
+- [x] Etap C.1: zaktualizowano Help (Online Sync ACK/reseed/sync logging, tryby listy projektow w Sessions, cadence i limity auto-split).
+- [x] Etap C.2 (zakres raportu): usunieto twarde stringi z preview sekcji w `Reports.tsx` (PL/EN przez `tt(...)`).
+- [x] Etap B.1: split single/multi zrefaktoryzowany do wspolnej sciezki wykonania (`execute_session_split`).
+- [x] Etap B.2: dodano tryb lekki `get_sessions` (`includeFiles`) i wlaczono go tam, gdzie szczegoly plikow nie sa potrzebne (Dashboard + auto-split background).
+- [x] Etap B.3: uproszczono lockowanie sync do jednego source of truth (`online-sync.ts`), usuwajac lokalny lock z `BackgroundServices`.
+- [x] Etap C.3: dodano skrypt detekcji hardcoded PL stringow poza `locales` z baseline (gate na nowe regresje).
+
+Walidacja po wdrozeniu:
+- `npm run lint` -> OK
+- `npm run build` -> OK
+- `cargo check --manifest-path dashboard/src-tauri/Cargo.toml` -> OK
+- `cargo test --manifest-path dashboard/src-tauri/Cargo.toml split_suggestion_fallback_reads_latest_to_project_id` -> OK
+- `cargo test --manifest-path dashboard/src-tauri/Cargo.toml` -> OK (12/12)

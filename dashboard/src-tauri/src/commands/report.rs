@@ -35,6 +35,7 @@ pub async fn get_project_report_data(
             project_id: Some(project_id),
             unassigned: None,
             min_duration: None,
+            include_files: Some(true),
             include_ai_suggestions: Some(true),
             limit: None,
             offset: None,

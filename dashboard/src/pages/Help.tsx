@@ -438,8 +438,16 @@ export function Help() {
                     'Session split settings – tolerance coefficient (0.2–1.0), max projects per session (2–5), automatic split. Configure in Settings > Session Split.',
                   ),
                   t(
+                    'Tryby listy projektów w menu przypisania: Aktywne A-Z, Najnowsze -> Top -> Reszta oraz Top -> Najnowsze -> Reszta. Pozwalają szybciej wskazać właściwy projekt przy dużej liczbie pozycji.',
+                    'Project list modes in the assignment menu: Active A-Z, Newest -> Top -> Rest, and Top -> Newest -> Rest. They speed up selection when you have many projects.',
+                  ),
+                  t(
                     'Ikona nożyczek – pojawia się przy sesjach, w których AI wykrył aktywność na plikach wielu projektów. Kliknij aby podzielić sesję wg sugestii AI.',
                     'Scissors icon – appears on sessions where AI detected file activity across multiple projects. Click to split the session based on AI suggestions.',
+                  ),
+                  t(
+                    'Auto-split działa cyklicznie: startuje po imporcie i ponawia się co 60 sekund. W jednym przebiegu analizuje do 50 nieprzypisanych sesji i wykonuje maksymalnie 5 podziałów.',
+                    'Auto-split runs in cycles: it starts after import and repeats every 60 seconds. In one pass it analyzes up to 50 unassigned sessions and performs at most 5 splits.',
                   ),
                 ]}
               >
@@ -1070,8 +1078,24 @@ export function Help() {
                     'Online Sync – set up synchronization with an external server (URL, User ID, Token).',
                   ),
                   t(
+                    'Statusy ACK w Online Sync – sekcja stanu pokazuje czy zmiany lokalne oczekują na potwierdzenie po stronie serwera (ACK pending).',
+                    'ACK statuses in Online Sync – the status area shows whether local changes are still waiting for server confirmation (ACK pending).',
+                  ),
+                  t(
+                    'Scenariusz server_snapshot_pruned – jeśli payload serwera został wyczyszczony po ACK, wykonaj lokalny reseed/eksport, aby odbudować stan synchronizacji.',
+                    'server_snapshot_pruned scenario – if the server payload was cleaned after ACK, run a local reseed/export to rebuild sync state.',
+                  ),
+                  t(
+                    'Sync logging – możesz włączyć logowanie synchronizacji do pliku, aby diagnozować błędy pull/push i przekazać log do wsparcia.',
+                    'Sync logging – you can enable file logging for synchronization to diagnose pull/push issues and share logs with support.',
+                  ),
+                  t(
                     'Demo Mode – przełączanie na bazę demo (możliwość testowania bez wpływu na realne dane).',
                     'Demo Mode – switch to a demo database (test without affecting real data).',
+                  ),
+                  t(
+                    'Tryb Demo a Sync – po przełączeniu na bazę demo synchronizacja online jest wyłączona, aby uniknąć mieszania danych testowych z produkcyjnymi.',
+                    'Demo Mode and Sync – when switched to the demo database, online synchronization is disabled to prevent mixing test and production data.',
                   ),
                   t(
                     'Auto Optimize DB – harmonogram automatycznej optymalizacji SQLite oraz ręczne uruchamianie optymalizacji.',
