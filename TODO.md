@@ -15,10 +15,15 @@ TODO ??
 - poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi
 - fonty systemowe do wyboru
 - uporządkowanie settings -> Session Split wyzej logicznie poukładane!
+- skalowanie fontów w raporcie nie działa
+- przycisk zapisz do pdf jest chujowym miejscu!
+- lista fontów jest zle wyswietlana
+- poprawic header raportu
+- Activity Over Time w raporcie
 
 <!-- Tak, zostało jeszcze kilka rzeczy „quality”, ale bez blokera działania. -->
 
-- szablony raportów - logo aplikacji w headerze z wersja aplikacji - podobnie jak w pomoc/help
+<!-- - szablony raportów - logo aplikacji w headerze z wersja aplikacji - podobnie jak w pomoc/help
 - komentarze i boosty jako opcja w raporcie
 - sesje manualne jako opcja w raporcie
 - przycisk "wygeneruj raport" w lepszym miejscu
@@ -27,7 +32,7 @@ TODO ??
 - możliwośc wyboru szablonu raportu  przed jego  generowaniem
 - zmiana logiki podziału sesji - jeśli wg AI w sesji realizowane były 2,3 lub wiecej (max5 -opcja do ustawiena) projektów - to w sesji powinna pojawic się ikona nożyczek umożliwiająca podział sesji na mniejsze wg punktacji AI. Dopiero po podziale mozna zmienic przypisanie sesji - caly ten proces ma być kontyanuacją uczenia algorytmu AI. W ustawniach podziału sesji musi być  współczynnik tolerancji -np 1:1 - podział jest możliwy jesli w sesji projekty miały tyle samo punktów. 1:0,8 jeden z projektów lub dwa mieściły się w 80% punktacji 1 - projektu lidera sesji itp - to powinien być slider. Minimalna wartość to 0.2, maksymalna 1.0. W opcjach ma być też opcja automatycznego podzału sesji jeśli zostaną spełnione warunki podziału sesji.
 - poprawinie splash screen - ma się pojawiać bezwglednie na samym poczatku aplikacji - ukrywając procesy startowe
-- sprawdzenie czy wielowątkowść jest prawidłowo realizoana w aplikacji
+- sprawdzenie czy wielowątkowść jest prawidłowo realizoana w aplikacji -->
 
 <!-- 
 Weź na warsztat caly system AI: -->
