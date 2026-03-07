@@ -135,7 +135,7 @@
 @media print {
   aside,
   header,
-  .print\\:hidden {
+  [class*='print:hidden'] {
     display: none !important;
   }
   body,
@@ -158,7 +158,7 @@
   .bg-card,
   .bg-popover,
   .bg-background,
-  .bg-secondary\\/30 {
+  [class*='bg-secondary/30'] {
     background: white !important;
   }
   .border-border {
@@ -174,7 +174,7 @@
   .font-bold {
     color: black !important;
   }
-  .print\\:break-inside-avoid {
+  [class*='print:break-inside-avoid'] {
     break-inside: avoid;
   }
 }
