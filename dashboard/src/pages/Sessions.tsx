@@ -18,7 +18,6 @@ import {
   getProjects,
   getSessionScoreBreakdown,
   analyzeSessionProjects,
-  analyzeSessionsSplittable,
   splitSessionMulti as splitSessionMultiInvoke,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
@@ -251,9 +250,7 @@ export function Sessions() {
   const [splitEligibilityBySession, setSplitEligibilityBySession] = useState<
     Map<number, boolean>
   >(new Map());
-  const [splitEligibilityLoadingIds, setSplitEligibilityLoadingIds] = useState<
-    Set<number>
-  >(new Set());
+
   const [splitAnalysisBySession, setSplitAnalysisBySession] = useState<
     Map<number, MultiProjectAnalysis>
   >(new Map());
@@ -405,15 +402,7 @@ export function Sessions() {
       });
       return next;
     });
-    setSplitEligibilityLoadingIds((prev) => {
-      const next = new Set<number>();
-      prev.forEach((sessionId) => {
-        if (visibleIds.has(sessionId)) {
-          next.add(sessionId);
-        }
-      });
-      return next;
-    });
+
     setSplitAnalysisBySession((prev) => {
       const next = new Map<number, MultiProjectAnalysis>();
       prev.forEach((analysis, sessionId) => {
@@ -433,88 +422,6 @@ export function Sessions() {
       return next;
     });
   }, [sessions]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const sessionIdsToAnalyze = sessions
-      .filter((s) => !splitEligibilityBySession.has(s.id))
-      .filter((s) => !splitEligibilityLoadingIds.has(s.id))
-      .filter((s) => !(s.comment ?? '').includes('Split'))
-      .map((s) => s.id);
-
-    if (sessionIdsToAnalyze.length === 0) return;
-
-    const ids = sessionIdsToAnalyze;
-    setSplitEligibilityLoadingIds((prev) => {
-      const next = new Set(prev);
-      ids.forEach((id) => next.add(id));
-      return next;
-    });
-
-    const tolerance = splitSettings.toleranceThreshold;
-    const maxProjects = splitSettings.maxProjectsPerSession;
-
-    void analyzeSessionsSplittable(ids, tolerance, maxProjects)
-      .then((flags) => {
-        if (cancelled) return;
-        setSplitEligibilityBySession((prev) => {
-          const next = new Map(prev);
-          for (const flag of flags) {
-            next.set(flag.session_id, flag.is_splittable);
-          }
-          return next;
-        });
-      })
-      .catch(async (error) => {
-        console.warn(
-          'Failed to analyze session split eligibility (batch), falling back to per-session:',
-          error,
-        );
-        const fallbackResults = await Promise.all(
-          ids.map(async (sessionId) => {
-            try {
-              const analysis = await analyzeSessionProjects(
-                sessionId,
-                tolerance,
-                maxProjects,
-              );
-              return {
-                session_id: sessionId,
-                is_splittable: analysis.is_splittable,
-              };
-            } catch {
-              return { session_id: sessionId, is_splittable: false };
-            }
-          }),
-        );
-        if (cancelled) return;
-        setSplitEligibilityBySession((prev) => {
-          const next = new Map(prev);
-          for (const flag of fallbackResults) {
-            next.set(flag.session_id, flag.is_splittable);
-          }
-          return next;
-        });
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setSplitEligibilityLoadingIds((prev) => {
-          const next = new Set(prev);
-          ids.forEach((id) => next.delete(id));
-          return next;
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    sessions,
-    splitEligibilityBySession,
-    splitEligibilityLoadingIds,
-    splitSettings.toleranceThreshold,
-    splitSettings.maxProjectsPerSession,
-  ]);
 
   useEffect(() => {
     if (!multiSplitSession) return;
@@ -1027,6 +934,33 @@ export function Sessions() {
     [aiBreakdowns],
   );
 
+  // Background fetch for ALL visible sessions, to bypass the Rust batch analyzer which can fail or fallback to false
+  useEffect(() => {
+    let cancelled = false;
+    const visibleSessionIds = new Set(sessions.map((s) => s.id));
+
+    const idsToFetch = sessions
+      .filter(
+        (s) =>
+          !aiBreakdowns.has(s.id) &&
+          !scoreBreakdownRequestsRef.current.has(s.id),
+      )
+      .filter((s) => !(s.comment && s.comment.includes('Split')))
+      .map((s) => s.id);
+
+    if (idsToFetch.length === 0) return;
+
+    void Promise.allSettled(
+      idsToFetch.map((id) => loadScoreBreakdown(id)),
+    ).then(() => {
+      if (cancelled) return;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessions, aiBreakdowns, loadScoreBreakdown]);
+
   const handleToggleScoreBreakdown = useCallback(
     async (sessionId: number, e: React.MouseEvent) => {
       e.stopPropagation();
@@ -1257,6 +1191,36 @@ export function Sessions() {
       return b.totalSeconds - a.totalSeconds;
     });
   }, [sessions, t, projectIdByName]);
+  const isSessionSplittable = useCallback(
+    (session: SessionWithApp): boolean => {
+      const explicit = splitEligibilityBySession.get(session.id);
+      if (typeof explicit === 'boolean') return explicit;
+
+      const memoBreakdown = aiBreakdowns.get(session.id);
+      if (memoBreakdown) {
+        return isSplittableFromBreakdown(
+          memoBreakdown,
+          splitSettings.toleranceThreshold,
+        );
+      }
+
+      if (scoreBreakdown?.sessionId === session.id) {
+        return isSplittableFromBreakdown(
+          scoreBreakdown.data,
+          splitSettings.toleranceThreshold,
+        );
+      }
+
+      return false;
+    },
+    [
+      splitEligibilityBySession,
+      aiBreakdowns,
+      scoreBreakdown,
+      splitSettings.toleranceThreshold,
+    ],
+  );
+
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }
     | {
@@ -1266,6 +1230,7 @@ export function Sessions() {
         isCompact: boolean;
         isFirstInGroup: boolean;
         isLastInGroup: boolean;
+        isSplittable: boolean;
       };
 
   const flattenedItems = useMemo(() => {
@@ -1281,11 +1246,12 @@ export function Sessions() {
           isCompact,
           isFirstInGroup: i === 0,
           isLastInGroup: i === group.sessions.length - 1,
+          isSplittable: isSessionSplittable(session),
         });
       });
     });
     return list;
-  }, [groupedByProject, viewMode]);
+  }, [groupedByProject, viewMode, isSessionSplittable]);
 
   const unassignedGroup = groupedByProject.find((g) => g.projectId == null);
   const aiSessionsCount = useMemo(
@@ -1332,35 +1298,7 @@ export function Sessions() {
       projectId == null ? t('sessions.menu.unassigned') : name,
     [t],
   );
-  const isSessionSplittable = useCallback(
-    (session: SessionWithApp): boolean => {
-      const memoBreakdown = aiBreakdowns.get(session.id);
-      if (memoBreakdown) {
-        return isSplittableFromBreakdown(
-          memoBreakdown,
-          splitSettings.toleranceThreshold,
-        );
-      }
 
-      if (scoreBreakdown?.sessionId === session.id) {
-        return isSplittableFromBreakdown(
-          scoreBreakdown.data,
-          splitSettings.toleranceThreshold,
-        );
-      }
-
-      const explicit = splitEligibilityBySession.get(session.id);
-      if (typeof explicit === 'boolean') return explicit;
-
-      return false;
-    },
-    [
-      splitEligibilityBySession,
-      aiBreakdowns,
-      scoreBreakdown,
-      splitSettings.toleranceThreshold,
-    ],
-  );
   const ctxMenuSplitSuggested = ctxMenu
     ? isSessionSplittable(ctxMenu.session)
     : false;
@@ -1600,6 +1538,7 @@ export function Sessions() {
               isCompact,
               isLastInGroup,
               isFirstInGroup,
+              isSplittable,
             } = item;
             const rowViewMode = isCompact
               ? 'compact'
@@ -1628,7 +1567,7 @@ export function Sessions() {
                     isLoadingScoreBreakdown={loadingBreakdownIds.has(s.id)}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
-                    isSplittable={isSessionSplittable(s)}
+                    isSplittable={isSplittable}
                     onSplitClick={openMultiSplitModal}
                     className="!mb-0"
                   />
@@ -1664,7 +1603,7 @@ export function Sessions() {
                     }
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
-                    isSplittable={isSessionSplittable(s)}
+                    isSplittable={isSplittable}
                     onSplitClick={openMultiSplitModal}
                     className="!mb-0"
                   />

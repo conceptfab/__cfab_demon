@@ -99,11 +99,17 @@ export const SessionRow = memo(function SessionRow({
               {isSplittable && onSplitClick && (
                 <button
                   type="button"
-                  className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); onSplitClick(s); }}
-                  title={t('sessions.menu.split_suggestion', 'AI sugeruje podział')}
+                  className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer ml-1"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSplitClick(s);
+                  }}
+                  title={t(
+                    'sessions.menu.split_suggestion',
+                    'AI sugeruje podział (kliknij min. 2 razy by podzielić)',
+                  )}
                 >
-                  <Scissors className="h-3 w-3 shrink-0" />
+                  <Scissors className="h-3.5 w-3.5 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
                 </button>
               )}
             </div>
@@ -339,18 +345,24 @@ export const SessionRow = memo(function SessionRow({
           {(s.rate_multiplier ?? 1) > 1.000_001 && (
             <CircleDollarSign className="h-4 w-4 text-emerald-400 fill-emerald-500/10 shrink-0" />
           )}
+          {ind.showAiBadge && s.ai_assigned && !isSuggested && (
+            <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
+          )}
           {isSplittable && onSplitClick && (
             <button
               type="button"
-              className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer"
-              onClick={(e) => { e.stopPropagation(); onSplitClick(s); }}
-              title={t('sessions.menu.split_suggestion', 'AI sugeruje podział')}
+              className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer ml-1"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSplitClick(s);
+              }}
+              title={t(
+                'sessions.menu.split_suggestion',
+                'AI sugeruje podział (kliknij min. 2 razy by podzielić)',
+              )}
             >
-              <Scissors className="h-3.5 w-3.5 shrink-0" />
+              <Scissors className="h-4 w-4 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
             </button>
-          )}
-          {ind.showAiBadge && s.ai_assigned && !isSuggested && (
-            <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
           )}
           {ind.showScoreBreakdown &&
             (() => {
@@ -561,46 +573,53 @@ export const SessionRow = memo(function SessionRow({
               {(() => {
                 const topScore =
                   scoreBreakdownData?.candidates?.[0]?.total_score;
-                return scoreBreakdownData?.candidates.slice(0, 5).map((c) => (
-                  <div
-                    key={c.project_id}
-                    className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
-                      c.total_score === topScore
-                        ? 'text-sky-300/80 font-medium'
-                        : 'text-muted-foreground/40'
-                    }`}
-                  >
-                    <span className="truncate">{c.project_name}</span>
-                    <span className="text-right font-mono">
-                      {c.layer0_file_score > 0
-                        ? c.layer0_file_score.toFixed(2)
-                        : '-'}
-                    </span>
-                    <span className="text-right font-mono">
-                      {c.layer1_app_score > 0
-                        ? c.layer1_app_score.toFixed(2)
-                        : '-'}
-                    </span>
-                    <span className="text-right font-mono">
-                      {c.layer2_time_score > 0
-                        ? c.layer2_time_score.toFixed(2)
-                        : '-'}
-                    </span>
-                    <span className="text-right font-mono">
-                      {c.layer3_token_score > 0
-                        ? c.layer3_token_score.toFixed(2)
-                        : '-'}
-                    </span>
-                    <span className="text-right font-mono font-bold">
-                      {c.total_score.toFixed(3)}
-                    </span>
-                    <span className="text-right font-mono">
-                      {t('sessions.row.evidence_short', {
-                        count: c.evidence_count,
-                      })}
-                    </span>
-                  </div>
-                ));
+                return scoreBreakdownData?.candidates
+                  .slice(0, 5)
+                  .map((c, index) => {
+                    const isTopTwo = index === 0 || index === 1;
+                    return (
+                      <div
+                        key={c.project_id}
+                        className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
+                          c.total_score === topScore
+                            ? 'text-sky-300/80 font-medium'
+                            : 'text-muted-foreground/40'
+                        }`}
+                      >
+                        <span className="truncate">{c.project_name}</span>
+                        <span className="text-right font-mono">
+                          {c.layer0_file_score > 0
+                            ? c.layer0_file_score.toFixed(2)
+                            : '-'}
+                        </span>
+                        <span className="text-right font-mono">
+                          {c.layer1_app_score > 0
+                            ? c.layer1_app_score.toFixed(2)
+                            : '-'}
+                        </span>
+                        <span className="text-right font-mono">
+                          {c.layer2_time_score > 0
+                            ? c.layer2_time_score.toFixed(2)
+                            : '-'}
+                        </span>
+                        <span className="text-right font-mono">
+                          {c.layer3_token_score > 0
+                            ? c.layer3_token_score.toFixed(2)
+                            : '-'}
+                        </span>
+                        <span
+                          className={`text-right font-mono font-bold ${isTopTwo ? 'text-sky-400 bg-sky-900/20 px-1 rounded' : ''}`}
+                        >
+                          {c.total_score.toFixed(3)}
+                        </span>
+                        <span className="text-right font-mono">
+                          {t('sessions.row.evidence_short', {
+                            count: c.evidence_count,
+                          })}
+                        </span>
+                      </div>
+                    );
+                  });
               })()}
               {scoreBreakdownData?.final_suggestion && (
                 <div className="flex gap-4 text-[11px] text-muted-foreground/30 mt-1 pt-1 border-t border-border/5">
