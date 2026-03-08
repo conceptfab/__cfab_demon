@@ -87,12 +87,36 @@ export function DaemonControl() {
     });
   }, [logs]);
 
-  const withLoading = async (label: string, fn: () => Promise<void>) => {
+  const pollDaemonStatus = useCallback(
+    async (predicate: (next: DaemonStatus) => boolean) => {
+      const timeoutMs = 5_000;
+      const intervalMs = 300;
+      const deadline = Date.now() + timeoutMs;
+
+      while (Date.now() < deadline) {
+        try {
+          const next = await getDaemonStatus();
+          setStatus(next);
+          if (predicate(next)) return;
+        } catch (error) {
+          console.warn('Failed to poll daemon status:', error);
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    },
+    [],
+  );
+
+  const withLoading = async (
+    label: string,
+    fn: () => Promise<void>,
+    settlePredicate: (next: DaemonStatus) => boolean,
+  ) => {
     setLoading(label);
     try {
       await fn();
-      // Wait a bit for process state to settle
-      await new Promise((r) => setTimeout(r, 1500));
+      await pollDaemonStatus(settlePredicate);
       refresh();
     } catch (e) {
       console.error(e);
@@ -101,9 +125,12 @@ export function DaemonControl() {
     }
   };
 
-  const handleStart = () => withLoading("start", startDaemon);
-  const handleStop = () => withLoading("stop", stopDaemon);
-  const handleRestart = () => withLoading("restart", restartDaemon);
+  const handleStart = () =>
+    withLoading("start", startDaemon, (next) => next.running);
+  const handleStop = () =>
+    withLoading("stop", stopDaemon, (next) => !next.running);
+  const handleRestart = () =>
+    withLoading("restart", restartDaemon, (next) => next.running);
 
   const handleAutostartToggle = async () => {
     if (!status) return;

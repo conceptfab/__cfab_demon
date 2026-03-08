@@ -302,3 +302,59 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 ---
 
 *Raport wygenerowany na podstawie analizy kodu źródłowego projektu TIMEFLOW.*
+
+---
+
+## 12. STATUS WDROŻENIA (aktualizacja: 2026-03-08)
+
+### 12.1 Zrobione
+
+- **1.1** Usunięto martwe eksporty z `dashboard/src/lib/tauri.ts` (`getHourlyBreakdown`, `getAppTimeline`, `getHeatmap`, `getStackedTimeline`, `splitSession`, `suggestSessionSplit`, `SplitSuggestion`, `exportDatabase`).
+- **1.2** `Data.tsx` przełączono na `useInlineT()`.
+- **1.3** `Help.tsx` przełączono na `useInlineT()` (usunięto lokalny duplikat tłumaczenia).
+- **2.1** `inferPreset()` ma fallback `custom` (zamiast `week`), a strzałki nawigacji są wyłączone dla custom range.
+- **2.3** Dodano throttling w `useAutoSplitSessions` (`sleep` między iteracjami).
+- **2.4** `handleUpdateColor` w `Applications.tsx` ma `try/catch` + `showError`.
+- **2.5** `DaemonControl.tsx`: usunięto stały `sleep(1500)` na rzecz pollingu statusu (300ms, timeout 5s).
+- **3.2** `useJobPool`: zwiększono interwał `refreshToday` do 60s oraz dodano guardy przed nakładaniem `refresh/sync`.
+- **3.3** `Sessions.tsx`: cache score breakdown przeniesiony do `useRef` + TTL 5 minut.
+- **3.4** `Applications.tsx`: dodano ograniczenie renderu listy (przycisk „Load more” / paginacja przyrostowa).
+- **3.5** `Reports.tsx`: `getSectionDef` zmemoizowane przez mapę `id -> SectionDef`.
+- **7.1** Race condition `useJobPool` ograniczony guardami `isRefreshing` / `isSyncing`.
+- **7.2** Powiązany martwy kod timeline/hourly usunięty po stronie frontu (`tauri.ts`).
+- **7.3** `user-settings.ts`: `localStorage.setItem` owinięte w `try/catch`.
+- **8.1 (KRYTYCZNY)** Naprawiono SQL injection w `export_database` (`settings.rs`) przez bezpieczne quoting ścieżki (`SELECT quote(?1)`).
+- **9.1** `sessions.rs`: `analyze_sessions_splittable` przerobione z N+1 na batch SQL.
+- **9.2** `projects.rs`: `exclude_project` i `delete_project` działają w transakcjach.
+- **9.3** `analysis.rs`: odczyt kolumn po nazwach zamiast indeksów.
+- **9.4** `report.rs`: zapytania wykonywane równolegle (spawn + join wyników).
+- **10.1** `Sessions.tsx`: `splitSettings` nie jest odtwarzane przy każdym renderze.
+- **10.2 (WYSOKI)** Naprawiono kolejność obsługi błędu w `loadScoreBreakdown` (brak trwałego cache pustego wyniku po błędzie).
+- **10.3** `Sessions.tsx`: auto-refresh pomija niewidoczną kartę (`document.visibilityState`).
+- **10.4** `ProjectPage.tsx`: dodano cancellation guard dla asynchronicznego ładowania.
+- **10.5** Ograniczono konflikt `useAutoSplitSessions` vs `useAutoAiAssignment` (wspólny klucz heavy-operation).
+
+### 12.2 Częściowo zrobione
+
+- **2.2** Wykrywanie splitów nadal opiera się o komentarz (ulepszone do regex `Split x/y`), ale nie ma dedykowanego pola typu `split_source`.
+- **3.1** Efekty `Dashboard.tsx` zostały częściowo scalone; nadal istnieją osobne efekty dla fragmentów o innych zależnościach.
+- **4.1** Spójność systemu i18n poprawiona lokalnie (`Data.tsx`, `Help.tsx`), ale nie wykonano pełnej unifikacji całej aplikacji.
+- **5.1** Help uzupełniono o import archiwum i backup/restore; pełny audyt wszystkich brakujących opisów pozostaje otwarty.
+
+### 12.3 Pozostało do zrobienia
+
+- **4.2** Pełna migracja brakujących tłumaczeń do plików `.json` (jeśli to docelowy kierunek).
+- **6.1** Wspólny store/cache dla wszystkich `loadXxxSettings()` (obecnie wielokrotne odczyty localStorage).
+- **6.2** Refaktor `ProjectPage.tsx` na mniejsze podkomponenty.
+- **6.3** Refaktor `Sessions.tsx` na mniejsze podkomponenty/hooki.
+- **6.4** Refaktor `AI.tsx` na sekcje.
+- **6.5** Refaktor `Settings.tsx` na sekcje.
+
+### 12.4 Status priorytetów (po wdrożeniu)
+
+- **KRYTYCZNY:** SQL injection `export_database` — **zamknięte**.
+- **WYSOKI:** bug `.catch().then()` w `Sessions.tsx` — **zamknięte**.
+- **WYSOKI:** transakcje `delete/exclude project` — **zamknięte**.
+- **WYSOKI:** N+1 `analyze_sessions_splittable` — **zamknięte**.
+- **WYSOKI:** martwy kod eksportów w `tauri.ts` — **zamknięte**.
+- **WYSOKI:** dokumentacja Help — **częściowo zamknięte**.

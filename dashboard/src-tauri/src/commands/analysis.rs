@@ -165,12 +165,12 @@ pub(crate) fn compute_project_activity_unique(
             ],
             |row| {
                 Ok((
-                    row.get::<_, String>(0)?,         // start_time
-                    row.get::<_, String>(1)?,         // end_time
-                    row.get::<_, String>(2)?,         // project_name
-                    row.get::<_, f64>(3)?,            // multiplier
-                    row.get::<_, i32>(4)?,            // is_manual
-                    row.get::<_, Option<String>>(6)?, // comment
+                    row.get::<_, String>("start_time")?,
+                    row.get::<_, String>("end_time")?,
+                    row.get::<_, String>("project_name")?,
+                    row.get::<_, f64>("multiplier")?,
+                    row.get::<_, i32>("is_manual")?,
+                    row.get::<_, Option<String>>("comment")?,
                 ))
             },
         )

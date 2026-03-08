@@ -77,6 +77,13 @@ const UNASSIGNED_GROUP_KEY = '__unassigned__';
 const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY =
   'timeflow-sessions-assign-project-list-mode';
 const TOP_PROJECTS_LIMIT = 5;
+const SCORE_BREAKDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
+const SPLIT_COMMENT_RE = /\bSplit \d+\/\d+\b/;
+
+type CachedBreakdownEntry = {
+  data: ScoreBreakdown;
+  fetchedAtMs: number;
+};
 
 function loadAssignProjectListMode(): AssignProjectListMode {
   if (typeof window === 'undefined') return 'alpha_active';
@@ -128,6 +135,10 @@ const EMPTY_SCORE_BREAKDOWN: ScoreBreakdown = {
   manual_override_project_id: null,
   final_suggestion: null,
 };
+
+function isSplitSessionComment(comment: string | null | undefined): boolean {
+  return SPLIT_COMMENT_RE.test(comment ?? '');
+}
 
 function isSplittableFromBreakdown(
   breakdown: ScoreBreakdown | null | undefined,
@@ -270,7 +281,7 @@ export function Sessions() {
   const [indicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const splitSettings = loadSplitSettings();
+  const splitSettings = useMemo(() => loadSplitSettings(), [refreshKey]);
   const [scoreBreakdown, setScoreBreakdown] = useState<{
     sessionId: number;
     data: ScoreBreakdown;
@@ -284,6 +295,21 @@ export function Sessions() {
   const scoreBreakdownRequestsRef = useRef<
     Map<number, Promise<ScoreBreakdown>>
   >(new Map());
+  const scoreBreakdownCacheRef = useRef<Map<number, CachedBreakdownEntry>>(
+    new Map(),
+  );
+  const getCachedBreakdown = useCallback(
+    (sessionId: number): ScoreBreakdown | null => {
+      const cached = scoreBreakdownCacheRef.current.get(sessionId);
+      if (!cached) return null;
+      if (Date.now() - cached.fetchedAtMs > SCORE_BREAKDOWN_CACHE_TTL_MS) {
+        scoreBreakdownCacheRef.current.delete(sessionId);
+        return null;
+      }
+      return cached.data;
+    },
+    [],
+  );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
   const customScrollParent = useMemo<HTMLElement | undefined>(() => {
@@ -561,6 +587,12 @@ export function Sessions() {
   const isAutoRefreshing = useRef(false);
   useEffect(() => {
     const interval = setInterval(() => {
+      if (
+        typeof document !== 'undefined' &&
+        document.visibilityState !== 'visible'
+      ) {
+        return;
+      }
       if (isAutoRefreshing.current) return;
       isAutoRefreshing.current = true;
       getSessions({
@@ -587,6 +619,73 @@ export function Sessions() {
     }, 15_000);
     return () => clearInterval(interval);
   }, [effectiveDateRange, activeProjectId, minDuration, viewMode]);
+
+  const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+  } | null>(null);
+
+  // resolveContextMenuPlacement helper similar to ProjectDayTimeline
+  const resolveContextMenuPlacement = useCallback(
+    (
+      x: number,
+      y: number,
+      viewportWidth: number,
+      viewportHeight: number,
+      menuSize: { width: number; height: number } | null,
+    ) => {
+      const width = Math.max(240, menuSize?.width ?? 0);
+      const maxHeight = Math.max(200, viewportHeight - 16);
+      const height = Math.min(Math.max(400, menuSize?.height ?? 0), maxHeight);
+
+      const maxLeft = Math.max(8, viewportWidth - width - 8);
+      const left = Math.min(Math.max(x, 8), maxLeft);
+
+      const overflowsDown = y + height > viewportHeight - 8;
+      const canFlipUp = y - height >= 8;
+      const maxTop = Math.max(8, viewportHeight - height - 8);
+      const top =
+        overflowsDown && canFlipUp
+          ? y - height
+          : Math.min(Math.max(y, 8), maxTop);
+
+      return { left, top, maxHeight };
+    },
+    [],
+  );
+
+  // Update placement when menu opens or window resizes
+  useEffect(() => {
+    if (!ctxMenu || typeof window === 'undefined') {
+      setCtxMenuPlacement(null);
+      return;
+    }
+
+    const updatePlacement = () => {
+      const next = resolveContextMenuPlacement(
+        ctxMenu.x,
+        ctxMenu.y,
+        window.innerWidth,
+        window.innerHeight,
+        ctxRef.current
+          ? {
+              width: ctxRef.current.offsetWidth,
+              height: ctxRef.current.offsetHeight,
+            }
+          : null,
+      );
+      setCtxMenuPlacement(next);
+    };
+
+    updatePlacement();
+    const raf = window.requestAnimationFrame(updatePlacement);
+    window.addEventListener('resize', updatePlacement);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.removeEventListener('resize', updatePlacement);
+    };
+  }, [ctxMenu, resolveContextMenuPlacement]);
 
   // Close context menus on click outside or Escape
   useEffect(() => {
@@ -861,8 +960,18 @@ export function Sessions() {
 
   const loadScoreBreakdown = useCallback(
     async (sessionId: number): Promise<ScoreBreakdown> => {
-      const cached = aiBreakdowns.get(sessionId);
-      if (cached) return cached;
+      const cached = aiBreakdowns.get(sessionId) ?? getCachedBreakdown(sessionId);
+      if (cached) {
+        if (!aiBreakdowns.has(sessionId)) {
+          setAiBreakdowns((prev) => {
+            if (prev.has(sessionId)) return prev;
+            const next = new Map(prev);
+            next.set(sessionId, cached);
+            return next;
+          });
+        }
+        return cached;
+      }
 
       const inFlight = scoreBreakdownRequestsRef.current.get(sessionId);
       if (inFlight) return inFlight;
@@ -874,11 +983,11 @@ export function Sessions() {
       });
 
       const request = withTimeout(getSessionScoreBreakdown(sessionId), 10_000)
-        .catch((err) => {
-          console.error('Failed to load score breakdown:', err);
-          return EMPTY_SCORE_BREAKDOWN;
-        })
         .then((data) => {
+          scoreBreakdownCacheRef.current.set(sessionId, {
+            data,
+            fetchedAtMs: Date.now(),
+          });
           setAiBreakdowns((prev) => {
             if (prev.has(sessionId)) return prev;
             const next = new Map(prev);
@@ -886,6 +995,10 @@ export function Sessions() {
             return next;
           });
           return data;
+        })
+        .catch((err) => {
+          console.error('Failed to load score breakdown:', err);
+          return EMPTY_SCORE_BREAKDOWN;
         })
         .finally(() => {
           scoreBreakdownRequestsRef.current.delete(sessionId);
@@ -899,7 +1012,7 @@ export function Sessions() {
       scoreBreakdownRequestsRef.current.set(sessionId, request);
       return request;
     },
-    [aiBreakdowns],
+    [aiBreakdowns, getCachedBreakdown],
   );
 
   // Background fetch for ALL visible sessions, to bypass the Rust batch analyzer which can fail or fallback to false
@@ -910,9 +1023,10 @@ export function Sessions() {
       .filter(
         (s) =>
           !aiBreakdowns.has(s.id) &&
+          !getCachedBreakdown(s.id) &&
           !scoreBreakdownRequestsRef.current.has(s.id),
       )
-      .filter((s) => !(s.comment && s.comment.includes('Split')))
+      .filter((s) => !isSplitSessionComment(s.comment))
       .map((s) => s.id);
 
     if (idsToFetch.length === 0) return;
@@ -926,7 +1040,7 @@ export function Sessions() {
     return () => {
       cancelled = true;
     };
-  }, [sessions, aiBreakdowns, loadScoreBreakdown]);
+  }, [sessions, aiBreakdowns, getCachedBreakdown, loadScoreBreakdown]);
 
   const handleToggleScoreBreakdown = useCallback(
     async (sessionId: number, e: React.MouseEvent) => {
@@ -948,7 +1062,9 @@ export function Sessions() {
       .map((s) => s.id)
       .filter(
         (id) =>
-          !aiBreakdowns.has(id) && !scoreBreakdownRequestsRef.current.has(id),
+          !aiBreakdowns.has(id) &&
+          !getCachedBreakdown(id) &&
+          !scoreBreakdownRequestsRef.current.has(id),
       );
     if (missingIds.length === 0) return;
 
@@ -969,7 +1085,7 @@ export function Sessions() {
     return () => {
       cancelled = true;
     };
-  }, [viewMode, sessions, aiBreakdowns, loadScoreBreakdown]);
+  }, [viewMode, sessions, aiBreakdowns, getCachedBreakdown, loadScoreBreakdown]);
 
   const loadMore = () => {
     getSessions({
@@ -1162,7 +1278,7 @@ export function Sessions() {
   const isSessionSplittable = useCallback(
     (session: SessionWithApp): boolean => {
       // Already split sessions must not be split again
-      if (session.comment && /Split \d+\/\d+/.test(session.comment)) return false;
+      if (isSplitSessionComment(session.comment)) return false;
 
       const explicit = splitEligibilityBySession.get(session.id);
       if (typeof explicit === 'boolean') return explicit;
@@ -1582,6 +1698,9 @@ export function Sessions() {
               </div>
             );
           }}
+          components={{
+            Footer: () => <div className="h-[300px]" />,
+          }}
         />
       ) : null}
 
@@ -1610,8 +1729,12 @@ export function Sessions() {
       {ctxMenu && (
         <div
           ref={ctxRef}
-          className="fixed z-50 min-w-[240px] max-h-[70vh] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+          className="fixed z-50 min-w-[240px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+          style={{
+            left: ctxMenuPlacement?.left ?? ctxMenu.x,
+            top: ctxMenuPlacement?.top ?? ctxMenu.y,
+            maxHeight: ctxMenuPlacement?.maxHeight,
+          }}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
             {t('sessions.menu.session_actions', {

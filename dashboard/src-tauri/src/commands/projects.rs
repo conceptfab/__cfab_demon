@@ -737,24 +737,21 @@ pub async fn update_project(app: AppHandle, id: i64, color: String) -> Result<()
 
 #[tauri::command]
 pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    if let Err(e) = conn.execute(
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
         "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
         [id],
-    ) {
-        log::warn!(
-            "Failed to clear project references for project {}: {}",
-            id,
-            e
-        );
-    }
-    conn.execute(
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
         "UPDATE projects
          SET excluded_at = COALESCE(excluded_at, datetime('now'))
          WHERE id = ?1",
         [id],
     )
     .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -783,19 +780,16 @@ pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn delete_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    if let Err(e) = conn.execute(
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
         "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
         [id],
-    ) {
-        log::warn!(
-            "Failed to clear project references for project {}: {}",
-            id,
-            e
-        );
-    }
-    conn.execute("DELETE FROM projects WHERE id = ?1", [id])
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute("DELETE FROM projects WHERE id = ?1", [id])
         .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 

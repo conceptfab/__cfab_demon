@@ -290,7 +290,8 @@ export function Dashboard() {
       getDashboardStats(dateRange),
       getTopProjects(dateRange, 5),
       getDashboardProjects(dateRange),
-    ]).then(([statsRes, topProjectsRes, allProjectsRes]) => {
+      getProjects(),
+    ]).then(([statsRes, topProjectsRes, allProjectsRes, projectsRes]) => {
       if (cancelled) return;
       if (statsRes.status === 'fulfilled') setStats(statsRes.value);
       else console.error('Failed to load dashboard stats:', statsRes.reason);
@@ -306,29 +307,18 @@ export function Dashboard() {
           'Failed to load all projects for chart:',
           allProjectsRes.reason,
         );
+
+      if (projectsRes.status === 'fulfilled') {
+        setProjectCount(projectsRes.value.length);
+        setProjectsList(projectsRes.value);
+      } else {
+        console.error('Failed to load projects count:', projectsRes.reason);
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [dateRange, refreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getProjects()
-      .then((projects) => {
-        if (cancelled) return;
-        setProjectCount(projects.length);
-        setProjectsList(projects);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) {
-          console.error('Failed to load projects count:', reason);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;

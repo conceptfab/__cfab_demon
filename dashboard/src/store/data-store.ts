@@ -12,7 +12,7 @@ import {
 import type { AutoImportResult, DateRange } from '@/lib/db-types';
 import { ALL_TIME_START } from '@/lib/date-ranges';
 
-export type TimePreset = 'today' | 'week' | 'month' | 'all';
+export type TimePreset = 'today' | 'week' | 'month' | 'all' | 'custom';
 
 interface DataState {
   dateRange: DateRange;
@@ -68,6 +68,8 @@ function presetToRange(preset: TimePreset): DateRange {
       return { start: format(startOfMonth(now), 'yyyy-MM-dd'), end };
     case 'all':
       return { start: ALL_TIME_START, end };
+    case 'custom':
+      return { start: today, end };
   }
 }
 
@@ -86,7 +88,7 @@ function inferPreset(range: DateRange): TimePreset {
     range.end === today
   )
     return 'month';
-  return 'week';
+  return 'custom';
 }
 
 export const useDataStore = create<DataState>((set, get) => ({
@@ -124,6 +126,7 @@ export const useDataStore = create<DataState>((set, get) => ({
           newEnd = endOfMonth(newStart);
           break;
         }
+        case 'custom':
         default:
           return {};
       }
@@ -140,6 +143,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     }),
 
   canShiftForward: (): boolean => {
+    if (get().timePreset === 'custom') return false;
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     return get().dateRange.end < todayStr;
   },

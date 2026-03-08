@@ -293,6 +293,10 @@ pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
 pub async fn export_database(app: AppHandle, path: String) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
 
+    if path.contains('\0') {
+        return Err("Export path contains invalid null byte".to_string());
+    }
+
     // Flush WAL content into the main database file before export.
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
         .map_err(|e| format!("Failed WAL checkpoint before export: {}", e))?;
@@ -304,8 +308,10 @@ pub async fn export_database(app: AppHandle, path: String) -> Result<(), String>
     }
 
     // VACUUM INTO creates a consistent standalone SQLite snapshot.
-    let escaped_path = path.replace('\'', "''");
-    let vacuum_sql = format!("VACUUM INTO '{}'", escaped_path);
+    let quoted_path: String = conn
+        .query_row("SELECT quote(?1)", [&path], |row| row.get(0))
+        .map_err(|e| format!("Failed to escape export path: {}", e))?;
+    let vacuum_sql = format!("VACUUM INTO {}", quoted_path);
     conn.execute_batch(&vacuum_sql)
         .map_err(|e| format!("Database export failed: {}", e))?;
     Ok(())

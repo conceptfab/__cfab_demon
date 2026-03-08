@@ -3,13 +3,10 @@ import { ImportPanel } from "@/components/data/ImportPanel";
 import { DataStats } from "@/components/data/DataStats";
 import { DataHistory } from "@/components/data/DataHistory";
 import { DatabaseManagement } from "@/components/data/DatabaseManagement";
-import { useTranslation } from "react-i18next";
-import { normalizeLanguageCode } from "@/lib/user-settings";
+import { useInlineT } from "@/lib/inline-i18n";
 
 export function DataManagement() {
-  const { i18n } = useTranslation();
-  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
-  const t = (pl: string, en: string) => (lang === "pl" ? pl : en);
+  const t = useInlineT();
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-12 pb-10">

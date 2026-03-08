@@ -35,6 +35,7 @@ import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
+const APP_ROWS_PAGE_SIZE = 100;
 
 export function Applications() {
   const { i18n } = useTranslation();
@@ -49,6 +50,7 @@ export function Applications() {
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
   const [pendingColor, setPendingColor] = useState<string | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
+  const [visibleRows, setVisibleRows] = useState(APP_ROWS_PAGE_SIZE);
 
   // Monitored apps state
   const [monitored, setMonitored] = useState<MonitoredApp[]>([]);
@@ -169,6 +171,15 @@ export function Applications() {
     });
     return result;
   }, [apps, search, sortKey, sortAsc]);
+  const visibleFiltered = useMemo(
+    () => filtered.slice(0, visibleRows),
+    [filtered, visibleRows],
+  );
+  const canLoadMore = visibleRows < filtered.length;
+
+  useEffect(() => {
+    setVisibleRows(APP_ROWS_PAGE_SIZE);
+  }, [search, sortKey, sortAsc, apps.length]);
 
   const handleResetAppTime = async (appId: number) => {
     try {
@@ -180,9 +191,16 @@ export function Applications() {
   };
 
   const handleUpdateColor = async (appId: number, color: string) => {
-    await updateAppColor(appId, color);
-    setEditingColorId(null);
-    triggerRefresh();
+    try {
+      await updateAppColor(appId, color);
+      setEditingColorId(null);
+      triggerRefresh();
+    } catch (error) {
+      console.error('Failed to update app color:', error);
+      showError(
+        `${t('Nie udało się zapisać koloru aplikacji:', 'Failed to save application color:')} ${String(error)}`,
+      );
+    }
   };
 
   const handleRenameApp = async (app: AppWithStats) => {
@@ -389,7 +407,7 @@ export function Applications() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((app) => (
+              {visibleFiltered.map((app) => (
                 <tr
                   key={app.id}
                   className="border-b last:border-0 hover:bg-accent/50 transition-colors"
@@ -555,6 +573,17 @@ export function Applications() {
               )}
             </tbody>
           </table>
+          {canLoadMore && (
+            <div className="flex justify-center border-t px-4 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleRows((prev) => prev + APP_ROWS_PAGE_SIZE)}
+              >
+                {t('Pokaż więcej', 'Load more')}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
       <PromptModal

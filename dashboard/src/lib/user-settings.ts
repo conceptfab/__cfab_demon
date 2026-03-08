@@ -21,8 +21,12 @@ function migrateLegacySetting(
   value: string,
 ): void {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(primaryKey, value);
-  window.localStorage.removeItem(legacyKey);
+  try {
+    window.localStorage.setItem(primaryKey, value);
+    window.localStorage.removeItem(legacyKey);
+  } catch (error) {
+    console.warn(`Failed to migrate local setting '${primaryKey}':`, error);
+  }
 }
 
 function createSettingsManager<T>(config: {
@@ -56,9 +60,13 @@ function createSettingsManager<T>(config: {
         next as Partial<T> & Record<string, unknown>,
       );
       if (typeof window !== 'undefined') {
-        window.localStorage.setItem(config.key, JSON.stringify(normalized));
-        if (config.legacyKey) {
-          window.localStorage.removeItem(config.legacyKey);
+        try {
+          window.localStorage.setItem(config.key, JSON.stringify(normalized));
+          if (config.legacyKey) {
+            window.localStorage.removeItem(config.legacyKey);
+          }
+        } catch (error) {
+          console.warn(`Failed to save local setting '${config.key}':`, error);
         }
       }
       return normalized;

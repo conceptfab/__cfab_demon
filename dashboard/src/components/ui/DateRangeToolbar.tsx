@@ -26,6 +26,7 @@ export function DateRangeToolbar({
 }: DateRangeToolbarProps) {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+  const showRangeNavigation = timePreset !== 'all' && timePreset !== 'custom';
   const dateLabel =
     dateRange.start === dateRange.end
       ? format(parseISO(dateRange.start), 'MMM d', { locale })
@@ -49,7 +50,7 @@ export function DateRangeToolbar({
         </Button>
       ))}
 
-      {timePreset !== 'all' && (
+      {showRangeNavigation && (
         <>
           <div className="mx-0.5 h-4 w-px bg-border" />
           <AppTooltip content={t('date_range_toolbar.previous_period')}>

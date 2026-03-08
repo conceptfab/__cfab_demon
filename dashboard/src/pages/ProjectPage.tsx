@@ -260,6 +260,7 @@ export function ProjectPage() {
       return;
     }
 
+    let cancelled = false;
     setLoading(true);
     Promise.all([
       getProjects(),
@@ -279,6 +280,7 @@ export function ProjectPage() {
       getManualSessions({ projectId: projectPageId }),
     ])
       .then(([projects, info, estimates, timeline, sessions, manuals]) => {
+        if (cancelled) return;
         const p = projects.find((x) => x.id === projectPageId);
         if (p) {
           setProject(p);
@@ -294,9 +296,16 @@ export function ProjectPage() {
         }
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error('Critical error fetching project data:', err);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [projectPageId, refreshKey, setCurrentPage]);
 
   // Handle click outside for context menu

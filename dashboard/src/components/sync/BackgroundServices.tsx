@@ -24,6 +24,9 @@ import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
 
 const JOB_LOOP_TICK_MS = 5000;
+const AUTO_SPLIT_THROTTLE_MS = 100;
+const SPLIT_COMMENT_RE = /\bSplit \d+\/\d+\b/;
+const AI_AND_SPLIT_OPERATION_KEY = 'ai_and_split_pipeline';
 
 // THREADING: Prevents concurrent heavy operations (rebuild, AI train/assign)
 // from overloading the backend. Simple module-level flag — safe in single-threaded JS.
@@ -43,6 +46,10 @@ async function runHeavyOperation<T>(
   } finally {
     heavyOperations.set(key, false);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildAutoSplits(
@@ -163,7 +170,7 @@ function useAutoAiAssignment() {
     lastProcessedKey.current = refreshKey;
 
     const run = async () => {
-      const result = await runHeavyOperation('ai_assignment', async () => {
+      const result = await runHeavyOperation(AI_AND_SPLIT_OPERATION_KEY, async () => {
         let needsRefresh = false;
         try {
           const det = await applyDeterministicAssignment();
@@ -202,7 +209,7 @@ function useAutoSplitSessions() {
 
     const minDuration =
       loadSessionSettings().minSessionDurationSeconds || undefined;
-    const result = await runHeavyOperation('auto_split', async () => {
+    const result = await runHeavyOperation(AI_AND_SPLIT_OPERATION_KEY, async () => {
       const sessions = await getSessions({
         limit: 50,
         offset: 0,
@@ -213,8 +220,14 @@ function useAutoSplitSessions() {
       });
 
       let splitCount = 0;
+      let firstIteration = true;
       for (const session of sessions) {
-        if ((session.comment ?? '').includes('Split')) continue;
+        if (!firstIteration) {
+          await sleep(AUTO_SPLIT_THROTTLE_MS);
+        }
+        firstIteration = false;
+
+        if (SPLIT_COMMENT_RE.test(session.comment ?? '')) continue;
 
         const analysis = await analyzeSessionProjects(
           session.id,
@@ -275,6 +288,8 @@ function useJobPool() {
   const lastSignatureRef = useRef<string | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
   const localChangeSyncTimer = useRef<number | null>(null);
+  const isRefreshingRef = useRef(false);
+  const isSyncingRef = useRef(false);
 
   const checkFileChange = useCallback(async () => {
     if (!autoImportDone) return;
@@ -294,12 +309,15 @@ function useJobPool() {
   }, [autoImportDone, triggerRefresh]);
 
   const runRefresh = useCallback(async () => {
-    if (!autoImportDone) return;
+    if (!autoImportDone || isRefreshingRef.current) return;
+    isRefreshingRef.current = true;
     try {
       await refreshToday();
       triggerRefresh();
     } catch (error) {
       console.warn('[useJobPool] Refresh today failed', error);
+    } finally {
+      isRefreshingRef.current = false;
     }
   }, [autoImportDone, triggerRefresh]);
 
@@ -309,8 +327,10 @@ function useJobPool() {
 
   const runSync = useCallback(
     async (reason: string, isAuto = true) => {
+      if (isSyncingRef.current) return;
       const settings = syncSettingsRef.current;
       if (isAuto && !settings.enabled) return;
+      isSyncingRef.current = true;
 
       try {
         console.log(`[useJobPool] Running online sync (reason: ${reason})`);
@@ -328,6 +348,8 @@ function useJobPool() {
         );
         console.log(`Sync backoff: retry assigned in ${backoffSec}s`);
         nextSyncPollRef.current = Date.now() + backoffSec * 1000;
+      } finally {
+        isSyncingRef.current = false;
       }
     },
     [triggerRefresh],
@@ -352,7 +374,7 @@ function useJobPool() {
       const now = Date.now();
 
       if (autoImportDone && now >= nextRefreshRef.current) {
-        nextRefreshRef.current = now + 30_000;
+        nextRefreshRef.current = now + 60_000;
         void runRefresh();
       }
       if (autoImportDone && now >= nextSigCheckRef.current) {

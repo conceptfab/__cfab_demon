@@ -10,7 +10,6 @@ import type {
   DashboardStats,
   ProjectTimeRow,
   TimelinePoint,
-  HourlyData,
   EstimateProjectRow,
   EstimateSettings,
   EstimateSummary,
@@ -18,7 +17,6 @@ import type {
   AppWithStats,
   SessionWithApp,
   ProjectWithStats,
-  HeatmapCell,
   StackedBarData,
   AutoImportResult,
   ImportedFile,
@@ -192,8 +190,6 @@ export const getDashboardProjects = (dateRange: DateRange) =>
   invoke<ProjectTimeRow[]>('get_dashboard_projects', { dateRange });
 export const getTimeline = (dateRange: DateRange) =>
   invoke<TimelinePoint[]>('get_timeline', { dateRange });
-export const getHourlyBreakdown = (dateRange: DateRange) =>
-  invoke<HourlyData[]>('get_hourly_breakdown', { dateRange });
 export const getEstimateSettings = () =>
   invoke<EstimateSettings>('get_estimate_settings');
 export const updateGlobalHourlyRate = (rate: number) =>
@@ -213,8 +209,6 @@ export const getApplications = (dateRange?: DateRange) =>
     'get_applications',
     dateRange ? { dateRange } : undefined,
   );
-export const getAppTimeline = (appId: number, dateRange: DateRange) =>
-  invoke<TimelinePoint[]>('get_app_timeline', { appId, dateRange });
 export const updateAppColor = (id: number, color: string) =>
   invokeMutation<void>('update_app_color', { id, color });
 
@@ -319,10 +313,6 @@ export const setFeedbackWeight = (weight: number) =>
   invokeMutation<void>('set_feedback_weight', { weight });
 
 // Analysis
-export const getHeatmap = (dateRange: DateRange) =>
-  invoke<HeatmapCell[]>('get_heatmap', { dateRange });
-export const getStackedTimeline = (dateRange: DateRange, limit: number) =>
-  invoke<StackedBarData[]>('get_stacked_timeline', { dateRange, limit });
 export const getProjectTimeline = (
   dateRange: DateRange,
   limit = 8,
@@ -416,8 +406,6 @@ export const deleteManualSession = (id: number) =>
 
 // Settings
 export const clearAllData = () => invokeMutation<void>('clear_all_data');
-export const exportDatabase = (path: string) =>
-  invoke<void>('export_database', { path });
 export const getDataDir = () => invoke<string>('get_data_dir');
 export const getDemoModeStatus = () =>
   invoke<DemoModeStatus>('get_demo_mode_status');
@@ -498,32 +486,7 @@ export const persistLanguageForDaemon = (code: string) =>
   invoke<void>('persist_language_for_daemon', { code });
 
 // Session Splitting
-export const splitSession = (
-  sessionId: number,
-  ratio: number,
-  projectAId: number | null,
-  projectBId: number | null,
-) =>
-  invokeMutation<void>('split_session', {
-    sessionId,
-    ratio,
-    projectAId,
-    projectBId,
-  });
-
-export interface SplitSuggestion {
-  project_a_id: number | null;
-  project_a_name: string | null;
-  project_b_id: number | null;
-  project_b_name: string | null;
-  suggested_ratio: number;
-  confidence: number;
-}
-
-export const suggestSessionSplit = (sessionId: number) =>
-  invoke<SplitSuggestion>('suggest_session_split', { sessionId });
-
-// Multi-Project Session Analysis & Split
+// Multi-project session analysis & split
 export const analyzeSessionProjects = (
   sessionId: number,
   toleranceThreshold: number,

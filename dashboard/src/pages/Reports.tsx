@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { ArrowUp, ArrowDown, Plus, Trash2, Copy, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useInlineT } from '@/lib/inline-i18n';
@@ -335,7 +335,14 @@ export function Reports() {
     saveSections(next);
   };
 
-  const getSectionDef = (id: string) => ALL_SECTIONS.find((s) => s.id === id);
+  const sectionDefById = useMemo(
+    () => new Map(ALL_SECTIONS.map((section) => [section.id, section])),
+    [],
+  );
+  const getSectionDef = useCallback(
+    (id: string) => sectionDefById.get(id),
+    [sectionDefById],
+  );
 
   return (
     <div className="flex flex-col h-full">

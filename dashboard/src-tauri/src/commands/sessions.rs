@@ -1650,28 +1650,110 @@ pub async fn analyze_sessions_splittable(
     tolerance_threshold: f64,
     max_projects: i64,
 ) -> Result<Vec<SessionSplittableFlag>, String> {
+    if session_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let normalized_tolerance = tolerance_threshold.clamp(0.2, 1.0);
+    let normalized_max_projects = max_projects.clamp(2, 5) as usize;
+    let conn = db::get_connection(&app)?;
+
+    let placeholders = std::iter::repeat("?")
+        .take(session_ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    let sql = format!(
+        "SELECT s.id AS session_id,
+                fa.project_id AS project_id,
+                COALESCE(p.name, '') AS project_name,
+                SUM(fa.total_seconds) AS total
+         FROM sessions s
+         LEFT JOIN file_activities fa
+           ON fa.app_id = s.app_id
+          AND fa.date = s.date
+          AND fa.project_id IS NOT NULL
+         LEFT JOIN projects p ON p.id = fa.project_id
+         WHERE s.id IN ({})
+         GROUP BY s.id, fa.project_id, p.name",
+        placeholders
+    );
+
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(session_ids.iter()), |row| {
+            Ok((
+                row.get::<_, i64>("session_id")?,
+                row.get::<_, Option<i64>>("project_id")?,
+                row.get::<_, String>("project_name").unwrap_or_default(),
+                row.get::<_, Option<i64>>("total")?.unwrap_or(0),
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut candidates_by_session: HashMap<i64, Vec<ProjectCandidate>> = HashMap::new();
+    for row in rows {
+        let (session_id, project_id, project_name, total) =
+            row.map_err(|e| format!("Failed to read split eligibility row: {}", e))?;
+        let Some(pid) = project_id else {
+            continue;
+        };
+        candidates_by_session
+            .entry(session_id)
+            .or_default()
+            .push(ProjectCandidate {
+                project_id: pid,
+                project_name,
+                score: total as f64,
+                ratio_to_leader: 0.0,
+            });
+    }
+
     let mut result = Vec::with_capacity(session_ids.len());
     for session_id in session_ids {
-        match analyze_session_projects(app.clone(), session_id, tolerance_threshold, max_projects)
-            .await
-        {
-            Ok(analysis) => result.push(SessionSplittableFlag {
+        let Some(mut candidates) = candidates_by_session.remove(&session_id) else {
+            result.push(SessionSplittableFlag {
                 session_id,
-                is_splittable: analysis.is_splittable,
-            }),
-            Err(error) => {
-                log::warn!(
-                    "Failed to analyze session {} for split eligibility: {}",
-                    session_id,
-                    error
-                );
-                result.push(SessionSplittableFlag {
-                    session_id,
-                    is_splittable: false,
-                });
-            }
+                is_splittable: false,
+            });
+            continue;
+        };
+
+        if candidates.len() < 2 {
+            result.push(SessionSplittableFlag {
+                session_id,
+                is_splittable: false,
+            });
+            continue;
         }
+
+        candidates.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        candidates.truncate(normalized_max_projects);
+
+        let leader_score = candidates[0].score;
+        let qualifying = candidates
+            .iter_mut()
+            .map(|candidate| {
+                candidate.ratio_to_leader = if leader_score > 0.0 {
+                    candidate.score / leader_score
+                } else {
+                    0.0
+                };
+                candidate.ratio_to_leader >= normalized_tolerance
+            })
+            .filter(|is_qualifying| *is_qualifying)
+            .count();
+
+        result.push(SessionSplittableFlag {
+            session_id,
+            is_splittable: qualifying >= 2,
+        });
     }
+
     Ok(result)
 }
 
