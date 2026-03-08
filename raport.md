@@ -20,6 +20,7 @@ Wykonane komendy:
 - `cargo test` w katalogu głównym: OK, 9/9 testów
 - `cargo check` w `dashboard/src-tauri`: OK
 - `cargo test` w `dashboard/src-tauri`: OK, 12/12 testów
+- `npm run test` w `dashboard`: OK
 - `npm run lint` w `dashboard`: OK
 - `npm run build` w `dashboard`: OK
 
@@ -96,9 +97,52 @@ Po wprowadzeniu zmian ponownie uruchomiłem:
 Nie wdrażałem jeszcze poniższych większych tematów z raportu:
 
 - zmiany formatu zapisu dziennego JSON po stronie daemona
-- dodania testów frontendu
 - pełnego wygaszania `useInlineT()`
-- głębszego cache’owania / podziału zapytań `ALL_TIME` na stronie `Projects`
+
+## Wdrożone poprawki po audycie: II tura
+
+W drugiej turze wdrożeń z 2026-03-08 domknąłem kolejne punkty z raportu:
+
+### 1. Selektywny cache i invalidation dla `Projects`
+
+- `dashboard/src/pages/Projects.tsx` nie pobiera już `getDetectedProjects(ALL_TIME_DATE_RANGE)` i `getProjectEstimates(ALL_TIME_DATE_RANGE)` przy każdym `refreshKey`.
+- Zamiast tego dodałem osobny mechanizm `allTimeRefreshKey`, który odświeża ciężkie dane tylko po mutacjach realnie wpływających na dane all-time.
+- `ProjectExtraInfo` dostało prosty cache per `projectId`, dzięki czemu ponowne otwarcie tego samego dialogu nie robi od razu kolejnego kosztownego zapytania.
+- Dla online sync dodałem osobny event invalidacji danych all-time, aby pull z serwera także czyścił cache `Projects`.
+
+### 2. Dalsze usuwanie zdublowanych `triggerRefresh()`
+
+Usunąłem kolejne ręczne refresh’e tam, gdzie stan i tak odświeża się przez event mutacji:
+
+- `dashboard/src/pages/Projects.tsx`
+- `dashboard/src/pages/ProjectPage.tsx`
+- `dashboard/src/pages/Settings.tsx`
+- `dashboard/src/components/data/ImportPanel.tsx`
+
+To dalej upraszcza przepływ odświeżania i zmniejsza liczbę dubli po mutacjach lokalnych.
+
+### 3. Domknięcie źródeł mutacji bez eventów
+
+- `dashboard/src/lib/tauri.ts`: `setDemoMode(...)` zostało przepięte na `invokeMutation(...)`, więc zmiana bazy demo też trafia do wspólnego mechanizmu invalidacji.
+- `dashboard/src/lib/tauri.ts`: `importData(...)` zostało przepięte na `invokeMutation(...)` z warunkowym notify tylko przy realnym imporcie.
+- Online sync pull invaliduje teraz dane all-time używane na ekranie `Projects`.
+
+### 4. Frontend testy: pierwszy zestaw
+
+- Dodałem `vitest` do `dashboard/package.json`.
+- Dodałem skrypt `npm run test`.
+- Dodałem pierwszy test jednostkowy dla nowej logiki invalidacji/cachowania:
+  - `dashboard/src/lib/projects-all-time.test.ts`
+
+To nie jest jeszcze pełne pokrycie UI/e2e, ale zamyka wcześniejszy brak całkowitego braku testów po stronie frontendu.
+
+### 5. Walidacja po II turze
+
+Po tej turze zmian uruchomiłem:
+
+- `npm run test` w `dashboard`: OK
+- `npm run lint` w `dashboard`: OK
+- `npm run build` w `dashboard`: OK
 
 ## Najważniejsze ustalenia
 

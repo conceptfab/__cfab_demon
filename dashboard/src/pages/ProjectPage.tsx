@@ -398,7 +398,6 @@ export function ProjectPage() {
     setBusy('compact');
     try {
       await compactProjectData(project.id);
-      triggerRefresh();
     } catch (e) {
       console.error(e);
     } finally {
@@ -413,7 +412,6 @@ export function ProjectPage() {
     if (confirmMsg && !(await confirm(confirmMsg))) return;
     try {
       await action();
-      triggerRefresh();
     } catch (e) {
       console.error(e);
     }
@@ -722,7 +720,6 @@ export function ProjectPage() {
                         setProject({ ...project, color: pendingColor });
                         setEditingColor(false);
                         setPendingColor(null);
-                        triggerRefresh();
                       }}
                       title={tt('Zapisz kolor', 'Save color')}
                     >
@@ -741,7 +738,6 @@ export function ProjectPage() {
                         setProject({ ...project, color: c });
                         setEditingColor(false);
                         setPendingColor(null);
-                        triggerRefresh();
                       }}
                       title={c}
                     />

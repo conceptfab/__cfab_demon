@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -77,6 +77,16 @@ import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { useInlineT } from '@/lib/inline-i18n';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import {
+  LOCAL_DATA_CHANGED_EVENT,
+  PROJECTS_ALL_TIME_INVALIDATED_EVENT,
+  type LocalDataChangedDetail,
+} from '@/lib/sync-events';
+import {
+  buildEstimateMap,
+  shouldInvalidateProjectExtraInfo,
+  shouldRefreshProjectsAllTime,
+} from '@/lib/projects-all-time';
 import type {
   ProjectWithStats,
   AppWithStats,
@@ -212,6 +222,10 @@ export function Projects() {
     Record<string, number>
   >({});
   const autoFreezeInitializedRef = useRef(false);
+  const [allTimeRefreshKey, setAllTimeRefreshKey] = useState(0);
+  const [projectExtraInfoCache, setProjectExtraInfoCache] = useState<
+    Record<number, ProjectExtraInfo>
+  >({});
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -283,6 +297,14 @@ export function Projects() {
     persistSectionOpen(next);
   };
 
+  const invalidateAllTimeData = useCallback(() => {
+    setAllTimeRefreshKey((prev) => prev + 1);
+  }, []);
+
+  const invalidateProjectExtraInfoCache = useCallback(() => {
+    setProjectExtraInfoCache({});
+  }, []);
+
   useEffect(() => {
     if (autoFreezeInitializedRef.current) return;
     autoFreezeInitializedRef.current = true;
@@ -292,6 +314,46 @@ export function Projects() {
         /* ignore: feature not yet compiled */
       });
   }, []);
+
+  useEffect(() => {
+    const handleLocalDataChange = (event: Event) => {
+      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
+      const reason = customEvent.detail?.reason;
+      if (!reason) return;
+
+      if (shouldRefreshProjectsAllTime(reason)) {
+        invalidateAllTimeData();
+      }
+      if (shouldInvalidateProjectExtraInfo(reason)) {
+        invalidateProjectExtraInfoCache();
+      }
+    };
+
+    const handleAllTimeInvalidated = () => {
+      invalidateAllTimeData();
+      invalidateProjectExtraInfoCache();
+    };
+
+    window.addEventListener(
+      LOCAL_DATA_CHANGED_EVENT,
+      handleLocalDataChange as EventListener,
+    );
+    window.addEventListener(
+      PROJECTS_ALL_TIME_INVALIDATED_EVENT,
+      handleAllTimeInvalidated,
+    );
+
+    return () => {
+      window.removeEventListener(
+        LOCAL_DATA_CHANGED_EVENT,
+        handleLocalDataChange as EventListener,
+      );
+      window.removeEventListener(
+        PROJECTS_ALL_TIME_INVALIDATED_EVENT,
+        handleAllTimeInvalidated,
+      );
+    };
+  }, [invalidateAllTimeData, invalidateProjectExtraInfoCache]);
 
   const hotProjectIds = useMemo(() => {
     return [...projects]
@@ -328,7 +390,7 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, triggerRefresh]);
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -355,7 +417,7 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, triggerRefresh]);
+  }, [refreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -370,18 +432,14 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [allTimeRefreshKey, isDemoMode]);
 
   useEffect(() => {
     let cancelled = false;
     getProjectEstimates(ALL_TIME_DATE_RANGE)
       .then((rows) => {
         if (cancelled) return;
-        const map: Record<number, number> = {};
-        rows.forEach((r) => {
-          map[r.project_id] = r.estimated_value;
-        });
-        setEstimates(map);
+        setEstimates(buildEstimateMap(rows));
       })
       .catch((reason) => {
         if (!cancelled) console.error('Failed to load estimates:', reason);
@@ -389,24 +447,35 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [allTimeRefreshKey, isDemoMode]);
 
   useEffect(() => {
     if (projectDialogId === null) {
       setExtraInfo(null);
       return;
     }
+    const cachedInfo = projectExtraInfoCache[projectDialogId];
+    if (cachedInfo) {
+      setExtraInfo(cachedInfo);
+      setLoadingExtra(false);
+      return;
+    }
     setLoadingExtra(true);
     getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
-      .then(setExtraInfo)
+      .then((info) => {
+        setProjectExtraInfoCache((prev) => ({
+          ...prev,
+          [projectDialogId]: info,
+        }));
+        setExtraInfo(info);
+      })
       .catch(console.error)
       .finally(() => setLoadingExtra(false));
-  }, [projectDialogId]);
+  }, [projectDialogId, projectExtraInfoCache]);
 
   const handleUpdateProjectColor = async (projectId: number, color: string) => {
     await updateProject(projectId, color);
     setEditingColorId(null);
-    triggerRefresh();
   };
 
   const handleSave = async () => {
@@ -426,7 +495,6 @@ export function Projects() {
       setCreateDialogOpen(false);
       setName('');
       setProjectFolderPath('');
-      triggerRefresh();
     } catch (e) {
       setCreateProjectError(getErrorMessage(e, 'Failed to create project'));
     }
@@ -437,22 +505,18 @@ export function Projects() {
       return;
     }
     await excludeProject(id);
-    triggerRefresh();
   };
 
   const handleRestore = async (id: number) => {
     await restoreProject(id);
-    triggerRefresh();
   };
 
   const handleFreeze = async (id: number) => {
     await freezeProject(id);
-    triggerRefresh();
   };
 
   const handleUnfreeze = async (id: number) => {
     await unfreezeProject(id);
-    triggerRefresh();
   };
 
   const handleDeleteProject = async (project: ProjectWithStats) => {
@@ -469,7 +533,6 @@ export function Projects() {
       setProjectDialogId((prev) => (prev === project.id ? null : prev));
       setAssignOpen((prev) => (prev === project.id ? null : prev));
       setEditingColorId((prev) => (prev === project.id ? null : prev));
-      triggerRefresh();
     } catch (e) {
       console.error('Failed to delete project:', e);
       showError(`Failed to delete project "${projectLabel}": ${getErrorMessage(e, 'Unknown error')}`);
@@ -483,7 +546,6 @@ export function Projects() {
       return;
     }
     await resetProjectTime(id);
-    triggerRefresh();
   };
 
   const handleCompactProject = async (id: number) => {
@@ -493,8 +555,11 @@ export function Projects() {
     setBusy(`compact-project:${id}`);
     try {
       await compactProjectData(id);
-      triggerRefresh();
       const info = await getProjectExtraInfo(id, ALL_TIME_DATE_RANGE);
+      setProjectExtraInfoCache((prev) => ({
+        ...prev,
+        [id]: info,
+      }));
       setExtraInfo(info);
     } catch (e) {
       console.error('Failed to compact project data:', e);
@@ -506,7 +571,6 @@ export function Projects() {
 
   const handleAssign = async (appId: number, projectId: number | null) => {
     await assignAppToProject(appId, projectId);
-    triggerRefresh();
   };
 
   const openCreate = () => {
@@ -551,7 +615,6 @@ export function Projects() {
       await addProjectFolder(path);
       setNewFolderPath('');
       setFolderInfo(t('projects.messages.folder_saved'));
-      triggerRefresh();
     } catch (error: unknown) {
       setFolderError(getErrorMessage(error, 'Failed to add folder'));
       console.error(error);
@@ -583,7 +646,6 @@ export function Projects() {
     setBusy(`remove-folder:${path}`);
     try {
       await removeProjectFolder(path);
-      triggerRefresh();
     } catch (e) {
       console.error(e);
     } finally {
@@ -595,7 +657,6 @@ export function Projects() {
     setBusy(`create-folder:${folderPath}`);
     try {
       await createProjectFromFolder(folderPath);
-      triggerRefresh();
     } catch (e) {
       console.error(e);
     } finally {
@@ -607,7 +668,6 @@ export function Projects() {
     setBusy('sync-folders');
     try {
       await syncProjectsFromFolders();
-      triggerRefresh();
     } catch (e) {
       console.error(e);
     } finally {
@@ -622,7 +682,6 @@ export function Projects() {
         ALL_TIME_DATE_RANGE,
         2,
       );
-      triggerRefresh();
     } catch (e) {
       console.error(e);
     } finally {

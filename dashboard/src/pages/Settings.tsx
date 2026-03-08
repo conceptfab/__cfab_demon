@@ -49,6 +49,7 @@ import {
   type OnlineSyncState,
 } from '@/lib/online-sync';
 import { useInlineT } from '@/lib/inline-i18n';
+import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ProjectFreezeCard } from '@/components/settings/ProjectFreezeCard';
@@ -288,7 +289,6 @@ export function Settings() {
           { merged },
         ),
       );
-      triggerRefresh();
     } catch (e) {
       console.error(e);
       showError(
@@ -310,7 +310,6 @@ export function Settings() {
     setClearing(true);
     try {
       await clearAllData();
-      triggerRefresh();
       setClearArmed(false);
       showInfo(tt('Wszystkie dane usunięte.', 'All data removed.'));
     } catch (e) {
@@ -349,6 +348,7 @@ export function Settings() {
       setOnlineSyncState(loadOnlineSyncState());
 
       if (result.ok && result.action === 'pull') {
+        emitProjectsAllTimeInvalidated('online_sync_pull');
         triggerRefresh();
       }
     } catch (e) {
@@ -371,7 +371,6 @@ export function Settings() {
       const status = await setDemoMode(enabled);
       setDemoModeStatus(status);
       setManualSyncResult(null);
-      triggerRefresh();
       showInfo(
         status.enabled
           ? tt(

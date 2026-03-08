@@ -16,7 +16,6 @@ import {
 } from '@/components/ui/card';
 import { validateImport, importData } from '@/lib/tauri';
 import type { ImportValidation, ImportSummary } from '@/lib/db-types';
-import { useDataStore } from '@/store/data-store';
 import { useInlineT } from '@/lib/inline-i18n';
 
 import { open } from '@tauri-apps/plugin-dialog';
@@ -27,7 +26,6 @@ export function ImportPanel() {
   const [validation, setValidation] = useState<ImportValidation | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importing, setImporting] = useState(false);
-  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
 
   const selectFile = async () => {
     try {
@@ -65,7 +63,6 @@ export function ImportPanel() {
     try {
       const result = await importData(archivePath);
       setSummary(result);
-      triggerRefresh();
     } catch (e) {
       console.error('Import failed:', e);
     } finally {

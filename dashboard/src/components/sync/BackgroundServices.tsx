@@ -18,7 +18,10 @@ import {
   loadOnlineSyncSettings,
   runOnlineSyncOnce,
 } from '@/lib/online-sync';
-import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
+import {
+  LOCAL_DATA_CHANGED_EVENT,
+  emitProjectsAllTimeInvalidated,
+} from '@/lib/sync-events';
 import { loadSessionSettings, loadSplitSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
@@ -335,7 +338,10 @@ function useJobPool() {
 
       try {
         console.log(`[useJobPool] Running online sync (reason: ${reason})`);
-        await runOnlineSyncOnce();
+        const result = await runOnlineSyncOnce();
+        if (result.action === 'pull') {
+          emitProjectsAllTimeInvalidated('online_sync_pull');
+        }
         triggerRefresh();
         syncFailCountRef.current = 0; // Reset na sukces
       } catch (e) {

@@ -445,7 +445,7 @@ export const getDataDir = () => invoke<string>('get_data_dir');
 export const getDemoModeStatus = () =>
   invoke<DemoModeStatus>('get_demo_mode_status');
 export const setDemoMode = (enabled: boolean) =>
-  invoke<DemoModeStatus>('set_demo_mode', { enabled });
+  invokeMutation<DemoModeStatus>('set_demo_mode', { enabled });
 
 // Data Management
 export const exportData = (
@@ -469,7 +469,14 @@ export const validateImport = (archivePath: string) =>
   invoke<ImportValidation>('validate_import', { archivePath });
 
 export const importData = (archivePath: string) =>
-  invoke<ImportSummary>('import_data', { archivePath });
+  invokeMutation<ImportSummary>('import_data', { archivePath }, {
+    notify: (result) =>
+      result.projects_created > 0 ||
+      result.apps_created > 0 ||
+      result.sessions_imported > 0 ||
+      result.sessions_merged > 0 ||
+      result.daily_files_imported > 0,
+  });
 
 export const importDataArchive = (archive: ExportArchive) =>
   invoke<ImportSummary>('import_data_archive', { archive });
