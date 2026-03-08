@@ -20,6 +20,8 @@ import {
   analyzeSessionProjects,
   analyzeSessionsSplittable,
   splitSessionMulti as splitSessionMultiInvoke,
+  confirmSessionAssignment,
+  rejectSessionAssignment,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { formatDuration, formatMultiplierLabel } from '@/lib/utils';
@@ -270,10 +272,7 @@ export function Sessions() {
   const [indicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const splitSettings = useMemo(() => {
-    void refreshKey;
-    return loadSplitSettings();
-  }, [refreshKey]);
+  const splitSettings = loadSplitSettings();
   const [scoreBreakdown, setScoreBreakdown] = useState<{
     sessionId: number;
     data: ScoreBreakdown;
@@ -372,6 +371,7 @@ export function Sessions() {
     activeProjectId === 'unassigned' ? undefined : activeDateRange;
 
   useEffect(() => {
+    let cancelled = false;
     getSessions({
       dateRange: effectiveDateRange,
       limit: PAGE_SIZE,
@@ -386,10 +386,14 @@ export function Sessions() {
       includeAiSuggestions: true,
     })
       .then((data) => {
+        if (cancelled) return;
         setSessions(data);
         setHasMore(data.length >= PAGE_SIZE);
       })
       .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
   }, [effectiveDateRange, refreshKey, activeProjectId, minDuration, viewMode]);
 
   useEffect(() => {
@@ -855,6 +859,30 @@ export function Sessions() {
       }
     },
     [assignSessions],
+  );
+
+  const handleConfirmAssignment = useCallback(
+    async (session: SessionWithApp, e: React.MouseEvent) => {
+      e.stopPropagation();
+      try {
+        await confirmSessionAssignment(session.id);
+      } catch (err) {
+        console.error('Failed to confirm session assignment:', err);
+      }
+    },
+    [],
+  );
+
+  const handleRejectAssignment = useCallback(
+    async (session: SessionWithApp, e: React.MouseEvent) => {
+      e.stopPropagation();
+      try {
+        await rejectSessionAssignment(session.id, null);
+      } catch (err) {
+        console.error('Failed to reject session assignment:', err);
+      }
+    },
+    [],
   );
 
   const loadScoreBreakdown = useCallback(
@@ -1536,6 +1564,8 @@ export function Sessions() {
                     isLoadingScoreBreakdown={loadingBreakdownIds.has(s.id)}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
+                    onConfirmAssignment={handleConfirmAssignment}
+                    onRejectAssignment={handleRejectAssignment}
                     isSplittable={isSplittable}
                     onSplitClick={openMultiSplitModal}
                     className="!mb-0"
@@ -1572,6 +1602,8 @@ export function Sessions() {
                     }
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
+                    onConfirmAssignment={handleConfirmAssignment}
+                    onRejectAssignment={handleRejectAssignment}
                     isSplittable={isSplittable}
                     onSplitClick={openMultiSplitModal}
                     className="!mb-0"

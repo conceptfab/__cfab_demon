@@ -74,6 +74,8 @@ export interface SessionRowProps {
   isLoadingScoreBreakdown?: boolean;
   onAcceptSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
   onRejectSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
+  onConfirmAssignment?: (s: SessionWithApp, e: React.MouseEvent) => void;
+  onRejectAssignment?: (s: SessionWithApp, e: React.MouseEvent) => void;
   isSplittable?: boolean;
   onSplitClick?: (s: SessionWithApp) => void;
   className?: string;
@@ -93,6 +95,8 @@ export const SessionRow = memo(function SessionRow({
   isLoadingScoreBreakdown,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onConfirmAssignment,
+  onRejectAssignment,
   isSplittable,
   onSplitClick,
   className = '',
@@ -103,6 +107,9 @@ export const SessionRow = memo(function SessionRow({
     s.project_name === null &&
     s.suggested_project_id != null &&
     !dismissedSuggestions.has(s.id);
+  const showFeedbackThumbs =
+    s.project_id != null &&
+    (ind.showThumbsOnAll || (ind.showThumbsOnAi && !!s.ai_assigned));
 
   if (isCompact) {
     return (
@@ -132,7 +139,6 @@ export const SessionRow = memo(function SessionRow({
                   }}
                   title={t(
                     'sessions.menu.split_suggestion',
-                    'AI sugeruje podział (kliknij min. 2 razy by podzielić)',
                   )}
                 >
                   <Scissors className="h-3.5 w-3.5 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
@@ -181,7 +187,6 @@ export const SessionRow = memo(function SessionRow({
                       <button
                         title={t(
                           'sessions.menu.accept_suggestion',
-                          'Potwierdź (👍)',
                         )}
                         className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100"
                         onClick={(e) => onAcceptSuggestion(s, e)}
@@ -193,7 +198,6 @@ export const SessionRow = memo(function SessionRow({
                       <button
                         title={t(
                           'sessions.menu.reject_suggestion',
-                          'Odrzuć (👎)',
                         )}
                         className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100"
                         onClick={(e) => onRejectSuggestion(s, e)}
@@ -207,6 +211,26 @@ export const SessionRow = memo(function SessionRow({
               {ind.showAiBadge && s.ai_assigned && !isSuggested && (
                 <Sparkles className="h-3 w-3 text-violet-400/60 shrink-0" />
               )}
+              {showFeedbackThumbs &&
+                onConfirmAssignment &&
+                onRejectAssignment && (
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      title={t('sessions.menu.accept_suggestion')}
+                      className="p-0.5 hover:bg-emerald-500/20 rounded cursor-pointer text-emerald-300 opacity-80 hover:opacity-100"
+                      onClick={(e) => onConfirmAssignment(s, e)}
+                    >
+                      👍
+                    </button>
+                    <button
+                      title={t('sessions.menu.reject_suggestion')}
+                      className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-80 hover:opacity-100"
+                      onClick={(e) => onRejectAssignment(s, e)}
+                    >
+                      👎
+                    </button>
+                  </div>
+                )}
               {ind.showScoreBreakdown &&
                 (() => {
                   const { targetName, conf, isTied } = computeConfidence(
@@ -339,9 +363,8 @@ export const SessionRow = memo(function SessionRow({
 
   return (
     <div
-      className={`group relative rounded-xl border transition-[background-color,border-color] p-4 cursor-default ${className}`}
+      className={`group relative rounded-xl border border-border/40 bg-card transition-[background-color,border-color] p-4 cursor-default ${className}`}
       onContextMenu={(e) => handleContextMenu(e, s)}
-      style={{ backgroundColor: '#1a1b26', borderColor: '#24283b' }}
     >
       <div className="flex items-center justify-between mb-1.5 h-6">
         <div className="flex items-center gap-2 min-w-0">
@@ -367,7 +390,6 @@ export const SessionRow = memo(function SessionRow({
               }}
               title={t(
                 'sessions.menu.split_suggestion',
-                'AI sugeruje podział (kliknij min. 2 razy by podzielić)',
               )}
             >
               <Scissors className="h-4 w-4 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
@@ -447,7 +469,6 @@ export const SessionRow = memo(function SessionRow({
                   <button
                     title={t(
                       'sessions.menu.accept_suggestion',
-                      'Potwierdź (👍)',
                     )}
                     className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100 text-[10px]"
                     onClick={(e) => onAcceptSuggestion(s, e)}
@@ -457,7 +478,7 @@ export const SessionRow = memo(function SessionRow({
                 )}
                 {onRejectSuggestion && (
                   <button
-                    title={t('sessions.menu.reject_suggestion', 'Odrzuć (👎)')}
+                    title={t('sessions.menu.reject_suggestion')}
                     className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100 text-[10px]"
                     onClick={(e) => onRejectSuggestion(s, e)}
                   >
@@ -465,6 +486,24 @@ export const SessionRow = memo(function SessionRow({
                   </button>
                 )}
               </div>
+            </div>
+          )}
+          {showFeedbackThumbs && onConfirmAssignment && onRejectAssignment && (
+            <div className="flex items-center gap-0.5 rounded border border-border/40 bg-secondary/20 px-1 py-0.5">
+              <button
+                title={t('sessions.menu.accept_suggestion')}
+                className="p-0.5 hover:bg-emerald-500/20 rounded cursor-pointer text-emerald-300 opacity-80 hover:opacity-100 text-[10px]"
+                onClick={(e) => onConfirmAssignment(s, e)}
+              >
+                👍
+              </button>
+              <button
+                title={t('sessions.menu.reject_suggestion')}
+                className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-80 hover:opacity-100 text-[10px]"
+                onClick={(e) => onRejectAssignment(s, e)}
+              >
+                👎
+              </button>
             </div>
           )}
           <div className="flex items-center">

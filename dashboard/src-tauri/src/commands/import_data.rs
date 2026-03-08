@@ -65,41 +65,74 @@ pub async fn validate_import(
         }
     }
 
-    // Check Overlapping Sessions (simplified check: any session from archive that overlaps with existing for same app)
-    // We only check a subset if it's too many, but here we'll try to check all.
-    for s in &archive.data.sessions {
-        let app_exe = app_exe_by_id.get(&s.app_id).cloned();
+    // Check Overlapping Sessions in one DB pass:
+    // stage archive sessions into a TEMP table and join with local sessions.
+    if !archive.data.sessions.is_empty() {
+        conn.execute_batch(
+            "CREATE TEMP TABLE IF NOT EXISTS _tf_import_session_probe (
+                 executable_name TEXT NOT NULL,
+                 start_time TEXT NOT NULL,
+                 end_time TEXT NOT NULL
+             );
+             DELETE FROM _tf_import_session_probe;",
+        )
+        .map_err(|e| e.to_string())?;
 
-        if let Some(exe) = app_exe {
-            let conflict: Option<SessionConflict> = conn
-                .query_row(
-                    "SELECT s.start_time, s.end_time, a.display_name 
-                 FROM sessions s 
-                 JOIN applications a ON s.app_id = a.id 
-                 WHERE a.executable_name = ?1 
-                 AND (?2 < s.end_time AND ?3 > s.start_time)
-                 LIMIT 1",
-                    rusqlite::params![exe, s.start_time, s.end_time],
-                    |row| {
-                        Ok(SessionConflict {
-                            app_name: row.get(2)?,
-                            start: s.start_time.clone(),
-                            end: s.end_time.clone(),
-                            existing_start: row.get(0)?,
-                            existing_end: row.get(1)?,
-                        })
-                    },
+        {
+            let mut insert_probe = conn
+                .prepare_cached(
+                    "INSERT INTO _tf_import_session_probe (executable_name, start_time, end_time)
+                     VALUES (?1, ?2, ?3)",
                 )
-                .optional()
                 .map_err(|e| e.to_string())?;
-
-            if let Some(c) = conflict {
-                overlapping_sessions.push(c);
-                if overlapping_sessions.len() > 10 {
-                    break;
-                } // Don't overwhelm UI
+            for s in &archive.data.sessions {
+                if let Some(exe) = app_exe_by_id.get(&s.app_id) {
+                    insert_probe
+                        .execute(rusqlite::params![exe, s.start_time, s.end_time])
+                        .map_err(|e| e.to_string())?;
+                }
             }
         }
+
+        let mut overlap_stmt = conn
+            .prepare_cached(
+                "SELECT
+                     i.start_time,
+                     i.end_time,
+                     s.start_time,
+                     s.end_time,
+                     COALESCE(a.display_name, a.executable_name) AS app_name
+                 FROM _tf_import_session_probe i
+                 JOIN applications a
+                   ON a.executable_name = i.executable_name
+                 JOIN sessions s
+                   ON s.app_id = a.id
+                  AND i.start_time < s.end_time
+                  AND i.end_time > s.start_time
+                 LIMIT 11",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = overlap_stmt
+            .query_map([], |row| {
+                Ok(SessionConflict {
+                    app_name: row.get(4)?,
+                    start: row.get(0)?,
+                    end: row.get(1)?,
+                    existing_start: row.get(2)?,
+                    existing_end: row.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            overlapping_sessions
+                .push(row.map_err(|e| format!("Failed to read overlap conflict row: {}", e))?);
+            if overlapping_sessions.len() > 10 {
+                break;
+            }
+        }
+
+        conn.execute("DELETE FROM _tf_import_session_probe", [])
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(ImportValidation {
@@ -400,6 +433,10 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                                     total_seconds: f.total_seconds,
                                     first_seen: f.first_seen.clone(),
                                     last_seen: f.last_seen.clone(),
+                                    window_title: f.window_title.clone(),
+                                    detected_path: f.detected_path.clone(),
+                                    title_history: f.title_history.clone(),
+                                    activity_type: f.activity_type.clone(),
                                 })
                                 .collect(),
                         },

@@ -57,7 +57,11 @@ pub enum TrayText {
 
 fn language_file_path() -> Option<PathBuf> {
     let appdata = std::env::var("APPDATA").ok()?;
-    Some(PathBuf::from(appdata).join("TimeFlow").join("language.json"))
+    Some(
+        PathBuf::from(appdata)
+            .join("TimeFlow")
+            .join("language.json"),
+    )
 }
 
 /// Odczytuje język z pliku współdzielonego z dashboardem.

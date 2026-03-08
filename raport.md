@@ -1,248 +1,416 @@
-# Raport audytu kodu TIMEFLOW
+# TIMEFLOW — Raport z analizy kodu
 
-Data audytu: 2026-03-07
-Zakres: logika, wydajnosc, optymalizacje, nadmiarowy kod, tlumaczenia i pokrycie Help/Pomoc.
+**Data:** 2026-03-08
+**Wersja:** 0.1.505
+**Zakres:** poprawność logiki, wydajność, optymalizacje, redundancje, brakujące tłumaczenia, luki w Help
 
-## 1) Metodyka i walidacja
+---
 
-Przeglad obejmowal:
-- backend Rust (daemon + Tauri commands),
-- frontend React/TypeScript,
-- warstwe i18n,
-- zgodnosc funkcjonalnosci z dokumentacja Help.
+## Spis treści
 
-Wykonane kontrole techniczne:
-- `npm run lint` (dashboard): 12 problemow (11 error, 1 warning).
-- `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`: OK (kompilacja poprawna).
+1. [Podsumowanie wykonawcze](#1-podsumowanie-wykonawcze)
+2. [Backend Rust (demon tray)](#2-backend-rust-demon-tray)
+3. [Backend Tauri (dashboard commands)](#3-backend-tauri-dashboard-commands)
+4. [Frontend React (dashboard UI)](#4-frontend-react-dashboard-ui)
+5. [Brakujące tłumaczenia (i18n)](#5-brakujące-tłumaczenia-i18n)
+6. [Luki w dokumentacji Help.tsx](#6-luki-w-dokumentacji-helptsx)
+7. [Priorytety napraw](#7-priorytety-napraw)
 
-## 2) Podsumowanie wykonawcze
+---
 
-Najwazniejsze wnioski:
-1. Wystepuje krytyczny blad SQL w sugestii podzialu sesji (`suggest_session_split`) powodujacy runtime error.
-2. Logika splitowania sesji nie domyka petli uczenia AI (brak `assignment_feedback` dla splitu), a podzial nie aktualizuje mapowania `file_activities`.
-3. Widoczne sa problemy jakosciowe frontendu potwierdzone lintem (setState w `useEffect`, puste bloki `catch`, problem z memoizacja callbacku).
-4. Pliki i18n sa kompletne kluczowo (PL/EN: 757/757), ale nadal istnieja twardo zaszyte teksty i mieszanie strategii tlumaczen.
-5. Help opisuje glownie funkcje "happy path"; brakuje opisu kilku realnych zachowan produkcyjnych (ACK pending, reseed, sync logging, tryby listy projektow w Sessions).
+## 1. Podsumowanie wykonawcze
 
-## 3) Znalezione problemy - priorytety
+Aplikacja TIMEFLOW jest funkcjonalnie kompletna i działa poprawnie w typowych scenariuszach. Analiza ujawniła jednak **54 uwagi** pogrupowane w kategorie:
 
-### P0 (krytyczne)
+| Kategoria | Krytyczne | Wysokie | Średnie | Niskie |
+|-----------|:---------:|:-------:|:-------:|:------:|
+| Poprawność logiki | 3 | 5 | 6 | 4 |
+| Wydajność | 2 | 6 | 5 | 2 |
+| Redundantny kod | — | — | 4 | 6 |
+| Brakujące tłumaczenia | 1 | 1 | — | 1 |
+| Luki w Help | — | 5 | 5 | 5 |
 
-#### P0.1 - Bledna kolumna SQL w `suggest_session_split`
-- Obszar: backend / podzial sesji.
-- Dowod:
-  - `dashboard/src-tauri/src/commands/sessions.rs:1224` uzywa `af.project_id`.
-  - `dashboard/src-tauri/src/db.rs:233-234` w tabeli `assignment_feedback` istnieja `from_project_id` i `to_project_id` (brak `project_id`).
-- Wplyw:
-  - runtime SQL error (`no such column: af.project_id`) w funkcji podpowiedzi splitu,
-  - fallback splitu (current project + suggested project) przestaje dzialac.
-- Rekomendacja:
-  - zamienic `af.project_id` na `af.to_project_id` (lub jawnie zdefiniowac semantyke ostatniego feedbacku),
-  - dodac test jednostkowy dla tej sciezki zapytania.
+**Top 5 problemów do natychmiastowej naprawy:**
+1. `ON CONFLICT(session_id)` na nieunikalnej kolumnie → duplikaty w `session_manual_overrides`
+2. Brak transakcji w `assign_session_to_project` → niespójne dane przy awarii
+3. WMI `COMLibrary::new()` w każdym wywołaniu → opóźnienia monitoringu
+4. 9 brakujących kluczy i18n w `MultiSplitSessionModal` → polskie UI w trybie EN
+5. SQLite otwierany read-write przez demona → ryzyko blokady z dashboardem
 
-### P1 (wysokie)
+---
 
-#### P1.1 - Split sesji nie zapisuje feedbacku do modelu i nie synchronizuje mapowania aktywnosci
-- Obszar: backend / AI quality / spojnosc danych.
-- Dowod:
-  - split modyfikuje tylko `sessions`: `dashboard/src-tauri/src/commands/sessions.rs:1167-1194` oraz `1567-1595`.
-  - standardowe przypisanie (`assign_session_to_project`) zapisuje dodatkowo:
-    - update `file_activities`: `dashboard/src-tauri/src/commands/sessions.rs:748-755`,
-    - insert `assignment_feedback`: `dashboard/src-tauri/src/commands/sessions.rs:773-776`.
-- Wplyw:
-  - po splicie AI nie dostaje sygnalu uczenia tak jak przy zwyklym przypisaniu,
-  - mozliwa niespojnosc miedzy nowymi sesjami a projektem w aktywnosciach plikow,
-  - ryzyko slabszej trafnosci sugestii po dluzszej pracy.
-- Rekomendacja:
-  - po splitcie emitowac feedback per czesc (`from_project_id -> to_project_id`),
-  - doprecyzowac strategia aktualizacji `file_activities` dla przedzialow czasu splitu,
-  - zrefaktoryzowac split do jednej wspolnej sciezki logiki (single + multi).
+## 2. Backend Rust (demon tray)
 
-#### P1.2 - Brak indeksu po `assignment_feedback.session_id`
-- Obszar: wydajnosc bazy.
-- Dowod:
-  - wielokrotne zapytania po `session_id`: `dashboard/src-tauri/src/commands/sessions.rs:278-279`, `304-305`, `1224`.
-  - indeksy tabeli feedback obecnie: tylko `created_at`, `source`: `dashboard/src-tauri/src/db.rs:273-274`.
-- Wplyw:
-  - skanowanie tabeli przy rosnacej historii feedbacku,
-  - rosnace opoznienia dla `get_sessions` i split suggestion.
-- Rekomendacja:
-  - dodac indeks: `CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);`.
+### 2.1 Poprawność logiki
 
-#### P1.3 - Problemy React Hooks i ryzyko cascading renders
-- Obszar: frontend / responsywnosc / stabilnosc.
-- Dowod (`npm run lint`):
-  - `react-hooks/set-state-in-effect`:
-    - `dashboard/src/components/reports/ReportTemplateSelector.tsx:20`,
-    - `dashboard/src/pages/Sessions.tsx:397`, `434`, `507`.
-  - `react-hooks/preserve-manual-memoization`:
-    - `dashboard/src/pages/Sessions.tsx:642`.
-- Wplyw:
-  - dodatkowe renderowania, niestabilne profile wydajnosci,
-  - utrudniona optymalizacja przez React Compiler.
-- Rekomendacja:
-  - inicjalizowac state w lazy initializer zamiast sync `setState` w efektach,
-  - przebudowac zaleznosci callbackow i usunac reczne memo tam, gdzie nie daje wartosci,
-  - uruchamiac lint jako gate w CI.
+#### [WYSOKI] config.rs:131 — SQLite otwierany bez trybu read-only
 
-### P2 (srednie)
+Demon otwiera `timeflow_dashboard.db` w trybie read-write (domyślny), mimo że tylko czyta dane. Gdy dashboard jest aktywny jednocześnie, obie aplikacje rywalizują o write lock.
 
-#### P2.1 - Puste bloki `catch` i puste bloki kodu
-- Obszar: diagnostyka i utrzymanie.
-- Dowod:
-  - `dashboard/src/components/sync/BackgroundServices.tsx:290`, `297`,
-  - `dashboard/src/pages/Sessions.tsx:1765`, `1791`, `1817`.
-- Wplyw:
-  - ciche ukrywanie bledow,
-  - trudniejsze debugowanie awarii synchro/UX.
-- Rekomendacja:
-  - logowanie z kontekstem (`warn/error`) i minimalny fallback,
-  - dla localStorage: `catch (e) { console.warn(...) }`.
+**Naprawa:**
+```rust
+let conn = rusqlite::Connection::open_with_flags(
+    &db_path,
+    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+)?;
+```
 
-#### P2.2 - Problem typowania (`any`) w managerze ustawien
-- Obszar: TypeScript hygiene.
-- Dowod:
-  - `dashboard/src/lib/user-settings.ts:32` (`normalize: (parsed: Partial<T> | any) => T`).
-- Wplyw:
-  - oslabienie gwarancji typow,
-  - latwiejsze ukrycie regresji przy zmianie schematow ustawien.
-- Rekomendacja:
-  - zastapic `any` przez `unknown` + type-guardy per manager.
+#### [ŚREDNI] monitor.rs:233–258 — Niepoprawna obsługa escaped quotes w Windows command line
 
-#### P2.3 - Potencjalnie kosztowna logika `get_sessions`
-- Obszar: backend / skala danych.
-- Dowod:
-  - budowa i czyszczenie temp table `_fa_keys`: `dashboard/src-tauri/src/commands/sessions.rs:402-407`,
-  - ladowanie aktywnosci po `(app_id, date)` i klonowanie ich do kazdej sesji: `479-482`,
-  - iteracje overlap per plik i per sesja: `491-520`.
-- Wplyw:
-  - wzrost kosztu CPU i RAM przy duzych dniach/duzej liczbie plikow,
-  - duze payloady do UI (powielanie tych samych list plikow na wiele sesji).
-- Rekomendacja:
-  - rozwazyc tryb "light sessions" bez `files` dla widokow zbiorczych,
-  - przesunac czesc filtrowania overlap do SQL,
-  - cachowac preagregacje (np. per `(app_id, date)` z TTL) dla powtarzalnych zapytan.
+`split_command_line_tokens` traktuje `"` jako prosty toggle, co daje błędne tokeny dla ścieżek z `\"` (np. argumenty Visual Studio). Windows CLI ma złożone reguły escapowania zgodne z `CommandLineToArgvW`.
 
-#### P2.4 - Podwojny mechanizm blokady sync
-- Obszar: architektura sync.
-- Dowod:
-  - blokada w komponencie: `dashboard/src/components/sync/BackgroundServices.tsx:271`, `306`,
-  - blokada globalna w bibliotece: `dashboard/src/lib/online-sync.ts:1242-1249`.
-- Wplyw:
-  - kod dziala, ale jest bardziej zlozony niz potrzebne,
-  - trudniejsze reasonowanie o concurrency i retry.
-- Rekomendacja:
-  - zostawic jeden "source of truth" dla locka (preferencyjnie w `online-sync.ts`).
+**Sugestia:** Użyć `CommandLineToArgvW` z WinAPI lub udokumentować ograniczenie.
 
-## 4) Nadmiarowy kod / dlug techniczny
+#### [ŚREDNI] shared/version_compat.rs:19 — Błędny fallback przy nieparsowalna wersji
 
-1. Dublowanie logiki splitu:
-- `split_session` i `split_session_multi` implementuja podobne kroki osobno (`dashboard/src-tauri/src/commands/sessions.rs:1102`, `1484`).
-- Ryzyko: naprawa w jednej sciezce nie trafia do drugiej.
+Gdy plik `dashboard_version.txt` jest pusty lub uszkodzony, funkcja zwraca `false` (niezgodne), co wyświetla błąd o niezgodności wersji. Lepiej zwracać `true` (compatible by default) lub obsłużyć brak/pusty plik wyżej.
 
-2. Rownolegly model i18n:
-- Hook `useInlineT` jest jawnie oznaczony jako migracyjny/deprecated (`dashboard/src/lib/inline-i18n.ts:38-40`).
-- W kodzie nadal wystepuje szeroko (30 uzyc).
-- Ryzyko: niespojna terminologia, trudniejszy audyt tlumaczen i utrzymania.
+#### [ŚREDNI] shared/timeflow_paths.rs:9–33 — Race condition przy migracji katalogu
 
-3. Lokalna logika harmonogramow i timerow rozproszona po hookach `BackgroundServices`:
-- Wiele mechanizmow cyklicznych i timeoutow w jednym komponencie (`dashboard/src/components/sync/BackgroundServices.tsx`).
-- Ryzyko: zlozony lifecycle i regresje przy rozbudowie.
+`ensure_app_dirs()` jest wywoływane przed `SingleInstanceGuard::try_acquire()` w `main.rs` (linia 45 vs 50). Między sprawdzeniem `!base.exists()` a `fs::rename` druga instancja może stworzyć katalog docelowy.
 
-## 5) Tlumaczenia (i18n)
+**Naprawa:** Odwrócić kolejność — najpierw `try_acquire()`, potem `ensure_app_dirs()`.
 
-### 5.1 Stan kluczy
-- `dashboard/src/locales/en/common.json`: 757 kluczy.
-- `dashboard/src/locales/pl/common.json`: 757 kluczy.
-- Braki kluczy: 0 po obu stronach.
+#### [ŚREDNI] tracker.rs:43–88 — `WARNING_SHOWN: AtomicBool` bez synchronizacji z MessageBox
 
-### 5.2 Realne luki tlumaczen
+Flaga `WARNING_SHOWN` jest ustawiana na `true` przed spawnowaniem wątku (linia 53). Jeśli spawn się nie powiedzie, ostrzeżenie nigdy się nie pokaże ponownie. Reset flagi przy zgodnych wersjach (linia 84) może powodować wielokrotne wyświetlanie okna przy przeładowaniu konfiguracji.
 
-1. Twarde stringi w podgladzie sekcji raportu:
-- `dashboard/src/pages/Reports.tsx:24-29`, `39-49`, `60-66`, `97-99`, `109-114`, `138`, `150-151`, `209`.
-- Wplyw: mieszanie jezykow i niespojne UX przy zmianie jezyka.
+#### [NISKI] monitor.rs:118,142 — Podwójne wywołanie `classify_activity_type`
 
-2. Twardy sufiks przy duplikowaniu szablonu:
-- `dashboard/src/lib/report-templates.ts:98` -> `"(kopia)"`.
-- Wplyw: w UI EN pojawia sie polski sufiks.
+Przy cache miss `classify_activity_type` jest wołany dwa razy — wynik z linii 118 jest nieużywany (nadpisany na linii 142).
 
-3. Czesciowa migracja i18n:
-- Wiele miejsc opiera sie na inline parach PL/EN zamiast kluczy.
-- Wplyw: brak centralnego glosariusza i wieksze ryzyko niespojnosci.
+#### [NISKI] monitor.rs:295–301 vs 314 — Zduplikowana walidacja rozszerzeń plików
 
-### 5.3 Rekomendacja i18n
-- Etap 1: usunac hardcoded stringi z `Reports.tsx` i `report-templates.ts`.
-- Etap 2: migrowac `useInlineT` -> `t('namespace.key')` (modulami).
-- Etap 3: dodac test/skript CI: wykrywanie hardcoded stringow poza katalogiem locales.
+`normalize_path_candidate` filtruje `.exe`/`.dll`/`.lnk`/`.tmp`, a `is_probably_file_path` robi to samo. Jeden filtr wystarczy.
 
-## 6) Funkcjonalnosci nieopisane lub niedoprecyzowane w Help/Pomoc
+### 2.2 Wydajność
 
-### 6.1 Online Sync - zbyt ogolny opis
-- Help zawiera glownie: URL + User ID + Token (`dashboard/src/pages/Help.tsx:1069-1070`).
-- W Settings i logice sync istnieja dodatkowe zachowania, ktore nie sa czytelnie opisane:
-  - `ACK pending` i statusy ack (`dashboard/src/pages/Settings.tsx:1276`, `1317-1318`; `dashboard/src/lib/online-sync.ts:549-556`),
-  - scenariusz `server_snapshot_pruned` i reseed (`dashboard/src/pages/Settings.tsx:1293-1294`; `dashboard/src/lib/online-sync.ts:1159-1238`),
-  - sync logging do pliku (`dashboard/src/pages/Settings.tsx:1073`; `dashboard/src/lib/online-sync.ts:1008-1053`),
-  - powiazanie z Demo Mode (sync disabled) (`dashboard/src/lib/online-sync.ts:508-513`).
+#### [WYSOKI] monitor.rs:223 — WMI COMLibrary::new() w każdym wywołaniu
 
-### 6.2 Sessions - brak opisu zaawansowanych trybow listy projektow
-- Funkcja obecna: tryby `alpha_active`, `new_top_rest`, `top_new_rest` (`dashboard/src/pages/Sessions.tsx:1747-1801`).
-- Brak odpowiedniego opisu w Help (sekcja Sessions opisuje split, AI, filtry, ale nie te tryby).
+`get_process_command_line_wmi` wołuje `CoInitializeEx` + `WMIConnection::new()` (dziesiątki ms) przy każdym nowym PID. Dla IDE z częstą zmianą okna powoduje zauważalne opóźnienia.
 
-### 6.3 Auto-split - brak opisu ograniczen operacyjnych
-- Implementacja auto-split dziala cyklicznie i ma limit per przebieg (`dashboard/src/components/sync/BackgroundServices.tsx:233`, `253-255`).
-- Help opisuje funkcje splitu, ale nie komunikuje taktowania i limitu automatu.
+**Naprawa:** Cache'ować połączenie WMI na wątek lub na czas pętli monitorującej (thread-local `RefCell<Option<WMIConnection>>`).
 
-## 7) Plan naprawczy (priorytety wdrozenia)
+#### [WYSOKI] tray.rs:268–290 — `tasklist.exe` subprocess do detekcji dashboardu
 
-### Etap A - natychmiast (P0/P1)
-1. Naprawa SQL w `suggest_session_split`.
-2. Dodanie indeksu `assignment_feedback(session_id, created_at DESC)`.
-3. Domkniecie split workflow: feedback + strategia synchronizacji `file_activities`.
-4. Usuniecie bledow eslint (`set-state-in-effect`, `preserve-manual-memoization`, `no-empty`, `no-explicit-any`).
+Uruchamianie `tasklist.exe` (~100ms) zamiast `CreateToolhelp32Snapshot` (już używany w `monitor.rs`) lub named mutex.
 
-### Etap B - krotki horyzont
-1. Refaktoryzacja splitu do wspolnej sciezki (single/multi).
-2. Ograniczenie kosztu `get_sessions` (light mode + mniej duplikacji `files`).
-3. Uproszczenie lockowania sync do jednego mechanizmu.
+**Naprawa:** Użyć `CreateToolhelp32Snapshot` + `Process32First/Next` lub sprawdzić named mutex tworzony przez dashboard.
 
-### Etap C - dokumentacja i i18n
-1. Aktualizacja Help (Online Sync, ACK/reseed, sync logging, tryby listy projektow, auto-split cadence).
-2. Migracja hardcoded tekstow i inline i18n do kluczy.
+#### [ŚREDNI] monitor.rs:467 — Przestarzały `GetTickCount` (32-bit)
 
-## 8) Sugestie testow po poprawkach
+Wraparound po ~49 dniach. `GetTickCount64()` nie ma tego problemu i jest dostępny od Windows Vista.
 
-1. Test integracyjny `suggest_session_split` z danymi `assignment_feedback` (sprawdzenie fallbacku).
-2. Test splitu (single i multi):
-- poprawna suma czasu,
-- poprawne przypisania projektow,
-- oczekiwane wpisy feedbacku.
-3. Test wydajnosciowy `get_sessions` na wiekszym wolumenie (np. 10k sesji, 100k file_activities).
-4. Snapshot testy i18n dla PL/EN w Reports i Sessions.
+#### [NISKI] storage.rs:205 — `serde_json::to_string_pretty` na każdym zapisie
 
-## 9) Ocena koncowa
+`to_string_pretty` jest ~2x wolniejszy i generuje większy plik. Przy zapisie co 5 minut nie jest krytyczne, ale `to_string` byłoby wystarczające dla plików produkcyjnych.
 
-Kod ma dobre fundamenty (kompilacja backendu przechodzi, architektura jest modularna), ale wymaga pilnej korekty jednego bledu krytycznego SQL i kilku istotnych poprawek spojnosc/wydajnosc/jakosc frontendu. Najwiekszy zysk biznesowy i techniczny da szybkie domkniecie split workflow + porzadek w sync/i18n + aktualizacja Help pod rzeczywiste zachowania systemu.
+#### [NISKI] tracker.rs:105,111 — `push_title_history` z O(n) Vec::contains i drain
 
-## 10) Status wdrozenia (2026-03-08)
+Przy `MAX_TITLE_HISTORY = 20` nie jest krytyczne, ale `VecDeque` z `HashSet` byłoby optymalniejsze.
 
-Wdrozone:
-- [x] P0.1: poprawiono SQL w `suggest_session_split` (`af.to_project_id` zamiast nieistniejacego `af.project_id`).
-- [x] P1.1: split (single + multi) zapisuje `assignment_feedback`, aktualizuje `file_activities` i odswieza manual overrides.
-- [x] P1.2: dodano indeks `idx_assignment_feedback_session(session_id, created_at DESC)` (schema + post-migration indexes).
-- [x] P1.3/P2.1/P2.2: usuniete bledy eslint (`set-state-in-effect`, `preserve-manual-memoization`, `no-empty`, `no-explicit-any`).
-- [x] Dodano test regresyjny dla fallbacku split-suggestion (`split_suggestion_fallback_reads_latest_to_project_id`).
-- [x] i18n quick-fix: suffix duplikatu szablonu zmieniony z `"(kopia)"` na `"(copy)"`.
-- [x] Etap C.1: zaktualizowano Help (Online Sync ACK/reseed/sync logging, tryby listy projektow w Sessions, cadence i limity auto-split).
-- [x] Etap C.2 (zakres raportu): usunieto twarde stringi z preview sekcji w `Reports.tsx` (PL/EN przez `tt(...)`).
-- [x] Etap B.1: split single/multi zrefaktoryzowany do wspolnej sciezki wykonania (`execute_session_split`).
-- [x] Etap B.2: dodano tryb lekki `get_sessions` (`includeFiles`) i wlaczono go tam, gdzie szczegoly plikow nie sa potrzebne (Dashboard + auto-split background).
-- [x] Etap B.3: uproszczono lockowanie sync do jednego source of truth (`online-sync.ts`), usuwajac lokalny lock z `BackgroundServices`.
-- [x] Etap C.3: dodano skrypt detekcji hardcoded PL stringow poza `locales` z baseline (gate na nowe regresje).
+### 2.3 Redundancje i jakość kodu
 
-Walidacja po wdrozeniu:
-- `npm run lint` -> OK
-- `npm run build` -> OK
-- `cargo check --manifest-path dashboard/src-tauri/Cargo.toml` -> OK
-- `cargo test --manifest-path dashboard/src-tauri/Cargo.toml split_suggestion_fallback_reads_latest_to_project_id` -> OK
-- `cargo test --manifest-path dashboard/src-tauri/Cargo.toml` -> OK (12/12)
+| Problem | Plik | Linie |
+|---------|------|-------|
+| `no_console` zduplikowana w `tray.rs` i `main.rs` | tray.rs:33, main.rs:25 | Wyekstrahować do wspólnego modułu |
+| `show_error_message` ponownie wczytuje język z pliku | tray.rs:354–373 | Przekazać `lang` jako parametr |
+| `.to_lowercase()` na już-lowercase `exe_name` | config.rs:202 | Usunąć zbędne wywołanie |
+| `save_daily` wewnątrz `load_from_archive_or_empty` (efekt uboczny) | storage.rs:175 | Zwrócić dane bez zapisu |
+| Brak auto-flush logów przy `Warn`/`Error` | main.rs:144–161 | Dodać `flush()` w `log()` |
+| Race condition przy truncate logu | main.rs:113–118 | Użyć `truncate(true)` zamiast `remove_file` |
+
+---
+
+## 3. Backend Tauri (dashboard commands)
+
+### 3.1 Poprawność logiki
+
+#### [KRYTYCZNY] sessions.rs:109 — `ON CONFLICT(session_id)` na nieunikalnej kolumnie
+
+Tabela `session_manual_overrides` ma `UNIQUE(executable_name, start_time, end_time)`, ale kod używa `ON CONFLICT(session_id)`. Kolumna `session_id` nie jest `UNIQUE` — `ON CONFLICT` nigdy nie zostanie wyzwolony, co powoduje wstawianie duplikatów.
+
+**Naprawa:** Zmienić na `ON CONFLICT(executable_name, start_time, end_time) DO UPDATE SET ...`.
+
+#### [KRYTYCZNY] sessions.rs:704–782 — Brak transakcji w `assign_session_to_project`
+
+6 zapytań modyfikujących (UPDATE sessions, UPDATE file_activities, INSERT override, INSERT feedback, INSERT model_state) bez transakcji. Awaria między zapytaniami powoduje niespójne dane.
+
+**Naprawa:** Opakować całość w `conn.transaction(|tx| { ... })`.
+
+#### [KRYTYCZNY] settings.rs:265–285 — `clear_all_data` nie czyści tombstones/overrides
+
+`execute_batch` z 8 DELETE bez transakcji. Tabele `session_manual_overrides` i `tombstones` nie są czyszczone — stare tombstones mogą usuwać świeżo zaimportowane projekty po resecie.
+
+**Naprawa:** Dodać `DELETE FROM session_manual_overrides; DELETE FROM tombstones;` i opakować w transakcję.
+
+#### [WAŻNY] sessions.rs:155–245 — N+1 queries w `apply_manual_session_overrides`
+
+Dla każdego override: 1 query `projects WHERE lower(name)`, 1 query `sessions`, 2 `UPDATE`. Przy 100 overrides = 400+ zapytań.
+
+**Naprawa:** Załadować mapę `project_name → id` jednym zapytaniem przed pętlą.
+
+#### [WAŻNY] projects.rs:325 — `candidates.contains` na `Vec<String>` (O(n))
+
+Kwadratowa złożoność przy wielu kandydatach nazw projektów z separatorami " | ".
+
+**Naprawa:** Użyć `HashSet<String>`.
+
+### 3.2 Wydajność
+
+#### [KRYTYCZNY] sql_fragments.rs:59–115 — `SESSION_PROJECT_CTE_ALL_TIME` bez granicy daty
+
+CTE `session_project_overlap` w wersji ALL_TIME robi full scan na `sessions JOIN file_activities` bez filtra datowego. Przy 100k+ sesji trwa sekundy.
+
+**Naprawa:** Przekazywać filtr daty do CTE gdy jest znany, lub dodać `LIMIT`.
+
+#### [WAŻNY] Brakujące indeksy złożone w db.rs
+
+Istniejące indeksy `idx_sessions_app_id` i `idx_sessions_date` są oddzielne — SQLite użyje tylko jednego. Brakuje:
+
+```sql
+-- Dla wzorca WHERE app_id = ? AND date = ? (używany w CTE, overlap checks)
+CREATE INDEX idx_sessions_app_date ON sessions(app_id, date, start_time);
+
+-- Dla wzorca WHERE app_id = ? AND date = ? AND last_seen > ? AND first_seen < ?
+CREATE INDEX idx_file_activities_app_date ON file_activities(app_id, date, last_seen, first_seen);
+```
+
+#### [WAŻNY] assignment_model.rs:948–1057 — `date(created_at)` blokuje użycie indeksu
+
+Trzy zapytania z `WHERE date(created_at) >= date('now', ?)`. Funkcja `date()` na kolumnie uniemożliwia użycie indeksu `idx_assignment_feedback_created`.
+
+**Naprawa:** Zmienić na `WHERE created_at >= date('now', ?)` — porównanie ISO-8601 tekstowe działa poprawnie.
+
+#### [WAŻNY] projects.rs:390–406 — Podwójne `compute_project_activity_unique`
+
+`query_projects_with_stats` wywołuje `compute_project_activity_unique` dwukrotnie (all-time + okres). `get_dashboard_stats` wywołuje je trzeci raz. Łącznie 3 pełne skany na jeden widok dashboardu.
+
+**Sugestia:** Połączyć w jedno zapytanie z warunkowymi agregatami (`SUM(CASE WHEN date >= ? THEN ... END)`).
+
+#### [WAŻNY] import_data.rs:70–103 — N zapytań w `validate_import`
+
+Osobne `query_row` na każdą sesję z archiwum. Przy 10k sesji = 10k zapytań.
+
+**Naprawa:** Batch-sprawdzenie przez temp table lub `IN (...)`.
+
+#### [ŚREDNI] projects.rs:411–418 — Correlated subquery dla `last_activity`
+
+Dla każdego projektu 2 correlated subquery (`MAX(end_time)` z sessions i manual_sessions). Przy 50 projektach = 100 dodatkowych skanów.
+
+**Naprawa:** `LEFT JOIN ... GROUP BY`.
+
+### 3.3 Redundancje
+
+| Problem | Plik | Uwagi |
+|---------|------|-------|
+| 3 identyczne implementacje parse datetime | sessions.rs:916, 1008, 1105 + assignment_model.rs:513 + analysis.rs:50 | Wyekstrahować jedną funkcję `parse_datetime_ms()` |
+| `SESSION_PROJECT_CTE` vs `_ALL_TIME` — 113 linii duplikacji | sql_fragments.rs:1, 59 | Jedna funkcja `session_project_cte(with_date: bool)` |
+| `build_export_archive` — 4x identyczny `query_map` | export.rs:30–114 | Zunifikować z `params_from_iter` |
+| `normalize_file_path` — pętla `while contains("//")` | import.rs:34–36 | Jednorazowy regex lub iterator |
+| `get_session_count` — 2 bloki `get_connection` | sessions.rs:658–701 | Refaktor do jednej ścieżki |
+
+---
+
+## 4. Frontend React (dashboard UI)
+
+### 4.1 Poprawność logiki
+
+#### [KRYTYCZNY] App.tsx:156 — `report-view` w early return zamiast PageRouter
+
+Strona `report-view` jest renderowana przed `MainLayout`, więc nie dzieli kontekstów (`ErrorBoundary`, `ToastProvider`, `TooltipProvider`). Toasty i dialogi wewnątrz `ReportView` będą nieme.
+
+**Naprawa:** Przenieść `report-view` do `PageRouter` i ukrywać sidebar warunkowo w `MainLayout`.
+
+#### [WYSOKI] Sessions.tsx:374–393 — Brak flagi `cancelled` w useEffect dla `getSessions`
+
+Race condition przy szybkiej zmianie filtrów — odpowiedź ze starszego zapytania może nadpisać nowszą. Inne useEffect w tym samym pliku mają poprawnie zaimplementowany wzorzec z `cancelled`.
+
+**Naprawa:** Dodać `let cancelled = false; return () => { cancelled = true; }` i sprawdzać przed `setState`.
+
+#### [WYSOKI] BackgroundServices.tsx:350–376 — `runRefresh()` startuje przed zakończeniem auto-importu
+
+`runRefresh()` i `checkFileChange()` odpytują backend w sekundę po starcie, mimo że `autoImportDone` może jeszcze być `false`. Race condition z trwającym importem.
+
+**Naprawa:** Warunek `if (autoImportDone)` powinien obejmować też te operacje.
+
+#### [ŚREDNI] ReportView.tsx:30–33 — `fontSettings` niezsynchronizowany z templatem
+
+`useState` inicjalizowany z `template.fontFamily/baseFontSize` nie reaguje na zmianę `reportTemplateId`.
+
+**Naprawa:** Dodać `useEffect` synchronizujący stan przy zmianie template.
+
+#### [NISKI] Sessions.tsx:273–276 — `void refreshKey` jako deps hack w useMemo
+
+```ts
+const splitSettings = useMemo(() => {
+  void refreshKey;
+  return loadSplitSettings();
+}, [refreshKey]);
+```
+
+Antywzorzec — `useMemo` nie powinno zależeć od zmiennej, której nie używa w obliczeniu.
+
+**Naprawa:** `useEffect` + `useState` zamiast `useMemo`.
+
+#### [NISKI] ManualSessionDialog.tsx:137 — natywny `window.confirm` zamiast `useConfirm`
+
+Niespójne z resztą aplikacji używającą dedykowanego hooka `useConfirm`.
+
+### 4.2 Wydajność
+
+#### [WYSOKI] Dashboard.tsx:287–403 — 5 osobnych useEffect z tym samym refreshKey
+
+Każdy `triggerRefresh()` inicjuje 5 niezależnych round-tripów do backendu. `getProjects` (rzadko się zmienia) mógłby mieć osobny cykl życia.
+
+**Sugestia:** Pogrupować powiązane wywołania w jeden useEffect lub stworzyć endpoint batch.
+
+#### [WYSOKI] Sidebar.tsx:214 — `getDatabaseSettings` w pętli co 10s
+
+Ustawienia bazy są statyczne między sesjami. 6 zbędnych `invoke` na minutę.
+
+**Naprawa:** Ładować raz przy montowaniu + po zdarzeniu `LOCAL_DATA_CHANGED_EVENT`.
+
+#### [ŚREDNI] BackgroundServices.tsx:26 — `JOB_LOOP_TICK_MS = 2000`
+
+Najgęstsze zadanie odpala co 5s, ale tick jest co 2s. Zmiana na 5000ms zmniejszy obciążenie CPU o ~60%.
+
+#### [ŚREDNI] useTimeAnalysisData.ts:99 — `rangeMode` redundantny w deps useEffect
+
+`activeDateRange` już zależy od `rangeMode`, więc dodanie `rangeMode` do deps powoduje potencjalne podwójne wywołanie.
+
+#### [NISKI] SessionRow.tsx:100–101 — `resolveDateFnsLocale` per-row
+
+Wywoływane dla każdego wiersza. Powinna być obliczana raz w rodzicu i przekazywana jako prop/context.
+
+### 4.3 Redundancje i jakość kodu
+
+| Problem | Plik | Uwagi |
+|---------|------|-------|
+| `useSessionActions.ts:87–92` — zbędny wrapper `updateOneSessionComment` | useSessionActions.ts | Identyczny z `updateSessionComments(id, comment)` |
+| `Dashboard.tsx:236–246` — podwójne logowanie błędów | Dashboard.tsx | `onError` + `try/catch` logują to samo |
+| `Reports.tsx:291` vs `report-templates.ts:17` — zduplikowany `generateId()` | Oba pliki | Eksportować z jednego miejsca |
+| `report-templates.ts:71` — mutacja argumentu w `saveTemplate` | report-templates.ts | Narusza zasadę niezmienności; `{ ...template, updatedAt }` |
+| `report-templates.ts:97` — `(copy)` hardkodowane po angielsku | report-templates.ts | Brak i18n |
+| `SessionRow.tsx:110` — hardkodowane kolory `#1a1b26`, `#24283b` | SessionRow.tsx | Użyć zmiennych Tailwind |
+| `data-store.ts:131–132` — globalne zmienne modułu dla throttlingu | data-store.ts | Enkapsulować w klasie/closurze |
+| `useTimeAnalysisData.ts:56` — `shiftDateRange` nie w `useCallback` | useTimeAnalysisData.ts | Nowa referencja przy każdym renderze |
+| `inline-i18n.ts:13–31` — custom hash z ryzykiem kolizji | inline-i18n.ts | Znany problem content-addressed i18n |
+
+---
+
+## 5. Brakujące tłumaczenia (i18n)
+
+### [KRYTYCZNY] MultiSplitSessionModal.tsx — 9 brakujących kluczy
+
+Klucze `sessions.split_multi.*` nie istnieją w `locales/en/common.json` ani `locales/pl/common.json`:
+
+| Klucz | Fallback (hardkodowany PL) |
+|-------|---------------------------|
+| `sessions.split_multi.title` | — |
+| `sessions.split_multi.loading` | — |
+| `sessions.split_multi.no_candidates` | — |
+| `sessions.split_multi.candidates` | `'Kandydaci AI'` |
+| `sessions.split_multi.leader` | — |
+| `sessions.split_multi.unknown_project` | `'Nieznany projekt'` |
+| `sessions.split_multi.unassigned` | `'Nieprzypisane'` |
+| `sessions.split_multi.ai_score` | — |
+| `sessions.split_multi.custom_part` | — |
+| `sessions.split_multi.sum` | — |
+
+**Efekt:** W trybie angielskim użytkownik widzi polskie teksty.
+
+### [WYSOKI] Przestarzały `useInlineT` w wielu komponentach
+
+Pliki `TimeAnalysis.tsx`, `Reports.tsx`, `ReportView.tsx`, `useTimeAnalysisData.ts` używają `useInlineT` — ich teksty nie są w plikach JSON i nie można ich tłumaczyć bez modyfikacji kodu.
+
+### [NISKI] SessionRow.tsx:134,185,197 — Polish defaultValue w `t()`
+
+```ts
+title={t('sessions.menu.split_suggestion', 'AI sugeruje podział...')}
+```
+
+Klucz istnieje w JSON, ale fallback jest po polsku — przy literówce w kluczu EN użytkownik zobaczy polski tekst.
+
+---
+
+## 6. Luki w dokumentacji Help.tsx
+
+### Funkcje bez dokumentacji w Help
+
+#### Priorytet wysoki
+
+| Funkcja | Strona/Komponent | Opis |
+|---------|-----------------|------|
+| **Karta projektu (ProjectPage)** | ProjectPage.tsx | Cały ekran: kompaktowanie danych, reset czasu, inline edit nazwy, raport, timeline z komentarzami, dodawanie sesji manualnych per projekt |
+| **Training blacklists** | AI.tsx | Wykluczanie aplikacji i folderów z trenowania modelu AI |
+| **Metryki AI / wykresy jakości** | AI.tsx | Panel "Postęp i jakość AI" z feedback trend, precision, auto-assigned, coverage |
+| **Waluta (Currency)** | Settings.tsx | Wybór waluty PLN/USD/EUR |
+| **Język UI (PL/EN)** | Settings.tsx | Główny przełącznik języka interfejsu |
+
+#### Priorytet średni
+
+| Funkcja | Strona/Komponent | Opis |
+|---------|-----------------|------|
+| **ReportView (podgląd/druk raportu)** | ReportView.tsx | Pełnoekranowy widok, druk do PDF — brak opisu przepływu |
+| **Sekcja "files" w szablonie raportu** | Reports.tsx | Sekcja "Pliki/aktywność" pominiętą w liście sekcji Help |
+| **Training Horizon** | AI.tsx | Horyzont trenowania 30–730 dni |
+| **Auto-safe limit** | AI.tsx | Limit sesji na przebieg auto-safe (500–10000) |
+| **Tygodniowy widok w Sessions** | Sessions.tsx | Tryb `daily` vs `weekly` — range mode |
+| **Batch assign po projekcie** | Sessions.tsx | Context menu na nagłówku projektu |
+| **Auto-rebuild on startup** | Settings.tsx | Automatyczne scalanie sesji przy starcie |
+| **Auto-sync interval** | Settings.tsx | Interwał synchronizacji 1–1440 min |
+
+#### Priorytet niski
+
+| Funkcja | Strona/Komponent | Opis |
+|---------|-----------------|------|
+| Kolor strefy godzin pracy (Highlight Color) | Settings.tsx | — |
+| Session Indicators settings | AI.tsx | Konfigurowalne wskaźniki na wierszach sesji |
+| Snooze Training Reminder | AI.tsx | Odroczenie przypomnienia o treningu na 24h |
+| Filtr "Tylko nieprzypisane" | Sessions.tsx | — |
+| Sync on startup toggle | Settings.tsx | — |
+
+---
+
+## 7. Priorytety napraw
+
+### P0 — Natychmiastowe (poprawność danych)
+
+1. **sessions.rs:109** — `ON CONFLICT(session_id)` → zmienić na `ON CONFLICT(executable_name, start_time, end_time)`
+2. **sessions.rs:704** — Brak transakcji w `assign_session_to_project` → dodać `conn.transaction()`
+3. **settings.rs:265** — `clear_all_data` nie czyści tombstones/overrides → dodać brakujące DELETE + transakcja
+4. **config.rs:131** — SQLite read-write przez demona → `open_with_flags(READ_ONLY)`
+
+### P1 — Wysokie (wydajność + UX)
+
+5. **monitor.rs:223** — Cache WMI connection per wątek
+6. **db.rs** — Dodać indeksy złożone `sessions(app_id, date)` i `file_activities(app_id, date, last_seen, first_seen)`
+7. **assignment_model.rs:967** — `date(created_at)` → `created_at >=` dla użycia indeksu
+8. **MultiSplitSessionModal.tsx** — Dodać 9 brakujących kluczy i18n do obu plików locale
+9. **Sessions.tsx:374** — Dodać flagę `cancelled` w useEffect
+10. **App.tsx:156** — Przenieść `report-view` do PageRouter
+
+### P2 — Średnie (optymalizacja + jakość)
+
+11. **sessions.rs:155** — N+1 queries → mapa `project_name → id`
+12. **sql_fragments.rs** — Zunifikować CTE do jednej funkcji
+13. **sessions.rs:916+** — Wyekstrahować jedną funkcję `parse_datetime`
+14. **tray.rs:268** — `tasklist.exe` → `CreateToolhelp32Snapshot`
+15. **Sidebar.tsx:214** — `getDatabaseSettings` raz zamiast co 10s
+16. **BackgroundServices.tsx:26** — `JOB_LOOP_TICK_MS` 2000 → 5000
+17. **Help.tsx** — Dodać dokumentację ProjectPage, AI metrics, blacklists, waluty, języka
+
+### P3 — Niskie (cleanup)
+
+18. Usunąć zduplikowaną `no_console` (tray.rs/main.rs)
+19. Usunąć zbędne `.to_lowercase()` (config.rs:202)
+20. Zamienić `GetTickCount` na `GetTickCount64` (monitor.rs:467)
+21. Naprawić mutację argumentu w `saveTemplate` (report-templates.ts:71)
+22. Dodać i18n dla `(copy)` w `duplicateTemplate` (report-templates.ts:97)
+23. Zamienić hardkodowane kolory na zmienne Tailwind (SessionRow.tsx:110)
+24. `useCallback` dla `shiftDateRange` (useTimeAnalysisData.ts:56)
+
+---
+
+*Raport wygenerowany automatycznie na podstawie analizy kodu źródłowego projektu TIMEFLOW v0.1.505.*

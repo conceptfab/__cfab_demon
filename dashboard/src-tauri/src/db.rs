@@ -138,6 +138,10 @@ CREATE TABLE IF NOT EXISTS file_activities (
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL,
     project_id INTEGER,
+    window_title TEXT,
+    detected_path TEXT,
+    title_history TEXT,
+    activity_type TEXT,
     FOREIGN KEY (app_id) REFERENCES applications(id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     UNIQUE(app_id, date, file_path)
@@ -170,8 +174,11 @@ CREATE TABLE IF NOT EXISTS session_manual_overrides (
 CREATE INDEX IF NOT EXISTS idx_sessions_app_id ON sessions(app_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
+CREATE INDEX IF NOT EXISTS idx_sessions_app_date ON sessions(app_id, date, start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
+CREATE INDEX IF NOT EXISTS idx_file_activities_app_date_overlap
+ON file_activities(app_id, date, last_seen, first_seen);
 CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
 CREATE INDEX IF NOT EXISTS idx_session_manual_overrides_lookup
 ON session_manual_overrides(executable_name, start_time, end_time);
@@ -1107,6 +1114,67 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         }
     }
 
+    // Add window_title to file_activities (richer context for AI tokenization)
+    let has_file_activities_window_title: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('file_activities') WHERE name='window_title'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_file_activities_window_title {
+        log::info!("Migrating file_activities: adding window_title");
+        db.execute(
+            "ALTER TABLE file_activities ADD COLUMN window_title TEXT DEFAULT NULL",
+            [],
+        )?;
+    }
+
+    let has_file_activities_detected_path: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('file_activities') WHERE name='detected_path'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_file_activities_detected_path {
+        log::info!("Migrating file_activities: adding detected_path");
+        db.execute(
+            "ALTER TABLE file_activities ADD COLUMN detected_path TEXT DEFAULT NULL",
+            [],
+        )?;
+    }
+
+    let has_file_activities_title_history: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('file_activities') WHERE name='title_history'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_file_activities_title_history {
+        log::info!("Migrating file_activities: adding title_history");
+        db.execute(
+            "ALTER TABLE file_activities ADD COLUMN title_history TEXT DEFAULT NULL",
+            [],
+        )?;
+    }
+
+    let has_file_activities_activity_type: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('file_activities') WHERE name='activity_type'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_file_activities_activity_type {
+        log::info!("Migrating file_activities: adding activity_type");
+        db.execute(
+            "ALTER TABLE file_activities ADD COLUMN activity_type TEXT DEFAULT NULL",
+            [],
+        )?;
+    }
+
     let has_sessions_project_id: bool = db
         .prepare("SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='project_id'")?
         .query_row([], |row| row.get::<_, i64>(0))
@@ -1334,8 +1402,10 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
         "CREATE INDEX IF NOT EXISTS idx_file_activities_app_id ON file_activities(app_id);
          CREATE INDEX IF NOT EXISTS idx_file_activities_date ON file_activities(date);
          CREATE INDEX IF NOT EXISTS idx_file_activities_app_date ON file_activities(app_id, date);
+         CREATE INDEX IF NOT EXISTS idx_file_activities_app_date_overlap ON file_activities(app_id, date, last_seen, first_seen);
          CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
          CREATE INDEX IF NOT EXISTS idx_file_activities_file_path ON file_activities(file_path);
+         CREATE INDEX IF NOT EXISTS idx_sessions_app_date ON sessions(app_id, date, start_time);
          CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
          CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);",
     )?;

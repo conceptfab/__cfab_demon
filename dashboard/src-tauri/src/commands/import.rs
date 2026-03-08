@@ -216,15 +216,19 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
     };
     let mut file_stmt = match tx.prepare_cached(
         "INSERT INTO file_activities (
-            app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id
+            app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id, window_title, detected_path, title_history, activity_type
          )
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
          ON CONFLICT(app_id, date, file_path) DO UPDATE SET
            file_name = excluded.file_name,
            total_seconds = excluded.total_seconds,
            first_seen = MIN(file_activities.first_seen, excluded.first_seen),
            last_seen = MAX(file_activities.last_seen, excluded.last_seen),
-           project_id = COALESCE(excluded.project_id, file_activities.project_id)",
+           project_id = COALESCE(excluded.project_id, file_activities.project_id),
+           window_title = COALESCE(excluded.window_title, file_activities.window_title),
+           detected_path = COALESCE(excluded.detected_path, file_activities.detected_path),
+           title_history = COALESCE(excluded.title_history, file_activities.title_history),
+           activity_type = COALESCE(excluded.activity_type, file_activities.activity_type)",
     ) {
         Ok(s) => s,
         Err(e) => {
@@ -291,9 +295,15 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
 
         let file_date = &daily.date;
         for file in &app_data.files {
+            let detected_path_param: Option<&str> = file
+                .detected_path
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
+            let project_hint = detected_path_param.unwrap_or(&file.name);
             let file_project_id =
-                ensure_app_project_from_file_hint(&tx, &file.name, &project_roots);
-            let normalized_file_path = normalize_file_path(&file.name);
+                ensure_app_project_from_file_hint(&tx, project_hint, &project_roots);
+            let normalized_file_path = normalize_file_path(project_hint);
             let file_name = file.name.trim();
             let safe_file_name = if file_name.is_empty() {
                 normalized_file_path.as_str()
@@ -301,6 +311,21 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 file_name
             };
 
+            let window_title_param: Option<&str> = if file.window_title.is_empty() {
+                None
+            } else {
+                Some(&file.window_title)
+            };
+            let title_history_param = if file.title_history.is_empty() {
+                None
+            } else {
+                serde_json::to_string(&file.title_history).ok()
+            };
+            let activity_type_param: Option<&str> = file
+                .activity_type
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty());
             if let Err(e) = file_stmt.execute(rusqlite::params![
                 app_id,
                 file_date,
@@ -309,7 +334,11 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 file.total_seconds,
                 file.first_seen,
                 file.last_seen,
-                file_project_id
+                file_project_id,
+                window_title_param,
+                detected_path_param,
+                title_history_param.as_deref(),
+                activity_type_param
             ]) {
                 log::warn!(
                     "Failed to upsert file activity for app_id {} file '{}': {}",

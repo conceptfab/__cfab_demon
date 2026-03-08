@@ -7,10 +7,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use native_windows_gui as nwg;
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
+use winapi::um::tlhelp32::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 
 use crate::i18n::{self, Lang, TrayText};
+use crate::process_utils::no_console;
 use crate::APP_NAME;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
 
@@ -29,13 +32,6 @@ fn set_menu_item_text(item: &nwg::MenuItem, text: &str) {
         }
     }
 }
-
-#[cfg(windows)]
-fn no_console(cmd: &mut std::process::Command) {
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-}
-#[cfg(not(windows))]
-fn no_console(_cmd: &mut std::process::Command) {}
 
 /// Tray loop exit action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -203,10 +199,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                     let old_lang = lang_clone.get();
                     if new_lang != old_lang {
                         lang_clone.set(new_lang);
-                        set_menu_item_text(
-                            &menu_exit_clone.borrow(),
-                            new_lang.t(TrayText::Close),
-                        );
+                        set_menu_item_text(&menu_exit_clone.borrow(), new_lang.t(TrayText::Close));
                         set_menu_item_text(
                             &menu_restart_clone.borrow(),
                             new_lang.t(TrayText::Restart),
@@ -268,28 +261,43 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 }
 
 fn is_dashboard_running() -> bool {
-    let mut cmd = std::process::Command::new("tasklist");
-    no_console(&mut cmd);
-    let output = match cmd.args(["/FO", "CSV", "/NH"]).output() {
-        Ok(o) => o,
-        Err(e) => {
-            log::warn!("Failed to run tasklist for dashboard detection: {}", e);
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            log::warn!("Failed to create process snapshot for dashboard detection");
             return false;
         }
-    };
 
-    if !output.status.success() {
-        log::warn!(
-            "tasklist failed while checking dashboard process: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return false;
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+        let mut found = false;
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                let name_len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let exe_name =
+                    String::from_utf16_lossy(&entry.szExeFile[..name_len]).to_lowercase();
+                if matches!(
+                    exe_name.as_str(),
+                    "timeflow-dashboard.exe" | "timeflow.exe" | "timeflow_dashboard.exe"
+                ) {
+                    found = true;
+                    break;
+                }
+
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(snapshot);
+        found
     }
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_lowercase();
-    stdout.contains("\"timeflow-dashboard.exe\"")
-        || stdout.contains("\"timeflow.exe\"")
-        || stdout.contains("\"timeflow_dashboard.exe\"")
 }
 
 fn launch_dashboard(lang: Lang) {
@@ -350,14 +358,13 @@ fn launch_dashboard(lang: Lang) {
         }
     } else {
         log::error!("Dashboard exe not found in {:?}", daemon_dir);
-        show_error_message(lang.t(TrayText::DashboardNotFound));
+        show_error_message(lang, lang.t(TrayText::DashboardNotFound));
     }
 }
 
-fn show_error_message(msg: &str) {
+fn show_error_message(lang: Lang, msg: &str) {
     use std::ptr;
-    let lang_obj = crate::i18n::load_language();
-    let title_text = lang_obj.t(crate::i18n::TrayText::DemonErrorTitle).to_string();
+    let title_text = lang.t(crate::i18n::TrayText::DemonErrorTitle).to_string();
     let title: Vec<u16> = title_text
         .encode_utf16()
         .chain(std::iter::once(0))

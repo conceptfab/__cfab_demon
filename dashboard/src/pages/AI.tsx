@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   Brain,
@@ -6,6 +7,7 @@ import {
   PlayCircle,
   RotateCcw,
   Save,
+  Trash2,
   WandSparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,15 +16,23 @@ import { useToast } from '@/components/ui/toast-notification';
 import { useDataStore } from '@/store/data-store';
 import {
   getAssignmentModelStatus,
+  getAssignmentModelMetrics,
+  resetAssignmentModelKnowledge,
   rollbackLastAutoSafeRun,
   runAutoSafeAssignment,
   setAssignmentModelCooldown,
   setAssignmentMode,
+  setTrainingBlacklists,
+  setTrainingHorizonDays as setTrainingHorizonDaysApi,
   trainAssignmentModel,
   getFeedbackWeight,
   setFeedbackWeight as setFeedbackWeightApi,
 } from '@/lib/tauri';
-import type { AssignmentMode, AssignmentModelStatus } from '@/lib/db-types';
+import type {
+  AssignmentMode,
+  AssignmentModelMetrics,
+  AssignmentModelStatus,
+} from '@/lib/db-types';
 import {
   loadSessionSettings,
   loadIndicatorSettings,
@@ -30,6 +40,25 @@ import {
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
 import { useInlineT } from '@/lib/inline-i18n';
+import {
+  CHART_AXIS_COLOR,
+  CHART_GRID_COLOR,
+  CHART_PRIMARY_COLOR,
+  CHART_TOOLTIP_TEXT_COLOR,
+  CHART_TOOLTIP_TITLE_COLOR,
+  TOOLTIP_CONTENT_STYLE,
+} from '@/lib/chart-styles';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -70,6 +99,31 @@ function formatDateTime(value: string | null | undefined): string {
 function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
+}
+
+function parseMultilineList(value: string): string[] {
+  const unique = new Set<string>();
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    unique.add(trimmed);
+  }
+  return Array.from(unique);
+}
+
+function formatMultilineList(values: string[]): string {
+  return values.join('\n');
+}
+
+function formatPercent(value: number): string {
+  if (!Number.isFinite(value)) return '0%';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatDateLabel(value: string): string {
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function parseDate(value: string | null | undefined): Date | null {
@@ -142,23 +196,33 @@ function buildTrainingReminder(
 
 export function AIPage() {
   const t = useInlineT();
+  const { t: tr } = useTranslation();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isFetchingRef = useRef(false);
+  const isFetchingMetricsRef = useRef(false);
   const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
+  const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(false);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
   const [training, setTraining] = useState(false);
   const [runningAuto, setRunningAuto] = useState(false);
   const [rollingBack, setRollingBack] = useState(false);
+  const [resettingKnowledge, setResettingKnowledge] = useState(false);
   const [snoozingReminder, setSnoozingReminder] = useState(false);
 
   const [mode, setMode] = useState<AssignmentMode>('suggest');
   const [suggestConf, setSuggestConf] = useState<number>(0.6);
   const [autoConf, setAutoConf] = useState<number>(0.85);
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
+  const [trainingHorizonDays, setTrainingHorizonDays] = useState<number>(730);
+  const [trainingAppBlacklistText, setTrainingAppBlacklistText] =
+    useState<string>('');
+  const [trainingFolderBlacklistText, setTrainingFolderBlacklistText] =
+    useState<string>('');
   const [autoLimit, setAutoLimit] = useState<number>(loadAutoLimit);
   const [feedbackWeight, setFeedbackWeight] = useState<number>(5.0);
   const dirtyRef = useRef(false);
@@ -173,6 +237,13 @@ export function AIPage() {
       setSuggestConf(nextStatus.min_confidence_suggest);
       setAutoConf(nextStatus.min_confidence_auto);
       setAutoEvidence(nextStatus.min_evidence_auto);
+      setTrainingHorizonDays(nextStatus.training_horizon_days);
+      setTrainingAppBlacklistText(
+        formatMultilineList(nextStatus.training_app_blacklist),
+      );
+      setTrainingFolderBlacklistText(
+        formatMultilineList(nextStatus.training_folder_blacklist),
+      );
     }
   };
 
@@ -207,13 +278,34 @@ export function AIPage() {
     [showError, t],
   );
 
+  const fetchMetrics = useCallback(
+    async (silent = false) => {
+      if (isFetchingMetricsRef.current) return;
+      isFetchingMetricsRef.current = true;
+      if (!silent) setLoadingMetrics(true);
+      try {
+        const nextMetrics = await getAssignmentModelMetrics(30);
+        setMetrics(nextMetrics);
+      } catch (e) {
+        console.error(e);
+        showError(`${tr('ai_page.errors.metrics_load_failed')} ${String(e)}`);
+      } finally {
+        if (!silent) setLoadingMetrics(false);
+        isFetchingMetricsRef.current = false;
+      }
+    },
+    [showError, tr],
+  );
+
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
+    void fetchMetrics();
     const interval = setInterval(() => {
       void fetchStatus(true);
+      void fetchMetrics(true);
     }, 30_000);
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+  }, [fetchMetrics, fetchStatus]);
 
   const handleSaveMode = async () => {
     setSavingMode(true);
@@ -228,6 +320,13 @@ export function AIPage() {
         normalizedAuto,
         normalizedEvidence,
       );
+      await setTrainingHorizonDaysApi(
+        Math.round(clampNumber(trainingHorizonDays, 30, 730)),
+      );
+      await setTrainingBlacklists(
+        parseMultilineList(trainingAppBlacklistText),
+        parseMultilineList(trainingFolderBlacklistText),
+      );
       const clampedFw = Math.max(1, Math.min(50, feedbackWeight));
       await setFeedbackWeightApi(clampedFw);
       dirtyRef.current = false;
@@ -237,6 +336,7 @@ export function AIPage() {
       syncFromStatus(freshStatus, true);
       const freshFw = await getFeedbackWeight();
       setFeedbackWeight(freshFw);
+      await fetchMetrics(true);
     } catch (e) {
       console.error(e);
       showError(
@@ -255,6 +355,7 @@ export function AIPage() {
     try {
       const nextStatus = await trainAssignmentModel(true);
       syncFromStatus(nextStatus);
+      await fetchMetrics(true);
       showInfo(t('Trening modelu zakończony.', 'Model training completed.'));
     } catch (e) {
       console.error(e);
@@ -265,6 +366,26 @@ export function AIPage() {
       );
     } finally {
       setTraining(false);
+    }
+  };
+
+  const handleResetKnowledge = async () => {
+    const confirmed = await confirm(tr('ai_page.prompts.reset_knowledge_confirm'));
+    if (!confirmed) return;
+
+    setResettingKnowledge(true);
+    try {
+      const nextStatus = await resetAssignmentModelKnowledge();
+      dirtyRef.current = false;
+      syncFromStatus(nextStatus, true);
+      await fetchMetrics(true);
+      triggerRefresh();
+      showInfo(tr('ai_page.info.knowledge_reset'));
+    } catch (e) {
+      console.error(e);
+      showError(`${tr('ai_page.errors.knowledge_reset_failed')} ${String(e)}`);
+    } finally {
+      setResettingKnowledge(false);
     }
   };
 
@@ -297,6 +418,7 @@ export function AIPage() {
       );
       triggerRefresh();
       await fetchStatus(true);
+      await fetchMetrics(true);
     } catch (e) {
       console.error(e);
       showError(
@@ -330,6 +452,7 @@ export function AIPage() {
       );
       triggerRefresh();
       await fetchStatus(true);
+      await fetchMetrics(true);
     } catch (e) {
       console.error(e);
       showError(
@@ -366,6 +489,17 @@ export function AIPage() {
       setSnoozingReminder(false);
     }
   };
+
+  const metricsChartData = useMemo(
+    () =>
+      (metrics?.points ?? []).map((point) => ({
+        ...point,
+        label: formatDateLabel(point.date),
+      })),
+    [metrics],
+  );
+
+  const metricsSummary = metrics?.summary ?? null;
 
   return (
     <>
@@ -468,12 +602,224 @@ export function AIPage() {
               <Button
                 variant="outline"
                 className="h-8"
-                onClick={() => fetchStatus()}
-                disabled={loadingStatus}
+                onClick={() => {
+                  void fetchStatus();
+                  void fetchMetrics();
+                }}
+                disabled={loadingStatus || loadingMetrics}
               >
                 {t('Odśwież status', 'Refresh Status')}
               </Button>
+              <Button
+                variant="destructive"
+                className="h-8"
+                onClick={handleResetKnowledge}
+                disabled={resettingKnowledge}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                {resettingKnowledge
+                  ? t('Resetowanie...', 'Resetting...')
+                  : t('Reset wiedzy AI', 'Reset AI knowledge')}
+              </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold">
+              {tr('ai_page.titles.progress_and_quality', {
+                days: metrics?.window_days ?? 30,
+              })}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {loadingMetrics && !metrics ? (
+              <p className="text-sm text-muted-foreground">
+                {t('Ładowanie metryk AI...', 'Loading AI metrics...')}
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t('Precision AI', 'AI precision')}
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {formatPercent(metricsSummary?.feedback_precision ?? 0)}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t('Feedback łącznie', 'Total feedback')}
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {metricsSummary?.feedback_total ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'Auto-safe przypisania',
+                        'Auto-safe assignments',
+                      )}
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {metricsSummary?.auto_assigned ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'Pokrycie detected_path',
+                        'Detected path coverage',
+                      )}
+                    </p>
+                    <p className="mt-1 font-medium">
+                      {formatPercent(
+                        metricsSummary?.coverage_detected_path_ratio ?? 0,
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  {t(
+                    'Pokrycie title_history: {{titleCoverage}}, activity_type: {{activityCoverage}}.',
+                    'title_history coverage: {{titleCoverage}}, activity_type: {{activityCoverage}}.',
+                    {
+                      titleCoverage: formatPercent(
+                        metricsSummary?.coverage_title_history_ratio ?? 0,
+                      ),
+                      activityCoverage: formatPercent(
+                        metricsSummary?.coverage_activity_type_ratio ?? 0,
+                      ),
+                    },
+                  )}
+                </p>
+
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'Trend feedbacku (accept/reject/manual)',
+                        'Feedback trend (accept/reject/manual)',
+                      )}
+                    </p>
+                    <div className="mt-2 h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={metricsChartData}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_GRID_COLOR}
+                            opacity={0.45}
+                          />
+                          <XAxis
+                            dataKey="label"
+                            stroke={CHART_AXIS_COLOR}
+                            fontSize={11}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            stroke={CHART_AXIS_COLOR}
+                            fontSize={11}
+                            tickLine={false}
+                            axisLine={false}
+                            allowDecimals={false}
+                          />
+                          <Tooltip
+                            contentStyle={TOOLTIP_CONTENT_STYLE}
+                            labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR }}
+                            itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Bar
+                            dataKey="feedback_accepted"
+                            stackId="feedback"
+                            fill="#22c55e"
+                            name={t('Accept', 'Accept')}
+                          />
+                          <Bar
+                            dataKey="feedback_rejected"
+                            stackId="feedback"
+                            fill="#ef4444"
+                            name={t('Reject', 'Reject')}
+                          />
+                          <Bar
+                            dataKey="feedback_manual_change"
+                            stackId="feedback"
+                            fill={CHART_PRIMARY_COLOR}
+                            name={t('Manual', 'Manual')}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      {t(
+                        'Auto-safe runs vs rollback',
+                        'Auto-safe runs vs rollback',
+                      )}
+                    </p>
+                    <div className="mt-2 h-56">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={metricsChartData}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke={CHART_GRID_COLOR}
+                            opacity={0.45}
+                          />
+                          <XAxis
+                            dataKey="label"
+                            stroke={CHART_AXIS_COLOR}
+                            fontSize={11}
+                            tickLine={false}
+                            axisLine={false}
+                          />
+                          <YAxis
+                            stroke={CHART_AXIS_COLOR}
+                            fontSize={11}
+                            tickLine={false}
+                            axisLine={false}
+                            allowDecimals={false}
+                          />
+                          <Tooltip
+                            contentStyle={TOOLTIP_CONTENT_STYLE}
+                            labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR }}
+                            itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Bar
+                            dataKey="auto_assigned"
+                            fill={CHART_PRIMARY_COLOR}
+                            name={t('Assigned', 'Assigned')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="auto_runs"
+                            stroke="#a78bfa"
+                            strokeWidth={2}
+                            dot={false}
+                            name={t('Runs', 'Runs')}
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="auto_rollbacks"
+                            stroke="#f97316"
+                            strokeWidth={2}
+                            dot={false}
+                            name={t('Rollbacks', 'Rollbacks')}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -620,6 +966,33 @@ export function AIPage() {
                 />
               </label>
 
+              <label className="space-y-1.5 text-sm md:col-span-2">
+                <span className="text-xs text-muted-foreground">
+                  {t(
+                    'Horyzont treningu (dni)',
+                    'Training horizon (days)',
+                  )}
+                </span>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={30}
+                    max={730}
+                    step={1}
+                    className="h-9 w-full"
+                    value={trainingHorizonDays}
+                    onChange={(e) => {
+                      const next = Number.parseInt(e.target.value, 10);
+                      setTrainingHorizonDays(Number.isNaN(next) ? 730 : next);
+                      dirtyRef.current = true;
+                    }}
+                  />
+                  <span className="min-w-[5rem] text-right text-xs text-muted-foreground">
+                    {trainingHorizonDays} {t('dni', 'days')}
+                  </span>
+                </div>
+              </label>
+
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
                   {t('Waga feedbacku (1..50)', 'Feedback Weight (1..50)')}
@@ -636,6 +1009,45 @@ export function AIPage() {
                     setFeedbackWeight(Number.isNaN(next) ? 5 : next);
                     dirtyRef.current = true;
                   }}
+                />
+              </label>
+
+              <label className="space-y-1.5 text-sm md:col-span-2">
+                <span className="text-xs text-muted-foreground">
+                  {t(
+                    'Blacklist aplikacji (exe, po jednej linii)',
+                    'Applications blacklist (exe, one per line)',
+                  )}
+                </span>
+                <textarea
+                  className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
+                  value={trainingAppBlacklistText}
+                  onChange={(e) => {
+                    setTrainingAppBlacklistText(e.target.value);
+                    dirtyRef.current = true;
+                  }}
+                  placeholder={t(
+                    'np. chrome.exe',
+                    'e.g. chrome.exe',
+                  )}
+                />
+              </label>
+
+              <label className="space-y-1.5 text-sm md:col-span-2">
+                <span className="text-xs text-muted-foreground">
+                  {tr('ai_page.fields.folders_blacklist')}
+                </span>
+                <textarea
+                  className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
+                  value={trainingFolderBlacklistText}
+                  onChange={(e) => {
+                    setTrainingFolderBlacklistText(e.target.value);
+                    dirtyRef.current = true;
+                  }}
+                  placeholder={t(
+                    'np. C:\\Users\\me\\Downloads',
+                    'e.g. C:\\Users\\me\\Downloads',
+                  )}
                 />
               </label>
             </div>

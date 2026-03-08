@@ -38,6 +38,7 @@ import {
   getAssignmentModelStatus,
   getDatabaseSettings,
 } from '@/lib/tauri';
+import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
 import type {
   DaemonStatus,
   AssignmentModelStatus,
@@ -201,21 +202,27 @@ export function Sidebar() {
 
     const runChecks = () => {
       void checkStatus();
+    };
+
+    const refreshSettings = () => {
       void loadSettings();
     };
 
     const onVisibilityChange = () => {
       if (!disposed && isVisible()) {
         runChecks();
+        refreshSettings();
       }
     };
 
     runChecks();
+    refreshSettings();
     const interval = window.setInterval(runChecks, 10_000);
 
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, refreshSettings);
 
     return () => {
       disposed = true;
@@ -223,6 +230,7 @@ export function Sidebar() {
       if (typeof document !== 'undefined') {
         document.removeEventListener('visibilitychange', onVisibilityChange);
       }
+      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, refreshSettings);
     };
   }, []);
 

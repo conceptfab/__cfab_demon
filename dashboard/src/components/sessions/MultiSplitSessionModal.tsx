@@ -198,10 +198,7 @@ export function MultiSplitSessionModal({
             <div className="flex items-center gap-2">
               <Scissors className="h-5 w-5 text-amber-400" />
               <h2 className="text-base font-bold">
-                {t(
-                  'sessions.split_multi.title',
-                  'Podziel sesję na wiele projektów',
-                )}
+                {t('sessions.split_multi.title')}
               </h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -221,24 +218,21 @@ export function MultiSplitSessionModal({
 
         {isAnalysisLoading ? (
           <div className="rounded-lg border border-border/30 bg-secondary/20 px-3 py-6 text-center text-sm text-muted-foreground">
-            {t('sessions.split_multi.loading', 'Analiza AI w toku...')}
+            {t('sessions.split_multi.loading')}
           </div>
         ) : !analysis || analysis.candidates.length < 2 ? (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-4 text-sm text-amber-200">
-            {t(
-              'sessions.split_multi.no_candidates',
-              'AI nie wykryło wystarczającej liczby projektów do podziału tej sesji.',
-            )}
+            {t('sessions.split_multi.no_candidates')}
           </div>
         ) : (
           <>
             <div className="rounded-lg border border-border/30 bg-secondary/10 p-3">
               <div className="mb-2 flex items-center justify-between text-xs">
                 <span className="font-semibold text-muted-foreground">
-                  {t('sessions.split_multi.candidates', 'Kandydaci AI')}
+                  {t('sessions.split_multi.candidates')}
                 </span>
                 <span className="text-muted-foreground/70">
-                  {t('sessions.split_multi.leader', 'Lider')}:{' '}
+                  {t('sessions.split_multi.leader')}:{' '}
                   {analysis.leader_score.toFixed(0)}
                 </span>
               </div>
@@ -286,11 +280,8 @@ export function MultiSplitSessionModal({
                     <span className="truncate text-sm font-medium">
                       {part.project_id != null
                         ? (projectById.get(part.project_id)?.name ??
-                          t(
-                            'sessions.split_multi.unknown_project',
-                            'Nieznany projekt',
-                          ))
-                        : t('sessions.split_multi.unassigned', 'Nieprzypisane')}
+                          t('sessions.split_multi.unknown_project'))
+                        : t('sessions.split_multi.unassigned')}
                     </span>
                   </div>
 
@@ -318,15 +309,11 @@ export function MultiSplitSessionModal({
 
                   <div className="col-span-3 text-[10px] text-muted-foreground/60">
                     {part.from_ai
-                      ? t(
-                          'sessions.split_multi.ai_score',
-                          'Punkty AI: {{score}} · Relacja do lidera: {{ratio}}%',
-                          {
-                            score: part.ai_score.toFixed(0),
-                            ratio: (part.ratio_to_leader * 100).toFixed(0),
-                          },
-                        )
-                      : t('sessions.split_multi.custom_part', 'Część ręczna')}
+                      ? t('sessions.split_multi.ai_score', {
+                          score: part.ai_score.toFixed(0),
+                          ratio: (part.ratio_to_leader * 100).toFixed(0),
+                        })
+                      : t('sessions.split_multi.custom_part')}
                   </div>
                 </div>
               ))}
@@ -336,7 +323,7 @@ export function MultiSplitSessionModal({
               <span
                 className={`text-xs font-mono ${totalPercent === 100 ? 'text-emerald-400' : 'text-amber-400'}`}
               >
-                {t('sessions.split_multi.sum', 'Suma')}: {totalPercent}%
+                {t('sessions.split_multi.sum')}: {totalPercent}%
               </span>
             </div>
 
@@ -357,7 +344,7 @@ export function MultiSplitSessionModal({
                           backgroundColor: projectColor,
                         }}
                         className="h-full"
-                        title={`${part.project_id != null ? (projectById.get(part.project_id)?.name ?? part.project_id) : t('sessions.split_multi.unassigned', 'Nieprzypisane')} · ${part.percent}%`}
+                        title={`${part.project_id != null ? (projectById.get(part.project_id)?.name ?? part.project_id) : t('sessions.split_multi.unassigned')} · ${part.percent}%`}
                       />
                     );
                   })}

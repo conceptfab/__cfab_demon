@@ -128,8 +128,11 @@ fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
         anyhow::bail!("Dashboard DB not found: {:?}", db_path);
     }
 
-    let conn = rusqlite::Connection::open(&db_path)
-        .with_context(|| format!("Nie można otworzyć DB dashboardu: {:?}", db_path))?;
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .with_context(|| format!("Nie można otworzyć DB dashboardu: {:?}", db_path))?;
     conn.busy_timeout(std::time::Duration::from_millis(2000))
         .context("Nie można ustawić busy_timeout dla DB dashboardu")?;
 
@@ -199,7 +202,7 @@ pub fn monitored_exe_names(config: &Config) -> HashSet<String> {
     config
         .apps
         .iter()
-        .map(|a| a.exe_name.trim().to_lowercase())
+        .map(|a| a.exe_name.trim().to_string())
         .collect()
 }
 

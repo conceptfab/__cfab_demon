@@ -430,8 +430,20 @@ export function Help() {
                     'View modes: Detailed (full file logs), Compact (apps and sessions list only), and AI Data (precise statistics and AI model reasoning).',
                   ),
                   t(
+                    'Tryb zakresu Daily/Weekly – przełączaj listę sesji między widokiem dziennym i tygodniowym, aby szybciej przeglądać dłuższe okresy.',
+                    'Daily/Weekly range mode – switch the sessions list between daily and weekly views to review longer periods faster.',
+                  ),
+                  t(
                     'Sortowanie i filtrowanie po aplikacji, projekcie, dacie oraz czasie trwania.',
                     'Sorting and filtering by application, project, date, and duration.',
+                  ),
+                  t(
+                    'Batch assign z nagłówka projektu – menu kontekstowe grupy pozwala przypisać lub odpiąć cały blok sesji danego projektu.',
+                    'Batch assign from project header – the group context menu lets you assign or unassign the whole block of sessions for a project.',
+                  ),
+                  t(
+                    'Filtr "Tylko nieprzypisane" – szybki fokus na sesjach wymagających decyzji przypisania.',
+                    '"Unassigned only" filter – quickly focus on sessions that still need assignment.',
                   ),
                   t(
                     'Ustawienia podziału sesji – współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5), automatyczny podział. Konfiguracja w Ustawienia > Podział sesji.',
@@ -563,6 +575,10 @@ export function Help() {
                   t(
                     'Zmiana koloru – kliknij kropkę koloru w karcie projektu, aby zmienić kolor projektu (paleta presetów + dowolny kolor).',
                     'Color change – click the color dot on the project card to change the project color (preset palette + custom color).',
+                  ),
+                  t(
+                    'Karta projektu (ProjectPage) – pełny widok projektu: kompaktowanie danych, reset czasu, edycja nazwy inline, timeline z komentarzami, sesje manualne oraz generowanie raportu.',
+                    'Project card (ProjectPage) – full project view: data compaction, time reset, inline name edit, timeline with comments, manual sessions, and report generation.',
                   ),
                 ]}
               />
@@ -714,8 +730,32 @@ export function Help() {
                     'Training Notifications – the system notifies you when new knowledge has been gathered.',
                   ),
                   t(
+                    'Snooze Training Reminder – odłóż przypomnienie o treningu na 24h, gdy chcesz dokończyć pracę bez przerywania.',
+                    'Snooze Training Reminder – postpone the training reminder for 24h when you want to finish work without interruption.',
+                  ),
+                  t(
                     'Tryby: Off (tylko ręczne), Suggest (podpowiedzi AI), Auto-Safe (automatyzacja).',
                     'Modes: Off (manual only), Suggest (AI hints), Auto-Safe (automation).',
+                  ),
+                  t(
+                    'Training blacklists – wyklucz konkretne aplikacje i foldery z trenowania modelu, aby nie zanieczyszczać danych uczących.',
+                    'Training blacklists – exclude selected applications and folders from model training to keep the dataset clean.',
+                  ),
+                  t(
+                    'Postęp i jakość AI – panel metryk pokazuje trendy feedbacku, precision, auto-assigned i coverage.',
+                    'AI progress & quality – metrics panel shows feedback trends, precision, auto-assigned, and coverage.',
+                  ),
+                  t(
+                    'Training Horizon – ustaw zakres dni (np. 30–730), z których model pobiera dane uczące.',
+                    'Training Horizon – set how many days of history (e.g. 30–730) are used for training.',
+                  ),
+                  t(
+                    'Auto-safe limit – kontroluj maksymalną liczbę sesji przetwarzanych w jednym przebiegu Auto-safe.',
+                    'Auto-safe limit – control the maximum number of sessions processed in a single Auto-safe run.',
+                  ),
+                  t(
+                    'Session Indicators – konfiguracja wskaźników widocznych przy wierszach sesji (AI, sugestie, score breakdown).',
+                    'Session Indicators – configure indicators displayed on session rows (AI, suggestions, score breakdown).',
                   ),
                   t(
                     'Prywatność 100% – Silnik ML działa lokalnie w Rust, nie korzysta z zewnętrznych API (jak ChatGPT) i nie wymaga internetu.',
@@ -1000,6 +1040,14 @@ export function Help() {
                     'Report generation – button in the top toolbar of the project page. Select a template, then preview, print, or export to PDF.',
                   ),
                   t(
+                    'ReportView – pełnoekranowy podgląd raportu (tryb bez bocznego panelu) przygotowany pod wydruk i eksport PDF.',
+                    'ReportView – full-screen report preview (without the side panel) optimized for print and PDF export.',
+                  ),
+                  t(
+                    'Sekcja "Pliki/aktywność" – w szablonie raportu możesz uwzględnić listę plików i aktywności, nie tylko podsumowania czasowe.',
+                    '"Files/activity" section – report templates can include file/activity details, not only time summaries.',
+                  ),
+                  t(
                     'Sekcje dodatkowe: Boosty (sesje z mnożnikiem czasu), Sesje manualne (ręcznie dodane), Komentarze, Statystyki AI.',
                     'Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.',
                   ),
@@ -1070,12 +1118,32 @@ export function Help() {
                     'Session Management – set session merging threshold (Gap Fill) and ignore short blocks.',
                   ),
                   t(
+                    'Auto-rebuild on startup – automatyczne scalanie sesji przy starcie aplikacji.',
+                    'Auto-rebuild on startup – automatically rebuild/merge sessions on application startup.',
+                  ),
+                  t(
                     'Freeze Threshold – konfiguracja liczby dni, po których projekty są mrożone.',
                     'Freeze Threshold – configure the number of days after which projects are frozen.',
                   ),
                   t(
+                    'Waluta (Currency) – wybór waluty wycen (PLN/USD/EUR) używanej w modułach finansowych.',
+                    'Currency – choose valuation currency (PLN/USD/EUR) used across financial modules.',
+                  ),
+                  t(
+                    'Język interfejsu (PL/EN) – przełącznik języka całego Dashboardu i menu tray Daemona.',
+                    'UI language (PL/EN) – language switch for the whole Dashboard and Daemon tray menu.',
+                  ),
+                  t(
                     'Online Sync – ustawienie synchronizacji z zewnętrznym serwerem (URL, User ID, Token).',
                     'Online Sync – set up synchronization with an external server (URL, User ID, Token).',
+                  ),
+                  t(
+                    'Sync on startup – natychmiastowa synchronizacja po uruchomieniu Dashboardu.',
+                    'Sync on startup – perform synchronization immediately after Dashboard startup.',
+                  ),
+                  t(
+                    'Auto-sync interval – ustaw interwał automatycznej synchronizacji (1–1440 min).',
+                    'Auto-sync interval – configure automatic synchronization interval (1–1440 min).',
                   ),
                   t(
                     'Statusy ACK w Online Sync – sekcja stanu pokazuje czy zmiany lokalne oczekują na potwierdzenie po stronie serwera (ACK pending).',
@@ -1108,6 +1176,10 @@ export function Help() {
                   t(
                     'Appearance & Performance – wyłączanie animacji wykresów w celu poprawy responsywności UI.',
                     'Appearance & Performance – disable chart animations to improve UI responsiveness.',
+                  ),
+                  t(
+                    'Highlight Color – wybór koloru podświetlenia strefy godzin pracy na wykresach.',
+                    'Highlight Color – choose the highlight color for working-hours zones on charts.',
                   ),
                   t(
                     'BugHunter – ikona robaka w sidebarze umożliwia szybkie zgłaszanie błędów z załącznikami.',

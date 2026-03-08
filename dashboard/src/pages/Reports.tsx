@@ -303,7 +303,7 @@ export function Reports() {
   };
 
   const handleDuplicate = () => {
-    const newList = duplicateTemplate(activeTemplate.id);
+    const newList = duplicateTemplate(activeTemplate.id, tt('kopia', 'copy'));
     setTemplates(newList);
     const newest = newList[newList.length - 1];
     if (newest) handleSelectTemplate(newest.id);

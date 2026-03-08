@@ -53,7 +53,7 @@ export function useTimeAnalysisData() {
     setRangeMode(next);
   }, []);
 
-  const shiftDateRange = (direction: -1 | 1) => {
+  const shiftDateRange = useCallback((direction: -1 | 1) => {
     const current = parseISO(anchorDate);
     let next: string;
     if (rangeMode === "monthly") {
@@ -66,7 +66,7 @@ export function useTimeAnalysisData() {
     setLoadError(null);
     setIsLoading(true);
     setAnchorDate(next);
-  };
+  }, [anchorDate, rangeMode, today]);
 
   useEffect(() => {
     let cancelled = false;

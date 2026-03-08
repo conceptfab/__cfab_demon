@@ -3,7 +3,21 @@ import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { ProjectContextMenu } from "@/components/project/ProjectContextMenu";
 
-export function MainLayout({ children }: { children: ReactNode }) {
+export function MainLayout({
+  children,
+  showChrome = true,
+}: {
+  children: ReactNode;
+  showChrome?: boolean;
+}) {
+  if (!showChrome) {
+    return (
+      <div className="h-screen overflow-hidden bg-background">
+        <main className="h-full overflow-y-auto">{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar />

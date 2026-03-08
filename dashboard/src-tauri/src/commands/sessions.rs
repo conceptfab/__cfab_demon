@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use tauri::AppHandle;
 
 use super::assignment_model;
+use super::datetime::{parse_datetime_fixed, parse_datetime_ms};
 use super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
 use super::types::{
     FileActivity, MultiProjectAnalysis, ProjectCandidate, SessionFilters, SessionSplittableFlag,
@@ -106,7 +107,8 @@ pub(crate) fn upsert_manual_session_override(
             "INSERT INTO session_manual_overrides (
                 session_id, executable_name, start_time, end_time, project_name, updated_at
              ) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
-             ON CONFLICT(session_id) DO UPDATE SET
+             ON CONFLICT(executable_name, start_time, end_time) DO UPDATE SET
+               session_id = excluded.session_id,
                executable_name = excluded.executable_name,
                start_time = excluded.start_time,
                end_time = excluded.end_time,
@@ -152,20 +154,41 @@ pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Res
             .map_err(|e| format!("Failed to read session_manual_overrides row: {}", e))?
     };
 
+    let project_name_to_id: HashMap<String, i64> = {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT id, name
+                 FROM projects
+                 WHERE excluded_at IS NULL",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut map = HashMap::new();
+        for row in rows {
+            let (id, name) =
+                row.map_err(|e| format!("Failed to read projects row for override map: {}", e))?;
+            let key = name.trim().to_lowercase();
+            if !key.is_empty() {
+                map.entry(key).or_insert(id);
+            }
+        }
+        map
+    };
+
     for (override_session_id, exe_name, start_time, end_time, project_name) in overrides {
         let target_project_id: Option<i64> = match project_name {
-            Some(name) => conn
-                .query_row(
-                    "SELECT id
-                     FROM projects
-                     WHERE lower(name) = lower(?1)
-                       AND excluded_at IS NULL
-                     LIMIT 1",
-                    [name],
-                    |row| row.get(0),
-                )
-                .optional()
-                .map_err(|e| e.to_string())?,
+            Some(name) => {
+                let key = name.trim().to_lowercase();
+                if key.is_empty() {
+                    None
+                } else {
+                    project_name_to_id.get(&key).copied()
+                }
+            }
             None => None,
         };
 
@@ -708,9 +731,10 @@ pub async fn assign_session_to_project(
     project_id: Option<i64>,
     source: Option<String>,
 ) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    let session = conn
+    let session = tx
         .query_row(
             "SELECT app_id, date, start_time, end_time, project_id FROM sessions WHERE id = ?1",
             [session_id],
@@ -731,14 +755,14 @@ pub async fn assign_session_to_project(
         return Err("Session not found".to_string());
     };
 
-    let updated_session = conn
+    let updated_session = tx
         .execute(
             "UPDATE sessions SET project_id = ?1 WHERE id = ?2",
             rusqlite::params![project_id, session_id],
         )
         .map_err(|e| e.to_string())?;
 
-    let updated = conn
+    let updated = tx
         .execute(
             "UPDATE file_activities
              SET project_id = ?1
@@ -754,31 +778,32 @@ pub async fn assign_session_to_project(
         log::warn!("No overlapping file activity and no session found? Assignment saved nothing.");
     }
 
-    if let Err(e) = upsert_manual_session_override(&conn, session_id, project_id) {
-        log::warn!(
+    upsert_manual_session_override(&tx, session_id, project_id).map_err(|e| {
+        format!(
             "Failed to persist manual override for session {}: {}",
-            session_id,
-            e
-        );
-    }
+            session_id, e
+        )
+    })?;
 
-    // Feedback Loop logging
     let action_source = source.unwrap_or_else(|| "manual_session_assign".to_string());
-    let _ = conn.execute(
+    tx.execute(
         "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
-        rusqlite::params![session_id, app_id, old_project_id, project_id, action_source]
-    );
+        rusqlite::params![session_id, app_id, old_project_id, project_id, action_source],
+    )
+    .map_err(|e| e.to_string())?;
 
-    let _ = conn.execute(
+    tx.execute(
         "INSERT INTO assignment_model_state (key, value, updated_at)
          VALUES ('feedback_since_train', '1', datetime('now'))
          ON CONFLICT(key) DO UPDATE SET
            value = CAST(COALESCE(NULLIF(assignment_model_state.value, ''), '0') AS INTEGER) + 1,
            updated_at = datetime('now')",
         [],
-    );
+    )
+    .map_err(|e| e.to_string())?;
 
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -912,36 +937,8 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
             .query_map([], |row| {
                 let start_time: String = row.get(4)?;
                 let end_time: String = row.get(5)?;
-
-                let parse_time_to_ms = |ts_str: &str| -> i64 {
-                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
-                        return dt.timestamp_millis();
-                    }
-                    if let Ok(ndt) =
-                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S")
-                    {
-                        return ndt.and_utc().timestamp_millis();
-                    }
-                    if let Ok(ndt) =
-                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S")
-                    {
-                        return ndt.and_utc().timestamp_millis();
-                    }
-                    if let Ok(ndt) =
-                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S.%f")
-                    {
-                        return ndt.and_utc().timestamp_millis();
-                    }
-                    if let Ok(ndt) =
-                        chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S.%f")
-                    {
-                        return ndt.and_utc().timestamp_millis();
-                    }
-                    0
-                };
-
-                let start_ms = parse_time_to_ms(&start_time);
-                let end_ms = parse_time_to_ms(&end_time);
+                let start_ms = parse_datetime_ms(&start_time);
+                let end_ms = parse_datetime_ms(&end_time);
 
                 Ok(SessionRow {
                     id: row.get(0)?,
@@ -1004,48 +1001,8 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
 
         for s in &sessions {
             if s.end_ms > s.original_end_ms {
-                // Parse original so we can format it back
-                let parse_to_datetime =
-                    |ts_str: &str| -> Option<chrono::DateTime<chrono::FixedOffset>> {
-                        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str) {
-                            return Some(dt);
-                        }
-                        if let Ok(ndt) =
-                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S")
-                        {
-                            return Some(chrono::DateTime::from_naive_utc_and_offset(
-                                ndt,
-                                chrono::FixedOffset::east_opt(0).unwrap(),
-                            ));
-                        }
-                        if let Ok(ndt) =
-                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S")
-                        {
-                            return Some(chrono::DateTime::from_naive_utc_and_offset(
-                                ndt,
-                                chrono::FixedOffset::east_opt(0).unwrap(),
-                            ));
-                        }
-                        if let Ok(ndt) =
-                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%d %H:%M:%S.%f")
-                        {
-                            return Some(chrono::DateTime::from_naive_utc_and_offset(
-                                ndt,
-                                chrono::FixedOffset::east_opt(0).unwrap(),
-                            ));
-                        }
-                        if let Ok(ndt) =
-                            chrono::NaiveDateTime::parse_from_str(ts_str, "%Y-%m-%dT%H:%M:%S.%f")
-                        {
-                            return Some(chrono::DateTime::from_naive_utc_and_offset(
-                                ndt,
-                                chrono::FixedOffset::east_opt(0).unwrap(),
-                            ));
-                        }
-                        None
-                    };
-
-                if let Some(orig_end) = parse_to_datetime(&s.end_time) {
+                // Parse original so we can format it back.
+                if let Some(orig_end) = parse_datetime_fixed(&s.end_time) {
                     let added_ms = s.end_ms - s.original_end_ms;
                     let new_end = orig_end + chrono::Duration::milliseconds(added_ms);
                     let new_end_time = new_end.to_rfc3339();
@@ -1103,34 +1060,7 @@ struct SplitSegmentMutation {
 }
 
 fn parse_iso_datetime(value: &str) -> Result<chrono::DateTime<chrono::FixedOffset>, String> {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(value) {
-        return Ok(dt);
-    }
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        return Ok(chrono::DateTime::from_naive_utc_and_offset(
-            ndt,
-            chrono::FixedOffset::east_opt(0).expect("0 offset"),
-        ));
-    }
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        return Ok(chrono::DateTime::from_naive_utc_and_offset(
-            ndt,
-            chrono::FixedOffset::east_opt(0).expect("0 offset"),
-        ));
-    }
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S.%f") {
-        return Ok(chrono::DateTime::from_naive_utc_and_offset(
-            ndt,
-            chrono::FixedOffset::east_opt(0).expect("0 offset"),
-        ));
-    }
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S.%f") {
-        return Ok(chrono::DateTime::from_naive_utc_and_offset(
-            ndt,
-            chrono::FixedOffset::east_opt(0).expect("0 offset"),
-        ));
-    }
-    Err(format!("Unsupported datetime format: {}", value))
+    parse_datetime_fixed(value).ok_or_else(|| format!("Unsupported datetime format: {}", value))
 }
 
 fn apply_split_side_effects(
@@ -1174,13 +1104,16 @@ fn apply_split_side_effects(
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(rusqlite::params![app_id, date, overall_start, overall_end], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
+            .query_map(
+                rusqlite::params![app_id, date, overall_start, overall_end],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Failed to read file_activities for split: {}", e))?
@@ -1241,7 +1174,9 @@ fn apply_split_side_effects(
         )
         .map_err(|e| e.to_string())?;
 
-        if let Err(error) = upsert_manual_session_override(tx, segment.session_id, segment.project_id) {
+        if let Err(error) =
+            upsert_manual_session_override(tx, segment.session_id, segment.project_id)
+        {
             log::warn!(
                 "Failed to update manual override after split for session {}: {}",
                 segment.session_id,
@@ -1335,8 +1270,8 @@ fn execute_session_split(
 ) -> Result<(), String> {
     validate_split_parts(splits)?;
 
-    let start_dt = parse_iso_datetime(&source.start_time)
-        .map_err(|e| format!("Invalid start time: {}", e))?;
+    let start_dt =
+        parse_iso_datetime(&source.start_time).map_err(|e| format!("Invalid start time: {}", e))?;
     let end_dt =
         parse_iso_datetime(&source.end_time).map_err(|e| format!("Invalid end time: {}", e))?;
     let total_ms = (end_dt.timestamp_millis() - start_dt.timestamp_millis()).max(0);
@@ -1651,13 +1586,16 @@ pub async fn analyze_session_projects(
         .map_err(|e| e.to_string())?;
 
     let candidates: Vec<(i64, String, f64)> = stmt
-        .query_map(rusqlite::params![app_id, date, normalized_max_projects], |row| {
-            Ok((
-                row.get(0)?,
-                row.get::<_, String>(1).unwrap_or_default(),
-                row.get::<_, i64>(2).unwrap_or(0) as f64,
-            ))
-        })
+        .query_map(
+            rusqlite::params![app_id, date, normalized_max_projects],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get::<_, String>(1).unwrap_or_default(),
+                    row.get::<_, i64>(2).unwrap_or(0) as f64,
+                ))
+            },
+        )
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -1714,13 +1652,8 @@ pub async fn analyze_sessions_splittable(
 ) -> Result<Vec<SessionSplittableFlag>, String> {
     let mut result = Vec::with_capacity(session_ids.len());
     for session_id in session_ids {
-        match analyze_session_projects(
-            app.clone(),
-            session_id,
-            tolerance_threshold,
-            max_projects,
-        )
-        .await
+        match analyze_session_projects(app.clone(), session_id, tolerance_threshold, max_projects)
+            .await
         {
             Ok(analysis) => result.push(SessionSplittableFlag {
                 session_id,
@@ -2062,7 +1995,9 @@ mod tests {
         assert_eq!(total_duration, 3600);
 
         let first_end: String = conn
-            .query_row("SELECT end_time FROM sessions WHERE id = 1", [], |row| row.get(0))
+            .query_row("SELECT end_time FROM sessions WHERE id = 1", [], |row| {
+                row.get(0)
+            })
             .expect("read first end");
         let first_end_ms = parse_iso_datetime(&first_end)
             .expect("parse first end")
@@ -2073,7 +2008,9 @@ mod tests {
         assert_eq!(first_end_ms, expected_split_ms);
 
         let second_id: i64 = conn
-            .query_row("SELECT id FROM sessions WHERE id <> 1 LIMIT 1", [], |row| row.get(0))
+            .query_row("SELECT id FROM sessions WHERE id <> 1 LIMIT 1", [], |row| {
+                row.get(0)
+            })
             .expect("read second id");
         let (second_start, second_end, second_project): (String, String, Option<i64>) = conn
             .query_row(
@@ -2106,7 +2043,9 @@ mod tests {
             )
             .expect("prepare feedback query");
         let rows = stmt
-            .query_map(rusqlite::params![1_i64, second_id], |row| row.get::<_, Option<i64>>(0))
+            .query_map(rusqlite::params![1_i64, second_id], |row| {
+                row.get::<_, Option<i64>>(0)
+            })
             .expect("query feedback rows");
         let to_projects: Vec<Option<i64>> = rows
             .collect::<Result<Vec<_>, _>>()
@@ -2185,9 +2124,11 @@ mod tests {
         assert_eq!(total_duration, 7200);
 
         let max_end: String = conn
-            .query_row("SELECT end_time FROM sessions ORDER BY end_time DESC LIMIT 1", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT end_time FROM sessions ORDER BY end_time DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
             .expect("read last end");
         assert_eq!(
             parse_iso_datetime(&max_end)

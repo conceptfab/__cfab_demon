@@ -4,6 +4,7 @@ mod bughunter;
 mod daemon;
 mod dashboard;
 mod database;
+mod datetime;
 mod estimates;
 mod export;
 pub mod helpers;

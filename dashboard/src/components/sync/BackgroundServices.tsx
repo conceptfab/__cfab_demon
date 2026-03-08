@@ -23,7 +23,7 @@ import { loadSessionSettings, loadSplitSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
 
-const JOB_LOOP_TICK_MS = 2000;
+const JOB_LOOP_TICK_MS = 5000;
 
 // THREADING: Prevents concurrent heavy operations (rebuild, AI train/assign)
 // from overloading the backend. Simple module-level flag — safe in single-threaded JS.
@@ -277,6 +277,7 @@ function useJobPool() {
   const localChangeSyncTimer = useRef<number | null>(null);
 
   const checkFileChange = useCallback(async () => {
+    if (!autoImportDone) return;
     try {
       const sig = await getTodayFileSignature();
       const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
@@ -290,16 +291,17 @@ function useJobPool() {
     } catch (error) {
       console.warn('[useJobPool] Failed to check today file signature', error);
     }
-  }, [triggerRefresh]);
+  }, [autoImportDone, triggerRefresh]);
 
   const runRefresh = useCallback(async () => {
+    if (!autoImportDone) return;
     try {
       await refreshToday();
       triggerRefresh();
     } catch (error) {
       console.warn('[useJobPool] Refresh today failed', error);
     }
-  }, [triggerRefresh]);
+  }, [autoImportDone, triggerRefresh]);
 
   const refreshSyncSettingsCache = useCallback(() => {
     syncSettingsRef.current = loadOnlineSyncSettings();
@@ -349,11 +351,11 @@ function useJobPool() {
     loopRef.current = window.setInterval(() => {
       const now = Date.now();
 
-      if (now >= nextRefreshRef.current) {
+      if (autoImportDone && now >= nextRefreshRef.current) {
         nextRefreshRef.current = now + 30_000;
         void runRefresh();
       }
-      if (now >= nextSigCheckRef.current) {
+      if (autoImportDone && now >= nextSigCheckRef.current) {
         nextSigCheckRef.current = now + 5_000;
         void checkFileChange();
       }

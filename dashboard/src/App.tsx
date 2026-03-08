@@ -93,6 +93,8 @@ function PageRouter() {
         return <ProjectPage />;
       case 'reports':
         return <Reports />;
+      case 'report-view':
+        return <ReportView />;
 
       default:
         return <Dashboard />;
@@ -152,34 +154,13 @@ class ErrorBoundary extends Component<
 export default function App() {
   const currentPage = useUIStore((s) => s.currentPage);
 
-  // Report-view renders full-screen (no sidebar, no topbar)
-  if (currentPage === 'report-view') {
-    return (
-      <ErrorBoundary>
-        <ToastProvider>
-          <TooltipProvider>
-            <Suspense
-              fallback={
-                <div className="flex h-64 items-center justify-center text-muted-foreground">
-                  {i18n.t('ui.app.loading')}
-                </div>
-              }
-            >
-              <ReportView />
-            </Suspense>
-          </TooltipProvider>
-        </ToastProvider>
-      </ErrorBoundary>
-    );
-  }
-
   return (
     <ErrorBoundary>
       <ToastProvider>
         <TooltipProvider>
           <SplashScreen />
           <BackgroundServices />
-          <MainLayout>
+          <MainLayout showChrome={currentPage !== 'report-view'}>
             <PageRouter />
           </MainLayout>
         </TooltipProvider>

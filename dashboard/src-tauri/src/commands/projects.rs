@@ -4,7 +4,7 @@ use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
 use super::helpers::{LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
-use super::sql_fragments::{SESSION_PROJECT_CTE, SESSION_PROJECT_CTE_ALL_TIME};
+use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
     ProjectFolder, ProjectWithStats, TopApp,
@@ -303,28 +303,34 @@ pub(crate) fn ensure_app_project_from_file_hint(
     }
 
     let mut candidates = Vec::new();
+    let mut seen_candidates: HashSet<String> = HashSet::new();
+
+    let mut push_candidate = |raw: &str| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        let key = trimmed.to_lowercase();
+        if seen_candidates.insert(key) {
+            candidates.push(trimmed.to_string());
+        }
+    };
 
     // First the full string and path heuristics.
-    candidates.push(file_name.trim().to_string());
+    push_candidate(file_name);
     if let Some(inferred) = infer_project_name_from_file_title(file_name, project_roots) {
-        candidates.push(inferred);
+        push_candidate(&inferred);
     }
 
     // Next, add EACH part after splitting by hyphen as a potential project name.
     // If the window is e.g. "__timeflow_demon - Antigravity", we check both "__timeflow_demon" and "Antigravity".
     for part in file_name.split(" - ") {
-        let trimmed = part.trim();
-        if !trimmed.is_empty() {
-            candidates.push(trimmed.to_string());
-        }
+        push_candidate(part);
     }
 
     // Also check alternative separators that the demon sometimes leaves
     for part in file_name.split(" | ") {
-        let trimmed = part.trim();
-        if !trimmed.is_empty() && !candidates.contains(&trimmed.to_string()) {
-            candidates.push(trimmed.to_string());
-        }
+        push_candidate(part);
     }
 
     for candidate_name in candidates {
@@ -1184,14 +1190,16 @@ pub async fn get_project_extra_info(
             .map_err(|e| e.to_string())
         };
 
+    let all_time_bounds = min_date.as_deref().zip(max_date.as_deref());
+
     // Calculate All-Time (Global) Value
     let mut current_value = 0.0;
-    if let (Some(start), Some(end)) = (min_date, max_date) {
+    if let Some((start, end)) = all_time_bounds {
         let (_, totals_raw, _, _) = compute_project_activity_unique(
             &conn,
             &DateRange {
-                start: start.clone(),
-                end: end.clone(),
+                start: start.to_string(),
+                end: end.to_string(),
             },
             false,
             false,
@@ -1221,33 +1229,70 @@ pub async fn get_project_extra_info(
     let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
 
     // 4. DB Stats
-    let session_count_sql = format!(
-        "{SESSION_PROJECT_CTE_ALL_TIME}
-         SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?1"
-    );
-    let session_count: i64 = conn
-        .query_row(&session_count_sql, [id], |row| row.get(0))
-        .map_err(|e| e.to_string())?;
+    let (session_count, file_activity_count, comment_count, boosted_session_count) = if let Some(
+        (start, end),
+    ) =
+        all_time_bounds
+    {
+        let session_count_sql = format!(
+            "{SESSION_PROJECT_CTE}
+                 SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?3"
+        );
+        let session_count: i64 = conn
+            .query_row(
+                &session_count_sql,
+                rusqlite::params![start, end, id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
 
-    let file_activity_count_sql = format!(
-        "{SESSION_PROJECT_CTE_ALL_TIME}
-         SELECT COUNT(DISTINCT LOWER(
-             COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
-         ))
-         FROM session_projects sp
-         JOIN sessions s ON s.id = sp.id
-         JOIN file_activities fa
-           ON fa.app_id = s.app_id
-          AND fa.date = s.date
-          AND fa.last_seen > s.start_time
-          AND fa.first_seen < s.end_time
-         WHERE sp.project_id = ?1
-           AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
-           AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
-    );
-    let file_activity_count: i64 = conn
-        .query_row(&file_activity_count_sql, [id], |row| row.get(0))
-        .map_err(|e| e.to_string())?;
+        let file_activity_count_sql = format!(
+                "{SESSION_PROJECT_CTE}
+                 SELECT COUNT(DISTINCT LOWER(
+                     COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
+                 ))
+                 FROM session_projects sp
+                 JOIN sessions s ON s.id = sp.id
+                 JOIN file_activities fa
+                   ON fa.app_id = s.app_id
+                  AND fa.date = s.date
+                  AND fa.last_seen > s.start_time
+                  AND fa.first_seen < s.end_time
+                 WHERE sp.project_id = ?3
+                   AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
+                   AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
+            );
+        let file_activity_count: i64 = conn
+            .query_row(
+                &file_activity_count_sql,
+                rusqlite::params![start, end, id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let comment_and_boost_sql = format!(
+                "{SESSION_PROJECT_CTE}
+                 SELECT
+                     COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.comment IS NOT NULL AND sp.comment <> ''),
+                     COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.safe_rate_multiplier > 1.000001)
+                 FROM session_projects sp"
+            );
+        let (comment_count, boosted_session_count): (i64, i64) = conn
+            .query_row(
+                &comment_and_boost_sql,
+                rusqlite::params![start, end, id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        (
+            session_count,
+            file_activity_count,
+            comment_count,
+            boosted_session_count,
+        )
+    } else {
+        (0, 0, 0, 0)
+    };
 
     let manual_session_count: i64 = conn
         .query_row(
@@ -1257,19 +1302,6 @@ pub async fn get_project_extra_info(
         )
         .map_err(|e| e.to_string())?;
 
-    let comment_and_boost_sql = format!(
-        "{SESSION_PROJECT_CTE_ALL_TIME}
-         SELECT
-             COUNT(*) FILTER (WHERE sp.project_id = ?1 AND sp.comment IS NOT NULL AND sp.comment <> ''),
-             COUNT(*) FILTER (WHERE sp.project_id = ?1 AND sp.safe_rate_multiplier > 1.000001)
-         FROM session_projects sp"
-    );
-    let (comment_count, boosted_session_count): (i64, i64) = conn
-        .query_row(&comment_and_boost_sql, [id], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })
-        .map_err(|e| e.to_string())?;
-
     // Estimating size: sessions ~150b, file_activities ~150b, manual ~150b, comments +100b
     let estimated_size_bytes = (session_count * 150)
         + (file_activity_count * 150)
@@ -1277,31 +1309,34 @@ pub async fn get_project_extra_info(
         + (comment_count * 100);
 
     // 5. Top 3 apps
-    let top_apps_sql = format!(
-        "{SESSION_PROJECT_CTE_ALL_TIME}
-         SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
-                SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
-                MAX(a.color) as color
-         FROM session_projects sp
-         LEFT JOIN applications a ON a.id = sp.app_id
-         WHERE sp.project_id = ?1
-         GROUP BY COALESCE(a.display_name, 'Unknown App')
-         ORDER BY total DESC
-         LIMIT 15"
-    );
-    let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
-
-    let top_apps = stmt
-        .query_map([id], |row| {
-            Ok(TopApp {
-                name: row.get(0)?,
-                seconds: row.get(1)?,
-                color: row.get(2)?,
+    let top_apps = if let Some((start, end)) = all_time_bounds {
+        let top_apps_sql = format!(
+            "{SESSION_PROJECT_CTE}
+             SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
+                    SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
+                    MAX(a.color) as color
+             FROM session_projects sp
+             LEFT JOIN applications a ON a.id = sp.app_id
+             WHERE sp.project_id = ?3
+             GROUP BY COALESCE(a.display_name, 'Unknown App')
+             ORDER BY total DESC
+             LIMIT 15"
+        );
+        let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![start, end, id], |row| {
+                Ok(TopApp {
+                    name: row.get(0)?,
+                    seconds: row.get(1)?,
+                    color: row.get(2)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Failed to read top app row: {}", e))?;
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read top app row: {}", e))?
+    } else {
+        Vec::new()
+    };
 
     Ok(ProjectExtraInfo {
         current_value,

@@ -30,6 +30,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use tauri::{command, AppHandle};
 
+use super::datetime::parse_datetime_fixed;
 use super::types::DateRange;
 use crate::db;
 
@@ -39,6 +40,9 @@ const DEFAULT_MIN_CONFIDENCE_AUTO: f64 = 0.85;
 const DEFAULT_MIN_EVIDENCE_AUTO: i64 = 3;
 const AUTO_SAFE_MIN_MARGIN: f64 = 0.20;
 const DEFAULT_FEEDBACK_WEIGHT: f64 = 5.0;
+const MIN_TRAINING_HORIZON_DAYS: i64 = 30;
+const MAX_TRAINING_HORIZON_DAYS: i64 = 730;
+const DEFAULT_TRAINING_HORIZON_DAYS: i64 = 730;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssignmentModelStatus {
@@ -46,6 +50,9 @@ pub struct AssignmentModelStatus {
     pub min_confidence_suggest: f64,
     pub min_confidence_auto: f64,
     pub min_evidence_auto: i64,
+    pub training_horizon_days: i64,
+    pub training_app_blacklist: Vec<String>,
+    pub training_folder_blacklist: Vec<String>,
     pub last_train_at: Option<String>,
     pub feedback_since_train: i64,
     pub is_training: bool,
@@ -101,6 +108,45 @@ pub struct DeterministicResult {
     pub sessions_skipped: i64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssignmentModelMetricsPoint {
+    pub date: String,
+    pub feedback_total: i64,
+    pub feedback_accepted: i64,
+    pub feedback_rejected: i64,
+    pub feedback_manual_change: i64,
+    pub auto_runs: i64,
+    pub auto_assigned: i64,
+    pub auto_rollbacks: i64,
+    pub coverage_total_entries: i64,
+    pub coverage_with_detected_path: i64,
+    pub coverage_with_title_history: i64,
+    pub coverage_with_activity_type: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssignmentModelMetricsSummary {
+    pub feedback_total: i64,
+    pub feedback_accepted: i64,
+    pub feedback_rejected: i64,
+    pub feedback_manual_change: i64,
+    pub feedback_precision: f64,
+    pub auto_runs: i64,
+    pub auto_assigned: i64,
+    pub auto_rollbacks: i64,
+    pub coverage_total_entries: i64,
+    pub coverage_detected_path_ratio: f64,
+    pub coverage_title_history_ratio: f64,
+    pub coverage_activity_type_ratio: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssignmentModelMetrics {
+    pub window_days: i64,
+    pub points: Vec<AssignmentModelMetricsPoint>,
+    pub summary: AssignmentModelMetricsSummary,
+}
+
 #[derive(Debug)]
 struct SessionContext {
     app_id: i64,
@@ -135,6 +181,53 @@ fn parse_state_opt_string(state: &HashMap<String, String>, key: &str) -> Option<
         .map(|v| v.trim())
         .filter(|v| !v.is_empty())
         .map(|v| v.to_string())
+}
+
+fn parse_state_string_list(state: &HashMap<String, String>, key: &str) -> Vec<String> {
+    state
+        .get(key)
+        .and_then(|v| serde_json::from_str::<Vec<String>>(v).ok())
+        .unwrap_or_default()
+}
+
+fn normalize_blacklist_app(raw: &str) -> Option<String> {
+    let normalized = raw.trim().to_lowercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_blacklist_folder(raw: &str) -> Option<String> {
+    let mut normalized = raw.trim().replace('\\', "/");
+    while normalized.ends_with('/') {
+        normalized.pop();
+    }
+    let normalized = normalized.trim().to_lowercase();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
+    }
+}
+
+fn normalize_blacklist_entries(values: &[String], folder_mode: bool) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut result = Vec::new();
+    for value in values {
+        let normalized = if folder_mode {
+            normalize_blacklist_folder(value)
+        } else {
+            normalize_blacklist_app(value)
+        };
+        if let Some(entry) = normalized {
+            if seen.insert(entry.clone()) {
+                result.push(entry);
+            }
+        }
+    }
+    result
 }
 
 fn upsert_state(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<(), String> {
@@ -185,6 +278,14 @@ fn clamp01(value: f64, default: f64) -> f64 {
 
 fn clamp_i64(value: i64, min: i64, max: i64) -> i64 {
     value.max(min).min(max)
+}
+
+fn ratio_or_zero(numerator: i64, denominator: i64) -> f64 {
+    if denominator <= 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
 }
 
 fn increment_feedback_counter(conn: &rusqlite::Connection) {
@@ -323,32 +424,95 @@ fn tokenize(text: &str) -> Vec<String> {
         .collect()
 }
 
+fn parse_title_history(raw: Option<&str>) -> Vec<String> {
+    raw.and_then(|value| serde_json::from_str::<Vec<String>>(value).ok())
+        .unwrap_or_default()
+}
+
+fn normalize_path_for_compare(raw: &str) -> String {
+    let mut normalized = raw.trim().replace('\\', "/").to_lowercase();
+    while normalized.ends_with('/') {
+        normalized.pop();
+    }
+    normalized
+}
+
+fn is_under_blacklisted_folder(
+    file_path: Option<&str>,
+    detected_path: Option<&str>,
+    folder_blacklist: &[String],
+) -> bool {
+    if folder_blacklist.is_empty() {
+        return false;
+    }
+
+    let mut candidates = Vec::new();
+    if let Some(path) = file_path {
+        candidates.push(normalize_path_for_compare(path));
+    }
+    if let Some(path) = detected_path {
+        candidates.push(normalize_path_for_compare(path));
+    }
+
+    candidates.into_iter().any(|candidate| {
+        if candidate.is_empty() || candidate == "(unknown)" {
+            return false;
+        }
+        folder_blacklist.iter().any(|folder| {
+            candidate == *folder
+                || candidate
+                    .strip_prefix(folder.as_str())
+                    .is_some_and(|suffix| suffix.starts_with('/'))
+        })
+    })
+}
+
+fn app_matches_blacklist_rule(exe_name: &str, rule: &str) -> bool {
+    if exe_name == rule {
+        return true;
+    }
+    match (exe_name.strip_suffix(".exe"), rule.strip_suffix(".exe")) {
+        (Some(exe_no_ext), Some(rule_no_ext)) => exe_no_ext == rule_no_ext,
+        (Some(exe_no_ext), None) => exe_no_ext == rule,
+        (None, Some(rule_no_ext)) => exe_name == rule_no_ext,
+        (None, None) => false,
+    }
+}
+
+fn resolve_blacklisted_app_ids(
+    conn: &rusqlite::Connection,
+    app_blacklist: &[String],
+) -> Result<HashSet<i64>, String> {
+    if app_blacklist.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let mut stmt = conn
+        .prepare("SELECT id, lower(executable_name) FROM applications")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut blacklisted_ids = HashSet::new();
+    for row in rows {
+        let (app_id, exe_name) =
+            row.map_err(|e| format!("Failed to read applications row for blacklist: {}", e))?;
+        if app_blacklist
+            .iter()
+            .any(|rule| app_matches_blacklist_rule(&exe_name, rule))
+        {
+            blacklisted_ids.insert(app_id);
+        }
+    }
+
+    Ok(blacklisted_ids)
+}
+
 fn parse_timestamp(value: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(value) {
-        return Some(dt);
-    }
-
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S") {
-        let offset = chrono::FixedOffset::east_opt(0)?;
-        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, offset));
-    }
-
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S") {
-        let offset = chrono::FixedOffset::east_opt(0)?;
-        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, offset));
-    }
-
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S.%f") {
-        let offset = chrono::FixedOffset::east_opt(0)?;
-        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, offset));
-    }
-
-    if let Ok(ndt) = chrono::NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S.%f") {
-        let offset = chrono::FixedOffset::east_opt(0)?;
-        return Some(chrono::DateTime::from_naive_utc_and_offset(ndt, offset));
-    }
-
-    None
+    parse_datetime_fixed(value)
 }
 
 fn extract_hour_weekday(start_time: &str) -> (i64, i64) {
@@ -387,7 +551,8 @@ fn build_session_context(
     // Filter file_activities to only those overlapping with the session time window
     let mut file_stmt = conn
         .prepare(
-            "SELECT file_name, project_id FROM file_activities
+            "SELECT file_name, file_path, detected_path, project_id, window_title, title_history
+             FROM file_activities
              WHERE app_id = ?1 AND date = ?2
                AND last_seen > ?3 AND first_seen < ?4",
         )
@@ -400,10 +565,41 @@ fn build_session_context(
     let mut file_project_set = HashSet::new();
     while let Some(row) = file_rows.next().map_err(|e| e.to_string())? {
         let file_name: String = row.get(0).map_err(|e| e.to_string())?;
-        let project_id: Option<i64> = row.get(1).map_err(|e| e.to_string())?;
+        let file_path: String = row.get(1).map_err(|e| e.to_string())?;
+        let detected_path: Option<String> = row.get(2).map_err(|e| e.to_string())?;
+        let project_id: Option<i64> = row.get(3).map_err(|e| e.to_string())?;
+        let window_title: Option<String> = row.get(4).map_err(|e| e.to_string())?;
+        let title_history: Option<String> = row.get(5).map_err(|e| e.to_string())?;
         for token in tokenize(&file_name) {
             if uniq_tokens.insert(token.clone()) {
                 tokens.push(token);
+            }
+        }
+        for token in tokenize(&file_path) {
+            if uniq_tokens.insert(token.clone()) {
+                tokens.push(token);
+            }
+        }
+        if let Some(ref path) = detected_path {
+            for token in tokenize(path) {
+                if uniq_tokens.insert(token.clone()) {
+                    tokens.push(token);
+                }
+            }
+        }
+        // Tokenize window_title for richer context (e.g. project name from IDE title bar)
+        if let Some(ref wt) = window_title {
+            for token in tokenize(wt) {
+                if uniq_tokens.insert(token.clone()) {
+                    tokens.push(token);
+                }
+            }
+        }
+        for title in parse_title_history(title_history.as_deref()) {
+            for token in tokenize(&title) {
+                if uniq_tokens.insert(token.clone()) {
+                    tokens.push(token);
+                }
             }
         }
         if let Some(pid) = project_id {
@@ -632,6 +828,23 @@ fn fetch_unassigned_session_ids(
 pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentModelStatus, String> {
     let conn = db::get_connection(&app)?;
     let state = load_state_map(&conn)?;
+    let training_horizon_days = clamp_i64(
+        parse_state_i64(
+            &state,
+            "training_horizon_days",
+            DEFAULT_TRAINING_HORIZON_DAYS,
+        ),
+        MIN_TRAINING_HORIZON_DAYS,
+        MAX_TRAINING_HORIZON_DAYS,
+    );
+    let training_app_blacklist = normalize_blacklist_entries(
+        &parse_state_string_list(&state, "training_app_blacklist"),
+        false,
+    );
+    let training_folder_blacklist = normalize_blacklist_entries(
+        &parse_state_string_list(&state, "training_folder_blacklist"),
+        true,
+    );
 
     let mut status = AssignmentModelStatus {
         mode: normalize_mode(
@@ -651,6 +864,9 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
             DEFAULT_MIN_CONFIDENCE_AUTO,
         ),
         min_evidence_auto: parse_state_i64(&state, "min_evidence_auto", DEFAULT_MIN_EVIDENCE_AUTO),
+        training_horizon_days,
+        training_app_blacklist,
+        training_folder_blacklist,
         last_train_at: parse_state_opt_string(&state, "last_train_at"),
         feedback_since_train: parse_state_i64(&state, "feedback_since_train", 0),
         is_training: parse_state_bool(&state, "is_training", false),
@@ -694,6 +910,210 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
     }
 
     Ok(status)
+}
+
+#[command]
+pub async fn get_assignment_model_metrics(
+    app: AppHandle,
+    days: Option<i64>,
+) -> Result<AssignmentModelMetrics, String> {
+    let conn = db::get_connection(&app)?;
+    let window_days = clamp_i64(days.unwrap_or(30), 7, 365);
+    let from_modifier = format!("-{} days", window_days.saturating_sub(1));
+
+    let mut feedback_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    date(created_at) AS d,
+                    SUM(CASE WHEN source = 'ai_suggestion_accept' THEN 1 ELSE 0 END) AS accepted,
+                    SUM(CASE WHEN source = 'ai_suggestion_reject' THEN 1 ELSE 0 END) AS rejected,
+                    SUM(CASE
+                        WHEN source IN (
+                            'manual_session_assign',
+                            'manual_session_change',
+                            'manual_project_card_change',
+                            'manual_session_unassign',
+                            'bulk_unassign',
+                            'manual_app_assign'
+                        ) THEN 1
+                        ELSE 0
+                    END) AS manual_change
+                 FROM assignment_feedback
+                 WHERE created_at >= date('now', ?1)
+                 GROUP BY date(created_at)",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![&from_modifier], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (date, accepted, rejected, manual_change) =
+                row.map_err(|e| format!("Failed to read feedback metrics row: {}", e))?;
+            feedback_by_day.insert(date, (accepted, rejected, manual_change));
+        }
+    }
+
+    let mut auto_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    date(started_at) AS d,
+                    COUNT(*) AS runs,
+                    COALESCE(SUM(sessions_assigned), 0) AS assigned,
+                    SUM(CASE WHEN rolled_back_at IS NOT NULL THEN 1 ELSE 0 END) AS rollbacks
+                 FROM assignment_auto_runs
+                 WHERE started_at >= date('now', ?1)
+                 GROUP BY date(started_at)",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![&from_modifier], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (date, runs, assigned, rollbacks) =
+                row.map_err(|e| format!("Failed to read auto-run metrics row: {}", e))?;
+            auto_by_day.insert(date, (runs, assigned, rollbacks));
+        }
+    }
+
+    let mut coverage_by_day: HashMap<String, (i64, i64, i64, i64)> = HashMap::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    date,
+                    COUNT(*) AS total_entries,
+                    SUM(CASE WHEN detected_path IS NOT NULL AND trim(detected_path) <> '' THEN 1 ELSE 0 END) AS with_detected_path,
+                    SUM(CASE WHEN title_history IS NOT NULL AND trim(title_history) NOT IN ('', '[]') THEN 1 ELSE 0 END) AS with_title_history,
+                    SUM(CASE WHEN activity_type IS NOT NULL AND trim(activity_type) <> '' THEN 1 ELSE 0 END) AS with_activity_type
+                 FROM file_activities
+                 WHERE date >= date('now', ?1)
+                 GROUP BY date",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![&from_modifier], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (date, total_entries, with_detected_path, with_title_history, with_activity_type) =
+                row.map_err(|e| format!("Failed to read coverage metrics row: {}", e))?;
+            coverage_by_day.insert(
+                date,
+                (
+                    total_entries,
+                    with_detected_path,
+                    with_title_history,
+                    with_activity_type,
+                ),
+            );
+        }
+    }
+
+    let today = chrono::Local::now().date_naive();
+    let mut points = Vec::with_capacity(window_days as usize);
+    let mut summary = AssignmentModelMetricsSummary {
+        feedback_total: 0,
+        feedback_accepted: 0,
+        feedback_rejected: 0,
+        feedback_manual_change: 0,
+        feedback_precision: 0.0,
+        auto_runs: 0,
+        auto_assigned: 0,
+        auto_rollbacks: 0,
+        coverage_total_entries: 0,
+        coverage_detected_path_ratio: 0.0,
+        coverage_title_history_ratio: 0.0,
+        coverage_activity_type_ratio: 0.0,
+    };
+    let mut coverage_with_detected_total = 0_i64;
+    let mut coverage_with_title_total = 0_i64;
+    let mut coverage_with_activity_total = 0_i64;
+
+    for offset in (0..window_days).rev() {
+        let date = (today - chrono::Duration::days(offset))
+            .format("%Y-%m-%d")
+            .to_string();
+        let (feedback_accepted, feedback_rejected, feedback_manual_change) =
+            feedback_by_day.get(&date).copied().unwrap_or((0, 0, 0));
+        let feedback_total = feedback_accepted + feedback_rejected + feedback_manual_change;
+        let (auto_runs, auto_assigned, auto_rollbacks) =
+            auto_by_day.get(&date).copied().unwrap_or((0, 0, 0));
+        let (
+            coverage_total_entries,
+            coverage_with_detected_path,
+            coverage_with_title_history,
+            coverage_with_activity_type,
+        ) = coverage_by_day.get(&date).copied().unwrap_or((0, 0, 0, 0));
+
+        summary.feedback_total += feedback_total;
+        summary.feedback_accepted += feedback_accepted;
+        summary.feedback_rejected += feedback_rejected;
+        summary.feedback_manual_change += feedback_manual_change;
+        summary.auto_runs += auto_runs;
+        summary.auto_assigned += auto_assigned;
+        summary.auto_rollbacks += auto_rollbacks;
+        summary.coverage_total_entries += coverage_total_entries;
+        coverage_with_detected_total += coverage_with_detected_path;
+        coverage_with_title_total += coverage_with_title_history;
+        coverage_with_activity_total += coverage_with_activity_type;
+
+        points.push(AssignmentModelMetricsPoint {
+            date,
+            feedback_total,
+            feedback_accepted,
+            feedback_rejected,
+            feedback_manual_change,
+            auto_runs,
+            auto_assigned,
+            auto_rollbacks,
+            coverage_total_entries,
+            coverage_with_detected_path,
+            coverage_with_title_history,
+            coverage_with_activity_type,
+        });
+    }
+
+    summary.feedback_precision = ratio_or_zero(
+        summary.feedback_accepted,
+        summary.feedback_accepted + summary.feedback_rejected,
+    );
+    summary.coverage_detected_path_ratio =
+        ratio_or_zero(coverage_with_detected_total, summary.coverage_total_entries);
+    summary.coverage_title_history_ratio =
+        ratio_or_zero(coverage_with_title_total, summary.coverage_total_entries);
+    summary.coverage_activity_type_ratio =
+        ratio_or_zero(coverage_with_activity_total, summary.coverage_total_entries);
+
+    Ok(AssignmentModelMetrics {
+        window_days,
+        points,
+        summary,
+    })
 }
 
 #[command]
@@ -746,6 +1166,69 @@ pub async fn set_assignment_model_cooldown(
     get_assignment_model_status(app).await
 }
 
+#[command]
+pub async fn set_training_horizon_days(
+    app: AppHandle,
+    days: i64,
+) -> Result<AssignmentModelStatus, String> {
+    let conn = db::get_connection(&app)?;
+    let clamped_days = clamp_i64(days, MIN_TRAINING_HORIZON_DAYS, MAX_TRAINING_HORIZON_DAYS);
+    upsert_state(&conn, "training_horizon_days", &clamped_days.to_string())?;
+    get_assignment_model_status(app).await
+}
+
+#[command]
+pub async fn set_training_blacklists(
+    app: AppHandle,
+    app_blacklist: Vec<String>,
+    folder_blacklist: Vec<String>,
+) -> Result<AssignmentModelStatus, String> {
+    let conn = db::get_connection(&app)?;
+    let normalized_apps = normalize_blacklist_entries(&app_blacklist, false);
+    let normalized_folders = normalize_blacklist_entries(&folder_blacklist, true);
+    let apps_payload = serde_json::to_string(&normalized_apps).map_err(|e| e.to_string())?;
+    let folders_payload = serde_json::to_string(&normalized_folders).map_err(|e| e.to_string())?;
+    upsert_state(&conn, "training_app_blacklist", &apps_payload)?;
+    upsert_state(&conn, "training_folder_blacklist", &folders_payload)?;
+    get_assignment_model_status(app).await
+}
+
+#[command]
+pub async fn reset_assignment_model_knowledge(
+    app: AppHandle,
+) -> Result<AssignmentModelStatus, String> {
+    {
+        let conn = db::get_connection(&app)?;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(
+            "DELETE FROM assignment_model_app;
+             DELETE FROM assignment_model_time;
+             DELETE FROM assignment_model_token;
+             DELETE FROM assignment_feedback;
+             DELETE FROM assignment_suggestions;
+             DELETE FROM assignment_auto_run_items;
+             DELETE FROM assignment_auto_runs;",
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM assignment_model_state
+             WHERE key IN (
+                 'feedback_since_train',
+                 'last_train_at',
+                 'last_train_duration_ms',
+                 'last_train_samples',
+                 'train_error_last',
+                 'cooldown_until',
+                 'is_training'
+             )",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    get_assignment_model_status(app).await
+}
+
 /// Retrain the assignment model synchronously using the given connection.
 /// This is the core training logic, callable from any module after destructive
 /// DB operations (compact, reset, import) to keep the model in sync with data.
@@ -755,11 +1238,27 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
     upsert_state(conn, "is_training", "true")?;
     let start_time = std::time::Instant::now();
 
-    // Load feedback weight from model state (default: 5.0)
-    let feedback_weight = {
-        let state = load_state_map(conn).unwrap_or_default();
-        parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT)
-    };
+    let state = load_state_map(conn).unwrap_or_default();
+    let feedback_weight = parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT);
+    let training_horizon_days = clamp_i64(
+        parse_state_i64(
+            &state,
+            "training_horizon_days",
+            DEFAULT_TRAINING_HORIZON_DAYS,
+        ),
+        MIN_TRAINING_HORIZON_DAYS,
+        MAX_TRAINING_HORIZON_DAYS,
+    );
+    let training_horizon_modifier = format!("-{} days", training_horizon_days);
+    let training_app_blacklist = normalize_blacklist_entries(
+        &parse_state_string_list(&state, "training_app_blacklist"),
+        false,
+    );
+    let training_folder_blacklist = normalize_blacklist_entries(
+        &parse_state_string_list(&state, "training_folder_blacklist"),
+        true,
+    );
+    let blacklisted_app_ids = resolve_blacklisted_app_ids(conn, &training_app_blacklist)?;
 
     let result = (|| -> rusqlite::Result<i64> {
         let tx = conn.unchecked_transaction()?;
@@ -769,41 +1268,65 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             DELETE FROM assignment_model_app;
             DELETE FROM assignment_model_time;
             DELETE FROM assignment_model_token;
+            CREATE TEMP TABLE IF NOT EXISTS temp_training_blacklist_apps (
+                app_id INTEGER PRIMARY KEY
+            );
+            DELETE FROM temp_training_blacklist_apps;",
+        )?;
 
-            INSERT INTO assignment_model_app (app_id, project_id, cnt, last_seen)
-            SELECT s.app_id, s.project_id, COUNT(*) as cnt, MAX(s.start_time)
-            FROM sessions s
-            WHERE s.project_id IS NOT NULL
-              AND s.duration_seconds > 10
-              AND COALESCE((
-                    SELECT af.source
-                    FROM assignment_feedback af
-                    WHERE af.session_id = s.id
-                    ORDER BY af.created_at DESC, af.id DESC
-                    LIMIT 1
-                  ), '') <> 'auto_accept'
-            GROUP BY s.app_id, s.project_id;
+        if !blacklisted_app_ids.is_empty() {
+            let mut insert_blocked =
+                tx.prepare("INSERT INTO temp_training_blacklist_apps (app_id) VALUES (?1)")?;
+            for app_id in &blacklisted_app_ids {
+                insert_blocked.execute(rusqlite::params![app_id])?;
+            }
+        }
 
-            INSERT INTO assignment_model_time (app_id, hour_bucket, weekday, project_id, cnt)
-            SELECT
-                s.app_id,
-                CAST(strftime('%H', s.start_time) AS INTEGER) as hour_bucket,
-                CAST(strftime('%w', s.start_time) AS INTEGER) as weekday,
-                s.project_id,
-                COUNT(*) as cnt
-            FROM sessions s
-            WHERE s.project_id IS NOT NULL
-              AND s.duration_seconds > 10
-              AND date(s.start_time) >= date('now', '-730 days')
-              AND COALESCE((
-                    SELECT af.source
-                    FROM assignment_feedback af
-                    WHERE af.session_id = s.id
-                    ORDER BY af.created_at DESC, af.id DESC
-                    LIMIT 1
-                  ), '') <> 'auto_accept'
-            GROUP BY s.app_id, hour_bucket, weekday, s.project_id;
-            ",
+        tx.execute(
+            "INSERT INTO assignment_model_app (app_id, project_id, cnt, last_seen)
+             SELECT s.app_id, s.project_id, COUNT(*) as cnt, MAX(s.start_time)
+             FROM sessions s
+             WHERE s.project_id IS NOT NULL
+               AND s.duration_seconds > 10
+               AND date(s.start_time) >= date('now', ?1)
+               AND NOT EXISTS (
+                    SELECT 1 FROM temp_training_blacklist_apps b WHERE b.app_id = s.app_id
+               )
+               AND COALESCE((
+                     SELECT af.source
+                     FROM assignment_feedback af
+                     WHERE af.session_id = s.id
+                     ORDER BY af.created_at DESC, af.id DESC
+                     LIMIT 1
+                   ), '') <> 'auto_accept'
+             GROUP BY s.app_id, s.project_id",
+            rusqlite::params![&training_horizon_modifier],
+        )?;
+
+        tx.execute(
+            "INSERT INTO assignment_model_time (app_id, hour_bucket, weekday, project_id, cnt)
+             SELECT
+                 s.app_id,
+                 CAST(strftime('%H', s.start_time) AS INTEGER) as hour_bucket,
+                 CAST(strftime('%w', s.start_time) AS INTEGER) as weekday,
+                 s.project_id,
+                 COUNT(*) as cnt
+             FROM sessions s
+             WHERE s.project_id IS NOT NULL
+               AND s.duration_seconds > 10
+               AND date(s.start_time) >= date('now', ?1)
+               AND NOT EXISTS (
+                    SELECT 1 FROM temp_training_blacklist_apps b WHERE b.app_id = s.app_id
+               )
+               AND COALESCE((
+                     SELECT af.source
+                     FROM assignment_feedback af
+                     WHERE af.session_id = s.id
+                     ORDER BY af.created_at DESC, af.id DESC
+                     LIMIT 1
+                   ), '') <> 'auto_accept'
+             GROUP BY s.app_id, hour_bucket, weekday, s.project_id",
+            rusqlite::params![&training_horizon_modifier],
         )?;
 
         // Reinforcement: boost counts based on manual feedback.
@@ -822,10 +1345,15 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
                    'manual_app_assign',
                    'ai_suggestion_reject',
                    'ai_suggestion_accept'
-                 )
-                   AND to_project_id IS NOT NULL
-                   AND app_id IS NOT NULL
-                 GROUP BY app_id, from_project_id, to_project_id",
+                  )
+                    AND to_project_id IS NOT NULL
+                    AND app_id IS NOT NULL
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM temp_training_blacklist_apps b
+                        WHERE b.app_id = assignment_feedback.app_id
+                    )
+                  GROUP BY app_id, from_project_id, to_project_id",
             )?;
             let mut fb_rows = fb_stmt.query([])?;
             while let Some(row) = fb_rows.next()? {
@@ -870,10 +1398,15 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
                    'manual_project_card_change',
                    'manual_app_assign',
                    'ai_suggestion_accept'
-                 )
-                   AND to_project_id IS NOT NULL
-                   AND app_id IS NOT NULL
-                 GROUP BY app_id, to_project_id",
+                  )
+                    AND to_project_id IS NOT NULL
+                    AND app_id IS NOT NULL
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM temp_training_blacklist_apps b
+                        WHERE b.app_id = assignment_feedback.app_id
+                    )
+                  GROUP BY app_id, to_project_id",
             )?;
             let mut fb_rows = fb_stmt.query([])?;
             while let Some(row) = fb_rows.next()? {
@@ -891,12 +1424,16 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
                      WHERE s.app_id = ?1
                        AND s.project_id = ?2
                        AND s.duration_seconds > 10
+                       AND date(s.start_time) >= date('now', ?4)
+                       AND NOT EXISTS (
+                            SELECT 1 FROM temp_training_blacklist_apps b WHERE b.app_id = s.app_id
+                       )
                      GROUP BY s.app_id,
                               CAST(strftime('%H', s.start_time) AS INTEGER),
                               CAST(strftime('%w', s.start_time) AS INTEGER)
                      ON CONFLICT(app_id, hour_bucket, weekday, project_id) DO UPDATE SET
-                       cnt = assignment_model_time.cnt + ?3",
-                    rusqlite::params![app_id, to_project_id, boost],
+                        cnt = assignment_model_time.cnt + ?3",
+                    rusqlite::params![app_id, to_project_id, boost, &training_horizon_modifier],
                 )?;
             }
         }
@@ -904,16 +1441,53 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
         let mut token_counts: HashMap<(String, i64), i64> = HashMap::new();
         {
             let mut file_stmt = tx.prepare(
-                "SELECT file_name, project_id FROM file_activities
+                "SELECT app_id, file_name, file_path, detected_path, project_id, window_title, title_history
+                 FROM file_activities
                  WHERE project_id IS NOT NULL
-                   AND date >= date('now', '-730 days')",
+                   AND date >= date('now', ?1)",
             )?;
-            let mut file_rows = file_stmt.query([])?;
+            let mut file_rows = file_stmt.query(rusqlite::params![&training_horizon_modifier])?;
             while let Some(row) = file_rows.next()? {
-                let file_name: String = row.get(0)?;
-                let project_id: i64 = row.get(1)?;
+                let app_id: i64 = row.get(0)?;
+                let file_name: String = row.get(1)?;
+                let file_path: String = row.get(2)?;
+                let detected_path: Option<String> = row.get(3)?;
+                let project_id: i64 = row.get(4)?;
+                let window_title: Option<String> = row.get(5)?;
+                let title_history: Option<String> = row.get(6)?;
+
+                if blacklisted_app_ids.contains(&app_id) {
+                    continue;
+                }
+                if is_under_blacklisted_folder(
+                    Some(&file_path),
+                    detected_path.as_deref(),
+                    &training_folder_blacklist,
+                ) {
+                    continue;
+                }
+
                 for token in tokenize(&file_name) {
                     *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                }
+                for token in tokenize(&file_path) {
+                    *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                }
+                if let Some(ref path) = detected_path {
+                    for token in tokenize(path) {
+                        *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                    }
+                }
+                // Tokenize window_title for richer training signal
+                if let Some(ref wt) = window_title {
+                    for token in tokenize(wt) {
+                        *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                    }
+                }
+                for title in parse_title_history(title_history.as_deref()) {
+                    for token in tokenize(&title) {
+                        *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                    }
                 }
             }
         }

@@ -88,6 +88,9 @@ export interface AssignmentModelStatus {
   min_confidence_suggest: number;
   min_confidence_auto: number;
   min_evidence_auto: number;
+  training_horizon_days: number;
+  training_app_blacklist: string[];
+  training_folder_blacklist: string[];
   last_train_at: string | null;
   feedback_since_train: number;
   is_training: boolean;
@@ -99,6 +102,42 @@ export interface AssignmentModelStatus {
   last_auto_assigned_count: number;
   last_auto_rolled_back_at: string | null;
   can_rollback_last_auto_run: boolean;
+}
+
+export interface AssignmentModelMetricsPoint {
+  date: string;
+  feedback_total: number;
+  feedback_accepted: number;
+  feedback_rejected: number;
+  feedback_manual_change: number;
+  auto_runs: number;
+  auto_assigned: number;
+  auto_rollbacks: number;
+  coverage_total_entries: number;
+  coverage_with_detected_path: number;
+  coverage_with_title_history: number;
+  coverage_with_activity_type: number;
+}
+
+export interface AssignmentModelMetricsSummary {
+  feedback_total: number;
+  feedback_accepted: number;
+  feedback_rejected: number;
+  feedback_manual_change: number;
+  feedback_precision: number;
+  auto_runs: number;
+  auto_assigned: number;
+  auto_rollbacks: number;
+  coverage_total_entries: number;
+  coverage_detected_path_ratio: number;
+  coverage_title_history_ratio: number;
+  coverage_activity_type_ratio: number;
+}
+
+export interface AssignmentModelMetrics {
+  window_days: number;
+  points: AssignmentModelMetricsPoint[];
+  summary: AssignmentModelMetricsSummary;
 }
 
 export interface AutoSafeRunResult {

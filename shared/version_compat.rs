@@ -18,6 +18,8 @@ pub fn check_version_compatibility(v1: &str, v2: &str) -> bool {
             }
             (rel1 - rel2).abs() <= 3
         }
-        _ => false,
+        // Be permissive when a version string cannot be parsed (missing/corrupted file).
+        // A strict "false" here blocks startup with a mismatch warning even without real incompatibility.
+        _ => true,
     }
 }

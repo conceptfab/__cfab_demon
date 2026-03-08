@@ -12,8 +12,14 @@ use winapi::um::tlhelp32::{
 };
 use winapi::um::winuser::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId};
 
-/// Cache PID -> (exe_name, creation_time, cached_at, last_alive_check). Used to evict old entries and validate PID reuse.
-pub type PidCache = HashMap<u32, (String, u64, Instant, Instant)>;
+thread_local! {
+    static WMI_CONN_CACHE: std::cell::RefCell<Option<wmi::WMIConnection>> =
+        std::cell::RefCell::new(None);
+}
+
+/// Cache PID -> (exe_name, creation_time, cached_at, last_alive_check, detected_path).
+/// Used to evict old entries and validate PID reuse.
+pub type PidCache = HashMap<u32, (String, u64, Instant, Instant, Option<String>)>;
 
 /// Informacja o aktywnym procesie
 #[derive(Debug, Clone)]
@@ -21,6 +27,8 @@ pub struct ProcessInfo {
     pub exe_name: String,
     pub pid: u32,
     pub window_title: String,
+    pub detected_path: Option<String>,
+    pub activity_type: Option<String>,
 }
 
 /// Gets the creation time of a process as u64. Returns None if unable to fetch.
@@ -95,35 +103,56 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
             return None; // Brak tytułu = systemowe okno, ignorujemy
         };
 
-        // Nazwa exe — z cache (z walidacją PID reuse) lub przez OpenProcess
+        // Nazwa exe + path hint — z cache (z walidacją PID reuse) lub przez OpenProcess
         let now = Instant::now();
-        let exe_name = if let Some((name, creation_time, cached_at, last_alive_check)) =
-            pid_cache.get_mut(&pid)
-        {
-            // Re-walidacja PID ograniczona do 60s, aby zredukować koszt OpenProcess.
-            if now.duration_since(*last_alive_check) < std::time::Duration::from_secs(60) {
-                *cached_at = now;
-                name.clone()
-            } else if process_still_alive(pid, *creation_time) {
-                *cached_at = now;
-                *last_alive_check = now;
-                name.clone()
+        let (exe_name, detected_path, activity_type) =
+            if let Some((name, creation_time, cached_at, last_alive_check, cached_detected_path)) =
+                pid_cache.get_mut(&pid)
+            {
+                // Re-walidacja PID ograniczona do 60s, aby zredukować koszt OpenProcess.
+                if now.duration_since(*last_alive_check) < std::time::Duration::from_secs(60) {
+                    *cached_at = now;
+                    let activity_type = classify_activity_type(name);
+                    (name.clone(), cached_detected_path.clone(), activity_type)
+                } else if process_still_alive(pid, *creation_time) {
+                    *cached_at = now;
+                    *last_alive_check = now;
+                    let activity_type = classify_activity_type(name);
+                    (name.clone(), cached_detected_path.clone(), activity_type)
+                } else {
+                    pid_cache.remove(&pid);
+                    let (name, new_creation_time) = get_exe_name_and_creation_time(pid)?;
+                    let activity_type = classify_activity_type(&name);
+                    let detected_path = detect_path_from_process(pid, activity_type.as_deref());
+                    pid_cache.insert(
+                        pid,
+                        (
+                            name.clone(),
+                            new_creation_time,
+                            now,
+                            now,
+                            detected_path.clone(),
+                        ),
+                    );
+                    (name, detected_path, activity_type)
+                }
             } else {
-                pid_cache.remove(&pid);
-                let (name, new_creation_time) = get_exe_name_and_creation_time(pid)?;
-                pid_cache.insert(pid, (name.clone(), new_creation_time, now, now));
-                name
-            }
-        } else {
-            let (name, creation_time) = get_exe_name_and_creation_time(pid)?;
-            pid_cache.insert(pid, (name.clone(), creation_time, now, now));
-            name
-        };
+                let (name, creation_time) = get_exe_name_and_creation_time(pid)?;
+                let activity_type = classify_activity_type(&name);
+                let detected_path = detect_path_from_process(pid, activity_type.as_deref());
+                pid_cache.insert(
+                    pid,
+                    (name.clone(), creation_time, now, now, detected_path.clone()),
+                );
+                (name, detected_path, activity_type)
+            };
 
         Some(ProcessInfo {
             exe_name,
             pid,
             window_title,
+            detected_path,
+            activity_type,
         })
     }
 }
@@ -178,11 +207,272 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
     }
 }
 
+fn should_detect_path_for_activity(activity_type: Option<&str>) -> bool {
+    matches!(activity_type, Some("coding") | Some("design"))
+}
+
+fn detect_path_from_process(pid: u32, activity_type: Option<&str>) -> Option<String> {
+    if !should_detect_path_for_activity(activity_type) {
+        return None;
+    }
+    let command_line = get_process_command_line_wmi(pid)?;
+    extract_path_from_command_line(&command_line)
+}
+
+fn get_process_command_line_wmi(pid: u32) -> Option<String> {
+    #[derive(serde::Deserialize, Debug)]
+    struct Win32ProcessCommandLineRow {
+        #[serde(rename = "CommandLine")]
+        command_line: Option<String>,
+    }
+
+    let query = format!(
+        "SELECT CommandLine FROM Win32_Process WHERE ProcessId = {}",
+        pid
+    );
+    WMI_CONN_CACHE.with(|cache| {
+        let mut cached_conn = cache.borrow_mut();
+        if cached_conn.is_none() {
+            let com = wmi::COMLibrary::new().ok()?;
+            let conn = wmi::WMIConnection::new(com.into()).ok()?;
+            *cached_conn = Some(conn);
+        }
+
+        let query_result: Result<Vec<Win32ProcessCommandLineRow>, _> = {
+            let conn = cached_conn.as_ref()?;
+            conn.raw_query(&query)
+        };
+
+        match query_result {
+            Ok(mut rows) => rows.pop()?.command_line,
+            Err(_) => {
+                // Reset cached connection; next call will reinitialize COM/WMI.
+                *cached_conn = None;
+                None
+            }
+        }
+    })
+}
+
+fn split_command_line_tokens(command_line: &str) -> Vec<String> {
+    if let Some(tokens) = split_command_line_tokens_winapi(command_line) {
+        return tokens;
+    }
+    split_command_line_tokens_fallback(command_line)
+}
+
+fn split_command_line_tokens_winapi(command_line: &str) -> Option<Vec<String>> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::shellapi::CommandLineToArgvW;
+    use winapi::um::winbase::LocalFree;
+
+    unsafe {
+        let wide: Vec<u16> = OsStr::new(command_line)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let mut argc: i32 = 0;
+        let argv = CommandLineToArgvW(wide.as_ptr(), &mut argc);
+        if argv.is_null() || argc <= 0 {
+            if !argv.is_null() {
+                LocalFree(argv as *mut _);
+            }
+            return None;
+        }
+
+        let mut tokens = Vec::with_capacity(argc as usize);
+        for i in 0..argc {
+            let arg_ptr = *argv.add(i as usize);
+            if arg_ptr.is_null() {
+                continue;
+            }
+            let mut len = 0usize;
+            while *arg_ptr.add(len) != 0 {
+                len += 1;
+            }
+            tokens.push(String::from_utf16_lossy(std::slice::from_raw_parts(
+                arg_ptr, len,
+            )));
+        }
+        LocalFree(argv as *mut _);
+        Some(tokens)
+    }
+}
+
+fn split_command_line_tokens_fallback(command_line: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+
+    for ch in command_line.chars() {
+        match ch {
+            '"' => {
+                in_quotes = !in_quotes;
+            }
+            c if c.is_whitespace() && !in_quotes => {
+                if !current.is_empty() {
+                    tokens.push(current.clone());
+                    current.clear();
+                }
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+
+    tokens
+}
+
+fn normalize_path_candidate(raw: &str) -> Option<String> {
+    let token = raw.trim().trim_matches('"').trim();
+    if token.is_empty() {
+        return None;
+    }
+    if token.starts_with("http://")
+        || token.starts_with("https://")
+        || token.starts_with("vscode://")
+        || token.starts_with("mailto:")
+    {
+        return None;
+    }
+    let candidate = token
+        .trim_end_matches(',')
+        .trim_end_matches(';')
+        .trim_end_matches('"')
+        .trim();
+    if candidate.is_empty() {
+        return None;
+    }
+
+    let looks_like_abs_drive = candidate.len() >= 3
+        && candidate.as_bytes()[1] == b':'
+        && matches!(candidate.as_bytes()[2], b'\\' | b'/');
+    let looks_like_unc = candidate.starts_with("\\\\") || candidate.starts_with("//");
+    let looks_like_relative = candidate.starts_with(".\\")
+        || candidate.starts_with("./")
+        || candidate.starts_with("..\\")
+        || candidate.starts_with("../");
+
+    if !(looks_like_abs_drive || looks_like_unc || looks_like_relative) {
+        return None;
+    }
+
+    let lower = candidate.to_lowercase();
+    if lower.ends_with(".exe")
+        || lower.ends_with(".dll")
+        || lower.ends_with(".lnk")
+        || lower.ends_with(".tmp")
+    {
+        return None;
+    }
+
+    Some(candidate.to_string())
+}
+
+fn is_probably_file_path(path: &str) -> bool {
+    let extension = std::path::Path::new(path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_lowercase());
+    let Some(ext) = extension else {
+        return false;
+    };
+    !matches!(ext.as_str(), "cache" | "log" | "ini" | "json")
+}
+
+fn extract_path_from_command_line(command_line: &str) -> Option<String> {
+    let tokens = split_command_line_tokens(command_line);
+    if tokens.len() <= 1 {
+        return None;
+    }
+
+    let mut fallback_path: Option<String> = None;
+    for token in tokens.iter().skip(1) {
+        if token.starts_with('-') && !token.contains(':') {
+            continue;
+        }
+
+        let direct_candidate = normalize_path_candidate(token);
+        let eq_candidate = token
+            .split_once('=')
+            .and_then(|(_, rhs)| normalize_path_candidate(rhs));
+        let candidate = direct_candidate.or(eq_candidate);
+        let Some(path) = candidate else {
+            continue;
+        };
+
+        if is_probably_file_path(&path) {
+            return Some(path);
+        }
+        if fallback_path.is_none() {
+            fallback_path = Some(path);
+        }
+    }
+
+    fallback_path
+}
+
+/// Lightweight app category used by the tracker to tag file activities.
+pub fn classify_activity_type(exe_name: &str) -> Option<String> {
+    let exe = exe_name.to_lowercase();
+
+    if matches!(
+        exe.as_str(),
+        "code.exe"
+            | "code-insiders.exe"
+            | "cursor.exe"
+            | "idea64.exe"
+            | "pycharm64.exe"
+            | "webstorm64.exe"
+            | "clion64.exe"
+            | "rider64.exe"
+            | "devenv.exe"
+            | "notepad++.exe"
+            | "vim.exe"
+            | "nvim.exe"
+    ) {
+        return Some("coding".to_string());
+    }
+
+    if matches!(
+        exe.as_str(),
+        "chrome.exe"
+            | "msedge.exe"
+            | "firefox.exe"
+            | "brave.exe"
+            | "opera.exe"
+            | "opera_gx.exe"
+            | "vivaldi.exe"
+            | "arc.exe"
+    ) {
+        return Some("browsing".to_string());
+    }
+
+    if matches!(
+        exe.as_str(),
+        "figma.exe"
+            | "photoshop.exe"
+            | "illustrator.exe"
+            | "blender.exe"
+            | "gimp-2.10.exe"
+            | "inkscape.exe"
+            | "adobexd.exe"
+    ) {
+        return Some("design".to_string());
+    }
+
+    None
+}
+
 /// Ewiktuje wpisy cache starsze niż `max_age` (zamiast czyścić wszystko).
 /// Zmniejsza serię wywołań OpenProcess po wyczyszczeniu.
 pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: std::time::Duration) {
     let now = Instant::now();
-    pid_cache.retain(|_, (_, _, ts, _)| now.duration_since(*ts) < max_age);
+    pid_cache.retain(|_, (_, _, ts, _, _)| now.duration_since(*ts) < max_age);
 }
 
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
@@ -224,6 +514,27 @@ pub fn extract_file_from_title(title: &str) -> String {
     }
 
     title.trim().to_string()
+}
+
+// ── Idle detection ────────────────────────────────────────────
+
+/// Zwraca czas bezczynności użytkownika (brak klawiatury/myszy) w milisekundach.
+/// Używa WinAPI `GetLastInputInfo`.
+pub fn get_idle_time_ms() -> u64 {
+    use winapi::um::sysinfoapi::GetTickCount64;
+    use winapi::um::winuser::{GetLastInputInfo, LASTINPUTINFO};
+
+    unsafe {
+        let mut lii: LASTINPUTINFO = std::mem::zeroed();
+        lii.cbSize = std::mem::size_of::<LASTINPUTINFO>() as u32;
+
+        if GetLastInputInfo(&mut lii) == 0 {
+            return 0; // Fallback: zakładaj aktywność
+        }
+
+        let now = GetTickCount64();
+        now.saturating_sub(u64::from(lii.dwTime))
+    }
 }
 
 // ── CPU tracking ──────────────────────────────────────────────
@@ -390,7 +701,7 @@ pub fn measure_cpu_for_app(
 
 #[cfg(test)]
 mod tests {
-    use super::extract_file_from_title;
+    use super::{classify_activity_type, extract_file_from_title, extract_path_from_command_line};
 
     #[test]
     fn extract_file_single_separator() {
@@ -435,5 +746,31 @@ mod tests {
     #[test]
     fn extract_file_em_dash() {
         assert_eq!(extract_file_from_title("dokument — Edytor"), "dokument");
+    }
+
+    #[test]
+    fn extracts_detected_path_from_command_line() {
+        let cmd = r#""C:\Users\me\AppData\Local\Programs\Microsoft VS Code\Code.exe" "C:\work\timeflow\src\main.rs""#;
+        assert_eq!(
+            extract_path_from_command_line(cmd).as_deref(),
+            Some(r"C:\work\timeflow\src\main.rs")
+        );
+    }
+
+    #[test]
+    fn classify_activity_type_for_known_apps() {
+        assert_eq!(
+            classify_activity_type("code.exe").as_deref(),
+            Some("coding")
+        );
+        assert_eq!(
+            classify_activity_type("chrome.exe").as_deref(),
+            Some("browsing")
+        );
+        assert_eq!(
+            classify_activity_type("blender.exe").as_deref(),
+            Some("design")
+        );
+        assert_eq!(classify_activity_type("unknown.exe"), None);
     }
 }

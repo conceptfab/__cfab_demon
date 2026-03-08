@@ -33,6 +33,18 @@ pub(crate) struct JsonFileEntry {
     pub total_seconds: u64,
     pub first_seen: String,
     pub last_seen: String,
+    /// Pełny tytuł okna z demona — bogatszy kontekst dla tokenizacji AI.
+    #[serde(default)]
+    pub window_title: String,
+    /// Ścieżka wykryta z argumentów procesu (WMI CommandLine).
+    #[serde(default)]
+    pub detected_path: Option<String>,
+    /// Historia unikalnych tytułów okien dla wpisu.
+    #[serde(default)]
+    pub title_history: Vec<String>,
+    /// Kategoria aktywności (np. coding/browsing/design).
+    #[serde(default)]
+    pub activity_type: Option<String>,
 }
 
 // ==================== Response Types ====================

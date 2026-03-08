@@ -71,11 +71,14 @@ export function getTemplate(id: string): ReportTemplate {
 export function saveTemplate(template: ReportTemplate): ReportTemplate[] {
   const all = loadTemplates();
   const idx = all.findIndex(t => t.id === template.id);
-  template.updatedAt = new Date().toISOString();
+  const nextTemplate: ReportTemplate = {
+    ...template,
+    updatedAt: new Date().toISOString(),
+  };
   if (idx >= 0) {
-    all[idx] = template;
+    all[idx] = nextTemplate;
   } else {
-    all.push(template);
+    all.push(nextTemplate);
   }
   saveTemplates(all);
   return all;
@@ -88,14 +91,14 @@ export function deleteTemplate(id: string): ReportTemplate[] {
   return all;
 }
 
-export function duplicateTemplate(id: string): ReportTemplate[] {
+export function duplicateTemplate(id: string, copyLabel = 'copy'): ReportTemplate[] {
   const all = loadTemplates();
   const source = all.find(t => t.id === id);
   if (!source) return all;
   const copy: ReportTemplate = {
     ...source,
     id: generateId(),
-    name: `${source.name} (copy)`,
+    name: `${source.name} (${copyLabel})`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

@@ -18,6 +18,8 @@ use crate::storage::{self, AppDailyData, FileEntry, Session};
 #[path = "../shared/version_compat.rs"]
 mod version_compat;
 
+const MAX_TITLE_HISTORY: usize = 20;
+
 fn rebuild_file_index_cache(
     daily_data: &storage::DailyData,
 ) -> HashMap<String, HashMap<String, usize>> {
@@ -50,7 +52,8 @@ fn check_dashboard_compatibility() {
                 if !WARNING_SHOWN.load(Ordering::SeqCst) {
                     WARNING_SHOWN.store(true, Ordering::SeqCst);
                     let lang_obj = crate::i18n::load_language();
-                    let msg = lang_obj.t(crate::i18n::TrayText::VersionMismatchTemplate)
+                    let msg = lang_obj
+                        .t(crate::i18n::TrayText::VersionMismatchTemplate)
                         .replacen("{}", demon_version, 1)
                         .replacen("{}", v_dash, 1);
                     log::error!("{}", msg);
@@ -58,7 +61,9 @@ fn check_dashboard_compatibility() {
                     // Display warning without blocking the monitoring loop.
                     std::thread::spawn(move || unsafe {
                         use std::ptr;
-                        let title_text = lang_obj.t(crate::i18n::TrayText::VersionErrorTitle).to_string();
+                        let title_text = lang_obj
+                            .t(crate::i18n::TrayText::VersionErrorTitle)
+                            .to_string();
                         let title: Vec<u16> = title_text
                             .encode_utf16()
                             .chain(std::iter::once(0))
@@ -92,10 +97,28 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> thread::JoinHandle<()> {
     })
 }
 
+fn push_title_history(history: &mut Vec<String>, window_title: &str) {
+    let normalized = window_title.trim();
+    if normalized.is_empty() {
+        return;
+    }
+    if history.iter().any(|entry| entry == normalized) {
+        return;
+    }
+    history.push(normalized.to_string());
+    if history.len() > MAX_TITLE_HISTORY {
+        let overflow = history.len() - MAX_TITLE_HISTORY;
+        history.drain(0..overflow);
+    }
+}
+
 /// Records application activity (adds time, updates sessions and files).
 fn record_app_activity(
     exe_name: &str,
     file_name: &str,
+    window_title: &str,
+    detected_path: Option<&str>,
+    activity_type: Option<&str>,
     poll_interval: Duration,
     session_gap: Duration,
     cfg: &config::Config,
@@ -104,6 +127,12 @@ fn record_app_activity(
     file_index_cache: &mut HashMap<String, HashMap<String, usize>>,
 ) {
     let now_str = Local::now().to_rfc3339();
+    let normalized_detected_path = detected_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let normalized_activity_type = activity_type
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     let app_data = daily_data
         .apps
@@ -147,14 +176,31 @@ fn record_app_activity(
             if let Some(file_entry) = app_data.files.get_mut(idx) {
                 file_entry.total_seconds += poll_interval.as_secs();
                 file_entry.last_seen = now_str;
+                // Aktualizuj window_title na najnowszy (bogatszy kontekst dla AI)
+                if !window_title.is_empty() {
+                    file_entry.window_title = window_title.to_string();
+                    push_title_history(&mut file_entry.title_history, window_title);
+                }
+                if let Some(path) = normalized_detected_path {
+                    file_entry.detected_path = Some(path.to_string());
+                }
+                if let Some(kind) = normalized_activity_type {
+                    file_entry.activity_type = Some(kind.to_string());
+                }
             }
         } else {
             let new_idx = app_data.files.len();
+            let mut title_history = Vec::new();
+            push_title_history(&mut title_history, window_title);
             app_data.files.push(FileEntry {
                 name: file_name.to_string(),
                 total_seconds: poll_interval.as_secs(),
                 first_seen: now_str.clone(),
                 last_seen: now_str,
+                window_title: window_title.to_string(),
+                detected_path: normalized_detected_path.map(|value| value.to_string()),
+                title_history,
+                activity_type: normalized_activity_type.map(|value| value.to_string()),
             });
             app_file_index.insert(file_name.to_string(), new_idx);
         }
@@ -195,6 +241,9 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut session_gap = Duration::from_secs(iv.session_gap_secs);
     let mut config_reload_interval = Duration::from_secs(iv.config_reload_secs);
     let mut cpu_thresh = iv.cpu_threshold;
+
+    // Idle threshold: 2 minutes without keyboard/mouse input
+    const IDLE_THRESHOLD_MS: u64 = 120_000;
 
     loop {
         // Check stop signal
@@ -242,10 +291,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
         // Poll foreground window
         let foreground_exe = monitor::get_foreground_info(&mut pid_cache).and_then(|info| {
             log::debug!(
-                "Detected window: {} (PID: {}) [{}]",
+                "Detected window: {} (PID: {}) [{}] path={:?} type={:?}",
                 info.exe_name,
                 info.pid,
-                info.window_title
+                info.window_title,
+                info.detected_path,
+                info.activity_type
             );
             if monitor_all || monitored.contains(&info.exe_name) {
                 Some(info)
@@ -257,20 +308,31 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
         // Collect application names active in foreground this tick
         let mut recorded_this_tick: HashSet<String> = HashSet::new();
 
-        // Foreground tracking
-        if let Some(ref info) = foreground_exe {
-            let file_name = monitor::extract_file_from_title(&info.window_title);
-            record_app_activity(
-                &info.exe_name,
-                &file_name,
-                actual_elapsed,
-                session_gap,
-                &cfg,
-                &mut daily_data,
-                &mut active_sessions,
-                &mut file_index_cache,
-            );
-            recorded_this_tick.insert(info.exe_name.clone());
+        // Idle detection: skip foreground recording when user is idle (no kb/mouse input)
+        let idle_ms = monitor::get_idle_time_ms();
+        let is_idle = idle_ms >= IDLE_THRESHOLD_MS;
+
+        // Foreground tracking (skip when idle — don't count time without user input)
+        if !is_idle {
+            if let Some(ref info) = foreground_exe {
+                let file_name = monitor::extract_file_from_title(&info.window_title);
+                record_app_activity(
+                    &info.exe_name,
+                    &file_name,
+                    &info.window_title,
+                    info.detected_path.as_deref(),
+                    info.activity_type.as_deref(),
+                    actual_elapsed,
+                    session_gap,
+                    &cfg,
+                    &mut daily_data,
+                    &mut active_sessions,
+                    &mut file_index_cache,
+                );
+                recorded_this_tick.insert(info.exe_name.clone());
+            }
+        } else {
+            log::debug!("User idle for {}ms, skipping foreground recording", idle_ms);
         }
 
         // CPU-based background tracking (for monitored apps NOT in foreground)
@@ -300,10 +362,14 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                         cpu_fraction * 100.0,
                         cpu_thresh * 100.0,
                     );
+                    let background_activity_type = monitor::classify_activity_type(exe_name);
                     // Record activity without file name (window title unknown in background)
                     record_app_activity(
                         exe_name,
                         "(background)",
+                        "",
+                        None,
+                        background_activity_type.as_deref(),
                         actual_elapsed,
                         session_gap,
                         &cfg,

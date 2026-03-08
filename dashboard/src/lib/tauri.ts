@@ -2,6 +2,7 @@ import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { emitLocalDataChanged } from '@/lib/sync-events';
 import type {
   AssignmentMode,
+  AssignmentModelMetrics,
   AssignmentModelStatus,
   AutoSafeRollbackResult,
   AutoSafeRunResult,
@@ -244,6 +245,9 @@ export const rebuildSessions = (gapFillMinutes: number) =>
 export const getAssignmentModelStatus = () =>
   invoke<AssignmentModelStatus>('get_assignment_model_status');
 
+export const getAssignmentModelMetrics = (days = 30) =>
+  invoke<AssignmentModelMetrics>('get_assignment_model_metrics', { days });
+
 export const setAssignmentMode = (
   mode: AssignmentMode,
   suggestConf: number,
@@ -261,6 +265,23 @@ export const setAssignmentModelCooldown = (hours: number) =>
   invokeMutation<AssignmentModelStatus>('set_assignment_model_cooldown', {
     hours,
   });
+
+export const setTrainingHorizonDays = (days: number) =>
+  invokeMutation<AssignmentModelStatus>('set_training_horizon_days', {
+    days,
+  });
+
+export const setTrainingBlacklists = (
+  appBlacklist: string[],
+  folderBlacklist: string[],
+) =>
+  invokeMutation<AssignmentModelStatus>('set_training_blacklists', {
+    appBlacklist,
+    folderBlacklist,
+  });
+
+export const resetAssignmentModelKnowledge = () =>
+  invokeMutation<AssignmentModelStatus>('reset_assignment_model_knowledge');
 
 export const trainAssignmentModel = (force = false) =>
   invokeMutation<AssignmentModelStatus>('train_assignment_model', { force });

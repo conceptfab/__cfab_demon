@@ -43,6 +43,18 @@ pub struct FileEntry {
     pub total_seconds: u64,
     pub first_seen: String,
     pub last_seen: String,
+    /// Pełny tytuł okna z ostatniego pollingu — dashboard może parsować bogatszy kontekst.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub window_title: String,
+    /// Ścieżka wykryta z argumentów procesu (np. workspace/file path z IDE).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detected_path: Option<String>,
+    /// Unikalna historia tytułów okien dla wpisu (limitowana w trackerze).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub title_history: Vec<String>,
+    /// Kategoria aktywności (np. coding/browsing/design).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity_type: Option<String>,
 }
 
 /// Podsumowanie dnia

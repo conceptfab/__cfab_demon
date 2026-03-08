@@ -263,8 +263,9 @@ pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), S
 
 #[tauri::command]
 pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    conn.execute_batch(
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute_batch(
         "DELETE FROM file_activities;
          DELETE FROM sessions;
          DELETE FROM manual_sessions;
@@ -272,6 +273,8 @@ pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
          DELETE FROM imported_files;
          DELETE FROM project_folders;
          DELETE FROM projects;
+         DELETE FROM session_manual_overrides;
+         DELETE FROM tombstones;
          DELETE FROM assignment_auto_run_items;
          DELETE FROM assignment_auto_runs;
          DELETE FROM assignment_feedback;
@@ -282,6 +285,7 @@ pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
          DELETE FROM assignment_model_state;",
     )
     .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
 

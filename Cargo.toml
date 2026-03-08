@@ -40,8 +40,11 @@ log = { version = "0.4", features = ["std"] }
 # WinAPI
 winapi = { version = "0.3", features = [
     "synchapi", "errhandlingapi", "winnt", "handleapi", "winuser",
-    "processthreadsapi", "winbase", "tlhelp32", "minwindef",
+    "processthreadsapi", "winbase", "tlhelp32", "minwindef", "shellapi",
 ] }
+
+[target.'cfg(windows)'.dependencies]
+wmi = "0.13"
 
 [build-dependencies]
 embed-resource = "3"
@@ -52,4 +55,3 @@ lto = true
 codegen-units = 1
 strip = false
 panic = "abort"
-

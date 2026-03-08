@@ -6,27 +6,19 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 mod config;
 mod i18n;
 mod monitor;
+mod process_utils;
 mod single_instance;
 mod storage;
 mod tracker;
 mod tray;
+use crate::process_utils::no_console;
 
 /// Application name — single constant used everywhere
 pub const APP_NAME: &str = "TIMEFLOW Demon";
 pub const VERSION: &str = include_str!("../VERSION");
-
-#[cfg(windows)]
-fn no_console(cmd: &mut Command) {
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-}
-#[cfg(not(windows))]
-fn no_console(_cmd: &mut Command) {}
 
 fn main() {
     // Handle command-line arguments (fast path, no logging needed)
@@ -41,11 +33,6 @@ fn main() {
     log::info!("{} - starting...", APP_NAME);
     log::logger().flush();
 
-    // Application directories — created once at startup
-    if let Err(e) = config::ensure_app_dirs() {
-        log::warn!("Failed to create application directories: {}", e);
-    }
-
     // Single instance lock
     let _guard = match single_instance::try_acquire() {
         Ok(guard) => guard,
@@ -56,6 +43,11 @@ fn main() {
             return;
         }
     };
+
+    // Application directories — created once at startup.
+    if let Err(e) = config::ensure_app_dirs() {
+        log::warn!("Failed to create application directories: {}", e);
+    }
 
     // Monitor thread control signal
     let stop_signal = Arc::new(AtomicBool::new(false));
@@ -113,7 +105,10 @@ fn init_logging() {
     if log_path.exists() {
         if let Ok(meta) = fs::metadata(&log_path) {
             if meta.len() > 1_000_000 {
-                let _ = fs::remove_file(&log_path);
+                let _ = fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(&log_path);
             }
         }
     }
@@ -158,6 +153,9 @@ impl log::Log for FileLogger {
                 record.target(),
                 record.args()
             );
+            if record.level() <= log::Level::Warn {
+                let _ = guard.flush();
+            }
         }
     }
 
