@@ -1092,25 +1092,6 @@ export function AIPage() {
                   ),
                 },
                 {
-                  key: 'showThumbsOnAi' as const,
-                  label: t('Kciuki na sesjach AI', 'Thumbs on AI sessions'),
-                  desc: t(
-                    'Pokaż przyciski akceptuj/odrzuć na sesjach przypisanych przez AI',
-                    'Show confirm/reject buttons on AI-assigned sessions',
-                  ),
-                },
-                {
-                  key: 'showThumbsOnAll' as const,
-                  label: t(
-                    'Kciuki na wszystkich sesjach',
-                    'Thumbs on all sessions',
-                  ),
-                  desc: t(
-                    'Pokaż przyciski feedbacku na każdej przypisanej sesji (nie tylko AI)',
-                    'Show feedback buttons on every assigned session (not just AI)',
-                  ),
-                },
-                {
                   key: 'showSuggestions' as const,
                   label: t('Sugestie AI', 'AI suggestions'),
                   desc: t(

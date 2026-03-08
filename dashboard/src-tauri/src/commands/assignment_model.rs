@@ -2389,67 +2389,6 @@ pub async fn get_session_score_breakdown(
     })
 }
 
-/// Confirm that an AI-assigned session is correct (thumbs up).
-#[command]
-pub async fn confirm_session_assignment(app: AppHandle, session_id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-
-    let session = conn
-        .query_row(
-            "SELECT app_id, project_id FROM sessions WHERE id = ?1",
-            rusqlite::params![session_id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?)),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?
-        .ok_or("Session not found")?;
-
-    let (app_id, project_id) = session;
-    let project_id = project_id.ok_or("Session has no project assigned")?;
-
-    conn.execute(
-        "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
-         VALUES (?1, ?2, ?3, ?3, 'ai_suggestion_accept', datetime('now'))",
-        rusqlite::params![session_id, app_id, project_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    increment_feedback_counter(&conn);
-    Ok(())
-}
-
-/// Reject an AI-assigned session and reassign to a different project (thumbs down).
-#[command]
-pub async fn reject_session_assignment(
-    app: AppHandle,
-    session_id: i64,
-    new_project_id: Option<i64>,
-) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-
-    let session = conn
-        .query_row(
-            "SELECT app_id, project_id FROM sessions WHERE id = ?1",
-            rusqlite::params![session_id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, Option<i64>>(1)?)),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?
-        .ok_or("Session not found")?;
-
-    let (app_id, old_project_id) = session;
-
-    conn.execute(
-        "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
-         VALUES (?1, ?2, ?3, ?4, 'ai_suggestion_reject', datetime('now'))",
-        rusqlite::params![session_id, app_id, old_project_id, new_project_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    increment_feedback_counter(&conn);
-    Ok(())
-}
-
 /// Get the current feedback weight setting.
 #[command]
 pub async fn get_feedback_weight(app: AppHandle) -> Result<f64, String> {

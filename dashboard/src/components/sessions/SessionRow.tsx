@@ -7,6 +7,8 @@ import {
   MessageSquare,
   BarChart3,
   Scissors,
+  Check,
+  X,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatDuration } from '@/lib/utils';
@@ -74,8 +76,6 @@ export interface SessionRowProps {
   isLoadingScoreBreakdown?: boolean;
   onAcceptSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
   onRejectSuggestion?: (s: SessionWithApp, e: React.MouseEvent) => void;
-  onConfirmAssignment?: (s: SessionWithApp, e: React.MouseEvent) => void;
-  onRejectAssignment?: (s: SessionWithApp, e: React.MouseEvent) => void;
   isSplittable?: boolean;
   onSplitClick?: (s: SessionWithApp) => void;
   className?: string;
@@ -95,8 +95,6 @@ export const SessionRow = memo(function SessionRow({
   isLoadingScoreBreakdown,
   onAcceptSuggestion,
   onRejectSuggestion,
-  onConfirmAssignment,
-  onRejectAssignment,
   isSplittable,
   onSplitClick,
   className = '',
@@ -107,10 +105,6 @@ export const SessionRow = memo(function SessionRow({
     s.project_name === null &&
     s.suggested_project_id != null &&
     !dismissedSuggestions.has(s.id);
-  const showFeedbackThumbs =
-    s.project_id != null &&
-    (ind.showThumbsOnAll || (ind.showThumbsOnAi && !!s.ai_assigned));
-
   if (isCompact) {
     return (
       <div
@@ -191,7 +185,7 @@ export const SessionRow = memo(function SessionRow({
                         className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100"
                         onClick={(e) => onAcceptSuggestion(s, e)}
                       >
-                        👍
+                        <Check className="h-3 w-3" />
                       </button>
                     )}
                     {onRejectSuggestion && (
@@ -202,7 +196,7 @@ export const SessionRow = memo(function SessionRow({
                         className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100"
                         onClick={(e) => onRejectSuggestion(s, e)}
                       >
-                        👎
+                        <X className="h-3 w-3" />
                       </button>
                     )}
                   </div>
@@ -211,26 +205,6 @@ export const SessionRow = memo(function SessionRow({
               {ind.showAiBadge && s.ai_assigned && !isSuggested && (
                 <Sparkles className="h-3 w-3 text-violet-400/60 shrink-0" />
               )}
-              {showFeedbackThumbs &&
-                onConfirmAssignment &&
-                onRejectAssignment && (
-                  <div className="flex items-center gap-0.5">
-                    <button
-                      title={t('sessions.menu.accept_suggestion')}
-                      className="p-0.5 hover:bg-emerald-500/20 rounded cursor-pointer text-emerald-300 opacity-80 hover:opacity-100"
-                      onClick={(e) => onConfirmAssignment(s, e)}
-                    >
-                      👍
-                    </button>
-                    <button
-                      title={t('sessions.menu.reject_suggestion')}
-                      className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-80 hover:opacity-100"
-                      onClick={(e) => onRejectAssignment(s, e)}
-                    >
-                      👎
-                    </button>
-                  </div>
-                )}
               {ind.showScoreBreakdown &&
                 (() => {
                   const { targetName, conf, isTied } = computeConfidence(
@@ -473,7 +447,7 @@ export const SessionRow = memo(function SessionRow({
                     className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100 text-[10px]"
                     onClick={(e) => onAcceptSuggestion(s, e)}
                   >
-                    👍
+                    <Check className="h-3.5 w-3.5" />
                   </button>
                 )}
                 {onRejectSuggestion && (
@@ -482,28 +456,10 @@ export const SessionRow = memo(function SessionRow({
                     className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100 text-[10px]"
                     onClick={(e) => onRejectSuggestion(s, e)}
                   >
-                    👎
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
-            </div>
-          )}
-          {showFeedbackThumbs && onConfirmAssignment && onRejectAssignment && (
-            <div className="flex items-center gap-0.5 rounded border border-border/40 bg-secondary/20 px-1 py-0.5">
-              <button
-                title={t('sessions.menu.accept_suggestion')}
-                className="p-0.5 hover:bg-emerald-500/20 rounded cursor-pointer text-emerald-300 opacity-80 hover:opacity-100 text-[10px]"
-                onClick={(e) => onConfirmAssignment(s, e)}
-              >
-                👍
-              </button>
-              <button
-                title={t('sessions.menu.reject_suggestion')}
-                className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-80 hover:opacity-100 text-[10px]"
-                onClick={(e) => onRejectAssignment(s, e)}
-              >
-                👎
-              </button>
             </div>
           )}
           <div className="flex items-center">

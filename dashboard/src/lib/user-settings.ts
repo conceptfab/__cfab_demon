@@ -252,16 +252,12 @@ export const saveAppearanceSettings = appearanceManager.save;
 export interface SessionIndicatorSettings {
   showAiBadge: boolean;
   showScoreBreakdown: boolean;
-  showThumbsOnAi: boolean;
-  showThumbsOnAll: boolean;
   showSuggestions: boolean;
 }
 const INDICATOR_STORAGE_KEY = 'timeflow.settings.session-indicators';
 export const DEFAULT_INDICATOR_SETTINGS: SessionIndicatorSettings = {
   showAiBadge: true,
   showScoreBreakdown: true,
-  showThumbsOnAi: true,
-  showThumbsOnAll: false,
   showSuggestions: true,
 };
 const indicatorManager = createSettingsManager<SessionIndicatorSettings>({
@@ -276,14 +272,6 @@ const indicatorManager = createSettingsManager<SessionIndicatorSettings>({
       typeof parsed.showScoreBreakdown === 'boolean'
         ? parsed.showScoreBreakdown
         : DEFAULT_INDICATOR_SETTINGS.showScoreBreakdown,
-    showThumbsOnAi:
-      typeof parsed.showThumbsOnAi === 'boolean'
-        ? parsed.showThumbsOnAi
-        : DEFAULT_INDICATOR_SETTINGS.showThumbsOnAi,
-    showThumbsOnAll:
-      typeof parsed.showThumbsOnAll === 'boolean'
-        ? parsed.showThumbsOnAll
-        : DEFAULT_INDICATOR_SETTINGS.showThumbsOnAll,
     showSuggestions:
       typeof parsed.showSuggestions === 'boolean'
         ? parsed.showSuggestions

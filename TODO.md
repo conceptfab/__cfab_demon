@@ -11,7 +11,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-- usun definitwynie logikę kciuków - jesli user recznie nie przypisze sesji do projektu to jest kciuk w góre, jeśli to zrobi to jest kara - kciuk w dół
+<!-- - usun definitwynie logikę/funkcje kciuków - jesli user recznie nie przypisze sesji do projektu to jest kciuk w góre, jeśli to zrobi to jest kara - kciuk w dół -->
 
 
 

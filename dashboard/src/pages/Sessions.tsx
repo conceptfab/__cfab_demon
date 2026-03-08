@@ -20,8 +20,6 @@ import {
   analyzeSessionProjects,
   analyzeSessionsSplittable,
   splitSessionMulti as splitSessionMultiInvoke,
-  confirmSessionAssignment,
-  rejectSessionAssignment,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { formatDuration, formatMultiplierLabel } from '@/lib/utils';
@@ -861,30 +859,6 @@ export function Sessions() {
     [assignSessions],
   );
 
-  const handleConfirmAssignment = useCallback(
-    async (session: SessionWithApp, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        await confirmSessionAssignment(session.id);
-      } catch (err) {
-        console.error('Failed to confirm session assignment:', err);
-      }
-    },
-    [],
-  );
-
-  const handleRejectAssignment = useCallback(
-    async (session: SessionWithApp, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        await rejectSessionAssignment(session.id, null);
-      } catch (err) {
-        console.error('Failed to reject session assignment:', err);
-      }
-    },
-    [],
-  );
-
   const loadScoreBreakdown = useCallback(
     async (sessionId: number): Promise<ScoreBreakdown> => {
       const cached = aiBreakdowns.get(sessionId);
@@ -1564,8 +1538,6 @@ export function Sessions() {
                     isLoadingScoreBreakdown={loadingBreakdownIds.has(s.id)}
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
-                    onConfirmAssignment={handleConfirmAssignment}
-                    onRejectAssignment={handleRejectAssignment}
                     isSplittable={isSplittable}
                     onSplitClick={openMultiSplitModal}
                     className="!mb-0"
@@ -1602,8 +1574,6 @@ export function Sessions() {
                     }
                     onAcceptSuggestion={handleAcceptSuggestion}
                     onRejectSuggestion={handleRejectSuggestion}
-                    onConfirmAssignment={handleConfirmAssignment}
-                    onRejectAssignment={handleRejectAssignment}
                     isSplittable={isSplittable}
                     onSplitClick={openMultiSplitModal}
                     className="!mb-0"

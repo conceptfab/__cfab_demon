@@ -132,8 +132,6 @@ pub fn run() {
             commands::auto_run_if_needed,
             commands::apply_deterministic_assignment,
             commands::get_session_score_breakdown,
-            commands::confirm_session_assignment,
-            commands::reject_session_assignment,
             commands::get_feedback_weight,
             commands::set_feedback_weight,
             commands::append_sync_log,
