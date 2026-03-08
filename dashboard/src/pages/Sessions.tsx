@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft,
-  ChevronRight,
   Sparkles,
   MessageSquare,
   CircleDollarSign,
@@ -29,6 +27,8 @@ import { addDays, format, parseISO, subDays } from 'date-fns';
 import { Virtuoso } from 'react-virtuoso';
 import { SessionRow } from '@/components/sessions/SessionRow';
 import { MultiSplitSessionModal } from '@/components/sessions/MultiSplitSessionModal';
+import { SessionsToolbar } from '@/components/sessions/SessionsToolbar';
+import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjectContextMenu';
 import type {
   DateRange,
   MultiProjectAnalysis,
@@ -1396,100 +1396,39 @@ export function Sessions() {
   const selectedSplitAnalysisLoading = multiSplitSession
     ? splitAnalysisLoadingIds.has(multiSplitSession.id)
     : false;
+  const sessionsSummaryText = t('sessions.summary', {
+    sessions: sessions.length,
+    ai: aiSessionsCount,
+    projects: groupedByProject.length,
+  });
+  const activeRangeLabel =
+    activeDateRange.start === activeDateRange.end
+      ? format(parseISO(activeDateRange.start), 'MMM d', { locale })
+      : `${format(parseISO(activeDateRange.start), 'MMM d', { locale })} - ${format(parseISO(activeDateRange.end), 'MMM d', { locale })}`;
 
   return (
     <div className="space-y-4">
-      {/* Filters & Mode Toggle */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <p className="text-xs text-muted-foreground font-medium flex items-baseline gap-1">
-          {t('sessions.summary', {
-            sessions: sessions.length,
-            ai: aiSessionsCount,
-            projects: groupedByProject.length,
-          })}
-          {activeProjectId === 'unassigned' && (
-            <span className="text-amber-400/80 ml-2 font-bold select-none">
-              {t('sessions.unassigned_only')}
-            </span>
-          )}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex bg-secondary/20 p-0.5 rounded border border-border/20">
-            <Button
-              variant={rangeMode === 'daily' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-[10px] px-3 font-bold"
-              onClick={() => {
-                setRangeMode('daily');
-                setOverrideDateRange(null);
-              }}
-            >
-              {t('sessions.range.today')}
-            </Button>
-            <Button
-              variant={rangeMode === 'weekly' ? 'secondary' : 'ghost'}
-              size="sm"
-              className="h-7 text-[10px] px-3 font-bold"
-              onClick={() => {
-                setRangeMode('weekly');
-                setOverrideDateRange(null);
-              }}
-            >
-              {t('sessions.range.week')}
-            </Button>
-          </div>
-          <div className="mx-1 h-4 w-px bg-border/40" />
-          <div className="flex items-center gap-1">
-            <AppTooltip content={t('layout.tooltips.previous_period')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => shiftDateRange(-1)}
-              >
-                <ChevronLeft className="h-3.5 w-3.5" />
-              </Button>
-            </AppTooltip>
-            <span className="text-[10px] font-mono font-bold text-muted-foreground/80 min-w-[5rem] text-center">
-              {activeDateRange.start === activeDateRange.end
-                ? format(parseISO(activeDateRange.start), 'MMM d', { locale })
-                : `${format(parseISO(activeDateRange.start), 'MMM d', { locale })} - ${format(parseISO(activeDateRange.end), 'MMM d', { locale })}`}
-            </span>
-            <AppTooltip content={t('layout.tooltips.next_period')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => shiftDateRange(1)}
-                disabled={!canShiftForward}
-              >
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-            </AppTooltip>
-          </div>
-          <div className="mx-1 h-4 w-px bg-border/40" />
-          <div className="flex bg-secondary/30 p-0.5 rounded border border-border/20">
-            <button
-              onClick={() => setViewMode('ai_detailed')}
-              className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'ai_detailed' ? 'bg-violet-500/20 text-violet-300 shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t('sessions.view.ai_data')}
-            </button>
-            <button
-              onClick={() => setViewMode('detailed')}
-              className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'detailed' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t('sessions.view.detailed')}
-            </button>
-            <button
-              onClick={() => setViewMode('compact')}
-              className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${viewMode === 'compact' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t('sessions.view.compact')}
-            </button>
-          </div>
-        </div>
-      </div>
+      <SessionsToolbar
+        summaryText={sessionsSummaryText}
+        showUnassignedOnly={activeProjectId === 'unassigned'}
+        unassignedOnlyText={t('sessions.unassigned_only')}
+        rangeMode={rangeMode}
+        onRangeModeChange={setRangeMode}
+        onClearOverrideRange={() => setOverrideDateRange(null)}
+        rangeTodayLabel={t('sessions.range.today')}
+        rangeWeekLabel={t('sessions.range.week')}
+        previousTooltip={t('layout.tooltips.previous_period')}
+        nextTooltip={t('layout.tooltips.next_period')}
+        rangeLabel={activeRangeLabel}
+        onShiftBackward={() => shiftDateRange(-1)}
+        onShiftForward={() => shiftDateRange(1)}
+        canShiftForward={canShiftForward}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        viewAiDataLabel={t('sessions.view.ai_data')}
+        viewDetailedLabel={t('sessions.view.detailed')}
+        viewCompactLabel={t('sessions.view.compact')}
+      />
 
       {unassignedGroup &&
         (activeProjectId === null || activeProjectId === 'unassigned') && (
@@ -1949,38 +1888,26 @@ export function Sessions() {
         </div>
       )}
 
-      {projectCtxMenu && (
-        <div
-          ref={projectCtxRef}
-          className="fixed z-[130] min-w-[240px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
-          style={{ left: projectCtxMenu.x, top: projectCtxMenu.y }}
-        >
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            {t('sessions.menu.project_label')}{' '}
-            <span className="font-medium text-foreground">
-              {displayProjectName(
+      <SessionsProjectContextMenu
+        menu={projectCtxMenu}
+        menuRef={projectCtxRef}
+        projectLabel={t('sessions.menu.project_label')}
+        projectNameDisplay={
+          projectCtxMenu
+            ? displayProjectName(
                 projectCtxMenu.projectName,
                 projectCtxMenu.projectId,
-              )}
-            </span>
-          </div>
-          <button
-            type="button"
-            disabled={projectCtxMenu.projectId == null}
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-            onClick={() => {
-              if (projectCtxMenu.projectId == null) return;
-              setProjectPageId(projectCtxMenu.projectId);
-              setCurrentPage('project-card');
-              setProjectCtxMenu(null);
-            }}
-          >
-            {projectCtxMenu.projectId == null
-              ? t('sessions.menu.no_linked_project_card')
-              : t('sessions.menu.go_to_project_card')}
-          </button>
-        </div>
-      )}
+              )
+            : ''
+        }
+        goToProjectCardLabel={t('sessions.menu.go_to_project_card')}
+        noLinkedProjectCardLabel={t('sessions.menu.no_linked_project_card')}
+        onNavigateToProject={(projectId) => {
+          setProjectPageId(projectId);
+          setCurrentPage('project-card');
+        }}
+        onClose={() => setProjectCtxMenu(null)}
+      />
 
       <PromptModal
         open={promptConfig !== null}

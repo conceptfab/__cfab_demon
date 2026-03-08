@@ -25,15 +25,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ProjectSessionDetailDialog } from '@/components/project/ProjectSessionDetailDialog';
+import { ProjectManualSessionsCard } from '@/components/project/ProjectManualSessionsCard';
+import { ProjectRecentCommentsCard } from '@/components/project/ProjectRecentCommentsCard';
 import {
   getProjects,
   getProjectExtraInfo,
@@ -1022,102 +1019,37 @@ export function ProjectPage() {
         />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MousePointerClick className="h-4 w-4 text-sky-400" />
-                  {tt('Sesje ręczne', 'Manual Sessions')}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setEditManualSession(null);
-                    setSessionDialogDate(undefined);
-                    setSessionDialogOpen(true);
-                  }}
-                  className="h-6 text-[10px] font-bold text-sky-400 hover:bg-sky-400/10"
-                >
-                  {tt('+ Dodaj ręczną', '+ Add Manual')}
-                </Button>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {manualSessions.map((ms) => (
-                  <div
-                    key={ms.id}
-                    className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/40 cursor-pointer hover:bg-secondary/30 transition-colors"
-                    onClick={() => {
-                      setEditManualSession(ms);
-                      setSessionDialogOpen(true);
-                    }}
-                  >
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">{ms.title}</p>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                        {new Date(ms.start_time).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-mono text-emerald-400">
-                        {formatDuration(ms.duration_seconds)}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground uppercase">
-                        {tt('Wartość dodana', 'Value Added')}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {manualSessions.length === 0 && (
-                  <p className="text-sm text-muted-foreground italic text-center py-4">
-                    {tt(
-                      'Brak zapisanych sesji ręcznych',
-                      'No manual sessions recorded',
-                    )}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <ProjectManualSessionsCard
+            sessions={manualSessions}
+            labels={{
+              title: tt('Sesje ręczne', 'Manual Sessions'),
+              addManual: tt('+ Dodaj ręczną', '+ Add Manual'),
+              valueAdded: tt('Wartość dodana', 'Value Added'),
+              emptyText: tt(
+                'Brak zapisanych sesji ręcznych',
+                'No manual sessions recorded',
+              ),
+            }}
+            formatDuration={formatDuration}
+            onAddManual={() => {
+              setEditManualSession(null);
+              setSessionDialogDate(undefined);
+              setSessionDialogOpen(true);
+            }}
+            onEditManual={(session) => {
+              setEditManualSession(session);
+              setSessionDialogOpen(true);
+            }}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-sky-500" />
-                {tt('Ostatnie komentarze', 'Recent Comments')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {recentComments.map((s) => (
-                  <div
-                    key={s.key}
-                    className="p-3 rounded-lg bg-secondary/20 border border-border/40 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground">
-                        {new Date(s.start_time).toLocaleDateString()}
-                      </span>
-                      <span className="text-[10px] font-mono text-emerald-400/70">
-                        {formatDuration(s.duration_seconds)}
-                      </span>
-                    </div>
-                    <p className="text-sm text-sky-100 italic">"{s.comment}"</p>
-                    <p className="text-[10px] text-muted-foreground text-right">
-                      - {s.source}
-                    </p>
-                  </div>
-                ))}
-                {recentComments.length === 0 && (
-                  <p className="text-sm text-muted-foreground italic text-center py-4">
-                    {tt('Brak komentarzy', 'No comments found')}
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <ProjectRecentCommentsCard
+            comments={recentComments}
+            labels={{
+              title: tt('Ostatnie komentarze', 'Recent Comments'),
+              emptyText: tt('Brak komentarzy', 'No comments found'),
+            }}
+            formatDuration={formatDuration}
+          />
         </div>
 
         <Card>
@@ -1684,165 +1616,38 @@ export function ProjectPage() {
         confirmLabel={tt('Zapisz', 'Save')}
       />
 
-      <Dialog open={sessionDetailOpen} onOpenChange={setSessionDetailOpen}>
-        <DialogContent className="max-w-2xl bg-[#1a1b26] border-white/10 text-white">
-          {selectedSessionDetail && (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-lg">
-                  <div
-                    className="h-3 w-3 rounded-full"
-                    style={{
-                      backgroundColor:
-                        selectedSessionDetail.project_color || '#64748b',
-                    }}
-                  />
-                  <span>{tt('Szczegóły sesji', 'Session Details')}</span>
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 mt-4">
-                <div className="rounded-md border border-white/5 bg-white/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    {tt('Projekt', 'Project')}
-                  </p>
-                  <p className="truncate text-sm font-medium mt-1">
-                    {selectedSessionDetail.project_name ||
-                      tt('Nieprzypisane', 'Unassigned')}
-                  </p>
-                </div>
-                <div className="rounded-md border border-white/5 bg-white/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    {tt('Aplikacja / Aktywność', 'App / Activity')}
-                  </p>
-                  <p className="truncate text-sm font-medium mt-1">
-                    {selectedSessionDetail.isManual
-                      ? tt('Sesja ręczna', 'Manual Session')
-                      : selectedSessionDetail.app_name}
-                  </p>
-                </div>
-                <div className="rounded-md border border-white/5 bg-white/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    {tt('Zakres czasu', 'Time Range')}
-                  </p>
-                  <p className="text-sm font-mono mt-1">
-                    {format(
-                      parseISO(selectedSessionDetail.start_time),
-                      'HH:mm',
-                    )}{' '}
-                    -{' '}
-                    {format(parseISO(selectedSessionDetail.end_time), 'HH:mm')}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {format(
-                      parseISO(selectedSessionDetail.start_time),
-                      'MMM do, yyyy',
-                    )}
-                  </p>
-                </div>
-                <div className="rounded-md border border-white/5 bg-white/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    {tt('Czas trwania', 'Duration')}
-                  </p>
-                  <p className="text-sm font-mono mt-1 text-emerald-400">
-                    {formatDuration(selectedSessionDetail.duration_seconds)}
-                  </p>
-                </div>
-                <div className="rounded-md border border-white/5 bg-white/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    {tt('Mnożnik stawki', 'Rate Multiplier')}
-                  </p>
-                  <p className="text-sm font-medium mt-1">
-                    x{(selectedSessionDetail.rate_multiplier || 1).toFixed(2)}
-                  </p>
-                </div>
-                <div className="rounded-md border border-white/5 bg-white/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                    ID
-                  </p>
-                  <p className="text-sm font-mono mt-1 text-muted-foreground">
-                    #{selectedSessionDetail.id}{' '}
-                    {selectedSessionDetail.isManual
-                      ? tt('(Ręczna)', '(Manual)')
-                      : ''}
-                  </p>
-                </div>
-              </div>
-
-              {selectedSessionDetail.comment && (
-                <div className="mt-4 rounded-md border border-sky-500/20 bg-sky-500/5 p-3">
-                  <p className="text-[10px] uppercase tracking-wider text-sky-400 font-bold flex items-center gap-1.5">
-                    <MessageSquare className="h-3 w-3" />
-                    {tt('Komentarz', 'Comment')}
-                  </p>
-                  <p className="mt-1 text-sm italic text-sky-100/90 leading-relaxed">
-                    "{selectedSessionDetail.comment}"
-                  </p>
-                </div>
-              )}
-
-              {selectedSessionDetail.files &&
-                selectedSessionDetail.files.length > 0 && (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                      {tt('Użyte pliki', 'Files Accessed')}
-                    </p>
-                    <div className="max-h-[200px] overflow-y-auto rounded-md border border-white/5 bg-white/5 p-2 space-y-1">
-                      {selectedSessionDetail.files.map((f, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between gap-4 px-2 py-1.5 rounded hover:bg-white/5 text-[12px] border-b border-white/5 last:border-0"
-                        >
-                          <span
-                            className="truncate text-muted-foreground/90 font-mono"
-                            title={f.file_name}
-                          >
-                            {f.file_name}
-                          </span>
-                          <span className="shrink-0 text-emerald-400 font-mono opacity-80">
-                            {formatDuration(f.total_seconds)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-              <div className="mt-6 flex justify-end gap-3">
-                <Button
-                  variant="outline"
-                  className="border-white/10"
-                  onClick={() => setSessionDetailOpen(false)}
-                >
-                  {tt('Zamknij', 'Close')}
-                </Button>
-                {selectedSessionDetail.isManual ? (
-                  <Button
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    onClick={() => {
-                      setEditManualSession(selectedSessionDetail);
-                      setSessionDetailOpen(false);
-                      setSessionDialogOpen(true);
-                    }}
-                  >
-                    {tt('Edytuj sesję ręczną', 'Edit Manual Session')}
-                  </Button>
-                ) : (
-                  <Button
-                    className="bg-sky-600 hover:bg-sky-700 text-white"
-                    onClick={() => {
-                      handleEditCommentForSession(selectedSessionDetail);
-                      setSessionDetailOpen(false);
-                    }}
-                  >
-                    {tt('Edytuj komentarz', 'Edit Comment')}
-                  </Button>
-                )}
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ProjectSessionDetailDialog
+        open={sessionDetailOpen}
+        session={selectedSessionDetail}
+        labels={{
+          title: tt('Szczegóły sesji', 'Session Details'),
+          project: tt('Projekt', 'Project'),
+          unassigned: tt('Nieprzypisane', 'Unassigned'),
+          appActivity: tt('Aplikacja / Aktywność', 'App / Activity'),
+          manualSession: tt('Sesja ręczna', 'Manual Session'),
+          timeRange: tt('Zakres czasu', 'Time Range'),
+          duration: tt('Czas trwania', 'Duration'),
+          rateMultiplier: tt('Mnożnik stawki', 'Rate Multiplier'),
+          id: 'ID',
+          manualTag: tt('(Ręczna)', '(Manual)'),
+          comment: tt('Komentarz', 'Comment'),
+          filesAccessed: tt('Użyte pliki', 'Files Accessed'),
+          close: tt('Zamknij', 'Close'),
+          editManualSession: tt('Edytuj sesję ręczną', 'Edit Manual Session'),
+          editComment: tt('Edytuj komentarz', 'Edit Comment'),
+        }}
+        formatDuration={formatDuration}
+        onOpenChange={setSessionDetailOpen}
+        onEditManualSession={(session) => {
+          setEditManualSession(session);
+          setSessionDetailOpen(false);
+          setSessionDialogOpen(true);
+        }}
+        onEditComment={(session) => {
+          handleEditCommentForSession(session);
+          setSessionDetailOpen(false);
+        }}
+      />
 
       <ManualSessionDialog
         open={sessionDialogOpen}

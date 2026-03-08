@@ -3,12 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import {
   Brain,
-  Eye,
   PlayCircle,
-  RotateCcw,
   Save,
   Trash2,
-  WandSparkles,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,6 +56,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { AiSessionIndicatorsCard } from '@/components/ai/AiSessionIndicatorsCard';
+import { AiBatchActionsCard } from '@/components/ai/AiBatchActionsCard';
+import { AiHowToCard } from '@/components/ai/AiHowToCard';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -500,6 +500,96 @@ export function AIPage() {
   );
 
   const metricsSummary = metrics?.summary ?? null;
+  const indicatorItems = [
+    {
+      key: 'showAiBadge' as const,
+      label: t('Odznaka AI', 'AI badge'),
+      description: t(
+        'Pokaż ikonę iskry na sesjach przypisanych przez AI auto-safe',
+        'Show sparkle icon on sessions assigned by AI auto-safe',
+      ),
+    },
+    {
+      key: 'showSuggestions' as const,
+      label: t('Sugestie AI', 'AI suggestions'),
+      description: t(
+        'Pokaż sugestie projektu dla nieprzypisanych sesji',
+        'Show project suggestions for unassigned sessions',
+      ),
+    },
+    {
+      key: 'showScoreBreakdown' as const,
+      label: t('Przycisk rozbicia punktacji', 'Score breakdown button'),
+      description: t(
+        'Pokaż przycisk szczegółów punktacji (BarChart3) na każdej sesji',
+        'Show the score details button (BarChart3) on each session',
+      ),
+    },
+  ];
+  const howToSections = [
+    {
+      title: t('Kiedy trenować model', 'When to train the model'),
+      paragraphs: [
+        t(
+          'Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.',
+          'Train after a larger series of manual corrections, after importing new data, or when the reminder indicates that the model needs refreshing.',
+        ),
+        t(
+          'Przypomnienie pojawia się automatycznie, gdy masz co najmniej {{feedbackTrigger}} nowych korekt lub minęło ponad {{retrainHours}}h od ostatniego treningu i są nowe korekty.',
+          'The reminder appears automatically when: you have at least {{feedbackTrigger}} new corrections or over {{retrainHours}}h passed since last training and there are new corrections.',
+          {
+            feedbackTrigger: FEEDBACK_TRIGGER,
+            retrainHours: RETRAIN_INTERVAL_HOURS,
+          },
+        ),
+      ],
+    },
+    {
+      title: t('Znaczenie parametrów', 'What parameters mean'),
+      paragraphs: [
+        t(
+          'Mode: off wyłącza sugestie, suggest pokazuje sugestie bez auto-zmian, auto_safe pozwala na automatyczne przypisania tylko przy wysokiej pewności.',
+          'Mode: off disables suggestions, suggest shows suggestions without auto-changes, auto_safe allows automatic assignments only with high confidence.',
+        ),
+        t(
+          'Suggest Min Confidence: minimalna pewność, by pokazać sugestię w sesjach.',
+          'Suggest Min Confidence: minimum confidence to show suggestion in sessions.',
+        ),
+        t(
+          'Auto-safe Min Confidence: wymagany próg pewności dla automatycznego przypisania.',
+          'Auto-safe Min Confidence: required confidence threshold for automatic assignment.',
+        ),
+        t(
+          'Auto-safe Min Evidence: ile sygnałów (np. app/token/historia czasu) musi potwierdzić decyzję.',
+          'Auto-safe Min Evidence: how many signals (e.g. app/token/time history) must confirm decision.',
+        ),
+        t(
+          'Session Limit: ile nieprzypisanych sesji auto-safe przeskanuje w jednej paczce.',
+          'Session Limit: how many unassigned sessions auto-safe will scan in one batch.',
+        ),
+        t(
+          'Feedback Weight: jak mocno ręczne korekty (kciuki/reassign) wpływają na model podczas treningu. Wyższa wartość = większy wpływ korekt. Domyślnie: 5.',
+          'Feedback Weight: how much manual corrections (thumbs up/down, reassignments) influence the model during training. Higher = corrections dominate more. Default: 5.',
+        ),
+      ],
+    },
+    {
+      title: t(
+        'Rekomendowane ustawienia startowe',
+        'Recommended starting settings',
+      ),
+      paragraphs: [
+        t(
+          'Zacznij od mode=suggest, suggest=0.60, auto=0.85, evidence=3. Gdy sugestie są trafne, włącz auto_safe.',
+          'Start with mode=suggest, suggest=0.60, auto=0.85, evidence=3. When suggestions are accurate, enable auto_safe.',
+        ),
+        t(
+          'Jeśli auto-safe robi błędne przypisania: podnieś Auto-safe Min Confidence do 0.9+ albo Min Evidence do 4-5.',
+          'If auto-safe makes wrong assignments: raise Auto-safe Min Confidence to 0.9+ or Min Evidence to 4-5.',
+        ),
+      ],
+    },
+  ];
 
   return (
     <>
@@ -1067,233 +1157,53 @@ export function AIPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Eye className="h-4 w-4" />
-              {t('Wskaźniki sesji', 'Session Indicators')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              {t(
-                'Skonfiguruj, które wskaźniki AI i kontrolki feedbacku są widoczne w wierszach sesji.',
-                'Configure which AI indicators and feedback controls are visible on session rows.',
-              )}
-            </p>
-            <div className="space-y-3">
-              {[
-                {
-                  key: 'showAiBadge' as const,
-                  label: t('Odznaka AI', 'AI badge'),
-                  desc: t(
-                    'Pokaż ikonę iskry na sesjach przypisanych przez AI auto-safe',
-                    'Show sparkle icon on sessions assigned by AI auto-safe',
-                  ),
-                },
-                {
-                  key: 'showSuggestions' as const,
-                  label: t('Sugestie AI', 'AI suggestions'),
-                  desc: t(
-                    'Pokaż sugestie projektu dla nieprzypisanych sesji',
-                    'Show project suggestions for unassigned sessions',
-                  ),
-                },
-                {
-                  key: 'showScoreBreakdown' as const,
-                  label: t(
-                    'Przycisk rozbicia punktacji',
-                    'Score breakdown button',
-                  ),
-                  desc: t(
-                    'Pokaż przycisk szczegółów punktacji (BarChart3) na każdej sesji',
-                    'Show the score details button (BarChart3) on each session',
-                  ),
-                },
-              ].map(({ key, label, desc }) => (
-                <label
-                  key={key}
-                  className="flex items-start gap-3 cursor-pointer group"
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
-                    checked={indicators[key]}
-                    onChange={(e) => {
-                      const next = { ...indicators, [key]: e.target.checked };
-                      setIndicators(next);
-                      saveIndicatorSettings(next);
-                    }}
-                  />
-                  <div>
-                    <span className="text-sm font-medium group-hover:text-foreground transition-colors">
-                      {label}
-                    </span>
-                    <p className="text-xs text-muted-foreground">{desc}</p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <AiSessionIndicatorsCard
+          title={t('Wskaźniki sesji', 'Session Indicators')}
+          description={t(
+            'Skonfiguruj, które wskaźniki AI i kontrolki feedbacku są widoczne w wierszach sesji.',
+            'Configure which AI indicators and feedback controls are visible on session rows.',
+          )}
+          items={indicatorItems}
+          indicators={indicators}
+          onToggle={(key, checked) => {
+            const next = { ...indicators, [key]: checked };
+            setIndicators(next);
+            saveIndicatorSettings(next);
+          }}
+        />
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">
-              {t('Akcje paczkowe auto-safe', 'Batch auto-safe actions')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <label className="block max-w-xs space-y-1.5 text-sm">
-              <span className="text-xs text-muted-foreground">
-                {t('Limit sesji na przebieg', 'Session limit per run')}
-              </span>
-              <input
-                type="number"
-                min={1}
-                max={10000}
-                step={1}
-                className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                value={autoLimit}
-                onChange={(e) => {
-                  const next = Number.parseInt(e.target.value, 10);
-                  const value = Number.isNaN(next) ? DEFAULT_AUTO_LIMIT : next;
-                  setAutoLimit(value);
-                  saveAutoLimit(value);
-                }}
-              />
-            </label>
+        <AiBatchActionsCard
+          title={t('Akcje paczkowe auto-safe', 'Batch auto-safe actions')}
+          sessionLimitLabel={t('Limit sesji na przebieg', 'Session limit per run')}
+          autoLimit={autoLimit}
+          onAutoLimitChange={(value) => {
+            const nextValue = Math.max(1, Math.min(10_000, value));
+            setAutoLimit(nextValue);
+            saveAutoLimit(nextValue);
+          }}
+          runLabel={t('Uruchom auto-safe', 'Run auto-safe')}
+          runStartingLabel={t('Uruchamianie...', 'Starting...')}
+          rollbackLabel={t(
+            'Cofnij ostatnią paczkę auto-safe',
+            'Rollback last auto-safe batch',
+          )}
+          rollbackRunningLabel={t('Cofanie...', 'Rolling back...')}
+          rollbackHint={t(
+            'Cofanie przywraca tylko sesje, które od przebiegu auto-safe nie zostały ręcznie zmienione.',
+            'Rollback only reverts sessions that have not been manually changed since the auto-safe run.',
+          )}
+          modeIsAutoSafe={status?.mode === 'auto_safe'}
+          runningAuto={runningAuto}
+          rollingBack={rollingBack}
+          canRollbackLastRun={Boolean(status?.can_rollback_last_auto_run)}
+          onRun={handleRunAutoSafe}
+          onRollback={handleRollback}
+        />
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                className="h-9"
-                onClick={handleRunAutoSafe}
-                disabled={runningAuto || status?.mode !== 'auto_safe'}
-              >
-                <WandSparkles className="mr-2 h-4 w-4" />
-                {runningAuto
-                  ? t('Uruchamianie...', 'Starting...')
-                  : t('Uruchom auto-safe', 'Run auto-safe')}
-              </Button>
-
-              <Button
-                variant="outline"
-                className="h-9"
-                onClick={handleRollback}
-                disabled={rollingBack || !status?.can_rollback_last_auto_run}
-              >
-                <RotateCcw className="mr-2 h-4 w-4" />
-                {rollingBack
-                  ? t('Cofanie...', 'Rolling back...')
-                  : t(
-                      'Cofnij ostatnią paczkę auto-safe',
-                      'Rollback last auto-safe batch',
-                    )}
-              </Button>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              {t(
-                'Cofanie przywraca tylko sesje, które od przebiegu auto-safe nie zostały ręcznie zmienione.',
-                'Rollback only reverts sessions that have not been manually changed since the auto-safe run.',
-              )}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">
-              {t('Jak trenować i konfigurować', 'How to train and configure')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm leading-6">
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="font-medium">
-                {t('Kiedy trenować model', 'When to train the model')}
-              </p>
-              <p className="text-muted-foreground">
-                {t(
-                  'Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.',
-                  'Train after a larger series of manual corrections, after importing new data, or when the reminder indicates that the model needs refreshing.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Przypomnienie pojawia się automatycznie, gdy masz co najmniej {{feedbackTrigger}} nowych korekt lub minęło ponad {{retrainHours}}h od ostatniego treningu i są nowe korekty.',
-                  'The reminder appears automatically when: you have at least {{feedbackTrigger}} new corrections or over {{retrainHours}}h passed since last training and there are new corrections.',
-                  {
-                    feedbackTrigger: FEEDBACK_TRIGGER,
-                    retrainHours: RETRAIN_INTERVAL_HOURS,
-                  },
-                )}
-              </p>
-            </div>
-
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="font-medium">
-                {t('Znaczenie parametrów', 'What parameters mean')}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Mode: off wyłącza sugestie, suggest pokazuje sugestie bez auto-zmian, auto_safe pozwala na automatyczne przypisania tylko przy wysokiej pewności.',
-                  'Mode: off disables suggestions, suggest shows suggestions without auto-changes, auto_safe allows automatic assignments only with high confidence.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Suggest Min Confidence: minimalna pewność, by pokazać sugestię w sesjach.',
-                  'Suggest Min Confidence: minimum confidence to show suggestion in sessions.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Auto-safe Min Confidence: wymagany próg pewności dla automatycznego przypisania.',
-                  'Auto-safe Min Confidence: required confidence threshold for automatic assignment.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Auto-safe Min Evidence: ile sygnałów (np. app/token/historia czasu) musi potwierdzić decyzję.',
-                  'Auto-safe Min Evidence: how many signals (e.g. app/token/time history) must confirm decision.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Session Limit: ile nieprzypisanych sesji auto-safe przeskanuje w jednej paczce.',
-                  'Session Limit: how many unassigned sessions auto-safe will scan in one batch.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Feedback Weight: jak mocno ręczne korekty (kciuki/reassign) wpływają na model podczas treningu. Wyższa wartość = większy wpływ korekt. Domyślnie: 5.',
-                  'Feedback Weight: how much manual corrections (thumbs up/down, reassignments) influence the model during training. Higher = corrections dominate more. Default: 5.',
-                )}
-              </p>
-            </div>
-
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <p className="font-medium">
-                {t(
-                  'Rekomendowane ustawienia startowe',
-                  'Recommended starting settings',
-                )}
-              </p>
-              <p className="text-muted-foreground">
-                {t(
-                  'Zacznij od mode=suggest, suggest=0.60, auto=0.85, evidence=3. Gdy sugestie są trafne, włącz auto_safe.',
-                  'Start with mode=suggest, suggest=0.60, auto=0.85, evidence=3. When suggestions are accurate, enable auto_safe.',
-                )}
-              </p>
-              <p className="mt-2 text-muted-foreground">
-                {t(
-                  'Jeśli auto-safe robi błędne przypisania: podnieś Auto-safe Min Confidence do 0.9+ albo Min Evidence do 4-5.',
-                  'If auto-safe makes wrong assignments: raise Auto-safe Min Confidence to 0.9+ or Min Evidence to 4-5.',
-                )}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <AiHowToCard
+          title={t('Jak trenować i konfigurować', 'How to train and configure')}
+          sections={howToSections}
+        />
       </div>
       <ConfirmDialog />
     </>

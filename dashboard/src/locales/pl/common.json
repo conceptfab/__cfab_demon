@@ -696,7 +696,16 @@
     "splitToleranceDesc3": "Podział nawet przy dużej dysproporcji punktacji.",
     "splitMaxProjects": "Maks. projektów na sesję",
     "splitAuto": "Automatyczny podział",
-    "splitAutoDesc": "Sesje spełniające warunki zostaną podzielone automatycznie."
+    "splitAutoDesc": "Sesje spełniające warunki zostaną podzielone automatycznie.",
+    "session": {
+      "skipShortTitle": "Pomijaj krótkie sesje"
+    },
+    "online_sync": {
+      "enableTitle": "Włącz synchronizację online",
+      "loggingTitle": "Włącz logowanie synchronizacji",
+      "useRailwayDefault": "Użyj domyślnego Railway",
+      "syncDisabledInDemo": "Sync wyłączony w demo"
+    }
   },
   "help": {
     "language_hint": "Język ustawisz w Ustawienia > Język.",

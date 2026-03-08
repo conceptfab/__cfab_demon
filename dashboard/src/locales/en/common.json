@@ -696,7 +696,16 @@
     "splitToleranceDesc3": "Split even with large score disparity.",
     "splitMaxProjects": "Max projects per session",
     "splitAuto": "Automatic split",
-    "splitAutoDesc": "Sessions meeting split conditions will be split automatically."
+    "splitAutoDesc": "Sessions meeting split conditions will be split automatically.",
+    "session": {
+      "skipShortTitle": "Skip short sessions"
+    },
+    "online_sync": {
+      "enableTitle": "Enable online sync",
+      "loggingTitle": "Enable sync logging",
+      "useRailwayDefault": "Use Railway Default",
+      "syncDisabledInDemo": "Sync disabled in demo"
+    }
   },
   "help": {
     "language_hint": "Language is managed in Settings > Language.",

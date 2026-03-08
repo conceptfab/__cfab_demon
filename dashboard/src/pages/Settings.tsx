@@ -1,8 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, Languages, TimerReset } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useTranslation } from 'react-i18next';
 import {
   clearAllData,
@@ -54,6 +51,16 @@ import {
 import { useInlineT } from '@/lib/inline-i18n';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ProjectFreezeCard } from '@/components/settings/ProjectFreezeCard';
+import { DemoModeCard } from '@/components/settings/DemoModeCard';
+import { DangerZoneCard } from '@/components/settings/DangerZoneCard';
+import { WorkingHoursCard } from '@/components/settings/WorkingHoursCard';
+import { CurrencyCard } from '@/components/settings/CurrencyCard';
+import { LanguageCard } from '@/components/settings/LanguageCard';
+import { AppearanceCard } from '@/components/settings/AppearanceCard';
+import { SessionManagementCard } from '@/components/settings/SessionManagementCard';
+import { SessionSplitCard } from '@/components/settings/SessionSplitCard';
+import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, i) =>
@@ -141,6 +148,11 @@ export function Settings() {
   const languageOptions: Array<{ code: AppLanguageCode; label: string }> = [
     { code: 'pl', label: t('settings.language.option.pl') },
     { code: 'en', label: t('settings.language.option.en') },
+  ];
+  const currencyOptions = [
+    { code: 'PLN', symbol: 'zł' },
+    { code: 'USD', symbol: '$' },
+    { code: 'EUR', symbol: '€' },
   ];
 
   const [startHour, startMinute] = useMemo(
@@ -398,6 +410,54 @@ export function Settings() {
     ? `${onlineSyncState.pendingAck.payloadSha256.slice(0, 12)}...`
     : 'n/a';
   const demoModeSyncDisabled = demoModeStatus?.enabled === true;
+  const splitToleranceDescription =
+    splitSettings.toleranceThreshold >= 0.9
+      ? t(
+          'settings.splitToleranceDesc1',
+          'Split only when projects have nearly identical scores.',
+        )
+      : splitSettings.toleranceThreshold >= 0.6
+        ? t(
+            'settings.splitToleranceDesc2',
+            `Split when second project has ≥${Math.round(splitSettings.toleranceThreshold * 100)}% of leader's score.`,
+          )
+        : t(
+            'settings.splitToleranceDesc3',
+            'Split even with large score disparity.',
+          );
+  const manualSyncResultText = manualSyncResult
+    ? manualSyncResult.ok
+      ? manualSyncResult.skipped && manualSyncResult.reason === 'demo_mode'
+        ? tt(
+            'Ostatni manualny sync: pominięto (wyłączony w trybie demo)',
+            'Last manual sync: skipped (disabled in Demo Mode)',
+          )
+        : manualSyncResult.ackPending
+          ? tt(
+              'Ostatni manualny sync: pull zastosowany, ACK oczekuje ({{detail}})',
+              'Last manual sync: pull applied, ACK pending ({{detail}})',
+              {
+                detail:
+                  manualSyncResult.ackReason ?? manualSyncResult.reason,
+              },
+            )
+          : tt(
+              'Ostatni manualny sync: {{action}} ({{reason}})',
+              'Last manual sync: {{action}} ({{reason}})',
+              {
+                action: manualSyncResult.action,
+                reason: manualSyncResult.reason,
+              },
+            )
+      : tt(
+          'Ostatni manualny sync nie powiódł się: {{error}}',
+          'Last manual sync failed: {{error}}',
+          {
+            error: manualSyncResult.error ?? manualSyncResult.reason,
+          },
+        )
+    : null;
+  const manualSyncResultSuccess = manualSyncResult?.ok ?? false;
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 pb-20">
@@ -405,250 +465,77 @@ export function Settings() {
         <h2 className="text-xl font-bold tracking-tight px-1">
           {tt('Ustawienia ogólne', 'General Settings')}
         </h2>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Godziny pracy', 'Working Hours')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Służy do podświetlenia oczekiwanego okna pracy na osi czasu.',
-                'Used to highlight expected work window on timeline.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-                <label className={labelClassName}>{tt('Od', 'From')}</label>
-                <div className="flex items-center gap-1.5">
-                  <select
-                    className={compactSelectClassName}
-                    value={startHour}
-                    onChange={(e) =>
-                      updateTimePart('start', 'hour', e.target.value)
-                    }
-                  >
-                    {HOURS.map((hour) => (
-                      <option key={hour} value={hour}>
-                        {hour}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-muted-foreground">:</span>
-                  <select
-                    className={compactSelectClassName}
-                    value={startMinute}
-                    onChange={(e) =>
-                      updateTimePart('start', 'minute', e.target.value)
-                    }
-                  >
-                    {MINUTES.map((minute) => (
-                      <option key={minute} value={minute}>
-                        {minute}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <label className={labelClassName}>{tt('Do', 'To')}</label>
-                <div className="flex items-center gap-1.5">
-                  <select
-                    className={compactSelectClassName}
-                    value={endHour}
-                    onChange={(e) =>
-                      updateTimePart('end', 'hour', e.target.value)
-                    }
-                  >
-                    {HOURS.map((hour) => (
-                      <option key={hour} value={hour}>
-                        {hour}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-muted-foreground">:</span>
-                  <select
-                    className={compactSelectClassName}
-                    value={endMinute}
-                    onChange={(e) =>
-                      updateTimePart('end', 'minute', e.target.value)
-                    }
-                  >
-                    {MINUTES.map((minute) => (
-                      <option key={minute} value={minute}>
-                        {minute}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-                <label className={labelClassName}>
-                  {tt('Kolor podświetlenia', 'Highlight Color')}
-                </label>
-                <div className="flex items-center gap-2.5">
-                  <input
-                    type="color"
-                    className="h-8 w-10 cursor-pointer rounded border border-input bg-background p-1"
-                    value={normalizedColor}
-                    onChange={(e) => {
-                      setWorkingHours((prev) => ({
-                        ...prev,
-                        color: e.target.value,
-                      }));
-                      setWorkingHoursError(null);
-                      setSavedSettings(false);
-                    }}
-                  />
-                  <span className="font-mono text-sm text-muted-foreground">
-                    {normalizedColor}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {workingHoursError && (
-              <p className="text-sm text-destructive">{workingHoursError}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Waluta', 'Currency')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Wybierz preferowaną walutę dla wycen projektów.',
-                'Select preferred currency for project values.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-                <label className={labelClassName}>
-                  {tt('Aktywna waluta', 'Active Currency')}
-                </label>
-                <div className="flex items-center gap-2">
-                  {[
-                    { code: 'PLN', symbol: 'zł' },
-                    { code: 'USD', symbol: '$' },
-                    { code: 'EUR', symbol: '€' },
-                  ].map((item) => (
-                    <button
-                      key={item.code}
-                      type="button"
-                      onClick={() => {
-                        setCurrencySettings({ code: item.code });
-                        setSavedSettings(false);
-                      }}
-                      className={`h-8 px-4 rounded-md text-sm font-medium transition-all ${
-                        currencySettings.code === item.code
-                          ? 'bg-primary text-primary-foreground shadow-sm scale-105'
-                          : 'bg-background border border-input hover:bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {item.code}{' '}
-                      <span className="opacity-50 text-[10px] ml-1">
-                        ({item.symbol})
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Languages className="h-4 w-4 text-primary" />
-              {t('settings.language.title')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {t('settings.language.description')}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-                <label className={labelClassName}>
-                  {t('settings.language.field')}
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  {languageOptions.map((item) => (
-                    <button
-                      key={item.code}
-                      type="button"
-                      onClick={() => {
-                        setLanguageSettings({ code: item.code });
-                        setSavedSettings(false);
-                      }}
-                      className={`h-8 px-4 rounded-md text-sm font-medium transition-all ${
-                        languageSettings.code === item.code
-                          ? 'bg-primary text-primary-foreground shadow-sm scale-105'
-                          : 'bg-background border border-input hover:bg-muted text-muted-foreground'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t('settings.language.rollout_note')}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Wygląd i wydajność', 'Appearance & Performance')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Dostosuj efekty wizualne i opcje wydajności.',
-                'Adjust visual effects and performance options.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <label
-              htmlFor="chartAnimationsEnabled"
-              className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt('Włącz animacje wykresów', 'Enable chart animations')}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Wyłącz, aby poprawić responsywność UI na wolniejszych urządzeniach.',
-                    'Turn off to improve UI responsiveness on slower devices.',
-                  )}
-                </p>
-              </div>
-              <input
-                id="chartAnimationsEnabled"
-                type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
-                checked={appearanceSettings.chartAnimations}
-                onChange={(e) => {
-                  setAppearanceSettings((prev) => ({
-                    ...prev,
-                    chartAnimations: e.target.checked,
-                  }));
-                  setSavedSettings(false);
-                }}
-              />
-            </label>
-          </CardContent>
-        </Card>
+        <WorkingHoursCard
+          title={tt('Godziny pracy', 'Working Hours')}
+          description={tt(
+            'Służy do podświetlenia oczekiwanego okna pracy na osi czasu.',
+            'Used to highlight expected work window on timeline.',
+          )}
+          fromLabel={tt('Od', 'From')}
+          toLabel={tt('Do', 'To')}
+          highlightColorLabel={tt('Kolor podświetlenia', 'Highlight Color')}
+          labelClassName={labelClassName}
+          compactSelectClassName={compactSelectClassName}
+          hours={HOURS}
+          minutes={MINUTES}
+          startHour={startHour}
+          startMinute={startMinute}
+          endHour={endHour}
+          endMinute={endMinute}
+          normalizedColor={normalizedColor}
+          errorText={workingHoursError}
+          onTimePartChange={updateTimePart}
+          onColorChange={(color) => {
+            setWorkingHours((prev) => ({ ...prev, color }));
+            setWorkingHoursError(null);
+            setSavedSettings(false);
+          }}
+        />
+        <CurrencyCard
+          title={tt('Waluta', 'Currency')}
+          description={tt(
+            'Wybierz preferowaną walutę dla wycen projektów.',
+            'Select preferred currency for project values.',
+          )}
+          activeCurrencyLabel={tt('Aktywna waluta', 'Active Currency')}
+          labelClassName={labelClassName}
+          currencies={currencyOptions}
+          selectedCode={currencySettings.code}
+          onSelectCurrency={(code) => {
+            setCurrencySettings({ code });
+            setSavedSettings(false);
+          }}
+        />
+        <LanguageCard
+          title={t('settings.language.title')}
+          description={t('settings.language.description')}
+          fieldLabel={t('settings.language.field')}
+          rolloutNote={t('settings.language.rollout_note')}
+          labelClassName={labelClassName}
+          options={languageOptions}
+          selectedCode={languageSettings.code}
+          onSelectLanguage={(code) => {
+            setLanguageSettings({ code: code as AppLanguageCode });
+            setSavedSettings(false);
+          }}
+        />
+        <AppearanceCard
+          title={tt('Wygląd i wydajność', 'Appearance & Performance')}
+          description={tt(
+            'Dostosuj efekty wizualne i opcje wydajności.',
+            'Adjust visual effects and performance options.',
+          )}
+          animationsTitle={tt('Włącz animacje wykresów', 'Enable chart animations')}
+          animationsDescription={tt(
+            'Wyłącz, aby poprawić responsywność UI na wolniejszych urządzeniach.',
+            'Turn off to improve UI responsiveness on slower devices.',
+          )}
+          checked={appearanceSettings.chartAnimations}
+          onToggle={(enabled) => {
+            setAppearanceSettings((prev) => ({ ...prev, chartAnimations: enabled }));
+            setSavedSettings(false);
+          }}
+        />
       </div>
 
       <div className="space-y-4">
@@ -656,945 +543,334 @@ export function Settings() {
           {tt('Zaawansowane / Algorytmy', 'Advanced / Algorithms')}
         </h2>
 
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Zarządzanie sesjami', 'Session Management')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Reguły automatycznego łączenia bliskich sesji.',
-                'Rules for automatic merging of nearby sessions.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-                <label className={labelClassName}>
-                  {tt('Przerwa scalania', 'Merge Gap')}
-                </label>
-                <div className="w-full space-y-1.5">
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="range"
-                      min="0"
-                      max="30"
-                      step="1"
-                      aria-label={tt(
-                        'Przerwa scalania w minutach',
-                        'Merge gap in minutes',
-                      )}
-                      className="h-2 w-full cursor-pointer accent-primary"
-                      value={sliderValue}
-                      onChange={(e) => {
-                        const val = Number.parseInt(e.target.value, 10);
-                        if (!Number.isNaN(val)) {
-                          setSessionSettings((prev) => ({
-                            ...prev,
-                            gapFillMinutes: val,
-                          }));
-                          setSavedSettings(false);
-                        }
-                      }}
-                    />
-                    <span className="min-w-[4.75rem] whitespace-nowrap text-right font-mono text-sm text-foreground">
-                      {sliderValue} {tt('min', 'min')}
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-[11px] text-muted-foreground">
-                    <span>0 {tt('min', 'min')}</span>
-                    <span>30 {tt('min', 'min')}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <SessionManagementCard
+          title={tt('Zarządzanie sesjami', 'Session Management')}
+          description={tt(
+            'Reguły automatycznego łączenia bliskich sesji.',
+            'Rules for automatic merging of nearby sessions.',
+          )}
+          mergeGapLabel={tt('Przerwa scalania', 'Merge Gap')}
+          mergeGapAriaLabel={tt(
+            'Przerwa scalania w minutach',
+            'Merge gap in minutes',
+          )}
+          minutesLabel={tt('min', 'min')}
+          sliderValue={sliderValue}
+          skipShortSessionsTitle={t(
+            'settings.session.skipShortTitle',
+            'Skip short sessions',
+          )}
+          skipShortSessionsDescription={tt(
+            'Sesje krótsze lub równe tej wartości będą ukryte na liście.',
+            'Sessions shorter than or equal to this duration will be hidden from the list.',
+          )}
+          minDurationAriaLabel={tt(
+            'Minimalna długość sesji w sekundach',
+            'Minimum session duration in seconds',
+          )}
+          minDurationSeconds={sessionSettings.minSessionDurationSeconds}
+          secondsLabel={tt('sek', 'sec')}
+          autoRebuildTitle={tt(
+            'Auto-przebudowa przy starcie',
+            'Auto-rebuild on startup',
+          )}
+          autoRebuildDescription={tt(
+            'Automatycznie łącz bliskie sesje przy uruchomieniu aplikacji.',
+            'Automatically merge close sessions when app starts.',
+          )}
+          rebuildOnStartup={sessionSettings.rebuildOnStartup}
+          rebuildExistingTitle={tt(
+            'Przebuduj istniejące sesje',
+            'Rebuild Existing Sessions',
+          )}
+          rebuildExistingDescription={tt(
+            'Zastosuj aktualny próg scalania do już zaimportowanych sesji.',
+            'Apply current merge gap to already imported sessions.',
+          )}
+          rebuildingLabel={tt('Przebudowa...', 'Rebuilding...')}
+          rebuildLabel={tt('Przebuduj', 'Rebuild')}
+          rebuilding={rebuilding}
+          onGapFillChange={(minutes) => {
+            setSessionSettings((prev) => ({ ...prev, gapFillMinutes: minutes }));
+            setSavedSettings(false);
+          }}
+          onMinDurationChange={(seconds) => {
+            setSessionSettings((prev) => ({
+              ...prev,
+              minSessionDurationSeconds: seconds,
+            }));
+            setSavedSettings(false);
+          }}
+          onRebuildOnStartupChange={(enabled) => {
+            setSessionSettings((prev) => ({ ...prev, rebuildOnStartup: enabled }));
+            setSavedSettings(false);
+          }}
+          onRebuild={() => {
+            void handleRebuildSessions();
+          }}
+        />
 
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto]">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {tt('Pomijaj krótkie sesje', 'Skip short sessions')}
-                  </p>
-                  <p className="text-xs leading-5 break-words text-muted-foreground">
-                    {tt(
-                      'Sesje krótsze lub równe tej wartości będą ukryte na liście.',
-                      'Sessions shorter than or equal to this duration will be hidden from the list.',
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    max={300}
-                    step={1}
-                    aria-label={tt(
-                      'Minimalna długość sesji w sekundach',
-                      'Minimum session duration in seconds',
-                    )}
-                    className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    value={sessionSettings.minSessionDurationSeconds}
-                    onChange={(e) => {
-                      const val = Number.parseInt(e.target.value, 10);
-                      if (!Number.isNaN(val)) {
-                        setSessionSettings((prev) => ({
-                          ...prev,
-                          minSessionDurationSeconds: val,
-                        }));
-                        setSavedSettings(false);
-                      }
-                    }}
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    {tt('sek', 'sec')}
-                  </span>
-                </div>
-              </div>
-            </div>
+        <SessionSplitCard
+          title={t('settings.splitTitle', 'Session Split')}
+          maxProjectsTitle={t(
+            'settings.splitMaxProjects',
+            'Max projects per session',
+          )}
+          maxProjectsDescription={t(
+            'settings.splitMaxProjectsDesc',
+            'Do ilu maksymalnie projektów można podzielić jedną sesję.',
+          )}
+          toleranceTitle={t('settings.splitTolerance', 'Tolerance coefficient')}
+          toleranceLowLabel={t('settings.splitToleranceLow', 'loose')}
+          toleranceHighLabel={t('settings.splitToleranceHigh', 'strict')}
+          toleranceDescription={splitToleranceDescription}
+          autoSplitTitle={t('settings.splitAuto', 'Automatic split')}
+          autoSplitDescription={t(
+            'settings.splitAutoDesc',
+            'Sessions meeting split conditions will be split automatically.',
+          )}
+          splitSettings={splitSettings}
+          onMaxProjectsChange={(maxProjects) => {
+            handleSplitChange('maxProjectsPerSession', maxProjects);
+          }}
+          onToleranceThresholdChange={(threshold) => {
+            handleSplitChange('toleranceThreshold', threshold);
+          }}
+          onAutoSplitEnabledChange={(enabled) => {
+            handleSplitChange('autoSplitEnabled', enabled);
+          }}
+        />
 
-            <label
-              htmlFor="rebuildOnStartup"
-              className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt(
-                    'Auto-przebudowa przy starcie',
-                    'Auto-rebuild on startup',
-                  )}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Automatycznie łącz bliskie sesje przy uruchomieniu aplikacji.',
-                    'Automatically merge close sessions when app starts.',
-                  )}
-                </p>
-              </div>
-              <input
-                id="rebuildOnStartup"
-                type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
-                checked={sessionSettings.rebuildOnStartup}
-                onChange={(e) => {
-                  setSessionSettings((prev) => ({
-                    ...prev,
-                    rebuildOnStartup: e.target.checked,
-                  }));
-                  setSavedSettings(false);
-                }}
-              />
-            </label>
-
-            <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt(
-                    'Przebuduj istniejące sesje',
-                    'Rebuild Existing Sessions',
-                  )}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Zastosuj aktualny próg scalania do już zaimportowanych sesji.',
-                    'Apply current merge gap to already imported sessions.',
-                  )}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                className="h-8 w-fit"
-                onClick={handleRebuildSessions}
-                disabled={rebuilding}
-              >
-                <TimerReset className="mr-2 h-4 w-4" />
-                {rebuilding
-                  ? tt('Przebudowa...', 'Rebuilding...')
-                  : tt('Przebuduj', 'Rebuild')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* --- MOVED SESSION SPLIT HERE --- */}
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {t('settings.splitTitle', 'Session Split')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="rounded-md border border-border/70 bg-background/35 overflow-hidden">
-              {/* Max projects per session */}
-              <div className="grid gap-3 p-3 sm:grid-cols-[1fr_auto] sm:items-center border-b border-border/50">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {t('settings.splitMaxProjects', 'Max projects per session')}
-                  </p>
-                  <p className="text-xs leading-5 break-words text-muted-foreground">
-                    {t(
-                      'settings.splitMaxProjectsDesc',
-                      'Do ilu maksymalnie projektów można podzielić jedną sesję.',
-                    )}
-                  </p>
-                </div>
-                <select
-                  value={splitSettings.maxProjectsPerSession}
-                  onChange={(e) =>
-                    handleSplitChange(
-                      'maxProjectsPerSession',
-                      Number(e.target.value),
-                    )
-                  }
-                  className="rounded-md border border-input bg-background px-2 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 text-foreground"
-                >
-                  {[2, 3, 4, 5].map((n) => (
-                    <option
-                      key={n}
-                      value={n}
-                      className="bg-background text-foreground"
-                    >
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Tolerance threshold slider */}
-              <div className="p-3 border-b border-border/50">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">
-                    {t('settings.splitTolerance', 'Tolerance coefficient')}
-                  </p>
-                  <span className="text-xs font-mono text-sky-400">
-                    1:{splitSettings.toleranceThreshold.toFixed(2)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={20}
-                  max={100}
-                  step={5}
-                  value={Math.round(splitSettings.toleranceThreshold * 100)}
-                  onChange={(e) =>
-                    handleSplitChange(
-                      'toleranceThreshold',
-                      Number(e.target.value) / 100,
-                    )
-                  }
-                  className="mt-2 w-full accent-sky-500"
-                />
-                <div className="mt-1 flex justify-between text-[10px] text-muted-foreground/50">
-                  <span>0.20 ({t('settings.splitToleranceLow', 'loose')})</span>
-                  <span>
-                    1.00 ({t('settings.splitToleranceHigh', 'strict')})
-                  </span>
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {splitSettings.toleranceThreshold >= 0.9
-                    ? t(
-                        'settings.splitToleranceDesc1',
-                        'Split only when projects have nearly identical scores.',
-                      )
-                    : splitSettings.toleranceThreshold >= 0.6
-                      ? t(
-                          'settings.splitToleranceDesc2',
-                          `Split when second project has ≥${Math.round(splitSettings.toleranceThreshold * 100)}% of leader's score.`,
-                        )
-                      : t(
-                          'settings.splitToleranceDesc3',
-                          'Split even with large score disparity.',
-                        )}
-                </p>
-              </div>
-
-              {/* Auto-split toggle */}
-              <label
-                htmlFor="autoSplitEnabled"
-                className="grid cursor-pointer gap-3 p-3 sm:grid-cols-[1fr_auto] sm:items-center hover:bg-secondary/5 transition-colors"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-sky-400">
-                    {t('settings.splitAuto', 'Automatic split')}
-                  </p>
-                  <p className="text-xs leading-5 break-words text-muted-foreground">
-                    {t(
-                      'settings.splitAutoDesc',
-                      'Sessions meeting split conditions will be split automatically.',
-                    )}
-                  </p>
-                </div>
-                <button
-                  id="autoSplitEnabled"
-                  type="button"
-                  role="switch"
-                  aria-checked={splitSettings.autoSplitEnabled}
-                  onClick={() =>
-                    handleSplitChange(
-                      'autoSplitEnabled',
-                      !splitSettings.autoSplitEnabled,
-                    )
-                  }
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    splitSettings.autoSplitEnabled
-                      ? 'bg-sky-600'
-                      : 'bg-secondary'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-                      splitSettings.autoSplitEnabled
-                        ? 'translate-x-4.5'
-                        : 'translate-x-0.5'
-                    }`}
-                  />
-                </button>
-              </label>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Synchronizacja online', 'Online Sync')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Synchronizacja przy starcie z serwerem zdalnym (snapshot push/pull).',
-                'Startup synchronization with remote server using snapshot push/pull.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <label
-              htmlFor="onlineSyncEnabled"
-              className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt('Włącz synchronizację online', 'Enable online sync')}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Pozwala dashboardowi wymieniać snapshoty danych z serwerem sync.',
-                    'Allows the dashboard to exchange data snapshots with the sync server.',
-                  )}
-                </p>
-              </div>
-              <input
-                id="onlineSyncEnabled"
-                type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
-                checked={onlineSyncSettings.enabled}
-                onChange={(e) => {
-                  setOnlineSyncSettings((prev) => ({
-                    ...prev,
-                    enabled: e.target.checked,
-                  }));
-                  setSavedSettings(false);
-                }}
-              />
-            </label>
-
-            <label
-              htmlFor="onlineSyncOnStartup"
-              className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt('Synchronizuj przy starcie', 'Sync on startup')}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Uruchamia status -> pull/push po zakończeniu lokalnego auto-importu.',
-                    'Runs status -> pull/push after local auto-import finishes.',
-                  )}
-                </p>
-              </div>
-              <input
-                id="onlineSyncOnStartup"
-                type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
-                checked={onlineSyncSettings.autoSyncOnStartup}
-                onChange={(e) => {
-                  setOnlineSyncSettings((prev) => ({
-                    ...prev,
-                    autoSyncOnStartup: e.target.checked,
-                  }));
-                  setSavedSettings(false);
-                }}
-              />
-            </label>
-
-            <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt('Interwał auto-sync', 'Auto sync interval')}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Cykliczny sync po uruchomieniu aplikacji. Domyślnie co 30 minut.',
-                    'Periodic sync after app startup. Default is every 30 minutes.',
-                  )}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={1440}
-                  step={1}
-                  className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  value={onlineSyncSettings.autoSyncIntervalMinutes}
-                  onChange={(e) => {
-                    const nextValue = Number.parseInt(e.target.value, 10);
-                    setOnlineSyncSettings((prev) => ({
-                      ...prev,
-                      autoSyncIntervalMinutes: Number.isFinite(nextValue)
-                        ? Math.min(1440, Math.max(1, nextValue))
-                        : prev.autoSyncIntervalMinutes,
-                    }));
-                    setSavedSettings(false);
-                  }}
-                />
-                <span className="text-sm text-muted-foreground">
-                  {tt('min', 'min')}
-                </span>
-              </div>
-            </div>
-
-            <label
-              htmlFor="onlineSyncLogging"
-              className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt('Włącz logowanie synchronizacji', 'Enable sync logging')}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Zapisuj szczegółowe operacje sync do logów diagnostycznych.',
-                    'Save detailed sync operations to log file for debugging.',
-                  )}
-                </p>
-              </div>
-              <input
-                id="onlineSyncLogging"
-                type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
-                checked={onlineSyncSettings.enableLogging}
-                onChange={(e) => {
-                  setOnlineSyncSettings((prev) => ({
-                    ...prev,
-                    enableLogging: e.target.checked,
-                  }));
-                  setSavedSettings(false);
-                }}
-              />
-            </label>
-
-            <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
-              <label className="grid gap-1.5 text-sm">
-                <span className={labelClassName}>
-                  {tt('URL serwera', 'Server URL')}
-                </span>
-                <input
-                  type="text"
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  placeholder={DEFAULT_ONLINE_SYNC_SERVER_URL}
-                  value={onlineSyncSettings.serverUrl}
-                  onChange={(e) => {
-                    setOnlineSyncSettings((prev) => ({
-                      ...prev,
-                      serverUrl: e.target.value,
-                    }));
-                    setSavedSettings(false);
-                  }}
-                />
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => {
-                      setOnlineSyncSettings((prev) => ({
-                        ...prev,
-                        serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
-                      }));
-                      setSavedSettings(false);
-                    }}
-                  >
-                    {tt('Użyj domyślnego Railway', 'Use Railway Default')}
-                  </Button>
-                  <span className="text-xs text-muted-foreground break-all">
-                    {DEFAULT_ONLINE_SYNC_SERVER_URL}
-                  </span>
-                </div>
-              </label>
-
-              <label className="grid gap-1.5 text-sm">
-                <span className={labelClassName}>
-                  {tt('ID użytkownika', 'User ID')}
-                </span>
-                <input
-                  type="text"
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  placeholder="e.g. demo-user / email / UUID"
-                  value={onlineSyncSettings.userId}
-                  onChange={(e) => {
-                    setOnlineSyncSettings((prev) => ({
-                      ...prev,
-                      userId: e.target.value,
-                    }));
-                    setSavedSettings(false);
-                  }}
-                />
-              </label>
-
-              <label className="grid gap-1.5 text-sm">
-                <span className={labelClassName}>
-                  {tt('Token API (Bearer)', 'API Token (Bearer)')}
-                </span>
-                <div className="flex items-center gap-2">
-                  <input
-                    type={showOnlineSyncToken ? 'text' : 'password'}
-                    autoComplete="off"
-                    className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    placeholder={tt(
-                      "Wklej surowy token (bez prefiksu 'Bearer ' i bez cudzysłowów)",
-                      "Paste the raw token (without 'Bearer ' prefix and without quotes)",
-                    )}
-                    value={onlineSyncSettings.apiToken}
-                    onChange={(e) => {
-                      setOnlineSyncSettings((prev) => ({
-                        ...prev,
-                        apiToken: e.target.value,
-                      }));
-                      setSavedSettings(false);
-                    }}
-                  />
-                  <AppTooltip
-                    content={
-                      showOnlineSyncToken
-                        ? tt('Ukryj token', 'Hide token')
-                        : tt('Pokaż token', 'Show token')
-                    }
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 w-10 px-0"
-                      onClick={() => setShowOnlineSyncToken((prev) => !prev)}
-                      aria-label={
-                        showOnlineSyncToken
-                          ? tt('Ukryj token', 'Hide token')
-                          : tt('Pokaż token', 'Show token')
-                      }
-                    >
-                      {showOnlineSyncToken ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </AppTooltip>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {tt(
-                    'Wprowadź surowy token; aplikacja automatycznie doda nagłówek Bearer.',
-                    'Enter the raw token; the app will add the Bearer header automatically.',
-                  )}
-                </p>
-              </label>
-
-              <div className="grid gap-1.5 text-sm">
-                <span className={labelClassName}>
-                  {tt('ID urządzenia', 'Device ID')}
-                </span>
-                <div className="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs break-all">
-                  {onlineSyncSettings.deviceId ||
-                    tt('(wygenerowane przy zapisie)', '(generated on save)')}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {tt(
-                    'Generowane automatycznie i używane do identyfikacji tej maszyny podczas sync.',
-                    'Generated automatically and used to identify this machine during sync.',
-                  )}
-                </p>
-              </div>
-
-              <div className="grid gap-3 rounded-md border border-border/70 bg-background/20 p-3 sm:grid-cols-[1fr_auto] sm:items-start">
-                <div className="min-w-0 space-y-2">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {tt(
-                        'Status ostatniej synchronizacji',
-                        'Last Sync Status',
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {tt(
-                        'Ostatni udany check/sync:',
-                        'Last successful check/sync:',
-                      )}{' '}
-                      {lastSyncLabel}
-                    </p>
-                  </div>
-
-                  {demoModeSyncDisabled && (
-                    <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-300">
-                      {tt(
-                        'Synchronizacja online jest wyłączona, gdy aktywny jest tryb demo.',
-                        'Online sync is disabled while Demo Mode is active.',
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid gap-1 text-xs text-muted-foreground">
-                    <div>
-                      {tt('Rewizja serwera:', 'Server revision:')}{' '}
-                      <span className="font-mono text-foreground">
-                        {onlineSyncState.serverRevision}
-                      </span>
-                    </div>
-                    <div>
-                      {tt('Hash serwera:', 'Server hash:')}{' '}
-                      <span className="font-mono text-foreground break-all">
-                        {shortHash}
-                      </span>
-                    </div>
-                    <div>
-                      {tt('Lokalna rew/hash:', 'Local rev/hash:')}{' '}
-                      <span className="font-mono text-foreground">
-                        {onlineSyncState.localRevision ?? 'n/a'} /{' '}
-                        {localHashShort}
-                      </span>
-                    </div>
-                    {onlineSyncState.pendingAck && (
-                      <div className="text-amber-500">
-                        {tt('Oczekujące ACK:', 'Pending ACK:')}{' '}
-                        <span className="font-mono text-foreground">
-                          r{onlineSyncState.pendingAck.revision} /{' '}
-                          {pendingAckHashShort}
-                        </span>
-                        {onlineSyncState.pendingAck.retries > 0 && (
-                          <>
-                            {' '}
-                            ({tt('ponowienia', 'retries')}:{' '}
-                            {onlineSyncState.pendingAck.retries})
-                          </>
-                        )}
-                      </div>
-                    )}
-                    {onlineSyncState.needsReseed && (
-                      <div className="text-amber-500">
-                        {tt(
-                          'Payload serwera został wyczyszczony po ACK. Wymagany lokalny reseed/eksport.',
-                          'Server payload was cleaned up after ACKs. Local reseed/export is required.',
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {manualSyncResult && (
-                    <div
-                      className={
-                        manualSyncResult.ok
-                          ? 'text-xs text-emerald-400'
-                          : 'text-xs text-destructive'
-                      }
-                    >
-                      {manualSyncResult.ok
-                        ? manualSyncResult.skipped &&
-                          manualSyncResult.reason === 'demo_mode'
-                          ? tt(
-                              'Ostatni manualny sync: pominięto (wyłączony w trybie demo)',
-                              'Last manual sync: skipped (disabled in Demo Mode)',
-                            )
-                          : manualSyncResult.ackPending
-                            ? tt(
-                                'Ostatni manualny sync: pull zastosowany, ACK oczekuje ({{detail}})',
-                                'Last manual sync: pull applied, ACK pending ({{detail}})',
-                                {
-                                  detail:
-                                    manualSyncResult.ackReason ??
-                                    manualSyncResult.reason,
-                                },
-                              )
-                            : tt(
-                                'Ostatni manualny sync: {{action}} ({{reason}})',
-                                'Last manual sync: {{action}} ({{reason}})',
-                                {
-                                  action: manualSyncResult.action,
-                                  reason: manualSyncResult.reason,
-                                },
-                              )
-                        : tt(
-                            'Ostatni manualny sync nie powiódł się: {{error}}',
-                            'Last manual sync failed: {{error}}',
-                            {
-                              error:
-                                manualSyncResult.error ??
-                                manualSyncResult.reason,
-                            },
-                          )}
-                    </div>
-                  )}
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-8 w-fit"
-                  onClick={handleSyncNow}
-                  disabled={manualSyncing || demoModeSyncDisabled}
-                >
-                  {manualSyncing
-                    ? tt('Synchronizacja...', 'Syncing...')
-                    : demoModeSyncDisabled
-                      ? tt('Sync wyłączony w demo', 'Sync disabled in demo')
-                      : tt('Synchronizuj teraz', 'Sync now')}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Zamrażanie projektów', 'Project Freezing')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Projekty nieaktywne przez zadany okres są automatycznie zamrażane i ukrywane na listach przypisań sesji.',
-                'Projects inactive for a set period are automatically frozen and hidden from session assignment lists.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-md border border-border/70 bg-background/35 p-3">
-              <div className="grid items-center gap-3 sm:grid-cols-[1fr_auto]">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {tt('Próg nieaktywności', 'Inactivity threshold')}
-                  </p>
-                  <p className="text-xs leading-5 break-words text-muted-foreground">
-                    {tt(
-                      'Liczba dni bez aktywności, po której projekt zostanie automatycznie zamrożony.',
-                      'Number of days without activity after which a project is automatically frozen.',
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    max={365}
-                    step={1}
-                    aria-label={tt(
-                      'Próg zamrożenia w dniach',
-                      'Freeze threshold in days',
-                    )}
-                    className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                    value={freezeSettings.thresholdDays}
-                    onChange={(e) => {
-                      const val = Number.parseInt(e.target.value, 10);
-                      if (!Number.isNaN(val)) {
-                        setFreezeSettings((prev) => ({
-                          ...prev,
-                          thresholdDays: val,
-                        }));
-                        setSavedSettings(false);
-                      }
-                    }}
-                  />
-                  <span className="text-sm text-muted-foreground">
-                    {tt('dni', 'days')}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold">
-              {tt('Tryb demo', 'Demo Mode')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Przełącz źródło danych dashboardu na osobny plik bazy demo (trwałe po restarcie).',
-                'Switch dashboard data source to a separate demo database file (persists after restart).',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <label
-              htmlFor="demoModeEnabled"
-              className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium">
-                  {tt('Użyj bazy demo', 'Use demo database')}
-                </p>
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Dotyczy całego dashboardu (odczyt/zapis/import) i przełącza na osobny plik SQLite. W trybie demo odświeżanie dzienne czyta z fake_data i oczekuje fake w nazwie pliku JSON (np. 2026-02-22_fake.json).',
-                    'Applies to the whole dashboard app (reads/writes/imports) and switches to a separate SQLite file. In demo mode, live daily refresh reads from fake_data and expects fake in the JSON filename (for example 2026-02-22_fake.json).',
-                  )}
-                </p>
-              </div>
-              <input
-                id="demoModeEnabled"
-                type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
-                checked={demoModeStatus?.enabled ?? false}
-                disabled={demoModeLoading || demoModeSwitching}
-                onChange={(e) => {
-                  void handleToggleDemoMode(e.target.checked);
-                }}
-              />
-            </label>
-
-            <div className="rounded-md border border-border/70 bg-background/20 p-3 text-xs">
-              {demoModeLoading ? (
-                <p className="text-muted-foreground">
-                  {tt(
-                    'Wczytywanie statusu trybu demo...',
-                    'Loading demo mode status...',
-                  )}
-                </p>
-              ) : demoModeStatus ? (
-                <div className="space-y-1.5 text-muted-foreground">
-                  <div>
-                    {tt('Aktywna DB:', 'Active DB:')}{' '}
-                    <span className="font-mono text-foreground break-all">
-                      {demoModeStatus.activeDbPath}
-                    </span>
-                  </div>
-                  <div>
-                    {tt('Główna DB:', 'Primary DB:')}{' '}
-                    <span className="font-mono text-foreground break-all">
-                      {demoModeStatus.primaryDbPath}
-                    </span>
-                  </div>
-                  <div>
-                    {tt('Demo DB:', 'Demo DB:')}{' '}
-                    <span className="font-mono text-foreground break-all">
-                      {demoModeStatus.demoDbPath}
-                    </span>
-                  </div>
-                  <div
-                    className={
-                      demoModeStatus.enabled
-                        ? 'text-amber-500'
-                        : 'text-emerald-500'
-                    }
-                  >
-                    {demoModeStatus.enabled
-                      ? tt(
-                          'Tryb demo jest aktywny. Nowe importy/zmiany trafią do bazy demo.',
-                          'Demo mode is active. New imports/changes will affect the demo database.',
-                        )
-                      : tt(
-                          'Aktywny jest tryb główny.',
-                          'Primary mode is active.',
-                        )}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-muted-foreground">
-                  {tt(
-                    'Status trybu demo niedostępny.',
-                    'Demo mode status unavailable.',
-                  )}
-                </p>
-              )}
-
-              {demoModeError && (
-                <p className="mt-2 text-destructive">{demoModeError}</p>
-              )}
-            </div>
-
-            <div className="flex items-center justify-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8"
-                disabled={demoModeLoading || demoModeSwitching}
-                onClick={() => {
-                  if (!demoModeStatus) return;
-                  void handleToggleDemoMode(!demoModeStatus.enabled);
-                }}
-              >
-                {demoModeSwitching
-                  ? tt('Przełączanie...', 'Switching...')
-                  : demoModeStatus?.enabled
-                    ? tt('Wyłącz tryb demo', 'Disable Demo Mode')
-                    : tt('Włącz tryb demo', 'Enable Demo Mode')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base font-semibold text-destructive">
-              {tt('Strefa ryzyka', 'Danger Zone')}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {tt(
-                'Domyślnie ukryte, aby uniknąć przypadkowych kliknięć.',
-                'Hidden by default to avoid accidental clicks.',
-              )}
-            </p>
-          </CardHeader>
-          <CardContent>
-            <details className="group rounded-md border border-destructive/50 bg-destructive/10">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5">
-                <span className="text-sm font-medium">
-                  {tt('Kontrolki czyszczenia danych', 'Data wipe controls')}
-                </span>
-                <span className="text-xs text-muted-foreground group-open:hidden">
-                  {tt('Otwórz', 'Open')}
-                </span>
-                <span className="hidden text-xs text-muted-foreground group-open:inline">
-                  {tt('Zamknij', 'Close')}
-                </span>
-              </summary>
-
-              <div className="space-y-3 border-t border-destructive/40 p-3">
-                <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {tt(
-                    'Usuwa wszystkie zaimportowane sesje i historię z lokalnej bazy danych.',
-                    'Deletes all imported sessions and history from local database.',
-                  )}
-                </p>
-
-                <label className="flex items-center gap-2 text-sm text-foreground">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-input accent-destructive"
-                    checked={clearArmed}
-                    onChange={(e) => setClearArmed(e.target.checked)}
-                  />
-                  {tt('Włącz czyszczenie danych', 'Enable clear action')}
-                </label>
-
-                <Button
-                  variant="destructive"
-                  className="h-8"
-                  onClick={handleClearData}
-                  disabled={clearing || !clearArmed}
-                >
-                  {clearing
-                    ? tt('Czyszczenie...', 'Clearing...')
-                    : tt('Wyczyść dane', 'Clear Data')}
-                </Button>
-              </div>
-            </details>
-          </CardContent>
-        </Card>
+        <OnlineSyncCard
+          settings={onlineSyncSettings}
+          state={onlineSyncState}
+          manualSyncResult={manualSyncResult}
+          manualSyncResultText={manualSyncResultText}
+          manualSyncResultSuccess={manualSyncResultSuccess}
+          manualSyncing={manualSyncing}
+          demoModeSyncDisabled={demoModeSyncDisabled}
+          showToken={showOnlineSyncToken}
+          title={tt('Synchronizacja online', 'Online Sync')}
+          description={tt(
+            'Synchronizacja przy starcie z serwerem zdalnym (snapshot push/pull).',
+            'Startup synchronization with remote server using snapshot push/pull.',
+          )}
+          enableSyncTitle={t(
+            'settings.online_sync.enableTitle',
+            'Enable online sync',
+          )}
+          enableSyncDescription={tt(
+            'Pozwala dashboardowi wymieniać snapshoty danych z serwerem sync.',
+            'Allows the dashboard to exchange data snapshots with the sync server.',
+          )}
+          syncOnStartupTitle={tt('Synchronizuj przy starcie', 'Sync on startup')}
+          syncOnStartupDescription={tt(
+            'Uruchamia status -> pull/push po zakończeniu lokalnego auto-importu.',
+            'Runs status -> pull/push after local auto-import finishes.',
+          )}
+          autoSyncIntervalTitle={tt('Interwał auto-sync', 'Auto sync interval')}
+          autoSyncIntervalDescription={tt(
+            'Cykliczny sync po uruchomieniu aplikacji. Domyślnie co 30 minut.',
+            'Periodic sync after app startup. Default is every 30 minutes.',
+          )}
+          minutesLabel={tt('min', 'min')}
+          enableLoggingTitle={t(
+            'settings.online_sync.loggingTitle',
+            'Enable sync logging',
+          )}
+          enableLoggingDescription={tt(
+            'Zapisuj szczegółowe operacje sync do logów diagnostycznych.',
+            'Save detailed sync operations to log file for debugging.',
+          )}
+          serverUrlLabel={tt('URL serwera', 'Server URL')}
+          useDefaultServerLabel={t(
+            'settings.online_sync.useRailwayDefault',
+            'Use Railway Default',
+          )}
+          userIdLabel={tt('ID użytkownika', 'User ID')}
+          userIdPlaceholder="e.g. demo-user / email / UUID"
+          apiTokenLabel={tt('Token API (Bearer)', 'API Token (Bearer)')}
+          apiTokenPlaceholder={tt(
+            "Wklej surowy token (bez prefiksu 'Bearer ' i bez cudzysłowów)",
+            "Paste the raw token (without 'Bearer ' prefix and without quotes)",
+          )}
+          showTokenLabel={tt('Pokaż token', 'Show token')}
+          hideTokenLabel={tt('Ukryj token', 'Hide token')}
+          apiTokenHint={tt(
+            'Wprowadź surowy token; aplikacja automatycznie doda nagłówek Bearer.',
+            'Enter the raw token; the app will add the Bearer header automatically.',
+          )}
+          deviceIdLabel={tt('ID urządzenia', 'Device ID')}
+          generatedOnSaveLabel={tt(
+            '(wygenerowane przy zapisie)',
+            '(generated on save)',
+          )}
+          deviceIdHint={tt(
+            'Generowane automatycznie i używane do identyfikacji tej maszyny podczas sync.',
+            'Generated automatically and used to identify this machine during sync.',
+          )}
+          statusTitle={tt('Status ostatniej synchronizacji', 'Last Sync Status')}
+          lastSuccessfulLabel={tt(
+            'Ostatni udany check/sync:',
+            'Last successful check/sync:',
+          )}
+          demoModeDisabledWarning={tt(
+            'Synchronizacja online jest wyłączona, gdy aktywny jest tryb demo.',
+            'Online sync is disabled while Demo Mode is active.',
+          )}
+          serverRevisionLabel={tt('Rewizja serwera:', 'Server revision:')}
+          serverHashLabel={tt('Hash serwera:', 'Server hash:')}
+          localRevisionHashLabel={tt('Lokalna rew/hash:', 'Local rev/hash:')}
+          pendingAckLabel={tt('Oczekujące ACK:', 'Pending ACK:')}
+          retriesLabel={tt('ponowienia', 'retries')}
+          reseedWarning={tt(
+            'Payload serwera został wyczyszczony po ACK. Wymagany lokalny reseed/eksport.',
+            'Server payload was cleaned up after ACKs. Local reseed/export is required.',
+          )}
+          syncingLabel={tt('Synchronizacja...', 'Syncing...')}
+          syncDisabledInDemoLabel={t(
+            'settings.online_sync.syncDisabledInDemo',
+            'Sync disabled in demo',
+          )}
+          syncNowLabel={tt('Synchronizuj teraz', 'Sync now')}
+          defaultServerUrl={DEFAULT_ONLINE_SYNC_SERVER_URL}
+          labelClassName={labelClassName}
+          lastSyncLabel={lastSyncLabel}
+          shortHash={shortHash}
+          localHashShort={localHashShort}
+          pendingAckHashShort={pendingAckHashShort}
+          onEnabledChange={(enabled) => {
+            setOnlineSyncSettings((prev) => ({ ...prev, enabled }));
+            setSavedSettings(false);
+          }}
+          onAutoSyncOnStartupChange={(enabled) => {
+            setOnlineSyncSettings((prev) => ({
+              ...prev,
+              autoSyncOnStartup: enabled,
+            }));
+            setSavedSettings(false);
+          }}
+          onAutoSyncIntervalChange={(minutes) => {
+            setOnlineSyncSettings((prev) => ({
+              ...prev,
+              autoSyncIntervalMinutes: minutes,
+            }));
+            setSavedSettings(false);
+          }}
+          onEnableLoggingChange={(enabled) => {
+            setOnlineSyncSettings((prev) => ({ ...prev, enableLogging: enabled }));
+            setSavedSettings(false);
+          }}
+          onServerUrlChange={(serverUrl) => {
+            setOnlineSyncSettings((prev) => ({ ...prev, serverUrl }));
+            setSavedSettings(false);
+          }}
+          onResetServerUrl={() => {
+            setOnlineSyncSettings((prev) => ({
+              ...prev,
+              serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
+            }));
+            setSavedSettings(false);
+          }}
+          onUserIdChange={(userId) => {
+            setOnlineSyncSettings((prev) => ({ ...prev, userId }));
+            setSavedSettings(false);
+          }}
+          onApiTokenChange={(apiToken) => {
+            setOnlineSyncSettings((prev) => ({ ...prev, apiToken }));
+            setSavedSettings(false);
+          }}
+          onShowTokenChange={setShowOnlineSyncToken}
+          onSyncNow={() => {
+            void handleSyncNow();
+          }}
+        />
+        <ProjectFreezeCard
+          thresholdDays={freezeSettings.thresholdDays}
+          title={tt('Zamrażanie projektów', 'Project Freezing')}
+          description={tt(
+            'Projekty nieaktywne przez zadany okres są automatycznie zamrażane i ukrywane na listach przypisań sesji.',
+            'Projects inactive for a set period are automatically frozen and hidden from session assignment lists.',
+          )}
+          thresholdTitle={tt('Próg nieaktywności', 'Inactivity threshold')}
+          thresholdDescription={tt(
+            'Liczba dni bez aktywności, po której projekt zostanie automatycznie zamrożony.',
+            'Number of days without activity after which a project is automatically frozen.',
+          )}
+          thresholdAriaLabel={tt(
+            'Próg zamrożenia w dniach',
+            'Freeze threshold in days',
+          )}
+          daysLabel={tt('dni', 'days')}
+          onThresholdChange={(val) => {
+            setFreezeSettings((prev) => ({
+              ...prev,
+              thresholdDays: val,
+            }));
+            setSavedSettings(false);
+          }}
+        />
+        <DemoModeCard
+          demoModeStatus={demoModeStatus}
+          demoModeLoading={demoModeLoading}
+          demoModeSwitching={demoModeSwitching}
+          demoModeError={demoModeError}
+          title={tt('Tryb demo', 'Demo Mode')}
+          description={tt(
+            'Przełącz źródło danych dashboardu na osobny plik bazy demo (trwałe po restarcie).',
+            'Switch dashboard data source to a separate demo database file (persists after restart).',
+          )}
+          toggleTitle={tt('Użyj bazy demo', 'Use demo database')}
+          toggleDescription={tt(
+            'Dotyczy całego dashboardu (odczyt/zapis/import) i przełącza na osobny plik SQLite. W trybie demo odświeżanie dzienne czyta z fake_data i oczekuje fake w nazwie pliku JSON (np. 2026-02-22_fake.json).',
+            'Applies to the whole dashboard app (reads/writes/imports) and switches to a separate SQLite file. In demo mode, live daily refresh reads from fake_data and expects fake in the JSON filename (for example 2026-02-22_fake.json).',
+          )}
+          loadingStatusText={tt(
+            'Wczytywanie statusu trybu demo...',
+            'Loading demo mode status...',
+          )}
+          activeDbLabel={tt('Aktywna DB:', 'Active DB:')}
+          primaryDbLabel={tt('Główna DB:', 'Primary DB:')}
+          demoDbLabel={tt('Demo DB:', 'Demo DB:')}
+          demoActiveText={tt(
+            'Tryb demo jest aktywny. Nowe importy/zmiany trafią do bazy demo.',
+            'Demo mode is active. New imports/changes will affect the demo database.',
+          )}
+          primaryActiveText={tt('Aktywny jest tryb główny.', 'Primary mode is active.')}
+          unavailableStatusText={tt(
+            'Status trybu demo niedostępny.',
+            'Demo mode status unavailable.',
+          )}
+          switchingLabel={tt('Przełączanie...', 'Switching...')}
+          disableLabel={tt('Wyłącz tryb demo', 'Disable Demo Mode')}
+          enableLabel={tt('Włącz tryb demo', 'Enable Demo Mode')}
+          onToggle={(enabled) => {
+            void handleToggleDemoMode(enabled);
+          }}
+        />
+        <DangerZoneCard
+          clearArmed={clearArmed}
+          clearing={clearing}
+          title={tt('Strefa ryzyka', 'Danger Zone')}
+          description={tt(
+            'Domyślnie ukryte, aby uniknąć przypadkowych kliknięć.',
+            'Hidden by default to avoid accidental clicks.',
+          )}
+          controlsLabel={tt('Kontrolki czyszczenia danych', 'Data wipe controls')}
+          openLabel={tt('Otwórz', 'Open')}
+          closeLabel={tt('Zamknij', 'Close')}
+          detailsText={tt(
+            'Usuwa wszystkie zaimportowane sesje i historię z lokalnej bazy danych.',
+            'Deletes all imported sessions and history from local database.',
+          )}
+          enableLabel={tt('Włącz czyszczenie danych', 'Enable clear action')}
+          clearingLabel={tt('Czyszczenie...', 'Clearing...')}
+          clearLabel={tt('Wyczyść dane', 'Clear Data')}
+          onClearArmedChange={setClearArmed}
+          onClearData={() => {
+            void handleClearData();
+          }}
+        />
       </div>
 
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
