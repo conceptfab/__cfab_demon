@@ -122,8 +122,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     duration_seconds INTEGER NOT NULL,
     date TEXT NOT NULL,
     rate_multiplier REAL NOT NULL DEFAULT 1.0,
+    split_source_session_id INTEGER,
     project_id INTEGER,
     FOREIGN KEY (app_id) REFERENCES applications(id),
+    FOREIGN KEY (split_source_session_id) REFERENCES sessions(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     UNIQUE(app_id, start_time)
 );
@@ -176,6 +178,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_app_date ON sessions(app_id, date, start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_split_source_session_id ON sessions(split_source_session_id);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
 CREATE INDEX IF NOT EXISTS idx_file_activities_app_date_overlap
 ON file_activities(app_id, date, last_seen, first_seen);
