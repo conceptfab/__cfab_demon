@@ -722,9 +722,6 @@ export function Sessions() {
   );
 
   const openMultiSplitModal = (session: SessionWithApp) => {
-    const splitSuggested = splitEligibilityBySession.get(session.id) ?? false;
-    if (!splitSuggested) return;
-
     const derivedAnalysis = buildAnalysisFromBreakdown(
       session.id,
       aiBreakdowns.get(session.id) ??
@@ -732,6 +729,11 @@ export function Sessions() {
       splitSettings.toleranceThreshold,
       splitSettings.maxProjectsPerSession,
     );
+    const splitSuggested =
+      (splitEligibilityBySession.get(session.id) ?? false) ||
+      (derivedAnalysis?.is_splittable ?? false);
+    if (!splitSuggested) return;
+
     if (derivedAnalysis) {
       setSplitAnalysisBySession((prev) => {
         if (prev.has(session.id)) return prev;
@@ -1281,25 +1283,18 @@ export function Sessions() {
       // Already split sessions must not be split again
       if (isAlreadySplitSession(session)) return false;
 
+      const breakdown =
+        aiBreakdowns.get(session.id) ??
+        (scoreBreakdown?.sessionId === session.id ? scoreBreakdown.data : null);
+      const breakdownSuggestsSplit = isSplittableFromBreakdown(
+        breakdown,
+        splitSettings.toleranceThreshold,
+      );
+
       const explicit = splitEligibilityBySession.get(session.id);
-      if (typeof explicit === 'boolean') return explicit;
+      if (typeof explicit === 'boolean') return explicit || breakdownSuggestsSplit;
 
-      const memoBreakdown = aiBreakdowns.get(session.id);
-      if (memoBreakdown) {
-        return isSplittableFromBreakdown(
-          memoBreakdown,
-          splitSettings.toleranceThreshold,
-        );
-      }
-
-      if (scoreBreakdown?.sessionId === session.id) {
-        return isSplittableFromBreakdown(
-          scoreBreakdown.data,
-          splitSettings.toleranceThreshold,
-        );
-      }
-
-      return false;
+      return breakdownSuggestsSplit;
     },
     [
       splitEligibilityBySession,

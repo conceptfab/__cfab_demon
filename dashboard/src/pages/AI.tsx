@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import {
-  Brain,
-  PlayCircle,
-  Save,
-  Trash2,
-} from 'lucide-react';
+import { Brain, PlayCircle, RefreshCw, Save, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast-notification';
@@ -123,7 +118,10 @@ function formatPercent(value: number): string {
 function formatDateLabel(value: string): string {
   const parsed = new Date(`${value}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function parseDate(value: string | null | undefined): Date | null {
@@ -196,16 +194,21 @@ function buildTrainingReminder(
 
 export function AIPage() {
   const { t: tr, i18n } = useTranslation();
-  const t = createInlineTranslator(tr, i18n.resolvedLanguage ?? i18n.language);
+  const t = useMemo(
+    () => createInlineTranslator(tr, i18n.resolvedLanguage ?? i18n.language),
+    [tr, i18n.resolvedLanguage, i18n.language],
+  );
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isFetchingRef = useRef(false);
   const isFetchingMetricsRef = useRef(false);
+  const showErrorRef = useRef(showError);
+  const translateRef = useRef(tr);
+  const inlineTranslateRef = useRef(t);
   const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
   const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(false);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
   const [training, setTraining] = useState(false);
@@ -213,6 +216,7 @@ export function AIPage() {
   const [rollingBack, setRollingBack] = useState(false);
   const [resettingKnowledge, setResettingKnowledge] = useState(false);
   const [snoozingReminder, setSnoozingReminder] = useState(false);
+  const [refreshingStatus, setRefreshingStatus] = useState(false);
 
   const [mode, setMode] = useState<AssignmentMode>('suggest');
   const [suggestConf, setSuggestConf] = useState<number>(0.6);
@@ -252,11 +256,22 @@ export function AIPage() {
     [status, t],
   );
 
+  useEffect(() => {
+    showErrorRef.current = showError;
+  }, [showError]);
+
+  useEffect(() => {
+    translateRef.current = tr;
+  }, [tr]);
+
+  useEffect(() => {
+    inlineTranslateRef.current = t;
+  }, [t]);
+
   const fetchStatus = useCallback(
-    async (silent = false) => {
+    async () => {
       if (isFetchingRef.current) return;
       isFetchingRef.current = true;
-      if (!silent) setLoadingStatus(true);
       try {
         const nextStatus = await getAssignmentModelStatus();
         syncFromStatus(nextStatus);
@@ -264,18 +279,17 @@ export function AIPage() {
         if (!dirtyRef.current) setFeedbackWeight(fw);
       } catch (e) {
         console.error(e);
-        showError(
-          t(
+        showErrorRef.current(
+          inlineTranslateRef.current(
             'Nie udało się wczytać statusu modelu AI:',
             'Failed to load AI model status:',
           ) + ` ${String(e)}`,
         );
       } finally {
-        if (!silent) setLoadingStatus(false);
         isFetchingRef.current = false;
       }
     },
-    [showError, t],
+    [],
   );
 
   const fetchMetrics = useCallback(
@@ -288,24 +302,42 @@ export function AIPage() {
         setMetrics(nextMetrics);
       } catch (e) {
         console.error(e);
-        showError(`${tr('ai_page.errors.metrics_load_failed')} ${String(e)}`);
+        showErrorRef.current(
+          `${translateRef.current('ai_page.errors.metrics_load_failed')} ${String(e)}`,
+        );
       } finally {
         if (!silent) setLoadingMetrics(false);
         isFetchingMetricsRef.current = false;
       }
     },
-    [showError, tr],
+    [],
+  );
+
+  const refreshModelData = useCallback(
+    async (silent = false) => {
+      await Promise.all([fetchStatus(), fetchMetrics(silent)]);
+    },
+    [fetchMetrics, fetchStatus],
   );
 
   useEffect(() => {
-    void fetchStatus();
-    void fetchMetrics();
+    void refreshModelData();
     const interval = setInterval(() => {
-      void fetchStatus(true);
-      void fetchMetrics(true);
+      void refreshModelData(true);
     }, 30_000);
     return () => clearInterval(interval);
-  }, [fetchMetrics, fetchStatus]);
+  }, [refreshModelData]);
+
+  const handleRefreshStatus = async () => {
+    if (refreshingStatus) return;
+
+    setRefreshingStatus(true);
+    try {
+      await refreshModelData();
+    } finally {
+      setRefreshingStatus(false);
+    }
+  };
 
   const handleSaveMode = async () => {
     setSavingMode(true);
@@ -359,7 +391,7 @@ export function AIPage() {
       showInfo(t('Trening modelu zakończony.', 'Model training completed.'));
     } catch (e) {
       console.error(e);
-      await fetchStatus(true);
+      await fetchStatus();
       showError(
         t('Trening modelu nie powiódł się:', 'Model training failed:') +
           ` ${String(e)}`,
@@ -370,7 +402,9 @@ export function AIPage() {
   };
 
   const handleResetKnowledge = async () => {
-    const confirmed = await confirm(tr('ai_page.prompts.reset_knowledge_confirm'));
+    const confirmed = await confirm(
+      tr('ai_page.prompts.reset_knowledge_confirm'),
+    );
     if (!confirmed) return;
 
     setResettingKnowledge(true);
@@ -417,7 +451,7 @@ export function AIPage() {
         ),
       );
       triggerRefresh();
-      await fetchStatus(true);
+      await fetchStatus();
       await fetchMetrics(true);
     } catch (e) {
       console.error(e);
@@ -451,7 +485,7 @@ export function AIPage() {
         ),
       );
       triggerRefresh();
-      await fetchStatus(true);
+      await fetchStatus();
       await fetchMetrics(true);
     } catch (e) {
       console.error(e);
@@ -693,12 +727,18 @@ export function AIPage() {
                 variant="outline"
                 className="h-8"
                 onClick={() => {
-                  void fetchStatus();
-                  void fetchMetrics();
+                  void handleRefreshStatus();
                 }}
-                disabled={loadingStatus || loadingMetrics}
+                disabled={refreshingStatus}
               >
-                {t('Odśwież status', 'Refresh Status')}
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${
+                    refreshingStatus ? 'animate-spin' : ''
+                  }`}
+                />
+                {refreshingStatus
+                  ? t('Odświeżanie...', 'Refreshing...')
+                  : t('Odśwież status', 'Refresh Status')}
               </Button>
               <Button
                 variant="destructive"
@@ -749,10 +789,7 @@ export function AIPage() {
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t(
-                        'Auto-safe przypisania',
-                        'Auto-safe assignments',
-                      )}
+                      {t('Auto-safe przypisania', 'Auto-safe assignments')}
                     </p>
                     <p className="mt-1 font-medium">
                       {metricsSummary?.auto_assigned ?? 0}
@@ -760,10 +797,7 @@ export function AIPage() {
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t(
-                        'Pokrycie detected_path',
-                        'Detected path coverage',
-                      )}
+                      {t('Pokrycie detected_path', 'Detected path coverage')}
                     </p>
                     <p className="mt-1 font-medium">
                       {formatPercent(
@@ -1058,10 +1092,7 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm md:col-span-2">
                 <span className="text-xs text-muted-foreground">
-                  {t(
-                    'Horyzont treningu (dni)',
-                    'Training horizon (days)',
-                  )}
+                  {t('Horyzont treningu (dni)', 'Training horizon (days)')}
                 </span>
                 <div className="flex items-center gap-3">
                   <input
@@ -1116,10 +1147,7 @@ export function AIPage() {
                     setTrainingAppBlacklistText(e.target.value);
                     dirtyRef.current = true;
                   }}
-                  placeholder={t(
-                    'np. chrome.exe',
-                    'e.g. chrome.exe',
-                  )}
+                  placeholder={t('np. chrome.exe', 'e.g. chrome.exe')}
                 />
               </label>
 
@@ -1174,7 +1202,10 @@ export function AIPage() {
 
         <AiBatchActionsCard
           title={t('Akcje paczkowe auto-safe', 'Batch auto-safe actions')}
-          sessionLimitLabel={t('Limit sesji na przebieg', 'Session limit per run')}
+          sessionLimitLabel={t(
+            'Limit sesji na przebieg',
+            'Session limit per run',
+          )}
           autoLimit={autoLimit}
           onAutoLimitChange={(value) => {
             const nextValue = Math.max(1, Math.min(10_000, value));
