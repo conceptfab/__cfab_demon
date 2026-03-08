@@ -336,17 +336,15 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 - **10.3** `Sessions.tsx`: auto-refresh pomija niewidoczną kartę (`document.visibilityState`).
 - **10.4** `ProjectPage.tsx`: dodano cancellation guard dla asynchronicznego ładowania.
 - **10.5** Ograniczono konflikt `useAutoSplitSessions` vs `useAutoAiAssignment` (wspólny klucz heavy-operation).
-- **4.2 (częściowo)** Migracja z `useInlineT()` na klucze i18n wykonana dla `Data.tsx`, `ImportPage.tsx`, `TimeAnalysis.tsx`, `DaemonControl.tsx`; dodano sekcje locale: `data_page`, `import_page`, `time_analysis_page`, `daemon_page` (PL/EN).
+- **4.2** Dokończono migrację wskazanych ekranów do kluczy i18n (`Data.tsx`, `ImportPage.tsx`, `TimeAnalysis.tsx`, `DaemonControl.tsx`, `Applications.tsx`, `Estimates.tsx`, `Reports.tsx`) oraz dopisano sekcje locale: `data_page`, `import_page`, `time_analysis_page`, `daemon_page`, `applications_page`, `estimates_page`, `reports_page` (PL/EN).
 
 ### 12.2 Częściowo zrobione
 
 - **4.1** Spójność systemu i18n poprawiona (kolejne ekrany migrowane na klucze), ale pełna unifikacja całej aplikacji nadal trwa.
-- **4.2** Migrowano 4 z 7 wskazanych ekranów; pozostały strony z większą liczbą inline stringów.
 - **5.1** Help został szeroko uzupełniony; zalecany okresowy audyt po dodaniu nowych funkcji.
 
 ### 12.3 Pozostało do zrobienia
 
-- **4.2** Dokończyć migrację tłumaczeń do kluczy `.json` w: `Applications.tsx`, `Estimates.tsx`, `Reports.tsx`.
 - **6.2** Refaktor `ProjectPage.tsx` na mniejsze podkomponenty.
 - **6.3** Refaktor `Sessions.tsx` na mniejsze podkomponenty/hooki.
 - **6.4** Refaktor `AI.tsx` na sekcje.
@@ -360,3 +358,4 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 - **WYSOKI:** N+1 `analyze_sessions_splittable` — **zamknięte**.
 - **WYSOKI:** martwy kod eksportów w `tauri.ts` — **zamknięte**.
 - **WYSOKI:** dokumentacja Help — **w większości zamknięte**.
+- **ŚREDNI:** migracja brakujących tłumaczeń z listy 4.2 — **zamknięte**.

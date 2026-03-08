@@ -282,7 +282,10 @@ export function Sessions() {
   const [indicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const splitSettings = useMemo(() => loadSplitSettings(), [refreshKey]);
+  const splitSettings = useMemo(() => {
+    void refreshKey;
+    return loadSplitSettings();
+  }, [refreshKey]);
   const [scoreBreakdown, setScoreBreakdown] = useState<{
     sessionId: number;
     data: ScoreBreakdown;
@@ -658,10 +661,7 @@ export function Sessions() {
 
   // Update placement when menu opens or window resizes
   useEffect(() => {
-    if (!ctxMenu || typeof window === 'undefined') {
-      setCtxMenuPlacement(null);
-      return;
-    }
+    if (!ctxMenu || typeof window === 'undefined') return;
 
     const updatePlacement = () => {
       const next = resolveContextMenuPlacement(

@@ -464,6 +464,218 @@
     "auto_refresh_off": "Auto-odświeżanie WYŁ.",
     "no_logs": "Brak dostępnych logów"
   },
+  "applications_page": {
+    "errors": {
+      "load_monitored": "Nie udało się wczytać monitorowanych aplikacji",
+      "app_name_empty": "Nazwa aplikacji nie może być pusta.",
+      "rename_monitored_prefix": "Nie udało się zmienić nazwy monitorowanej aplikacji:",
+      "save_color_prefix": "Nie udało się zapisać koloru aplikacji:",
+      "rename_app_prefix": "Nie udało się zmienić nazwy aplikacji:",
+      "delete_app_prefix": "Nie udało się usunąć aplikacji:"
+    },
+    "prompts": {
+      "rename_monitored_title": "Zmień nazwę monitorowanej aplikacji",
+      "rename_app_title": "Zmień nazwę aplikacji",
+      "rename_app_description": "(nazwa wyświetlana)",
+      "delete_app_confirm": "Usunąć aplikację \"{{label}}\" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, {{sessionCount}} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć."
+    },
+    "monitored": {
+      "title": "Monitorowane aplikacje",
+      "exe_placeholder": "nazwa exe (np. code.exe)",
+      "display_name_placeholder": "Nazwa wyświetlana (opcjonalnie)",
+      "empty": "Brak monitorowanych aplikacji. Dodaj nazwy exe powyżej, aby rozpocząć śledzenie."
+    },
+    "actions": {
+      "add": "Dodaj",
+      "load_more": "Pokaż więcej"
+    },
+    "tooltips": {
+      "rename_monitored": "Zmień nazwę monitorowanej aplikacji",
+      "remove_monitored": "Usuń monitorowaną aplikację",
+      "change_color": "Zmień kolor",
+      "choose_color": "Wybierz kolor",
+      "save_color": "Zapisz kolor",
+      "rename_app": "Zmień nazwę aplikacji",
+      "reset_time": "Resetuj czas",
+      "delete_app_and_sessions": "Usuń aplikację i sesje"
+    },
+    "search_placeholder": "Szukaj aplikacji...",
+    "apps_count": "{{count}} aplikacji",
+    "table": {
+      "application": "Aplikacja",
+      "total_time": "Łączny czas",
+      "sessions": "Sesje",
+      "last_used": "Ostatnio użyta",
+      "project": "Projekt"
+    },
+    "labels": {
+      "monitored": "monitorowana",
+      "imported": "Importowana"
+    },
+    "empty": {
+      "no_applications": "Nie znaleziono aplikacji"
+    }
+  },
+  "estimates_page": {
+    "errors": {
+      "load_global_rate": "Nie udało się wczytać stawki globalnej",
+      "load_project_estimates": "Nie udało się wczytać estymacji projektów",
+      "load_summary": "Nie udało się wczytać podsumowania",
+      "save_global_rate": "Nie udało się zapisać stawki globalnej",
+      "update_project_rate": "Nie udało się zaktualizować stawki projektu",
+      "reset_project_rate": "Nie udało się zresetować stawki projektu"
+    },
+    "validation": {
+      "global_rate_range": "Stawka globalna musi być między 0 a {{maxRate}}",
+      "project_rate_range": "Stawka projektu musi być pusta lub mieścić się między 0 a {{maxRate}}"
+    },
+    "messages": {
+      "global_rate_saved": "Globalna stawka godzinowa zapisana",
+      "project_rate_updated": "Stawka projektu zaktualizowana",
+      "project_rate_reset": "Stawka projektu zresetowana do globalnej"
+    },
+    "metrics": {
+      "total_hours": "Łączne godziny",
+      "estimated_value": "Wartość estymowana",
+      "active_projects": "Aktywne projekty",
+      "rate_overrides": "Nadpisane stawki"
+    },
+    "units": {
+      "hours_short": "h"
+    },
+    "sections": {
+      "global_hourly_rate": "Globalna stawka godzinowa",
+      "project_estimates": "Estymacje projektów"
+    },
+    "actions": {
+      "saving": "Zapisywanie...",
+      "save": "Zapisz",
+      "reset": "Resetuj",
+      "open_projects": "Otwórz projekty"
+    },
+    "labels": {
+      "current": "Aktualna:",
+      "boosted": "wzmocnione"
+    },
+    "states": {
+      "loading_estimates": "Wczytywanie estymacji..."
+    },
+    "empty": {
+      "no_active_time": "Brak aktywnego czasu projektowego w tym zakresie dat."
+    },
+    "table": {
+      "project": "Projekt",
+      "hours": "Godziny",
+      "billable": "Rozliczalne",
+      "sessions": "Sesje",
+      "effective_rate": "Stawka efektywna",
+      "value": "Wartość",
+      "project_rate_override": "Nadpisanie stawki projektu"
+    },
+    "tooltips": {
+      "multiplied_sessions": "{{count}} sesji z mnożnikiem stawki - kliknij, aby zobaczyć",
+      "bonus_hours": "Zawiera {{bonusHours}} dodatkowych godzin z mnożników stawek"
+    },
+    "placeholders": {
+      "global": "globalna"
+    }
+  },
+  "reports_page": {
+    "editor": {
+      "title": "Edytor szablonów raportów",
+      "autosave_hint": "Szablon zapisywany automatycznie"
+    },
+    "template": {
+      "new_template": "Nowy szablon",
+      "copy_suffix": "kopia"
+    },
+    "tooltips": {
+      "new_template": "Nowy szablon",
+      "duplicate_template": "Duplikuj szablon",
+      "delete_template": "Usuń szablon"
+    },
+    "fields": {
+      "template_name": "Nazwa szablonu",
+      "name_placeholder": "Nazwa",
+      "base_font": "Font bazowy",
+      "base_size": "Rozmiar bazowy",
+      "show_logo": "Pokaż logo TIMEFLOW"
+    },
+    "fonts": {
+      "sans": "Sans-serif",
+      "serif": "Serif",
+      "mono": "Monospace"
+    },
+    "panel": {
+      "active_sections": "Aktywne sekcje",
+      "available_sections": "Dostępne sekcje"
+    },
+    "empty": {
+      "add_sections": "Dodaj sekcje z listy po lewej"
+    },
+    "sections": {
+      "header": "Nagłówek i tytuł",
+      "stats": "Statystyki główne",
+      "financials": "Dane finansowe",
+      "apps": "Top aplikacje",
+      "files": "Pliki / aktywność",
+      "ai": "Dane AI (sugestie)",
+      "sessions": "Lista sesji",
+      "comments": "Komentarze",
+      "boosts": "Sesje z mnożnikiem (Boosty)",
+      "manual_sessions": "Sesje manualne",
+      "footer": "Stopka"
+    },
+    "preview": {
+      "header": {
+        "project_report_title": "Nazwa Projektu — Raport",
+        "meta_line": "● Projekt · 2026-01-01 — 2026-03-06 · Wygenerowano: 2026-03-06"
+      },
+      "stats": {
+        "time_label": "CZAS",
+        "sessions_label": "SESJE",
+        "apps_label": "APLIKACJE"
+      },
+      "financials": {
+        "value_label": "WARTOŚĆ",
+        "work_time_label": "CZAS PRACY"
+      },
+      "apps": {
+        "line_vscode": "VS Code ██████████ 8h 20m",
+        "line_chrome": "Chrome   ████████   6h 10m",
+        "line_terminal": "Terminal ████       3h 05m"
+      },
+      "files": {
+        "title": "ZAREJESTROWANE PLIKI",
+        "count": "47 plików"
+      },
+      "ai": {
+        "suggestions": "SUGESTIE AI",
+        "assigned": "PRZYPISANE PRZEZ AI"
+      },
+      "sessions": {
+        "line_1": "03-06  VS Code   1h 20m  Refaktoryzacja głównego modułu",
+        "line_2": "03-05  Chrome    0h 45m  Research",
+        "line_3": "03-05  Terminal  0h 30m",
+        "more": "+139 więcej..."
+      },
+      "comments": {
+        "line_1": "03-06  Zakończono refaktoring modułu AI",
+        "line_2": "03-04  Poprawiono wydajność zapytań DB"
+      },
+      "boosts": {
+        "line_1": "03-06  VS Code   1h 20m  2×",
+        "line_2": "03-05  Chrome    0h 45m  1.5×"
+      },
+      "manual_sessions": {
+        "line_1": "03-06  Spotkanie z klientem  meeting  1h 30m",
+        "line_2": "03-05  Code review           review   0h 45m"
+      },
+      "footer": {
+        "line": "Nazwa Projektu — Raport · 2026-03-06 14:30"
+      }
+    }
+  },
   "settings": {
     "language": {
       "title": "Język",

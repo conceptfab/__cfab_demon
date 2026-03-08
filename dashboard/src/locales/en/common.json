@@ -464,6 +464,218 @@
     "auto_refresh_off": "Auto-refresh OFF",
     "no_logs": "No logs available"
   },
+  "applications_page": {
+    "errors": {
+      "load_monitored": "Failed to load monitored applications",
+      "app_name_empty": "Application name cannot be empty.",
+      "rename_monitored_prefix": "Failed to rename monitored app:",
+      "save_color_prefix": "Failed to save application color:",
+      "rename_app_prefix": "Failed to rename application:",
+      "delete_app_prefix": "Failed to delete application:"
+    },
+    "prompts": {
+      "rename_monitored_title": "Rename monitored application",
+      "rename_app_title": "Rename application",
+      "rename_app_description": "(display name)",
+      "delete_app_confirm": "Delete application \"{{label}}\" and all related sessions/files? This will remove the app row, {{sessionCount}} sessions, and related file activity records. This cannot be undone."
+    },
+    "monitored": {
+      "title": "Monitored Applications",
+      "exe_placeholder": "exe name (e.g. code.exe)",
+      "display_name_placeholder": "Display name (optional)",
+      "empty": "No monitored applications. Add exe names above to start tracking."
+    },
+    "actions": {
+      "add": "Add",
+      "load_more": "Load more"
+    },
+    "tooltips": {
+      "rename_monitored": "Rename monitored application",
+      "remove_monitored": "Remove monitored application",
+      "change_color": "Change color",
+      "choose_color": "Choose color",
+      "save_color": "Save color",
+      "rename_app": "Rename application",
+      "reset_time": "Reset time",
+      "delete_app_and_sessions": "Delete app and sessions"
+    },
+    "search_placeholder": "Search applications...",
+    "apps_count": "{{count}} apps",
+    "table": {
+      "application": "Application",
+      "total_time": "Total Time",
+      "sessions": "Sessions",
+      "last_used": "Last Used",
+      "project": "Project"
+    },
+    "labels": {
+      "monitored": "monitored",
+      "imported": "Imported"
+    },
+    "empty": {
+      "no_applications": "No applications found"
+    }
+  },
+  "estimates_page": {
+    "errors": {
+      "load_global_rate": "Failed to load global rate",
+      "load_project_estimates": "Failed to load project estimates",
+      "load_summary": "Failed to load summary",
+      "save_global_rate": "Failed to save global rate",
+      "update_project_rate": "Failed to update project rate",
+      "reset_project_rate": "Failed to reset project rate"
+    },
+    "validation": {
+      "global_rate_range": "Global rate must be between 0 and {{maxRate}}",
+      "project_rate_range": "Project rate must be empty or between 0 and {{maxRate}}"
+    },
+    "messages": {
+      "global_rate_saved": "Global hourly rate saved",
+      "project_rate_updated": "Project rate updated",
+      "project_rate_reset": "Project rate reset to global"
+    },
+    "metrics": {
+      "total_hours": "Total Hours",
+      "estimated_value": "Estimated Value",
+      "active_projects": "Active Projects",
+      "rate_overrides": "Rate Overrides"
+    },
+    "units": {
+      "hours_short": "h"
+    },
+    "sections": {
+      "global_hourly_rate": "Global Hourly Rate",
+      "project_estimates": "Project Estimates"
+    },
+    "actions": {
+      "saving": "Saving...",
+      "save": "Save",
+      "reset": "Reset",
+      "open_projects": "Open Projects"
+    },
+    "labels": {
+      "current": "Current:",
+      "boosted": "boosted"
+    },
+    "states": {
+      "loading_estimates": "Loading estimates..."
+    },
+    "empty": {
+      "no_active_time": "No active project time in this date range."
+    },
+    "table": {
+      "project": "Project",
+      "hours": "Hours",
+      "billable": "Billable",
+      "sessions": "Sessions",
+      "effective_rate": "Effective Rate",
+      "value": "Value",
+      "project_rate_override": "Project Rate Override"
+    },
+    "tooltips": {
+      "multiplied_sessions": "{{count}} session(s) with rate multiplier - click to view",
+      "bonus_hours": "Includes {{bonusHours}} bonus hours from rate multipliers"
+    },
+    "placeholders": {
+      "global": "global"
+    }
+  },
+  "reports_page": {
+    "editor": {
+      "title": "Report Template Editor",
+      "autosave_hint": "Template auto-saved"
+    },
+    "template": {
+      "new_template": "New template",
+      "copy_suffix": "copy"
+    },
+    "tooltips": {
+      "new_template": "New template",
+      "duplicate_template": "Duplicate template",
+      "delete_template": "Delete template"
+    },
+    "fields": {
+      "template_name": "Template name",
+      "name_placeholder": "Name",
+      "base_font": "Base font",
+      "base_size": "Base size",
+      "show_logo": "Show TIMEFLOW logo"
+    },
+    "fonts": {
+      "sans": "Sans-serif",
+      "serif": "Serif",
+      "mono": "Monospace"
+    },
+    "panel": {
+      "active_sections": "Active sections",
+      "available_sections": "Available sections"
+    },
+    "empty": {
+      "add_sections": "Add sections from the list on the left"
+    },
+    "sections": {
+      "header": "Header & title",
+      "stats": "Main statistics",
+      "financials": "Financial data",
+      "apps": "Top applications",
+      "files": "Files / activity",
+      "ai": "AI data (suggestions)",
+      "sessions": "Session list",
+      "comments": "Comments",
+      "boosts": "Boosted sessions",
+      "manual_sessions": "Manual sessions",
+      "footer": "Footer"
+    },
+    "preview": {
+      "header": {
+        "project_report_title": "Project Name — Report",
+        "meta_line": "● Project · 2026-01-01 — 2026-03-06 · Generated: 2026-03-06"
+      },
+      "stats": {
+        "time_label": "TIME",
+        "sessions_label": "SESSIONS",
+        "apps_label": "APPLICATIONS"
+      },
+      "financials": {
+        "value_label": "VALUE",
+        "work_time_label": "WORK TIME"
+      },
+      "apps": {
+        "line_vscode": "VS Code ██████████ 8h 20m",
+        "line_chrome": "Chrome   ████████   6h 10m",
+        "line_terminal": "Terminal ████       3h 05m"
+      },
+      "files": {
+        "title": "TRACKED FILES",
+        "count": "47 files"
+      },
+      "ai": {
+        "suggestions": "AI SUGGESTIONS",
+        "assigned": "ASSIGNED BY AI"
+      },
+      "sessions": {
+        "line_1": "03-06  VS Code   1h 20m  Refactoring main module",
+        "line_2": "03-05  Chrome    0h 45m  Research",
+        "line_3": "03-05  Terminal  0h 30m",
+        "more": "+139 more..."
+      },
+      "comments": {
+        "line_1": "03-06  AI module refactor completed",
+        "line_2": "03-04  Improved DB query performance"
+      },
+      "boosts": {
+        "line_1": "03-06  VS Code   1h 20m  2×",
+        "line_2": "03-05  Chrome    0h 45m  1.5×"
+      },
+      "manual_sessions": {
+        "line_1": "03-06  Client meeting        meeting  1h 30m",
+        "line_2": "03-05  Code review           review   0h 45m"
+      },
+      "footer": {
+        "line": "Project Name — Report · 2026-03-06 14:30"
+      }
+    }
+  },
   "settings": {
     "language": {
       "title": "Language",

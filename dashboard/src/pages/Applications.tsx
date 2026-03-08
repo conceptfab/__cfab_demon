@@ -30,7 +30,6 @@ import { formatDuration } from '@/lib/utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { useInlineT } from '@/lib/inline-i18n';
 import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 
@@ -38,8 +37,7 @@ type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
 const APP_ROWS_PAGE_SIZE = 100;
 
 export function Applications() {
-  const { i18n } = useTranslation();
-  const t = useInlineT();
+  const { i18n, t } = useTranslation();
   const { triggerRefresh, refreshKey } = useDataStore();
   const { showError } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -69,6 +67,7 @@ export function Applications() {
 
         if (appsResult.status === 'fulfilled') {
           setApps(appsResult.value);
+          setVisibleRows(APP_ROWS_PAGE_SIZE);
         } else {
           console.error('Failed to load applications:', appsResult.reason);
         }
@@ -82,10 +81,7 @@ export function Applications() {
             monitoredResult.reason,
           );
           setMonitoredError(
-            t(
-              'Nie udało się wczytać monitorowanych aplikacji',
-              'Failed to load monitored applications',
-            ),
+            t('applications_page.errors.load_monitored'),
           );
         }
       },
@@ -121,12 +117,12 @@ export function Applications() {
   const handleRenameMonitoredApp = async (app: MonitoredApp) => {
     const current = app.display_name || app.exe_name;
     setPromptConfig({
-      title: t('Zmień nazwę monitorowanej aplikacji', 'Rename monitored application'),
+      title: t('applications_page.prompts.rename_monitored_title'),
       initialValue: current,
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          showError(t('Nazwa aplikacji nie może być pusta.', 'Application name cannot be empty.'));
+          showError(t('applications_page.errors.app_name_empty'));
           return;
         }
         if (trimmed === current) return;
@@ -137,10 +133,8 @@ export function Applications() {
         } catch (e) {
           console.error('Failed to rename monitored app:', e);
           showError(
-            t(
-              'Nie udało się zmienić nazwy monitorowanej aplikacji:',
-              'Failed to rename monitored app:',
-            ) + ` ${String(e)}`,
+            t('applications_page.errors.rename_monitored_prefix') +
+              ` ${String(e)}`,
           );
         }
       },
@@ -177,10 +171,6 @@ export function Applications() {
   );
   const canLoadMore = visibleRows < filtered.length;
 
-  useEffect(() => {
-    setVisibleRows(APP_ROWS_PAGE_SIZE);
-  }, [search, sortKey, sortAsc, apps.length]);
-
   const handleResetAppTime = async (appId: number) => {
     try {
       await resetAppTime(appId);
@@ -198,7 +188,7 @@ export function Applications() {
     } catch (error) {
       console.error('Failed to update app color:', error);
       showError(
-        `${t('Nie udało się zapisać koloru aplikacji:', 'Failed to save application color:')} ${String(error)}`,
+        `${t('applications_page.errors.save_color_prefix')} ${String(error)}`,
       );
     }
   };
@@ -206,13 +196,13 @@ export function Applications() {
   const handleRenameApp = async (app: AppWithStats) => {
     const current = app.display_name || app.executable_name;
     setPromptConfig({
-      title: t('Zmień nazwę aplikacji', 'Rename application'),
-      description: t('(nazwa wyświetlana)', '(display name)'),
+      title: t('applications_page.prompts.rename_app_title'),
+      description: t('applications_page.prompts.rename_app_description'),
       initialValue: current,
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          showError(t('Nazwa aplikacji nie może być pusta.', 'Application name cannot be empty.'));
+          showError(t('applications_page.errors.app_name_empty'));
           return;
         }
         if (trimmed === current) return;
@@ -223,7 +213,7 @@ export function Applications() {
         } catch (e) {
           console.error('Failed to rename application:', e);
           showError(
-            t('Nie udało się zmienić nazwy aplikacji:', 'Failed to rename application:') +
+            t('applications_page.errors.rename_app_prefix') +
               ` ${String(e)}`,
           );
         }
@@ -234,11 +224,10 @@ export function Applications() {
   const handleDeleteApp = async (app: AppWithStats) => {
     const label = app.display_name || app.executable_name;
     const confirmed = await confirm(
-      t(
-        'Usunąć aplikację "{{label}}" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, {{sessionCount}} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć.',
-        'Delete application "{{label}}" and all related sessions/files? This will remove the app row, {{sessionCount}} sessions, and related file activity records. This cannot be undone.',
-        { label, sessionCount: app.session_count },
-      ),
+      t('applications_page.prompts.delete_app_confirm', {
+        label,
+        sessionCount: app.session_count,
+      }),
     );
     if (!confirmed) return;
 
@@ -248,15 +237,17 @@ export function Applications() {
     } catch (e) {
       console.error('Failed to delete app and data:', e);
       showError(
-        t('Nie udało się usunąć aplikacji:', 'Failed to delete application:') +
+        t('applications_page.errors.delete_app_prefix') +
           ` ${String(e)}`,
       );
     }
   };
 
   const toggleSort = (key: SortKey) => {
-    if (sortKey === key) setSortAsc(!sortAsc);
-    else {
+    setVisibleRows(APP_ROWS_PAGE_SIZE);
+    if (sortKey === key) {
+      setSortAsc(!sortAsc);
+    } else {
       setSortKey(key);
       setSortAsc(false);
     }
@@ -269,7 +260,7 @@ export function Applications() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Shield className="h-4 w-4" />
-            {t('Monitorowane aplikacje', 'Monitored Applications')}
+            {t('applications_page.monitored.title')}
             <Badge variant="secondary" className="ml-auto">
               {monitored.length}
             </Badge>
@@ -280,14 +271,16 @@ export function Applications() {
           <div className="flex items-center gap-2">
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder={t('nazwa exe (np. code.exe)', 'exe name (e.g. code.exe)')}
+              placeholder={t('applications_page.monitored.exe_placeholder')}
               value={newExe}
               onChange={(e) => setNewExe(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
             />
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder={t('Nazwa wyświetlana (opcjonalnie)', 'Display name (optional)')}
+              placeholder={t(
+                'applications_page.monitored.display_name_placeholder',
+              )}
               value={newDisplay}
               onChange={(e) => setNewDisplay(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
@@ -299,7 +292,7 @@ export function Applications() {
               disabled={!newExe.trim()}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
-              {t('Dodaj', 'Add')}
+              {t('applications_page.actions.add')}
             </Button>
           </div>
           {monitoredError && (
@@ -323,7 +316,7 @@ export function Applications() {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <AppTooltip content={t('Zmień nazwę monitorowanej aplikacji', 'Rename monitored application')}>
+                    <AppTooltip content={t('applications_page.tooltips.rename_monitored')}>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -333,7 +326,7 @@ export function Applications() {
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     </AppTooltip>
-                    <AppTooltip content={t('Usuń monitorowaną aplikację', 'Remove monitored application')}>
+                    <AppTooltip content={t('applications_page.tooltips.remove_monitored')}>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -349,10 +342,7 @@ export function Applications() {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground text-center py-2">
-              {t(
-                'Brak monitorowanych aplikacji. Dodaj nazwy exe powyżej, aby rozpocząć śledzenie.',
-                'No monitored applications. Add exe names above to start tracking.',
-              )}
+              {t('applications_page.monitored.empty')}
             </p>
           )}
         </CardContent>
@@ -364,16 +354,16 @@ export function Applications() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             className="flex h-9 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            placeholder={t('Szukaj aplikacji...', 'Search applications...')}
+            placeholder={t('applications_page.search_placeholder')}
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setVisibleRows(APP_ROWS_PAGE_SIZE);
+            }}
           />
         </div>
         <p className="text-sm text-muted-foreground whitespace-nowrap">
-          {t('{{count}} aplikacji', '{{count}} apps').replace(
-            '{{count}}',
-            String(filtered.length),
-          )}
+          {t('applications_page.apps_count', { count: filtered.length })}
         </p>
       </div>
 
@@ -384,10 +374,10 @@ export function Applications() {
               <tr className="border-b text-muted-foreground">
                 {(
                   [
-                    ['display_name', t('Aplikacja', 'Application')],
-                    ['total_seconds', t('Łączny czas', 'Total Time')],
-                    ['session_count', t('Sesje', 'Sessions')],
-                    ['last_used', t('Ostatnio użyta', 'Last Used')],
+                    ['display_name', t('applications_page.table.application')],
+                    ['total_seconds', t('applications_page.table.total_time')],
+                    ['session_count', t('applications_page.table.sessions')],
+                    ['last_used', t('applications_page.table.last_used')],
                   ] as [SortKey, string][]
                 ).map(([key, label]) => (
                   <th key={key} className="px-4 py-3 text-left font-medium">
@@ -402,7 +392,9 @@ export function Applications() {
                     </Button>
                   </th>
                 ))}
-                <th className="px-4 py-3 text-left font-medium">{t('Projekt', 'Project')}</th>
+                <th className="px-4 py-3 text-left font-medium">
+                  {t('applications_page.table.project')}
+                </th>
                 <th className="px-4 py-3 text-left font-medium w-16"></th>
               </tr>
             </thead>
@@ -415,7 +407,7 @@ export function Applications() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="relative group">
-                        <AppTooltip content={t('Zmień kolor', 'Change color')}>
+                        <AppTooltip content={t('applications_page.tooltips.change_color')}>
                           <div
                             className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
                             style={{ backgroundColor: pendingColor && editingColorId === app.id ? pendingColor : app.color }}
@@ -438,7 +430,7 @@ export function Applications() {
                                 defaultValue={app.color || '#38bdf8'}
                                 className="w-16 h-8 border border-border rounded cursor-pointer"
                                 onChange={(e) => setPendingColor(e.target.value)}
-                                title={t('Wybierz kolor', 'Choose color')}
+                                title={t('applications_page.tooltips.choose_color')}
                               />
                               {pendingColor && (
                                 <Button
@@ -449,7 +441,7 @@ export function Applications() {
                                     handleUpdateColor(app.id, pendingColor);
                                     setPendingColor(null);
                                   }}
-                                  title={t('Zapisz kolor', 'Save color')}
+                                  title={t('applications_page.tooltips.save_color')}
                                 >
                                   <Save className="h-4 w-4" />
                                 </Button>
@@ -489,7 +481,7 @@ export function Applications() {
                       </div>
                       {monitoredSet.has(app.executable_name) && (
                         <Badge variant="outline" className="text-xs h-5">
-                          {t('monitorowana', 'monitored')}
+                          {t('applications_page.labels.monitored')}
                         </Badge>
                       )}
                       {app.is_imported === 1 && (
@@ -497,7 +489,7 @@ export function Applications() {
                           variant="secondary"
                           className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]"
                         >
-                          {t('Importowana', 'Imported')}
+                          {t('applications_page.labels.imported')}
                         </Badge>
                       )}
                     </div>
@@ -527,7 +519,7 @@ export function Applications() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <AppTooltip content={t('Zmień nazwę aplikacji', 'Rename application')}>
+                      <AppTooltip content={t('applications_page.tooltips.rename_app')}>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -537,7 +529,7 @@ export function Applications() {
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
                       </AppTooltip>
-                      <AppTooltip content={t('Resetuj czas', 'Reset time')}>
+                      <AppTooltip content={t('applications_page.tooltips.reset_time')}>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -547,7 +539,7 @@ export function Applications() {
                           <TimerReset className="h-3.5 w-3.5" />
                         </Button>
                       </AppTooltip>
-                      <AppTooltip content={t('Usuń aplikację i sesje', 'Delete app and sessions')}>
+                      <AppTooltip content={t('applications_page.tooltips.delete_app_and_sessions')}>
                         <Button
                           variant="ghost"
                           size="icon"
@@ -567,7 +559,7 @@ export function Applications() {
                     colSpan={6}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
-                    {t('Nie znaleziono aplikacji', 'No applications found')}
+                    {t('applications_page.empty.no_applications')}
                   </td>
                 </tr>
               )}
@@ -580,7 +572,7 @@ export function Applications() {
                 size="sm"
                 onClick={() => setVisibleRows((prev) => prev + APP_ROWS_PAGE_SIZE)}
               >
-                {t('Pokaż więcej', 'Load more')}
+                {t('applications_page.actions.load_more')}
               </Button>
             </div>
           )}
