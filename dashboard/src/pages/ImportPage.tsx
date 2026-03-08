@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles } from "@/lib/tauri";
 import type { ArchivedFile } from "@/lib/db-types";
-import { useInlineT } from "@/lib/inline-i18n";
+import { useTranslation } from "react-i18next";
 
 export function ImportPage() {
-  const t = useInlineT();
+  const { t } = useTranslation();
   const [imported, setImported] = useState<{ file_path: string; import_date: string; records_count: number }[]>([]);
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -42,14 +42,16 @@ export function ImportPage() {
       {imported.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">{t("Zaimportowane pliki", "Imported Files")}</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("import_page.imported_files_title")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {imported.map((f) => (
                 <div key={f.file_path} className="flex items-center justify-between text-xs py-1">
                   <span className="truncate text-muted-foreground">{f.file_path.split(/[/\\]/).pop()}</span>
-                  <span className="font-mono text-muted-foreground">{f.records_count} {t("sesji", "sessions")}</span>
+                  <span className="font-mono text-muted-foreground">
+                    {t("import_page.sessions_count", { count: f.records_count })}
+                  </span>
                 </div>
               ))}
             </div>
@@ -59,17 +61,17 @@ export function ImportPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">{t("Archiwum", "Archive")}</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("import_page.archive_title")}</CardTitle>
         </CardHeader>
         <CardContent>
           {archive.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{t("Archiwum jest puste", "Archive is empty")}</p>
+            <p className="text-xs text-muted-foreground">{t("import_page.archive_empty")}</p>
           ) : (
             <div className="max-h-64 space-y-1 overflow-y-auto">
               {archive.map((f) => (
                 <div key={f.file_name} className="flex items-center justify-between gap-2 text-xs py-1">
                   <span className="truncate text-muted-foreground">{f.file_name}</span>
-                  <AppTooltip content={t("Usuń z archiwum", "Delete from archive")}>
+                  <AppTooltip content={t("import_page.delete_from_archive")}>
                     <Button
                       variant="ghost"
                       size="icon"

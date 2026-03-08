@@ -22,16 +22,22 @@ import {
   MonthlyHeatmap,
 } from '@/components/time-analysis/MonthlyView';
 import { useSettingsStore } from '@/store/settings-store';
-import { useInlineT } from '@/lib/inline-i18n';
+import { useTranslation } from 'react-i18next';
 
 export function TimeAnalysis() {
-  const t = useInlineT();
+  const { t } = useTranslation();
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
   const d = useTimeAnalysisData();
   const hasPieProjectData = d.pieData.length > 0;
   const pieChartData = hasPieProjectData
     ? d.pieData
-    : [{ name: t('Brak danych projektowych', 'No project data'), value: 1, fill: '#334155' }];
+    : [
+        {
+          name: t('time_analysis_page.no_project_data'),
+          value: 1,
+          fill: '#334155',
+        },
+      ];
 
   return (
     <div className="space-y-6">
@@ -43,24 +49,24 @@ export function TimeAnalysis() {
             size="sm"
             onClick={() => d.setRangeMode('daily')}
           >
-            {t('Dzisiaj', 'Today')}
+            {t('time_analysis_page.range.today')}
           </Button>
           <Button
             variant={d.rangeMode === 'weekly' ? 'default' : 'ghost'}
             size="sm"
             onClick={() => d.setRangeMode('weekly')}
           >
-            {t('Tydzień', 'Week')}
+            {t('time_analysis_page.range.week')}
           </Button>
           <Button
             variant={d.rangeMode === 'monthly' ? 'default' : 'ghost'}
             size="sm"
             onClick={() => d.setRangeMode('monthly')}
           >
-            {t('Miesiąc', 'Month')}
+            {t('time_analysis_page.range.month')}
           </Button>
           <div className="mx-1 h-5 w-px bg-border" />
-          <AppTooltip content={t('Poprzedni okres', 'Previous period')}>
+          <AppTooltip content={t('time_analysis_page.previous_period')}>
             <Button
               variant="ghost"
               size="icon"
@@ -73,7 +79,7 @@ export function TimeAnalysis() {
           <span className="text-xs text-muted-foreground min-w-[5rem] text-center">
             {d.dateLabel}
           </span>
-          <AppTooltip content={t('Następny okres', 'Next period')}>
+          <AppTooltip content={t('time_analysis_page.next_period')}>
             <Button
               variant="ghost"
               size="icon"
@@ -100,7 +106,9 @@ export function TimeAnalysis() {
 
         {/* Pie chart — Project Time Distribution */}
         <div className="flex flex-col">
-          <h3 className="text-sm font-medium px-2 pb-4">{t('Rozkład czasu', 'Time Distribution')}</h3>
+          <h3 className="text-sm font-medium px-2 pb-4">
+            {t('time_analysis_page.time_distribution_title')}
+          </h3>
           <div className="flex flex-col gap-4 px-2 md:h-80 md:flex-row md:items-center md:gap-6 md:pl-8 lg:pl-12">
             <div className="flex w-full items-center justify-center md:h-full md:w-[340px] md:min-w-[300px] md:max-w-[380px] md:flex-none">
               <PieChart width={320} height={320}>
@@ -129,7 +137,7 @@ export function TimeAnalysis() {
                     itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                     formatter={(value) => [
                       formatDuration(value as number),
-                      t('Czas', 'Time'),
+                      t('time_analysis_page.time_label'),
                     ]}
                   />
                 )}
@@ -166,7 +174,7 @@ export function TimeAnalysis() {
               ) : (
                 <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
                   <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-slate-600" />
-                  <span>{t('Oczekiwanie na dane aktywności projektów', 'Awaiting project activity data')}</span>
+                  <span>{t('time_analysis_page.awaiting_project_activity')}</span>
                 </div>
               )}
             </div>
@@ -178,10 +186,10 @@ export function TimeAnalysis() {
       <div className="flex flex-col">
         <h3 className="text-sm font-medium px-2 pb-4">
           {d.rangeMode === 'daily'
-            ? t('Dzienna oś projektów', 'Daily Project Timeline')
+            ? t('time_analysis_page.heatmap.daily_timeline')
             : d.rangeMode === 'monthly'
-              ? t('Miesięczna mapa kalendarza', 'Monthly Calendar Heatmap')
-              : t('Tygodniowa oś projektów', 'Weekly Project Timeline')}
+              ? t('time_analysis_page.heatmap.monthly_heatmap')
+              : t('time_analysis_page.heatmap.weekly_timeline')}
         </h3>
         <div className="px-2">
           <div className="overflow-x-auto">

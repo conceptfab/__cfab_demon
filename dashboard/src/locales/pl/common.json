@@ -409,6 +409,61 @@
       "activity_over_time": "Aktywność w czasie"
     }
   },
+  "data_page": {
+    "sections": {
+      "data_exchange": "Wymiana danych",
+      "system_database": "System i baza danych"
+    }
+  },
+  "import_page": {
+    "imported_files_title": "Zaimportowane pliki",
+    "sessions_count": "{{count}} sesji",
+    "archive_title": "Archiwum",
+    "archive_empty": "Archiwum jest puste",
+    "delete_from_archive": "Usuń z archiwum"
+  },
+  "time_analysis_page": {
+    "no_project_data": "Brak danych projektowych",
+    "range": {
+      "today": "Dzisiaj",
+      "week": "Tydzień",
+      "month": "Miesiąc"
+    },
+    "previous_period": "Poprzedni okres",
+    "next_period": "Następny okres",
+    "time_distribution_title": "Rozkład czasu",
+    "time_label": "Czas",
+    "awaiting_project_activity": "Oczekiwanie na dane aktywności projektów",
+    "heatmap": {
+      "daily_timeline": "Dzienna oś projektów",
+      "monthly_heatmap": "Miesięczna mapa kalendarza",
+      "weekly_timeline": "Tygodniowa oś projektów"
+    }
+  },
+  "daemon_page": {
+    "status_title": "Status demona",
+    "running": "Uruchomiony",
+    "stopped": "Zatrzymany",
+    "daemon_version": "Wersja demona",
+    "version_incompatibility": "NIEZGODNOŚĆ WERSJI!",
+    "active": "Aktywny",
+    "inactive": "Nieaktywny",
+    "unassigned_sessions_hint": "{{count}} nieprzypisanych sesji. Przypisz je w Sesjach/Osi czasu.",
+    "stopping": "Zatrzymywanie...",
+    "stop": "Zatrzymaj",
+    "restarting": "Restartowanie...",
+    "restart": "Restart",
+    "starting": "Uruchamianie...",
+    "start": "Uruchom",
+    "autostart_title": "Autostart",
+    "autostart_description": "Uruchamiaj demona automatycznie przy starcie Windows. Używa skrótu w folderze Autostart.",
+    "enabled": "Włączony",
+    "disabled": "Wyłączony",
+    "logs_title": "Logi demona",
+    "auto_refresh_on": "Auto-odświeżanie WŁ.",
+    "auto_refresh_off": "Auto-odświeżanie WYŁ.",
+    "no_logs": "Brak dostępnych logów"
+  },
   "settings": {
     "language": {
       "title": "Język",

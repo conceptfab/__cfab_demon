@@ -310,7 +310,7 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 ### 12.1 Zrobione
 
 - **1.1** Usunięto martwe eksporty z `dashboard/src/lib/tauri.ts` (`getHourlyBreakdown`, `getAppTimeline`, `getHeatmap`, `getStackedTimeline`, `splitSession`, `suggestSessionSplit`, `SplitSuggestion`, `exportDatabase`).
-- **1.2** `Data.tsx` przełączono na `useInlineT()`.
+- **1.2** `Data.tsx` przełączono z lokalnego `t(pl, en)` na wspólny mechanizm i18n.
 - **1.3** `Help.tsx` przełączono na `useInlineT()` (usunięto lokalny duplikat tłumaczenia).
 - **2.1** `inferPreset()` ma fallback `custom` (zamiast `week`), a strzałki nawigacji są wyłączone dla custom range.
 - **2.2** Wykrywanie splitów przeniesione na dedykowane pole `split_source_session_id` (DB + backend + frontend). Dodano backfill legacy wpisów.
@@ -336,16 +336,17 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 - **10.3** `Sessions.tsx`: auto-refresh pomija niewidoczną kartę (`document.visibilityState`).
 - **10.4** `ProjectPage.tsx`: dodano cancellation guard dla asynchronicznego ładowania.
 - **10.5** Ograniczono konflikt `useAutoSplitSessions` vs `useAutoAiAssignment` (wspólny klucz heavy-operation).
+- **4.2 (częściowo)** Migracja z `useInlineT()` na klucze i18n wykonana dla `Data.tsx`, `ImportPage.tsx`, `TimeAnalysis.tsx`, `DaemonControl.tsx`; dodano sekcje locale: `data_page`, `import_page`, `time_analysis_page`, `daemon_page` (PL/EN).
 
 ### 12.2 Częściowo zrobione
 
-- **4.1** Spójność systemu i18n poprawiona lokalnie (`Data.tsx`, `Help.tsx`), ale nie wykonano pełnej unifikacji całej aplikacji.
-- **5.1** Help uzupełniono o import archiwum i backup/restore; pełny audyt wszystkich brakujących opisów pozostaje otwarty.
+- **4.1** Spójność systemu i18n poprawiona (kolejne ekrany migrowane na klucze), ale pełna unifikacja całej aplikacji nadal trwa.
+- **4.2** Migrowano 4 z 7 wskazanych ekranów; pozostały strony z większą liczbą inline stringów.
+- **5.1** Help został szeroko uzupełniony; zalecany okresowy audyt po dodaniu nowych funkcji.
 
 ### 12.3 Pozostało do zrobienia
 
-- **4.2** Pełna migracja brakujących tłumaczeń do plików `.json` (jeśli to docelowy kierunek).
-- **6.1** Wspólny store/cache dla wszystkich `loadXxxSettings()` (obecnie wielokrotne odczyty localStorage).
+- **4.2** Dokończyć migrację tłumaczeń do kluczy `.json` w: `Applications.tsx`, `Estimates.tsx`, `Reports.tsx`.
 - **6.2** Refaktor `ProjectPage.tsx` na mniejsze podkomponenty.
 - **6.3** Refaktor `Sessions.tsx` na mniejsze podkomponenty/hooki.
 - **6.4** Refaktor `AI.tsx` na sekcje.
@@ -358,4 +359,4 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 - **WYSOKI:** transakcje `delete/exclude project` — **zamknięte**.
 - **WYSOKI:** N+1 `analyze_sessions_splittable` — **zamknięte**.
 - **WYSOKI:** martwy kod eksportów w `tauri.ts` — **zamknięte**.
-- **WYSOKI:** dokumentacja Help — **częściowo zamknięte**.
+- **WYSOKI:** dokumentacja Help — **w większości zamknięte**.

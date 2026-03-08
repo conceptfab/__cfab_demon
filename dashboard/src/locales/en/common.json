@@ -409,6 +409,61 @@
       "activity_over_time": "Activity Over Time"
     }
   },
+  "data_page": {
+    "sections": {
+      "data_exchange": "Data Exchange",
+      "system_database": "System & Database"
+    }
+  },
+  "import_page": {
+    "imported_files_title": "Imported Files",
+    "sessions_count": "{{count}} sessions",
+    "archive_title": "Archive",
+    "archive_empty": "Archive is empty",
+    "delete_from_archive": "Delete from archive"
+  },
+  "time_analysis_page": {
+    "no_project_data": "No project data",
+    "range": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month"
+    },
+    "previous_period": "Previous period",
+    "next_period": "Next period",
+    "time_distribution_title": "Time Distribution",
+    "time_label": "Time",
+    "awaiting_project_activity": "Awaiting project activity data",
+    "heatmap": {
+      "daily_timeline": "Daily Project Timeline",
+      "monthly_heatmap": "Monthly Calendar Heatmap",
+      "weekly_timeline": "Weekly Project Timeline"
+    }
+  },
+  "daemon_page": {
+    "status_title": "Daemon Status",
+    "running": "Running",
+    "stopped": "Stopped",
+    "daemon_version": "Daemon version",
+    "version_incompatibility": "VERSION INCOMPATIBILITY!",
+    "active": "Active",
+    "inactive": "Inactive",
+    "unassigned_sessions_hint": "{{count}} unassigned sessions. Assign them in Sessions/Timeline.",
+    "stopping": "Stopping...",
+    "stop": "Stop",
+    "restarting": "Restarting...",
+    "restart": "Restart",
+    "starting": "Starting...",
+    "start": "Start",
+    "autostart_title": "Autostart",
+    "autostart_description": "Start daemon automatically when Windows starts. Uses a shortcut in the Startup folder.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "logs_title": "Daemon Logs",
+    "auto_refresh_on": "Auto-refresh ON",
+    "auto_refresh_off": "Auto-refresh OFF",
+    "no_logs": "No logs available"
+  },
   "settings": {
     "language": {
       "title": "Language",

@@ -21,12 +21,12 @@ import {
   restartDaemon,
 } from "@/lib/tauri";
 import { loadSessionSettings } from "@/lib/user-settings";
-import { useInlineT } from '@/lib/inline-i18n';
+import { useTranslation } from "react-i18next";
 import { formatPathForDisplay, cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
 
 export function DaemonControl() {
-  const t = useInlineT();
+  const { t } = useTranslation();
   const [status, setStatus] = useState<DaemonStatus | null>(null);
   const [filteredUnassigned, setFilteredUnassigned] = useState<number>(0);
   const [logs, setLogs] = useState("");
@@ -152,7 +152,7 @@ export function DaemonControl() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Cpu className="h-4 w-4" />
-              {t("Status demona", "Daemon Status")}
+              {t("daemon_page.status_title")}
               <Button
                 variant="ghost"
                 size="sm"
@@ -175,8 +175,8 @@ export function DaemonControl() {
               <div>
                 <p className="text-sm font-medium">
                   {status?.running
-                    ? t("Uruchomiony", "Running")
-                    : t("Zatrzymany", "Stopped")}
+                    ? t("daemon_page.running")
+                    : t("daemon_page.stopped")}
                 </p>
                 {status?.pid && (
                   <p className="text-xs text-muted-foreground">
@@ -186,7 +186,7 @@ export function DaemonControl() {
               </div>
               <div className="ml-auto flex items-center gap-2">
                 {status?.version && (
-                  <AppTooltip content={status.is_compatible ? t("Wersja demona", "Daemon version") : t("NIEZGODNOŚĆ WERSJI!", "VERSION INCOMPATIBILITY!")}>
+                  <AppTooltip content={status.is_compatible ? t("daemon_page.daemon_version") : t("daemon_page.version_incompatibility")}>
                     <span className={cn(
                       "text-[10px] font-mono cursor-default",
                       status.is_compatible ? "text-muted-foreground/50" : "text-destructive font-bold"
@@ -198,7 +198,7 @@ export function DaemonControl() {
                 <Badge
                   variant={status?.running ? "default" : "destructive"}
                 >
-                  {status?.running ? t("Aktywny", "Active") : t("Nieaktywny", "Inactive")}
+                  {status?.running ? t("daemon_page.active") : t("daemon_page.inactive")}
                 </Badge>
               </div>
             </div>
@@ -207,11 +207,9 @@ export function DaemonControl() {
               <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
                 <span className="font-semibold mr-1">*</span>
                 <span>
-                  {t(
-                    '{{count}} nieprzypisanych sesji. Przypisz je w Sesjach/Osi czasu.',
-                    '{{count}} unassigned sessions. Assign them in Sessions/Timeline.',
-                    { count: filteredUnassigned },
-                  )}
+                  {t("daemon_page.unassigned_sessions_hint", {
+                    count: filteredUnassigned,
+                  })}
                 </span>
               </div>
             )}
@@ -235,8 +233,8 @@ export function DaemonControl() {
                   >
                     <Square className="h-3.5 w-3.5 mr-1.5" />
                     {loading === "stop"
-                      ? t("Zatrzymywanie...", "Stopping...")
-                      : t("Zatrzymaj", "Stop")}
+                      ? t("daemon_page.stopping")
+                      : t("daemon_page.stop")}
                   </Button>
                   <Button
                     variant="outline"
@@ -247,8 +245,8 @@ export function DaemonControl() {
                   >
                     <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
                     {loading === "restart"
-                      ? t("Restartowanie...", "Restarting...")
-                      : t("Restart", "Restart")}
+                      ? t("daemon_page.restarting")
+                      : t("daemon_page.restart")}
                   </Button>
                 </>
               ) : (
@@ -260,8 +258,8 @@ export function DaemonControl() {
                 >
                   <Play className="h-3.5 w-3.5 mr-1.5" />
                   {loading === "start"
-                    ? t("Uruchamianie...", "Starting...")
-                    : t("Uruchom", "Start")}
+                    ? t("daemon_page.starting")
+                    : t("daemon_page.start")}
                 </Button>
               )}
             </div>
@@ -272,21 +270,18 @@ export function DaemonControl() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium">
-              {t("Autostart", "Autostart")}
+              {t("daemon_page.autostart_title")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              {t(
-                "Uruchamiaj demona automatycznie przy starcie Windows. Używa skrótu w folderze Autostart.",
-                "Start daemon automatically when Windows starts. Uses a shortcut in the Startup folder.",
-              )}
+              {t("daemon_page.autostart_description")}
             </p>
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
                 {status?.autostart
-                  ? t("Włączony", "Enabled")
-                  : t("Wyłączony", "Disabled")}
+                  ? t("daemon_page.enabled")
+                  : t("daemon_page.disabled")}
               </span>
               <button
                 onClick={handleAutostartToggle}
@@ -310,7 +305,7 @@ export function DaemonControl() {
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <ScrollText className="h-4 w-4" />
-            {t("Logi demona", "Daemon Logs")}
+            {t("daemon_page.logs_title")}
             <div className="ml-auto flex items-center gap-2">
               <button
                 onClick={() => setAutoRefresh(!autoRefresh)}
@@ -321,8 +316,8 @@ export function DaemonControl() {
                 }`}
               >
                 {autoRefresh
-                  ? t("Auto-odświeżanie WŁ.", "Auto-refresh ON")
-                  : t("Auto-odświeżanie WYŁ.", "Auto-refresh OFF")}
+                  ? t("daemon_page.auto_refresh_on")
+                  : t("daemon_page.auto_refresh_off")}
               </button>
               <Button
                 variant="ghost"
@@ -348,7 +343,7 @@ export function DaemonControl() {
               ))
             ) : (
               <p className="text-muted-foreground">
-                {t("Brak dostępnych logów", "No logs available")}
+                {t("daemon_page.no_logs")}
               </p>
             )}
             <div ref={logsEndRef} />
