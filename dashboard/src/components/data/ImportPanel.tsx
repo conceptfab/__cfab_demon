@@ -17,16 +17,11 @@ import {
 } from '@/components/ui/card';
 import { validateImport, importData } from '@/lib/tauri';
 import type { ImportValidation, ImportSummary } from '@/lib/db-types';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 
 import { open } from '@tauri-apps/plugin-dialog';
 
 export function ImportPanel() {
-  const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t } = useTranslation();
   const [archivePath, setArchivePath] = useState<string | null>(null);
   const [validation, setValidation] = useState<ImportValidation | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
@@ -38,7 +33,7 @@ export function ImportPanel() {
         multiple: false,
         filters: [
           {
-            name: tInline('Archiwum JSON', 'JSON Archive'),
+            name: t('data_page.import_panel.json_archive'),
             extensions: ['json'],
           },
         ],
@@ -80,14 +75,9 @@ export function ImportPanel() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Upload className="h-5 w-5 text-orange-500" />
-          {tInline('Import danych', 'Data Import')}
+          {t('data_page.import_panel.title')}
         </CardTitle>
-        <CardDescription>
-          {t(
-            'Wczytaj plik eksportu, aby przywrócić lub zsynchronizować dane.',
-            'Upload an export file to restore or sync your data.',
-          )}
-        </CardDescription>
+        <CardDescription>{t('data_page.import_panel.description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {!validation && !summary && (
@@ -100,10 +90,10 @@ export function ImportPanel() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">
-                {tInline('Kliknij, aby wybrać plik .json', 'Click to pick a .json file')}
+                {t('data_page.import_panel.pick_file_title')}
               </p>
               <p className="text-[10px] text-muted-foreground mt-0.5">
-                {tInline('Obsługiwane formaty: timeflow-export-*.json', 'Supported formats: timeflow-export-*.json')}
+                {t('data_page.import_panel.supported_formats')}
               </p>
             </div>
             <Button
@@ -115,7 +105,7 @@ export function ImportPanel() {
                 selectFile();
               }}
             >
-              {tInline('Wybierz plik', 'Select File')}
+              {t('data_page.import_panel.select_file')}
             </Button>
           </div>
         )}
@@ -124,7 +114,9 @@ export function ImportPanel() {
           <div className="space-y-4">
             <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">{tInline('Status walidacji', 'Validation Status')}</span>
+                <span className="text-sm font-medium">
+                  {t('data_page.import_panel.validation_status')}
+                </span>
                 {validation.valid ? (
                   <CheckCircle2 className="h-4 w-4 text-emerald-500" />
                 ) : (
@@ -132,12 +124,17 @@ export function ImportPanel() {
                 )}
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>{tInline('Brakujące projekty', 'Missing Projects')}: {validation.missing_projects.length}</p>
                 <p>
-                  {tInline('Brakujące aplikacje', 'Missing Applications')}: {validation.missing_applications.length}
+                  {t('data_page.import_panel.missing_projects')}:{' '}
+                  {validation.missing_projects.length}
                 </p>
                 <p>
-                  {tInline('Konflikty sesji', 'Session Conflicts')}: {validation.overlapping_sessions.length}
+                  {t('data_page.import_panel.missing_applications')}:{' '}
+                  {validation.missing_applications.length}
+                </p>
+                <p>
+                  {t('data_page.import_panel.session_conflicts')}:{' '}
+                  {validation.overlapping_sessions.length}
                 </p>
               </div>
             </div>
@@ -146,7 +143,8 @@ export function ImportPanel() {
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <div className="space-y-1">
                   <p className="text-xs font-medium flex items-center gap-1">
-                    <Info className="h-3 w-3" /> {tInline('Nowe projekty do utworzenia:', 'New projects to be created:')}
+                    <Info className="h-3 w-3" />{' '}
+                    {t('data_page.import_panel.new_projects_to_create')}
                   </p>
                   <div className="text-[10px] bg-sky-500/10 text-sky-400 p-2 rounded max-h-24 overflow-y-auto">
                     {validation.missing_projects.join(', ')}
@@ -161,7 +159,9 @@ export function ImportPanel() {
               className="w-full gap-2 bg-orange-600 hover:bg-orange-700 text-white border-0 shadow-lg shadow-orange-950/20 transition-all duration-200"
             >
               <Upload className="h-4 w-4" />
-              {importing ? tInline('Importowanie...', 'Importing...') : tInline('Rozpocznij import', 'Start Import')}
+              {importing
+                ? t('data_page.import_panel.importing')
+                : t('data_page.import_panel.start_import')}
             </Button>
             <Button
               variant="outline"
@@ -171,7 +171,7 @@ export function ImportPanel() {
               }}
               className="w-full"
             >
-              {tInline('Anuluj i wybierz inny plik', 'Cancel and select another file')}
+              {t('data_page.import_panel.cancel_and_select_other')}
             </Button>
           </div>
         )}
@@ -184,25 +184,43 @@ export function ImportPanel() {
                   <CheckCircle2 className="h-8 w-8 text-emerald-500" />
                 </div>
               </div>
-              <h3 className="font-semibold">{tInline('Import zakończony!', 'Import Finished!')}</h3>
+              <h3 className="font-semibold">{t('data_page.import_panel.finished')}</h3>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">{tInline('Projekty', 'Projects')}</p>
-                <p className="font-bold">{summary.projects_created} {tInline('nowe', 'new')}</p>
+                <p className="text-muted-foreground">
+                  {t('data_page.import_panel.summary.projects')}
+                </p>
+                <p className="font-bold">
+                  {summary.projects_created} {t('data_page.import_panel.summary.new')}
+                </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">{tInline('Aplikacje', 'Applications')}</p>
-                <p className="font-bold">{summary.apps_created} {tInline('nowe', 'new')}</p>
+                <p className="text-muted-foreground">
+                  {t('data_page.import_panel.summary.applications')}
+                </p>
+                <p className="font-bold">
+                  {summary.apps_created} {t('data_page.import_panel.summary.new')}
+                </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">{tInline('Sesje', 'Sessions')}</p>
-                <p className="font-bold">{summary.sessions_imported} {tInline('dodane', 'added')}</p>
+                <p className="text-muted-foreground">
+                  {t('data_page.import_panel.summary.sessions')}
+                </p>
+                <p className="font-bold">
+                  {summary.sessions_imported}{' '}
+                  {t('data_page.import_panel.summary.added')}
+                </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-2">
-                <p className="text-muted-foreground">{tInline('Połączone', 'Merged')}</p>
-                <p className="font-bold">{summary.sessions_merged} {tInline('sesji', 'sessions')}</p>
+                <p className="text-muted-foreground">
+                  {t('data_page.import_panel.summary.merged')}
+                </p>
+                <p className="font-bold">
+                  {summary.sessions_merged}{' '}
+                  {t('data_page.import_panel.summary.sessions_unit')}
+                </p>
               </div>
             </div>
 
@@ -215,7 +233,7 @@ export function ImportPanel() {
               }}
               className="w-full"
             >
-              {tInline('Gotowe', 'Done')}
+              {t('data_page.import_panel.done')}
             </Button>
           </div>
         )}

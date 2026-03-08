@@ -11,18 +11,13 @@ import { getRechartsAnimationConfig } from "@/lib/chart-animation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HourlyData } from "@/lib/db-types";
-import { createInlineTranslator } from "@/lib/inline-i18n";
 
 interface Props {
   data: HourlyData[];
 }
 
 export function HourlyBreakdown({ data }: Props) {
-  const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t } = useTranslation();
   const chartData = useMemo(() => {
     const full = Array.from({ length: 24 }, (_, i) => ({
       hour: `${i.toString().padStart(2, "0")}:00`,
@@ -45,7 +40,9 @@ export function HourlyBreakdown({ data }: Props) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium">{tInline("Rozkład godzinowy", "Hourly Breakdown")}</CardTitle>
+        <CardTitle className="text-sm font-medium">
+          {t("dashboard.hourly_breakdown.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-64">
@@ -70,7 +67,10 @@ export function HourlyBreakdown({ data }: Props) {
                 contentStyle={TOOLTIP_CONTENT_STYLE}
                 labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600 }}
                 itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                formatter={(value) => [`${value} ${tInline("min", "min")}`, tInline("Czas", "Time")]}
+                formatter={(value) => [
+                  `${value} ${t("dashboard.hourly_breakdown.minutes_unit")}`,
+                  t("dashboard.hourly_breakdown.time_label"),
+                ]}
               />
               <Bar
                 dataKey="minutes"

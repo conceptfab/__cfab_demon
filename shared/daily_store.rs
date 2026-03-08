@@ -412,6 +412,8 @@ pub fn load_day_snapshot(
     }))
 }
 
+// Used by the dashboard Tauri crate via the shared module include.
+#[allow(dead_code)]
 pub fn load_range_snapshots(
     conn: &Connection,
     start: &str,
@@ -440,6 +442,8 @@ pub fn load_range_snapshots(
     Ok(snapshots)
 }
 
+// Used by the dashboard Tauri crate via the shared module include.
+#[allow(dead_code)]
 pub fn get_day_signature(conn: &Connection, date: &str) -> Result<Option<DaySignature>, String> {
     ensure_schema(conn)?;
 

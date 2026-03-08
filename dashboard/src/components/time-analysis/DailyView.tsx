@@ -13,7 +13,6 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { PALETTE } from './types';
@@ -30,21 +29,15 @@ export function DailyBarChart({
   dailyTotalHours,
   stackedBarColorMap,
 }: DailyBarChartProps) {
-  const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t } = useTranslation();
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {tInline(
-          'Aktywność godzinowa — {{hours}}h łącznie',
-          'Hourly Activity — {{hours}}h total',
-          { hours: dailyTotalHours.toFixed(1) },
-        )}
+        {t('time_analysis_page.charts.hourly_activity_total', {
+          hours: dailyTotalHours.toFixed(1),
+        })}
       </h3>
       <div className="h-64 px-2">
         <ResponsiveContainer width="100%" height="100%">
@@ -95,11 +88,7 @@ interface DailyHeatmapProps {
 }
 
 export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
-  const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t } = useTranslation();
 
   return (
     <div className="min-w-[600px]">
@@ -128,7 +117,7 @@ export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
               title={
                 hasData
                   ? `${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
-                  : `${slot.hour}:00 — ${tInline('Brak aktywności', 'No activity')}`
+                  : `${slot.hour}:00 — ${t('time_analysis_page.fallbacks.no_activity')}`
               }
             >
               {hasData && (

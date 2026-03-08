@@ -249,6 +249,66 @@ Po wdrożeniu `daily_store` z listy tematów rozwojowych zniknął punkt o docel
 - dalsze wygaszanie samych par `inline.*` na rzecz jawnych kluczy i18next
 - dołożenie testów komponentów i e2e po stronie frontendu
 
+## Wdrożone poprawki po audycie: V tura
+
+W piątej turze z 2026-03-08 kontynuowałem wygaszanie warstwy `inline.*` w małych i średnich komponentach dashboardu.
+
+### 1. Migracja kolejnych komponentów na jawne klucze i18n
+
+Na zwykłe klucze `i18next` przeniosłem:
+
+- `dashboard/src/components/data/ImportPanel.tsx`
+- `dashboard/src/components/data/ExportPanel.tsx`
+- `dashboard/src/components/data/DataHistory.tsx`
+- `dashboard/src/components/data/DataStats.tsx`
+- `dashboard/src/components/dashboard/HourlyBreakdown.tsx`
+- `dashboard/src/components/project/ProjectContextMenu.tsx`
+- `dashboard/src/components/time-analysis/DailyView.tsx`
+- `dashboard/src/components/time-analysis/WeeklyView.tsx`
+- `dashboard/src/components/time-analysis/MonthlyView.tsx`
+- `dashboard/src/components/time-analysis/useTimeAnalysisData.ts`
+
+Do locale dodałem nowe, jawne sekcje:
+
+- `dashboard.hourly_breakdown.*`
+- `data_page.stats.*`
+- `data_page.import_panel.*`
+- `data_page.export_panel.*`
+- `data_page.history.*`
+- `time_analysis_page.charts.*`
+- `time_analysis_page.fallbacks.*`
+- `time_analysis_page.weekdays_short.*`
+
+### 2. Dodatkowe porządki i18n przy tej turze
+
+- Widoki tygodniowy i miesięczny analizy czasu dostały też poprawne locale `date-fns`, więc skróty dni i daty nie są już na sztywno angielskie.
+- `dashboard/src/components/project/ProjectContextMenu.tsx` został przepięty na istniejące klucze zamiast lokalnych par PL/EN.
+- Po migracji uruchomiłem `npm run sync:inline-i18n`, co usunęło 67 nieużywanych wpisów legacy z sekcji `inline.*`.
+
+### 3. Walidacja po V turze
+
+Po tej turze zmian uruchomiłem:
+
+- `npm run sync:inline-i18n` w `dashboard`: OK
+- `npm run test` w `dashboard`: OK, 3/3 testy
+- `npm run lint` w `dashboard`: OK
+- `npm run build` w `dashboard`: OK
+
+### 4. Stan po V turze
+
+Po tej turze warstwa `inline.*` pozostała już głównie w największych ekranach i komponentach o największym zagęszczeniu tekstów:
+
+- `dashboard/src/pages/Projects.tsx`
+- `dashboard/src/pages/ProjectPage.tsx`
+- `dashboard/src/components/dashboard/ProjectDayTimeline.tsx`
+- `dashboard/src/pages/Settings.tsx`
+- `dashboard/src/pages/AI.tsx`
+- `dashboard/src/pages/ReportView.tsx`
+- `dashboard/src/pages/Help.tsx`
+- `dashboard/src/components/data/DatabaseManagement.tsx`
+
+To znaczy, że dalsze wygaszanie `inline.*` jest już głównie pracą w dużych, gęstych widokach, a nie w małych komponentach pomocniczych.
+
 ## Najważniejsze ustalenia
 
 ### P1. Mechanizm odświeżania i automatyzacji jest nadmiernie sprzężony i może generować pętle pracy w tle

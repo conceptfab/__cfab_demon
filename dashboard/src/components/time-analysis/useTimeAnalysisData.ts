@@ -7,7 +7,7 @@ import {
   isBefore, isAfter, getWeek,
 } from "date-fns";
 import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
-import { createInlineTranslator } from "@/lib/inline-i18n";
+import { resolveDateFnsLocale } from "@/lib/date-locale";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 
@@ -15,9 +15,9 @@ export type RangeMode = "daily" | "weekly" | "monthly";
 
 export function useTimeAnalysisData() {
   const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
+  const locale = useMemo(
+    () => resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language),
+    [i18n.language, i18n.resolvedLanguage],
   );
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
@@ -145,27 +145,18 @@ export function useTimeAnalysisData() {
   );
 
   const pieFallbackMessage = useMemo(() => {
-    if (isLoading) return tInline("Ładowanie danych wykresu...", "Loading chart data...");
+    if (isLoading) return t("time_analysis_page.fallbacks.loading_chart_data");
     if (loadError) {
-      return tInline(
-        "Nie udało się załadować danych wykresu. Zmień okres lub odśwież.",
-        "Unable to load chart data. Try changing period or refreshing.",
-      );
+      return t("time_analysis_page.fallbacks.load_chart_failed");
     }
     if (totalRangeSeconds <= 0) {
-      return tInline(
-        "Brak zarejestrowanej aktywności w wybranym okresie.",
-        "No tracked activity in selected period.",
-      );
+      return t("time_analysis_page.fallbacks.no_tracked_activity");
     }
     if (hourlyProjects.length === 0) {
-      return tInline(
-        "Brak danych osi projektów dla wybranego okresu.",
-        "No project timeline data for selected period.",
-      );
+      return t("time_analysis_page.fallbacks.no_project_timeline_data");
     }
-    return tInline("Brak danych rozkładu projektów.", "No project distribution data available.");
-  }, [hourlyProjects.length, isLoading, loadError, tInline, totalRangeSeconds]);
+    return t("time_analysis_page.fallbacks.no_project_distribution_data");
+  }, [hourlyProjects.length, isLoading, loadError, t, totalRangeSeconds]);
 
   // Weekly heatmap grid
   const weeklyHourlyGrid = useMemo(() => {
@@ -177,7 +168,7 @@ export function useTimeAnalysisData() {
     for (let di = 0; di < 7; di++) {
       const d = addDays(startDate, di);
       const dateStr = format(d, "yyyy-MM-dd");
-      const dayLabel = format(d, "EEE");
+      const dayLabel = format(d, "EEE", { locale });
       const { slots, maxVal: dayMax } = buildDaySlots(parsed.byDateHour.get(dateStr));
       if (dayMax > maxVal) maxVal = dayMax;
       const dayTotal = slots.reduce((s, h) => s + h.totalSeconds, 0);
@@ -185,7 +176,7 @@ export function useTimeAnalysisData() {
     }
 
     return { days, allProjects: parsed.allProjects, maxVal };
-  }, [rangeMode, parsed, activeDateRange]);
+  }, [rangeMode, parsed, activeDateRange, locale]);
 
   // Daily heatmap grid
   const dailyHourlyGrid = useMemo(() => {
@@ -338,10 +329,10 @@ export function useTimeAnalysisData() {
         });
       }
       const weekNum = getWeek(ws, { weekStartsOn: 1 });
-      return { label: `W${weekNum}`, subLabel: format(ws, "MMM d"), days };
+      return { label: `W${weekNum}`, subLabel: format(ws, "MMM d", { locale }), days };
     });
     return { weeks, maxVal };
-  }, [rangeMode, activeDateRange, timeline, hourlyProjects, projectColors]);
+  }, [rangeMode, activeDateRange, timeline, hourlyProjects, projectColors, locale]);
 
   // Monthly total
   const monthTotalHours = useMemo(() => {
@@ -351,10 +342,14 @@ export function useTimeAnalysisData() {
 
   // Date label
   const dateLabel = useMemo(() => {
-    if (rangeMode === "monthly") return format(parseISO(activeDateRange.start), "MMMM yyyy");
-    if (activeDateRange.start === activeDateRange.end) return format(parseISO(activeDateRange.start), "EEE, MMM d");
-    return `${format(parseISO(activeDateRange.start), "MMM d")} – ${format(parseISO(activeDateRange.end), "MMM d")}`;
-  }, [rangeMode, activeDateRange]);
+    if (rangeMode === "monthly") {
+      return format(parseISO(activeDateRange.start), "MMMM yyyy", { locale });
+    }
+    if (activeDateRange.start === activeDateRange.end) {
+      return format(parseISO(activeDateRange.start), "EEE, MMM d", { locale });
+    }
+    return `${format(parseISO(activeDateRange.start), "MMM d", { locale })} – ${format(parseISO(activeDateRange.end), "MMM d", { locale })}`;
+  }, [rangeMode, activeDateRange, locale]);
 
   // Export handler
   const handleExport = () => {

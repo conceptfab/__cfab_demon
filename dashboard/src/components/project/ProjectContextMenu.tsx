@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '@/store/ui-store';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 
 interface ProjectMenuState {
   x: number;
@@ -30,8 +29,7 @@ function clampToViewport(x: number, y: number) {
 }
 
 export function ProjectContextMenu() {
-  const { t, i18n } = useTranslation();
-  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
+  const { t } = useTranslation();
   const [menu, setMenu] = useState<ProjectMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const setProjectPageId = useUIStore((s) => s.setProjectPageId);
@@ -118,7 +116,7 @@ export function ProjectContextMenu() {
       style={{ left: menu.x, top: menu.y }}
     >
       <div className="px-2 py-1 text-[11px] text-muted-foreground">
-        {tt('Projekt:', 'Project:')}{' '}
+        {t('sessions.menu.project_label')}{' '}
         <span className="font-medium text-foreground">{menu.projectName}</span>
       </div>
       <button
@@ -130,7 +128,7 @@ export function ProjectContextMenu() {
           setMenu(null);
         }}
       >
-        {tt('Przejdź do karty projektu', 'Go to project card')}
+        {t('sessions.menu.go_to_project_card')}
       </button>
     </div>
   );

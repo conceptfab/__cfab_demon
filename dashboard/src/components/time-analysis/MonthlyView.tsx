@@ -13,7 +13,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { createInlineTranslator } from '@/lib/inline-i18n';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -32,20 +32,15 @@ export function MonthlyBarChart({
   stackedBarColorMap,
 }: MonthlyBarChartProps) {
   const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {tInline(
-          'Aktywność dzienna — {{hours}}h łącznie',
-          'Daily Activity — {{hours}}h total',
-          { hours: monthTotalHours.toFixed(1) },
-        )}
+        {t('time_analysis_page.charts.daily_activity_total', {
+          hours: monthTotalHours.toFixed(1),
+        })}
       </h3>
       <div className="h-64 px-2">
         <ResponsiveContainer width="100%" height="100%">
@@ -54,7 +49,7 @@ export function MonthlyBarChart({
               dataKey="date"
               tickFormatter={(v) => {
                 try {
-                  return format(parseISO(v), 'd');
+                  return format(parseISO(v), 'd', { locale });
                 } catch {
                   return v;
                 }
@@ -81,7 +76,7 @@ export function MonthlyBarChart({
               ]}
               labelFormatter={(v) => {
                 try {
-                  return format(parseISO(v as string), 'EEE, MMM d');
+                  return format(parseISO(v as string), 'EEE, MMM d', { locale });
                 } catch {
                   return v as string;
                 }
@@ -110,18 +105,15 @@ interface MonthlyHeatmapProps {
 
 export function MonthlyHeatmap({ monthCalendar }: MonthlyHeatmapProps) {
   const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language);
   const weekDays = [
-    tInline('Pon', 'Mon'),
-    tInline('Wt', 'Tue'),
-    tInline('Śr', 'Wed'),
-    tInline('Czw', 'Thu'),
-    tInline('Pt', 'Fri'),
-    tInline('Sob', 'Sat'),
-    tInline('Niedz', 'Sun'),
+    t('time_analysis_page.weekdays_short.mon'),
+    t('time_analysis_page.weekdays_short.tue'),
+    t('time_analysis_page.weekdays_short.wed'),
+    t('time_analysis_page.weekdays_short.thu'),
+    t('time_analysis_page.weekdays_short.fri'),
+    t('time_analysis_page.weekdays_short.sat'),
+    t('time_analysis_page.weekdays_short.sun'),
   ];
 
   return (
@@ -163,9 +155,9 @@ export function MonthlyHeatmap({ monthCalendar }: MonthlyHeatmapProps) {
                   }}
                   title={
                     hasData
-                      ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${formatDuration(day.seconds)}\n${day.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
+                      ? `${format(parseISO(day.date), 'EEE, MMM d', { locale })} — ${formatDuration(day.seconds)}\n${day.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
                       : day.inMonth
-                        ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${tInline('Brak aktywności', 'No activity')}`
+                        ? `${format(parseISO(day.date), 'EEE, MMM d', { locale })} — ${t('time_analysis_page.fallbacks.no_activity')}`
                         : ''
                   }
                 >
@@ -185,7 +177,7 @@ export function MonthlyHeatmap({ monthCalendar }: MonthlyHeatmapProps) {
                   )}
 
                   <span className="relative z-10">
-                    {format(parseISO(day.date), 'd')}
+                    {format(parseISO(day.date), 'd', { locale })}
                   </span>
                   {day.inMonth && day.seconds > 0 && (
                     <span className="relative z-10 ml-1 opacity-80">

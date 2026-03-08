@@ -6,15 +6,10 @@ import { Button } from "@/components/ui/button";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles, getBackupFiles } from "@/lib/tauri";
 import type { ArchivedFile, ImportedFile, BackupFile } from "@/lib/db-types";
 import { AppTooltip } from "@/components/ui/app-tooltip";
-import { createInlineTranslator } from "@/lib/inline-i18n";
 import { formatBytes } from "@/lib/utils";
 
 export function DataHistory() {
-  const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t } = useTranslation();
   const [imported, setImported] = useState<ImportedFile[]>([]);
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
@@ -36,9 +31,8 @@ export function DataHistory() {
   const handleDeleteArchive = async (fileName: string) => {
     if (
       !confirm(
-        tInline(
-          'Czy na pewno chcesz usunąć {{fileName}}?',
-          'Are you sure you want to delete {{fileName}}?',
+        t(
+          'data_page.history.archive.delete_confirm',
           { fileName },
         ),
       )
@@ -59,7 +53,9 @@ export function DataHistory() {
   return (
     <div className="space-y-8 mt-4">
       <div className="flex items-center gap-4 px-1">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">{tInline("Pamięć i historia", "Storage & History")}</h2>
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
+          {t("data_page.history.title")}
+        </h2>
         <div className="h-px w-full bg-border/40" />
       </div>
 
@@ -69,15 +65,19 @@ export function DataHistory() {
           <CardHeader className="pb-3 shrink-0">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <History className="h-4 w-4 text-sky-500" />
-              {tInline("Historia importów", "Import History")}
+              {t("data_page.history.import_history.title")}
             </CardTitle>
-            <CardDescription className="text-[10px]">{tInline("Wcześniej zaimportowane pliki JSON", "Previously imported JSON files")}</CardDescription>
+            <CardDescription className="text-[10px]">
+              {t("data_page.history.import_history.description")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {imported.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
                 <FileJson className="h-8 w-8 mb-2" />
-                <p className="text-[10px] uppercase tracking-wider">{tInline("Brak historii", "No history")}</p>
+                <p className="text-[10px] uppercase tracking-wider">
+                  {t("data_page.history.import_history.empty")}
+                </p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
@@ -88,7 +88,7 @@ export function DataHistory() {
                       <span className="truncate font-medium" title={f.file_path}>{f.file_path.split(/[/\\]/).pop()}</span>
                     </div>
                     <span className="shrink-0 text-[9px] text-muted-foreground bg-background/50 px-1.5 py-0.5 rounded border border-border/30">
-                      {f.records_count} {tInline("rek.", "rec.")}
+                      {f.records_count} {t("data_page.history.import_history.records_short")}
                     </span>
                   </div>
                 ))}
@@ -102,15 +102,19 @@ export function DataHistory() {
           <CardHeader className="pb-3 shrink-0">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Database className="h-4 w-4 text-emerald-500" />
-              {tInline("Kopie DB", "DB Backups")}
+              {t("data_page.history.backups.title")}
             </CardTitle>
-            <CardDescription className="text-[10px]">{tInline("Ostatnie snapshoty w folderze backupu", "Recent snapshots in backup folder")}</CardDescription>
+            <CardDescription className="text-[10px]">
+              {t("data_page.history.backups.description")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {backups.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
                 <Database className="h-8 w-8 mb-2" />
-                <p className="text-[10px] uppercase tracking-wider">{tInline("Brak kopii", "No backups found")}</p>
+                <p className="text-[10px] uppercase tracking-wider">
+                  {t("data_page.history.backups.empty")}
+                </p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
@@ -139,15 +143,19 @@ export function DataHistory() {
           <CardHeader className="pb-3 shrink-0">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Archive className="h-4 w-4 text-amber-500" />
-              {tInline("Lokalne archiwum", "Local Archive")}
+              {t("data_page.history.archive.title")}
             </CardTitle>
-            <CardDescription className="text-[10px]">{tInline("Dane aktywności w folderze aplikacji", "Activity data in app folder")}</CardDescription>
+            <CardDescription className="text-[10px]">
+              {t("data_page.history.archive.description")}
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {archive.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
                 <Archive className="h-8 w-8 mb-2" />
-                <p className="text-[10px] uppercase tracking-wider">{tInline("Puste archiwum", "Empty archive")}</p>
+                <p className="text-[10px] uppercase tracking-wider">
+                  {t("data_page.history.archive.empty")}
+                </p>
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
@@ -157,7 +165,7 @@ export function DataHistory() {
                       <FileJson className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="truncate font-medium" title={f.file_path}>{f.file_name}</span>
                     </div>
-                    <AppTooltip content={tInline('Usuń z archiwum', 'Delete from archive')}>
+                    <AppTooltip content={t("layout.tooltips.delete_from_archive")}>
                       <Button
                         variant="ghost"
                         size="icon"
