@@ -16,7 +16,7 @@ const EXCLUDED_PATH_PARTS = [
 ];
 
 const POLISH_DIACRITICS_RE = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/;
-const TRANSLATION_CALL_RE = /\b(?:tt|t)\s*\(/;
+const TRANSLATION_CALL_RE = /\b(?:tt|t|tInline)\s*\(/;
 
 function walk(dir, out) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });

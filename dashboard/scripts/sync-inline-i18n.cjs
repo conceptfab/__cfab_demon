@@ -66,7 +66,7 @@ function collectInlinePairsFromFile(filePath) {
     filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
 
-  const inlineHookNames = new Set();
+  const translatorFactoryNames = new Set();
   const translatorFnNames = new Set();
   const pairs = [];
   let skippedDynamic = 0;
@@ -86,8 +86,11 @@ function collectInlinePairsFromFile(filePath) {
 
     for (const el of named.elements) {
       const importedName = el.propertyName ? el.propertyName.text : el.name.text;
-      if (importedName === 'useInlineT') {
-        inlineHookNames.add(el.name.text);
+      if (
+        importedName === 'useInlineT' ||
+        importedName === 'createInlineTranslator'
+      ) {
+        translatorFactoryNames.add(el.name.text);
       }
     }
   }
@@ -98,7 +101,7 @@ function collectInlinePairsFromFile(filePath) {
     if (!node.initializer || !ts.isCallExpression(node.initializer)) return;
     const call = node.initializer;
     if (!ts.isIdentifier(call.expression)) return;
-    if (!inlineHookNames.has(call.expression.text)) return;
+    if (!translatorFactoryNames.has(call.expression.text)) return;
     translatorFnNames.add(node.name.text);
   }
 
@@ -124,7 +127,7 @@ function collectInlinePairsFromFile(filePath) {
   }
 
   visitAll(source, scanImports);
-  if (inlineHookNames.size === 0) {
+  if (translatorFactoryNames.size === 0) {
     return { pairs: [], skippedDynamic: 0 };
   }
   visitAll(source, scanTranslatorAssignments);

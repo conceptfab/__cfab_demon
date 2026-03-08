@@ -6,8 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint . && npm run lint:i18n-hardcoded",
+    "lint": "eslint . && npm run lint:i18n-hardcoded && npm run lint:inline-i18n-bridge",
     "lint:i18n-hardcoded": "node scripts/check-hardcoded-i18n.cjs",
+    "lint:inline-i18n-bridge": "node scripts/check-inline-i18n-bridge.cjs",
     "test": "vitest run",
     "sync:inline-i18n": "node scripts/sync-inline-i18n.cjs",
     "preview": "vite preview",

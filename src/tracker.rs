@@ -18,8 +18,6 @@ use crate::storage::{self, AppDailyData, FileEntry, Session};
 #[path = "../shared/version_compat.rs"]
 mod version_compat;
 
-const MAX_TITLE_HISTORY: usize = 20;
-
 fn rebuild_file_index_cache(
     daily_data: &storage::DailyData,
 ) -> HashMap<String, HashMap<String, usize>> {
@@ -98,18 +96,14 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> thread::JoinHandle<()> {
 }
 
 fn push_title_history(history: &mut Vec<String>, window_title: &str) {
-    let normalized = window_title.trim();
+    let normalized = storage::sanitize_title_history_entry(window_title);
     if normalized.is_empty() {
         return;
     }
-    if history.iter().any(|entry| entry == normalized) {
+    if history.iter().any(|entry| entry == &normalized) {
         return;
     }
-    history.push(normalized.to_string());
-    if history.len() > MAX_TITLE_HISTORY {
-        let overflow = history.len() - MAX_TITLE_HISTORY;
-        history.drain(0..overflow);
-    }
+    history.push(normalized);
 }
 
 /// Records application activity (adds time, updates sessions and files).
@@ -128,11 +122,13 @@ fn record_app_activity(
 ) {
     let now_str = Local::now().to_rfc3339();
     let normalized_detected_path = detected_path
-        .map(str::trim)
+        .map(storage::sanitize_detected_path)
         .filter(|value| !value.is_empty());
     let normalized_activity_type = activity_type
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let normalized_window_title = storage::sanitize_window_title(window_title);
+    let normalized_file_name = storage::sanitize_file_entry_name(file_name);
 
     let app_data = daily_data
         .apps
@@ -169,20 +165,20 @@ fn record_app_activity(
     active_sessions.insert(exe_name.to_string(), now_instant);
 
     // Update files
-    if !file_name.is_empty() {
+    if !normalized_file_name.is_empty() {
         let app_file_index = file_index_cache.entry(exe_name.to_string()).or_default();
 
-        if let Some(&idx) = app_file_index.get(file_name) {
+        if let Some(&idx) = app_file_index.get(&normalized_file_name) {
             if let Some(file_entry) = app_data.files.get_mut(idx) {
                 file_entry.total_seconds += poll_interval.as_secs();
                 file_entry.last_seen = now_str;
                 // Aktualizuj window_title na najnowszy (bogatszy kontekst dla AI)
-                if !window_title.is_empty() {
-                    file_entry.window_title = window_title.to_string();
-                    push_title_history(&mut file_entry.title_history, window_title);
+                if !normalized_window_title.is_empty() {
+                    file_entry.window_title = normalized_window_title.clone();
+                    push_title_history(&mut file_entry.title_history, &normalized_window_title);
                 }
-                if let Some(path) = normalized_detected_path {
-                    file_entry.detected_path = Some(path.to_string());
+                if let Some(path) = normalized_detected_path.as_ref() {
+                    file_entry.detected_path = Some(path.clone());
                 }
                 if let Some(kind) = normalized_activity_type {
                     file_entry.activity_type = Some(kind.to_string());
@@ -191,18 +187,18 @@ fn record_app_activity(
         } else {
             let new_idx = app_data.files.len();
             let mut title_history = Vec::new();
-            push_title_history(&mut title_history, window_title);
+            push_title_history(&mut title_history, &normalized_window_title);
             app_data.files.push(FileEntry {
-                name: file_name.to_string(),
+                name: normalized_file_name.clone(),
                 total_seconds: poll_interval.as_secs(),
                 first_seen: now_str.clone(),
                 last_seen: now_str,
-                window_title: window_title.to_string(),
-                detected_path: normalized_detected_path.map(|value| value.to_string()),
+                window_title: normalized_window_title,
+                detected_path: normalized_detected_path,
                 title_history,
                 activity_type: normalized_activity_type.map(|value| value.to_string()),
             });
-            app_file_index.insert(file_name.to_string(), new_idx);
+            app_file_index.insert(normalized_file_name, new_idx);
         }
     }
 }

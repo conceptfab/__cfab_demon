@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import { Download, Calendar, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,14 +7,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { getProjects, exportData } from "@/lib/tauri";
 import type { ProjectWithStats } from "@/lib/db-types";
 import { useToast } from "@/components/ui/toast-notification";
-import { useInlineT } from "@/lib/inline-i18n";
+import { createInlineTranslator } from "@/lib/inline-i18n";
 
 const labelClassName = "text-sm font-medium text-muted-foreground";
 const compactSelectClassName =
   "h-8 w-[3.75rem] rounded-md border border-input bg-background px-1.5 font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
 
 export function ExportPanel() {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const [exportType, setExportType] = useState<"all" | "single">("all");
   const [selectedProject, setSelectedProject] = useState<string>("0");
   const [dateStart, setDateStart] = useState<string>("");
@@ -36,13 +41,13 @@ export function ExportPanel() {
         allTime ? undefined : dateEnd
       );
       showInfo(
-        t('Eksport zapisany: {{result}}', 'Export saved: {{result}}', {
+        tInline('Eksport zapisany: {{result}}', 'Export saved: {{result}}', {
           result,
         }),
       );
     } catch (e) {
       showError(
-        t(
+        tInline(
           'Eksport nie powiódł się: {{error}}',
           'Export failed: {{error}}',
           { error: String(e) },
@@ -58,10 +63,10 @@ export function ExportPanel() {
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
           <Archive className="h-5 w-5 text-sky-500" />
-          {t("Eksport danych", "Data Export")}
+          {tInline("Eksport danych", "Data Export")}
         </CardTitle>
         <CardDescription>
-          {t(
+          {tInline(
             "Eksportuj projekty, sesje i aktywność do pliku JSON.",
             "Export properties, sessions, and recordings to a JSON file.",
           )}
@@ -75,24 +80,24 @@ export function ExportPanel() {
               onClick={() => setExportType("all")}
               className="flex-1"
             >
-              {t("Wszystkie dane", "All Data")}
+              {tInline("Wszystkie dane", "All Data")}
             </Button>
             <Button
               variant={exportType === "single" ? "default" : "outline"}
               onClick={() => setExportType("single")}
               className="flex-1"
             >
-              {t("Jeden projekt", "Single Project")}
+              {tInline("Jeden projekt", "Single Project")}
             </Button>
           </div>
 
           {exportType === "single" && (
             <div className="rounded-md border border-border/70 bg-background/35 p-3">
               <div className="grid items-center gap-3 sm:grid-cols-[7.5rem_1fr]">
-                <label className={labelClassName}>{t("Wybierz projekt", "Select Project")}</label>
+                <label className={labelClassName}>{tInline("Wybierz projekt", "Select Project")}</label>
                 <Select value={selectedProject} onValueChange={setSelectedProject}>
                   <SelectTrigger className={compactSelectClassName}>
-                    <SelectValue placeholder={t("Wybierz projekt", "Select a project")} />
+                    <SelectValue placeholder={tInline("Wybierz projekt", "Select a project")} />
                   </SelectTrigger>
                   <SelectContent>
                     {projects.map((p) => (
@@ -112,9 +117,9 @@ export function ExportPanel() {
               className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
             >
               <div className="min-w-0">
-                <p className="text-sm font-medium">{t("Cały okres (od początku)", "All time (from beginning)")}</p>
+                <p className="text-sm font-medium">{tInline("Cały okres (od początku)", "All time (from beginning)")}</p>
                 <p className="text-xs leading-5 break-words text-muted-foreground">
-                  {t("Eksportuj wszystkie dane od początku działania.", "Export all data from the beginning of time.")}
+                  {tInline("Eksportuj wszystkie dane od początku działania.", "Export all data from the beginning of time.")}
                 </p>
               </div>
               <input
@@ -129,10 +134,10 @@ export function ExportPanel() {
             {!allTime && (
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <div className="grid gap-1.5 text-sm">
-                  <span className={labelClassName}>{t("Zakres dat", "Date Range")}</span>
+                  <span className={labelClassName}>{tInline("Zakres dat", "Date Range")}</span>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">{t("Od", "From")}</span>
+                      <span className="text-xs text-muted-foreground">{tInline("Od", "From")}</span>
                       <div className="relative">
                         <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <input
@@ -144,7 +149,7 @@ export function ExportPanel() {
                       </div>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-xs text-muted-foreground">{t("Do", "To")}</span>
+                      <span className="text-xs text-muted-foreground">{tInline("Do", "To")}</span>
                       <div className="relative">
                         <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <input
@@ -168,7 +173,7 @@ export function ExportPanel() {
           className="w-full gap-2 bg-sky-600 hover:bg-sky-700 text-white border-0 shadow-lg shadow-sky-950/20 transition-all duration-200"
         >
           <Download className="h-4 w-4" />
-          {loading ? t("Eksportowanie...", "Exporting...") : t("Eksportuj dane", "Export Data")}
+          {loading ? tInline("Eksportowanie...", "Exporting...") : tInline("Eksportuj dane", "Export Data")}
         </Button>
       </CardContent>
     </Card>

@@ -31,11 +31,14 @@ import {
 } from '@/lib/help-navigation';
 import { useTranslation } from 'react-i18next';
 import { getDaemonStatus } from '@/lib/tauri';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 
 export function Help() {
-  const { t: t18n } = useTranslation();
-  const t = useInlineT();
+  const { t: t18n, i18n } = useTranslation();
+  const t = createInlineTranslator(
+    t18n,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const {
     helpTab: activeTab,
     setHelpTab: setActiveTab,

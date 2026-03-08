@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { Database, Clock, Briefcase, Layout } from "lucide-react";
 import { getActivityDateSpan, getDashboardStats, getProjects } from "@/lib/tauri";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDurationSlim } from "@/lib/utils";
-import { useInlineT } from "@/lib/inline-i18n";
+import { createInlineTranslator } from "@/lib/inline-i18n";
 
 export function DataStats() {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const [stats, setStats] = useState<{
     sessions: number;
     projects: number;
@@ -53,10 +58,10 @@ export function DataStats() {
   }, []);
 
   const items = [
-    { label: t("Total Sessions", "Total Sessions"), value: stats.sessions, icon: Database, color: "text-blue-500" },
-    { label: t("Projects", "Projects"), value: stats.projects, icon: Briefcase, color: "text-emerald-500" },
-    { label: t("Applications", "Applications"), value: stats.apps, icon: Layout, color: "text-purple-500" },
-    { label: t("Total Time", "Total Time"), value: formatDurationSlim(stats.totalTime), icon: Clock, color: "text-amber-500" },
+    { label: tInline("Total Sessions", "Total Sessions"), value: stats.sessions, icon: Database, color: "text-blue-500" },
+    { label: tInline("Projects", "Projects"), value: stats.projects, icon: Briefcase, color: "text-emerald-500" },
+    { label: tInline("Applications", "Applications"), value: stats.apps, icon: Layout, color: "text-purple-500" },
+    { label: tInline("Total Time", "Total Time"), value: formatDurationSlim(stats.totalTime), icon: Clock, color: "text-amber-500" },
   ];
 
   return (

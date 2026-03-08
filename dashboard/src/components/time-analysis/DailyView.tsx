@@ -6,13 +6,14 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_AXIS_COLOR,
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { PALETTE } from './types';
@@ -29,13 +30,17 @@ export function DailyBarChart({
   dailyTotalHours,
   stackedBarColorMap,
 }: DailyBarChartProps) {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {t(
+        {tInline(
           'Aktywność godzinowa — {{hours}}h łącznie',
           'Hourly Activity — {{hours}}h total',
           { hours: dailyTotalHours.toFixed(1) },
@@ -90,7 +95,11 @@ interface DailyHeatmapProps {
 }
 
 export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
 
   return (
     <div className="min-w-[600px]">
@@ -119,7 +128,7 @@ export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
               title={
                 hasData
                   ? `${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
-                  : `${slot.hour}:00 — ${t('Brak aktywności', 'No activity')}`
+                  : `${slot.hour}:00 — ${tInline('Brak aktywności', 'No activity')}`
               }
             >
               {hasData && (

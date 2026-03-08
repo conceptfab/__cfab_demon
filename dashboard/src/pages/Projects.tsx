@@ -75,7 +75,7 @@ import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import {
   LOCAL_DATA_CHANGED_EVENT,
@@ -169,8 +169,8 @@ function renderDuration(seconds: number) {
 }
 
 export function Projects() {
-  const { t } = useTranslation();
-  const tt = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const { setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();

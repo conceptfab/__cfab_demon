@@ -6,13 +6,14 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_AXIS_COLOR,
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -30,13 +31,17 @@ export function MonthlyBarChart({
   monthTotalHours,
   stackedBarColorMap,
 }: MonthlyBarChartProps) {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {t(
+        {tInline(
           'Aktywność dzienna — {{hours}}h łącznie',
           'Daily Activity — {{hours}}h total',
           { hours: monthTotalHours.toFixed(1) },
@@ -104,15 +109,19 @@ interface MonthlyHeatmapProps {
 }
 
 export function MonthlyHeatmap({ monthCalendar }: MonthlyHeatmapProps) {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const weekDays = [
-    t('Pon', 'Mon'),
-    t('Wt', 'Tue'),
-    t('Śr', 'Wed'),
-    t('Czw', 'Thu'),
-    t('Pt', 'Fri'),
-    t('Sob', 'Sat'),
-    t('Niedz', 'Sun'),
+    tInline('Pon', 'Mon'),
+    tInline('Wt', 'Tue'),
+    tInline('Śr', 'Wed'),
+    tInline('Czw', 'Thu'),
+    tInline('Pt', 'Fri'),
+    tInline('Sob', 'Sat'),
+    tInline('Niedz', 'Sun'),
   ];
 
   return (
@@ -156,7 +165,7 @@ export function MonthlyHeatmap({ monthCalendar }: MonthlyHeatmapProps) {
                     hasData
                       ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${formatDuration(day.seconds)}\n${day.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
                       : day.inMonth
-                        ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${t('Brak aktywności', 'No activity')}`
+                        ? `${format(parseISO(day.date), 'EEE, MMM d')} — ${tInline('Brak aktywności', 'No activity')}`
                         : ''
                   }
                 >

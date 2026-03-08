@@ -54,7 +54,7 @@ import { useUIStore } from '@/store/ui-store';
 import { ReportTemplateSelector } from '@/components/reports/ReportTemplateSelector';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import type {
   ProjectWithStats,
   ProjectExtraInfo,
@@ -101,8 +101,8 @@ type RecentCommentItem = {
 };
 
 export function ProjectPage() {
-  const tt = useInlineT();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();

@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -7,7 +8,7 @@ import logoSrc from '@/assets/logo.png';
 import { formatDuration, formatMoney } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useSettingsStore } from '@/store/settings-store';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import { getTemplate } from '@/lib/report-templates';
 import type { ReportFontSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
@@ -16,7 +17,8 @@ import type {
 } from '@/lib/db-types';
 
 export function ReportView() {
-  const tt = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const { setCurrentPage, projectPageId, reportTemplateId } = useUIStore();
   const { currencyCode } = useSettingsStore();
 

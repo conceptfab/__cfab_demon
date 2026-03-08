@@ -17,7 +17,7 @@ Przeanalizowałem:
 Wykonane komendy:
 
 - `cargo check` w katalogu głównym: OK
-- `cargo test` w katalogu głównym: OK, 9/9 testów
+- `cargo test` w katalogu głównym: OK, 11/11 testów
 - `cargo check` w `dashboard/src-tauri`: OK
 - `cargo test` w `dashboard/src-tauri`: OK, 12/12 testów
 - `npm run test` w `dashboard`: OK
@@ -27,9 +27,9 @@ Wykonane komendy:
 Wnioski z checków:
 
 - projekt jest w stanie kompilowalnym
-- backend Rust ma sensowną bazę testów dla importu, estymacji, dashboardu i podziału sesji
-- po stronie frontendu nie ma osobnego zestawu testów automatycznych; w `dashboard/package.json:6` są tylko `build`, `lint`, `preview`, bez `test`
-- bundle frontendu jest już zauważalny: główny chunk ok. 454 KB, `charts` ok. 386 KB, `i18n` ok. 65.8 KB, `Help` ok. 53.8 KB
+- backend Rust ma sensowną bazę testów dla importu, estymacji, dashboardu, podziału sesji i krótkoterminowej optymalizacji zapisu dziennego JSON
+- po stronie frontendu jest już pierwszy zestaw testów jednostkowych (`Vitest`), ale nadal brakuje testów komponentów i e2e
+- bundle frontendu jest już zauważalny: główny chunk ok. 485.9 KB, `charts` ok. 386.2 KB, `i18n` ok. 65.8 KB, `Help` ok. 56.6 KB
 
 ## Wdrożone poprawki po audycie
 
@@ -94,10 +94,12 @@ Po wprowadzeniu zmian ponownie uruchomiłem:
 
 ### 7. Pozycje nadal otwarte
 
-Nie wdrażałem jeszcze poniższych większych tematów z raportu:
+Po pierwszej turze otwarte pozostawały jeszcze dwa większe tematy:
 
 - zmiany formatu zapisu dziennego JSON po stronie daemona
-- pełnego wygaszania `useInlineT()`
+- pełne wygaszenie `useInlineT()`
+
+Oba zostały domknięte w III turze wdrożeń opisanej niżej.
 
 ## Wdrożone poprawki po audycie: II tura
 
@@ -143,6 +145,60 @@ Po tej turze zmian uruchomiłem:
 - `npm run test` w `dashboard`: OK
 - `npm run lint` w `dashboard`: OK
 - `npm run build` w `dashboard`: OK
+
+## Wdrożone poprawki po audycie: III tura
+
+W trzeciej turze z 2026-03-08 domknąłem dwa ostatnie otwarte punkty z raportu:
+
+### 1. Krótkoterminowa optymalizacja zapisu dziennego JSON po stronie daemona
+
+- `src/storage.rs` nie zapisuje już dziennego pliku przez `serde_json::to_string_pretty(...)`; zapis przeszedł na kompaktowy `serde_json::to_vec(...)`.
+- Przed zapisem dane są sanitizowane i przycinane do bezpiecznych limitów dla:
+  - `file_name`
+  - `window_title`
+  - `detected_path`
+  - wpisów `title_history`
+- `title_history` dostało stały limit długości i liczby wpisów, co ogranicza narastanie payloadu przy długich sesjach.
+- Dodałem testy jednostkowe backendu dla obcinania tekstu i przygotowania danych do zapisu.
+
+To nie jest jeszcze pełna zmiana architektury na append-only / SQLite / snapshot+delta, ale zamyka rekomendowany w raporcie etap krótkoterminowy: usuwa `pretty JSON`, ogranicza rozmiar kontekstu okien i redukuje koszt serializacji/I/O.
+
+### 2. Pełne wygaszenie `useInlineT()`
+
+- `dashboard/src/lib/inline-i18n.ts` został uproszczony do helpera bez hooka: komponenty korzystają teraz ze zwykłego `useTranslation()` i lekkiego adaptera `createInlineTranslator(...)`.
+- Usunąłem wszystkie użycia `useInlineT()` ze źródeł `dashboard/src`.
+- `dashboard/scripts/sync-inline-i18n.cjs` obsługuje teraz nowy wzorzec `createInlineTranslator(...)`.
+- Dodałem nowy lint `dashboard/scripts/check-inline-i18n-bridge.cjs`, który blokuje ponowne wprowadzenie `useInlineT`.
+- `dashboard/scripts/check-hardcoded-i18n.cjs` rozpoznaje już także `tInline(...)`, więc audyt hardcodów pozostał skuteczny po migracji.
+
+To domyka sam most migracyjny `useInlineT()`. W kodzie nadal istnieje warstwa `inline.*` dla części starszych tłumaczeń, ale nie jest już oparta o osobny hook i jest objęta walidacją.
+
+### 3. Dodatkowe porządki i18n przy tej turze
+
+- Przeniosłem kolejne małe komponenty na jawne klucze i18n:
+  - `dashboard/src/components/ui/confirm-dialog.tsx`
+  - `dashboard/src/components/reports/ReportTemplateSelector.tsx`
+  - `dashboard/src/components/import/FileDropzone.tsx`
+- Zaktualizowałem `dashboard/src/locales/pl/common.json` i `dashboard/src/locales/en/common.json`.
+- Ponownie zsynchronizowałem sekcję `inline.*`, usuwając stare wpisy nieużywane po migracji.
+
+### 4. Walidacja po III turze
+
+Po tej turze zmian uruchomiłem:
+
+- `npm run sync:inline-i18n` w `dashboard`: OK
+- `npm run test` w `dashboard`: OK, 3/3 testy
+- `npm run lint` w `dashboard`: OK
+- `npm run build` w `dashboard`: OK
+- `cargo test` w katalogu głównym: OK, 11/11 testów
+
+### 5. Stan po wdrożeniach
+
+Na koniec tej tury nie zostały już otwarte żadne krótkoterminowe poprawki z listy wdrożeniowej raportu. Dalsze tematy, które warto traktować jako rozwój architektury, a nie bieżące bugfixy, to:
+
+- docelowe przejście z pełnego dziennego JSON na lżejszy model trwałego zapisu
+- dalsze wygaszanie samych par `inline.*` na rzecz jawnych kluczy i18next
+- dołożenie testów komponentów i e2e po stronie frontendu
 
 ## Najważniejsze ustalenia
 
@@ -228,9 +284,9 @@ Rekomendacja:
 - średni termin: przejść z pełnego dziennego JSON do append-only / SQLite / snapshot+delta
 - krótki termin: rozważyć zapis skompresowany lub bez `pretty`, oraz limity dla `title_history`
 
-### P2. Brak osobnych testów frontendu
+### P2. Frontend nadal nie ma testów komponentów ani e2e
 
-Front ma `lint` i `build`, ale nie ma testów komponentów ani e2e (`dashboard/package.json:6`).
+Frontend ma już `npm run test` i pierwszy zestaw testów jednostkowych, ale nadal nie ma testów komponentów ani e2e.
 
 To jest szczególnie ryzykowne przy:
 
@@ -258,7 +314,7 @@ W `Help` i `QuickStart` warto to nazwać wprost.
 
 ## Logika i architektura: dodatkowe obserwacje
 
-- `useInlineT()` jest oznaczone jako warstwa migracyjna/deprecated (`dashboard/src/lib/inline-i18n.ts:37`), ale nadal jest szeroko używane. To wydłuża migrację i utrudnia kontrolę jakości tłumaczeń.
+- Podczas audytu `useInlineT()` było szeroko używane jako warstwa migracyjna; po III turze hook został wygaszony, ale część tłumaczeń nadal opiera się o starszą warstwę `inline.*`.
 - `Help.tsx` jest bardzo duże i zawiera dużo wiedzy produktowej bezpośrednio w kodzie. To zwiększa ryzyko rozjazdu między implementacją i dokumentacją.
 - Jeden z testów backendu (`prune_does_not_delete_manual_projects`) trwał ponad 60 s podczas uruchomienia `cargo test` dla `dashboard/src-tauri`. Same testy przechodzą, ale warto profilować ścieżki związane z pruningiem projektów.
 
@@ -274,9 +330,11 @@ To jest klasyczny przypadek zdublowanej odpowiedzialności. Nawet jeśli pojedyn
 
 Drugi obszar nadmiaru:
 
-- tłumaczenia są rozbite między `useTranslation`, `useInlineT`, ręczne teksty w daemonie i wygenerowane klucze `inline.*`
+- tłumaczenia są rozbite między `useTranslation`, ręczne teksty w daemonie i wygenerowane klucze `inline.*`
 
 ## Audyt tłumaczeń
+
+Poniższe braki opisują stan z chwili audytu. Najważniejsze user-facing luki zostały później poprawione w turach wdrożeniowych opisanych wyżej.
 
 ### Stan obecny
 
@@ -298,7 +356,7 @@ To są drobne rzeczy, ale pokazują, że obecny lint nie łapie pełnego problem
 
 - skrypt `check-hardcoded-i18n.cjs` jawnie wyklucza `Help.tsx` i `QuickStart.tsx` (`dashboard/scripts/check-hardcoded-i18n.cjs:14`)
 - czyli dwa najbardziej tekstowe widoki nie są chronione tym samym audytem co reszta UI
-- `useInlineT()` nadal działa jako most migracyjny (`dashboard/src/lib/inline-i18n.ts:37`), więc tłumaczenia są poprawne funkcjonalnie, ale trudniejsze do utrzymania
+- most `useInlineT()` został usunięty, ale część tłumaczeń nadal korzysta z przejściowej warstwy `inline.*`, co pozostawia dług utrzymaniowy
 - daemon ma osobny mikro-system tłumaczeń, niezależny od dashboardowego i18next (`src/i18n.rs`)
 
 ### Rekomendacja i18n
@@ -306,11 +364,11 @@ To są drobne rzeczy, ale pokazują, że obecny lint nie łapie pełnego problem
 1. Naprawić realne brakujące teksty z `ProjectDayTimeline` i `Projects`.
 2. Rozszerzyć lint także o angielskie hardcody user-facing, nie tylko polskie.
 3. Dodać osobny audyt dla `Help.tsx` i `QuickStart.tsx`, zamiast ich wykluczania.
-4. Docelowo wygasić `useInlineT()` i przenieść treści do jawnych kluczy.
+4. Docelowo wygasić także warstwę `inline.*` i przenieść treści do jawnych kluczy.
 
 ## Funkcje niedostatecznie opisane w `Help/Pomoc`
 
-Poniżej rzeczy, które działają w aplikacji, ale nie są wystarczająco jasno opisane w `Help.tsx` albo w ogóle tam nie występują:
+Poniżej lista pierwotnych luk wykrytych w audycie. Zostały one później uzupełnione w `Help` / `QuickStart`, ale zostawiam je w raporcie jako uzasadnienie wdrożonych zmian:
 
 ### 1. Zapisany widok / zapis preferencji widoku
 
@@ -407,7 +465,7 @@ To ważne, bo problemem nie jest brak funkcji, tylko głównie nadmiarowe sprzę
 1. Poprawić brakujące tłumaczenia w `ProjectDayTimeline` i `Projects`.
 2. Rozszerzyć lint i18n na angielskie hardcody.
 3. Włączyć `Help` i `QuickStart` do osobnego audytu tłumaczeń.
-4. Zacząć wygaszanie `useInlineT()`.
+4. Zacząć wygaszanie warstwy `inline.*`.
 
 ### Etap 3: dokumentacja użytkownika
 

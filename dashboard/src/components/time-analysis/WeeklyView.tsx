@@ -6,13 +6,14 @@ import {
   YAxis,
   Tooltip,
 } from 'recharts';
+import { useTranslation } from 'react-i18next';
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_AXIS_COLOR,
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -30,13 +31,17 @@ export function WeeklyBarChart({
   weeklyTotalHours,
   stackedBarColorMap,
 }: WeeklyBarChartProps) {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const isAnimationActive = useSettingsStore((s) => s.chartAnimations);
 
   return (
     <div className="flex flex-col">
       <h3 className="text-sm font-medium px-2 pb-4">
-        {t(
+        {tInline(
           'Aktywność dzienna — {{hours}}h łącznie',
           'Daily Activity — {{hours}}h total',
           { hours: weeklyTotalHours.toFixed(1) },
@@ -106,7 +111,11 @@ interface WeeklyHeatmapProps {
 }
 
 export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyHeatmapProps) {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
 
   return (
     <div className="min-w-[600px]">
@@ -145,7 +154,7 @@ export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyHeatmapProps) {
                   title={
                     hasData
                       ? `${day.dayLabel} ${slot.hour}:00 — ${formatDuration(slot.totalSeconds)}\n${slot.projects.map((p) => `${p.name}: ${formatDuration(p.seconds)}`).join('\n')}`
-                      : `${day.dayLabel} ${slot.hour}:00 — ${t('Brak aktywności', 'No activity')}`
+                      : `${day.dayLabel} ${slot.hour}:00 — ${tInline('Brak aktywności', 'No activity')}`
                   }
                 >
                   {hasData && (

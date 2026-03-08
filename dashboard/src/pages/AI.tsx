@@ -36,7 +36,7 @@ import {
   saveIndicatorSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import {
   CHART_AXIS_COLOR,
   CHART_GRID_COLOR,
@@ -195,8 +195,8 @@ function buildTrainingReminder(
 }
 
 export function AIPage() {
-  const t = useInlineT();
-  const { t: tr } = useTranslation();
+  const { t: tr, i18n } = useTranslation();
+  const t = createInlineTranslator(tr, i18n.resolvedLanguage ?? i18n.language);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();

@@ -9,6 +9,12 @@ use std::path::PathBuf;
 
 use crate::config;
 
+const MAX_FILE_ENTRY_NAME_CHARS: usize = 260;
+const MAX_WINDOW_TITLE_CHARS: usize = 240;
+const MAX_DETECTED_PATH_CHARS: usize = 512;
+const MAX_TITLE_HISTORY_ENTRY_CHARS: usize = 180;
+const MAX_TITLE_HISTORY_LEN: usize = 12;
+
 /// Dane dzienne — jeden plik na dzień
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DailyData {
@@ -63,6 +69,80 @@ pub struct DailySummary {
     pub total_app_seconds: u64,
     pub total_app_formatted: String,
     pub apps_active_count: usize,
+}
+
+fn truncate_middle(value: &str, max_chars: usize) -> String {
+    if max_chars == 0 {
+        return String::new();
+    }
+
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= max_chars {
+        return value.to_string();
+    }
+
+    if max_chars <= 3 {
+        return chars.into_iter().take(max_chars).collect();
+    }
+
+    let head_len = (max_chars - 3) / 2;
+    let tail_len = max_chars - 3 - head_len;
+    let head: String = chars.iter().take(head_len).copied().collect();
+    let tail: String = chars
+        .iter()
+        .skip(chars.len() - tail_len)
+        .copied()
+        .collect();
+    format!("{}...{}", head, tail)
+}
+
+fn sanitize_text(value: &str, max_chars: usize) -> String {
+    truncate_middle(value.trim(), max_chars)
+}
+
+pub(crate) fn sanitize_file_entry_name(value: &str) -> String {
+    sanitize_text(value, MAX_FILE_ENTRY_NAME_CHARS)
+}
+
+pub(crate) fn sanitize_window_title(value: &str) -> String {
+    sanitize_text(value, MAX_WINDOW_TITLE_CHARS)
+}
+
+pub(crate) fn sanitize_detected_path(value: &str) -> String {
+    sanitize_text(value, MAX_DETECTED_PATH_CHARS)
+}
+
+pub(crate) fn sanitize_title_history_entry(value: &str) -> String {
+    sanitize_text(value, MAX_TITLE_HISTORY_ENTRY_CHARS)
+}
+
+pub(crate) fn prepare_daily_for_storage(data: &mut DailyData) {
+    for app_data in data.apps.values_mut() {
+        for file_entry in &mut app_data.files {
+            file_entry.name = sanitize_file_entry_name(&file_entry.name);
+            file_entry.window_title = sanitize_window_title(&file_entry.window_title);
+            file_entry.detected_path = file_entry
+                .detected_path
+                .as_deref()
+                .map(sanitize_detected_path)
+                .filter(|value| !value.is_empty());
+
+            let mut normalized_history = Vec::new();
+            for title in &file_entry.title_history {
+                let sanitized = sanitize_title_history_entry(title);
+                if sanitized.is_empty() || normalized_history.iter().any(|entry| entry == &sanitized)
+                {
+                    continue;
+                }
+                normalized_history.push(sanitized);
+            }
+            if normalized_history.len() > MAX_TITLE_HISTORY_LEN {
+                let drain_count = normalized_history.len() - MAX_TITLE_HISTORY_LEN;
+                normalized_history.drain(0..drain_count);
+            }
+            file_entry.title_history = normalized_history;
+        }
+    }
 }
 
 /// Katalog danych: %APPDATA%/TimeFlow/data (zakłada że ensure_app_dirs() wywołano przy starcie)
@@ -200,12 +280,13 @@ pub fn save_daily(data: &mut DailyData) -> Result<()> {
 
     // Aktualizuj timestamp i podsumowanie
     data.generated_at = Local::now().to_rfc3339();
+    prepare_daily_for_storage(data);
     update_summary(data);
 
-    let json = serde_json::to_string_pretty(data).context("Serializacja danych dziennych")?;
+    let json = serde_json::to_vec(data).context("Serializacja danych dziennych")?;
 
     // Atomowy zapis: write tmp → rename
-    std::fs::write(&tmp_path, &json)
+    std::fs::write(&tmp_path, json)
         .with_context(|| format!("Zapis tymczasowy: {:?}", tmp_path))?;
     if let Err(e) = atomic_replace_file(&tmp_path, &path) {
         // Przy błędzie rename NIE usuwamy tmp — plik może służyć do odzyskania danych
@@ -256,4 +337,88 @@ pub(crate) fn format_duration(seconds: u64) -> String {
     let m = (seconds % 3600) / 60;
     let s = seconds % 60;
     format!("{}h {}m {}s", h, m, s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_middle_preserves_prefix_and_suffix() {
+        let value = truncate_middle("abcdefghijklmnop", 9);
+        assert_eq!(value, "abc...nop");
+    }
+
+    #[test]
+    fn prepare_daily_for_storage_prunes_text_fields() {
+        let mut data = DailyData {
+            date: "2026-03-08".to_string(),
+            generated_at: String::new(),
+            apps: HashMap::from([(
+                "code.exe".to_string(),
+                AppDailyData {
+                    display_name: "VS Code".to_string(),
+                    total_seconds: 10,
+                    total_time_formatted: String::new(),
+                    sessions: vec![Session {
+                        start: "2026-03-08T10:00:00Z".to_string(),
+                        end: "2026-03-08T10:00:10Z".to_string(),
+                        duration_seconds: 10,
+                    }],
+                    files: vec![FileEntry {
+                        name: "a".repeat(400),
+                        total_seconds: 10,
+                        first_seen: "2026-03-08T10:00:00Z".to_string(),
+                        last_seen: "2026-03-08T10:00:10Z".to_string(),
+                        window_title: "b".repeat(400),
+                        detected_path: Some("c".repeat(700)),
+                        title_history: vec![
+                            " same ".to_string(),
+                            "same".to_string(),
+                            "d".repeat(400),
+                            "e".repeat(400),
+                            "f".repeat(400),
+                            "g".repeat(400),
+                            "h".repeat(400),
+                            "i".repeat(400),
+                            "j".repeat(400),
+                            "k".repeat(400),
+                            "l".repeat(400),
+                            "m".repeat(400),
+                            "n".repeat(400),
+                        ],
+                        activity_type: Some("coding".to_string()),
+                    }],
+                },
+            )]),
+            summary: DailySummary {
+                total_app_seconds: 0,
+                total_app_formatted: String::new(),
+                apps_active_count: 0,
+            },
+        };
+
+        prepare_daily_for_storage(&mut data);
+
+        let file_entry = &data.apps["code.exe"].files[0];
+        assert!(file_entry.name.chars().count() <= MAX_FILE_ENTRY_NAME_CHARS);
+        assert!(file_entry.window_title.chars().count() <= MAX_WINDOW_TITLE_CHARS);
+        assert!(
+            file_entry
+                .detected_path
+                .as_ref()
+                .expect("detected_path should be present")
+                .chars()
+                .count()
+                <= MAX_DETECTED_PATH_CHARS
+        );
+        assert_eq!(file_entry.title_history.len(), MAX_TITLE_HISTORY_LEN);
+        assert_eq!(file_entry.title_history[0], "same");
+        assert!(
+            file_entry
+                .title_history
+                .iter()
+                .all(|entry| entry.chars().count() <= MAX_TITLE_HISTORY_ENTRY_CHARS)
+        );
+    }
 }

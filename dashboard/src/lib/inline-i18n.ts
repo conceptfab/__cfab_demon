@@ -1,10 +1,14 @@
-import { useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { normalizeLanguageCode } from '@/lib/user-settings';
 
-type InlineInterpolationValue = string | number | boolean | null | undefined;
-type InlineInterpolationMap = Record<string, InlineInterpolationValue>;
-type InlineTranslator = (
+export type InlineInterpolationValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined;
+export type InlineInterpolationMap = Record<string, InlineInterpolationValue>;
+export type InlineTranslator = (
   pl: string,
   en: string,
   interpolation?: InlineInterpolationMap,
@@ -30,24 +34,18 @@ function hashInlinePair(input: string): string {
   return `${(h2 >>> 0).toString(36)}${(h1 >>> 0).toString(36)}`;
 }
 
-function buildInlineI18nKey(pl: string, en: string): string {
+export function buildInlineI18nKey(pl: string, en: string): string {
   return `inline.${hashInlinePair(`${pl}\u0000${en}`)}`;
 }
 
-/**
- * @deprecated Prefer direct i18next keys via `useTranslation()` in page/components.
- * This hook is kept only as a migration bridge for legacy inline PL/EN strings.
- */
-export function useInlineT(): InlineTranslator {
-  const { i18n, t } = useTranslation();
-  const lang = normalizeLanguageCode(i18n.resolvedLanguage ?? i18n.language);
-
-  return useMemo(
-    () => (pl: string, en: string, interpolation?: InlineInterpolationMap) =>
-      t(buildInlineI18nKey(pl, en), {
-        ...interpolation,
-        defaultValue: lang === 'pl' ? pl : en,
-      }),
-    [lang, t],
-  );
+export function createInlineTranslator(
+  t: TFunction,
+  language: unknown,
+): InlineTranslator {
+  const lang = normalizeLanguageCode(language);
+  return (pl: string, en: string, interpolation?: InlineInterpolationMap) =>
+    t(buildInlineI18nKey(pl, en), {
+      ...interpolation,
+      defaultValue: lang === 'pl' ? pl : en,
+    });
 }

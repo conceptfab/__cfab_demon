@@ -48,7 +48,7 @@ import {
   type OnlineSyncRunResult,
   type OnlineSyncState,
 } from '@/lib/online-sync';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -76,7 +76,7 @@ function splitTime(value: string): [string, string] {
 
 export function Settings() {
   const { i18n, t } = useTranslation();
-  const tt = useInlineT();
+  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);

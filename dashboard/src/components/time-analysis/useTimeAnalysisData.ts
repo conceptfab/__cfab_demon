@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
+import { useTranslation } from 'react-i18next';
 import { getTimeline, getProjectTimeline, getProjects } from "@/lib/tauri";
 import {
   addDays, addMonths, subMonths, format, parseISO, subDays,
@@ -6,14 +7,18 @@ import {
   isBefore, isAfter, getWeek,
 } from "date-fns";
 import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
-import { useInlineT } from "@/lib/inline-i18n";
+import { createInlineTranslator } from "@/lib/inline-i18n";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 
 export type RangeMode = "daily" | "weekly" | "monthly";
 
 export function useTimeAnalysisData() {
-  const t = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tInline = createInlineTranslator(
+    t,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -140,27 +145,27 @@ export function useTimeAnalysisData() {
   );
 
   const pieFallbackMessage = useMemo(() => {
-    if (isLoading) return t("Ładowanie danych wykresu...", "Loading chart data...");
+    if (isLoading) return tInline("Ładowanie danych wykresu...", "Loading chart data...");
     if (loadError) {
-      return t(
+      return tInline(
         "Nie udało się załadować danych wykresu. Zmień okres lub odśwież.",
         "Unable to load chart data. Try changing period or refreshing.",
       );
     }
     if (totalRangeSeconds <= 0) {
-      return t(
+      return tInline(
         "Brak zarejestrowanej aktywności w wybranym okresie.",
         "No tracked activity in selected period.",
       );
     }
     if (hourlyProjects.length === 0) {
-      return t(
+      return tInline(
         "Brak danych osi projektów dla wybranego okresu.",
         "No project timeline data for selected period.",
       );
     }
-    return t("Brak danych rozkładu projektów.", "No project distribution data available.");
-  }, [hourlyProjects.length, isLoading, loadError, t, totalRangeSeconds]);
+    return tInline("Brak danych rozkładu projektów.", "No project distribution data available.");
+  }, [hourlyProjects.length, isLoading, loadError, tInline, totalRangeSeconds]);
 
   // Weekly heatmap grid
   const weeklyHourlyGrid = useMemo(() => {

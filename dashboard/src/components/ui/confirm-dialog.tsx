@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { useInlineT } from '@/lib/inline-i18n';
+import { useTranslation } from 'react-i18next';
 
 interface ConfirmState {
   open: boolean;
@@ -15,7 +15,7 @@ interface ConfirmState {
 }
 
 export function useConfirm() {
-  const t = useInlineT();
+  const { t } = useTranslation();
   const [state, setState] = useState<ConfirmState>({
     open: false,
     message: '',
@@ -41,15 +41,15 @@ export function useConfirm() {
       <Dialog open={state.open} onOpenChange={(open) => { if (!open) handleClose(false); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{t('Potwierdzenie', 'Confirm')}</DialogTitle>
+            <DialogTitle>{t('components.confirm_dialog.title')}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">{state.message}</p>
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="ghost" size="sm" onClick={() => handleClose(false)}>
-              {t('Anuluj', 'Cancel')}
+              {t('ui.buttons.cancel')}
             </Button>
             <Button variant="destructive" size="sm" onClick={() => handleClose(true)}>
-              {t('Potwierdź', 'Confirm')}
+              {t('ui.buttons.confirm')}
             </Button>
           </div>
         </DialogContent>

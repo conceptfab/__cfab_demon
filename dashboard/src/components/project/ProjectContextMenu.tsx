@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useUIStore } from '@/store/ui-store';
-import { useInlineT } from '@/lib/inline-i18n';
+import { createInlineTranslator } from '@/lib/inline-i18n';
 
 interface ProjectMenuState {
   x: number;
@@ -29,7 +30,8 @@ function clampToViewport(x: number, y: number) {
 }
 
 export function ProjectContextMenu() {
-  const tt = useInlineT();
+  const { t, i18n } = useTranslation();
+  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const [menu, setMenu] = useState<ProjectMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const setProjectPageId = useUIStore((s) => s.setProjectPageId);

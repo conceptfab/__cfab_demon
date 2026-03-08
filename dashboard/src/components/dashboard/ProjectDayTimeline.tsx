@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PromptModal } from "@/components/ui/prompt-modal";
 import { useToast } from "@/components/ui/toast-notification";
 import { formatDuration, formatMultiplierLabel } from "@/lib/utils";
-import { useInlineT } from "@/lib/inline-i18n";
+import { createInlineTranslator } from "@/lib/inline-i18n";
 import {
   normalizeHexColor,
   loadFreezeSettings,
@@ -347,8 +347,8 @@ export function ProjectDayTimeline({
   onAddManualSession,
   onEditManualSession,
 }: Props) {
-  const tt = useInlineT();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const { showError, showInfo } = useToast();
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
