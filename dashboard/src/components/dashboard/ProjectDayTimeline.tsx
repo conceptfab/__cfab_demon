@@ -989,7 +989,11 @@ export function ProjectDayTimeline({
               </button>
             </AppTooltip>
             <span className="text-xs text-muted-foreground">
-              {model ? `Total: ${formatDuration(model.totalSeconds)}` : "No data"}
+              {model
+                ? tt("Łącznie: {{duration}}", "Total: {{duration}}", {
+                    duration: formatDuration(model.totalSeconds),
+                  })
+                : tt("Brak danych", "No data")}
             </span>
           </div>
         </CardTitle>
@@ -997,7 +1001,10 @@ export function ProjectDayTimeline({
       <CardContent className={minHeightClassName ?? ""}>
         {!model && (
           <p className="text-sm text-muted-foreground py-6">
-            No project activity in selected day.
+            {tt(
+              "Brak aktywności projektowej w wybranym dniu.",
+              "No project activity in selected day.",
+            )}
           </p>
         )}
 
@@ -1011,7 +1018,10 @@ export function ProjectDayTimeline({
               return (
                 <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                   <span className="font-semibold">{tt('Wykryto nieprzypisane sesje.', 'Unassigned sessions detected.')}</span>{" "}
-                  Right-click their segments to assign each session to a project.
+                  {tt(
+                    'Kliknij prawym przyciskiem segment, aby przypisać każdą sesję do projektu.',
+                    'Right-click their segments to assign each session to a project.',
+                  )}
                 </div>
               );
             })()}

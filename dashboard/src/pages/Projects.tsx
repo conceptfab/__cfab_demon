@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -211,6 +211,7 @@ export function Projects() {
   const [projectRenderLimits, setProjectRenderLimits] = useState<
     Record<string, number>
   >({});
+  const autoFreezeInitializedRef = useRef(false);
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -283,17 +284,14 @@ export function Projects() {
   };
 
   useEffect(() => {
+    if (autoFreezeInitializedRef.current) return;
+    autoFreezeInitializedRef.current = true;
     const { thresholdDays } = loadFreezeSettings();
     autoFreezeProjects(thresholdDays)
-      .then(({ frozen_count, unfrozen_count }) => {
-        if (frozen_count > 0 || unfrozen_count > 0) {
-          triggerRefresh();
-        }
-      })
       .catch(() => {
         /* ignore: feature not yet compiled */
       });
-  }, [refreshKey, triggerRefresh]);
+  }, []);
 
   const hotProjectIds = useMemo(() => {
     return [...projects]
@@ -1306,7 +1304,7 @@ export function Projects() {
                     ))}
                     {extraInfo?.top_apps.length === 0 && (
                       <p className="text-xs text-muted-foreground italic">
-                        No data
+                        {tt('Brak danych', 'No data')}
                       </p>
                     )}
 

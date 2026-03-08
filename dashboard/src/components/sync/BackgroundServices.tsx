@@ -51,6 +51,10 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isDocumentVisible(): boolean {
+  return typeof document === 'undefined' || document.visibilityState === 'visible';
+}
+
 function isSessionAlreadySplit(session: {
   split_source_session_id?: number | null;
 }): boolean {
@@ -85,6 +89,34 @@ function buildAutoSplits(
     });
   }
   return raw;
+}
+
+async function runAutoAiAssignmentCycle(): Promise<boolean> {
+  const result = await runHeavyOperation(
+    AI_AND_SPLIT_OPERATION_KEY,
+    async () => {
+      let needsRefresh = false;
+      try {
+        const det = await applyDeterministicAssignment();
+        if (det.sessions_assigned > 0) needsRefresh = true;
+      } catch (e) {
+        console.warn('Deterministic assignment failed:', e);
+      }
+
+      try {
+        const minDuration =
+          loadSessionSettings().minSessionDurationSeconds || undefined;
+        const aiResult = await autoRunIfNeeded(minDuration);
+        if (aiResult && aiResult.assigned > 0) needsRefresh = true;
+      } catch (e) {
+        console.warn('AI auto-assignment failed:', e);
+      }
+
+      return needsRefresh;
+    },
+  );
+
+  return result ?? false;
 }
 
 // === BACKGROUND HOOKS ===
@@ -126,14 +158,8 @@ function useAutoProjectSync() {
     const run = async () => {
       try {
         const syncResult = await syncProjectsFromFolders();
-        const detected = await autoCreateProjectsFromDetection(
-          ALL_TIME_DATE_RANGE,
-          2,
-        );
+        await autoCreateProjectsFromDetection(ALL_TIME_DATE_RANGE, 2);
         const allNew = syncResult.created_projects;
-        if (allNew.length > 0 || detected > 0) {
-          useDataStore.getState().triggerRefresh();
-        }
         if (allNew.length > 0) {
           useDataStore.getState().setDiscoveredProjects(allNew);
         }
@@ -151,12 +177,9 @@ function useAutoSessionRebuild() {
       try {
         const settings = loadSessionSettings();
         if (settings.rebuildOnStartup && settings.gapFillMinutes > 0) {
-          const merged = await runHeavyOperation('rebuild', () =>
+          await runHeavyOperation('rebuild', () =>
             rebuildSessions(settings.gapFillMinutes),
           );
-          if (merged != null && merged > 0) {
-            useDataStore.getState().triggerRefresh();
-          }
         }
       } catch (e) {
         console.warn('Auto session rebuild failed:', e);
@@ -167,44 +190,18 @@ function useAutoSessionRebuild() {
 }
 
 function useAutoAiAssignment() {
-  const { autoImportDone, refreshKey, triggerRefresh } = useDataStore();
-  const lastProcessedKey = useRef(-1);
+  const { autoImportDone } = useDataStore();
+  const hasProcessedStartupRef = useRef(false);
 
   useEffect(() => {
-    if (!autoImportDone || lastProcessedKey.current === refreshKey) return;
-    lastProcessedKey.current = refreshKey;
-
-    const run = async () => {
-      const result = await runHeavyOperation(AI_AND_SPLIT_OPERATION_KEY, async () => {
-        let needsRefresh = false;
-        try {
-          const det = await applyDeterministicAssignment();
-          if (det.sessions_assigned > 0) needsRefresh = true;
-        } catch (e) {
-          console.warn('Deterministic assignment failed:', e);
-        }
-
-        try {
-          const minDuration =
-            loadSessionSettings().minSessionDurationSeconds || undefined;
-          const aiResult = await autoRunIfNeeded(minDuration);
-          if (aiResult && aiResult.assigned > 0) needsRefresh = true;
-        } catch (e) {
-          console.warn('AI auto-assignment failed:', e);
-        }
-
-        return needsRefresh;
-      });
-
-      if (result) triggerRefresh();
-    };
-
-    void run();
-  }, [autoImportDone, refreshKey, triggerRefresh]);
+    if (!autoImportDone || hasProcessedStartupRef.current) return;
+    hasProcessedStartupRef.current = true;
+    void runAutoAiAssignmentCycle();
+  }, [autoImportDone]);
 }
 
 function useAutoSplitSessions() {
-  const { autoImportDone, triggerRefresh } = useDataStore();
+  const { autoImportDone } = useDataStore();
 
   const runAutoSplit = useCallback(async () => {
     if (!autoImportDone) return;
@@ -214,7 +211,7 @@ function useAutoSplitSessions() {
 
     const minDuration =
       loadSessionSettings().minSessionDurationSeconds || undefined;
-    const result = await runHeavyOperation(AI_AND_SPLIT_OPERATION_KEY, async () => {
+    await runHeavyOperation(AI_AND_SPLIT_OPERATION_KEY, async () => {
       const sessions = await getSessions({
         limit: 50,
         offset: 0,
@@ -254,11 +251,7 @@ function useAutoSplitSessions() {
 
       return splitCount;
     });
-
-    if ((result ?? 0) > 0) {
-      triggerRefresh();
-    }
-  }, [autoImportDone, triggerRefresh]);
+  }, [autoImportDone]);
 
   const runAutoSplitRef = useRef(runAutoSplit);
   useEffect(() => {
@@ -297,7 +290,7 @@ function useJobPool() {
   const isSyncingRef = useRef(false);
 
   const checkFileChange = useCallback(async () => {
-    if (!autoImportDone) return;
+    if (!autoImportDone || !isDocumentVisible()) return;
     try {
       const sig = await getTodayFileSignature();
       const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
@@ -314,17 +307,19 @@ function useJobPool() {
   }, [autoImportDone, triggerRefresh]);
 
   const runRefresh = useCallback(async () => {
-    if (!autoImportDone || isRefreshingRef.current) return;
+    if (!autoImportDone || isRefreshingRef.current || !isDocumentVisible()) return;
     isRefreshingRef.current = true;
     try {
-      await refreshToday();
-      triggerRefresh();
+      const result = await refreshToday();
+      if (result.sessions_upserted > 0) {
+        await runAutoAiAssignmentCycle();
+      }
     } catch (error) {
       console.warn('[useJobPool] Refresh today failed', error);
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [autoImportDone, triggerRefresh]);
+  }, [autoImportDone]);
 
   const refreshSyncSettingsCache = useCallback(() => {
     syncSettingsRef.current = loadOnlineSyncSettings();
@@ -335,6 +330,7 @@ function useJobPool() {
       if (isSyncingRef.current) return;
       const settings = syncSettingsRef.current;
       if (isAuto && !settings.enabled) return;
+      if (isAuto && !isDocumentVisible()) return;
       isSyncingRef.current = true;
 
       try {
@@ -365,17 +361,20 @@ function useJobPool() {
     let disposed = false;
 
     // Bootstrap initial data
-    void runRefresh().then(() => {
-      if (disposed) return;
-      getTodayFileSignature()
-        .then((sig) => {
-          lastSignatureRef.current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
-        })
-        .catch(() => {});
-    });
+    if (isDocumentVisible()) {
+      void runRefresh().then(() => {
+        if (disposed) return;
+        getTodayFileSignature()
+          .then((sig) => {
+            lastSignatureRef.current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
+          })
+          .catch(() => {});
+      });
+    }
 
     // Universal Event Loop (1 second tick)
     loopRef.current = window.setInterval(() => {
+      if (!isDocumentVisible()) return;
       const now = Date.now();
 
       if (autoImportDone && now >= nextRefreshRef.current) {
@@ -421,7 +420,18 @@ function useJobPool() {
       refreshSyncSettingsCache();
     };
 
+    const handleVisibilityChange = () => {
+      refreshSyncSettingsCache();
+      if (!autoImportDone || !isDocumentVisible()) return;
+      nextRefreshRef.current = 0;
+      nextSigCheckRef.current = 0;
+      nextSyncIntervalRef.current = 0;
+      nextSyncPollRef.current = 0;
+      void runRefresh();
+    };
+
     const handleLocalDataChange = () => {
+      if (!isDocumentVisible()) return;
       if (localChangeRefreshTimer.current)
         window.clearTimeout(localChangeRefreshTimer.current);
       localChangeRefreshTimer.current = window.setTimeout(
@@ -439,6 +449,7 @@ function useJobPool() {
     };
 
     window.addEventListener('focus', handleSyncSettingsChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener(
       ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
       handleSyncSettingsChange,
@@ -447,6 +458,7 @@ function useJobPool() {
 
     return () => {
       window.removeEventListener('focus', handleSyncSettingsChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener(
         ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
         handleSyncSettingsChange,
@@ -460,7 +472,7 @@ function useJobPool() {
       if (localChangeSyncTimer.current)
         window.clearTimeout(localChangeSyncTimer.current);
     };
-  }, [autoImportDone, runSync, triggerRefresh, refreshSyncSettingsCache]);
+  }, [autoImportDone, runRefresh, runSync, triggerRefresh, refreshSyncSettingsCache]);
 
   useEffect(() => {
     if (!autoImportDone) return;

@@ -742,7 +742,7 @@
       },
       "adding_applications": {
         "title": "Dodawanie aplikacji",
-        "description": "W zakładce <b>Applications</b> dodaj nazwy procesów (np. nazwa.exe), które chcesz śledzić. Nadaj im czytelne nazwy."
+        "description": "W zakładce <b>Applications</b> dodaj nazwy procesów (np. nazwa.exe), które chcesz śledzić. Nadaj im czytelne nazwy. Nie zostawiaj listy pustej, bo daemon przełączy się wtedy na fallback monitor-all i zacznie śledzić wszystkie aplikacje."
       },
       "starting_daemon": {
         "title": "Uruchomienie Demona",

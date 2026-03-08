@@ -66,15 +66,32 @@ function invoke<T>(
   return tauriInvoke<T>(command, args);
 }
 
+type MutationNotify<T> = boolean | ((result: T) => boolean);
+
+function shouldNotifyMutation<T>(
+  notify: MutationNotify<T> | undefined,
+  result: T,
+): boolean {
+  if (typeof notify === 'function') {
+    return notify(result);
+  }
+  return notify ?? true;
+}
+
 function invokeMutation<T>(
   command: string,
   args?: Record<string, unknown>,
+  options?: {
+    notify?: MutationNotify<T>;
+  },
 ): Promise<T> {
   if (!hasTauriRuntime()) {
     return Promise.reject(new Error('Tauri runtime not available'));
   }
   return tauriInvoke<T>(command, args).then((res) => {
-    emitLocalDataChanged(command);
+    if (shouldNotifyMutation(options?.notify, res)) {
+      emitLocalDataChanged(command);
+    }
     return res;
   });
 }
@@ -118,6 +135,10 @@ export const autoFreezeProjects = (thresholdDays?: number) =>
     'auto_freeze_projects',
     {
       thresholdDays: thresholdDays ?? null,
+    },
+    {
+      notify: (result) =>
+        result.frozen_count > 0 || result.unfrozen_count > 0,
     },
   );
 export const assignAppToProject = (appId: number, projectId: number | null) =>
@@ -169,6 +190,10 @@ export const createProjectFromFolder = (folderPath: string) =>
 export const syncProjectsFromFolders = () =>
   invokeMutation<{ created_projects: string[]; scanned_folders: number }>(
     'sync_projects_from_folders',
+    undefined,
+    {
+      notify: (result) => result.created_projects.length > 0,
+    },
   );
 export const autoCreateProjectsFromDetection = (
   dateRange: DateRange,
@@ -177,6 +202,8 @@ export const autoCreateProjectsFromDetection = (
   invokeMutation<number>('auto_create_projects_from_detection', {
     dateRange,
     minOccurrences,
+  }, {
+    notify: (createdCount) => createdCount > 0,
   });
 
 // Dashboard
@@ -234,7 +261,9 @@ export const getSessionCount = (filters: {
 }) => invoke<number>('get_session_count', { filters });
 
 export const rebuildSessions = (gapFillMinutes: number) =>
-  invokeMutation<number>('rebuild_sessions', { gapFillMinutes });
+  invokeMutation<number>('rebuild_sessions', { gapFillMinutes }, {
+    notify: (merged) => merged > 0,
+  });
 
 export const getAssignmentModelStatus = () =>
   invoke<AssignmentModelStatus>('get_assignment_model_status');
@@ -297,11 +326,15 @@ export const rollbackLastAutoSafeRun = () =>
 export const autoRunIfNeeded = (minDuration?: number) =>
   invokeMutation<AutoSafeRunResult | null>('auto_run_if_needed', {
     minDuration,
+  }, {
+    notify: (result) => (result?.assigned ?? 0) > 0,
   });
 
 export const applyDeterministicAssignment = (minHistory?: number) =>
   invokeMutation<DeterministicResult>('apply_deterministic_assignment', {
     minHistory: minHistory ?? null,
+  }, {
+    notify: (result) => result.sessions_assigned > 0,
   });
 
 export const getSessionScoreBreakdown = (sessionId: number) =>
@@ -362,7 +395,9 @@ export const renameMonitoredApp = (exeName: string, displayName: string) =>
 
 // Refresh & Reset
 export const refreshToday = () =>
-  invokeMutation<RefreshResult>('refresh_today');
+  invokeMutation<RefreshResult>('refresh_today', undefined, {
+    notify: (result) => result.sessions_upserted > 0,
+  });
 export const getTodayFileSignature = () =>
   invoke<TodayFileSignature>('get_today_file_signature');
 export const resetAppTime = (appId: number) =>

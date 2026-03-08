@@ -295,6 +295,10 @@ export function Help() {
                     'Configuration of project folders and app processes to be tracked.',
                   ),
                   t(
+                    'Lista monitorowanych aplikacji nie powinna być pusta. Gdy nie dodasz żadnego procesu, daemon przełączy się na fallback monitor-all i zacznie śledzić wszystkie aplikacje.',
+                    'Your monitored applications list should not stay empty. If you add no processes, the daemon falls back to monitor-all and starts tracking all applications.',
+                  ),
+                  t(
                     'Instrukcja pierwszego przypisywania sesji i uruchomienia lokalnego AI.',
                     'First-session assignment and local AI onboarding instructions.',
                   ),
@@ -365,6 +369,10 @@ export function Help() {
                     'Notifications on auto-import status and potential data read errors.',
                   ),
                   t(
+                    'Wskaźniki statusu w sidebarze działają jak centrum sterowania: pokazują stan demona, synchronizacji, AI i backupu, a kliknięcie otwiera odpowiedni ekran diagnostyczny.',
+                    'Sidebar status indicators act as a control center: they show daemon, sync, AI, and backup state, and clicking them opens the relevant diagnostic screen.',
+                  ),
+                  t(
                     'Przycisk odświeżania synchronizujący dane bezpośrednio z pracującego Daemona.',
                     'Refresh button synchronizing data directly from the running Daemon.',
                   ),
@@ -400,6 +408,10 @@ export function Help() {
                   t(
                     'Ręczne dodawanie sesji (Add Session) – rejestruj spotkania, telefony lub pracę poza komputerem.',
                     'Manual session addition – register meetings, calls, or offline work.',
+                  ),
+                  t(
+                    'Sesje ręczne wielodniowe – opcja "Pozwól rozciągnąć sesję na wiele dni" pozwala zapisać dłuższe zdarzenia przechodzące przez północ.',
+                    'Multi-day manual sessions – the "Allow session across multiple days" option lets you save longer events that cross midnight.',
                   ),
                   t(
                     'Masowe przypisywanie (Batch Assign) – zaznacz wiele sesji i przypisz je do projektu jednym kliknięciem.',
@@ -563,6 +575,10 @@ export function Help() {
                   t(
                     'Karta projektu (ProjectPage) – pełny widok projektu: kompaktowanie danych, reset czasu, edycja nazwy inline, timeline z komentarzami, sesje manualne oraz generowanie raportu.',
                     'Project card (ProjectPage) – full project view: data compaction, time reset, inline name edit, timeline with comments, manual sessions, and report generation.',
+                  ),
+                  t(
+                    'Zapisany widok (Save View) – możesz utrwalić preferowany układ sortowania i prezentacji list/timeline, aby wracał po ponownym otwarciu ekranu.',
+                    'Saved View – persist your preferred sorting and presentation mode for lists/timeline so it comes back when you reopen the screen.',
                   ),
                 ]}
               />
@@ -895,7 +911,10 @@ export function Help() {
 
                       <div>
                         <strong>
-                          3. Feedback Weight: 10 - 15 (Zwiększ obecne 5)
+                          {t(
+                            '3. Feedback Weight: 10 - 15 (Zwiększ obecne 5)',
+                            '3. Feedback Weight: 10 - 15 (Increase the current 5)',
+                          )}
                         </strong>
                         <p className="mt-1 leading-relaxed">
                           {t(
@@ -907,8 +926,10 @@ export function Help() {
 
                       <div>
                         <strong>
-                          4. Kryteria dla Auto-safe (na przyszłość/dla
-                          bezpieczeństwa)
+                          {t(
+                            '4. Kryteria dla Auto-safe (na przyszłość/dla bezpieczeństwa)',
+                            '4. Criteria for Auto-safe (for the future / safety)',
+                          )}
                         </strong>
                         <p className="mt-1 mb-1 leading-relaxed">
                           {t(
@@ -1080,6 +1101,10 @@ export function Help() {
                     'Lokalizacja – menu tray Daemona automatycznie przełącza się między PL/EN na podstawie ustawień języka w Dashboardzie (Ustawienia > Język).',
                     'Localization – the Daemon tray menu automatically switches between PL/EN based on the language setting in the Dashboard (Settings > Language).',
                   ),
+                  t(
+                    'Fallback monitor-all – jeśli lista monitorowanych procesów jest pusta, daemon zaczyna śledzić wszystkie aplikacje, więc warto skonfigurować zakładkę Applications przed uruchomieniem pracy produkcyjnej.',
+                    'Monitor-all fallback – if the monitored process list is empty, the daemon starts tracking all applications, so it is worth configuring the Applications tab before production use.',
+                  ),
                 ]}
               />
             </TabsContent>
@@ -1126,6 +1151,14 @@ export function Help() {
                     'Online Sync – set up synchronization with an external server (URL, User ID, Token).',
                   ),
                   t(
+                    'Device ID – identyfikator urządzenia jest generowany przy zapisie ustawień sync i rozróżnia tę konkretną maszynę po stronie serwera.',
+                    'Device ID – a device identifier is generated when sync settings are saved and distinguishes this specific machine on the server.',
+                  ),
+                  t(
+                    'Token synchronizacji jest przechowywany w secure storage po stronie aplikacji Rust; dashboard obsługuje też migrację starszego tokenu z localStorage.',
+                    'The sync token is stored in Rust-side secure storage; the dashboard also migrates an older token from localStorage when needed.',
+                  ),
+                  t(
                     'Sync on startup – natychmiastowa synchronizacja po uruchomieniu Dashboardu.',
                     'Sync on startup – perform synchronization immediately after Dashboard startup.',
                   ),
@@ -1152,6 +1185,10 @@ export function Help() {
                   t(
                     'Tryb Demo a Sync – po przełączeniu na bazę demo synchronizacja online jest wyłączona, aby uniknąć mieszania danych testowych z produkcyjnymi.',
                     'Demo Mode and Sync – when switched to the demo database, online synchronization is disabled to prevent mixing test and production data.',
+                  ),
+                  t(
+                    'Tryb demo korzysta z osobnego pliku SQLite i czyta dzienne odświeżenia z katalogu fake_data; pliki JSON powinny wtedy zawierać fake w nazwie, np. 2026-02-22_fake.json.',
+                    'Demo mode uses a separate SQLite file and reads live daily refreshes from the fake_data directory; JSON filenames should then include fake, for example 2026-02-22_fake.json.',
                   ),
                   t(
                     'Auto Optimize DB – harmonogram automatycznej optymalizacji SQLite oraz ręczne uruchamianie optymalizacji.',

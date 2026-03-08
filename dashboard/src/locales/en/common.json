@@ -742,7 +742,7 @@
       },
       "adding_applications": {
         "title": "Adding Applications",
-        "description": "In the <b>Applications</b> tab, add process names (e.g. name.exe) you want to track. Give them friendly names."
+        "description": "In the <b>Applications</b> tab, add process names (e.g. name.exe) you want to track. Give them friendly names. Do not leave the list empty, because the daemon will then fall back to monitor-all and start tracking every application."
       },
       "starting_daemon": {
         "title": "Starting the Demon",

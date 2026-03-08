@@ -13,8 +13,6 @@ const BASELINE_PATH = path.join(
 const EXTENSIONS = new Set(['.ts', '.tsx']);
 const EXCLUDED_PATH_PARTS = [
   `${path.sep}locales${path.sep}`,
-  `${path.sep}pages${path.sep}Help.tsx`,
-  `${path.sep}pages${path.sep}QuickStart.tsx`,
 ];
 
 const POLISH_DIACRITICS_RE = /[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/;
@@ -43,9 +41,22 @@ function shouldIgnoreLine(line) {
   if (trimmed.startsWith('//')) return true;
   if (trimmed.startsWith('/*')) return true;
   if (trimmed.startsWith('*')) return true;
-  if (TRANSLATION_CALL_RE.test(line)) return true;
   if (/^\s*pl\s*:\s*['"`]/.test(line)) return true;
   return false;
+}
+
+function stripQuotedContent(line) {
+  return line
+    .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, "''")
+    .replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, '""')
+    .replace(/`[^`\\]*(?:\\.[^`\\]*)*`/g, '``');
+}
+
+function updateTranslationDepth(line, currentDepth) {
+  const stripped = stripQuotedContent(line);
+  const openParens = (stripped.match(/\(/g) || []).length;
+  const closeParens = (stripped.match(/\)/g) || []).length;
+  return Math.max(0, currentDepth + openParens - closeParens);
 }
 
 function keyForViolation(filePath, lineText) {
@@ -62,8 +73,13 @@ function main() {
     if (isExcluded(filePath)) continue;
     const text = fs.readFileSync(filePath, 'utf8');
     const lines = text.split(/\r?\n/);
+    let translationDepth = 0;
     for (let i = 0; i < lines.length; i += 1) {
       const line = lines[i];
+      if (translationDepth > 0 || TRANSLATION_CALL_RE.test(line)) {
+        translationDepth = updateTranslationDepth(line, translationDepth);
+        continue;
+      }
       if (!POLISH_DIACRITICS_RE.test(line)) continue;
       if (shouldIgnoreLine(line)) continue;
       violations.push({
@@ -105,7 +121,7 @@ function main() {
   }
 
   console.error(
-    `[i18n-hardcoded] Found ${newViolations.length} new hardcoded Polish string(s) outside locales/help/quick-start:`,
+    `[i18n-hardcoded] Found ${newViolations.length} new hardcoded Polish string(s) outside locales:`,
   );
   for (const violation of newViolations) {
     const relative = path.relative(ROOT, violation.filePath).replace(/\\/g, '/');
