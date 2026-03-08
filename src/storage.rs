@@ -1,7 +1,7 @@
-// Moduł storage — zapis/odczyt dziennych plików JSON
-// Lokalizacja: %APPDATA%/TimeFlow/data/YYYY-MM-DD.json
+// Moduł storage — trwały zapis dziennych snapshotów w SQLite
+// Legacy JSON pozostaje tylko jako źródło migracji/fallback dla starszych instalacji.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -145,6 +145,109 @@ pub(crate) fn prepare_daily_for_storage(data: &mut DailyData) {
     }
 }
 
+fn open_daily_store() -> Result<rusqlite::Connection> {
+    let base_dir = config::config_dir()?;
+    crate::daily_store::open_store(&base_dir).map_err(anyhow::Error::msg)
+}
+
+fn to_stored_daily(data: &DailyData) -> crate::daily_store::StoredDailyData {
+    let mut apps = std::collections::BTreeMap::new();
+    for (exe_name, app_data) in &data.apps {
+        apps.insert(
+            exe_name.clone(),
+            crate::daily_store::StoredAppDailyData {
+                display_name: app_data.display_name.clone(),
+                total_seconds: app_data.total_seconds,
+                sessions: app_data
+                    .sessions
+                    .iter()
+                    .map(|session| crate::daily_store::StoredSession {
+                        start: session.start.clone(),
+                        end: session.end.clone(),
+                        duration_seconds: session.duration_seconds,
+                    })
+                    .collect(),
+                files: app_data
+                    .files
+                    .iter()
+                    .map(|file| crate::daily_store::StoredFileEntry {
+                        name: file.name.clone(),
+                        total_seconds: file.total_seconds,
+                        first_seen: file.first_seen.clone(),
+                        last_seen: file.last_seen.clone(),
+                        window_title: file.window_title.clone(),
+                        detected_path: file.detected_path.clone(),
+                        title_history: file.title_history.clone(),
+                        activity_type: file.activity_type.clone(),
+                    })
+                    .collect(),
+            },
+        );
+    }
+
+    crate::daily_store::StoredDailyData {
+        date: data.date.clone(),
+        generated_at: data.generated_at.clone(),
+        apps,
+    }
+}
+
+fn from_stored_daily(data: crate::daily_store::StoredDailyData) -> DailyData {
+    let mut daily = DailyData {
+        date: data.date,
+        generated_at: data.generated_at,
+        apps: data
+            .apps
+            .into_iter()
+            .map(|(exe_name, app_data)| {
+                (
+                    exe_name,
+                    AppDailyData {
+                        display_name: app_data.display_name,
+                        total_seconds: app_data.total_seconds,
+                        total_time_formatted: String::new(),
+                        sessions: app_data
+                            .sessions
+                            .into_iter()
+                            .map(|session| Session {
+                                start: session.start,
+                                end: session.end,
+                                duration_seconds: session.duration_seconds,
+                            })
+                            .collect(),
+                        files: app_data
+                            .files
+                            .into_iter()
+                            .map(|file| FileEntry {
+                                name: file.name,
+                                total_seconds: file.total_seconds,
+                                first_seen: file.first_seen,
+                                last_seen: file.last_seen,
+                                window_title: file.window_title,
+                                detected_path: file.detected_path,
+                                title_history: file.title_history,
+                                activity_type: file.activity_type,
+                            })
+                            .collect(),
+                    },
+                )
+            })
+            .collect(),
+        summary: DailySummary {
+            total_app_seconds: 0,
+            total_app_formatted: String::new(),
+            apps_active_count: 0,
+        },
+    };
+    update_summary(&mut daily);
+    daily
+}
+
+pub fn migrate_legacy_json_files_to_store() -> Result<usize> {
+    let base_dir = config::config_dir()?;
+    crate::daily_store::migrate_legacy_json_files(&base_dir).map_err(anyhow::Error::msg)
+}
+
 /// Katalog danych: %APPDATA%/TimeFlow/data (zakłada że ensure_app_dirs() wywołano przy starcie)
 pub fn data_dir() -> Result<PathBuf> {
     Ok(config::config_dir()?.join("data"))
@@ -162,46 +265,24 @@ fn archive_path(date: NaiveDate) -> Result<PathBuf> {
         .join(format!("{}.json", date.format("%Y-%m-%d"))))
 }
 
-#[cfg(windows)]
-fn atomic_replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    // Atomic replace using MoveFileExW — no window where the target file is missing
-    let from_wide: Vec<u16> = from
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let to_wide: Vec<u16> = to
-        .as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
-    extern "system" {
-        fn MoveFileExW(from: *const u16, to: *const u16, flags: u32) -> i32;
-    }
-    let ret = unsafe {
-        MoveFileExW(
-            from_wide.as_ptr(),
-            to_wide.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING,
-        )
-    };
-    if ret == 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(windows))]
-fn atomic_replace_file(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    std::fs::rename(from, to)
-}
-
 /// Ładuje dane dzienne (lub tworzy pustą strukturę)
 /// Sprawdza najpierw data/, potem archive/, na końcu tworzy pustą strukturę
 pub fn load_daily(date: NaiveDate) -> DailyData {
+    let date_str = date.format("%Y-%m-%d").to_string();
+
+    match open_daily_store() {
+        Ok(conn) => match crate::daily_store::load_day_snapshot(&conn, &date_str) {
+            Ok(Some(snapshot)) => return from_stored_daily(snapshot),
+            Ok(None) => {}
+            Err(e) => {
+                log::warn!("Error loading daily snapshot from SQLite store: {}", e);
+            }
+        },
+        Err(e) => {
+            log::warn!("Cannot open SQLite daily store, falling back to legacy JSON: {}", e);
+        }
+    }
+
     // Najpierw próbuj data/
     let path = match daily_path(date) {
         Ok(p) => p,
@@ -214,10 +295,14 @@ pub fn load_daily(date: NaiveDate) -> DailyData {
     if path.exists() {
         match std::fs::read_to_string(&path) {
             Ok(contents) => {
-                return serde_json::from_str(&contents).unwrap_or_else(|e| {
+                let mut data: DailyData = serde_json::from_str(&contents).unwrap_or_else(|e| {
                     log::warn!("Error parsing daily file from data/: {}", e);
                     load_from_archive_or_empty(date)
                 });
+                if let Err(e) = save_daily(&mut data) {
+                    log::warn!("Failed to migrate legacy data/ JSON into SQLite store: {}", e);
+                }
+                return data;
             }
             Err(e) => {
                 log::warn!("Nie można odczytać pliku dziennego z data/: {}", e);
@@ -247,13 +332,13 @@ fn load_from_archive_or_empty(date: NaiveDate) -> DailyData {
                 empty_daily(date)
             });
 
-            // Jeśli udało się załadować z archive, przywróć do data/ żeby demon mógł kontynuować
+            // Jeśli udało się załadować z legacy archive, przenieś dane do SQLite store.
             log::info!(
-                "Przywracanie danych z archive/ do data/ dla daty {}",
+                "Migrating legacy archive data into SQLite store for date {}",
                 date.format("%Y-%m-%d")
             );
             if let Err(e) = save_daily(&mut data) {
-                log::warn!("Failed to restore data from archive/: {}", e);
+                log::warn!("Failed to migrate data from archive/ into SQLite store: {}", e);
             }
 
             data
@@ -270,36 +355,16 @@ pub fn load_today() -> DailyData {
     load_daily(Local::now().date_naive())
 }
 
-/// Zapisuje dane dzienne (atomowo: tmp → rename)
+/// Zapisuje dane dzienne w SQLite daily store.
 pub fn save_daily(data: &mut DailyData) -> Result<()> {
-    let date = NaiveDate::parse_from_str(&data.date, "%Y-%m-%d")
-        .unwrap_or_else(|_| Local::now().date_naive());
-
-    let path = daily_path(date)?;
-    let tmp_path = path.with_extension("json.tmp");
-
     // Aktualizuj timestamp i podsumowanie
     data.generated_at = Local::now().to_rfc3339();
     prepare_daily_for_storage(data);
     update_summary(data);
-
-    let json = serde_json::to_vec(data).context("Serializacja danych dziennych")?;
-
-    // Atomowy zapis: write tmp → rename
-    std::fs::write(&tmp_path, json)
-        .with_context(|| format!("Zapis tymczasowy: {:?}", tmp_path))?;
-    if let Err(e) = atomic_replace_file(&tmp_path, &path) {
-        // Przy błędzie rename NIE usuwamy tmp — plik może służyć do odzyskania danych
-        log::error!(
-            "Rename {:?} → {:?} nie powiódł się: {}. Plik tmp pozostaje.",
-            tmp_path,
-            path,
-            e
-        );
-        return Err(e.into());
-    }
-
-    Ok(())
+    let mut conn = open_daily_store()?;
+    crate::daily_store::replace_day_snapshot(&mut conn, &to_stored_daily(data))
+        .map(|_| ())
+        .map_err(anyhow::Error::msg)
 }
 
 /// Tworzy pustą strukturę dzienną

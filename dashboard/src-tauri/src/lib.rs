@@ -27,6 +27,22 @@ pub fn run() {
                 .into());
             }
 
+            match commands::daily_store_bridge::migrate_legacy_daily_json_to_store() {
+                Ok(migrated) if migrated > 0 => {
+                    log::info!(
+                        "Migrated {} legacy daily JSON file(s) into SQLite daily store",
+                        migrated
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Legacy daily JSON migration skipped in dashboard backend: {}",
+                        e
+                    );
+                }
+            }
+
             // Write version to file for daemon to check
             if let Ok(data_dir) = commands::helpers::timeflow_data_dir() {
                 let _ = std::fs::write(data_dir.join("dashboard_version.txt"), VERSION.trim());

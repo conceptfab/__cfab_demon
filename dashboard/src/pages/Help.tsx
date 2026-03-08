@@ -379,6 +379,22 @@ export function Help() {
                     'Przycisk odświeżania synchronizujący dane bezpośrednio z pracującego Daemona.',
                     'Refresh button synchronizing data directly from the running Daemon.',
                   ),
+                  t(
+                    'Banner nieprzypisanych sesji – informuje o liczbie nieprzypisanych sesji z dzisiejszego dnia wraz z liczbą aplikacji i łącznym czasem. Kliknięcie przenosi do widoku Sesje.',
+                    'Unassigned sessions banner – shows the count of today\'s unassigned sessions with app count and total duration. Clicking navigates to Sessions.',
+                  ),
+                  t(
+                    'Powiadomienie o wykrytych projektach – po skanowaniu folderów przy starcie, dashboard wyświetla banner z listą nowo wykrytych projektów. Możesz je odrzucić lub przejść do zarządzania projektami.',
+                    'Discovered projects notification – after folder scanning on startup, the dashboard shows a banner listing newly detected projects. You can dismiss or navigate to project management.',
+                  ),
+                  t(
+                    'Dodawanie sesji manualnej z timeline – kliknij na osi czasu na dashboardzie, aby szybko dodać sesję manualną (np. spotkanie, telefon) bez przechodzenia do zakładki Sesje.',
+                    'Add manual session from timeline – click on the dashboard timeline to quickly add a manual session (e.g. meeting, call) without navigating to Sessions.',
+                  ),
+                  t(
+                    'Przegląd wszystkich projektów (All Projects) – wykres pokazujący rozkład czasu pracy na wszystkie projekty w wybranym okresie.',
+                    'All Projects overview – chart showing work time distribution across all projects for the selected period.',
+                  ),
                 ]}
               />
             </TabsContent>
@@ -583,6 +599,22 @@ export function Help() {
                     'Zapisany widok (Save View) – możesz utrwalić preferowany układ sortowania i prezentacji list/timeline, aby wracał po ponownym otwarciu ekranu.',
                     'Saved View – persist your preferred sorting and presentation mode for lists/timeline so it comes back when you reopen the screen.',
                   ),
+                  t(
+                    'Kompaktowanie danych projektu – akcja w widoku projektu redukująca rozmiar danych bez utraty podsumowań czasowych.',
+                    'Project data compaction – action in the project view that reduces data size without losing time summaries.',
+                  ),
+                  t(
+                    'Ostatnie komentarze (Recent Comments) – karta w widoku projektu pokazująca ostatnie komentarze sesji z kontekstem daty i aplikacji.',
+                    'Recent Comments – card in the project view showing latest session comments with date and app context.',
+                  ),
+                  t(
+                    'Sesje manualne projektu – dedykowana karta w widoku projektu do dodawania, edycji i usuwania sesji manualnych przypisanych do tego projektu.',
+                    'Project manual sessions – dedicated card in the project view for adding, editing, and deleting manual sessions assigned to this project.',
+                  ),
+                  t(
+                    'Menu kontekstowe na wykresie – kliknij prawym przyciskiem na dany dzień w timeline projektu, aby zobaczyć listę sesji z tego dnia.',
+                    'Chart context menu – right-click on a day in the project timeline to see the list of sessions for that date.',
+                  ),
                 ]}
               />
             </TabsContent>
@@ -624,6 +656,14 @@ export function Help() {
                     'Możliwość porównywania wartości czasu poświęconego na różne grupy zadań.',
                     'Ability to compare time value spent on different task groups.',
                   ),
+                  t(
+                    'Reset stawki projektu – przycisk resetujący indywidualną stawkę projektu do wartości globalnej.',
+                    'Project rate reset – button to reset a project-specific rate back to the global rate.',
+                  ),
+                  t(
+                    'Badge mnożników – przy każdym projekcie widoczna jest liczba sesji z mnożnikiem stawki. Kliknięcie przenosi do Sesji przefiltrowanych po danym projekcie.',
+                    'Multiplier badge – each project shows the count of sessions with a rate multiplier. Clicking navigates to Sessions filtered by that project.',
+                  ),
                 ]}
               />
             </TabsContent>
@@ -661,6 +701,22 @@ export function Help() {
                     'Bezpośrednie przypisanie całej aplikacji do konkretnego projektu.',
                     'Directly assign an entire application to a specific project.',
                   ),
+                  t(
+                    'Monitorowane aplikacje – sekcja zarządzania procesami, które Daemon aktywnie śledzi. Dodawaj nowe procesy (exe_name + nazwa wyświetlana), usuwaj zbędne, zmieniaj nazwy. Liczba monitorowanych aplikacji widoczna jako badge.',
+                    'Monitored Applications – section for managing processes actively tracked by the Daemon. Add new processes (exe_name + display name), remove unwanted ones, rename them. The monitored app count is shown as a badge.',
+                  ),
+                  t(
+                    'Kolorystyka aplikacji – inline picker z paletą presetów i dowolnym kolorem. Kliknij kolor obok nazwy aplikacji, aby go zmienić.',
+                    'App colors – inline picker with preset palette and custom color. Click the color next to an app name to change it.',
+                  ),
+                  t(
+                    'Oznaczenie "Imported" – badge przy aplikacjach, które pojawiły się z importowanych danych, a nie z bieżącego monitoringu.',
+                    '"Imported" badge – label on applications that came from imported data rather than live monitoring.',
+                  ),
+                  t(
+                    'Paginacja listy – dla dużej liczby aplikacji dostępna jest funkcja "Załaduj więcej", aby nie obciążać widoku.',
+                    'List pagination – for large app lists, a "Load more" control is available to keep the view performant.',
+                  ),
                 ]}
               />
             </TabsContent>
@@ -697,6 +753,18 @@ export function Help() {
                   t(
                     'Timeline Project View – szczegółowa oś czasu z podziałem na konkretne zadania.',
                     'Timeline Project View – detailed timeline broken down by specific tasks.',
+                  ),
+                  t(
+                    'Toolbar zakresów – przyciski Daily / Weekly / Monthly przełączają granularność widoku danych.',
+                    'Range toolbar – Daily / Weekly / Monthly buttons switch the data view granularity.',
+                  ),
+                  t(
+                    'Nawigacja po okresach – strzałki Poprzedni/Następny pozwalają przechodzić między dniami, tygodniami lub miesiącami.',
+                    'Period navigation – Previous/Next arrows let you move between days, weeks, or months.',
+                  ),
+                  t(
+                    'Interaktywna legenda – lista projektów z kolorami i czasami; kliknięcie pozycji filtruje wykres do wybranego projektu.',
+                    'Interactive legend – project list with colors and times; clicking an item filters the chart to the selected project.',
                   ),
                 ]}
               />
@@ -763,6 +831,26 @@ export function Help() {
                   t(
                     'Prywatność 100% – Silnik ML działa lokalnie w Rust, nie korzysta z zewnętrznych API (jak ChatGPT) i nie wymaga internetu.',
                     "100% Privacy – The ML engine runs locally in Rust, doesn't use external APIs (like ChatGPT), and requires no internet.",
+                  ),
+                  t(
+                    'Karta "Status modelu" – panel diagnostyczny z 6 kaflami: aktualny tryb, stan treningu (idle/in progress), data ostatniego treningu, liczba korekt od treningu, metryki ostatniego treningu (samples/czas) oraz ostatni przebieg auto-safe.',
+                    '"Model Status" card – diagnostic panel with 6 tiles: current mode, training state (idle/in progress), last training date, corrections since training, last training metrics (samples/time), and last auto-safe run.',
+                  ),
+                  t(
+                    'Wykresy postępu AI – dwa wykresy: (1) Trend feedbacku – stacked bar chart z liczbą Accept, Reject i Manual corrections per dzień; (2) Auto-safe runs vs rollback – słupki assigned + linie runs i rollbacks. Domyślne okno: 30 dni.',
+                    'AI progress charts – two charts: (1) Feedback trend – stacked bar chart with Accept, Reject, and Manual corrections per day; (2) Auto-safe runs vs rollback – assigned bars + runs and rollbacks lines. Default window: 30 days.',
+                  ),
+                  t(
+                    'Metryki podsumowujące – 4 kafle: Precision AI (% trafnych sugestii), Feedback łącznie, Auto-safe przypisania, Pokrycie detected_path. Dodatkowe wskaźniki: pokrycie title_history i activity_type.',
+                    'Summary metrics – 4 tiles: AI precision (% correct suggestions), Total feedback, Auto-safe assignments, Detected path coverage. Additional indicators: title_history and activity_type coverage.',
+                  ),
+                  t(
+                    'Reset wiedzy AI – przycisk kasujący całą nauczoną wiedzę modelu (z potwierdzeniem). Przydatny po dużej zmianie struktury projektów.',
+                    'Reset AI knowledge – button that clears all learned model knowledge (with confirmation). Useful after a major project structure change.',
+                  ),
+                  t(
+                    'Karta "Jak trenować i konfigurować" – wbudowany poradnik z trzema sekcjami: kiedy trenować, znaczenie parametrów oraz rekomendowane ustawienia startowe.',
+                    '"How to train and configure" card – built-in guide with three sections: when to train, what parameters mean, and recommended starting settings.',
                   ),
                 ]}
               >
@@ -1063,6 +1151,10 @@ export function Help() {
                     'Sekcje dodatkowe: Boosty (sesje z mnożnikiem czasu), Sesje manualne (ręcznie dodane), Komentarze, Statystyki AI.',
                     'Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.',
                   ),
+                  t(
+                    'Zmiana kolejności sekcji – strzałki góra/dół przy każdej sekcji w edytorze szablonu pozwalają ustalić własną kolejność elementów raportu.',
+                    'Section reordering – up/down arrows on each section in the template editor let you set a custom order of report elements.',
+                  ),
                 ]}
               />
             </TabsContent>
@@ -1107,6 +1199,18 @@ export function Help() {
                   t(
                     'Fallback monitor-all – jeśli lista monitorowanych procesów jest pusta, daemon zaczyna śledzić wszystkie aplikacje, więc warto skonfigurować zakładkę Applications przed uruchomieniem pracy produkcyjnej.',
                     'Monitor-all fallback – if the monitored process list is empty, the daemon starts tracking all applications, so it is worth configuring the Applications tab before production use.',
+                  ),
+                  t(
+                    'Wskaźnik nieprzypisanych sesji – badge z liczbą sesji wymagających przypisania, widoczny bezpośrednio na ekranie Daemona.',
+                    'Unassigned sessions indicator – badge with the count of sessions awaiting assignment, visible directly on the Daemon screen.',
+                  ),
+                  t(
+                    'Auto-refresh logów – przycisk włączający automatyczne odświeżanie podglądu logów w czasie rzeczywistym.',
+                    'Log auto-refresh – button to enable automatic real-time log preview updates.',
+                  ),
+                  t(
+                    'Kolorowanie logów – linie z ERROR i WARN są wyróżnione kolorem, ułatwiając szybką identyfikację problemów.',
+                    'Log coloring – ERROR and WARN lines are highlighted with color for quick problem identification.',
                   ),
                 ]}
               />
@@ -1212,6 +1316,18 @@ export function Help() {
                   t(
                     'BugHunter – ikona robaka w sidebarze umożliwia szybkie zgłaszanie błędów z załącznikami.',
                     'BugHunter – the bug icon in the sidebar allows quick bug reporting with attachments.',
+                  ),
+                  t(
+                    'Podział sesji (Session Split) – ustawienia w osobnej karcie: współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5) oraz przełącznik auto-split. Wyższy próg tolerancji oznacza bardziej konserwatywny podział.',
+                    'Session Split – settings in a dedicated card: tolerance coefficient (0.2–1.0), max projects per session (2–5), and auto-split toggle. Higher tolerance means more conservative splits.',
+                  ),
+                  t(
+                    'Danger Zone (Strefa zagrożenia) – dwuetapowe potwierdzenie: najpierw „uzbrojenie" przyciskiem, potem kliknięcie potwierdzenia. Chroni przed przypadkowym wyczyszczeniem bazy.',
+                    'Danger Zone – two-step confirmation: first "arm" the button, then click to confirm. Protects against accidental database wipe.',
+                  ),
+                  t(
+                    'Ręczny rebuild sesji – przycisk w karcie Session Management wymusza ponowne scalenie sesji (gap fill) bez restartu aplikacji.',
+                    'Manual session rebuild – button in the Session Management card forces session re-merge (gap fill) without restarting the app.',
                   ),
                 ]}
               />

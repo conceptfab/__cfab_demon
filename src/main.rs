@@ -7,6 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 mod config;
+#[path = "../shared/daily_store.rs"]
+mod daily_store;
 mod i18n;
 mod monitor;
 mod process_utils;
@@ -47,6 +49,18 @@ fn main() {
     // Application directories — created once at startup.
     if let Err(e) = config::ensure_app_dirs() {
         log::warn!("Failed to create application directories: {}", e);
+    }
+    match storage::migrate_legacy_json_files_to_store() {
+        Ok(migrated) if migrated > 0 => {
+            log::info!(
+                "Migrated {} legacy daily JSON file(s) into SQLite daily store",
+                migrated
+            );
+        }
+        Ok(_) => {}
+        Err(e) => {
+            log::warn!("Legacy daily JSON migration skipped: {}", e);
+        }
     }
 
     // Monitor thread control signal

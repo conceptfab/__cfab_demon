@@ -372,6 +372,7 @@ pub struct TodayFileSignature {
     pub path: String,
     pub modified_unix_ms: Option<u128>,
     pub size_bytes: Option<u64>,
+    pub revision: Option<u64>,
 }
 
 // ==================== Manual Sessions ====================

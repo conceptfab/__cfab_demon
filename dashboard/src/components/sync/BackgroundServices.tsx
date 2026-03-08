@@ -296,7 +296,7 @@ function useJobPool() {
     if (!autoImportDone || !isDocumentVisible()) return;
     try {
       const sig = await getTodayFileSignature();
-      const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
+      const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}:${sig.revision ?? 'na'}`;
       if (
         lastSignatureRef.current !== null &&
         lastSignatureRef.current !== current
@@ -372,7 +372,7 @@ function useJobPool() {
         if (disposed) return;
         getTodayFileSignature()
           .then((sig) => {
-            lastSignatureRef.current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}`;
+            lastSignatureRef.current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}:${sig.revision ?? 'na'}`;
           })
           .catch(() => {});
       });

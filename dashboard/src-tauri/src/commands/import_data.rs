@@ -1,3 +1,4 @@
+use super::daily_store_bridge;
 use super::helpers::{timeflow_data_dir, validate_import_path};
 use super::types::{ExportArchive, ImportSummary, ImportValidation, SessionConflict, SessionRow};
 use crate::db;
@@ -6,6 +7,31 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
+
+fn save_demo_daily_file(date: &str, daily: &crate::commands::types::DailyData) -> Result<(), String> {
+    let fake_data_dir = timeflow_data_dir()?.join("fake_data");
+    if !fake_data_dir.exists() {
+        fs::create_dir_all(&fake_data_dir).map_err(|e| e.to_string())?;
+    }
+    let file_path = fake_data_dir.join(format!("{}_fake.json", date));
+    let final_daily = if file_path.exists() {
+        let existing_content = fs::read_to_string(&file_path).unwrap_or_default();
+        if let Ok(mut existing_daily) =
+            serde_json::from_str::<crate::commands::types::DailyData>(&existing_content)
+        {
+            for (exe, app_data) in &daily.apps {
+                existing_daily.apps.insert(exe.clone(), app_data.clone());
+            }
+            existing_daily
+        } else {
+            daily.clone()
+        }
+    } else {
+        daily.clone()
+    };
+    let json = serde_json::to_string_pretty(&final_daily).map_err(|e| e.to_string())?;
+    fs::write(&file_path, json).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 pub async fn validate_import(
@@ -396,62 +422,21 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     }
 
     // 5. Daily Files
-    let data_dir = timeflow_data_dir()?.join("data");
-    if !data_dir.exists() {
-        fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
-    }
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
     for (date, daily) in &archive.data.daily_files {
-        let file_path = data_dir.join(format!("{}.json", date));
-        // We could merge daily files too, but simpler is to overwrite or skip.
-        // Specification says to save JSON files to data/.
-        // We'll merge if exists for safety.
-        let final_data = if file_path.exists() {
-            let existing_content = fs::read_to_string(&file_path).unwrap_or_default();
-            if let Ok(mut existing_daily) =
-                serde_json::from_str::<crate::commands::types::DailyData>(&existing_content)
-            {
+        if demo_mode {
+            save_demo_daily_file(date, daily)?;
+        } else {
+            let final_daily = if let Some(mut existing_daily) = daily_store_bridge::load_day(date)? {
                 for (exe, app_data) in &daily.apps {
-                    existing_daily.apps.insert(
-                        exe.clone(),
-                        crate::commands::types::AppDailyData {
-                            display_name: app_data.display_name.clone(),
-                            total_seconds: app_data.total_seconds,
-                            sessions: app_data
-                                .sessions
-                                .iter()
-                                .map(|s| crate::commands::types::JsonSession {
-                                    start: s.start.clone(),
-                                    end: s.end.clone(),
-                                    duration_seconds: s.duration_seconds,
-                                })
-                                .collect(),
-                            files: app_data
-                                .files
-                                .iter()
-                                .map(|f| crate::commands::types::JsonFileEntry {
-                                    name: f.name.clone(),
-                                    total_seconds: f.total_seconds,
-                                    first_seen: f.first_seen.clone(),
-                                    last_seen: f.last_seen.clone(),
-                                    window_title: f.window_title.clone(),
-                                    detected_path: f.detected_path.clone(),
-                                    title_history: f.title_history.clone(),
-                                    activity_type: f.activity_type.clone(),
-                                })
-                                .collect(),
-                        },
-                    );
+                    existing_daily.apps.insert(exe.clone(), app_data.clone());
                 }
                 existing_daily
             } else {
-                (*daily).clone()
-            }
-        } else {
-            (*daily).clone()
-        };
-
-        let json = serde_json::to_string_pretty(&final_data).map_err(|e| e.to_string())?;
-        fs::write(&file_path, json).map_err(|e| e.to_string())?;
+                daily.clone()
+            };
+            daily_store_bridge::save_day(&final_daily)?;
+        }
         summary.daily_files_imported += 1;
     }
 

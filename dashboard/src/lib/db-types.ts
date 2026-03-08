@@ -371,6 +371,7 @@ export interface TodayFileSignature {
   path: string;
   modified_unix_ms: number | null;
   size_bytes: number | null;
+  revision?: number | null;
 }
 
 export interface DemoModeStatus {

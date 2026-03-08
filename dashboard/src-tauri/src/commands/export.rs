@@ -1,3 +1,4 @@
+use super::daily_store_bridge;
 use super::helpers::timeflow_data_dir;
 use super::types::{
     AppDailyData, ApplicationRow, DailyData, DateRange, ExportArchive, ExportData, ExportMetadata,
@@ -8,6 +9,50 @@ use rfd::AsyncFileDialog;
 use std::collections::BTreeMap;
 use std::fs;
 use tauri::AppHandle;
+
+fn is_fake_named_json(path: &std::path::Path) -> bool {
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_lowercase().contains("fake"))
+        .unwrap_or(false)
+}
+
+fn load_demo_daily_files(start: &str, end: &str) -> Result<BTreeMap<String, DailyData>, String> {
+    let fake_data_dir = timeflow_data_dir()?.join("fake_data");
+    let mut daily_files = BTreeMap::new();
+
+    if !fake_data_dir.exists() {
+        return Ok(daily_files);
+    }
+
+    for entry in fs::read_dir(&fake_data_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        if !path.is_file()
+            || !path.extension().map(|s| s == "json").unwrap_or(false)
+            || !is_fake_named_json(&path)
+        {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().map(|name| name.to_string_lossy().to_string()) else {
+            continue;
+        };
+        let date_prefix: String = file_name.chars().take(10).collect();
+        if date_prefix.len() != 10
+            || date_prefix.as_str() < start
+            || date_prefix.as_str() > end
+        {
+            continue;
+        }
+
+        let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        if let Ok(daily) = serde_json::from_str::<DailyData>(&content) {
+            daily_files.insert(date_prefix, daily);
+        }
+    }
+
+    Ok(daily_files)
+}
 
 fn build_export_archive(
     app: &AppHandle,
@@ -241,46 +286,38 @@ fn build_export_archive(
             }
         }
 
-        // 6. Fetch Daily JSON Files
-        let mut daily_files = BTreeMap::new();
-        let data_dir = timeflow_data_dir()?.join("data");
-        if data_dir.exists() {
-            for entry in fs::read_dir(data_dir).map_err(|e| e.to_string())? {
-                let entry = entry.map_err(|e| e.to_string())?;
-                let path = entry.path();
-                if path.is_file() && path.extension().map(|s| s == "json").unwrap_or(false) {
-                    let Some(stem) = path.file_stem() else {
-                        continue;
-                    };
-                    let file_name = stem.to_string_lossy().to_string();
-                    if file_name >= start && file_name <= end {
-                        let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-                        if let Ok(daily) = serde_json::from_str::<DailyData>(&content) {
-                            // If single project, filter apps in daily data
-                            if project_id.is_some() {
-                                let filtered_apps: BTreeMap<String, AppDailyData> = daily
-                                    .apps
-                                    .into_iter()
-                                    .filter(|(exe, _)| {
-                                        applications.iter().any(|a| a.executable_name == *exe)
-                                    })
-                                    .collect();
-                                if !filtered_apps.is_empty() {
-                                    daily_files.insert(
-                                        file_name,
-                                        DailyData {
-                                            date: daily.date,
-                                            apps: filtered_apps,
-                                        },
-                                    );
-                                }
-                            } else {
-                                daily_files.insert(file_name, daily);
-                            }
-                        }
+        // 6. Fetch Daily Files from the SQLite daily store.
+        let demo_mode = db::is_demo_mode_enabled(app)?;
+        let mut daily_files = if demo_mode {
+            load_demo_daily_files(&start, &end)?
+        } else {
+            daily_store_bridge::load_range(&start, &end)?
+        };
+        if project_id.is_some() {
+            let filtered: BTreeMap<String, DailyData> = daily_files
+                .into_iter()
+                .filter_map(|(date, daily)| {
+                    let filtered_apps: BTreeMap<String, AppDailyData> = daily
+                        .apps
+                        .into_iter()
+                        .filter(|(exe, _)| {
+                            applications.iter().any(|a| a.executable_name == *exe)
+                        })
+                        .collect();
+                    if filtered_apps.is_empty() {
+                        None
+                    } else {
+                        Some((
+                            date,
+                            DailyData {
+                                date: daily.date,
+                                apps: filtered_apps,
+                            },
+                        ))
                     }
-                }
-            }
+                })
+                .collect();
+            daily_files = filtered;
         }
 
         // 7. Metadata calculation

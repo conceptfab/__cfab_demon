@@ -17,9 +17,9 @@ Przeanalizowałem:
 Wykonane komendy:
 
 - `cargo check` w katalogu głównym: OK
-- `cargo test` w katalogu głównym: OK, 11/11 testów
+- `cargo test` w katalogu głównym: OK, 13/13 testów
 - `cargo check` w `dashboard/src-tauri`: OK
-- `cargo test` w `dashboard/src-tauri`: OK, 12/12 testów
+- `cargo test` w `dashboard/src-tauri`: OK, 14/14 testów
 - `npm run test` w `dashboard`: OK
 - `npm run lint` w `dashboard`: OK
 - `npm run build` w `dashboard`: OK
@@ -190,13 +190,62 @@ Po tej turze zmian uruchomiłem:
 - `npm run test` w `dashboard`: OK, 3/3 testy
 - `npm run lint` w `dashboard`: OK
 - `npm run build` w `dashboard`: OK
-- `cargo test` w katalogu głównym: OK, 11/11 testów
+- `cargo test` w katalogu głównym: OK, 13/13 testów
 
-### 5. Stan po wdrożeniach
+### 5. Stan po III turze
 
 Na koniec tej tury nie zostały już otwarte żadne krótkoterminowe poprawki z listy wdrożeniowej raportu. Dalsze tematy, które warto traktować jako rozwój architektury, a nie bieżące bugfixy, to:
 
 - docelowe przejście z pełnego dziennego JSON na lżejszy model trwałego zapisu
+- dalsze wygaszanie samych par `inline.*` na rzecz jawnych kluczy i18next
+- dołożenie testów komponentów i e2e po stronie frontendu
+
+Pierwszy z tych punktów został domknięty w IV turze wdrożeń opisanej niżej.
+
+## Wdrożone poprawki po audycie: IV tura
+
+W czwartej turze z 2026-03-08 zrealizowałem docelowe odejście od pełnego dziennego JSON jako głównego modelu trwałego zapisu.
+
+### 1. Wspólny `daily_store` oparty o SQLite
+
+- Dodałem wspólny moduł `shared/daily_store.rs`.
+- Normalny runtime demona zapisuje teraz dzienne snapshoty do `timeflow_daily_store.db` zamiast do `data/YYYY-MM-DD.json`.
+- Store ma własny schemat relacyjny dla:
+  - nagłówka dnia (`daily_snapshots`)
+  - aplikacji (`daily_apps`)
+  - sesji (`daily_sessions`)
+  - aktywności plików (`daily_files`)
+- Dodałem też sygnaturę dnia (`updated_unix_ms` + `revision`), dzięki której dashboard może wykrywać zmiany bez polegania na mtime pliku JSON.
+
+### 2. Migracja legacy JSON do nowego store
+
+- Demon i `dashboard/src-tauri` wykonują przy starcie migrację starych plików z `data/` i `archive/` do nowego SQLite store.
+- Legacy JSON nie jest już źródłem prawdy dla normalnego trybu pracy; pozostaje tylko warstwą migracyjną/fallback dla starszych instalacji.
+- Tryb demo zachowuje dotychczasowy kontrakt oparty o `fake_data` i pliki `*_fake.json`.
+
+### 3. Przepięcie runtime dashboardu na nowy store
+
+- `dashboard/src-tauri/src/commands/settings.rs`:
+  - `refresh_today` czyta w normalnym trybie dzisiejsze dane ze wspólnego `daily_store`
+  - `get_today_file_signature` zwraca sygnaturę opartą o store (`modified_unix_ms` + `revision`)
+- `dashboard/src-tauri/src/commands/export.rs` buduje `daily_files` do eksportu z nowego store zamiast z katalogu `data/`.
+- `dashboard/src-tauri/src/commands/import_data.rs` zapisuje importowane `daily_files` do `daily_store` zamiast do zwykłych dziennych JSON-ów.
+- `dashboard/src/components/sync/BackgroundServices.tsx` został zaktualizowany tak, aby obserwować także nowy `revision` w sygnaturze dnia.
+
+### 4. Walidacja po IV turze
+
+Po tej turze zmian uruchomiłem:
+
+- `cargo test` w katalogu głównym: OK, 13/13 testów
+- `cargo test` w `dashboard/src-tauri`: OK, 14/14 testów
+- `npm run test` w `dashboard`: OK, 3/3 testy
+- `npm run lint` w `dashboard`: OK
+- `npm run build` w `dashboard`: OK
+
+### 5. Stan po IV turze
+
+Po wdrożeniu `daily_store` z listy tematów rozwojowych zniknął punkt o docelowym odejściu od pełnego dziennego JSON. Otwarte pozostają już tylko:
+
 - dalsze wygaszanie samych par `inline.*` na rzecz jawnych kluczy i18next
 - dołożenie testów komponentów i e2e po stronie frontendu
 
