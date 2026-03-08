@@ -290,6 +290,7 @@ pub async fn get_sessions(
                     a.display_name, a.executable_name, s.project_id, p.name, p.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
                     s.comment,
+                    s.split_source_session_id,
                     asug_latest.suggested_confidence,
                     asug_latest.suggested_project_id,
                     p_sug.name
@@ -317,6 +318,7 @@ pub async fn get_sessions(
                     a.display_name, a.executable_name, s.project_id, p.name, p.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
                     s.comment,
+                    s.split_source_session_id,
                     asug_latest.suggested_confidence,
                     asug_latest.suggested_project_id,
                     p_sug.name
@@ -373,14 +375,16 @@ pub async fn get_sessions(
                 let explicit_pcolor: Option<String> = row.get(10)?;
                 let ai_assigned_flag: i64 = row.get(11).unwrap_or(0);
                 let comment: Option<String> = row.get(12)?;
-                let hist_confidence: Option<f64> = row.get(13).unwrap_or(None);
-                let hist_suggested_pid: Option<i64> = row.get(14).unwrap_or(None);
-                let hist_suggested_pname: Option<String> = row.get(15).unwrap_or(None);
+                let split_source_session_id: Option<i64> = row.get(13)?;
+                let hist_confidence: Option<f64> = row.get(14).unwrap_or(None);
+                let hist_suggested_pid: Option<i64> = row.get(15).unwrap_or(None);
+                let hist_suggested_pname: Option<String> = row.get(16).unwrap_or(None);
                 Ok((
                     SessionWithApp {
                         id,
                         app_id: row.get(1)?,
                         project_id: explicit_pid,
+                        split_source_session_id,
                         start_time: row.get(2)?,
                         end_time: row.get(3)?,
                         duration_seconds: row.get(4)?,
@@ -1310,13 +1314,19 @@ fn execute_session_split(
 
         if i == 0 {
             tx.execute(
-                "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, project_id = ?3, comment = ?4
-                 WHERE id = ?5",
+                "UPDATE sessions
+                 SET end_time = ?1,
+                     duration_seconds = ?2,
+                     project_id = ?3,
+                     comment = ?4,
+                     split_source_session_id = ?5
+                 WHERE id = ?6",
                 rusqlite::params![
                     part_end_str.as_str(),
                     part_secs,
                     part.project_id,
                     part_comment,
+                    session_id,
                     session_id,
                 ],
             )
@@ -1330,8 +1340,10 @@ fn execute_session_split(
             });
         } else {
             tx.execute(
-                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                "INSERT INTO sessions (
+                    app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment, split_source_session_id
+                 )
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     source.app_id,
                     part_start_str.as_str(),
@@ -1341,6 +1353,7 @@ fn execute_session_split(
                     source.rate_multiplier,
                     part.project_id,
                     part_comment,
+                    session_id,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -1796,6 +1809,7 @@ mod tests {
                 end_time TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL,
+                split_source_session_id INTEGER,
                 project_id INTEGER,
                 rate_multiplier REAL,
                 comment TEXT,

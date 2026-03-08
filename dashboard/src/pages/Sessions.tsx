@@ -78,7 +78,6 @@ const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY =
   'timeflow-sessions-assign-project-list-mode';
 const TOP_PROJECTS_LIMIT = 5;
 const SCORE_BREAKDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
-const SPLIT_COMMENT_RE = /\bSplit \d+\/\d+\b/;
 
 type CachedBreakdownEntry = {
   data: ScoreBreakdown;
@@ -136,8 +135,10 @@ const EMPTY_SCORE_BREAKDOWN: ScoreBreakdown = {
   final_suggestion: null,
 };
 
-function isSplitSessionComment(comment: string | null | undefined): boolean {
-  return SPLIT_COMMENT_RE.test(comment ?? '');
+function isAlreadySplitSession(session: {
+  split_source_session_id?: number | null;
+}): boolean {
+  return typeof session.split_source_session_id === 'number';
 }
 
 function isSplittableFromBreakdown(
@@ -1026,7 +1027,7 @@ export function Sessions() {
           !getCachedBreakdown(s.id) &&
           !scoreBreakdownRequestsRef.current.has(s.id),
       )
-      .filter((s) => !isSplitSessionComment(s.comment))
+      .filter((s) => !isAlreadySplitSession(s))
       .map((s) => s.id);
 
     if (idsToFetch.length === 0) return;
@@ -1278,7 +1279,7 @@ export function Sessions() {
   const isSessionSplittable = useCallback(
     (session: SessionWithApp): boolean => {
       // Already split sessions must not be split again
-      if (isSplitSessionComment(session.comment)) return false;
+      if (isAlreadySplitSession(session)) return false;
 
       const explicit = splitEligibilityBySession.get(session.id);
       if (typeof explicit === 'boolean') return explicit;

@@ -286,111 +286,108 @@ export function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
+    const minDuration =
+      loadSessionSettings().minSessionDurationSeconds || undefined;
+    const shouldLoadTodayData = timePreset === 'today';
+
     Promise.allSettled([
       getDashboardStats(dateRange),
       getTopProjects(dateRange, 5),
       getDashboardProjects(dateRange),
       getProjects(),
-    ]).then(([statsRes, topProjectsRes, allProjectsRes, projectsRes]) => {
-      if (cancelled) return;
-      if (statsRes.status === 'fulfilled') setStats(statsRes.value);
-      else console.error('Failed to load dashboard stats:', statsRes.reason);
-
-      if (topProjectsRes.status === 'fulfilled')
-        setTopProjects(topProjectsRes.value);
-      else console.error('Failed to load top projects:', topProjectsRes.reason);
-
-      if (allProjectsRes.status === 'fulfilled')
-        setAllProjects(allProjectsRes.value);
-      else
-        console.error(
-          'Failed to load all projects for chart:',
-          allProjectsRes.reason,
-        );
-
-      if (projectsRes.status === 'fulfilled') {
-        setProjectCount(projectsRes.value.length);
-        setProjectsList(projectsRes.value);
-      } else {
-        console.error('Failed to load projects count:', projectsRes.reason);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [dateRange, refreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getProjectTimeline(
-      dateRange,
-      projectTimelineSeriesLimit,
-      timelineGranularity,
-      undefined,
-    )
-      .then((timeline) => {
-        if (!cancelled) setProjectTimeline(timeline);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled)
-          console.error('Failed to load project timeline:', reason);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [dateRange, refreshKey, projectTimelineSeriesLimit, timelineGranularity]);
-
-  useEffect(() => {
-    if (timePreset !== 'today') {
-      setTodaySessions([]);
-      setManualSessions([]);
-      return;
-    }
-
-    let cancelled = false;
-    const minDuration =
-      loadSessionSettings().minSessionDurationSeconds || undefined;
-    Promise.allSettled([
-      getSessions({
+      getProjectTimeline(
         dateRange,
-        limit: 500,
-        offset: 0,
-        minDuration,
-        includeFiles: false,
-        includeAiSuggestions: false,
-      }),
-      getManualSessions({ dateRange }),
-    ]).then(([todaySessionsRes, manualSessionsRes]) => {
-      if (cancelled) return;
-      if (todaySessionsRes.status === 'fulfilled')
-        setTodaySessions(todaySessionsRes.value);
-      else {
-        setTodaySessions([]);
-        console.error(
-          'Failed to load today sessions for timeline:',
-          todaySessionsRes.reason,
-        );
-      }
+        projectTimelineSeriesLimit,
+        timelineGranularity,
+        undefined,
+      ),
+      shouldLoadTodayData
+        ? getSessions({
+            dateRange,
+            limit: 500,
+            offset: 0,
+            minDuration,
+            includeFiles: false,
+            includeAiSuggestions: false,
+          })
+        : Promise.resolve([] as SessionWithApp[]),
+      shouldLoadTodayData
+        ? getManualSessions({ dateRange })
+        : Promise.resolve([] as ManualSessionWithProject[]),
+    ]).then(
+      ([
+        statsRes,
+        topProjectsRes,
+        allProjectsRes,
+        projectsRes,
+        timelineRes,
+        todaySessionsRes,
+        manualSessionsRes,
+      ]) => {
+        if (cancelled) return;
+        if (statsRes.status === 'fulfilled') setStats(statsRes.value);
+        else console.error('Failed to load dashboard stats:', statsRes.reason);
 
-      if (manualSessionsRes.status === 'fulfilled')
-        setManualSessions(manualSessionsRes.value);
-      else {
-        setManualSessions([]);
-        console.error(
-          'Failed to load manual sessions:',
-          manualSessionsRes.reason,
-        );
-      }
-    });
+        if (topProjectsRes.status === 'fulfilled')
+          setTopProjects(topProjectsRes.value);
+        else console.error('Failed to load top projects:', topProjectsRes.reason);
 
+        if (allProjectsRes.status === 'fulfilled')
+          setAllProjects(allProjectsRes.value);
+        else
+          console.error(
+            'Failed to load all projects for chart:',
+            allProjectsRes.reason,
+          );
+
+        if (projectsRes.status === 'fulfilled') {
+          setProjectCount(projectsRes.value.length);
+          setProjectsList(projectsRes.value);
+        } else {
+          console.error('Failed to load projects count:', projectsRes.reason);
+        }
+
+        if (timelineRes.status === 'fulfilled') {
+          setProjectTimeline(timelineRes.value);
+        } else {
+          console.error('Failed to load project timeline:', timelineRes.reason);
+        }
+
+        if (!shouldLoadTodayData) {
+          setTodaySessions([]);
+          setManualSessions([]);
+        } else {
+          if (todaySessionsRes.status === 'fulfilled') {
+            setTodaySessions(todaySessionsRes.value);
+          } else {
+            setTodaySessions([]);
+            console.error(
+              'Failed to load today sessions for timeline:',
+              todaySessionsRes.reason,
+            );
+          }
+
+          if (manualSessionsRes.status === 'fulfilled') {
+            setManualSessions(manualSessionsRes.value);
+          } else {
+            setManualSessions([]);
+            console.error('Failed to load manual sessions:', manualSessionsRes.reason);
+          }
+        }
+
+        setWorkingHours(loadWorkingHoursSettings());
+      },
+    );
     return () => {
       cancelled = true;
     };
-  }, [dateRange, refreshKey, timePreset]);
-
-  useEffect(() => {
-    setWorkingHours(loadWorkingHoursSettings());
-  }, [refreshKey]);
+  }, [
+    dateRange,
+    refreshKey,
+    timePreset,
+    projectTimelineSeriesLimit,
+    timelineGranularity,
+  ]);
 
   return (
     <div className="space-y-4">

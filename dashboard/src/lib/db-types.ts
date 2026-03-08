@@ -70,6 +70,7 @@ export interface SessionWithApp extends Session {
   app_name: string;
   executable_name: string;
   project_id: number | null;
+  split_source_session_id?: number | null;
   project_name: string | null;
   project_color: string | null;
   files: FileActivity[];

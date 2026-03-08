@@ -313,16 +313,19 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 - **1.2** `Data.tsx` przełączono na `useInlineT()`.
 - **1.3** `Help.tsx` przełączono na `useInlineT()` (usunięto lokalny duplikat tłumaczenia).
 - **2.1** `inferPreset()` ma fallback `custom` (zamiast `week`), a strzałki nawigacji są wyłączone dla custom range.
+- **2.2** Wykrywanie splitów przeniesione na dedykowane pole `split_source_session_id` (DB + backend + frontend). Dodano backfill legacy wpisów.
 - **2.3** Dodano throttling w `useAutoSplitSessions` (`sleep` między iteracjami).
 - **2.4** `handleUpdateColor` w `Applications.tsx` ma `try/catch` + `showError`.
 - **2.5** `DaemonControl.tsx`: usunięto stały `sleep(1500)` na rzecz pollingu statusu (300ms, timeout 5s).
 - **3.2** `useJobPool`: zwiększono interwał `refreshToday` do 60s oraz dodano guardy przed nakładaniem `refresh/sync`.
+- **3.1** `Dashboard.tsx`: główne zapytania (stats/top/projects/timeline/sessions/manual/working-hours) skonsolidowane do jednego efektu i jednego `Promise.allSettled()`.
 - **3.3** `Sessions.tsx`: cache score breakdown przeniesiony do `useRef` + TTL 5 minut.
 - **3.4** `Applications.tsx`: dodano ograniczenie renderu listy (przycisk „Load more” / paginacja przyrostowa).
 - **3.5** `Reports.tsx`: `getSectionDef` zmemoizowane przez mapę `id -> SectionDef`.
 - **7.1** Race condition `useJobPool` ograniczony guardami `isRefreshing` / `isSyncing`.
 - **7.2** Powiązany martwy kod timeline/hourly usunięty po stronie frontu (`tauri.ts`).
 - **7.3** `user-settings.ts`: `localStorage.setItem` owinięte w `try/catch`.
+- **6.1** `user-settings.ts`: dodano cache in-memory dla `loadXxxSettings()`, żeby nie parsować localStorage przy każdym odczycie.
 - **8.1 (KRYTYCZNY)** Naprawiono SQL injection w `export_database` (`settings.rs`) przez bezpieczne quoting ścieżki (`SELECT quote(?1)`).
 - **9.1** `sessions.rs`: `analyze_sessions_splittable` przerobione z N+1 na batch SQL.
 - **9.2** `projects.rs`: `exclude_project` i `delete_project` działają w transakcjach.
@@ -336,8 +339,6 @@ W `BackgroundServices.tsx` oba hooki operują na tych samych sesjach bez koordyn
 
 ### 12.2 Częściowo zrobione
 
-- **2.2** Wykrywanie splitów nadal opiera się o komentarz (ulepszone do regex `Split x/y`), ale nie ma dedykowanego pola typu `split_source`.
-- **3.1** Efekty `Dashboard.tsx` zostały częściowo scalone; nadal istnieją osobne efekty dla fragmentów o innych zależnościach.
 - **4.1** Spójność systemu i18n poprawiona lokalnie (`Data.tsx`, `Help.tsx`), ale nie wykonano pełnej unifikacji całej aplikacji.
 - **5.1** Help uzupełniono o import archiwum i backup/restore; pełny audyt wszystkich brakujących opisów pozostaje otwarty.
 

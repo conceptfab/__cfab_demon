@@ -35,12 +35,20 @@ function createSettingsManager<T>(config: {
   defaults: T;
   normalize: (parsed: Partial<T> & Record<string, unknown>) => T;
 }) {
+  let cached: T | null = null;
+
   return {
     load: (): T => {
+      if (cached) {
+        return { ...cached };
+      }
       if (typeof window === 'undefined') return { ...config.defaults };
       try {
         const raw = loadRawSetting(config.key, config.legacyKey);
-        if (!raw) return { ...config.defaults };
+        if (!raw) {
+          cached = { ...config.defaults };
+          return { ...cached };
+        }
         if (
           config.legacyKey &&
           window.localStorage.getItem(config.key) === null &&
@@ -50,9 +58,11 @@ function createSettingsManager<T>(config: {
         }
         const parsed = (JSON.parse(raw) ?? {}) as Partial<T> &
           Record<string, unknown>;
-        return config.normalize(parsed ?? {});
+        cached = config.normalize(parsed ?? {});
+        return { ...cached };
       } catch {
-        return { ...config.defaults };
+        cached = { ...config.defaults };
+        return { ...cached };
       }
     },
     save: (next: T): T => {
@@ -69,7 +79,8 @@ function createSettingsManager<T>(config: {
           console.warn(`Failed to save local setting '${config.key}':`, error);
         }
       }
-      return normalized;
+      cached = normalized;
+      return { ...normalized };
     },
   };
 }

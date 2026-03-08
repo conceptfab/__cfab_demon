@@ -178,7 +178,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
 CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_app_date ON sessions(app_id, date, start_time);
 CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_split_source_session_id ON sessions(split_source_session_id);
 CREATE INDEX IF NOT EXISTS idx_applications_project_id ON applications(project_id);
 CREATE INDEX IF NOT EXISTS idx_file_activities_app_date_overlap
 ON file_activities(app_id, date, last_seen, first_seen);
@@ -1306,6 +1305,36 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         log::info!("Migrating sessions: adding comment");
         db.execute("ALTER TABLE sessions ADD COLUMN comment TEXT", [])?;
     }
+
+    let has_sessions_split_source_session_id: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='split_source_session_id'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_sessions_split_source_session_id {
+        log::info!("Migrating sessions: adding split_source_session_id");
+        db.execute(
+            "ALTER TABLE sessions ADD COLUMN split_source_session_id INTEGER DEFAULT NULL",
+            [],
+        )?;
+    }
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_split_source_session_id ON sessions(split_source_session_id)",
+        [],
+    )
+    .ok();
+    // Backfill legacy split markers (older versions encoded split info in comment text only).
+    db.execute(
+        "UPDATE sessions
+         SET split_source_session_id = id
+         WHERE split_source_session_id IS NULL
+           AND comment IS NOT NULL
+           AND comment LIKE '%Split %/%'",
+        [],
+    )
+    .ok();
 
     let has_manual_sessions_app_id: bool = db
         .prepare("SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='app_id'")?

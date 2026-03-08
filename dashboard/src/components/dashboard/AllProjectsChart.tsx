@@ -22,15 +22,24 @@ export function AllProjectsChart({ projects }: Props) {
   const { t } = useTranslation();
   const [sortMode, setSortMode] = useState<"name" | "time_desc">("name");
 
+  const visibleProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          Number.isFinite(project.seconds) && Number(project.seconds) > 0,
+      ),
+    [projects],
+  );
+
   const sorted = useMemo(() => {
-    const out = [...projects];
+    const out = [...visibleProjects];
     if (sortMode === "time_desc") {
       out.sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name));
     } else {
       out.sort((a, b) => a.name.localeCompare(b.name));
     }
     return out;
-  }, [projects, sortMode]);
+  }, [visibleProjects, sortMode]);
   const barAnimation = getRechartsAnimationConfig({
     complexity: sorted.length,
     maxComplexity: 45,

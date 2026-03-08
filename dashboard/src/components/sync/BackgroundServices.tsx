@@ -25,7 +25,6 @@ import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
 
 const JOB_LOOP_TICK_MS = 5000;
 const AUTO_SPLIT_THROTTLE_MS = 100;
-const SPLIT_COMMENT_RE = /\bSplit \d+\/\d+\b/;
 const AI_AND_SPLIT_OPERATION_KEY = 'ai_and_split_pipeline';
 
 // THREADING: Prevents concurrent heavy operations (rebuild, AI train/assign)
@@ -50,6 +49,12 @@ async function runHeavyOperation<T>(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isSessionAlreadySplit(session: {
+  split_source_session_id?: number | null;
+}): boolean {
+  return typeof session.split_source_session_id === 'number';
 }
 
 function buildAutoSplits(
@@ -227,7 +232,7 @@ function useAutoSplitSessions() {
         }
         firstIteration = false;
 
-        if (SPLIT_COMMENT_RE.test(session.comment ?? '')) continue;
+        if (isSessionAlreadySplit(session)) continue;
 
         const analysis = await analyzeSessionProjects(
           session.id,
