@@ -11,8 +11,9 @@ Stan na 2026-03-09:
 
 - [x] Faza 1: dodany wspolny helper `run_db_blocking()` w `dashboard/src-tauri/src/commands/helpers.rs` oparty o `spawn_blocking`.
 - [x] Faza 1: przepiete wszystkie komendy z `dashboard/src-tauri/src/commands/dashboard.rs`, aby otwieraly SQLite poza watkiem async.
-- [x] Faza 1: przepieta pierwsza paczka komend z `dashboard/src-tauri/src/commands/sessions.rs`: `get_sessions`, `get_session_count`, `assign_session_to_project`, `delete_session`, `rebuild_sessions`.
-- [ ] Faza 1: pozostale komendy `sessions`, `assignment_model`, `projects` i innych modulow nadal czekaja na przepiecie.
+- [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/sessions.rs` — wszystkie handlery async korzystajace z SQLite otwieraja polaczenie przez `run_db_blocking()`.
+- [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/assignment_model.rs` — training, scoring, auto-safe i rollback nie wykonuja juz bezposrednio SQLite na watku async.
+- [ ] Faza 1: pozostale komendy `projects` i innych modulow nadal czekaja na przepiecie.
 - [ ] Fazy 2-6 bez zmian implementacyjnych.
 
 ## 1. Stan po weryfikacji

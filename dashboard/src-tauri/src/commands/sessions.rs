@@ -10,7 +10,6 @@ use super::types::{
     FileActivity, MultiProjectAnalysis, ProjectCandidate, SessionFilters, SessionSplittableFlag,
     SessionWithApp, SplitPart,
 };
-use crate::db;
 
 type ManualOverrideRow = (Option<i64>, String, String, String, Option<String>);
 
@@ -845,40 +844,42 @@ pub async fn update_session_rate_multiplier(
         }
     };
 
-    let conn = db::get_connection(&app)?;
-    let comment_for_session: Option<Option<String>> = conn
-        .query_row(
-            "SELECT comment FROM sessions WHERE id = ?1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
+    run_db_blocking(app, move |conn| {
+        let comment_for_session: Option<Option<String>> = conn
+            .query_row(
+                "SELECT comment FROM sessions WHERE id = ?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
 
-    let Some(existing_comment) = comment_for_session else {
-        return Err("Session not found".to_string());
-    };
+        let Some(existing_comment) = comment_for_session else {
+            return Err("Session not found".to_string());
+        };
 
-    if normalized > 1.000_001 {
-        let has_comment = existing_comment
-            .as_deref()
-            .map(|c| !c.trim().is_empty())
-            .unwrap_or(false);
-        if !has_comment {
-            return Err("Boost requires a non-empty session comment".to_string());
+        if normalized > 1.000_001 {
+            let has_comment = existing_comment
+                .as_deref()
+                .map(|c| !c.trim().is_empty())
+                .unwrap_or(false);
+            if !has_comment {
+                return Err("Boost requires a non-empty session comment".to_string());
+            }
         }
-    }
 
-    let updated = conn
-        .execute(
-            "UPDATE sessions SET rate_multiplier = ?1 WHERE id = ?2",
-            rusqlite::params![normalized, session_id],
-        )
-        .map_err(|e| e.to_string())?;
-    if updated == 0 {
-        return Err("Session not found".to_string());
-    }
-    Ok(())
+        let updated = conn
+            .execute(
+                "UPDATE sessions SET rate_multiplier = ?1 WHERE id = ?2",
+                rusqlite::params![normalized, session_id],
+            )
+            .map_err(|e| e.to_string())?;
+        if updated == 0 {
+            return Err("Session not found".to_string());
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -900,7 +901,6 @@ pub async fn update_session_comment(
     session_id: i64,
     comment: Option<String>,
 ) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
     let normalized = comment.and_then(|c| {
         let trimmed = c.trim().to_string();
         if trimmed.is_empty() {
@@ -909,16 +909,19 @@ pub async fn update_session_comment(
             Some(trimmed)
         }
     });
-    let updated = conn
-        .execute(
-            "UPDATE sessions SET comment = ?1 WHERE id = ?2",
-            rusqlite::params![normalized, session_id],
-        )
-        .map_err(|e| e.to_string())?;
-    if updated == 0 {
-        return Err("Session not found".to_string());
-    }
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        let updated = conn
+            .execute(
+                "UPDATE sessions SET comment = ?1 WHERE id = ?2",
+                rusqlite::params![normalized, session_id],
+            )
+            .map_err(|e| e.to_string())?;
+        if updated == 0 {
+            return Err("Session not found".to_string());
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -1413,8 +1416,6 @@ pub async fn split_session(
         return Err("Ratio must be strictly between 0.0 and 1.0".to_string());
     }
 
-    let mut conn = db::get_connection(&app)?;
-    let source = load_split_source_session(&conn, session_id, false)?;
     let splits = vec![
         SplitPart {
             project_id: project_a_id,
@@ -1425,7 +1426,11 @@ pub async fn split_session(
             ratio: 1.0 - ratio,
         },
     ];
-    execute_session_split(&mut conn, session_id, &source, splits.as_slice())
+    run_db_blocking(app, move |conn| {
+        let source = load_split_source_session(conn, session_id, false)?;
+        execute_session_split(conn, session_id, &source, splits.as_slice())
+    })
+    .await
 }
 
 #[derive(serde::Serialize)]
@@ -1445,95 +1450,92 @@ pub async fn suggest_session_split(
     app: AppHandle,
     session_id: i64,
 ) -> Result<SplitSuggestion, String> {
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let (app_id, date, current_project_id, suggested_project_id): (
+            i64,
+            String,
+            Option<i64>,
+            Option<i64>,
+        ) = conn
+            .query_row(
+                "SELECT app_id, date, project_id,
+                        (SELECT af.to_project_id FROM assignment_feedback af WHERE af.session_id = sessions.id ORDER BY af.created_at DESC LIMIT 1)
+                 FROM sessions WHERE id = ?1",
+                [session_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .map_err(|e| format!("Session not found: {}", e))?;
 
-    // Get session info
-    let (app_id, date, current_project_id, suggested_project_id): (i64, String, Option<i64>, Option<i64>) = conn
-        .query_row(
-            "SELECT app_id, date, project_id,
-                    (SELECT af.to_project_id FROM assignment_feedback af WHERE af.session_id = sessions.id ORDER BY af.created_at DESC LIMIT 1)
-             FROM sessions WHERE id = ?1",
-            [session_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-        )
-        .map_err(|e| format!("Session not found: {}", e))?;
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
+                 FROM file_activities fa
+                 LEFT JOIN projects p ON p.id = fa.project_id
+                 WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
+                 GROUP BY fa.project_id
+                 ORDER BY total DESC
+                 LIMIT 10",
+            )
+            .map_err(|e| e.to_string())?;
 
-    // Query file activities for this app on this date, grouped by project
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
-             FROM file_activities fa
-             LEFT JOIN projects p ON p.id = fa.project_id
-             WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
-             GROUP BY fa.project_id
-             ORDER BY total DESC
-             LIMIT 10",
-        )
-        .map_err(|e| e.to_string())?;
+        let projects: Vec<(i64, String, i64)> = stmt
+            .query_map(rusqlite::params![app_id, date], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get::<_, String>(1).unwrap_or_default(),
+                    row.get(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
 
-    let projects: Vec<(i64, String, i64)> = stmt
-        .query_map(rusqlite::params![app_id, date], |row| {
-            Ok((
-                row.get(0)?,
-                row.get::<_, String>(1).unwrap_or_default(),
-                row.get(2)?,
-            ))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    // If we have ≥2 projects from file activities, use those
-    if projects.len() >= 2 {
-        let total_time: i64 = projects.iter().map(|(_, _, t)| *t).sum();
-        let ratio = if total_time > 0 {
-            (projects[0].2 as f64 / total_time as f64).clamp(0.05, 0.95)
-        } else {
-            0.5
-        };
-        return Ok(SplitSuggestion {
-            project_a_id: Some(projects[0].0),
-            project_a_name: Some(projects[0].1.clone()),
-            project_b_id: Some(projects[1].0),
-            project_b_name: Some(projects[1].1.clone()),
-            suggested_ratio: ratio,
-            confidence: 0.8,
-        });
-    }
-
-    // Fallback: use current project + AI suggested project
-    if let (Some(cur), Some(sug)) = (current_project_id, suggested_project_id) {
-        if cur != sug {
-            let name_a: String = conn
-                .query_row("SELECT name FROM projects WHERE id = ?1", [cur], |r| {
-                    r.get(0)
-                })
-                .unwrap_or_default();
-            let name_b: String = conn
-                .query_row("SELECT name FROM projects WHERE id = ?1", [sug], |r| {
-                    r.get(0)
-                })
-                .unwrap_or_default();
+        if projects.len() >= 2 {
+            let total_time: i64 = projects.iter().map(|(_, _, t)| *t).sum();
+            let ratio = if total_time > 0 {
+                (projects[0].2 as f64 / total_time as f64).clamp(0.05, 0.95)
+            } else {
+                0.5
+            };
             return Ok(SplitSuggestion {
-                project_a_id: Some(cur),
-                project_a_name: Some(name_a),
-                project_b_id: Some(sug),
-                project_b_name: Some(name_b),
-                suggested_ratio: 0.5,
-                confidence: 0.4,
+                project_a_id: Some(projects[0].0),
+                project_a_name: Some(projects[0].1.clone()),
+                project_b_id: Some(projects[1].0),
+                project_b_name: Some(projects[1].1.clone()),
+                suggested_ratio: ratio,
+                confidence: 0.8,
             });
         }
-    }
 
-    // No suggestion possible
-    Ok(SplitSuggestion {
-        project_a_id: current_project_id,
-        project_a_name: None,
-        project_b_id: None,
-        project_b_name: None,
-        suggested_ratio: 0.5,
-        confidence: 0.0,
+        if let (Some(cur), Some(sug)) = (current_project_id, suggested_project_id) {
+            if cur != sug {
+                let name_a: String = conn
+                    .query_row("SELECT name FROM projects WHERE id = ?1", [cur], |r| r.get(0))
+                    .unwrap_or_default();
+                let name_b: String = conn
+                    .query_row("SELECT name FROM projects WHERE id = ?1", [sug], |r| r.get(0))
+                    .unwrap_or_default();
+                return Ok(SplitSuggestion {
+                    project_a_id: Some(cur),
+                    project_a_name: Some(name_a),
+                    project_b_id: Some(sug),
+                    project_b_name: Some(name_b),
+                    suggested_ratio: 0.5,
+                    confidence: 0.4,
+                });
+            }
+        }
+
+        Ok(SplitSuggestion {
+            project_a_id: current_project_id,
+            project_a_name: None,
+            project_b_id: None,
+            project_b_name: None,
+            suggested_ratio: 0.5,
+            confidence: 0.0,
+        })
     })
+    .await
 }
 
 /// Analyzes file activities for a session to determine which projects are present
@@ -1593,85 +1595,83 @@ pub async fn analyze_session_projects(
         }
     }
 
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let (app_id, date): (i64, String) = conn
+            .query_row(
+                "SELECT app_id, date FROM sessions WHERE id = ?1",
+                [session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| format!("Session not found: {}", e))?;
 
-    // Get session info
-    let (app_id, date): (i64, String) = conn
-        .query_row(
-            "SELECT app_id, date FROM sessions WHERE id = ?1",
-            [session_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|e| format!("Session not found: {}", e))?;
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
+                 FROM file_activities fa
+                 LEFT JOIN projects p ON p.id = fa.project_id
+                  WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
+                  GROUP BY fa.project_id
+                  ORDER BY total DESC
+                  LIMIT ?3",
+            )
+            .map_err(|e| e.to_string())?;
 
-    // Query file activities for this session's app+date, grouped by project
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
-             FROM file_activities fa
-             LEFT JOIN projects p ON p.id = fa.project_id
-              WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
-              GROUP BY fa.project_id
-              ORDER BY total DESC
-              LIMIT ?3",
-        )
-        .map_err(|e| e.to_string())?;
+        let candidates: Vec<(i64, String, f64)> = stmt
+            .query_map(
+                rusqlite::params![app_id, date, normalized_max_projects],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get::<_, String>(1).unwrap_or_default(),
+                        row.get::<_, i64>(2).unwrap_or(0) as f64,
+                    ))
+                },
+            )
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
 
-    let candidates: Vec<(i64, String, f64)> = stmt
-        .query_map(
-            rusqlite::params![app_id, date, normalized_max_projects],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get::<_, String>(1).unwrap_or_default(),
-                    row.get::<_, i64>(2).unwrap_or(0) as f64,
-                ))
-            },
-        )
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        if candidates.is_empty() {
+            return Ok(MultiProjectAnalysis {
+                session_id,
+                candidates: vec![],
+                is_splittable: false,
+                leader_project_id: None,
+                leader_score: 0.0,
+            });
+        }
 
-    if candidates.is_empty() {
-        return Ok(MultiProjectAnalysis {
+        let leader_score = candidates[0].2;
+        let leader_id = candidates[0].0;
+
+        let project_candidates: Vec<ProjectCandidate> = candidates
+            .iter()
+            .map(|(pid, name, score)| ProjectCandidate {
+                project_id: *pid,
+                project_name: name.clone(),
+                score: *score,
+                ratio_to_leader: if leader_score > 0.0 {
+                    *score / leader_score
+                } else {
+                    0.0
+                },
+            })
+            .collect();
+
+        let qualifying = project_candidates
+            .iter()
+            .filter(|c| c.ratio_to_leader >= normalized_tolerance)
+            .count();
+
+        Ok(MultiProjectAnalysis {
             session_id,
-            candidates: vec![],
-            is_splittable: false,
-            leader_project_id: None,
-            leader_score: 0.0,
-        });
-    }
-
-    let leader_score = candidates[0].2;
-    let leader_id = candidates[0].0;
-
-    let project_candidates: Vec<ProjectCandidate> = candidates
-        .iter()
-        .map(|(pid, name, score)| ProjectCandidate {
-            project_id: *pid,
-            project_name: name.clone(),
-            score: *score,
-            ratio_to_leader: if leader_score > 0.0 {
-                *score / leader_score
-            } else {
-                0.0
-            },
+            candidates: project_candidates,
+            is_splittable: qualifying >= 2,
+            leader_project_id: Some(leader_id),
+            leader_score,
         })
-        .collect();
-
-    // Session is splittable if at least 2 candidates have ratio >= threshold
-    let qualifying = project_candidates
-        .iter()
-        .filter(|c| c.ratio_to_leader >= normalized_tolerance)
-        .count();
-
-    Ok(MultiProjectAnalysis {
-        session_id,
-        candidates: project_candidates,
-        is_splittable: qualifying >= 2,
-        leader_project_id: Some(leader_id),
-        leader_score,
     })
+    .await
 }
 
 /// Batch variant of `analyze_session_projects` that returns only splittable flags.
@@ -1688,105 +1688,106 @@ pub async fn analyze_sessions_splittable(
 
     let normalized_tolerance = tolerance_threshold.clamp(0.2, 1.0);
     let normalized_max_projects = max_projects.clamp(2, 5) as usize;
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let placeholders = std::iter::repeat("?")
+            .take(session_ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
 
-    let placeholders = std::iter::repeat("?")
-        .take(session_ids.len())
-        .collect::<Vec<_>>()
-        .join(",");
+        let sql = format!(
+            "SELECT s.id AS session_id,
+                    fa.project_id AS project_id,
+                    COALESCE(p.name, '') AS project_name,
+                    SUM(fa.total_seconds) AS total
+             FROM sessions s
+             LEFT JOIN file_activities fa
+               ON fa.app_id = s.app_id
+              AND fa.date = s.date
+              AND fa.project_id IS NOT NULL
+             LEFT JOIN projects p ON p.id = fa.project_id
+             WHERE s.id IN ({})
+             GROUP BY s.id, fa.project_id, p.name",
+            placeholders
+        );
 
-    let sql = format!(
-        "SELECT s.id AS session_id,
-                fa.project_id AS project_id,
-                COALESCE(p.name, '') AS project_name,
-                SUM(fa.total_seconds) AS total
-         FROM sessions s
-         LEFT JOIN file_activities fa
-           ON fa.app_id = s.app_id
-          AND fa.date = s.date
-          AND fa.project_id IS NOT NULL
-         LEFT JOIN projects p ON p.id = fa.project_id
-         WHERE s.id IN ({})
-         GROUP BY s.id, fa.project_id, p.name",
-        placeholders
-    );
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(session_ids.iter()), |row| {
+                Ok((
+                    row.get::<_, i64>("session_id")?,
+                    row.get::<_, Option<i64>>("project_id")?,
+                    row.get::<_, String>("project_name").unwrap_or_default(),
+                    row.get::<_, Option<i64>>("total")?.unwrap_or(0),
+                ))
+            })
+            .map_err(|e| e.to_string())?;
 
-    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map(rusqlite::params_from_iter(session_ids.iter()), |row| {
-            Ok((
-                row.get::<_, i64>("session_id")?,
-                row.get::<_, Option<i64>>("project_id")?,
-                row.get::<_, String>("project_name").unwrap_or_default(),
-                row.get::<_, Option<i64>>("total")?.unwrap_or(0),
-            ))
-        })
-        .map_err(|e| e.to_string())?;
-
-    let mut candidates_by_session: HashMap<i64, Vec<ProjectCandidate>> = HashMap::new();
-    for row in rows {
-        let (session_id, project_id, project_name, total) =
-            row.map_err(|e| format!("Failed to read split eligibility row: {}", e))?;
-        let Some(pid) = project_id else {
-            continue;
-        };
-        candidates_by_session
-            .entry(session_id)
-            .or_default()
-            .push(ProjectCandidate {
-                project_id: pid,
-                project_name,
-                score: total as f64,
-                ratio_to_leader: 0.0,
-            });
-    }
-
-    let mut result = Vec::with_capacity(session_ids.len());
-    for session_id in session_ids {
-        let Some(mut candidates) = candidates_by_session.remove(&session_id) else {
-            result.push(SessionSplittableFlag {
-                session_id,
-                is_splittable: false,
-            });
-            continue;
-        };
-
-        if candidates.len() < 2 {
-            result.push(SessionSplittableFlag {
-                session_id,
-                is_splittable: false,
-            });
-            continue;
+        let mut candidates_by_session: HashMap<i64, Vec<ProjectCandidate>> = HashMap::new();
+        for row in rows {
+            let (session_id, project_id, project_name, total) =
+                row.map_err(|e| format!("Failed to read split eligibility row: {}", e))?;
+            let Some(pid) = project_id else {
+                continue;
+            };
+            candidates_by_session
+                .entry(session_id)
+                .or_default()
+                .push(ProjectCandidate {
+                    project_id: pid,
+                    project_name,
+                    score: total as f64,
+                    ratio_to_leader: 0.0,
+                });
         }
 
-        candidates.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        candidates.truncate(normalized_max_projects);
+        let mut result = Vec::with_capacity(session_ids.len());
+        for session_id in session_ids {
+            let Some(mut candidates) = candidates_by_session.remove(&session_id) else {
+                result.push(SessionSplittableFlag {
+                    session_id,
+                    is_splittable: false,
+                });
+                continue;
+            };
 
-        let leader_score = candidates[0].score;
-        let qualifying = candidates
-            .iter_mut()
-            .map(|candidate| {
-                candidate.ratio_to_leader = if leader_score > 0.0 {
-                    candidate.score / leader_score
-                } else {
-                    0.0
-                };
-                candidate.ratio_to_leader >= normalized_tolerance
-            })
-            .filter(|is_qualifying| *is_qualifying)
-            .count();
+            if candidates.len() < 2 {
+                result.push(SessionSplittableFlag {
+                    session_id,
+                    is_splittable: false,
+                });
+                continue;
+            }
 
-        result.push(SessionSplittableFlag {
-            session_id,
-            is_splittable: qualifying >= 2,
-        });
-    }
+            candidates.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+            candidates.truncate(normalized_max_projects);
 
-    Ok(result)
+            let leader_score = candidates[0].score;
+            let qualifying = candidates
+                .iter_mut()
+                .map(|candidate| {
+                    candidate.ratio_to_leader = if leader_score > 0.0 {
+                        candidate.score / leader_score
+                    } else {
+                        0.0
+                    };
+                    candidate.ratio_to_leader >= normalized_tolerance
+                })
+                .filter(|is_qualifying| *is_qualifying)
+                .count();
+
+            result.push(SessionSplittableFlag {
+                session_id,
+                is_splittable: qualifying >= 2,
+            });
+        }
+
+        Ok(result)
+    })
+    .await
 }
 
 /// Splits a session into N parts (max 5) with given ratios and optional project assignments.
@@ -1796,9 +1797,11 @@ pub async fn split_session_multi(
     session_id: i64,
     splits: Vec<SplitPart>,
 ) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let source = load_split_source_session(&conn, session_id, true)?;
-    execute_session_split(&mut conn, session_id, &source, splits.as_slice())
+    run_db_blocking(app, move |conn| {
+        let source = load_split_source_session(conn, session_id, true)?;
+        execute_session_split(conn, session_id, &source, splits.as_slice())
+    })
+    .await
 }
 
 #[cfg(test)]

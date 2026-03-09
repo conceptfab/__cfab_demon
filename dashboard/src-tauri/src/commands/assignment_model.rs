@@ -31,8 +31,8 @@ use std::collections::{HashMap, HashSet};
 use tauri::{command, AppHandle};
 
 use super::datetime::parse_datetime_fixed;
+use super::helpers::run_db_blocking;
 use super::types::DateRange;
-use crate::db;
 
 const DEFAULT_MODE: &str = "suggest";
 const DEFAULT_MIN_CONFIDENCE_SUGGEST: f64 = 0.60;
@@ -826,90 +826,96 @@ fn fetch_unassigned_session_ids(
 
 #[command]
 pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentModelStatus, String> {
-    let conn = db::get_connection(&app)?;
-    let state = load_state_map(&conn)?;
-    let training_horizon_days = clamp_i64(
-        parse_state_i64(
-            &state,
-            "training_horizon_days",
-            DEFAULT_TRAINING_HORIZON_DAYS,
-        ),
-        MIN_TRAINING_HORIZON_DAYS,
-        MAX_TRAINING_HORIZON_DAYS,
-    );
-    let training_app_blacklist = normalize_blacklist_entries(
-        &parse_state_string_list(&state, "training_app_blacklist"),
-        false,
-    );
-    let training_folder_blacklist = normalize_blacklist_entries(
-        &parse_state_string_list(&state, "training_folder_blacklist"),
-        true,
-    );
+    run_db_blocking(app, move |conn| {
+        let state = load_state_map(conn)?;
+        let training_horizon_days = clamp_i64(
+            parse_state_i64(
+                &state,
+                "training_horizon_days",
+                DEFAULT_TRAINING_HORIZON_DAYS,
+            ),
+            MIN_TRAINING_HORIZON_DAYS,
+            MAX_TRAINING_HORIZON_DAYS,
+        );
+        let training_app_blacklist = normalize_blacklist_entries(
+            &parse_state_string_list(&state, "training_app_blacklist"),
+            false,
+        );
+        let training_folder_blacklist = normalize_blacklist_entries(
+            &parse_state_string_list(&state, "training_folder_blacklist"),
+            true,
+        );
 
-    let mut status = AssignmentModelStatus {
-        mode: normalize_mode(
-            state
-                .get("mode")
-                .map(|v| v.as_str())
-                .unwrap_or(DEFAULT_MODE),
-        ),
-        min_confidence_suggest: parse_state_f64(
-            &state,
-            "min_confidence_suggest",
-            DEFAULT_MIN_CONFIDENCE_SUGGEST,
-        ),
-        min_confidence_auto: parse_state_f64(
-            &state,
-            "min_confidence_auto",
-            DEFAULT_MIN_CONFIDENCE_AUTO,
-        ),
-        min_evidence_auto: parse_state_i64(&state, "min_evidence_auto", DEFAULT_MIN_EVIDENCE_AUTO),
-        training_horizon_days,
-        training_app_blacklist,
-        training_folder_blacklist,
-        last_train_at: parse_state_opt_string(&state, "last_train_at"),
-        feedback_since_train: parse_state_i64(&state, "feedback_since_train", 0),
-        is_training: parse_state_bool(&state, "is_training", false),
-        last_train_duration_ms: state
-            .get("last_train_duration_ms")
-            .and_then(|v| v.parse::<i64>().ok()),
-        last_train_samples: state
-            .get("last_train_samples")
-            .and_then(|v| v.parse::<i64>().ok()),
-        train_error_last: parse_state_opt_string(&state, "train_error_last"),
-        cooldown_until: parse_state_opt_string(&state, "cooldown_until"),
-        last_auto_run_at: None,
-        last_auto_assigned_count: 0,
-        last_auto_rolled_back_at: None,
-        can_rollback_last_auto_run: false,
-    };
+        let mut status = AssignmentModelStatus {
+            mode: normalize_mode(
+                state
+                    .get("mode")
+                    .map(|v| v.as_str())
+                    .unwrap_or(DEFAULT_MODE),
+            ),
+            min_confidence_suggest: parse_state_f64(
+                &state,
+                "min_confidence_suggest",
+                DEFAULT_MIN_CONFIDENCE_SUGGEST,
+            ),
+            min_confidence_auto: parse_state_f64(
+                &state,
+                "min_confidence_auto",
+                DEFAULT_MIN_CONFIDENCE_AUTO,
+            ),
+            min_evidence_auto: parse_state_i64(
+                &state,
+                "min_evidence_auto",
+                DEFAULT_MIN_EVIDENCE_AUTO,
+            ),
+            training_horizon_days,
+            training_app_blacklist,
+            training_folder_blacklist,
+            last_train_at: parse_state_opt_string(&state, "last_train_at"),
+            feedback_since_train: parse_state_i64(&state, "feedback_since_train", 0),
+            is_training: parse_state_bool(&state, "is_training", false),
+            last_train_duration_ms: state
+                .get("last_train_duration_ms")
+                .and_then(|v| v.parse::<i64>().ok()),
+            last_train_samples: state
+                .get("last_train_samples")
+                .and_then(|v| v.parse::<i64>().ok()),
+            train_error_last: parse_state_opt_string(&state, "train_error_last"),
+            cooldown_until: parse_state_opt_string(&state, "cooldown_until"),
+            last_auto_run_at: None,
+            last_auto_assigned_count: 0,
+            last_auto_rolled_back_at: None,
+            can_rollback_last_auto_run: false,
+        };
 
-    let last_auto = conn
-        .query_row(
-            "SELECT COALESCE(finished_at, started_at), sessions_assigned, rolled_back_at
-             FROM assignment_auto_runs
-             ORDER BY id DESC
-             LIMIT 1",
-            [],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
+        let last_auto = conn
+            .query_row(
+                "SELECT COALESCE(finished_at, started_at), sessions_assigned, rolled_back_at
+                 FROM assignment_auto_runs
+                 ORDER BY id DESC
+                 LIMIT 1",
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
 
-    if let Some((last_auto_run_at, assigned_count, rolled_back_at)) = last_auto {
-        status.last_auto_run_at = Some(last_auto_run_at);
-        status.last_auto_assigned_count = assigned_count;
-        status.last_auto_rolled_back_at = rolled_back_at.clone();
-        status.can_rollback_last_auto_run = assigned_count > 0 && rolled_back_at.is_none();
-    }
+        if let Some((last_auto_run_at, assigned_count, rolled_back_at)) = last_auto {
+            status.last_auto_run_at = Some(last_auto_run_at);
+            status.last_auto_assigned_count = assigned_count;
+            status.last_auto_rolled_back_at = rolled_back_at.clone();
+            status.can_rollback_last_auto_run = assigned_count > 0 && rolled_back_at.is_none();
+        }
 
-    Ok(status)
+        Ok(status)
+    })
+    .await
 }
 
 #[command]
@@ -917,203 +923,210 @@ pub async fn get_assignment_model_metrics(
     app: AppHandle,
     days: Option<i64>,
 ) -> Result<AssignmentModelMetrics, String> {
-    let conn = db::get_connection(&app)?;
-    let window_days = clamp_i64(days.unwrap_or(30), 7, 365);
-    let from_modifier = format!("-{} days", window_days.saturating_sub(1));
+    run_db_blocking(app, move |conn| {
+        let window_days = clamp_i64(days.unwrap_or(30), 7, 365);
+        let from_modifier = format!("-{} days", window_days.saturating_sub(1));
 
-    let mut feedback_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(
-                "SELECT
-                    date(created_at) AS d,
-                    SUM(CASE WHEN source = 'ai_suggestion_accept' THEN 1 ELSE 0 END) AS accepted,
-                    SUM(CASE WHEN source = 'ai_suggestion_reject' THEN 1 ELSE 0 END) AS rejected,
-                    SUM(CASE
-                        WHEN source IN (
-                            'manual_session_assign',
-                            'manual_session_change',
-                            'manual_project_card_change',
-                            'manual_session_unassign',
-                            'bulk_unassign',
-                            'manual_app_assign'
-                        ) THEN 1
-                        ELSE 0
-                    END) AS manual_change
-                 FROM assignment_feedback
-                 WHERE created_at >= date('now', ?1)
-                 GROUP BY date(created_at)",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![&from_modifier], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, i64>(3)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let (date, accepted, rejected, manual_change) =
-                row.map_err(|e| format!("Failed to read feedback metrics row: {}", e))?;
-            feedback_by_day.insert(date, (accepted, rejected, manual_change));
+        let mut feedback_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT
+                        date(created_at) AS d,
+                        SUM(CASE WHEN source = 'ai_suggestion_accept' THEN 1 ELSE 0 END) AS accepted,
+                        SUM(CASE WHEN source = 'ai_suggestion_reject' THEN 1 ELSE 0 END) AS rejected,
+                        SUM(CASE
+                            WHEN source IN (
+                                'manual_session_assign',
+                                'manual_session_change',
+                                'manual_project_card_change',
+                                'manual_session_unassign',
+                                'bulk_unassign',
+                                'manual_app_assign'
+                            ) THEN 1
+                            ELSE 0
+                        END) AS manual_change
+                     FROM assignment_feedback
+                     WHERE created_at >= date('now', ?1)
+                     GROUP BY date(created_at)",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![&from_modifier], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                let (date, accepted, rejected, manual_change) =
+                    row.map_err(|e| format!("Failed to read feedback metrics row: {}", e))?;
+                feedback_by_day.insert(date, (accepted, rejected, manual_change));
+            }
         }
-    }
 
-    let mut auto_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(
-                "SELECT
-                    date(started_at) AS d,
-                    COUNT(*) AS runs,
-                    COALESCE(SUM(sessions_assigned), 0) AS assigned,
-                    SUM(CASE WHEN rolled_back_at IS NOT NULL THEN 1 ELSE 0 END) AS rollbacks
-                 FROM assignment_auto_runs
-                 WHERE started_at >= date('now', ?1)
-                 GROUP BY date(started_at)",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![&from_modifier], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, i64>(3)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let (date, runs, assigned, rollbacks) =
-                row.map_err(|e| format!("Failed to read auto-run metrics row: {}", e))?;
-            auto_by_day.insert(date, (runs, assigned, rollbacks));
+        let mut auto_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT
+                        date(started_at) AS d,
+                        COUNT(*) AS runs,
+                        COALESCE(SUM(sessions_assigned), 0) AS assigned,
+                        SUM(CASE WHEN rolled_back_at IS NOT NULL THEN 1 ELSE 0 END) AS rollbacks
+                     FROM assignment_auto_runs
+                     WHERE started_at >= date('now', ?1)
+                     GROUP BY date(started_at)",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![&from_modifier], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                let (date, runs, assigned, rollbacks) =
+                    row.map_err(|e| format!("Failed to read auto-run metrics row: {}", e))?;
+                auto_by_day.insert(date, (runs, assigned, rollbacks));
+            }
         }
-    }
 
-    let mut coverage_by_day: HashMap<String, (i64, i64, i64, i64)> = HashMap::new();
-    {
-        let mut stmt = conn
-            .prepare(
-                "SELECT
+        let mut coverage_by_day: HashMap<String, (i64, i64, i64, i64)> = HashMap::new();
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT
+                        date,
+                        COUNT(*) AS total_entries,
+                        SUM(CASE WHEN detected_path IS NOT NULL AND trim(detected_path) <> '' THEN 1 ELSE 0 END) AS with_detected_path,
+                        SUM(CASE WHEN title_history IS NOT NULL AND trim(title_history) NOT IN ('', '[]') THEN 1 ELSE 0 END) AS with_title_history,
+                        SUM(CASE WHEN activity_type IS NOT NULL AND trim(activity_type) <> '' THEN 1 ELSE 0 END) AS with_activity_type
+                     FROM file_activities
+                     WHERE date >= date('now', ?1)
+                     GROUP BY date",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![&from_modifier], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                let (
                     date,
-                    COUNT(*) AS total_entries,
-                    SUM(CASE WHEN detected_path IS NOT NULL AND trim(detected_path) <> '' THEN 1 ELSE 0 END) AS with_detected_path,
-                    SUM(CASE WHEN title_history IS NOT NULL AND trim(title_history) NOT IN ('', '[]') THEN 1 ELSE 0 END) AS with_title_history,
-                    SUM(CASE WHEN activity_type IS NOT NULL AND trim(activity_type) <> '' THEN 1 ELSE 0 END) AS with_activity_type
-                 FROM file_activities
-                 WHERE date >= date('now', ?1)
-                 GROUP BY date",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![&from_modifier], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, i64>(4)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let (date, total_entries, with_detected_path, with_title_history, with_activity_type) =
-                row.map_err(|e| format!("Failed to read coverage metrics row: {}", e))?;
-            coverage_by_day.insert(
-                date,
-                (
                     total_entries,
                     with_detected_path,
                     with_title_history,
                     with_activity_type,
-                ),
-            );
+                ) = row.map_err(|e| format!("Failed to read coverage metrics row: {}", e))?;
+                coverage_by_day.insert(
+                    date,
+                    (
+                        total_entries,
+                        with_detected_path,
+                        with_title_history,
+                        with_activity_type,
+                    ),
+                );
+            }
         }
-    }
 
-    let today = chrono::Local::now().date_naive();
-    let mut points = Vec::with_capacity(window_days as usize);
-    let mut summary = AssignmentModelMetricsSummary {
-        feedback_total: 0,
-        feedback_accepted: 0,
-        feedback_rejected: 0,
-        feedback_manual_change: 0,
-        feedback_precision: 0.0,
-        auto_runs: 0,
-        auto_assigned: 0,
-        auto_rollbacks: 0,
-        coverage_total_entries: 0,
-        coverage_detected_path_ratio: 0.0,
-        coverage_title_history_ratio: 0.0,
-        coverage_activity_type_ratio: 0.0,
-    };
-    let mut coverage_with_detected_total = 0_i64;
-    let mut coverage_with_title_total = 0_i64;
-    let mut coverage_with_activity_total = 0_i64;
+        let today = chrono::Local::now().date_naive();
+        let mut points = Vec::with_capacity(window_days as usize);
+        let mut summary = AssignmentModelMetricsSummary {
+            feedback_total: 0,
+            feedback_accepted: 0,
+            feedback_rejected: 0,
+            feedback_manual_change: 0,
+            feedback_precision: 0.0,
+            auto_runs: 0,
+            auto_assigned: 0,
+            auto_rollbacks: 0,
+            coverage_total_entries: 0,
+            coverage_detected_path_ratio: 0.0,
+            coverage_title_history_ratio: 0.0,
+            coverage_activity_type_ratio: 0.0,
+        };
+        let mut coverage_with_detected_total = 0_i64;
+        let mut coverage_with_title_total = 0_i64;
+        let mut coverage_with_activity_total = 0_i64;
 
-    for offset in (0..window_days).rev() {
-        let date = (today - chrono::Duration::days(offset))
-            .format("%Y-%m-%d")
-            .to_string();
-        let (feedback_accepted, feedback_rejected, feedback_manual_change) =
-            feedback_by_day.get(&date).copied().unwrap_or((0, 0, 0));
-        let feedback_total = feedback_accepted + feedback_rejected + feedback_manual_change;
-        let (auto_runs, auto_assigned, auto_rollbacks) =
-            auto_by_day.get(&date).copied().unwrap_or((0, 0, 0));
-        let (
-            coverage_total_entries,
-            coverage_with_detected_path,
-            coverage_with_title_history,
-            coverage_with_activity_type,
-        ) = coverage_by_day.get(&date).copied().unwrap_or((0, 0, 0, 0));
+        for offset in (0..window_days).rev() {
+            let date = (today - chrono::Duration::days(offset))
+                .format("%Y-%m-%d")
+                .to_string();
+            let (feedback_accepted, feedback_rejected, feedback_manual_change) =
+                feedback_by_day.get(&date).copied().unwrap_or((0, 0, 0));
+            let feedback_total = feedback_accepted + feedback_rejected + feedback_manual_change;
+            let (auto_runs, auto_assigned, auto_rollbacks) =
+                auto_by_day.get(&date).copied().unwrap_or((0, 0, 0));
+            let (
+                coverage_total_entries,
+                coverage_with_detected_path,
+                coverage_with_title_history,
+                coverage_with_activity_type,
+            ) = coverage_by_day.get(&date).copied().unwrap_or((0, 0, 0, 0));
 
-        summary.feedback_total += feedback_total;
-        summary.feedback_accepted += feedback_accepted;
-        summary.feedback_rejected += feedback_rejected;
-        summary.feedback_manual_change += feedback_manual_change;
-        summary.auto_runs += auto_runs;
-        summary.auto_assigned += auto_assigned;
-        summary.auto_rollbacks += auto_rollbacks;
-        summary.coverage_total_entries += coverage_total_entries;
-        coverage_with_detected_total += coverage_with_detected_path;
-        coverage_with_title_total += coverage_with_title_history;
-        coverage_with_activity_total += coverage_with_activity_type;
+            summary.feedback_total += feedback_total;
+            summary.feedback_accepted += feedback_accepted;
+            summary.feedback_rejected += feedback_rejected;
+            summary.feedback_manual_change += feedback_manual_change;
+            summary.auto_runs += auto_runs;
+            summary.auto_assigned += auto_assigned;
+            summary.auto_rollbacks += auto_rollbacks;
+            summary.coverage_total_entries += coverage_total_entries;
+            coverage_with_detected_total += coverage_with_detected_path;
+            coverage_with_title_total += coverage_with_title_history;
+            coverage_with_activity_total += coverage_with_activity_type;
 
-        points.push(AssignmentModelMetricsPoint {
-            date,
-            feedback_total,
-            feedback_accepted,
-            feedback_rejected,
-            feedback_manual_change,
-            auto_runs,
-            auto_assigned,
-            auto_rollbacks,
-            coverage_total_entries,
-            coverage_with_detected_path,
-            coverage_with_title_history,
-            coverage_with_activity_type,
-        });
-    }
+            points.push(AssignmentModelMetricsPoint {
+                date,
+                feedback_total,
+                feedback_accepted,
+                feedback_rejected,
+                feedback_manual_change,
+                auto_runs,
+                auto_assigned,
+                auto_rollbacks,
+                coverage_total_entries,
+                coverage_with_detected_path,
+                coverage_with_title_history,
+                coverage_with_activity_type,
+            });
+        }
 
-    summary.feedback_precision = ratio_or_zero(
-        summary.feedback_accepted,
-        summary.feedback_accepted + summary.feedback_rejected,
-    );
-    summary.coverage_detected_path_ratio =
-        ratio_or_zero(coverage_with_detected_total, summary.coverage_total_entries);
-    summary.coverage_title_history_ratio =
-        ratio_or_zero(coverage_with_title_total, summary.coverage_total_entries);
-    summary.coverage_activity_type_ratio =
-        ratio_or_zero(coverage_with_activity_total, summary.coverage_total_entries);
+        summary.feedback_precision = ratio_or_zero(
+            summary.feedback_accepted,
+            summary.feedback_accepted + summary.feedback_rejected,
+        );
+        summary.coverage_detected_path_ratio =
+            ratio_or_zero(coverage_with_detected_total, summary.coverage_total_entries);
+        summary.coverage_title_history_ratio =
+            ratio_or_zero(coverage_with_title_total, summary.coverage_total_entries);
+        summary.coverage_activity_type_ratio =
+            ratio_or_zero(coverage_with_activity_total, summary.coverage_total_entries);
 
-    Ok(AssignmentModelMetrics {
-        window_days,
-        points,
-        summary,
+        Ok(AssignmentModelMetrics {
+            window_days,
+            points,
+            summary,
+        })
     })
+    .await
 }
 
 #[command]
@@ -1124,23 +1137,24 @@ pub async fn set_assignment_mode(
     auto_conf: f64,
     auto_ev: i64,
 ) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let mode = normalize_mode(&mode);
+        let suggest_conf = clamp01(suggest_conf, DEFAULT_MIN_CONFIDENCE_SUGGEST);
+        let auto_conf = clamp01(auto_conf, DEFAULT_MIN_CONFIDENCE_AUTO);
+        let auto_ev = clamp_i64(auto_ev, 1, 50);
 
-    let mode = normalize_mode(&mode);
-    let suggest_conf = clamp01(suggest_conf, DEFAULT_MIN_CONFIDENCE_SUGGEST);
-    let auto_conf = clamp01(auto_conf, DEFAULT_MIN_CONFIDENCE_AUTO);
-    let auto_ev = clamp_i64(auto_ev, 1, 50);
+        upsert_state(conn, "mode", &mode)?;
+        upsert_state(
+            conn,
+            "min_confidence_suggest",
+            &format!("{:.4}", suggest_conf),
+        )?;
+        upsert_state(conn, "min_confidence_auto", &format!("{:.4}", auto_conf))?;
+        upsert_state(conn, "min_evidence_auto", &auto_ev.to_string())?;
 
-    upsert_state(&conn, "mode", &mode)?;
-    upsert_state(
-        &conn,
-        "min_confidence_suggest",
-        &format!("{:.4}", suggest_conf),
-    )?;
-    upsert_state(&conn, "min_confidence_auto", &format!("{:.4}", auto_conf))?;
-    upsert_state(&conn, "min_evidence_auto", &auto_ev.to_string())?;
-
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[command]
@@ -1148,21 +1162,24 @@ pub async fn set_assignment_model_cooldown(
     app: AppHandle,
     hours: i64,
 ) -> Result<AssignmentModelStatus, String> {
-    let conn = db::get_connection(&app)?;
-    let clamped_hours = clamp_i64(hours, 0, 24 * 14);
+    run_db_blocking(app.clone(), move |conn| {
+        let clamped_hours = clamp_i64(hours, 0, 24 * 14);
 
-    if clamped_hours <= 0 {
-        conn.execute(
-            "DELETE FROM assignment_model_state WHERE key = 'cooldown_until'",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
-    } else {
-        let cooldown_until =
-            (chrono::Local::now() + chrono::Duration::hours(clamped_hours)).to_rfc3339();
-        upsert_state(&conn, "cooldown_until", &cooldown_until)?;
-    }
+        if clamped_hours <= 0 {
+            conn.execute(
+                "DELETE FROM assignment_model_state WHERE key = 'cooldown_until'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        } else {
+            let cooldown_until =
+                (chrono::Local::now() + chrono::Duration::hours(clamped_hours)).to_rfc3339();
+            upsert_state(conn, "cooldown_until", &cooldown_until)?;
+        }
 
+        Ok(())
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
@@ -1171,9 +1188,11 @@ pub async fn set_training_horizon_days(
     app: AppHandle,
     days: i64,
 ) -> Result<AssignmentModelStatus, String> {
-    let conn = db::get_connection(&app)?;
-    let clamped_days = clamp_i64(days, MIN_TRAINING_HORIZON_DAYS, MAX_TRAINING_HORIZON_DAYS);
-    upsert_state(&conn, "training_horizon_days", &clamped_days.to_string())?;
+    run_db_blocking(app.clone(), move |conn| {
+        let clamped_days = clamp_i64(days, MIN_TRAINING_HORIZON_DAYS, MAX_TRAINING_HORIZON_DAYS);
+        upsert_state(conn, "training_horizon_days", &clamped_days.to_string())
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
@@ -1183,13 +1202,17 @@ pub async fn set_training_blacklists(
     app_blacklist: Vec<String>,
     folder_blacklist: Vec<String>,
 ) -> Result<AssignmentModelStatus, String> {
-    let conn = db::get_connection(&app)?;
-    let normalized_apps = normalize_blacklist_entries(&app_blacklist, false);
-    let normalized_folders = normalize_blacklist_entries(&folder_blacklist, true);
-    let apps_payload = serde_json::to_string(&normalized_apps).map_err(|e| e.to_string())?;
-    let folders_payload = serde_json::to_string(&normalized_folders).map_err(|e| e.to_string())?;
-    upsert_state(&conn, "training_app_blacklist", &apps_payload)?;
-    upsert_state(&conn, "training_folder_blacklist", &folders_payload)?;
+    run_db_blocking(app.clone(), move |conn| {
+        let normalized_apps = normalize_blacklist_entries(&app_blacklist, false);
+        let normalized_folders = normalize_blacklist_entries(&folder_blacklist, true);
+        let apps_payload = serde_json::to_string(&normalized_apps).map_err(|e| e.to_string())?;
+        let folders_payload =
+            serde_json::to_string(&normalized_folders).map_err(|e| e.to_string())?;
+        upsert_state(conn, "training_app_blacklist", &apps_payload)?;
+        upsert_state(conn, "training_folder_blacklist", &folders_payload)?;
+        Ok(())
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
@@ -1197,8 +1220,7 @@ pub async fn set_training_blacklists(
 pub async fn reset_assignment_model_knowledge(
     app: AppHandle,
 ) -> Result<AssignmentModelStatus, String> {
-    {
-        let conn = db::get_connection(&app)?;
+    run_db_blocking(app.clone(), move |conn| {
         let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
         tx.execute_batch(
             "DELETE FROM assignment_model_app;
@@ -1225,7 +1247,9 @@ pub async fn reset_assignment_model_knowledge(
         )
         .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
-    }
+        Ok(())
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
@@ -1560,8 +1584,11 @@ pub async fn train_assignment_model(
         return Ok(status);
     }
 
-    let conn = db::get_connection(&app)?;
-    retrain_model_sync(&conn)?;
+    run_db_blocking(app.clone(), move |conn| {
+        retrain_model_sync(conn)?;
+        Ok(())
+    })
+    .await?;
     get_assignment_model_status(app).await
 }
 
@@ -1571,8 +1598,10 @@ pub async fn suggest_project_for_session(
     session_id: i64,
 ) -> Result<Option<ProjectSuggestion>, String> {
     let status = get_assignment_model_status(app.clone()).await?;
-    let conn = db::get_connection(&app)?;
-    suggest_project_for_session_with_status(&conn, &status, session_id)
+    run_db_blocking(app, move |conn| {
+        suggest_project_for_session_with_status(conn, &status, session_id)
+    })
+    .await
 }
 
 pub(crate) fn suggest_project_for_session_with_status(
@@ -1669,357 +1698,359 @@ pub async fn run_auto_safe_assignment(
         return Err("Mode must be 'auto_safe' to run auto assignment".to_string());
     }
 
-    let mut conn = db::get_connection(&app)?;
-    let effective_limit = clamp_i64(limit.unwrap_or(500), 1, 10_000);
-    let session_ids =
-        fetch_unassigned_session_ids(&conn, effective_limit, date_range, min_duration)?;
+    run_db_blocking(app, move |conn| {
+        let effective_limit = clamp_i64(limit.unwrap_or(500), 1, 10_000);
+        let session_ids =
+            fetch_unassigned_session_ids(conn, effective_limit, date_range, min_duration)?;
 
-    conn.execute(
-        "INSERT INTO assignment_auto_runs (
-            started_at,
-            mode,
-            min_confidence_auto,
-            min_evidence_auto,
-            sessions_scanned,
-            sessions_suggested,
-            sessions_assigned
-         ) VALUES (datetime('now'), ?1, ?2, ?3, 0, 0, 0)",
-        rusqlite::params![
-            status.mode,
-            status.min_confidence_auto,
-            status.min_evidence_auto
-        ],
-    )
-    .map_err(|e| e.to_string())?;
-    let run_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO assignment_auto_runs (
+                started_at,
+                mode,
+                min_confidence_auto,
+                min_evidence_auto,
+                sessions_scanned,
+                sessions_suggested,
+                sessions_assigned
+             ) VALUES (datetime('now'), ?1, ?2, ?3, 0, 0, 0)",
+            rusqlite::params![
+                status.mode,
+                status.min_confidence_auto,
+                status.min_evidence_auto
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        let run_id = conn.last_insert_rowid();
 
-    let mut result = AutoSafeRunResult {
-        run_id: Some(run_id),
-        scanned: 0,
-        suggested: 0,
-        assigned: 0,
-        skipped_low_confidence: 0,
-        skipped_ambiguous: 0,
-        skipped_already_assigned: 0,
-    };
+        let mut result = AutoSafeRunResult {
+            run_id: Some(run_id),
+            scanned: 0,
+            suggested: 0,
+            assigned: 0,
+            skipped_low_confidence: 0,
+            skipped_ambiguous: 0,
+            skipped_already_assigned: 0,
+        };
 
-    let run_work = (|| -> Result<(), String> {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let run_work = (|| -> Result<(), String> {
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-        for session_id in session_ids {
-            result.scanned += 1;
+            for session_id in session_ids {
+                result.scanned += 1;
 
-            let session = tx
+                let session = tx
+                    .query_row(
+                        "SELECT app_id, date, start_time, end_time, project_id
+                         FROM sessions
+                         WHERE id = ?1",
+                        rusqlite::params![session_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, i64>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                                row.get::<_, String>(3)?,
+                                row.get::<_, Option<i64>>(4)?,
+                            ))
+                        },
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?;
+
+                let Some((app_id, date, start_time, end_time, current_project_id)) = session else {
+                    continue;
+                };
+
+                if current_project_id.is_some() {
+                    result.skipped_already_assigned += 1;
+                    continue;
+                }
+
+                if check_manual_override(&tx, session_id).is_some() {
+                    result.skipped_already_assigned += 1;
+                    continue;
+                }
+
+                let Some(context) = build_session_context(&tx, session_id)? else {
+                    result.skipped_low_confidence += 1;
+                    continue;
+                };
+                let Some(suggestion) = compute_raw_suggestion(&tx, &context)? else {
+                    result.skipped_low_confidence += 1;
+                    continue;
+                };
+
+                if !meets_auto_safe_threshold(&status, &suggestion) {
+                    let has_confidence_and_evidence = suggestion.confidence
+                        >= status.min_confidence_auto
+                        && suggestion.evidence_count >= status.min_evidence_auto;
+                    if has_confidence_and_evidence && suggestion.margin < AUTO_SAFE_MIN_MARGIN {
+                        result.skipped_ambiguous += 1;
+                    } else {
+                        result.skipped_low_confidence += 1;
+                    }
+                    continue;
+                }
+
+                result.suggested += 1;
+
+                tx.execute(
+                    "INSERT INTO assignment_suggestions (
+                        session_id, app_id, suggested_project_id, suggested_confidence,
+                        suggested_evidence_count, model_version, created_at, status
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), 'pending')",
+                    rusqlite::params![
+                        session_id,
+                        app_id,
+                        suggestion.project_id,
+                        suggestion.confidence,
+                        suggestion.evidence_count,
+                        "auto_safe_v1"
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+                let suggestion_id = tx.last_insert_rowid();
+
+                let updated_session = tx
+                    .execute(
+                        "UPDATE sessions
+                         SET project_id = ?1
+                         WHERE id = ?2 AND project_id IS NULL",
+                        rusqlite::params![suggestion.project_id, session_id],
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                if updated_session == 0 {
+                    result.skipped_already_assigned += 1;
+                    let _ = tx.execute(
+                        "UPDATE assignment_suggestions SET status = 'expired' WHERE id = ?1",
+                        rusqlite::params![suggestion_id],
+                    );
+                    continue;
+                }
+
+                tx.execute(
+                    "UPDATE file_activities
+                     SET project_id = ?1
+                     WHERE app_id = ?2
+                       AND date = ?3
+                       AND last_seen > ?4
+                       AND first_seen < ?5",
+                    rusqlite::params![suggestion.project_id, app_id, date, start_time, end_time],
+                )
+                .map_err(|e| e.to_string())?;
+
+                tx.execute(
+                    "INSERT INTO assignment_auto_run_items (
+                        run_id, session_id, app_id, from_project_id, to_project_id,
+                        suggestion_id, confidence, evidence_count, applied_at
+                     ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, datetime('now'))",
+                    rusqlite::params![
+                        run_id,
+                        session_id,
+                        app_id,
+                        suggestion.project_id,
+                        suggestion_id,
+                        suggestion.confidence,
+                        suggestion.evidence_count
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+
+                tx.execute(
+                    "UPDATE assignment_suggestions SET status = 'accepted' WHERE id = ?1",
+                    rusqlite::params![suggestion_id],
+                )
+                .map_err(|e| e.to_string())?;
+
+                tx.execute(
+                    "INSERT INTO assignment_feedback (
+                        suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
+                     ) VALUES (?1, ?2, ?3, NULL, ?4, 'auto_accept', datetime('now'))",
+                    rusqlite::params![suggestion_id, session_id, app_id, suggestion.project_id],
+                )
+                .map_err(|e| e.to_string())?;
+
+                result.assigned += 1;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+            Ok(())
+        })();
+
+        if let Err(err) = run_work {
+            conn.execute(
+                "UPDATE assignment_auto_runs
+                 SET finished_at = datetime('now'),
+                     sessions_scanned = ?2,
+                     sessions_suggested = ?3,
+                     sessions_assigned = ?4,
+                     error = ?5
+                 WHERE id = ?1",
+                rusqlite::params![
+                    run_id,
+                    result.scanned,
+                    result.suggested,
+                    result.assigned,
+                    err
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+            return Err("Auto-safe assignment failed".to_string());
+        }
+
+        conn.execute(
+            "UPDATE assignment_auto_runs
+             SET finished_at = datetime('now'),
+                 sessions_scanned = ?2,
+                 sessions_suggested = ?3,
+                 sessions_assigned = ?4
+             WHERE id = ?1",
+            rusqlite::params![run_id, result.scanned, result.suggested, result.assigned],
+        )
+        .map_err(|e| e.to_string())?;
+
+        Ok(result)
+    })
+    .await
+}
+
+#[command]
+pub async fn rollback_last_auto_safe_run(app: AppHandle) -> Result<AutoSafeRollbackResult, String> {
+    run_db_blocking(app, move |conn| {
+        let run_id = conn
+            .query_row(
+                "SELECT id
+                 FROM assignment_auto_runs
+                 WHERE sessions_assigned > 0 AND rolled_back_at IS NULL
+                 ORDER BY id DESC
+                 LIMIT 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "No rollbackable auto-safe run found".to_string())?;
+
+        let mut reverted = 0_i64;
+        let mut skipped = 0_i64;
+
+        let trx = conn.transaction().map_err(|e| e.to_string())?;
+
+        let item_rows: Vec<_> = {
+            let mut item_stmt = trx
+                .prepare(
+                    "SELECT session_id, app_id, from_project_id, to_project_id, suggestion_id
+                     FROM assignment_auto_run_items
+                     WHERE run_id = ?1
+                     ORDER BY id DESC",
+                )
+                .map_err(|e| e.to_string())?;
+            let res: Vec<_> = item_stmt
+                .query_map(rusqlite::params![run_id], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, Option<i64>>(4)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            res
+        };
+
+        for row in item_rows {
+            let (session_id, app_id, from_project_id, to_project_id, suggestion_id) = row;
+
+            let updated = trx
+                .execute(
+                    "UPDATE sessions
+                     SET project_id = ?1
+                     WHERE id = ?2 AND project_id = ?3",
+                    rusqlite::params![from_project_id, session_id, to_project_id],
+                )
+                .map_err(|e| e.to_string())?;
+
+            if updated == 0 {
+                skipped += 1;
+                continue;
+            }
+
+            let session_time = trx
                 .query_row(
-                    "SELECT app_id, date, start_time, end_time, project_id
-                     FROM sessions
-                     WHERE id = ?1",
+                    "SELECT date, start_time, end_time FROM sessions WHERE id = ?1",
                     rusqlite::params![session_id],
                     |row| {
                         Ok((
-                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(0)?,
                             row.get::<_, String>(1)?,
                             row.get::<_, String>(2)?,
-                            row.get::<_, String>(3)?,
-                            row.get::<_, Option<i64>>(4)?,
                         ))
                     },
                 )
                 .optional()
                 .map_err(|e| e.to_string())?;
 
-            let Some((app_id, date, start_time, end_time, current_project_id)) = session else {
-                continue;
-            };
-
-            if current_project_id.is_some() {
-                result.skipped_already_assigned += 1;
-                continue;
-            }
-
-            // Respect manual overrides: never auto-assign sessions the user explicitly moved
-            if check_manual_override(&tx, session_id).is_some() {
-                result.skipped_already_assigned += 1;
-                continue;
-            }
-
-            let Some(context) = build_session_context(&tx, session_id)? else {
-                result.skipped_low_confidence += 1;
-                continue;
-            };
-            let Some(suggestion) = compute_raw_suggestion(&tx, &context)? else {
-                result.skipped_low_confidence += 1;
-                continue;
-            };
-
-            if !meets_auto_safe_threshold(&status, &suggestion) {
-                let has_confidence_and_evidence = suggestion.confidence
-                    >= status.min_confidence_auto
-                    && suggestion.evidence_count >= status.min_evidence_auto;
-                if has_confidence_and_evidence && suggestion.margin < AUTO_SAFE_MIN_MARGIN {
-                    result.skipped_ambiguous += 1;
-                } else {
-                    result.skipped_low_confidence += 1;
-                }
-                continue;
-            }
-
-            result.suggested += 1;
-
-            tx.execute(
-                "INSERT INTO assignment_suggestions (
-                    session_id, app_id, suggested_project_id, suggested_confidence,
-                    suggested_evidence_count, model_version, created_at, status
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), 'pending')",
-                rusqlite::params![
-                    session_id,
-                    app_id,
-                    suggestion.project_id,
-                    suggestion.confidence,
-                    suggestion.evidence_count,
-                    "auto_safe_v1"
-                ],
-            )
-            .map_err(|e| e.to_string())?;
-            let suggestion_id = tx.last_insert_rowid();
-
-            let updated_session = tx
-                .execute(
-                    "UPDATE sessions
+            if let Some((date, start_time, end_time)) = session_time {
+                trx.execute(
+                    "UPDATE file_activities
                      SET project_id = ?1
-                     WHERE id = ?2 AND project_id IS NULL",
-                    rusqlite::params![suggestion.project_id, session_id],
+                     WHERE app_id = ?2
+                       AND date = ?3
+                       AND last_seen > ?4
+                       AND first_seen < ?5",
+                    rusqlite::params![from_project_id, app_id, date, start_time, end_time],
                 )
                 .map_err(|e| e.to_string())?;
-
-            if updated_session == 0 {
-                result.skipped_already_assigned += 1;
-                let _ = tx.execute(
-                    "UPDATE assignment_suggestions SET status = 'expired' WHERE id = ?1",
-                    rusqlite::params![suggestion_id],
-                );
-                continue;
             }
 
-            tx.execute(
-                "UPDATE file_activities
-                 SET project_id = ?1
-                 WHERE app_id = ?2
-                   AND date = ?3
-                   AND last_seen > ?4
-                   AND first_seen < ?5",
-                rusqlite::params![suggestion.project_id, app_id, date, start_time, end_time],
-            )
-            .map_err(|e| e.to_string())?;
+            if let Some(suggestion_id) = suggestion_id {
+                trx.execute(
+                    "UPDATE assignment_suggestions SET status = 'rejected' WHERE id = ?1",
+                    rusqlite::params![suggestion_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
 
-            tx.execute(
-                "INSERT INTO assignment_auto_run_items (
-                    run_id, session_id, app_id, from_project_id, to_project_id,
-                    suggestion_id, confidence, evidence_count, applied_at
-                 ) VALUES (?1, ?2, ?3, NULL, ?4, ?5, ?6, ?7, datetime('now'))",
+            trx.execute(
+                "INSERT INTO assignment_feedback (
+                    suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, 'auto_reject', datetime('now'))",
                 rusqlite::params![
-                    run_id,
+                    suggestion_id,
                     session_id,
                     app_id,
-                    suggestion.project_id,
-                    suggestion_id,
-                    suggestion.confidence,
-                    suggestion.evidence_count
+                    to_project_id,
+                    from_project_id
                 ],
             )
             .map_err(|e| e.to_string())?;
+            increment_feedback_counter(&trx);
 
-            tx.execute(
-                "UPDATE assignment_suggestions SET status = 'accepted' WHERE id = ?1",
-                rusqlite::params![suggestion_id],
-            )
-            .map_err(|e| e.to_string())?;
-
-            tx.execute(
-                "INSERT INTO assignment_feedback (
-                    suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
-                 ) VALUES (?1, ?2, ?3, NULL, ?4, 'auto_accept', datetime('now'))",
-                rusqlite::params![suggestion_id, session_id, app_id, suggestion.project_id],
-            )
-            .map_err(|e| e.to_string())?;
-
-            result.assigned += 1;
-        }
-        tx.commit().map_err(|e| e.to_string())?;
-        Ok(())
-    })();
-
-    if let Err(err) = run_work {
-        conn.execute(
-            "UPDATE assignment_auto_runs
-             SET finished_at = datetime('now'),
-                 sessions_scanned = ?2,
-                 sessions_suggested = ?3,
-                 sessions_assigned = ?4,
-                 error = ?5
-             WHERE id = ?1",
-            rusqlite::params![
-                run_id,
-                result.scanned,
-                result.suggested,
-                result.assigned,
-                err
-            ],
-        )
-        .map_err(|e| e.to_string())?;
-        return Err("Auto-safe assignment failed".to_string());
-    }
-
-    conn.execute(
-        "UPDATE assignment_auto_runs
-         SET finished_at = datetime('now'),
-             sessions_scanned = ?2,
-             sessions_suggested = ?3,
-             sessions_assigned = ?4
-         WHERE id = ?1",
-        rusqlite::params![run_id, result.scanned, result.suggested, result.assigned],
-    )
-    .map_err(|e| e.to_string())?;
-
-    Ok(result)
-}
-
-#[command]
-pub async fn rollback_last_auto_safe_run(app: AppHandle) -> Result<AutoSafeRollbackResult, String> {
-    let mut conn = db::get_connection(&app)?;
-
-    let run_id = conn
-        .query_row(
-            "SELECT id
-             FROM assignment_auto_runs
-             WHERE sessions_assigned > 0 AND rolled_back_at IS NULL
-             ORDER BY id DESC
-             LIMIT 1",
-            [],
-            |row| row.get::<_, i64>(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "No rollbackable auto-safe run found".to_string())?;
-
-    let mut reverted = 0_i64;
-    let mut skipped = 0_i64;
-
-    let trx = conn.transaction().map_err(|e| e.to_string())?;
-
-    let item_rows: Vec<_> = {
-        let mut item_stmt = trx
-            .prepare(
-                "SELECT session_id, app_id, from_project_id, to_project_id, suggestion_id
-                 FROM assignment_auto_run_items
-                 WHERE run_id = ?1
-                 ORDER BY id DESC",
-            )
-            .map_err(|e| e.to_string())?;
-        let res: Vec<_> = item_stmt
-            .query_map(rusqlite::params![run_id], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, Option<i64>>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, Option<i64>>(4)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| e.to_string())?;
-        res
-    };
-
-    for row in item_rows {
-        let (session_id, app_id, from_project_id, to_project_id, suggestion_id) = row;
-
-        let updated = trx
-            .execute(
-                "UPDATE sessions
-                 SET project_id = ?1
-                 WHERE id = ?2 AND project_id = ?3",
-                rusqlite::params![from_project_id, session_id, to_project_id],
-            )
-            .map_err(|e| e.to_string())?;
-
-        if updated == 0 {
-            skipped += 1;
-            continue;
-        }
-
-        let session_time = trx
-            .query_row(
-                "SELECT date, start_time, end_time FROM sessions WHERE id = ?1",
-                rusqlite::params![session_id],
-                |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                },
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-
-        if let Some((date, start_time, end_time)) = session_time {
-            trx.execute(
-                "UPDATE file_activities
-                 SET project_id = ?1
-                 WHERE app_id = ?2
-                   AND date = ?3
-                   AND last_seen > ?4
-                   AND first_seen < ?5",
-                rusqlite::params![from_project_id, app_id, date, start_time, end_time],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-
-        if let Some(suggestion_id) = suggestion_id {
-            trx.execute(
-                "UPDATE assignment_suggestions SET status = 'rejected' WHERE id = ?1",
-                rusqlite::params![suggestion_id],
-            )
-            .map_err(|e| e.to_string())?;
+            reverted += 1;
         }
 
         trx.execute(
-            "INSERT INTO assignment_feedback (
-                suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, 'auto_reject', datetime('now'))",
-            rusqlite::params![
-                suggestion_id,
-                session_id,
-                app_id,
-                to_project_id,
-                from_project_id
-            ],
+            "UPDATE assignment_auto_runs
+             SET rolled_back_at = datetime('now'),
+                 rollback_reverted = ?2,
+                 rollback_skipped = ?3
+             WHERE id = ?1",
+            rusqlite::params![run_id, reverted, skipped],
         )
         .map_err(|e| e.to_string())?;
-        increment_feedback_counter(&trx);
 
-        reverted += 1;
-    }
+        trx.commit().map_err(|e| e.to_string())?;
 
-    trx.execute(
-        "UPDATE assignment_auto_runs
-         SET rolled_back_at = datetime('now'),
-             rollback_reverted = ?2,
-             rollback_skipped = ?3
-         WHERE id = ?1",
-        rusqlite::params![run_id, reverted, skipped],
-    )
-    .map_err(|e| e.to_string())?;
-
-    trx.commit().map_err(|e| e.to_string())?;
-
-    Ok(AutoSafeRollbackResult {
-        run_id,
-        reverted,
-        skipped,
+        Ok(AutoSafeRollbackResult {
+            run_id,
+            reverted,
+            skipped,
+        })
     })
+    .await
 }
 
 /// Layer 2: Deterministic assignment based on historical consistency.
@@ -2030,143 +2061,140 @@ pub async fn apply_deterministic_assignment(
     app: AppHandle,
     min_history: Option<i64>,
 ) -> Result<DeterministicResult, String> {
-    let mut conn = db::get_connection(&app)?;
-    let min_sessions = min_history.unwrap_or(5).max(1);
+    run_db_blocking(app, move |conn| {
+        let min_sessions = min_history.unwrap_or(5).max(1);
 
-    // Find apps where ALL assigned sessions (duration > 10s) map to exactly one project
-    let app_rules: Vec<(i64, i64)> = {
-        let mut stmt = conn
-            .prepare(
-                "SELECT app_id, project_id
-                 FROM (
-                     SELECT app_id, project_id, COUNT(*) as cnt,
-                            COUNT(DISTINCT project_id) as distinct_projects
-                     FROM sessions
-                     WHERE project_id IS NOT NULL AND duration_seconds > 10
-                     GROUP BY app_id
-                     HAVING distinct_projects = 1 AND cnt >= ?1
-                 )",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![min_sessions], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("Failed to read deterministic app rule row: {}", e))?
-    };
-
-    let apps_with_rules = app_rules.len() as i64;
-    let mut sessions_assigned: i64 = 0;
-    let mut sessions_skipped: i64 = 0;
-
-    if app_rules.is_empty() {
-        return Ok(DeterministicResult {
-            apps_with_rules: 0,
-            sessions_assigned: 0,
-            sessions_skipped: 0,
-        });
-    }
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-
-    for (app_id, project_id) in &app_rules {
-        // Verify the target project still exists and is not excluded/frozen
-        let project_valid: bool = tx
-            .query_row(
-                "SELECT COUNT(*) > 0
-                 FROM projects
-                 WHERE id = ?1
-                   AND excluded_at IS NULL
-                   AND frozen_at IS NULL",
-                rusqlite::params![project_id],
-                |row| row.get(0),
-            )
-            .unwrap_or(false);
-
-        if !project_valid {
-            continue;
-        }
-
-        // Get unassigned sessions for this app
-        let session_ids: Vec<(i64, String, String, String)> = {
-            let mut stmt = tx
+        let app_rules: Vec<(i64, i64)> = {
+            let mut stmt = conn
                 .prepare(
-                    "SELECT id, date, start_time, end_time
-                     FROM sessions
-                     WHERE app_id = ?1 AND project_id IS NULL AND duration_seconds > 10",
+                    "SELECT app_id, project_id
+                     FROM (
+                         SELECT app_id, project_id, COUNT(*) as cnt,
+                                COUNT(DISTINCT project_id) as distinct_projects
+                         FROM sessions
+                         WHERE project_id IS NOT NULL AND duration_seconds > 10
+                         GROUP BY app_id
+                         HAVING distinct_projects = 1 AND cnt >= ?1
+                     )",
                 )
                 .map_err(|e| e.to_string())?;
             let rows = stmt
-                .query_map(rusqlite::params![app_id], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                        row.get::<_, String>(3)?,
-                    ))
+                .query_map(rusqlite::params![min_sessions], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
                 })
                 .map_err(|e| e.to_string())?;
             rows.collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Failed to read deterministic session row: {}", e))?
+                .map_err(|e| format!("Failed to read deterministic app rule row: {}", e))?
         };
 
-        for (session_id, date, start_time, end_time) in &session_ids {
-            let updated = tx
-                .execute(
-                    "UPDATE sessions SET project_id = ?1 WHERE id = ?2 AND project_id IS NULL",
-                    rusqlite::params![project_id, session_id],
-                )
-                .map_err(|e| e.to_string())?;
+        let apps_with_rules = app_rules.len() as i64;
+        let mut sessions_assigned: i64 = 0;
+        let mut sessions_skipped: i64 = 0;
 
-            if updated == 0 {
-                sessions_skipped += 1;
+        if app_rules.is_empty() {
+            return Ok(DeterministicResult {
+                apps_with_rules: 0,
+                sessions_assigned: 0,
+                sessions_skipped: 0,
+            });
+        }
+
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        for (app_id, project_id) in &app_rules {
+            let project_valid: bool = tx
+                .query_row(
+                    "SELECT COUNT(*) > 0
+                     FROM projects
+                     WHERE id = ?1
+                       AND excluded_at IS NULL
+                       AND frozen_at IS NULL",
+                    rusqlite::params![project_id],
+                    |row| row.get(0),
+                )
+                .unwrap_or(false);
+
+            if !project_valid {
                 continue;
             }
 
-            // Sync file_activities for the same time range
-            tx.execute(
-                "UPDATE file_activities
-                 SET project_id = ?1
-                 WHERE app_id = ?2
-                   AND date = ?3
-                   AND last_seen > ?4
-                   AND first_seen < ?5
-                   AND project_id IS NULL",
-                rusqlite::params![project_id, app_id, date, start_time, end_time],
-            )
-            .map_err(|e| e.to_string())?;
+            let session_ids: Vec<(i64, String, String, String)> = {
+                let mut stmt = tx
+                    .prepare(
+                        "SELECT id, date, start_time, end_time
+                         FROM sessions
+                         WHERE app_id = ?1 AND project_id IS NULL AND duration_seconds > 10",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map(rusqlite::params![app_id], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, String>(3)?,
+                        ))
+                    })
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| format!("Failed to read deterministic session row: {}", e))?
+            };
 
-            // Record feedback for ML training
-            tx.execute(
-                "INSERT INTO assignment_feedback (
-                    suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
-                 ) VALUES (NULL, ?1, ?2, NULL, ?3, 'deterministic_rule', datetime('now'))",
-                rusqlite::params![session_id, app_id, project_id],
-            )
-            .map_err(|e| e.to_string())?;
+            for (session_id, date, start_time, end_time) in &session_ids {
+                let updated = tx
+                    .execute(
+                        "UPDATE sessions SET project_id = ?1 WHERE id = ?2 AND project_id IS NULL",
+                        rusqlite::params![project_id, session_id],
+                    )
+                    .map_err(|e| e.to_string())?;
 
-            sessions_assigned += 1;
+                if updated == 0 {
+                    sessions_skipped += 1;
+                    continue;
+                }
+
+                tx.execute(
+                    "UPDATE file_activities
+                     SET project_id = ?1
+                     WHERE app_id = ?2
+                       AND date = ?3
+                       AND last_seen > ?4
+                       AND first_seen < ?5
+                       AND project_id IS NULL",
+                    rusqlite::params![project_id, app_id, date, start_time, end_time],
+                )
+                .map_err(|e| e.to_string())?;
+
+                tx.execute(
+                    "INSERT INTO assignment_feedback (
+                        suggestion_id, session_id, app_id, from_project_id, to_project_id, source, created_at
+                     ) VALUES (NULL, ?1, ?2, NULL, ?3, 'deterministic_rule', datetime('now'))",
+                    rusqlite::params![session_id, app_id, project_id],
+                )
+                .map_err(|e| e.to_string())?;
+
+                sessions_assigned += 1;
+            }
         }
-    }
 
-    tx.commit().map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
 
-    if sessions_assigned > 0 {
-        log::info!(
-            "Deterministic assignment: {} apps with rules, {} sessions assigned, {} skipped",
+        if sessions_assigned > 0 {
+            log::info!(
+                "Deterministic assignment: {} apps with rules, {} sessions assigned, {} skipped",
+                apps_with_rules,
+                sessions_assigned,
+                sessions_skipped
+            );
+        }
+
+        Ok(DeterministicResult {
             apps_with_rules,
             sessions_assigned,
-            sessions_skipped
-        );
-    }
-
-    Ok(DeterministicResult {
-        apps_with_rules,
-        sessions_assigned,
-        sessions_skipped,
+            sessions_skipped,
+        })
     })
+    .await
 }
 
 /// Automatically run auto-safe assignment if mode is set to auto_safe.
@@ -2177,11 +2205,11 @@ pub async fn auto_run_if_needed(
     app: AppHandle,
     min_duration: Option<i64>,
 ) -> Result<Option<AutoSafeRunResult>, String> {
-    let mode = {
-        let conn = db::get_connection(&app)?;
-        let state = load_state_map(&conn)?;
-        parse_state_opt_string(&state, "mode").unwrap_or_else(|| DEFAULT_MODE.to_string())
-    };
+    let mode = run_db_blocking(app.clone(), move |conn| {
+        let state = load_state_map(conn)?;
+        Ok(parse_state_opt_string(&state, "mode").unwrap_or_else(|| DEFAULT_MODE.to_string()))
+    })
+    .await?;
 
     if mode != "auto_safe" {
         return Ok(None);
@@ -2224,181 +2252,179 @@ pub async fn get_session_score_breakdown(
     app: AppHandle,
     session_id: i64,
 ) -> Result<ScoreBreakdown, String> {
-    let conn = db::get_connection(&app)?;
-    let context = build_session_context(&conn, session_id)?;
+    run_db_blocking(app, move |conn| {
+        let context = build_session_context(conn, session_id)?;
 
-    let manual_override_pid = check_manual_override(&conn, session_id);
+        let manual_override_pid = check_manual_override(conn, session_id);
 
-    let Some(context) = context else {
-        return Ok(ScoreBreakdown {
-            candidates: vec![],
-            final_suggestion: None,
-            has_manual_override: manual_override_pid.is_some(),
-            manual_override_project_id: manual_override_pid,
-        });
-    };
+        let Some(context) = context else {
+            return Ok(ScoreBreakdown {
+                candidates: vec![],
+                final_suggestion: None,
+                has_manual_override: manual_override_pid.is_some(),
+                manual_override_project_id: manual_override_pid,
+            });
+        };
 
-    // Compute per-layer scores for all candidates
-    let mut layer0: HashMap<i64, f64> = HashMap::new();
-    let mut layer1: HashMap<i64, f64> = HashMap::new();
-    let mut layer2: HashMap<i64, f64> = HashMap::new();
-    let mut layer3: HashMap<i64, f64> = HashMap::new();
-    let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
+        let mut layer0: HashMap<i64, f64> = HashMap::new();
+        let mut layer1: HashMap<i64, f64> = HashMap::new();
+        let mut layer2: HashMap<i64, f64> = HashMap::new();
+        let mut layer3: HashMap<i64, f64> = HashMap::new();
+        let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
 
-    // Layer 0: file-activity evidence
-    let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
-    for &pid in &context.file_project_ids {
-        if is_project_active_cached(&conn, &mut active_project_cache, pid) {
-            *layer0.entry(pid).or_insert(0.0) += 0.80;
-            *candidate_evidence.entry(pid).or_insert(0) += 2;
-        }
-    }
-
-    // Layer 1: app→project
-    {
-        let mut stmt = conn
-            .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
-            .map_err(|e| e.to_string())?;
-        let mut rows = stmt
-            .query(rusqlite::params![context.app_id])
-            .map_err(|e| e.to_string())?;
-        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
-            if !is_project_active_cached(&conn, &mut active_project_cache, pid) {
-                continue;
+        let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
+        for &pid in &context.file_project_ids {
+            if is_project_active_cached(conn, &mut active_project_cache, pid) {
+                *layer0.entry(pid).or_insert(0.0) += 0.80;
+                *candidate_evidence.entry(pid).or_insert(0) += 2;
             }
-            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-            let score = 0.30 * (1.0 + cnt).ln();
-            *layer1.entry(pid).or_insert(0.0) += score;
-            *candidate_evidence.entry(pid).or_insert(0) += 1;
         }
-    }
 
-    // Layer 2: time patterns
-    {
-        let mut stmt = conn
-            .prepare(
-                "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
-            )
-            .map_err(|e| e.to_string())?;
-        let mut rows = stmt
-            .query(rusqlite::params![
-                context.app_id,
-                context.hour_bucket,
-                context.weekday
-            ])
-            .map_err(|e| e.to_string())?;
-        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
-            if !is_project_active_cached(&conn, &mut active_project_cache, pid) {
-                continue;
-            }
-            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-            let score = 0.10 * (1.0 + cnt).ln();
-            *layer2.entry(pid).or_insert(0.0) += score;
-            *candidate_evidence.entry(pid).or_insert(0) += 1;
-        }
-    }
-
-    // Layer 3: token matching
-    if !context.tokens.is_empty() {
-        let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
-        for chunk in context.tokens.chunks(200) {
-            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let sql = format!(
-                "SELECT project_id, SUM(cnt), COUNT(cnt) FROM assignment_model_token WHERE token IN ({}) GROUP BY project_id",
-                placeholders
-            );
-            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-            let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
+        {
+            let mut stmt = conn
+                .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
+                .map_err(|e| e.to_string())?;
             let mut rows = stmt
-                .query(rusqlite::params_from_iter(params))
+                .query(rusqlite::params![context.app_id])
                 .map_err(|e| e.to_string())?;
             while let Some(row) = rows.next().map_err(|e| e.to_string())? {
                 let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
-                let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-                let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
-                let entry = token_stats.entry(pid).or_insert((0.0, 0.0));
-                entry.0 += sum_cnt;
-                entry.1 += matches_cnt;
+                if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                    continue;
+                }
+                let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                let score = 0.30 * (1.0 + cnt).ln();
+                *layer1.entry(pid).or_insert(0.0) += score;
+                *candidate_evidence.entry(pid).or_insert(0) += 1;
             }
         }
-        let token_total = context.tokens.len() as f64;
-        for (pid, (sum_cnt, matches_cnt)) in token_stats {
-            if !is_project_active_cached(&conn, &mut active_project_cache, pid) {
-                continue;
+
+        {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
+                )
+                .map_err(|e| e.to_string())?;
+            let mut rows = stmt
+                .query(rusqlite::params![
+                    context.app_id,
+                    context.hour_bucket,
+                    context.weekday
+                ])
+                .map_err(|e| e.to_string())?;
+            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+                if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                    continue;
+                }
+                let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                let score = 0.10 * (1.0 + cnt).ln();
+                *layer2.entry(pid).or_insert(0.0) += score;
+                *candidate_evidence.entry(pid).or_insert(0) += 1;
             }
-            let avg_log =
-                (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
-            let score = 0.30 * avg_log;
-            *layer3.entry(pid).or_insert(0.0) += score;
-            *candidate_evidence.entry(pid).or_insert(0) += 1;
         }
-    }
 
-    // Collect all candidate project IDs
-    let mut all_pids: HashSet<i64> = HashSet::new();
-    all_pids.extend(layer0.keys());
-    all_pids.extend(layer1.keys());
-    all_pids.extend(layer2.keys());
-    all_pids.extend(layer3.keys());
+        if !context.tokens.is_empty() {
+            let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
+            for chunk in context.tokens.chunks(200) {
+                let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                let sql = format!(
+                    "SELECT project_id, SUM(cnt), COUNT(cnt) FROM assignment_model_token WHERE token IN ({}) GROUP BY project_id",
+                    placeholders
+                );
+                let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+                let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
+                let mut rows = stmt
+                    .query(rusqlite::params_from_iter(params))
+                    .map_err(|e| e.to_string())?;
+                while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                    let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+                    let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                    let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
+                    let entry = token_stats.entry(pid).or_insert((0.0, 0.0));
+                    entry.0 += sum_cnt;
+                    entry.1 += matches_cnt;
+                }
+            }
+            let token_total = context.tokens.len() as f64;
+            for (pid, (sum_cnt, matches_cnt)) in token_stats {
+                if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                    continue;
+                }
+                let avg_log =
+                    (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+                let score = 0.30 * avg_log;
+                *layer3.entry(pid).or_insert(0.0) += score;
+                *candidate_evidence.entry(pid).or_insert(0) += 1;
+            }
+        }
 
-    let mut candidates: Vec<CandidateScore> = Vec::new();
-    for pid in all_pids {
-        let l0 = *layer0.get(&pid).unwrap_or(&0.0);
-        let l1 = *layer1.get(&pid).unwrap_or(&0.0);
-        let l2 = *layer2.get(&pid).unwrap_or(&0.0);
-        let l3 = *layer3.get(&pid).unwrap_or(&0.0);
-        let total = l0 + l1 + l2 + l3;
-        let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
+        let mut all_pids: HashSet<i64> = HashSet::new();
+        all_pids.extend(layer0.keys());
+        all_pids.extend(layer1.keys());
+        all_pids.extend(layer2.keys());
+        all_pids.extend(layer3.keys());
 
-        let project_name: String = conn
-            .query_row(
-                "SELECT name FROM projects WHERE id = ?1",
-                rusqlite::params![pid],
-                |row| row.get(0),
-            )
-            .unwrap_or_else(|_| format!("#{}", pid));
+        let mut candidates: Vec<CandidateScore> = Vec::new();
+        for pid in all_pids {
+            let l0 = *layer0.get(&pid).unwrap_or(&0.0);
+            let l1 = *layer1.get(&pid).unwrap_or(&0.0);
+            let l2 = *layer2.get(&pid).unwrap_or(&0.0);
+            let l3 = *layer3.get(&pid).unwrap_or(&0.0);
+            let total = l0 + l1 + l2 + l3;
+            let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
 
-        candidates.push(CandidateScore {
-            project_id: pid,
-            project_name,
-            layer0_file_score: (l0 * 1000.0).round() / 1000.0,
-            layer1_app_score: (l1 * 1000.0).round() / 1000.0,
-            layer2_time_score: (l2 * 1000.0).round() / 1000.0,
-            layer3_token_score: (l3 * 1000.0).round() / 1000.0,
-            total_score: (total * 1000.0).round() / 1000.0,
-            evidence_count: evidence,
+            let project_name: String = conn
+                .query_row(
+                    "SELECT name FROM projects WHERE id = ?1",
+                    rusqlite::params![pid],
+                    |row| row.get(0),
+                )
+                .unwrap_or_else(|_| format!("#{}", pid));
+
+            candidates.push(CandidateScore {
+                project_id: pid,
+                project_name,
+                layer0_file_score: (l0 * 1000.0).round() / 1000.0,
+                layer1_app_score: (l1 * 1000.0).round() / 1000.0,
+                layer2_time_score: (l2 * 1000.0).round() / 1000.0,
+                layer3_token_score: (l3 * 1000.0).round() / 1000.0,
+                total_score: (total * 1000.0).round() / 1000.0,
+                evidence_count: evidence,
+            });
+        }
+
+        candidates.sort_by(|a, b| {
+            b.total_score
+                .partial_cmp(&a.total_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.project_id.cmp(&b.project_id))
         });
-    }
 
-    candidates.sort_by(|a, b| {
-        b.total_score
-            .partial_cmp(&a.total_score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| a.project_id.cmp(&b.project_id))
-    });
+        let final_suggestion = compute_raw_suggestion(conn, &context)?;
 
-    let final_suggestion = compute_raw_suggestion(&conn, &context)?;
-
-    Ok(ScoreBreakdown {
-        candidates,
-        final_suggestion,
-        has_manual_override: manual_override_pid.is_some(),
-        manual_override_project_id: manual_override_pid,
+        Ok(ScoreBreakdown {
+            candidates,
+            final_suggestion,
+            has_manual_override: manual_override_pid.is_some(),
+            manual_override_project_id: manual_override_pid,
+        })
     })
+    .await
 }
 
 /// Get the current feedback weight setting.
 #[command]
 pub async fn get_feedback_weight(app: AppHandle) -> Result<f64, String> {
-    let conn = db::get_connection(&app)?;
-    let state = load_state_map(&conn)?;
-    Ok(parse_state_f64(
-        &state,
-        "feedback_weight",
-        DEFAULT_FEEDBACK_WEIGHT,
-    ))
+    run_db_blocking(app, move |conn| {
+        let state = load_state_map(conn)?;
+        Ok(parse_state_f64(
+            &state,
+            "feedback_weight",
+            DEFAULT_FEEDBACK_WEIGHT,
+        ))
+    })
+    .await
 }
 
 /// Set the feedback weight (how much manual corrections influence the model).
@@ -2407,6 +2433,8 @@ pub async fn set_feedback_weight(app: AppHandle, weight: f64) -> Result<(), Stri
     if !weight.is_finite() || !(1.0..=50.0).contains(&weight) {
         return Err("Feedback weight must be between 1.0 and 50.0".to_string());
     }
-    let conn = db::get_connection(&app)?;
-    upsert_state(&conn, "feedback_weight", &format!("{:.1}", weight))
+    run_db_blocking(app, move |conn| {
+        upsert_state(conn, "feedback_weight", &format!("{:.1}", weight))
+    })
+    .await
 }
