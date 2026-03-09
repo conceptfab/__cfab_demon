@@ -102,6 +102,10 @@ export const SessionRow = memo(function SessionRow({
 }: SessionRowProps) {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+  const splitBadgeTitle = t(
+    'sessions.split_badge',
+    'Split session — cannot be split again',
+  );
   const isSuggested =
     s.project_name === null &&
     s.suggested_project_id != null &&
@@ -125,10 +129,12 @@ export const SessionRow = memo(function SessionRow({
                 <CircleDollarSign className="h-3 w-3 text-emerald-400/80 fill-emerald-500/5 shrink-0" />
               )}
               {typeof s.split_source_session_id === 'number' && (
-                <GitBranch
-                  className="h-3 w-3 text-sky-400/60 shrink-0 ml-0.5"
-                  title={t('sessions.split_badge', 'Split session — cannot be split again')}
-                />
+                <span className="inline-flex shrink-0 ml-0.5" title={splitBadgeTitle}>
+                  <GitBranch
+                    aria-hidden="true"
+                    className="h-3 w-3 text-sky-400/60 shrink-0"
+                  />
+                </span>
               )}
               {isSplittable && onSplitClick && (
                 <button
@@ -362,10 +368,12 @@ export const SessionRow = memo(function SessionRow({
             <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
           )}
           {typeof s.split_source_session_id === 'number' && (
-            <GitBranch
-              className="h-3.5 w-3.5 text-sky-400/60 shrink-0"
-              title={t('sessions.split_badge', 'Split session — cannot be split again')}
-            />
+            <span className="inline-flex shrink-0" title={splitBadgeTitle}>
+              <GitBranch
+                aria-hidden="true"
+                className="h-3.5 w-3.5 text-sky-400/60 shrink-0"
+              />
+            </span>
           )}
           {isSplittable && onSplitClick && (
             <button
