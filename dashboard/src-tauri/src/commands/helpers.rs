@@ -1,8 +1,11 @@
 use std::process::Command;
 use std::sync::atomic::AtomicU64;
+use tauri::AppHandle;
 
 #[path = "../../../../shared/timeflow_paths.rs"]
 mod timeflow_paths;
+
+use crate::db;
 
 pub(crate) static LAST_PRUNE_EPOCH_SECS: AtomicU64 = AtomicU64::new(0);
 pub(crate) const PRUNE_CACHE_TTL_SECS: u64 = 300; // 5 minutes
@@ -49,4 +52,18 @@ pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
     let appdata_root = std::path::PathBuf::from(&appdata);
     timeflow_paths::ensure_timeflow_base_dir(&appdata_root).map_err(|e| e.to_string())
+}
+
+pub(crate) async fn run_db_blocking<T, F>(app: AppHandle, operation: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&mut rusqlite::Connection) -> Result<T, String> + Send + 'static,
+{
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut conn = db::get_connection(&app)?;
+        operation(&mut conn)
+    })
+    .await
+    .map_err(|e| format!("Blocking DB task join error: {}", e))?
 }
