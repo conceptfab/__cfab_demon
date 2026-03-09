@@ -12,8 +12,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 TODO ??
 
 
-- czyszczenie danych 
-<!-- - usun definitwynie logikę/funkcje kciuków - jesli user recznie nie przypisze sesji do projektu to jest kciuk w góre, jeśli to zrobi to jest kara - kciuk w dół -->
+- refactor duży plików
 
 
 
