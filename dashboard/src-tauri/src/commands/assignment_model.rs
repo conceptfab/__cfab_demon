@@ -1358,7 +1358,8 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
         // project and penalize the wrong one in assignment_model_app.
         {
             let mut fb_stmt = tx.prepare(
-                "SELECT app_id, from_project_id, to_project_id, COUNT(*) as cnt
+                "SELECT app_id, from_project_id, to_project_id,
+                        SUM(COALESCE(weight, 1.0)) as total_weight
                  FROM assignment_feedback
                  WHERE source IN (
                    'manual_session_assign',
@@ -1368,7 +1369,12 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
                    'bulk_unassign',
                    'manual_app_assign',
                    'ai_suggestion_reject',
-                   'ai_suggestion_accept'
+                   'ai_suggestion_accept',
+                   'manual_session_split_part_1',
+                   'manual_session_split_part_2',
+                   'manual_session_split_part_3',
+                   'manual_session_split_part_4',
+                   'manual_session_split_part_5'
                   )
                     AND to_project_id IS NOT NULL
                     AND app_id IS NOT NULL
@@ -1384,9 +1390,9 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
                 let app_id: i64 = row.get(0)?;
                 let from_project_id: Option<i64> = row.get(1)?;
                 let to_project_id: i64 = row.get(2)?;
-                let cnt: i64 = row.get(3)?;
+                let total_weight: f64 = row.get(3)?;
 
-                let boost = (cnt as f64 * feedback_weight).round() as i64;
+                let boost = (total_weight * feedback_weight).round().max(1.0) as i64;
 
                 // Boost the correct project (user moved the session here)
                 tx.execute(
@@ -1414,14 +1420,19 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
         // based on manual assignment feedback.
         {
             let mut fb_stmt = tx.prepare(
-                "SELECT app_id, to_project_id, COUNT(*) as cnt
+                "SELECT app_id, to_project_id, SUM(COALESCE(weight, 1.0)) as total_weight
                  FROM assignment_feedback
                  WHERE source IN (
                    'manual_session_assign',
                    'manual_session_change',
                    'manual_project_card_change',
                    'manual_app_assign',
-                   'ai_suggestion_accept'
+                   'ai_suggestion_accept',
+                   'manual_session_split_part_1',
+                   'manual_session_split_part_2',
+                   'manual_session_split_part_3',
+                   'manual_session_split_part_4',
+                   'manual_session_split_part_5'
                   )
                     AND to_project_id IS NOT NULL
                     AND app_id IS NOT NULL
@@ -1436,8 +1447,8 @@ pub fn retrain_model_sync(conn: &rusqlite::Connection) -> Result<i64, String> {
             while let Some(row) = fb_rows.next()? {
                 let app_id: i64 = row.get(0)?;
                 let to_project_id: i64 = row.get(1)?;
-                let cnt: i64 = row.get(2)?;
-                let boost = (cnt as f64 * feedback_weight).round() as i64;
+                let total_weight: f64 = row.get(2)?;
+                let boost = (total_weight * feedback_weight).round().max(1.0) as i64;
                 tx.execute(
                     "INSERT INTO assignment_model_time (app_id, hour_bucket, weekday, project_id, cnt)
                      SELECT s.app_id,
@@ -2246,6 +2257,168 @@ pub struct ScoreBreakdown {
     pub manual_override_project_id: Option<i64>,
 }
 
+pub(crate) fn get_session_score_breakdown_sync(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+) -> Result<ScoreBreakdown, String> {
+    let context = build_session_context(conn, session_id)?;
+
+    let manual_override_pid = check_manual_override(conn, session_id);
+
+    let Some(context) = context else {
+        return Ok(ScoreBreakdown {
+            candidates: vec![],
+            final_suggestion: None,
+            has_manual_override: manual_override_pid.is_some(),
+            manual_override_project_id: manual_override_pid,
+        });
+    };
+
+    let mut layer0: HashMap<i64, f64> = HashMap::new();
+    let mut layer1: HashMap<i64, f64> = HashMap::new();
+    let mut layer2: HashMap<i64, f64> = HashMap::new();
+    let mut layer3: HashMap<i64, f64> = HashMap::new();
+    let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
+
+    let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
+    for &pid in &context.file_project_ids {
+        if is_project_active_cached(conn, &mut active_project_cache, pid) {
+            *layer0.entry(pid).or_insert(0.0) += 0.80;
+            *candidate_evidence.entry(pid).or_insert(0) += 2;
+        }
+    }
+
+    {
+        let mut stmt = conn
+            .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query(rusqlite::params![context.app_id])
+            .map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+            if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                continue;
+            }
+            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+            let score = 0.30 * (1.0 + cnt).ln();
+            *layer1.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
+            )
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query(rusqlite::params![
+                context.app_id,
+                context.hour_bucket,
+                context.weekday
+            ])
+            .map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+            if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                continue;
+            }
+            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+            let score = 0.10 * (1.0 + cnt).ln();
+            *layer2.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    if !context.tokens.is_empty() {
+        let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
+        for chunk in context.tokens.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT project_id, SUM(cnt), COUNT(cnt) FROM assignment_model_token WHERE token IN ({}) GROUP BY project_id",
+                placeholders
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
+            let mut rows = stmt
+                .query(rusqlite::params_from_iter(params))
+                .map_err(|e| e.to_string())?;
+            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+                let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
+                let entry = token_stats.entry(pid).or_insert((0.0, 0.0));
+                entry.0 += sum_cnt;
+                entry.1 += matches_cnt;
+            }
+        }
+        let token_total = context.tokens.len() as f64;
+        for (pid, (sum_cnt, matches_cnt)) in token_stats {
+            if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                continue;
+            }
+            let avg_log =
+                (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+            let score = 0.30 * avg_log;
+            *layer3.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    let mut all_pids: HashSet<i64> = HashSet::new();
+    all_pids.extend(layer0.keys());
+    all_pids.extend(layer1.keys());
+    all_pids.extend(layer2.keys());
+    all_pids.extend(layer3.keys());
+
+    let mut candidates: Vec<CandidateScore> = Vec::new();
+    for pid in all_pids {
+        let l0 = *layer0.get(&pid).unwrap_or(&0.0);
+        let l1 = *layer1.get(&pid).unwrap_or(&0.0);
+        let l2 = *layer2.get(&pid).unwrap_or(&0.0);
+        let l3 = *layer3.get(&pid).unwrap_or(&0.0);
+        let total = l0 + l1 + l2 + l3;
+        let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
+
+        let project_name: String = conn
+            .query_row(
+                "SELECT name FROM projects WHERE id = ?1",
+                rusqlite::params![pid],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| format!("#{}", pid));
+
+        candidates.push(CandidateScore {
+            project_id: pid,
+            project_name,
+            layer0_file_score: (l0 * 1000.0).round() / 1000.0,
+            layer1_app_score: (l1 * 1000.0).round() / 1000.0,
+            layer2_time_score: (l2 * 1000.0).round() / 1000.0,
+            layer3_token_score: (l3 * 1000.0).round() / 1000.0,
+            total_score: (total * 1000.0).round() / 1000.0,
+            evidence_count: evidence,
+        });
+    }
+
+    candidates.sort_by(|a, b| {
+        b.total_score
+            .partial_cmp(&a.total_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.project_id.cmp(&b.project_id))
+    });
+
+    let final_suggestion = compute_raw_suggestion(conn, &context)?;
+
+    Ok(ScoreBreakdown {
+        candidates,
+        final_suggestion,
+        has_manual_override: manual_override_pid.is_some(),
+        manual_override_project_id: manual_override_pid,
+    })
+}
+
 /// Compute and return the full per-layer score breakdown for a session.
 #[command]
 pub async fn get_session_score_breakdown(
@@ -2253,162 +2426,7 @@ pub async fn get_session_score_breakdown(
     session_id: i64,
 ) -> Result<ScoreBreakdown, String> {
     run_db_blocking(app, move |conn| {
-        let context = build_session_context(conn, session_id)?;
-
-        let manual_override_pid = check_manual_override(conn, session_id);
-
-        let Some(context) = context else {
-            return Ok(ScoreBreakdown {
-                candidates: vec![],
-                final_suggestion: None,
-                has_manual_override: manual_override_pid.is_some(),
-                manual_override_project_id: manual_override_pid,
-            });
-        };
-
-        let mut layer0: HashMap<i64, f64> = HashMap::new();
-        let mut layer1: HashMap<i64, f64> = HashMap::new();
-        let mut layer2: HashMap<i64, f64> = HashMap::new();
-        let mut layer3: HashMap<i64, f64> = HashMap::new();
-        let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
-
-        let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
-        for &pid in &context.file_project_ids {
-            if is_project_active_cached(conn, &mut active_project_cache, pid) {
-                *layer0.entry(pid).or_insert(0.0) += 0.80;
-                *candidate_evidence.entry(pid).or_insert(0) += 2;
-            }
-        }
-
-        {
-            let mut stmt = conn
-                .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
-                .map_err(|e| e.to_string())?;
-            let mut rows = stmt
-                .query(rusqlite::params![context.app_id])
-                .map_err(|e| e.to_string())?;
-            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
-                if !is_project_active_cached(conn, &mut active_project_cache, pid) {
-                    continue;
-                }
-                let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-                let score = 0.30 * (1.0 + cnt).ln();
-                *layer1.entry(pid).or_insert(0.0) += score;
-                *candidate_evidence.entry(pid).or_insert(0) += 1;
-            }
-        }
-
-        {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
-                )
-                .map_err(|e| e.to_string())?;
-            let mut rows = stmt
-                .query(rusqlite::params![
-                    context.app_id,
-                    context.hour_bucket,
-                    context.weekday
-                ])
-                .map_err(|e| e.to_string())?;
-            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
-                if !is_project_active_cached(conn, &mut active_project_cache, pid) {
-                    continue;
-                }
-                let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-                let score = 0.10 * (1.0 + cnt).ln();
-                *layer2.entry(pid).or_insert(0.0) += score;
-                *candidate_evidence.entry(pid).or_insert(0) += 1;
-            }
-        }
-
-        if !context.tokens.is_empty() {
-            let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
-            for chunk in context.tokens.chunks(200) {
-                let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-                let sql = format!(
-                    "SELECT project_id, SUM(cnt), COUNT(cnt) FROM assignment_model_token WHERE token IN ({}) GROUP BY project_id",
-                    placeholders
-                );
-                let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-                let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
-                let mut rows = stmt
-                    .query(rusqlite::params_from_iter(params))
-                    .map_err(|e| e.to_string())?;
-                while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-                    let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
-                    let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-                    let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
-                    let entry = token_stats.entry(pid).or_insert((0.0, 0.0));
-                    entry.0 += sum_cnt;
-                    entry.1 += matches_cnt;
-                }
-            }
-            let token_total = context.tokens.len() as f64;
-            for (pid, (sum_cnt, matches_cnt)) in token_stats {
-                if !is_project_active_cached(conn, &mut active_project_cache, pid) {
-                    continue;
-                }
-                let avg_log =
-                    (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
-                let score = 0.30 * avg_log;
-                *layer3.entry(pid).or_insert(0.0) += score;
-                *candidate_evidence.entry(pid).or_insert(0) += 1;
-            }
-        }
-
-        let mut all_pids: HashSet<i64> = HashSet::new();
-        all_pids.extend(layer0.keys());
-        all_pids.extend(layer1.keys());
-        all_pids.extend(layer2.keys());
-        all_pids.extend(layer3.keys());
-
-        let mut candidates: Vec<CandidateScore> = Vec::new();
-        for pid in all_pids {
-            let l0 = *layer0.get(&pid).unwrap_or(&0.0);
-            let l1 = *layer1.get(&pid).unwrap_or(&0.0);
-            let l2 = *layer2.get(&pid).unwrap_or(&0.0);
-            let l3 = *layer3.get(&pid).unwrap_or(&0.0);
-            let total = l0 + l1 + l2 + l3;
-            let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
-
-            let project_name: String = conn
-                .query_row(
-                    "SELECT name FROM projects WHERE id = ?1",
-                    rusqlite::params![pid],
-                    |row| row.get(0),
-                )
-                .unwrap_or_else(|_| format!("#{}", pid));
-
-            candidates.push(CandidateScore {
-                project_id: pid,
-                project_name,
-                layer0_file_score: (l0 * 1000.0).round() / 1000.0,
-                layer1_app_score: (l1 * 1000.0).round() / 1000.0,
-                layer2_time_score: (l2 * 1000.0).round() / 1000.0,
-                layer3_token_score: (l3 * 1000.0).round() / 1000.0,
-                total_score: (total * 1000.0).round() / 1000.0,
-                evidence_count: evidence,
-            });
-        }
-
-        candidates.sort_by(|a, b| {
-            b.total_score
-                .partial_cmp(&a.total_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.project_id.cmp(&b.project_id))
-        });
-
-        let final_suggestion = compute_raw_suggestion(conn, &context)?;
-
-        Ok(ScoreBreakdown {
-            candidates,
-            final_suggestion,
-            has_manual_override: manual_override_pid.is_some(),
-            manual_override_project_id: manual_override_pid,
-        })
+        get_session_score_breakdown_sync(conn, session_id)
     })
     .await
 }
@@ -2437,4 +2455,261 @@ pub async fn set_feedback_weight(app: AppHandle, weight: f64) -> Result<(), Stri
         upsert_state(conn, "feedback_weight", &format!("{:.1}", weight))
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Timelike, Utc};
+
+    fn setup_training_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                excluded_at TEXT,
+                frozen_at TEXT
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                project_id INTEGER
+            );
+            CREATE TABLE file_activities (
+                id INTEGER PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                total_seconds INTEGER NOT NULL,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                project_id INTEGER,
+                detected_path TEXT,
+                window_title TEXT,
+                title_history TEXT
+            );
+            CREATE TABLE assignment_feedback (
+                id INTEGER PRIMARY KEY,
+                suggestion_id INTEGER,
+                session_id INTEGER,
+                app_id INTEGER,
+                from_project_id INTEGER,
+                to_project_id INTEGER,
+                source TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 1.0,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE assignment_model_app (
+                app_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                cnt INTEGER NOT NULL DEFAULT 0,
+                last_seen TEXT NOT NULL,
+                PRIMARY KEY (app_id, project_id)
+            );
+            CREATE TABLE assignment_model_time (
+                app_id INTEGER NOT NULL,
+                hour_bucket INTEGER NOT NULL,
+                weekday INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                cnt INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (app_id, hour_bucket, weekday, project_id)
+            );
+            CREATE TABLE assignment_model_token (
+                token TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
+                cnt INTEGER NOT NULL DEFAULT 0,
+                last_seen TEXT NOT NULL,
+                PRIMARY KEY (token, project_id)
+            );
+            CREATE TABLE assignment_model_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );",
+        )
+        .expect("schema");
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at) VALUES
+                (10, 'Alpha', NULL, NULL),
+                (20, 'Beta', NULL, NULL);",
+        )
+        .expect("insert projects");
+        conn
+    }
+
+    fn session_window(days_ago: i64, hour: u32) -> (String, String, String) {
+        let base = (Utc::now() - Duration::days(days_ago))
+            .with_hour(hour)
+            .and_then(|dt| dt.with_minute(0))
+            .and_then(|dt| dt.with_second(0))
+            .and_then(|dt| dt.with_nanosecond(0))
+            .expect("session timestamp");
+        let end = base + Duration::hours(1);
+        (
+            base.to_rfc3339(),
+            end.to_rfc3339(),
+            base.format("%Y-%m-%d").to_string(),
+        )
+    }
+
+    fn insert_training_session(
+        conn: &rusqlite::Connection,
+        session_id: i64,
+        app_id: i64,
+        project_id: i64,
+        start_time: &str,
+        end_time: &str,
+        date: &str,
+        file_name: &str,
+        file_path: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, project_id)
+             VALUES (?1, ?2, ?3, ?4, 3600, ?5)",
+            rusqlite::params![session_id, app_id, start_time, end_time, project_id],
+        )
+        .expect("insert session");
+        conn.execute(
+            "INSERT INTO file_activities (
+                id, app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 3600, ?6, ?7, ?8)",
+            rusqlite::params![
+                session_id,
+                app_id,
+                date,
+                file_name,
+                file_path,
+                start_time,
+                end_time,
+                project_id
+            ],
+        )
+        .expect("insert file activity");
+    }
+
+    #[test]
+    fn retrain_model_uses_weighted_split_feedback() {
+        let conn = setup_training_conn();
+        let (alpha_start, alpha_end, alpha_date) = session_window(2, 10);
+        let (beta_start, beta_end, beta_date) = session_window(1, 10);
+        insert_training_session(
+            &conn,
+            1,
+            1,
+            10,
+            &alpha_start,
+            &alpha_end,
+            &alpha_date,
+            "alpha.rs",
+            "/tmp/alpha.rs",
+        );
+        insert_training_session(
+            &conn,
+            2,
+            1,
+            20,
+            &beta_start,
+            &beta_end,
+            &beta_date,
+            "beta.rs",
+            "/tmp/beta.rs",
+        );
+
+        conn.execute(
+            "INSERT INTO assignment_feedback (
+                id, app_id, from_project_id, to_project_id, source, weight, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))",
+            rusqlite::params![
+                1_i64,
+                1_i64,
+                10_i64,
+                20_i64,
+                "manual_session_split_part_1",
+                0.25_f64
+            ],
+        )
+        .expect("insert weighted feedback");
+
+        retrain_model_sync(&conn).expect("retrain model");
+
+        let app_cnt: i64 = conn
+            .query_row(
+                "SELECT cnt FROM assignment_model_app WHERE app_id = 1 AND project_id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read app model count");
+        let time_cnt: i64 = conn
+            .query_row(
+                "SELECT cnt FROM assignment_model_time WHERE app_id = 1 AND project_id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read time model count");
+
+        assert_eq!(app_cnt, 2);
+        assert_eq!(time_cnt, 2);
+    }
+
+    #[test]
+    fn retrain_model_supports_split_feedback_rows_without_explicit_weight() {
+        let conn = setup_training_conn();
+        let (alpha_start, alpha_end, alpha_date) = session_window(2, 10);
+        let (beta_start, beta_end, beta_date) = session_window(1, 10);
+        insert_training_session(
+            &conn,
+            11,
+            1,
+            10,
+            &alpha_start,
+            &alpha_end,
+            &alpha_date,
+            "alpha.rs",
+            "/tmp/alpha.rs",
+        );
+        insert_training_session(
+            &conn,
+            12,
+            1,
+            20,
+            &beta_start,
+            &beta_end,
+            &beta_date,
+            "beta.rs",
+            "/tmp/beta.rs",
+        );
+
+        conn.execute(
+            "INSERT INTO assignment_feedback (
+                id, app_id, from_project_id, to_project_id, source, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+            rusqlite::params![2_i64, 1_i64, 10_i64, 20_i64, "manual_session_split_part_2"],
+        )
+        .expect("insert legacy-style feedback");
+
+        retrain_model_sync(&conn).expect("retrain model");
+
+        let app_cnt: i64 = conn
+            .query_row(
+                "SELECT cnt FROM assignment_model_app WHERE app_id = 1 AND project_id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read app model count");
+        let time_cnt: i64 = conn
+            .query_row(
+                "SELECT cnt FROM assignment_model_time WHERE app_id = 1 AND project_id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read time model count");
+
+        assert_eq!(app_cnt, 6);
+        assert_eq!(time_cnt, 6);
+    }
 }

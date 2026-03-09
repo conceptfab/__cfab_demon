@@ -242,6 +242,7 @@ CREATE TABLE IF NOT EXISTS assignment_feedback (
     from_project_id INTEGER,
     to_project_id INTEGER,
     source TEXT NOT NULL,
+    weight REAL NOT NULL DEFAULT 1.0,
     created_at TEXT NOT NULL
 );
 
@@ -1335,6 +1336,21 @@ fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         [],
     )
     .ok();
+
+    let has_assignment_feedback_weight: bool = db
+        .prepare(
+            "SELECT COUNT(*) FROM pragma_table_info('assignment_feedback') WHERE name='weight'",
+        )?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .unwrap_or(false);
+    if !has_assignment_feedback_weight {
+        log::info!("Migrating assignment_feedback: adding weight");
+        db.execute(
+            "ALTER TABLE assignment_feedback ADD COLUMN weight REAL NOT NULL DEFAULT 1.0",
+            [],
+        )?;
+    }
 
     let has_manual_sessions_app_id: bool = db
         .prepare("SELECT COUNT(*) FROM pragma_table_info('manual_sessions') WHERE name='app_id'")?

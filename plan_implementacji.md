@@ -20,7 +20,11 @@ Stan na 2026-03-09:
 - [x] Faza 1: zakonczony audit komend `async` w `dashboard/src-tauri/src/commands` — pozostale bezposrednie wywolania `db::get_connection()` sa tylko w helperach blokujacych albo w komendach synchronicznych (`manual_sessions.rs`), wiec kryterium fazy jest spelnione.
 - [x] Weryfikacja: wpis `Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji)` zostal potwierdzony w kodzie (`strip_split_markers()`, badge `GitBranch`, box `BrainCircuit`, klucze i18n, `sesje.md`) oraz checkami (`cargo test`, `npm run lint`, `npm test`, `npx tsc --noEmit`).
 - [x] Faza 2: zakonczone rozbicie modulu sesji — wydzielone `sessions/manual_overrides.rs`, `sessions/mutations.rs`, `sessions/query.rs`, `sessions/rebuild.rs`, `sessions/split.rs` i `sessions/tests.rs`, a dawny root `sessions.rs` zostal zastapiony przez docelowy `sessions/mod.rs` z cienkimi wrapperami Tauri.
-- [ ] Fazy 3-6 bez zmian implementacyjnych.
+- [x] Faza 3: `suggest_session_split()` liczy kandydatow tylko z overlapu sesji (`last_seen > start_time` i `first_seen < end_time`), a gdy overlap nie daje minimum 2 projektow, fallback przechodzi na wspolny scoring AI przez synchroniczny helper `get_session_score_breakdown_sync()`.
+- [x] Faza 3: fallback `analyze_session_projects()` zostal przepiety z `app_id + date` na overlap sesji, a `analyze_sessions_splittable()` korzysta z tej samej logiki per sesja, wiec nozyczki i auto-split opieraja sie na identycznych kryteriach.
+- [x] Faza 3: `assignment_feedback` ma addytywna kolumne `weight REAL NOT NULL DEFAULT 1.0`; split single/multi zapisuje wage rowna ratio czesci, a reinforcement w `retrain_model_sync()` liczy `SUM(weight)` i uwzglednia zrodla `manual_session_split_part_1..5`.
+- [x] Faza 3: zaktualizowane testy backendu (overlap, AI fallback, weight splitu, weighted retraining) oraz Help/i18n dla zmienionego zachowania split suggestion.
+- [ ] Fazy 4-6 bez zmian implementacyjnych.
 
 Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji):
 

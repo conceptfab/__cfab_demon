@@ -324,6 +324,7 @@ export function Help() {
                   t18n('help_page.multi_day_manual_sessions_the_allow_session_across_multi'),
                   t18n('help_page.batch_assign_select_multiple_sessions_and_assign_them_to'),
                   t18n('help_page.split_session_from_the_context_menu_or_scissors_icon_spl'),
+                  t18n('help_page.split_ai_uses_overlap_first_then_learned_patterns_and_yo'),
                   t18n('help_page.view_modes_detailed_full_file_logs_compact_apps_and_sess'),
                   t18n('help_page.daily_weekly_range_mode_switch_the_sessions_list_between'),
                   t18n('help_page.sorting_and_filtering_by_application_project_date_and_du'),

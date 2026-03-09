@@ -1,9 +1,9 @@
 mod analysis;
 mod assignment_model;
 mod bughunter;
+mod daemon;
 #[path = "../../../../shared/daily_store.rs"]
 pub(crate) mod daily_store;
-mod daemon;
 pub(crate) mod daily_store_bridge;
 mod dashboard;
 mod database;

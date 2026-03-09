@@ -17,6 +17,7 @@ struct SplitSegmentMutation {
     end_time: String,
     project_id: Option<i64>,
     feedback_source: String,
+    feedback_weight: f64,
 }
 
 pub(crate) fn parse_iso_datetime(
@@ -124,14 +125,16 @@ fn apply_split_side_effects(
 
     for segment in segments {
         tx.execute(
-            "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+            "INSERT INTO assignment_feedback (
+                session_id, app_id, from_project_id, to_project_id, source, weight, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))",
             rusqlite::params![
                 segment.session_id,
                 app_id,
                 from_project_id,
                 segment.project_id,
-                segment.feedback_source
+                segment.feedback_source,
+                segment.feedback_weight,
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -357,6 +360,7 @@ pub(crate) fn execute_session_split(
                 end_time: part_end_str,
                 project_id: part.project_id,
                 feedback_source,
+                feedback_weight: part.ratio,
             });
         } else {
             tx.execute(
@@ -383,6 +387,7 @@ pub(crate) fn execute_session_split(
                 end_time: part_end_str,
                 project_id: part.project_id,
                 feedback_source,
+                feedback_weight: part.ratio,
             });
         }
 
@@ -440,101 +445,382 @@ pub struct SplitSuggestion {
     pub confidence: f64,
 }
 
-/// Analyzes file activities for a session's app + date to suggest an automatic split.
-/// Returns which two projects dominate the file time and a ratio between them.
+#[derive(Clone, Debug)]
+struct SplitAnalysisSession {
+    app_id: i64,
+    date_str: String,
+    start_time: String,
+    end_time: String,
+    current_project_id: Option<i64>,
+    current_project_name: Option<String>,
+    latest_feedback_project_id: Option<i64>,
+    latest_feedback_project_name: Option<String>,
+}
+
+fn load_split_analysis_session(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+) -> Result<SplitAnalysisSession, String> {
+    conn.query_row(
+        "SELECT
+            s.app_id,
+            s.date,
+            s.start_time,
+            s.end_time,
+            s.project_id,
+            p_current.name,
+            (
+                SELECT af.to_project_id
+                FROM assignment_feedback af
+                WHERE af.session_id = s.id
+                ORDER BY af.created_at DESC, af.id DESC
+                LIMIT 1
+            ) AS latest_feedback_project_id,
+            (
+                SELECT p_feedback.name
+                FROM assignment_feedback af
+                LEFT JOIN projects p_feedback ON p_feedback.id = af.to_project_id
+                WHERE af.session_id = s.id
+                ORDER BY af.created_at DESC, af.id DESC
+                LIMIT 1
+            ) AS latest_feedback_project_name
+         FROM sessions s
+         LEFT JOIN projects p_current ON p_current.id = s.project_id
+         WHERE s.id = ?1",
+        [session_id],
+        |row| {
+            Ok(SplitAnalysisSession {
+                app_id: row.get(0)?,
+                date_str: row.get(1)?,
+                start_time: row.get(2)?,
+                end_time: row.get(3)?,
+                current_project_id: row.get(4)?,
+                current_project_name: row.get(5)?,
+                latest_feedback_project_id: row.get(6)?,
+                latest_feedback_project_name: row.get(7)?,
+            })
+        },
+    )
+    .map_err(|e| format!("Session not found: {}", e))
+}
+
+fn finalize_project_candidates(
+    mut candidates: Vec<ProjectCandidate>,
+    limit: usize,
+) -> Vec<ProjectCandidate> {
+    candidates.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.project_id.cmp(&b.project_id))
+    });
+    candidates.truncate(limit);
+
+    let leader_score = candidates
+        .first()
+        .map(|candidate| candidate.score)
+        .unwrap_or(0.0);
+    for candidate in &mut candidates {
+        candidate.ratio_to_leader = if leader_score > 0.0 {
+            candidate.score / leader_score
+        } else {
+            0.0
+        };
+    }
+
+    candidates
+}
+
+fn build_multi_project_analysis_from_candidates(
+    session_id: i64,
+    candidates: Vec<ProjectCandidate>,
+    tolerance_threshold: f64,
+) -> MultiProjectAnalysis {
+    let leader_score = candidates
+        .first()
+        .map(|candidate| candidate.score)
+        .unwrap_or(0.0);
+    let leader_project_id = candidates.first().map(|candidate| candidate.project_id);
+    let qualifying = candidates
+        .iter()
+        .filter(|candidate| candidate.ratio_to_leader >= tolerance_threshold)
+        .count();
+
+    MultiProjectAnalysis {
+        session_id,
+        candidates,
+        is_splittable: qualifying >= 2,
+        leader_project_id,
+        leader_score,
+    }
+}
+
+fn split_ratio_from_top_two(project_a: &ProjectCandidate, project_b: &ProjectCandidate) -> f64 {
+    let total_score = project_a.score + project_b.score;
+    if total_score > 0.0 {
+        (project_a.score / total_score).clamp(0.05, 0.95)
+    } else {
+        0.5
+    }
+}
+
+fn load_overlap_project_candidates(
+    conn: &rusqlite::Connection,
+    session: &SplitAnalysisSession,
+    limit: usize,
+) -> Result<Vec<ProjectCandidate>, String> {
+    let session_start = parse_iso_datetime(&session.start_time)
+        .map_err(|e| format!("Invalid session start time: {}", e))?;
+    let session_end = parse_iso_datetime(&session.end_time)
+        .map_err(|e| format!("Invalid session end time: {}", e))?;
+
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT fa.project_id, COALESCE(p.name, ''), fa.first_seen, fa.last_seen
+             FROM file_activities fa
+             LEFT JOIN projects p ON p.id = fa.project_id
+             WHERE fa.app_id = ?1
+               AND fa.date = ?2
+               AND fa.project_id IS NOT NULL
+               AND fa.last_seen > ?3
+               AND fa.first_seen < ?4",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(
+            rusqlite::params![
+                session.app_id,
+                session.date_str,
+                session.start_time,
+                session.end_time
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1).unwrap_or_default(),
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    let mut overlap_by_project: HashMap<i64, (i64, String)> = HashMap::new();
+    for row in rows {
+        let (project_id, project_name, first_seen, last_seen) =
+            row.map_err(|e| format!("Failed to read split overlap row: {}", e))?;
+        let first_dt = match parse_iso_datetime(&first_seen) {
+            Ok(value) => value,
+            Err(error) => {
+                log::warn!(
+                    "Skipping split overlap candidate with invalid first_seen '{}': {}",
+                    first_seen,
+                    error
+                );
+                continue;
+            }
+        };
+        let last_dt = match parse_iso_datetime(&last_seen) {
+            Ok(value) => value,
+            Err(error) => {
+                log::warn!(
+                    "Skipping split overlap candidate with invalid last_seen '{}': {}",
+                    last_seen,
+                    error
+                );
+                continue;
+            }
+        };
+
+        let overlap_ms = std::cmp::min(session_end.timestamp_millis(), last_dt.timestamp_millis())
+            - std::cmp::max(
+                session_start.timestamp_millis(),
+                first_dt.timestamp_millis(),
+            );
+        if overlap_ms <= 0 {
+            continue;
+        }
+
+        let display_name = if project_name.is_empty() {
+            format!("#{}", project_id)
+        } else {
+            project_name
+        };
+        let entry = overlap_by_project
+            .entry(project_id)
+            .or_insert((0, display_name));
+        entry.0 += overlap_ms;
+    }
+
+    let candidates = overlap_by_project
+        .into_iter()
+        .map(
+            |(project_id, (overlap_ms, project_name))| ProjectCandidate {
+                project_id,
+                project_name,
+                score: overlap_ms as f64 / 1000.0,
+                ratio_to_leader: 0.0,
+            },
+        )
+        .collect::<Vec<_>>();
+
+    Ok(finalize_project_candidates(candidates, limit))
+}
+
+fn project_candidates_from_score_breakdown(
+    score_breakdown: &assignment_model::ScoreBreakdown,
+    limit: usize,
+) -> Vec<ProjectCandidate> {
+    let candidates = score_breakdown
+        .candidates
+        .iter()
+        .filter(|candidate| candidate.total_score > 0.0)
+        .map(|candidate| ProjectCandidate {
+            project_id: candidate.project_id,
+            project_name: candidate.project_name.clone(),
+            score: candidate.total_score,
+            ratio_to_leader: 0.0,
+        })
+        .collect::<Vec<_>>();
+
+    finalize_project_candidates(candidates, limit)
+}
+
+fn load_ai_project_candidates(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+    limit: usize,
+) -> Result<(Vec<ProjectCandidate>, Option<f64>), String> {
+    let score_breakdown = assignment_model::get_session_score_breakdown_sync(conn, session_id)?;
+    let candidates = project_candidates_from_score_breakdown(&score_breakdown, limit);
+    let confidence = score_breakdown
+        .final_suggestion
+        .as_ref()
+        .filter(|suggestion| {
+            candidates
+                .first()
+                .is_some_and(|candidate| candidate.project_id == suggestion.project_id)
+        })
+        .map(|suggestion| suggestion.confidence);
+
+    Ok((candidates, confidence))
+}
+
+pub(crate) fn suggest_session_split_sync(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+) -> Result<SplitSuggestion, String> {
+    let session = load_split_analysis_session(conn, session_id)?;
+
+    let overlap_candidates = load_overlap_project_candidates(conn, &session, 10)?;
+    if overlap_candidates.len() >= 2 {
+        let project_a = &overlap_candidates[0];
+        let project_b = &overlap_candidates[1];
+        return Ok(SplitSuggestion {
+            project_a_id: Some(project_a.project_id),
+            project_a_name: Some(project_a.project_name.clone()),
+            project_b_id: Some(project_b.project_id),
+            project_b_name: Some(project_b.project_name.clone()),
+            suggested_ratio: split_ratio_from_top_two(project_a, project_b),
+            confidence: 0.8,
+        });
+    }
+
+    let (ai_candidates, ai_confidence) = load_ai_project_candidates(conn, session_id, 10)?;
+    if ai_candidates.len() >= 2 {
+        let project_a = &ai_candidates[0];
+        let project_b = &ai_candidates[1];
+        return Ok(SplitSuggestion {
+            project_a_id: Some(project_a.project_id),
+            project_a_name: Some(project_a.project_name.clone()),
+            project_b_id: Some(project_b.project_id),
+            project_b_name: Some(project_b.project_name.clone()),
+            suggested_ratio: split_ratio_from_top_two(project_a, project_b),
+            confidence: ai_confidence.unwrap_or(0.4),
+        });
+    }
+
+    if let (Some(current_project_id), Some(latest_feedback_project_id)) = (
+        session.current_project_id,
+        session.latest_feedback_project_id,
+    ) {
+        if current_project_id != latest_feedback_project_id {
+            return Ok(SplitSuggestion {
+                project_a_id: Some(current_project_id),
+                project_a_name: session.current_project_name.clone(),
+                project_b_id: Some(latest_feedback_project_id),
+                project_b_name: session.latest_feedback_project_name.clone(),
+                suggested_ratio: 0.5,
+                confidence: 0.4,
+            });
+        }
+    }
+
+    Ok(SplitSuggestion {
+        project_a_id: session
+            .current_project_id
+            .or(session.latest_feedback_project_id),
+        project_a_name: session
+            .current_project_name
+            .or(session.latest_feedback_project_name),
+        project_b_id: None,
+        project_b_name: None,
+        suggested_ratio: 0.5,
+        confidence: 0.0,
+    })
+}
+
+/// Analyzes overlapping file activities first, then AI scoring, to suggest an automatic split.
 pub async fn suggest_session_split(
     app: AppHandle,
     session_id: i64,
 ) -> Result<SplitSuggestion, String> {
     run_db_blocking(app, move |conn| {
-        let (app_id, date, current_project_id, suggested_project_id): (
-            i64,
-            String,
-            Option<i64>,
-            Option<i64>,
-        ) = conn
-            .query_row(
-                "SELECT app_id, date, project_id,
-                        (SELECT af.to_project_id FROM assignment_feedback af WHERE af.session_id = sessions.id ORDER BY af.created_at DESC LIMIT 1)
-                 FROM sessions WHERE id = ?1",
-                [session_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .map_err(|e| format!("Session not found: {}", e))?;
-
-        let mut stmt = conn
-            .prepare_cached(
-                "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
-                 FROM file_activities fa
-                 LEFT JOIN projects p ON p.id = fa.project_id
-                 WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
-                 GROUP BY fa.project_id
-                 ORDER BY total DESC
-                 LIMIT 10",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let projects: Vec<(i64, String, i64)> = stmt
-            .query_map(rusqlite::params![app_id, date], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get::<_, String>(1).unwrap_or_default(),
-                    row.get(2)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        if projects.len() >= 2 {
-            let total_time: i64 = projects.iter().map(|(_, _, t)| *t).sum();
-            let ratio = if total_time > 0 {
-                (projects[0].2 as f64 / total_time as f64).clamp(0.05, 0.95)
-            } else {
-                0.5
-            };
-            return Ok(SplitSuggestion {
-                project_a_id: Some(projects[0].0),
-                project_a_name: Some(projects[0].1.clone()),
-                project_b_id: Some(projects[1].0),
-                project_b_name: Some(projects[1].1.clone()),
-                suggested_ratio: ratio,
-                confidence: 0.8,
-            });
-        }
-
-        if let (Some(cur), Some(sug)) = (current_project_id, suggested_project_id) {
-            if cur != sug {
-                let name_a: String = conn
-                    .query_row("SELECT name FROM projects WHERE id = ?1", [cur], |r| r.get(0))
-                    .unwrap_or_default();
-                let name_b: String = conn
-                    .query_row("SELECT name FROM projects WHERE id = ?1", [sug], |r| r.get(0))
-                    .unwrap_or_default();
-                return Ok(SplitSuggestion {
-                    project_a_id: Some(cur),
-                    project_a_name: Some(name_a),
-                    project_b_id: Some(sug),
-                    project_b_name: Some(name_b),
-                    suggested_ratio: 0.5,
-                    confidence: 0.4,
-                });
-            }
-        }
-
-        Ok(SplitSuggestion {
-            project_a_id: current_project_id,
-            project_a_name: None,
-            project_b_id: None,
-            project_b_name: None,
-            suggested_ratio: 0.5,
-            confidence: 0.0,
-        })
+        suggest_session_split_sync(conn, session_id)
     })
     .await
 }
 
-/// Analyzes file activities for a session to determine which projects are present
+pub(crate) fn analyze_session_projects_sync(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+    tolerance_threshold: f64,
+    max_projects: i64,
+) -> Result<MultiProjectAnalysis, String> {
+    let normalized_max_projects = max_projects.clamp(2, 5) as usize;
+    let normalized_tolerance = tolerance_threshold.clamp(0.2, 1.0);
+
+    let (ai_candidates, _) = load_ai_project_candidates(conn, session_id, normalized_max_projects)?;
+    if !ai_candidates.is_empty() {
+        return Ok(build_multi_project_analysis_from_candidates(
+            session_id,
+            ai_candidates,
+            normalized_tolerance,
+        ));
+    }
+
+    let session = load_split_analysis_session(conn, session_id)?;
+    let overlap_candidates =
+        load_overlap_project_candidates(conn, &session, normalized_max_projects)?;
+    if overlap_candidates.is_empty() {
+        return Ok(MultiProjectAnalysis {
+            session_id,
+            candidates: vec![],
+            is_splittable: false,
+            leader_project_id: None,
+            leader_score: 0.0,
+        });
+    }
+
+    Ok(build_multi_project_analysis_from_candidates(
+        session_id,
+        overlap_candidates,
+        normalized_tolerance,
+    ))
+}
+
+/// Analyzes a session to determine which projects are present
 /// and whether the session is a candidate for multi-project splitting.
 pub async fn analyze_session_projects(
     app: AppHandle,
@@ -542,131 +828,28 @@ pub async fn analyze_session_projects(
     tolerance_threshold: f64,
     max_projects: i64,
 ) -> Result<MultiProjectAnalysis, String> {
-    let normalized_max_projects = max_projects.clamp(2, 5);
-    let normalized_tolerance = tolerance_threshold.clamp(0.2, 1.0);
-
-    // Prefer 4-layer assignment model scoring if available.
-    if let Ok(score_breakdown) =
-        assignment_model::get_session_score_breakdown(app.clone(), session_id).await
-    {
-        if !score_breakdown.candidates.is_empty() {
-            let mut top = score_breakdown.candidates;
-            top.sort_by(|a, b| {
-                b.total_score
-                    .partial_cmp(&a.total_score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            top.truncate(normalized_max_projects as usize);
-
-            let leader_score = top.first().map(|c| c.total_score).unwrap_or(0.0);
-            let leader_project_id = top.first().map(|c| c.project_id);
-
-            let candidates: Vec<ProjectCandidate> = top
-                .into_iter()
-                .map(|candidate| ProjectCandidate {
-                    project_id: candidate.project_id,
-                    project_name: candidate.project_name,
-                    score: candidate.total_score,
-                    ratio_to_leader: if leader_score > 0.0 {
-                        candidate.total_score / leader_score
-                    } else {
-                        0.0
-                    },
-                })
-                .collect();
-
-            let qualifying = candidates
-                .iter()
-                .filter(|candidate| candidate.ratio_to_leader >= normalized_tolerance)
-                .count();
-
-            return Ok(MultiProjectAnalysis {
-                session_id,
-                candidates,
-                is_splittable: qualifying >= 2,
-                leader_project_id,
-                leader_score,
-            });
-        }
-    }
-
     run_db_blocking(app, move |conn| {
-        let (app_id, date): (i64, String) = conn
-            .query_row(
-                "SELECT app_id, date FROM sessions WHERE id = ?1",
-                [session_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| format!("Session not found: {}", e))?;
-
-        let mut stmt = conn
-            .prepare_cached(
-                "SELECT fa.project_id, p.name, SUM(fa.total_seconds) as total
-                 FROM file_activities fa
-                 LEFT JOIN projects p ON p.id = fa.project_id
-                  WHERE fa.app_id = ?1 AND fa.date = ?2 AND fa.project_id IS NOT NULL
-                  GROUP BY fa.project_id
-                  ORDER BY total DESC
-                  LIMIT ?3",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let candidates: Vec<(i64, String, f64)> = stmt
-            .query_map(
-                rusqlite::params![app_id, date, normalized_max_projects],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get::<_, String>(1).unwrap_or_default(),
-                        row.get::<_, i64>(2).unwrap_or(0) as f64,
-                    ))
-                },
-            )
-            .map_err(|e| e.to_string())?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        if candidates.is_empty() {
-            return Ok(MultiProjectAnalysis {
-                session_id,
-                candidates: vec![],
-                is_splittable: false,
-                leader_project_id: None,
-                leader_score: 0.0,
-            });
-        }
-
-        let leader_score = candidates[0].2;
-        let leader_id = candidates[0].0;
-
-        let project_candidates: Vec<ProjectCandidate> = candidates
-            .iter()
-            .map(|(pid, name, score)| ProjectCandidate {
-                project_id: *pid,
-                project_name: name.clone(),
-                score: *score,
-                ratio_to_leader: if leader_score > 0.0 {
-                    *score / leader_score
-                } else {
-                    0.0
-                },
-            })
-            .collect();
-
-        let qualifying = project_candidates
-            .iter()
-            .filter(|c| c.ratio_to_leader >= normalized_tolerance)
-            .count();
-
-        Ok(MultiProjectAnalysis {
-            session_id,
-            candidates: project_candidates,
-            is_splittable: qualifying >= 2,
-            leader_project_id: Some(leader_id),
-            leader_score,
-        })
+        analyze_session_projects_sync(conn, session_id, tolerance_threshold, max_projects)
     })
     .await
+}
+
+pub(crate) fn analyze_sessions_splittable_sync(
+    conn: &rusqlite::Connection,
+    session_ids: &[i64],
+    tolerance_threshold: f64,
+    max_projects: i64,
+) -> Result<Vec<SessionSplittableFlag>, String> {
+    let mut result = Vec::with_capacity(session_ids.len());
+    for &session_id in session_ids {
+        let analysis =
+            analyze_session_projects_sync(conn, session_id, tolerance_threshold, max_projects)?;
+        result.push(SessionSplittableFlag {
+            session_id,
+            is_splittable: analysis.is_splittable,
+        });
+    }
+    Ok(result)
 }
 
 /// Batch variant of `analyze_session_projects` that returns only splittable flags.
@@ -680,106 +863,13 @@ pub async fn analyze_sessions_splittable(
         return Ok(Vec::new());
     }
 
-    let normalized_tolerance = tolerance_threshold.clamp(0.2, 1.0);
-    let normalized_max_projects = max_projects.clamp(2, 5) as usize;
     run_db_blocking(app, move |conn| {
-        let placeholders = std::iter::repeat("?")
-            .take(session_ids.len())
-            .collect::<Vec<_>>()
-            .join(",");
-
-        let sql = format!(
-            "SELECT s.id AS session_id,
-                    fa.project_id AS project_id,
-                    COALESCE(p.name, '') AS project_name,
-                    SUM(fa.total_seconds) AS total
-             FROM sessions s
-             LEFT JOIN file_activities fa
-               ON fa.app_id = s.app_id
-              AND fa.date = s.date
-              AND fa.project_id IS NOT NULL
-             LEFT JOIN projects p ON p.id = fa.project_id
-             WHERE s.id IN ({})
-             GROUP BY s.id, fa.project_id, p.name",
-            placeholders
-        );
-
-        let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params_from_iter(session_ids.iter()), |row| {
-                Ok((
-                    row.get::<_, i64>("session_id")?,
-                    row.get::<_, Option<i64>>("project_id")?,
-                    row.get::<_, String>("project_name").unwrap_or_default(),
-                    row.get::<_, Option<i64>>("total")?.unwrap_or(0),
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-
-        let mut candidates_by_session: HashMap<i64, Vec<ProjectCandidate>> = HashMap::new();
-        for row in rows {
-            let (session_id, project_id, project_name, total) =
-                row.map_err(|e| format!("Failed to read split eligibility row: {}", e))?;
-            let Some(pid) = project_id else {
-                continue;
-            };
-            candidates_by_session
-                .entry(session_id)
-                .or_default()
-                .push(ProjectCandidate {
-                    project_id: pid,
-                    project_name,
-                    score: total as f64,
-                    ratio_to_leader: 0.0,
-                });
-        }
-
-        let mut result = Vec::with_capacity(session_ids.len());
-        for session_id in session_ids {
-            let Some(mut candidates) = candidates_by_session.remove(&session_id) else {
-                result.push(SessionSplittableFlag {
-                    session_id,
-                    is_splittable: false,
-                });
-                continue;
-            };
-
-            if candidates.len() < 2 {
-                result.push(SessionSplittableFlag {
-                    session_id,
-                    is_splittable: false,
-                });
-                continue;
-            }
-
-            candidates.sort_by(|a, b| {
-                b.score
-                    .partial_cmp(&a.score)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-            });
-            candidates.truncate(normalized_max_projects);
-
-            let leader_score = candidates[0].score;
-            let qualifying = candidates
-                .iter_mut()
-                .map(|candidate| {
-                    candidate.ratio_to_leader = if leader_score > 0.0 {
-                        candidate.score / leader_score
-                    } else {
-                        0.0
-                    };
-                    candidate.ratio_to_leader >= normalized_tolerance
-                })
-                .filter(|is_qualifying| *is_qualifying)
-                .count();
-
-            result.push(SessionSplittableFlag {
-                session_id,
-                is_splittable: qualifying >= 2,
-            });
-        }
-
-        Ok(result)
+        analyze_sessions_splittable_sync(
+            conn,
+            session_ids.as_slice(),
+            tolerance_threshold,
+            max_projects,
+        )
     })
     .await
 }

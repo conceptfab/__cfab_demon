@@ -1347,6 +1347,7 @@
     "multi_day_manual_sessions_the_allow_session_across_multi": "Multi-day manual sessions – the \"Allow session across multiple days\" option lets you save longer events that cross midnight.",
     "batch_assign_select_multiple_sessions_and_assign_them_to": "Batch Assign – select multiple sessions and assign them to a project with one click.",
     "split_session_from_the_context_menu_or_scissors_icon_spl": "Split Session – from the context menu or scissors icon, split a session into multiple parts (max 5) and assign each to a different project. AI automatically analyzes file activity and suggests the split.",
+    "split_ai_uses_overlap_first_then_learned_patterns_and_yo": "Split suggestions first measure real file-activity overlap inside the session window, and when that is not enough, AI falls back to learned app, time, and file patterns. A confirmed split strengthens future suggestions in proportion to each part's share.",
     "view_modes_detailed_full_file_logs_compact_apps_and_sess": "View modes: Detailed (full file logs), Compact (apps and sessions list only), and AI Data (precise statistics and AI model reasoning).",
     "daily_weekly_range_mode_switch_the_sessions_list_between": "Daily/Weekly range mode – switch the sessions list between daily and weekly views to review longer periods faster.",
     "sorting_and_filtering_by_application_project_date_and_du": "Sorting and filtering by application, project, date, and duration.",

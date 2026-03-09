@@ -1,7 +1,10 @@
 use crate::commands::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
 use crate::commands::types::SplitPart;
 
-use super::split::{execute_session_split, load_split_source_session, parse_iso_datetime};
+use super::split::{
+    analyze_session_projects_sync, execute_session_split, load_split_source_session,
+    parse_iso_datetime, suggest_session_split_sync,
+};
 
 fn setup_conn() -> rusqlite::Connection {
     let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
@@ -9,7 +12,9 @@ fn setup_conn() -> rusqlite::Connection {
         "CREATE TABLE projects (
                 id INTEGER PRIMARY KEY,
                 name TEXT NOT NULL,
-                color TEXT DEFAULT '#38bdf8'
+                color TEXT DEFAULT '#38bdf8',
+                excluded_at TEXT,
+                frozen_at TEXT
             );
             CREATE TABLE applications (
                 id INTEGER PRIMARY KEY,
@@ -34,10 +39,36 @@ fn setup_conn() -> rusqlite::Connection {
                 app_id INTEGER NOT NULL,
                 date TEXT NOT NULL,
                 file_name TEXT NOT NULL,
+                file_path TEXT DEFAULT '',
                 total_seconds INTEGER NOT NULL,
                 first_seen TEXT NOT NULL,
                 last_seen TEXT NOT NULL,
-                project_id INTEGER
+                project_id INTEGER,
+                detected_path TEXT,
+                window_title TEXT,
+                title_history TEXT
+            );
+            CREATE TABLE assignment_model_app (
+                app_id INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                cnt INTEGER NOT NULL DEFAULT 0,
+                last_seen TEXT NOT NULL,
+                PRIMARY KEY (app_id, project_id)
+            );
+            CREATE TABLE assignment_model_token (
+                token TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
+                cnt INTEGER NOT NULL DEFAULT 0,
+                last_seen TEXT NOT NULL,
+                PRIMARY KEY (token, project_id)
+            );
+            CREATE TABLE assignment_model_time (
+                app_id INTEGER NOT NULL,
+                hour_bucket INTEGER NOT NULL,
+                weekday INTEGER NOT NULL,
+                project_id INTEGER NOT NULL,
+                cnt INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (app_id, hour_bucket, weekday, project_id)
             );
             CREATE TABLE assignment_feedback (
                 id INTEGER PRIMARY KEY,
@@ -46,6 +77,7 @@ fn setup_conn() -> rusqlite::Connection {
                 from_project_id INTEGER,
                 to_project_id INTEGER,
                 source TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 1.0,
                 created_at TEXT NOT NULL
             );
             CREATE TABLE assignment_model_state (
@@ -258,6 +290,99 @@ fn split_suggestion_fallback_reads_latest_to_project_id() {
 }
 
 #[test]
+fn split_suggestion_uses_session_overlap_instead_of_full_day_totals() {
+    let conn = setup_conn();
+    conn.execute(
+        "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+        rusqlite::params![
+            77_i64,
+            1_i64,
+            "2026-01-01T10:00:00Z",
+            "2026-01-01T11:00:00Z",
+            3600_i64,
+            "2026-01-01",
+        ],
+    )
+    .expect("insert session");
+    conn.execute_batch(
+        "INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id) VALUES
+            (1, 1, '2026-01-01', 'alpha.rs', 900, '2026-01-01T10:05:00Z', '2026-01-01T10:20:00Z', 10),
+            (2, 1, '2026-01-01', 'beta.rs', 900, '2026-01-01T10:40:00Z', '2026-01-01T10:55:00Z', 20),
+            (3, 1, '2026-01-01', 'gamma.rs', 21600, '2026-01-01T12:00:00Z', '2026-01-01T18:00:00Z', 30);",
+    )
+    .expect("insert file activities");
+
+    let suggestion = suggest_session_split_sync(&conn, 77_i64).expect("split suggestion");
+    assert_eq!(suggestion.project_a_id, Some(10));
+    assert_eq!(suggestion.project_b_id, Some(20));
+    assert!((suggestion.suggested_ratio - 0.5).abs() < 0.001);
+}
+
+#[test]
+fn split_suggestion_uses_ai_scores_when_overlap_is_missing() {
+    let conn = setup_conn();
+    conn.execute(
+        "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+        rusqlite::params![
+            88_i64,
+            1_i64,
+            "2026-01-01T10:00:00Z",
+            "2026-01-01T11:00:00Z",
+            3600_i64,
+            "2026-01-01",
+        ],
+    )
+    .expect("insert session");
+    conn.execute_batch(
+        "INSERT INTO assignment_model_app (app_id, project_id, cnt, last_seen) VALUES
+            (1, 10, 12, '2026-01-01T09:00:00Z'),
+            (1, 20, 3, '2026-01-01T09:00:00Z');",
+    )
+    .expect("seed assignment model app");
+
+    let suggestion = suggest_session_split_sync(&conn, 88_i64).expect("split suggestion");
+    assert_eq!(suggestion.project_a_id, Some(10));
+    assert_eq!(suggestion.project_b_id, Some(20));
+    assert!(suggestion.suggested_ratio > 0.6);
+    assert!(suggestion.confidence > 0.0);
+}
+
+#[test]
+fn analyze_session_projects_fallback_uses_overlap_not_full_day_activity() {
+    let conn = setup_conn();
+    conn.execute(
+        "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+        rusqlite::params![
+            91_i64,
+            1_i64,
+            "2026-01-01T10:00:00Z",
+            "2026-01-01T11:00:00Z",
+            3600_i64,
+            "2026-01-01",
+        ],
+    )
+    .expect("insert session");
+    conn.execute_batch(
+        "INSERT INTO file_activities (id, app_id, date, file_name, total_seconds, first_seen, last_seen, project_id) VALUES
+            (1, 1, '2026-01-01', 'alpha.rs', 600, '2026-01-01T10:10:00Z', '2026-01-01T10:20:00Z', 10),
+            (2, 1, '2026-01-01', 'beta.rs', 10800, '2026-01-01T13:00:00Z', '2026-01-01T16:00:00Z', 20);",
+    )
+    .expect("insert file activities");
+
+    let analysis =
+        analyze_session_projects_sync(&conn, 91_i64, 0.2, 5).expect("analyze session projects");
+    assert_eq!(analysis.candidates.len(), 1);
+    assert_eq!(analysis.candidates[0].project_id, 10);
+    assert!(!analysis
+        .candidates
+        .iter()
+        .any(|candidate| candidate.project_id == 20));
+}
+
+#[test]
 fn split_single_updates_feedback_files_and_duration_consistently() {
     let mut conn = setup_conn();
     conn.execute(
@@ -347,20 +472,23 @@ fn split_single_updates_feedback_files_and_duration_consistently() {
 
     let mut stmt = conn
         .prepare(
-            "SELECT to_project_id FROM assignment_feedback
+            "SELECT to_project_id, weight FROM assignment_feedback
                  WHERE session_id IN (?1, ?2)
                  ORDER BY session_id ASC, to_project_id ASC",
         )
         .expect("prepare feedback query");
     let rows = stmt
         .query_map(rusqlite::params![1_i64, second_id], |row| {
-            row.get::<_, Option<i64>>(0)
+            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, f64>(1)?))
         })
         .expect("query feedback rows");
-    let to_projects: Vec<Option<i64>> = rows
+    let feedback_rows: Vec<(Option<i64>, f64)> = rows
         .collect::<Result<Vec<_>, _>>()
-        .expect("collect feedback projects");
-    assert_eq!(to_projects, vec![Some(10), Some(20)]);
+        .expect("collect feedback rows");
+    assert_eq!(
+        feedback_rows,
+        vec![(Some(10), 0.5_f64), (Some(20), 0.5_f64)]
+    );
 
     let activities: Vec<Option<i64>> = conn
         .prepare("SELECT project_id FROM file_activities ORDER BY id ASC")
@@ -450,13 +578,22 @@ fn split_multi_preserves_total_duration_and_writes_feedback_per_part() {
     );
 
     let feedback_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM assignment_feedback WHERE session_id IN (SELECT id FROM sessions)",
-                [],
-                |row| row.get(0),
-            )
-            .expect("read feedback count");
+        .query_row(
+            "SELECT COUNT(*) FROM assignment_feedback WHERE session_id IN (SELECT id FROM sessions)",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read feedback count");
     assert_eq!(feedback_count, 3);
+
+    let feedback_weights: Vec<f64> = conn
+        .prepare("SELECT weight FROM assignment_feedback ORDER BY session_id ASC")
+        .expect("prepare feedback weight query")
+        .query_map([], |row| row.get::<_, f64>(0))
+        .expect("query feedback weights")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect feedback weights");
+    assert_eq!(feedback_weights, vec![0.25_f64, 0.25_f64, 0.5_f64]);
 
     let feedback_since_train: String = conn
         .query_row(
