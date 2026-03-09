@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Scissors, Sparkles, X } from 'lucide-react';
+import { BrainCircuit, Scissors, Sparkles, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -348,6 +348,13 @@ export function MultiSplitSessionModal({
                       />
                     );
                   })}
+              </div>
+            </div>
+            <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-300/80">
+              <BrainCircuit className="h-4 w-4 shrink-0 mt-0.5 text-sky-400/60" />
+              <div>
+                <p className="font-medium">{t('sessions.split_multi.learning_title', 'This split trains AI')}</p>
+                <p className="text-sky-300/50 mt-0.5">{t('sessions.split_multi.learning_desc', 'Your decision will improve future automatic project assignments. Split sessions cannot be split again.')}</p>
               </div>
             </div>
           </>

@@ -1288,6 +1288,55 @@ fn validate_split_parts(splits: &[SplitPart]) -> Result<(), String> {
     Ok(())
 }
 
+/// Remove all "Split N/M" markers (including parenthesized and pipe-separated)
+/// from a comment string to prevent nested markers like "Split 1/2 (Split 1/2)".
+fn strip_split_markers(input: &str) -> String {
+    let mut result = input.to_string();
+    // Remove patterns like "(Split 1/2)", "Split 1/2", "| Split 1/2"
+    loop {
+        let before = result.clone();
+        // Remove parenthesized: (Split N/N)
+        if let Some(start) = result.find("(Split ") {
+            if let Some(end) = result[start..].find(')') {
+                let candidate = &result[start..start + end + 1];
+                if candidate.contains('/') {
+                    result = format!(
+                        "{}{}",
+                        &result[..start],
+                        &result[start + end + 1..]
+                    );
+                }
+            }
+        }
+        // Remove bare: Split N/N (only if it looks like a split marker)
+        if let Some(start) = result.find("Split ") {
+            let rest = &result[start + 6..];
+            if let Some(slash) = rest.find('/') {
+                let before_slash = &rest[..slash];
+                let after_slash_end = rest[slash + 1..]
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(rest.len() - slash - 1);
+                let after_slash = &rest[slash + 1..slash + 1 + after_slash_end];
+                if before_slash.chars().all(|c| c.is_ascii_digit())
+                    && !before_slash.is_empty()
+                    && after_slash.chars().all(|c| c.is_ascii_digit())
+                    && !after_slash.is_empty()
+                {
+                    let marker_end = start + 6 + slash + 1 + after_slash_end;
+                    result = format!("{}{}", &result[..start], &result[marker_end..]);
+                }
+            }
+        }
+        // Remove leftover separators
+        result = result.replace(" | ", " ").replace("  ", " ");
+        result = result.trim().to_string();
+        if result == before {
+            break;
+        }
+    }
+    result
+}
+
 fn execute_session_split(
     conn: &mut rusqlite::Connection,
     session_id: i64,
@@ -1327,11 +1376,20 @@ fn execute_session_split(
         let part_end = start_dt + chrono::Duration::milliseconds(cursor_ms + part_ms);
         let part_start_str = part_start.to_rfc3339();
         let part_end_str = part_end.to_rfc3339();
-        let part_comment = source
-            .comment
-            .as_deref()
-            .map(|c| format!("{} (Split {}/{})", c, i + 1, n))
-            .unwrap_or_else(|| format!("Split {}/{}", i + 1, n));
+        let split_marker = format!("Split {}/{}", i + 1, n);
+        let part_comment = match source.comment.as_deref() {
+            Some(c) if c.is_empty() => split_marker,
+            Some(c) => {
+                // Strip any existing split markers to prevent nesting like "Split 1/2 (Split 1/2)"
+                let cleaned = strip_split_markers(c);
+                if cleaned.is_empty() {
+                    split_marker
+                } else {
+                    format!("{} | {}", cleaned, split_marker)
+                }
+            }
+            None => split_marker,
+        };
         let feedback_source = format!("manual_session_split_part_{}", i + 1);
 
         if i == 0 {

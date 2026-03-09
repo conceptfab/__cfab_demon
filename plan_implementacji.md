@@ -20,6 +20,15 @@ Stan na 2026-03-09:
 - [x] Faza 1: zakonczony audit komend `async` w `dashboard/src-tauri/src/commands` — pozostale bezposrednie wywolania `db::get_connection()` sa tylko w helperach blokujacych albo w komendach synchronicznych (`manual_sessions.rs`), wiec kryterium fazy jest spelnione.
 - [ ] Fazy 2-6 bez zmian implementacyjnych.
 
+Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji):
+
+- [x] Fix: naprawiony format komentarzy przy podziale sesji w `sessions.rs` — dodana funkcja `strip_split_markers()` usuwajaca istniejace markery "Split N/M" przed dodaniem nowego, co zapobiega zagniezdzonej konkatenacji typu `"Split 2/2 (Split 1/2)"`. Jesli sesja miala komentarz uzytkownika, jest on zachowywany a marker dodawany po `|`.
+- [x] Fix: dodana ikona `GitBranch` (niebieska) w `SessionRow.tsx` dla sesji z ustawionym `split_source_session_id` — widoczna w obu trybach (compact i full), z tooltipem informujacym o blokadzie ponownego podzialu.
+- [x] UX: dodany komunikat o nauce AI w `MultiSplitSessionModal.tsx` — info box z ikona `BrainCircuit` pod paskiem podgladu informujacy uzytkownika, ze podział szkoli model AI i ze podzielone sesje nie moga byc ponownie dzielone.
+- [x] i18n: dodane klucze `sessions.split_multi.learning_title`, `sessions.split_multi.learning_desc` i `sessions.split_badge` w obu localach (en/pl).
+- [x] Dokumentacja: utworzony `sesje.md` z pelna analiza logiki podzialu sesji, zidentyfikowanymi problemami i planem naprawczym.
+- Weryfikacja: `cargo check` OK, `npx tsc --noEmit` OK.
+
 ## 1. Stan po weryfikacji
 
 ### 1.1. Fakty potwierdzone

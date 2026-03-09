@@ -9,6 +9,7 @@ import {
   Scissors,
   Check,
   X,
+  GitBranch,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { formatDuration } from '@/lib/utils';
@@ -122,6 +123,12 @@ export const SessionRow = memo(function SessionRow({
               </span>
               {(s.rate_multiplier ?? 1) > 1.000_001 && (
                 <CircleDollarSign className="h-3 w-3 text-emerald-400/80 fill-emerald-500/5 shrink-0" />
+              )}
+              {typeof s.split_source_session_id === 'number' && (
+                <GitBranch
+                  className="h-3 w-3 text-sky-400/60 shrink-0 ml-0.5"
+                  title={t('sessions.split_badge', 'Split session — cannot be split again')}
+                />
               )}
               {isSplittable && onSplitClick && (
                 <button
@@ -353,6 +360,12 @@ export const SessionRow = memo(function SessionRow({
           )}
           {ind.showAiBadge && s.ai_assigned && !isSuggested && (
             <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
+          )}
+          {typeof s.split_source_session_id === 'number' && (
+            <GitBranch
+              className="h-3.5 w-3.5 text-sky-400/60 shrink-0"
+              title={t('sessions.split_badge', 'Split session — cannot be split again')}
+            />
           )}
           {isSplittable && onSplitClick && (
             <button

@@ -300,8 +300,11 @@
       "unassigned": "Unassigned",
       "ai_score": "AI score: {{score}} · Leader ratio: {{ratio}}%",
       "custom_part": "Manual part",
-      "sum": "Total"
+      "sum": "Total",
+      "learning_title": "This split trains AI",
+      "learning_desc": "Your decision will improve future automatic project assignments. Split sessions cannot be split again."
     },
+    "split_badge": "Split session — cannot be split again",
     "prompts": {
       "boost_label_single": "this session",
       "boost_label_multi": "{{count}} sessions",

@@ -300,8 +300,11 @@
       "unassigned": "Nieprzypisane",
       "ai_score": "Punkty AI: {{score}} · Relacja do lidera: {{ratio}}%",
       "custom_part": "Część ręczna",
-      "sum": "Suma"
+      "sum": "Suma",
+      "learning_title": "Ten podział szkoli AI",
+      "learning_desc": "Twoja decyzja poprawi przyszłe automatyczne przypisania do projektów. Podzielone sesje nie mogą być ponownie dzielone."
     },
+    "split_badge": "Sesja podzielona — nie może być ponownie podzielona",
     "prompts": {
       "boost_label_single": "tej sesji",
       "boost_label_multi": "{{count}} sesji",
