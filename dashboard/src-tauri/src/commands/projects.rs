@@ -3,13 +3,12 @@ use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
-use super::helpers::{LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
+use super::helpers::{run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
     ProjectFolder, ProjectWithStats, TopApp,
 };
-use crate::db;
 use rusqlite::OptionalExtension;
 
 pub(crate) fn load_project_folders_from_db(
@@ -519,31 +518,35 @@ pub(crate) fn collect_project_subfolders(roots: &[ProjectFolder]) -> Vec<(String
 
 #[tauri::command]
 pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    conn.execute(
-        "UPDATE projects
-         SET frozen_at = datetime('now'),
-             unfreeze_reason = NULL
-         WHERE id = ?1
-           AND excluded_at IS NULL",
-        [id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        conn.execute(
+            "UPDATE projects
+             SET frozen_at = datetime('now'),
+                 unfreeze_reason = NULL
+             WHERE id = ?1
+               AND excluded_at IS NULL",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    conn.execute(
-        "UPDATE projects
-         SET frozen_at = NULL,
-             unfreeze_reason = datetime('now')
-         WHERE id = ?1",
-        [id],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        conn.execute(
+            "UPDATE projects
+             SET frozen_at = NULL,
+                 unfreeze_reason = datetime('now')
+             WHERE id = ?1",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[derive(serde::Serialize)]
@@ -557,88 +560,86 @@ pub async fn auto_freeze_projects(
     app: AppHandle,
     threshold_days: Option<i64>,
 ) -> Result<AutoFreezeResult, String> {
-    let days = threshold_days.unwrap_or(14).max(1);
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let days = threshold_days.unwrap_or(14).max(1);
 
-    // Clear stale unfreeze_reason timestamps (older than threshold) for cleanliness
-    let _clear_old = conn
-        .execute(
-            "UPDATE projects
-             SET unfreeze_reason = NULL
-             WHERE excluded_at IS NULL
-               AND unfreeze_reason IS NOT NULL
-               AND julianday(unfreeze_reason) < julianday('now', '-' || ?1 || ' days')",
-            [days],
-        )
-        .map_err(|e| e.to_string())?;
+        let _clear_old = conn
+            .execute(
+                "UPDATE projects
+                 SET unfreeze_reason = NULL
+                 WHERE excluded_at IS NULL
+                   AND unfreeze_reason IS NOT NULL
+                   AND julianday(unfreeze_reason) < julianday('now', '-' || ?1 || ' days')",
+                [days],
+            )
+            .map_err(|e| e.to_string())?;
 
-    // Freeze projects inactive longer than threshold.
-    // Activity sources: sessions, manual_sessions, file_activities, recent manual unfreeze.
-    let frozen = conn
-        .execute(
-            "UPDATE projects
-             SET frozen_at = datetime('now'),
-                 unfreeze_reason = NULL
-             WHERE excluded_at IS NULL
-               AND frozen_at IS NULL
-               AND julianday('now') - julianday(created_at) >= ?1
-               AND id NOT IN (
-                   SELECT DISTINCT s.project_id FROM sessions s
-                   WHERE s.project_id IS NOT NULL
-                     AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT p.id FROM projects p
-                   JOIN applications a ON a.project_id = p.id
-                   JOIN sessions s ON s.app_id = a.id
-                   WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT project_id FROM manual_sessions
-                   WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT project_id FROM file_activities
-                   WHERE project_id IS NOT NULL
-                     AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT id FROM projects
-                   WHERE unfreeze_reason IS NOT NULL
-                     AND julianday(unfreeze_reason) >= julianday('now', '-' || ?1 || ' days')
-               )",
-            [days],
-        )
-        .map_err(|e| e.to_string())? as i64;
+        let frozen = conn
+            .execute(
+                "UPDATE projects
+                 SET frozen_at = datetime('now'),
+                     unfreeze_reason = NULL
+                 WHERE excluded_at IS NULL
+                   AND frozen_at IS NULL
+                   AND julianday('now') - julianday(created_at) >= ?1
+                   AND id NOT IN (
+                       SELECT DISTINCT s.project_id FROM sessions s
+                       WHERE s.project_id IS NOT NULL
+                         AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT DISTINCT p.id FROM projects p
+                       JOIN applications a ON a.project_id = p.id
+                       JOIN sessions s ON s.app_id = a.id
+                       WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT DISTINCT project_id FROM manual_sessions
+                       WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT DISTINCT project_id FROM file_activities
+                       WHERE project_id IS NOT NULL
+                         AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT id FROM projects
+                       WHERE unfreeze_reason IS NOT NULL
+                         AND julianday(unfreeze_reason) >= julianday('now', '-' || ?1 || ' days')
+                   )",
+                [days],
+            )
+            .map_err(|e| e.to_string())? as i64;
 
-    // Unfreeze projects that regained activity within the threshold
-    let unfrozen = conn
-        .execute(
-            "UPDATE projects
-             SET frozen_at = NULL
-             WHERE frozen_at IS NOT NULL
-               AND excluded_at IS NULL
-               AND id IN (
-                   SELECT DISTINCT s.project_id FROM sessions s
-                   WHERE s.project_id IS NOT NULL
-                     AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT p.id FROM projects p
-                   JOIN applications a ON a.project_id = p.id
-                   JOIN sessions s ON s.app_id = a.id
-                   WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT project_id FROM manual_sessions
-                   WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
-                   UNION
-                   SELECT DISTINCT project_id FROM file_activities
-                   WHERE project_id IS NOT NULL
-                     AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
-               )",
-            [days],
-        )
-        .map_err(|e| e.to_string())? as i64;
+        let unfrozen = conn
+            .execute(
+                "UPDATE projects
+                 SET frozen_at = NULL
+                 WHERE frozen_at IS NOT NULL
+                   AND excluded_at IS NULL
+                   AND id IN (
+                       SELECT DISTINCT s.project_id FROM sessions s
+                       WHERE s.project_id IS NOT NULL
+                         AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT DISTINCT p.id FROM projects p
+                       JOIN applications a ON a.project_id = p.id
+                       JOIN sessions s ON s.app_id = a.id
+                       WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT DISTINCT project_id FROM manual_sessions
+                       WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
+                       UNION
+                       SELECT DISTINCT project_id FROM file_activities
+                       WHERE project_id IS NOT NULL
+                         AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
+                   )",
+                [days],
+            )
+            .map_err(|e| e.to_string())? as i64;
 
-    Ok(AutoFreezeResult {
-        frozen_count: frozen,
-        unfrozen_count: unfrozen,
+        Ok(AutoFreezeResult {
+            frozen_count: frozen,
+            unfrozen_count: unfrozen,
+        })
     })
+    .await
 }
 
 #[tauri::command]
@@ -646,9 +647,11 @@ pub async fn get_projects(
     app: AppHandle,
     date_range: Option<DateRange>,
 ) -> Result<Vec<ProjectWithStats>, String> {
-    let conn = db::get_connection(&app)?;
-    prune_if_stale(&conn)?;
-    query_projects_with_stats(&conn, false, date_range.as_ref())
+    run_db_blocking(app, move |conn| {
+        prune_if_stale(conn)?;
+        query_projects_with_stats(conn, false, date_range.as_ref())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -656,9 +659,11 @@ pub async fn get_excluded_projects(
     app: AppHandle,
     date_range: Option<DateRange>,
 ) -> Result<Vec<ProjectWithStats>, String> {
-    let conn = db::get_connection(&app)?;
-    prune_if_stale(&conn)?;
-    query_projects_with_stats(&conn, true, date_range.as_ref())
+    run_db_blocking(app, move |conn| {
+        prune_if_stale(conn)?;
+        query_projects_with_stats(conn, true, date_range.as_ref())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -668,129 +673,139 @@ pub async fn create_project(
     color: String,
     assigned_folder_path: Option<String>,
 ) -> Result<Project, String> {
-    let conn = db::get_connection(&app)?;
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        return Err("Project name is required".to_string());
-    }
-    if project_name_is_blacklisted(&conn, &name) {
-        return Err("Project name is on the excluded blacklist".to_string());
-    }
-    if project_row_exists_by_name(&conn, &name) {
-        return Err("Project already exists".to_string());
-    }
+    run_db_blocking(app, move |conn| {
+        let name = name.trim().to_string();
+        if name.is_empty() {
+            return Err("Project name is required".to_string());
+        }
+        if project_name_is_blacklisted(conn, &name) {
+            return Err("Project name is on the excluded blacklist".to_string());
+        }
+        if project_row_exists_by_name(conn, &name) {
+            return Err("Project already exists".to_string());
+        }
 
-    let mut normalized_folder = None;
-    if let Some(path) = assigned_folder_path {
-        let raw = path.trim();
-        if !raw.is_empty() {
-            if let Ok(canonical) = std::fs::canonicalize(raw) {
-                if canonical.is_dir() {
-                    let norm = canonical.to_string_lossy().to_string();
-                    let added_at = chrono::Local::now().to_rfc3339();
-                    conn.execute(
-                        "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
-                        rusqlite::params![norm, added_at],
-                    )
-                    .map_err(|e| e.to_string())?;
-                    normalized_folder = Some(norm);
+        let mut normalized_folder = None;
+        if let Some(path) = assigned_folder_path {
+            let raw = path.trim();
+            if !raw.is_empty() {
+                if let Ok(canonical) = std::fs::canonicalize(raw) {
+                    if canonical.is_dir() {
+                        let norm = canonical.to_string_lossy().to_string();
+                        let added_at = chrono::Local::now().to_rfc3339();
+                        conn.execute(
+                            "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
+                            rusqlite::params![norm, added_at],
+                        )
+                        .map_err(|e| e.to_string())?;
+                        normalized_folder = Some(norm);
+                    }
                 }
             }
         }
-    }
 
-    conn.execute(
-        "INSERT INTO projects (name, color, assigned_folder_path) VALUES (?1, ?2, ?3)",
-        rusqlite::params![name, color, normalized_folder],
-    )
-    .map_err(|e| e.to_string())?;
+        conn.execute(
+            "INSERT INTO projects (name, color, assigned_folder_path) VALUES (?1, ?2, ?3)",
+            rusqlite::params![name, color, normalized_folder],
+        )
+        .map_err(|e| e.to_string())?;
 
-    let id = conn.last_insert_rowid();
-    Ok(Project {
-        id,
-        name,
-        color,
-        hourly_rate: None,
-        created_at: chrono::Local::now().to_rfc3339(),
-        excluded_at: None,
-        frozen_at: None,
-        assigned_folder_path: normalized_folder,
-        is_imported: 0,
-        updated_at: chrono::Local::now().to_rfc3339(),
+        let id = conn.last_insert_rowid();
+        Ok(Project {
+            id,
+            name,
+            color,
+            hourly_rate: None,
+            created_at: chrono::Local::now().to_rfc3339(),
+            excluded_at: None,
+            frozen_at: None,
+            assigned_folder_path: normalized_folder,
+            is_imported: 0,
+            updated_at: chrono::Local::now().to_rfc3339(),
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn update_project(app: AppHandle, id: i64, color: String) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    let updated = conn
-        .execute(
-            "UPDATE projects SET color = ?2 WHERE id = ?1",
-            rusqlite::params![id, color],
-        )
-        .map_err(|e| e.to_string())?;
-    if updated == 0 {
-        return Err("Project not found".to_string());
-    }
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        let updated = conn
+            .execute(
+                "UPDATE projects SET color = ?2 WHERE id = ?1",
+                rusqlite::params![id, color],
+            )
+            .map_err(|e| e.to_string())?;
+        if updated == 0 {
+            return Err("Project not found".to_string());
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn exclude_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
-        "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
-        [id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "UPDATE projects
-         SET excluded_at = COALESCE(excluded_at, datetime('now'))
-         WHERE id = ?1",
-        [id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE projects
+             SET excluded_at = COALESCE(excluded_at, datetime('now'))
+             WHERE id = ?1",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn restore_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    let project_name: Option<String> = conn
-        .query_row("SELECT name FROM projects WHERE id = ?1", [id], |row| {
-            row.get(0)
-        })
-        .optional()
-        .map_err(|e| e.to_string())?;
-    if let Some(name) = project_name {
-        if let Some(name_key) = normalized_project_name_key(&name) {
-            conn.execute(
-                "DELETE FROM project_name_blacklist WHERE name_key = ?1",
-                [name_key],
-            )
+    run_db_blocking(app, move |conn| {
+        let project_name: Option<String> = conn
+            .query_row("SELECT name FROM projects WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .optional()
             .map_err(|e| e.to_string())?;
+        if let Some(name) = project_name {
+            if let Some(name_key) = normalized_project_name_key(&name) {
+                conn.execute(
+                    "DELETE FROM project_name_blacklist WHERE name_key = ?1",
+                    [name_key],
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
-    }
-    conn.execute("UPDATE projects SET excluded_at = NULL WHERE id = ?1", [id])
-        .map_err(|e| e.to_string())?;
-    Ok(())
+        conn.execute("UPDATE projects SET excluded_at = NULL WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn delete_project(app: AppHandle, id: i64) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
-        "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
-        [id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM projects WHERE id = ?1", [id])
+    run_db_blocking(app, move |conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
+            [id],
+        )
         .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+        tx.execute("DELETE FROM projects WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -799,153 +814,160 @@ pub async fn assign_app_to_project(
     app_id: i64,
     project_id: Option<i64>,
 ) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    if let Some(pid) = project_id {
-        if !project_id_is_active(&conn, pid)? {
-            return Err("Cannot assign app to an excluded or missing project".to_string());
+    run_db_blocking(app, move |conn| {
+        if let Some(pid) = project_id {
+            if !project_id_is_active(conn, pid)? {
+                return Err("Cannot assign app to an excluded or missing project".to_string());
+            }
         }
-    }
 
-    // Fetch old project id for feedback loop
-    let old_project_id: Option<i64> = conn
-        .query_row(
-            "SELECT project_id FROM applications WHERE id = ?1",
-            [app_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e: rusqlite::Error| e.to_string())?;
-
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
-        "UPDATE applications SET project_id = ?2 WHERE id = ?1",
-        rusqlite::params![app_id, project_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    match project_id {
-        Some(pid) => {
-            tx.execute(
-                "UPDATE file_activities
-                 SET project_id = ?2
-                 WHERE app_id = ?1 AND (project_id IS NULL OR project_id = ?2)",
-                rusqlite::params![app_id, pid],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-        None => {
-            tx.execute(
-                "UPDATE file_activities SET project_id = NULL WHERE app_id = ?1",
+        let old_project_id: Option<i64> = conn
+            .query_row(
+                "SELECT project_id FROM applications WHERE id = ?1",
                 [app_id],
+                |row| row.get(0),
             )
-            .map_err(|e| e.to_string())?;
+            .optional()
+            .map_err(|e: rusqlite::Error| e.to_string())?;
+
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE applications SET project_id = ?2 WHERE id = ?1",
+            rusqlite::params![app_id, project_id],
+        )
+        .map_err(|e| e.to_string())?;
+
+        match project_id {
+            Some(pid) => {
+                tx.execute(
+                    "UPDATE file_activities
+                     SET project_id = ?2
+                     WHERE app_id = ?1 AND (project_id IS NULL OR project_id = ?2)",
+                    rusqlite::params![app_id, pid],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            None => {
+                tx.execute(
+                    "UPDATE file_activities SET project_id = NULL WHERE app_id = ?1",
+                    [app_id],
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
-    }
 
-    // Insert feedback
-    tx.execute(
-        "INSERT INTO assignment_feedback (app_id, from_project_id, to_project_id, source, created_at)
-         VALUES (?1, ?2, ?3, 'manual_app_assign', datetime('now'))",
-        rusqlite::params![app_id, old_project_id, project_id],
-    )
-    .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO assignment_feedback (app_id, from_project_id, to_project_id, source, created_at)
+             VALUES (?1, ?2, ?3, 'manual_app_assign', datetime('now'))",
+            rusqlite::params![app_id, old_project_id, project_id],
+        )
+        .map_err(|e| e.to_string())?;
 
-    // Increment feedback counter
-    tx.execute(
-        "INSERT INTO assignment_model_state (key, value, updated_at)
-         VALUES ('feedback_since_train', '1', datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET
-           value = CAST(COALESCE(NULLIF(assignment_model_state.value, ''), '0') AS INTEGER) + 1,
-           updated_at = datetime('now')",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO assignment_model_state (key, value, updated_at)
+             VALUES ('feedback_since_train', '1', datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET
+               value = CAST(COALESCE(NULLIF(assignment_model_state.value, ''), '0') AS INTEGER) + 1,
+               updated_at = datetime('now')",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
 
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_project_folders(app: AppHandle) -> Result<Vec<ProjectFolder>, String> {
-    let conn = db::get_connection(&app)?;
-    cleanup_missing_project_folders(&conn)?;
-    load_project_folders_from_db(&conn)
+    run_db_blocking(app, move |conn| {
+        cleanup_missing_project_folders(conn)?;
+        load_project_folders_from_db(conn)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn add_project_folder(app: AppHandle, path: String) -> Result<(), String> {
-    let raw = path.trim();
-    if raw.is_empty() {
-        return Err("Path cannot be empty".to_string());
-    }
-    log::info!("add_project_folder called with path='{}'", raw);
-    let canonical = std::fs::canonicalize(raw).map_err(|e| e.to_string())?;
-    if !canonical.is_dir() {
-        return Err("Path is not a directory".to_string());
-    }
-
-    let normalized = canonical.to_string_lossy().to_string();
-    let conn = db::get_connection(&app)?;
-    let added_at = chrono::Local::now().to_rfc3339();
-    conn.execute(
-        "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
-        rusqlite::params![normalized, added_at],
-    )
-    .map_err(|e| e.to_string())?;
-
-    let mut created = 0usize;
-    let entries = std::fs::read_dir(&canonical).map_err(|e| e.to_string())?;
-    for entry in entries.filter_map(|e| e.ok()) {
-        let p = entry.path();
-        if !p.is_dir() {
-            continue;
+    run_db_blocking(app, move |conn| {
+        let raw = path.trim();
+        if raw.is_empty() {
+            return Err("Path cannot be empty".to_string());
         }
-        let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
-            Some(v) if !v.trim().is_empty() => v,
-            _ => continue,
-        };
-        if create_project_if_missing(&conn, &name)? {
-            created += 1;
+        log::info!("add_project_folder called with path='{}'", raw);
+        let canonical = std::fs::canonicalize(raw).map_err(|e| e.to_string())?;
+        if !canonical.is_dir() {
+            return Err("Path is not a directory".to_string());
         }
-    }
-    log::info!(
-        "Added project root '{}' and auto-created {} project(s)",
-        normalized,
-        created
-    );
-    Ok(())
+
+        let normalized = canonical.to_string_lossy().to_string();
+        let added_at = chrono::Local::now().to_rfc3339();
+        conn.execute(
+            "INSERT OR IGNORE INTO project_folders (path, added_at) VALUES (?1, ?2)",
+            rusqlite::params![normalized, added_at],
+        )
+        .map_err(|e| e.to_string())?;
+
+        let mut created = 0usize;
+        let entries = std::fs::read_dir(&canonical).map_err(|e| e.to_string())?;
+        for entry in entries.filter_map(|e| e.ok()) {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
+                Some(v) if !v.trim().is_empty() => v,
+                _ => continue,
+            };
+            if create_project_if_missing(conn, &name)? {
+                created += 1;
+            }
+        }
+        log::info!(
+            "Added project root '{}' and auto-created {} project(s)",
+            normalized,
+            created
+        );
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn remove_project_folder(app: AppHandle, path: String) -> Result<(), String> {
-    let normalized = path.trim().to_string();
-    let conn = db::get_connection(&app)?;
-    conn.execute(
-        "DELETE FROM project_folders WHERE lower(path) = lower(?1)",
-        [normalized],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        let normalized = path.trim().to_string();
+        conn.execute(
+            "DELETE FROM project_folders WHERE lower(path) = lower(?1)",
+            [normalized],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_folder_project_candidates(
     app: AppHandle,
 ) -> Result<Vec<FolderProjectCandidate>, String> {
-    let conn = db::get_connection(&app)?;
-    let roots = load_project_folders_from_db(&conn)?;
-    let mut out = Vec::new();
-    for (name, folder_path, root_path) in collect_project_subfolders(&roots) {
-        out.push(FolderProjectCandidate {
-            already_exists: project_exists_by_name(&conn, &name),
-            name,
-            folder_path,
-            root_path,
-        });
-    }
+    run_db_blocking(app, move |conn| {
+        let roots = load_project_folders_from_db(conn)?;
+        let mut out = Vec::new();
+        for (name, folder_path, root_path) in collect_project_subfolders(&roots) {
+            out.push(FolderProjectCandidate {
+                already_exists: project_exists_by_name(conn, &name),
+                name,
+                folder_path,
+                root_path,
+            });
+        }
 
-    out.sort_by_key(|a| a.name.to_lowercase());
-    Ok(out)
+        out.sort_by_key(|a| a.name.to_lowercase());
+        Ok(out)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -953,97 +975,99 @@ pub async fn create_project_from_folder(
     app: AppHandle,
     folder_path: String,
 ) -> Result<Project, String> {
-    let canonical = std::fs::canonicalize(folder_path.trim()).map_err(|e| e.to_string())?;
-    if !canonical.is_dir() {
-        return Err("Folder does not exist".to_string());
-    }
-    let name = canonical
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .ok_or_else(|| "Cannot infer project name from folder".to_string())?;
-    let conn = db::get_connection(&app)?;
-    if project_name_is_blacklisted(&conn, &name) {
-        return Err("Project name is on the excluded blacklist".to_string());
-    }
-    if !create_project_if_missing(&conn, &name)? {
-        return Err("Project already exists".to_string());
-    }
+    run_db_blocking(app, move |conn| {
+        let canonical = std::fs::canonicalize(folder_path.trim()).map_err(|e| e.to_string())?;
+        if !canonical.is_dir() {
+            return Err("Folder does not exist".to_string());
+        }
+        let name = canonical
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .ok_or_else(|| "Cannot infer project name from folder".to_string())?;
+        if project_name_is_blacklisted(conn, &name) {
+            return Err("Project name is on the excluded blacklist".to_string());
+        }
+        if !create_project_if_missing(conn, &name)? {
+            return Err("Project already exists".to_string());
+        }
 
-    let id: i64 = conn
-        .query_row(
-            "SELECT id FROM projects WHERE lower(name)=lower(?1)",
-            [&name],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-    Ok(Project {
-        id,
-        name: name.clone(),
-        color: project_color_for_name(&name),
-        hourly_rate: None,
-        created_at: chrono::Local::now().to_rfc3339(),
-        excluded_at: None,
-        frozen_at: None,
-        assigned_folder_path: Some(folder_path),
-        is_imported: 0,
-        updated_at: chrono::Local::now().to_rfc3339(),
+        let id: i64 = conn
+            .query_row(
+                "SELECT id FROM projects WHERE lower(name)=lower(?1)",
+                [&name],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(Project {
+            id,
+            name: name.clone(),
+            color: project_color_for_name(&name),
+            hourly_rate: None,
+            created_at: chrono::Local::now().to_rfc3339(),
+            excluded_at: None,
+            frozen_at: None,
+            assigned_folder_path: Some(folder_path),
+            is_imported: 0,
+            updated_at: chrono::Local::now().to_rfc3339(),
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn sync_projects_from_folders(app: AppHandle) -> Result<FolderSyncResult, String> {
-    let conn = db::get_connection(&app)?;
-    let roots = load_project_folders_from_db(&conn)?;
-    let mut created_projects: Vec<String> = Vec::new();
-    let mut scanned = 0usize;
+    run_db_blocking(app, move |conn| {
+        let roots = load_project_folders_from_db(conn)?;
+        let mut created_projects: Vec<String> = Vec::new();
+        let mut scanned = 0usize;
 
-    for (name, folder_path, _root) in collect_project_subfolders(&roots) {
-        scanned += 1;
-        if let Some(project_name) =
-            create_project_if_missing_with_folder(&conn, &name, &folder_path)?
-        {
-            created_projects.push(project_name);
+        for (name, folder_path, _root) in collect_project_subfolders(&roots) {
+            scanned += 1;
+            if let Some(project_name) =
+                create_project_if_missing_with_folder(conn, &name, &folder_path)?
+            {
+                created_projects.push(project_name);
+            }
         }
-    }
 
-    // Scan for .git repositories inside project folders (deeper discovery)
-    for root in &roots {
-        let root_path = std::path::PathBuf::from(&root.path);
-        if !root_path.exists() || !root_path.is_dir() {
-            continue;
-        }
-        let entries = match std::fs::read_dir(&root_path) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        for entry in entries.filter_map(|e| e.ok()) {
-            let p = entry.path();
-            if !p.is_dir() {
+        for root in &roots {
+            let root_path = std::path::PathBuf::from(&root.path);
+            if !root_path.exists() || !root_path.is_dir() {
                 continue;
             }
-            // Check if subfolder contains .git (is a git repo)
-            let git_dir = p.join(".git");
-            if git_dir.exists() {
-                let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
-                    Some(v) if !v.trim().is_empty() => v,
-                    _ => continue,
-                };
-                let folder_path = p.to_string_lossy().to_string();
-                if let Some(project_name) =
-                    create_project_if_missing_with_folder(&conn, &name, &folder_path)?
-                {
-                    if !created_projects.contains(&project_name) {
-                        created_projects.push(project_name);
+            let entries = match std::fs::read_dir(&root_path) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            for entry in entries.filter_map(|e| e.ok()) {
+                let p = entry.path();
+                if !p.is_dir() {
+                    continue;
+                }
+                let git_dir = p.join(".git");
+                if git_dir.exists() {
+                    let name = match p.file_name().map(|n| n.to_string_lossy().to_string()) {
+                        Some(v) if !v.trim().is_empty() => v,
+                        _ => continue,
+                    };
+                    let folder_path = p.to_string_lossy().to_string();
+                    if let Some(project_name) =
+                        create_project_if_missing_with_folder(conn, &name, &folder_path)?
+                    {
+                        if !created_projects.contains(&project_name) {
+                            created_projects.push(project_name);
+                        }
                     }
                 }
             }
         }
-    }
 
-    Ok(FolderSyncResult {
-        created_projects,
-        scanned_folders: scanned,
+        Ok(FolderSyncResult {
+            created_projects,
+            scanned_folders: scanned,
+        })
     })
+    .await
 }
 
 #[tauri::command]
@@ -1052,68 +1076,68 @@ pub async fn auto_create_projects_from_detection(
     date_range: DateRange,
     min_occurrences: i64,
 ) -> Result<usize, String> {
-    let conn = db::get_connection(&app)?;
-    let threshold = min_occurrences.max(2);
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT fa.file_name
-             FROM file_activities fa
-             WHERE fa.date >= ?1 AND fa.date <= ?2
-             GROUP BY fa.file_name
-             HAVING COUNT(DISTINCT fa.date) >= ?3",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(
-            rusqlite::params![date_range.start, date_range.end, threshold],
-            |row| row.get::<_, String>(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    // Load app display names to avoid creating projects from app names
-    let app_names: HashSet<String> = {
+    run_db_blocking(app, move |conn| {
+        let threshold = min_occurrences.max(2);
         let mut stmt = conn
-            .prepare_cached("SELECT LOWER(display_name) FROM applications")
+            .prepare_cached(
+                "SELECT fa.file_name
+                 FROM file_activities fa
+                 WHERE fa.date >= ?1 AND fa.date <= ?2
+                 GROUP BY fa.file_name
+                 HAVING COUNT(DISTINCT fa.date) >= ?3",
+            )
             .map_err(|e| e.to_string())?;
+
         let rows = stmt
-            .query_map([], |row| row.get::<_, String>(0))
+            .query_map(
+                rusqlite::params![date_range.start, date_range.end, threshold],
+                |row| row.get::<_, String>(0),
+            )
             .map_err(|e| e.to_string())?;
-        rows.collect::<Result<HashSet<_>, _>>()
-            .map_err(|e| format!("Failed to read application display_name row: {}", e))?
-    };
 
-    let mut created = 0usize;
-    for file_name in rows {
-        let file_name =
-            file_name.map_err(|e| format!("Failed to read file_activities row: {}", e))?;
-        let candidate = file_name.trim();
-        if candidate.is_empty() || candidate.len() > 200 || candidate.contains(['/', '\\', '\0']) {
-            continue;
-        }
-
-        // Extract project name from file name
-        // If the name cannot be extracted (e.g. single file without context), skip
-        let project_name = match infer_project_name_from_file_title(candidate, &[]) {
-            Some(name) => name,
-            None => continue,
+        let app_names: HashSet<String> = {
+            let mut stmt = conn
+                .prepare_cached("SELECT LOWER(display_name) FROM applications")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<HashSet<_>, _>>()
+                .map_err(|e| format!("Failed to read application display_name row: {}", e))?
         };
 
-        // Skip if the name is a single file (contains extension, e.g. "TODO.md")
-        if project_name.contains('.') && !project_name.contains(['/', '\\']) {
-            continue;
-        }
+        let mut created = 0usize;
+        for file_name in rows {
+            let file_name =
+                file_name.map_err(|e| format!("Failed to read file_activities row: {}", e))?;
+            let candidate = file_name.trim();
+            if candidate.is_empty()
+                || candidate.len() > 200
+                || candidate.contains(['/', '\\', '\0'])
+            {
+                continue;
+            }
 
-        // Skip if the name matches an application name (e.g. "Antigravity" = antigravity.exe)
-        if app_names.contains(&project_name.to_lowercase()) {
-            continue;
-        }
+            let project_name = match infer_project_name_from_file_title(candidate, &[]) {
+                Some(name) => name,
+                None => continue,
+            };
 
-        if create_project_if_missing(&conn, &project_name)? {
-            created += 1;
+            if project_name.contains('.') && !project_name.contains(['/', '\\']) {
+                continue;
+            }
+
+            if app_names.contains(&project_name.to_lowercase()) {
+                continue;
+            }
+
+            if create_project_if_missing(conn, &project_name)? {
+                created += 1;
+            }
         }
-    }
-    Ok(created)
+        Ok(created)
+    })
+    .await
 }
 #[tauri::command]
 pub async fn get_project_extra_info(
@@ -1121,246 +1145,232 @@ pub async fn get_project_extra_info(
     id: i64,
     date_range: DateRange,
 ) -> Result<ProjectExtraInfo, String> {
-    let conn = db::get_connection(&app)?;
-
-    // 1. Get project info (name, hourly_rate)
-    let (name, hourly_rate): (String, Option<f64>) = conn
-        .query_row(
-            "SELECT name, hourly_rate FROM projects WHERE id = ?1",
-            [id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|e| format!("Project not found: {}", e))?;
-
-    // 2. Get global hourly rate
-    let global_rate_str: Option<String> = conn
-        .query_row(
-            "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| e.to_string())?;
-
-    let global_rate = global_rate_str
-        .and_then(|v| v.parse::<f64>().ok())
-        .unwrap_or(100.0);
-
-    let effective_rate = hourly_rate.unwrap_or(global_rate);
-
-    // 3. Compute values
-    // To match estimates.rs exactly, we need use the same logic for determining which sessions belong to a project.
-
-    let (min_date, max_date): (Option<String>, Option<String>) = conn
-        .query_row(
-            "SELECT MIN(d), MAX(d)
-             FROM (
-                 SELECT date as d FROM sessions
-                 UNION ALL
-                 SELECT date as d FROM manual_sessions
-             )",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|e| e.to_string())?;
-
-    // Helper to get weighted extra seconds for a date range and SPECIFIC project ID
-    let get_extra_secs =
-        |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
-            let sql = format!(
-                "{SESSION_PROJECT_CTE}
-                 SELECT SUM(
-                     CASE
-                         WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
-                         ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
-                     END
-                 )
-                 FROM session_projects sp
-                 WHERE sp.project_id = ?3"
-            );
-            conn.query_row(&sql, rusqlite::params![start, end, p_id], |row| {
-                Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
-            })
-            .map_err(|e| e.to_string())
-        };
-
-    let all_time_bounds = min_date.as_deref().zip(max_date.as_deref());
-
-    // Calculate All-Time (Global) Value
-    let mut current_value = 0.0;
-    if let Some((start, end)) = all_time_bounds {
-        let (_, totals_raw, _, _) = compute_project_activity_unique(
-            &conn,
-            &DateRange {
-                start: start.to_string(),
-                end: end.to_string(),
-            },
-            false,
-            false,
-            None,
-        )?;
-        let totals: HashMap<String, f64> = totals_raw
-            .into_iter()
-            .map(|(k, v)| (k.to_lowercase(), v))
-            .collect();
-        let clock_seconds = totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
-        let extra_seconds = get_extra_secs(&conn, &start, &end, id)?;
-        current_value = ((clock_seconds + extra_seconds) / 3600.0) * effective_rate;
-    }
-
-    // Calculate Period Value (for the selected range)
-    let (_, period_totals_raw, _, _) =
-        compute_project_activity_unique(&conn, &date_range, false, false, None)?;
-    let period_totals: HashMap<String, f64> = period_totals_raw
-        .into_iter()
-        .map(|(k, v)| (k.to_lowercase(), v))
-        .collect();
-    let period_clock_seconds = period_totals
-        .get(&name.to_lowercase())
-        .cloned()
-        .unwrap_or(0.0);
-    let period_extra_seconds = get_extra_secs(&conn, &date_range.start, &date_range.end, id)?;
-    let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
-
-    // 4. DB Stats
-    let (session_count, file_activity_count, comment_count, boosted_session_count) = if let Some(
-        (start, end),
-    ) =
-        all_time_bounds
-    {
-        let session_count_sql = format!(
-            "{SESSION_PROJECT_CTE}
-                 SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?3"
-        );
-        let session_count: i64 = conn
+    run_db_blocking(app, move |conn| {
+        let (name, hourly_rate): (String, Option<f64>) = conn
             .query_row(
-                &session_count_sql,
-                rusqlite::params![start, end, id],
+                "SELECT name, hourly_rate FROM projects WHERE id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| format!("Project not found: {}", e))?;
+
+        let global_rate_str: Option<String> = conn
+            .query_row(
+                "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",
+                [],
                 |row| row.get(0),
             )
+            .optional()
             .map_err(|e| e.to_string())?;
 
-        let file_activity_count_sql = format!(
-                "{SESSION_PROJECT_CTE}
-                 SELECT COUNT(DISTINCT LOWER(
-                     COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
-                 ))
-                 FROM session_projects sp
-                 JOIN sessions s ON s.id = sp.id
-                 JOIN file_activities fa
-                   ON fa.app_id = s.app_id
-                  AND fa.date = s.date
-                  AND fa.last_seen > s.start_time
-                  AND fa.first_seen < s.end_time
-                 WHERE sp.project_id = ?3
-                   AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
-                   AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
-            );
-        let file_activity_count: i64 = conn
-            .query_row(
-                &file_activity_count_sql,
-                rusqlite::params![start, end, id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
+        let global_rate = global_rate_str
+            .and_then(|v| v.parse::<f64>().ok())
+            .unwrap_or(100.0);
 
-        let comment_and_boost_sql = format!(
-                "{SESSION_PROJECT_CTE}
-                 SELECT
-                     COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.comment IS NOT NULL AND sp.comment <> ''),
-                     COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.safe_rate_multiplier > 1.000001)
-                 FROM session_projects sp"
-            );
-        let (comment_count, boosted_session_count): (i64, i64) = conn
+        let effective_rate = hourly_rate.unwrap_or(global_rate);
+
+        let (min_date, max_date): (Option<String>, Option<String>) = conn
             .query_row(
-                &comment_and_boost_sql,
-                rusqlite::params![start, end, id],
+                "SELECT MIN(d), MAX(d)
+                 FROM (
+                     SELECT date as d FROM sessions
+                     UNION ALL
+                     SELECT date as d FROM manual_sessions
+                 )",
+                [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|e| e.to_string())?;
-        (
-            session_count,
-            file_activity_count,
-            comment_count,
-            boosted_session_count,
-        )
-    } else {
-        (0, 0, 0, 0)
-    };
 
-    let manual_session_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM manual_sessions WHERE project_id = ?1",
-            [id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
-
-    // Estimating size: sessions ~150b, file_activities ~150b, manual ~150b, comments +100b
-    let estimated_size_bytes = (session_count * 150)
-        + (file_activity_count * 150)
-        + (manual_session_count * 150)
-        + (comment_count * 100);
-
-    // 5. Top 3 apps
-    let top_apps = if let Some((start, end)) = all_time_bounds {
-        let top_apps_sql = format!(
-            "{SESSION_PROJECT_CTE}
-             SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
-                    SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
-                    MAX(a.color) as color
-             FROM session_projects sp
-             LEFT JOIN applications a ON a.id = sp.app_id
-             WHERE sp.project_id = ?3
-             GROUP BY COALESCE(a.display_name, 'Unknown App')
-             ORDER BY total DESC
-             LIMIT 15"
-        );
-        let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map(rusqlite::params![start, end, id], |row| {
-                Ok(TopApp {
-                    name: row.get(0)?,
-                    seconds: row.get(1)?,
-                    color: row.get(2)?,
+        let get_extra_secs =
+            |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
+                let sql = format!(
+                    "{SESSION_PROJECT_CTE}
+                     SELECT SUM(
+                         CASE
+                             WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
+                             ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
+                         END
+                     )
+                     FROM session_projects sp
+                     WHERE sp.project_id = ?3"
+                );
+                conn.query_row(&sql, rusqlite::params![start, end, p_id], |row| {
+                    Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
                 })
-            })
-            .map_err(|e| e.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("Failed to read top app row: {}", e))?
-    } else {
-        Vec::new()
-    };
+                .map_err(|e| e.to_string())
+            };
 
-    Ok(ProjectExtraInfo {
-        current_value,
-        period_value,
-        db_stats: ProjectDbStats {
-            session_count,
-            file_activity_count,
-            manual_session_count,
-            comment_count,
-            boosted_session_count,
-            estimated_size_bytes,
-        },
-        top_apps,
+        let all_time_bounds = min_date.as_deref().zip(max_date.as_deref());
+
+        let mut current_value = 0.0;
+        if let Some((start, end)) = all_time_bounds {
+            let (_, totals_raw, _, _) = compute_project_activity_unique(
+                conn,
+                &DateRange {
+                    start: start.to_string(),
+                    end: end.to_string(),
+                },
+                false,
+                false,
+                None,
+            )?;
+            let totals: HashMap<String, f64> = totals_raw
+                .into_iter()
+                .map(|(k, v)| (k.to_lowercase(), v))
+                .collect();
+            let clock_seconds = totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
+            let extra_seconds = get_extra_secs(conn, start, end, id)?;
+            current_value = ((clock_seconds + extra_seconds) / 3600.0) * effective_rate;
+        }
+
+        let (_, period_totals_raw, _, _) =
+            compute_project_activity_unique(conn, &date_range, false, false, None)?;
+        let period_totals: HashMap<String, f64> = period_totals_raw
+            .into_iter()
+            .map(|(k, v)| (k.to_lowercase(), v))
+            .collect();
+        let period_clock_seconds = period_totals
+            .get(&name.to_lowercase())
+            .cloned()
+            .unwrap_or(0.0);
+        let period_extra_seconds = get_extra_secs(conn, &date_range.start, &date_range.end, id)?;
+        let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
+
+        let (session_count, file_activity_count, comment_count, boosted_session_count) =
+            if let Some((start, end)) = all_time_bounds {
+                let session_count_sql = format!(
+                    "{SESSION_PROJECT_CTE}
+                     SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?3"
+                );
+                let session_count: i64 = conn
+                    .query_row(
+                        &session_count_sql,
+                        rusqlite::params![start, end, id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                let file_activity_count_sql = format!(
+                    "{SESSION_PROJECT_CTE}
+                     SELECT COUNT(DISTINCT LOWER(
+                         COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
+                     ))
+                     FROM session_projects sp
+                     JOIN sessions s ON s.id = sp.id
+                     JOIN file_activities fa
+                       ON fa.app_id = s.app_id
+                      AND fa.date = s.date
+                      AND fa.last_seen > s.start_time
+                      AND fa.first_seen < s.end_time
+                     WHERE sp.project_id = ?3
+                       AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
+                       AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
+                );
+                let file_activity_count: i64 = conn
+                    .query_row(
+                        &file_activity_count_sql,
+                        rusqlite::params![start, end, id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| e.to_string())?;
+
+                let comment_and_boost_sql = format!(
+                    "{SESSION_PROJECT_CTE}
+                     SELECT
+                         COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.comment IS NOT NULL AND sp.comment <> ''),
+                         COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.safe_rate_multiplier > 1.000001)
+                     FROM session_projects sp"
+                );
+                let (comment_count, boosted_session_count): (i64, i64) = conn
+                    .query_row(
+                        &comment_and_boost_sql,
+                        rusqlite::params![start, end, id],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .map_err(|e| e.to_string())?;
+                (
+                    session_count,
+                    file_activity_count,
+                    comment_count,
+                    boosted_session_count,
+                )
+            } else {
+                (0, 0, 0, 0)
+            };
+
+        let manual_session_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM manual_sessions WHERE project_id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let estimated_size_bytes = (session_count * 150)
+            + (file_activity_count * 150)
+            + (manual_session_count * 150)
+            + (comment_count * 100);
+
+        let top_apps = if let Some((start, end)) = all_time_bounds {
+            let top_apps_sql = format!(
+                "{SESSION_PROJECT_CTE}
+                 SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
+                        SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
+                        MAX(a.color) as color
+                 FROM session_projects sp
+                 LEFT JOIN applications a ON a.id = sp.app_id
+                 WHERE sp.project_id = ?3
+                 GROUP BY COALESCE(a.display_name, 'Unknown App')
+                 ORDER BY total DESC
+                 LIMIT 15"
+            );
+            let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![start, end, id], |row| {
+                    Ok(TopApp {
+                        name: row.get(0)?,
+                        seconds: row.get(1)?,
+                        color: row.get(2)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("Failed to read top app row: {}", e))?
+        } else {
+            Vec::new()
+        };
+
+        Ok(ProjectExtraInfo {
+            current_value,
+            period_value,
+            db_stats: ProjectDbStats {
+                session_count,
+                file_activity_count,
+                manual_session_count,
+                comment_count,
+                boosted_session_count,
+                estimated_size_bytes,
+            },
+            top_apps,
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        conn.execute("DELETE FROM file_activities WHERE project_id = ?1", [id])
+            .map_err(|e| e.to_string())?;
 
-    // Delete file activities for this project
-    conn.execute("DELETE FROM file_activities WHERE project_id = ?1", [id])
-        .map_err(|e| e.to_string())?;
+        if let Err(e) = super::assignment_model::retrain_model_sync(conn) {
+            log::warn!("Auto-retrain after compact failed: {}", e);
+        }
 
-    // Retrain the AI model so it stays in sync with remaining data
-    if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
-        log::warn!("Auto-retrain after compact failed: {}", e);
-    }
-
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[cfg(test)]

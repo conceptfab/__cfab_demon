@@ -10,7 +10,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 ---
 
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem:
-- poprawności logiki szczególnie zwróć uwagę na AI i podział sesji - wg mnie nie działa dobrze
+- poprawności logiki szczególnie zwróć uwagę na AI
 - wydajności i możliwych optymalizacji, poprawy wielowątkowości
 - nadmiarowego kodu, refaktoryzacji
 - braków i błędów w tłumaczeniu, braków w w zakładce help/pomoc
@@ -22,7 +22,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-
+- podział sesji
 - refactor duży plików
 
 

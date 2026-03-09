@@ -13,7 +13,8 @@ Stan na 2026-03-09:
 - [x] Faza 1: przepiete wszystkie komendy z `dashboard/src-tauri/src/commands/dashboard.rs`, aby otwieraly SQLite poza watkiem async.
 - [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/sessions.rs` — wszystkie handlery async korzystajace z SQLite otwieraja polaczenie przez `run_db_blocking()`.
 - [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/assignment_model.rs` — training, scoring, auto-safe i rollback nie wykonuja juz bezposrednio SQLite na watku async.
-- [ ] Faza 1: pozostale komendy `projects` i innych modulow nadal czekaja na przepiecie.
+- [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/projects.rs` — CRUD projektow, sync folderow, auto-freeze i compact dzialaja przez `run_db_blocking()`.
+- [ ] Faza 1: pozostale mniejsze moduly backendu nadal czekaja na przepiecie.
 - [ ] Fazy 2-6 bez zmian implementacyjnych.
 
 ## 1. Stan po weryfikacji
