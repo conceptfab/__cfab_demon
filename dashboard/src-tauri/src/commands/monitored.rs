@@ -2,6 +2,7 @@ use super::helpers::timeflow_data_dir;
 use super::types::{MonitoredApp, MonitoredConfig};
 use crate::db;
 use rusqlite::params;
+use serde::Serialize;
 use std::collections::HashSet;
 use tauri::AppHandle;
 
@@ -129,9 +130,16 @@ pub(crate) fn monitored_exe_name_set(
         .collect())
 }
 
+#[derive(Serialize)]
+pub struct MonitoredAppsSyncResult {
+    pub scanned: usize,
+    pub added: usize,
+    pub already_monitored: usize,
+}
+
 #[tauri::command]
 pub async fn get_monitored_apps(app: AppHandle) -> Result<Vec<MonitoredApp>, String> {
-    let conn = db::get_connection(&app)?;
+    let conn = db::get_primary_connection(&app)?;
     load_monitored_apps_from_conn(&conn)
 }
 
@@ -141,7 +149,7 @@ pub async fn add_monitored_app(
     exe_name: String,
     display_name: String,
 ) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    let conn = db::get_primary_connection(&app)?;
     ensure_monitored_apps_ready(&conn)?;
     let exe = exe_name.trim().to_lowercase();
     if exe.is_empty() {
@@ -170,7 +178,7 @@ pub async fn add_monitored_app(
 
 #[tauri::command]
 pub async fn remove_monitored_app(app: AppHandle, exe_name: String) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    let conn = db::get_primary_connection(&app)?;
     ensure_monitored_apps_ready(&conn)?;
     let exe = exe_name.trim().to_lowercase();
     if exe.is_empty() {
@@ -187,7 +195,7 @@ pub async fn rename_monitored_app(
     exe_name: String,
     display_name: String,
 ) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    let conn = db::get_primary_connection(&app)?;
     ensure_monitored_apps_ready(&conn)?;
     let exe = exe_name.trim().to_lowercase();
     let new_name = display_name.trim();
@@ -207,4 +215,61 @@ pub async fn rename_monitored_app(
         return Err("Monitored app not found".to_string());
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_monitored_apps_from_applications(
+    app: AppHandle,
+) -> Result<MonitoredAppsSyncResult, String> {
+    let mut conn = db::get_primary_connection(&app)?;
+    ensure_monitored_apps_ready(&conn)?;
+
+    let app_rows: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT executable_name, display_name
+                 FROM applications
+                 WHERE trim(COALESCE(executable_name, '')) <> ''
+                 ORDER BY display_name COLLATE NOCASE, executable_name COLLATE NOCASE",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read applications for monitored sync: {}", e))?
+    };
+
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    let added_at = chrono::Local::now().to_rfc3339();
+    let mut added = 0usize;
+
+    for (exe_name, display_name) in &app_rows {
+        let exe = exe_name.trim().to_lowercase();
+        if exe.is_empty() {
+            continue;
+        }
+        let display = if display_name.trim().is_empty() {
+            exe.clone()
+        } else {
+            display_name.trim().to_string()
+        };
+        let inserted = tx
+            .execute(
+                "INSERT OR IGNORE INTO monitored_apps (exe_name, display_name, added_at) VALUES (?1, ?2, ?3)",
+                params![exe, display, added_at],
+            )
+            .map_err(|e| e.to_string())?;
+        if inserted > 0 {
+            added += 1;
+        }
+    }
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    Ok(MonitoredAppsSyncResult {
+        scanned: app_rows.len(),
+        added,
+        already_monitored: app_rows.len().saturating_sub(added),
+    })
 }

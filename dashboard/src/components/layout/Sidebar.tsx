@@ -389,24 +389,34 @@ export function Sidebar() {
                 count: aiStatus?.feedback_since_train ?? 0,
               })}
             />
-          ) : (
-            dbSettings?.backup_enabled && (
-              <StatusIndicator
-                icon={ShieldCheck}
-                label={t('layout.status.backup')}
-                statusText={t('layout.status.safe')}
-                colorClass="text-emerald-500/80"
-                onClick={() => setCurrentPage('settings')}
-                title={t('layout.tooltips.last_backup', {
-                  date: dbSettings.last_backup_at
-                    ? new Date(dbSettings.last_backup_at).toLocaleDateString(
-                        i18n.resolvedLanguage || undefined,
-                      )
-                    : t('layout.tooltips.never'),
-                })}
-              />
-            )
-          )}
+          ) : null}
+
+          <StatusIndicator
+            icon={ShieldCheck}
+            label={t('layout.status.backup')}
+            statusText={
+              dbSettings?.backup_enabled
+                ? t('layout.status.safe')
+                : t('layout.status.off')
+            }
+            colorClass={
+              dbSettings?.backup_enabled
+                ? 'text-emerald-500/80'
+                : 'text-muted-foreground/35'
+            }
+            onClick={() => setCurrentPage('settings')}
+            title={
+              dbSettings?.backup_enabled
+                ? t('layout.tooltips.last_backup', {
+                    date: dbSettings.last_backup_at
+                      ? new Date(dbSettings.last_backup_at).toLocaleDateString(
+                          i18n.resolvedLanguage || undefined,
+                        )
+                      : t('layout.tooltips.never'),
+                  })
+                : undefined
+            }
+          />
         </div>
 
         <div className="flex items-center justify-between px-2.5 pt-1.5 border-t border-border/10">

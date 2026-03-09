@@ -1506,6 +1506,13 @@ pub fn get_connection(app: &AppHandle) -> Result<rusqlite::Connection, String> {
     rusqlite_open(&path).map_err(|e| e.to_string())
 }
 
+pub fn get_primary_connection(app: &AppHandle) -> Result<rusqlite::Connection, String> {
+    let path = db_path(app);
+    let path_str = path.to_string_lossy().to_string();
+    initialize_database_file(&path_str)?;
+    rusqlite_open(&path_str).map_err(|e| e.to_string())
+}
+
 fn current_demo_mode_enabled(app: &AppHandle) -> Result<bool, String> {
     let state = app
         .try_state::<DemoModeFlag>()

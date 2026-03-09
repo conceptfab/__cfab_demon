@@ -4,6 +4,7 @@ import {
   Search,
   ArrowUpDown,
   Plus,
+  RefreshCw,
   Trash2,
   Shield,
   TimerReset,
@@ -23,6 +24,7 @@ import {
   updateAppColor,
   deleteAppAndData,
   renameApplication,
+  syncMonitoredAppsFromApplications,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { AppTooltip } from '@/components/ui/app-tooltip';
@@ -39,7 +41,7 @@ const APP_ROWS_PAGE_SIZE = 100;
 export function Applications() {
   const { i18n, t } = useTranslation();
   const { triggerRefresh, refreshKey } = useDataStore();
-  const { showError } = useToast();
+  const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [apps, setApps] = useState<AppWithStats[]>([]);
   const [search, setSearch] = useState('');
@@ -55,6 +57,7 @@ export function Applications() {
   const [newExe, setNewExe] = useState('');
   const [newDisplay, setNewDisplay] = useState('');
   const [monitoredError, setMonitoredError] = useState('');
+  const [syncingMonitored, setSyncingMonitored] = useState(false);
 
   const loadMonitored = useCallback(() => {
     getMonitoredApps().then(setMonitored).catch(console.error);
@@ -139,6 +142,33 @@ export function Applications() {
         }
       },
     });
+  };
+
+  const handleSyncMonitored = async () => {
+    setMonitoredError('');
+    setSyncingMonitored(true);
+    try {
+      const result = await syncMonitoredAppsFromApplications();
+      loadMonitored();
+      if (result.added > 0) {
+        showInfo(
+          t('applications_page.messages.sync_monitored_added', {
+            added: result.added,
+            scanned: result.scanned,
+          }),
+        );
+      } else {
+        showInfo(t('applications_page.messages.sync_monitored_noop'));
+      }
+    } catch (error) {
+      console.error('Failed to sync monitored apps from applications:', error);
+      const message =
+        `${t('applications_page.errors.sync_monitored_prefix')} ${String(error)}`;
+      setMonitoredError(message);
+      showError(message);
+    } finally {
+      setSyncingMonitored(false);
+    }
   };
 
   const filtered = useMemo(() => {
@@ -261,9 +291,27 @@ export function Applications() {
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Shield className="h-4 w-4" />
             {t('applications_page.monitored.title')}
-            <Badge variant="secondary" className="ml-auto">
-              {monitored.length}
-            </Badge>
+            <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7"
+                onClick={() => {
+                  void handleSyncMonitored();
+                }}
+                disabled={syncingMonitored || apps.length === 0}
+              >
+                <RefreshCw
+                  className={`mr-1 h-3.5 w-3.5 ${
+                    syncingMonitored ? 'animate-spin' : ''
+                  }`}
+                />
+                {syncingMonitored
+                  ? t('applications_page.actions.syncing')
+                  : t('applications_page.actions.sync_from_apps')}
+              </Button>
+              <Badge variant="secondary">{monitored.length}</Badge>
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">

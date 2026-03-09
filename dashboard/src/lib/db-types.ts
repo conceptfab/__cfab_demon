@@ -352,6 +352,12 @@ export interface MonitoredApp {
   added_at: string;
 }
 
+export interface MonitoredAppsSyncResult {
+  scanned: number;
+  added: number;
+  already_monitored: number;
+}
+
 export interface DetectedProject {
   file_name: string;
   total_seconds: number;

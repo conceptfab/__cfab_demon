@@ -590,7 +590,8 @@
       "rename_monitored_prefix": "Nie udało się zmienić nazwy monitorowanej aplikacji:",
       "save_color_prefix": "Nie udało się zapisać koloru aplikacji:",
       "rename_app_prefix": "Nie udało się zmienić nazwy aplikacji:",
-      "delete_app_prefix": "Nie udało się usunąć aplikacji:"
+      "delete_app_prefix": "Nie udało się usunąć aplikacji:",
+      "sync_monitored_prefix": "Nie udało się zsynchronizować monitorowanych aplikacji:"
     },
     "prompts": {
       "rename_monitored_title": "Zmień nazwę monitorowanej aplikacji",
@@ -606,7 +607,13 @@
     },
     "actions": {
       "add": "Dodaj",
-      "load_more": "Pokaż więcej"
+      "load_more": "Pokaż więcej",
+      "sync_from_apps": "Synchronizuj z aplikacji",
+      "syncing": "Synchronizacja..."
+    },
+    "messages": {
+      "sync_monitored_added": "Dodano {{added}} monitorowanych aplikacji z {{scanned}} pozycji listy aplikacji.",
+      "sync_monitored_noop": "Monitorowane aplikacje są już zsynchronizowane z listą aplikacji."
     },
     "tooltips": {
       "rename_monitored": "Zmień nazwę monitorowanej aplikacji",

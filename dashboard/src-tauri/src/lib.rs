@@ -104,6 +104,7 @@ pub fn run() {
             commands::add_monitored_app,
             commands::remove_monitored_app,
             commands::rename_monitored_app,
+            commands::sync_monitored_apps_from_applications,
             commands::get_daemon_status,
             commands::get_daemon_logs,
             commands::get_autostart_enabled,

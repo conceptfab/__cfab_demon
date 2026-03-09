@@ -207,9 +207,9 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut pid_cache: PidCache = HashMap::new();
     let mut cfg = config::load();
     let mut monitored: HashSet<String> = config::monitored_exe_names(&cfg);
-    let mut monitor_all = monitored.is_empty();
-    if monitor_all {
-        log::warn!("No monitored applications in config - switching to monitor-all mode");
+    let mut tracking_enabled = !monitored.is_empty();
+    if !tracking_enabled {
+        log::warn!("No monitored applications configured - tracking paused");
     }
     let iv = config::intervals(&cfg);
 
@@ -266,7 +266,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             cfg = config::load();
             check_dashboard_compatibility(); // Added check
             monitored = config::monitored_exe_names(&cfg);
-            monitor_all = monitored.is_empty();
+            tracking_enabled = !monitored.is_empty();
             let iv = config::intervals(&cfg);
             last_config_reload = Instant::now();
             poll_interval = Duration::from_secs(iv.poll_secs);
@@ -294,7 +294,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                 info.detected_path,
                 info.activity_type
             );
-            if monitor_all || monitored.contains(&info.exe_name) {
+            if tracking_enabled && monitored.contains(&info.exe_name) {
                 Some(info)
             } else {
                 None
@@ -333,7 +333,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
 
         // CPU-based background tracking (for monitored apps NOT in foreground)
         // Build process snapshot once per tick (instead of 2N snapshots for N apps)
-        if !monitor_all {
+        if tracking_enabled {
             let proc_snap = monitor::build_process_snapshot();
 
             for exe_name in &monitored {

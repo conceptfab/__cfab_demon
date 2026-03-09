@@ -22,6 +22,7 @@ import type {
   ImportedFile,
   DetectedProject,
   MonitoredApp,
+  MonitoredAppsSyncResult,
   DaemonStatus,
   ArchivedFile,
   ProjectFolder,
@@ -392,6 +393,10 @@ export const removeMonitoredApp = (exeName: string) =>
   invokeMutation<void>('remove_monitored_app', { exeName });
 export const renameMonitoredApp = (exeName: string, displayName: string) =>
   invokeMutation<void>('rename_monitored_app', { exeName, displayName });
+export const syncMonitoredAppsFromApplications = () =>
+  invokeMutation<MonitoredAppsSyncResult>(
+    'sync_monitored_apps_from_applications',
+  );
 
 // Refresh & Reset
 export const refreshToday = () =>

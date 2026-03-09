@@ -590,7 +590,8 @@
       "rename_monitored_prefix": "Failed to rename monitored app:",
       "save_color_prefix": "Failed to save application color:",
       "rename_app_prefix": "Failed to rename application:",
-      "delete_app_prefix": "Failed to delete application:"
+      "delete_app_prefix": "Failed to delete application:",
+      "sync_monitored_prefix": "Failed to sync monitored applications:"
     },
     "prompts": {
       "rename_monitored_title": "Rename monitored application",
@@ -606,7 +607,13 @@
     },
     "actions": {
       "add": "Add",
-      "load_more": "Load more"
+      "load_more": "Load more",
+      "sync_from_apps": "Sync from apps",
+      "syncing": "Syncing..."
+    },
+    "messages": {
+      "sync_monitored_added": "Added {{added}} monitored app(s) from {{scanned}} application row(s).",
+      "sync_monitored_noop": "Monitored applications are already in sync with the application list."
     },
     "tooltips": {
       "rename_monitored": "Rename monitored application",

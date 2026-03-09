@@ -11,17 +11,19 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
+
+- czyszczenie danych 
 <!-- - usun definitwynie logikę/funkcje kciuków - jesli user recznie nie przypisze sesji do projektu to jest kciuk w góre, jeśli to zrobi to jest kara - kciuk w dół -->
 
 
 
-- czy faktycznie dziala dzielenie sesji - do sprawdzenia
+<!-- - czy faktycznie dziala dzielenie sesji - do sprawdzenia -->
 -  licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik
-- poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi
+<!-- - poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi -->
 - fonty systemowe do wyboru
-- uporządkowanie settings -> Session Split wyzej logicznie poukładane!
+<!-- - uporządkowanie settings -> Session Split wyzej logicznie poukładane! -->
 - skalowanie fontów w raporcie nie działa
-- przycisk zapisz do pdf jest chujowym miejscu!
+<!-- - przycisk zapisz do pdf jest chujowym miejscu! -->
 - lista fontów jest zle wyswietlana
 - poprawic header raportu
 - Activity Over Time w raporcie
