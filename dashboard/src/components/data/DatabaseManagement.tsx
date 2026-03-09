@@ -14,6 +14,7 @@ import {
   Clock,
   ShieldCheck,
   FileUp,
+  Trash2,
 } from "lucide-react";
 import {
   getDbInfo,
@@ -24,32 +25,36 @@ import {
   openDbFolder,
   performManualBackup,
   restoreDatabaseFromFile,
+  getDataFolderStats,
+  cleanupDataFolder,
 } from "@/lib/tauri";
-import type { DbInfo, DatabaseSettings } from "@/lib/db-types";
+import type { DbInfo, DatabaseSettings, DataFolderStats } from "@/lib/db-types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/ui/toast-notification";
 import { AppTooltip } from "@/components/ui/app-tooltip";
-import { createInlineTranslator } from "@/lib/inline-i18n";
 import { formatBytes } from "@/lib/utils";
 
 export function DatabaseManagement() {
-  const { t, i18n } = useTranslation();
-  const tInline = createInlineTranslator(
-    t,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t } = useTranslation();
+
   const [info, setInfo] = useState<DbInfo | null>(null);
   const [settings, setSettings] = useState<DatabaseSettings | null>(null);
+  const [folderStats, setFolderStats] = useState<DataFolderStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [cleaning, setCleaning] = useState(false);
   const { showError, showInfo } = useToast();
 
   const loadAll = async () => {
     try {
-      const dbInfo = await getDbInfo();
-      const dbSettings = await getDatabaseSettings();
+      const [dbInfo, dbSettings, stats] = await Promise.all([
+        getDbInfo(),
+        getDatabaseSettings(),
+        getDataFolderStats(),
+      ]);
       setInfo(dbInfo);
       setSettings(dbSettings);
+      setFolderStats(stats);
     } catch (e) {
       console.error("Failed to load database management data:", e);
     }
@@ -63,11 +68,11 @@ export function DatabaseManagement() {
     setLoading(true);
     try {
       await vacuumDatabase();
-      showInfo(tInline("Vacuum bazy zakończony pomyślnie", "Database vacuumed successfully"));
+      showInfo(t('data_page.database_management.database_vacuumed_successfully'));
       loadAll();
     } catch (e) {
       showError(
-        tInline('Vacuum nie powiódł się: {{error}}', 'Vacuum failed: {{error}}', {
+        t('data_page.database_management.vacuum_failed', {
           error: String(e),
         }),
       );
@@ -80,15 +85,11 @@ export function DatabaseManagement() {
     setLoading(true);
     try {
       await optimizeDatabase();
-      showInfo(tInline("Baza zoptymalizowana pomyślnie", "Database optimized successfully"));
+      showInfo(t('data_page.database_management.database_optimized_successfully'));
       loadAll();
     } catch (e) {
       showError(
-        tInline(
-          'Optymalizacja nie powiodła się: {{error}}',
-          'Optimization failed: {{error}}',
-          { error: String(e) },
-        ),
+        t('data_page.database_management.optimization_failed', { error: String(e) }),
       );
     } finally {
       setLoading(false);
@@ -97,21 +98,21 @@ export function DatabaseManagement() {
 
   const handleManualBackup = async () => {
     if (!settings?.backup_path) {
-      showError(tInline("Najpierw skonfiguruj ścieżkę backupu", "Please configure a backup path first"));
+      showError(t('data_page.database_management.please_configure_a_backup_path_first'));
       return;
     }
     setLoading(true);
     try {
       const path = await performManualBackup();
       showInfo(
-        tInline('Utworzono backup: {{path}}', 'Backup created: {{path}}', {
+        t('data_page.database_management.backup_created', {
           path,
         }),
       );
       loadAll();
     } catch (e) {
       showError(
-        tInline('Backup nie powiódł się: {{error}}', 'Backup failed: {{error}}', {
+        t('data_page.database_management.backup_failed', {
           error: String(e),
         }),
       );
@@ -124,7 +125,7 @@ export function DatabaseManagement() {
     try {
       await openDbFolder();
     } catch {
-      showError(tInline("Nie udało się otworzyć folderu", "Failed to open folder"));
+      showError(t('data_page.database_management.failed_to_open_folder'));
     }
   };
 
@@ -133,28 +134,24 @@ export function DatabaseManagement() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: tInline("Wybierz katalog backupu", "Select Backup Directory"),
+        title: t('data_page.database_management.select_backup_directory'),
       });
       if (selected && typeof selected === "string" && settings) {
         const nextSettings = { ...settings, backup_path: selected };
         setSettings(nextSettings);
         try {
           await updateDatabaseSettings(nextSettings);
-          showInfo(tInline("Ścieżka backupu zaktualizowana", "Backup path updated"));
+          showInfo(t('data_page.database_management.backup_path_updated'));
           loadAll();
         } catch (e: unknown) {
           showError(
-            tInline(
-              'Nie udało się zapisać ścieżki: {{error}}',
-              'Failed to save path: {{error}}',
-              { error: String(e) },
-            ),
+            t('data_page.database_management.failed_to_save_path', { error: String(e) }),
           );
         }
       }
     } catch (e: unknown) {
       console.error(e);
-      showError(tInline("Nie udało się otworzyć wyboru katalogu", "Failed to open directory picker"));
+      showError(t('data_page.database_management.failed_to_open_directory_picker'));
     }
   };
 
@@ -166,7 +163,7 @@ export function DatabaseManagement() {
       await updateDatabaseSettings(nextSettings);
       loadAll();
     } catch {
-      showError(tInline("Nie udało się zaktualizować ustawienia", "Failed to update setting"));
+      showError(t('data_page.database_management.failed_to_update_setting'));
       setSettings(settings);
     }
   };
@@ -193,36 +190,32 @@ export function DatabaseManagement() {
 
   const saveBackupInterval = async () =>
     saveSettings(
-      tInline("Interwał backupu zaktualizowany", "Backup interval updated"),
-      tInline("Nie udało się zaktualizować interwału backupu", "Failed to update backup interval"),
+      t('data_page.database_management.backup_interval_updated'),
+      t('data_page.database_management.failed_to_update_backup_interval'),
     );
 
   const saveOptimizeInterval = async () =>
     saveSettings(
-      tInline("Interwał optymalizacji zaktualizowany", "Optimization interval updated"),
-      tInline("Nie udało się zaktualizować interwału optymalizacji", "Failed to update optimization interval"),
+      t('data_page.database_management.optimization_interval_updated'),
+      t('data_page.database_management.failed_to_update_optimization_interval'),
     );
 
   const handleRestore = async () => {
     try {
       const selected = await open({
-        filters: [{ name: tInline("Baza SQLite", "SQLite Database"), extensions: ["db"] }],
+        filters: [{ name: t('data_page.database_management.sqlite_database'), extensions: ["db"] }],
         multiple: false,
-        title: tInline("Wybierz plik bazy do przywrócenia", "Select Database File to Restore"),
+        title: t('data_page.database_management.select_database_file_to_restore'),
       });
       if (selected && typeof selected === "string") {
-        if (confirm(tInline("UWAGA: Wszystkie bieżące dane zostaną utracone. Kontynuować?", "WARNING: All current data will be lost. Continue?"))) {
+        if (confirm(t('data_page.database_management.warning_all_current_data_will_be_lost_continue'))) {
           setLoading(true);
           try {
             await restoreDatabaseFromFile(selected);
-            showInfo(tInline("Baza przywrócona. Uruchom ponownie aplikację.", "Database restored. Please restart the app."));
+            showInfo(t('data_page.database_management.database_restored_please_restart_the_app'));
           } catch (e: unknown) {
             showError(
-              tInline(
-                'Przywracanie nie powiodło się: {{error}}',
-                'Restore failed: {{error}}',
-                { error: String(e) },
-              ),
+              t('data_page.database_management.restore_failed', { error: String(e) }),
             );
           } finally {
             setLoading(false);
@@ -231,6 +224,27 @@ export function DatabaseManagement() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleCleanup = async () => {
+    if (!confirm(t('data_page.database_management.cleanup_confirm'))) return;
+    setCleaning(true);
+    try {
+      const result = await cleanupDataFolder();
+      showInfo(
+        t('data_page.database_management.cleanup_success', {
+          count: result.files_deleted,
+          size: formatBytes(result.bytes_freed),
+        }),
+      );
+      loadAll();
+    } catch (e) {
+      showError(
+        t('data_page.database_management.cleanup_failed', { error: String(e) }),
+      );
+    } finally {
+      setCleaning(false);
     }
   };
 
@@ -243,17 +257,17 @@ export function DatabaseManagement() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <Database className="h-4 w-4 text-blue-500" />
-              {tInline("Stan bazy danych", "Database Health")}
+              {t('data_page.database_management.database_health')}
             </CardTitle>
             <CardDescription className="text-xs">
-              {tInline("Monitoruj i optymalizuj lokalną bazę danych", "Monitor and optimize your local database")}
+              {t('data_page.database_management.monitor_and_optimize_your_local_database')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between p-3 rounded-md bg-accent/30 border border-border/20">
               <div className="space-y-0.5">
                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                  {tInline("Rozmiar bazy", "Database Size")}
+                  {t('data_page.database_management.database_size')}
                 </p>
                 <p className="text-lg font-bold">{formatBytes(info.size_bytes)}</p>
               </div>
@@ -265,16 +279,16 @@ export function DatabaseManagement() {
                 disabled={loading}
               >
                 <Wind className="h-3.5 w-3.5" />
-                {tInline("Uruchom VACUUM", "Run VACUUM")}
+                {t('data_page.database_management.run_vacuum')}
               </Button>
             </div>
 
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label className="text-sm">{tInline("VACUUM przy starcie", "Vacuum on startup")}</Label>
+                  <Label className="text-sm">{t('data_page.database_management.vacuum_on_startup')}</Label>
                   <p className="text-[10px] text-muted-foreground">
-                    {tInline("Automatycznie utrzymuj bazę w dobrej kondycji", "Keep database optimized automatically")}
+                    {t('data_page.database_management.keep_database_optimized_automatically')}
                   </p>
                 </div>
                 <Switch
@@ -285,9 +299,9 @@ export function DatabaseManagement() {
 
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
-                  <Label className="text-sm">{tInline("Autooptymalizacja", "Auto optimize")}</Label>
+                  <Label className="text-sm">{t('data_page.database_management.auto_optimize')}</Label>
                   <p className="text-[10px] text-muted-foreground">
-                    {tInline("Uruchamiaj planową automatyczną optymalizację", "Run smart optimization automatically on schedule")}
+                    {t('data_page.database_management.run_smart_optimization_automatically_on_schedule')}
                   </p>
                 </div>
                 <Switch
@@ -298,7 +312,7 @@ export function DatabaseManagement() {
 
               <div className="space-y-1.5">
                 <Label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                  {tInline("Interwał optymalizacji (godziny)", "Optimize Interval (Hours)")}
+                  {t('data_page.database_management.optimize_interval_hours')}
                 </Label>
                 <div className="flex gap-2">
                   <Input
@@ -317,7 +331,7 @@ export function DatabaseManagement() {
                     }
                     className="h-8 text-[11px]"
                   />
-                  <AppTooltip content={tInline('Zapisz interwał optymalizacji', 'Save optimize interval')}>
+                  <AppTooltip content={t('data_page.database_management.save_optimize_interval')}>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -333,11 +347,11 @@ export function DatabaseManagement() {
 
               <div className="flex items-center gap-1.5 text-[11px] font-medium py-1.5">
                 <Clock className="h-3 w-3 text-muted-foreground" />
-                {tInline("Ostatnia optymalizacja:", "Last optimization:")}
+                {t('data_page.database_management.last_optimization')}
                 {" "}
                 {settings.last_optimize_at
                   ? new Date(settings.last_optimize_at).toLocaleString()
-                  : tInline("Nigdy", "Never")}
+                  : t('data_page.database_management.never')}
               </div>
 
               <div className="pt-2 flex gap-2">
@@ -348,7 +362,7 @@ export function DatabaseManagement() {
                   onClick={handleOpenFolder}
                 >
                   <FolderOpen className="h-3.5 w-3.5" />
-                  {tInline("Otwórz folder DB", "Open DB Folder")}
+                  {t('data_page.database_management.open_db_folder')}
                 </Button>
                 <Button
                   variant="outline"
@@ -358,7 +372,7 @@ export function DatabaseManagement() {
                   disabled={loading}
                 >
                   <Zap className="h-3.5 w-3.5" />
-                  {tInline("Optymalizuj teraz", "Optimize Now")}
+                  {t('data_page.database_management.optimize_now')}
                 </Button>
                 <Button
                   variant="outline"
@@ -367,7 +381,7 @@ export function DatabaseManagement() {
                   onClick={handleRestore}
                 >
                   <FileUp className="h-3.5 w-3.5" />
-                  {tInline("Przywróć DB", "Restore DB")}
+                  {t('data_page.database_management.restore_db')}
                 </Button>
               </div>
             </div>
@@ -378,18 +392,18 @@ export function DatabaseManagement() {
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <ShieldCheck className="h-4 w-4 text-emerald-500" />
-              {tInline("Kopie zapasowe", "Data Backups")}
+              {t('data_page.database_management.data_backups')}
             </CardTitle>
             <CardDescription className="text-xs">
-              {tInline("Zabezpiecz dane automatycznymi kopiami", "Secure your data with automatic backups")}
+              {t('data_page.database_management.secure_your_data_with_automatic_backups')}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label className="text-sm">{tInline("Automatyczne backupy", "Automatic backups")}</Label>
+                <Label className="text-sm">{t('data_page.database_management.automatic_backups')}</Label>
                 <p className="text-[10px] text-muted-foreground">
-                  {tInline("Planuj cykliczne kopie bazy", "Schedule periodic database copies")}
+                  {t('data_page.database_management.schedule_periodic_database_copies')}
                 </p>
               </div>
               <Switch
@@ -400,16 +414,16 @@ export function DatabaseManagement() {
 
             <div className="space-y-2">
               <Label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                {tInline("Lokalizacja backupu", "Backup Destination")}
+                {t('data_page.database_management.backup_destination')}
               </Label>
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value={settings.backup_path || tInline("Nie skonfigurowano", "Not configured")}
+                  value={settings.backup_path || t('data_page.database_management.not_configured')}
                   className="h-8 text-[11px] bg-background/30"
                 />
                 <Button variant="outline" size="sm" className="h-8" onClick={handleBrowseBackup}>
-                  {tInline("Przeglądaj", "Browse")}
+                  {t('data_page.database_management.browse')}
                 </Button>
               </div>
             </div>
@@ -417,7 +431,7 @@ export function DatabaseManagement() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                  {tInline("Interwał (dni)", "Interval (Days)")}
+                  {t('data_page.database_management.interval_days')}
                 </Label>
                 <div className="flex gap-2">
                   <Input
@@ -427,7 +441,7 @@ export function DatabaseManagement() {
                     onChange={(e) => handleBackupIntervalChange(e.target.value)}
                     className="h-8 text-[11px]"
                   />
-                  <AppTooltip content={tInline('Zapisz interwał backupu', 'Save backup interval')}>
+                  <AppTooltip content={t('data_page.database_management.save_backup_interval')}>
                     <Button
                       variant="ghost"
                       size="icon"
@@ -442,13 +456,13 @@ export function DatabaseManagement() {
               </div>
               <div className="space-y-1">
                 <Label className="text-[10px] uppercase font-semibold text-muted-foreground">
-                  {tInline("Ostatni backup", "Last Backup")}
+                  {t('data_page.database_management.last_backup')}
                 </Label>
                 <div className="flex items-center gap-1.5 text-[11px] font-medium py-1.5">
                   <Clock className="h-3 w-3 text-muted-foreground" />
                   {settings.last_backup_at
                     ? new Date(settings.last_backup_at).toLocaleDateString()
-                    : tInline("Nigdy", "Never")}
+                    : t('data_page.database_management.never')}
                 </div>
               </div>
             </div>
@@ -459,12 +473,52 @@ export function DatabaseManagement() {
               disabled={loading}
             >
               <Save className="h-4 w-4" />
-              {tInline("Utwórz backup", "Backup Now")}
+              {t('data_page.database_management.backup_now')}
             </Button>
           </CardContent>
         </Card>
       </div>
+
+      <Card className="overflow-hidden border-border/40 bg-background/50 backdrop-blur-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Trash2 className="h-4 w-4 text-amber-500" />
+            {t('data_page.database_management.data_cleanup')}
+          </CardTitle>
+          <CardDescription className="text-xs">
+            {t('data_page.database_management.cleanup_description')}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-3 rounded-md bg-accent/30 border border-border/20">
+            <div className="space-y-0.5">
+              <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                {t('data_page.database_management.cleanup_files_label')}
+              </p>
+              <p className="text-sm font-medium">
+                {folderStats && folderStats.file_count > 0
+                  ? t('data_page.database_management.cleanup_files_found', {
+                      count: folderStats.file_count,
+                      size: formatBytes(folderStats.total_bytes),
+                    })
+                  : t('data_page.database_management.cleanup_no_files')}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-2 text-amber-500 hover:text-amber-600"
+              onClick={handleCleanup}
+              disabled={cleaning || !folderStats || folderStats.file_count === 0}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              {cleaning
+                ? t('data_page.database_management.cleanup_cleaning')
+                : t('data_page.database_management.cleanup_button')}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
-

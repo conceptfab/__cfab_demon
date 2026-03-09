@@ -46,6 +46,8 @@ import type {
   MultiProjectAnalysis,
   SessionSplittableFlag,
   SplitPart,
+  DataFolderStats,
+  CleanupResult,
 } from './db-types';
 
 export function hasTauriRuntime(): boolean {
@@ -521,6 +523,11 @@ export const restoreDatabaseFromFile = (path: string) =>
   invokeMutation<void>('restore_database_from_file', { path });
 
 export const getBackupFiles = () => invoke<BackupFile[]>('get_backup_files');
+
+export const getDataFolderStats = () =>
+  invoke<DataFolderStats>('get_data_folder_stats');
+export const cleanupDataFolder = () =>
+  invokeMutation<CleanupResult>('cleanup_data_folder');
 
 // Secure token storage (API token stored in Rust backend, not localStorage)
 export const getSecureToken = () => invoke<string>('get_secure_token');

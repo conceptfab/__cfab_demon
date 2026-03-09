@@ -8,7 +8,6 @@ import logoSrc from '@/assets/logo.png';
 import { formatDuration, formatMoney } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useSettingsStore } from '@/store/settings-store';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 import { getTemplate } from '@/lib/report-templates';
 import type { ReportFontSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
@@ -17,8 +16,8 @@ import type {
 } from '@/lib/db-types';
 
 export function ReportView() {
-  const { t, i18n } = useTranslation();
-  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
+  const { t } = useTranslation();
+
   const { setCurrentPage, projectPageId, reportTemplateId } = useUIStore();
   const { currencyCode } = useSettingsStore();
 
@@ -83,7 +82,7 @@ export function ReportView() {
   if (!projectPageId) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-        {tt('Brak wybranego projektu', 'No project selected')}
+        {t('report_view.no_project_selected')}
       </div>
     );
   }
@@ -91,7 +90,7 @@ export function ReportView() {
   if (loadedProjectId !== projectPageId) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-        {tt('Generowanie raportu...', 'Generating report...')}
+        {t('report_view.generating_report')}
       </div>
     );
   }
@@ -99,7 +98,7 @@ export function ReportView() {
   if (!report) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-        {tt('Nie znaleziono danych', 'No data found')}
+        {t('report_view.no_data_found')}
       </div>
     );
   }
@@ -123,7 +122,7 @@ export function ReportView() {
           onClick={() => setCurrentPage('project-card')}
         >
           <ChevronLeft className="mr-1 h-4 w-4" />
-          {tt('Powrót do projektu', 'Back to project')}
+          {t('report_view.back_to_project')}
         </Button>
         <div className="flex-1" />
         <div className="flex items-center gap-2 print:hidden">
@@ -152,7 +151,7 @@ export function ReportView() {
           className="bg-sky-600 hover:bg-sky-700 text-white"
         >
           <Printer className="mr-1.5 h-4 w-4" />
-          {tt('Drukuj / PDF', 'Print / PDF')}
+          {t('report_view.print_pdf')}
         </Button>
       </div>
 
@@ -198,9 +197,9 @@ export function ReportView() {
                 </h1>
               </div>
               <p className="text-xs text-muted-foreground print:text-gray-500 mt-1">
-                {tt('Raport wygenerowany', 'Report generated')}: {generatedAt}
+                {t('report_view.report_generated')}: {generatedAt}
                 {report.project.frozen_at &&
-                  ` · ${tt('Projekt zamrożony', 'Project frozen')}`}
+                  ` · ${t('report_view.project_frozen')}`}
               </p>
             </div>
           )}
@@ -210,20 +209,20 @@ export function ReportView() {
             <div className="grid grid-cols-4 gap-4">
               {[
                 {
-                  label: tt('Łączny czas', 'Total time'),
+                  label: t('report_view.total_time'),
                   value: formatDuration(report.project.total_seconds),
                   accent: true,
                 },
                 {
-                  label: tt('Sesje', 'Sessions'),
+                  label: t('report_view.sessions'),
                   value: String(totalSessions),
                 },
                 {
-                  label: tt('Aplikacje', 'Apps'),
+                  label: t('report_view.apps'),
                   value: String(report.extra.top_apps.length),
                 },
                 {
-                  label: tt('Unikalne pliki', 'Unique files'),
+                  label: t('report_view.unique_files'),
                   value: String(
                     report.extra.db_stats?.file_activity_count ?? 0,
                   ),
@@ -250,12 +249,12 @@ export function ReportView() {
           {has('financials') && report.estimate > 0 && (
             <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 print:border-green-200 print:bg-green-50">
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
-                {tt('Finanse', 'Financials')}
+                {t('report_view.financials')}
               </div>
               <div className="flex items-baseline gap-6">
                 <div>
                   <div className="text-[10px] text-muted-foreground/50 print:text-gray-500">
-                    {tt('Szacowana wartość', 'Estimated value')}
+                    {t('report_view.estimated_value')}
                   </div>
                   <div className="text-2xl font-bold text-emerald-400 print:text-green-700">
                     {formatMoney(report.estimate, currencyCode)}
@@ -266,7 +265,7 @@ export function ReportView() {
                 </div>
                 <div>
                   <div className="text-[10px] text-muted-foreground/50 print:text-gray-500">
-                    {tt('Czas pracy', 'Work time')}
+                    {t('report_view.work_time')}
                   </div>
                   <div className="text-xl font-bold print:text-black">
                     {formatDuration(report.project.total_seconds)}
@@ -280,7 +279,7 @@ export function ReportView() {
           {has('apps') && report.extra.top_apps.length > 0 && (
             <div>
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3 print:text-gray-500">
-                {tt('Najczęściej używane aplikacje', 'Most used applications')}
+                {t('report_view.most_used_applications')}
               </h2>
               <div className="space-y-2">
                 {report.extra.top_apps.slice(0, 10).map((app) => {
@@ -316,14 +315,14 @@ export function ReportView() {
             (report.extra.db_stats?.file_activity_count ?? 0) > 0 && (
               <div className="rounded-lg border border-border/20 p-4 print:border-gray-200">
                 <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-1 print:text-gray-500">
-                  {tt('Aktywność na plikach', 'File activity')}
+                  {t('report_view.file_activity')}
                 </h2>
                 <div className="text-sm print:text-black">
-                  {tt('Zarejestrowano', 'Tracked')}:{' '}
+                  {t('report_view.tracked')}:{' '}
                   <strong>
                     {report.extra.db_stats?.file_activity_count ?? 0}
                   </strong>{' '}
-                  {tt('unikalnych plików', 'unique files')}
+                  {t('report_view.unique_files_2')}
                 </div>
               </div>
             )}
@@ -332,12 +331,12 @@ export function ReportView() {
           {has('ai') && (
             <div className="rounded-lg border border-border/20 p-4 print:border-gray-200">
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
-                {tt('Model AI', 'AI Model')}
+                {t('report_view.ai_model')}
               </h2>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <div className="text-[10px] text-muted-foreground/50 print:text-gray-500">
-                    {tt('Sugestie AI', 'AI suggestions')}
+                    {t('report_view.ai_suggestions')}
                   </div>
                   <div className="font-bold text-lg print:text-black">
                     {sessionsWithAI}
@@ -345,7 +344,7 @@ export function ReportView() {
                 </div>
                 <div>
                   <div className="text-[10px] text-muted-foreground/50 print:text-gray-500">
-                    {tt('Auto-przypisane', 'Auto-assigned')}
+                    {t('report_view.auto_assigned')}
                   </div>
                   <div className="font-bold text-lg print:text-black">
                     {sessionsAIAssigned}
@@ -359,22 +358,22 @@ export function ReportView() {
           {has('sessions') && report.sessions.length > 0 && (
             <div>
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
-                {tt('Sesje', 'Sessions')} ({report.sessions.length})
+                {t('report_view.sessions')} ({report.sessions.length})
               </h2>
               <table className="w-full text-[11px] border-collapse">
                 <thead>
                   <tr className="border-b border-border/20 print:border-gray-300 text-left text-muted-foreground/50 print:text-gray-500">
                     <th className="py-1 pr-2 font-medium">
-                      {tt('Data', 'Date')}
+                      {t('report_view.date')}
                     </th>
                     <th className="py-1 pr-2 font-medium">
-                      {tt('Aplikacja', 'App')}
+                      {t('report_view.app')}
                     </th>
                     <th className="py-1 pr-2 font-medium text-right">
-                      {tt('Czas', 'Time')}
+                      {t('report_view.time')}
                     </th>
                     <th className="py-1 font-medium">
-                      {tt('Komentarz', 'Comment')}
+                      {t('report_view.comment')}
                     </th>
                   </tr>
                 </thead>
@@ -403,7 +402,7 @@ export function ReportView() {
               {report.sessions.length > 50 && (
                 <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
                   +{report.sessions.length - 50}{' '}
-                  {tt('więcej sesji', 'more sessions')}...
+                  {t('report_view.more_sessions')}...
                 </p>
               )}
             </div>
@@ -413,7 +412,7 @@ export function ReportView() {
           {has('comments') && sessionsWithComments.length > 0 && (
             <div>
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
-                {tt('Komentarze', 'Comments')} ({sessionsWithComments.length})
+                {t('report_view.comments')} ({sessionsWithComments.length})
               </h2>
               <div className="space-y-1.5">
                 {sessionsWithComments.slice(0, 25).map((s) => (
@@ -438,22 +437,22 @@ export function ReportView() {
             return (
               <div>
                 <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
-                  {tt('Sesje z mnożnikiem', 'Boosted sessions')} ({boostedSessions.length})
+                  {t('report_view.boosted_sessions')} ({boostedSessions.length})
                 </h2>
                 <table className="w-full text-[11px] border-collapse">
                   <thead>
                     <tr className="border-b border-border/20 print:border-gray-300 text-left text-muted-foreground/50 print:text-gray-500">
                       <th className="py-1 pr-2 font-medium">
-                        {tt('Data', 'Date')}
+                        {t('report_view.date')}
                       </th>
                       <th className="py-1 pr-2 font-medium">
-                        {tt('Aplikacja', 'App')}
+                        {t('report_view.app')}
                       </th>
                       <th className="py-1 pr-2 font-medium text-right">
-                        {tt('Czas', 'Time')}
+                        {t('report_view.time')}
                       </th>
                       <th className="py-1 pr-2 font-medium text-right">
-                        {tt('Mnożnik', 'Multiplier')}
+                        {t('report_view.multiplier')}
                       </th>
                     </tr>
                   </thead>
@@ -482,7 +481,7 @@ export function ReportView() {
                 {boostedSessions.length > 25 && (
                   <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
                     +{boostedSessions.length - 25}{' '}
-                    {tt('więcej sesji', 'more sessions')}...
+                    {t('report_view.more_sessions')}...
                   </p>
                 )}
               </div>
@@ -493,22 +492,22 @@ export function ReportView() {
           {has('manual_sessions') && report.manual_sessions.length > 0 && (
             <div>
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
-                {tt('Sesje manualne', 'Manual sessions')} ({report.manual_sessions.length})
+                {t('report_view.manual_sessions')} ({report.manual_sessions.length})
               </h2>
               <table className="w-full text-[11px] border-collapse">
                 <thead>
                   <tr className="border-b border-border/20 print:border-gray-300 text-left text-muted-foreground/50 print:text-gray-500">
                     <th className="py-1 pr-2 font-medium">
-                      {tt('Data', 'Date')}
+                      {t('report_view.date')}
                     </th>
                     <th className="py-1 pr-2 font-medium">
-                      {tt('Tytuł', 'Title')}
+                      {t('report_view.title')}
                     </th>
                     <th className="py-1 pr-2 font-medium">
-                      {tt('Typ', 'Type')}
+                      {t('report_view.type')}
                     </th>
                     <th className="py-1 pr-2 font-medium text-right">
-                      {tt('Czas', 'Time')}
+                      {t('report_view.time')}
                     </th>
                   </tr>
                 </thead>
@@ -537,7 +536,7 @@ export function ReportView() {
               {report.manual_sessions.length > 50 && (
                 <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
                   +{report.manual_sessions.length - 50}{' '}
-                  {tt('więcej sesji', 'more sessions')}...
+                  {t('report_view.more_sessions')}...
                 </p>
               )}
             </div>

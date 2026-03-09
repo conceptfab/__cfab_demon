@@ -204,8 +204,8 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
         "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(app_id, start_time) DO UPDATE SET
-           end_time = excluded.end_time,
-           duration_seconds = excluded.duration_seconds,
+           end_time = CASE WHEN sessions.split_source_session_id IS NULL THEN excluded.end_time ELSE sessions.end_time END,
+           duration_seconds = CASE WHEN sessions.split_source_session_id IS NULL THEN excluded.duration_seconds ELSE sessions.duration_seconds END,
            is_hidden = sessions.is_hidden",
     ) {
         Ok(s) => s,

@@ -1221,30 +1221,38 @@ fn load_split_source_session(
     only_visible: bool,
 ) -> Result<SplitSourceSession, String> {
     let sql = if only_visible {
-        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment
+        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment, split_source_session_id
          FROM sessions WHERE id = ?1 AND (is_hidden IS NULL OR is_hidden = 0)"
     } else {
-        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment
+        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment, split_source_session_id
          FROM sessions WHERE id = ?1"
     };
 
-    let session = conn
+    let (session, split_source) = conn
         .query_row(sql, [session_id], |row| {
-            Ok(SplitSourceSession {
-                app_id: row.get::<_, i64>(0)?,
-                start_time: row.get::<_, String>(1)?,
-                end_time: row.get::<_, String>(2)?,
-                duration_seconds: row.get::<_, i64>(3)?,
-                date_str: row.get::<_, String>(4)?,
-                rate_multiplier: row.get::<_, f64>(5)?,
-                orig_project_id: row.get::<_, Option<i64>>(6)?,
-                comment: row.get::<_, Option<String>>(7)?,
-            })
+            Ok((
+                SplitSourceSession {
+                    app_id: row.get::<_, i64>(0)?,
+                    start_time: row.get::<_, String>(1)?,
+                    end_time: row.get::<_, String>(2)?,
+                    duration_seconds: row.get::<_, i64>(3)?,
+                    date_str: row.get::<_, String>(4)?,
+                    rate_multiplier: row.get::<_, f64>(5)?,
+                    orig_project_id: row.get::<_, Option<i64>>(6)?,
+                    comment: row.get::<_, Option<String>>(7)?,
+                },
+                row.get::<_, Option<i64>>(8)?,
+            ))
         })
         .optional()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Session not found".to_string())?;
 
-    session.ok_or_else(|| "Session not found".to_string())
+    if split_source.is_some() {
+        return Err("Session has already been split and cannot be split again".to_string());
+    }
+
+    Ok(session)
 }
 
 fn validate_split_parts(splits: &[SplitPart]) -> Result<(), String> {

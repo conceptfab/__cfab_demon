@@ -31,7 +31,6 @@ import {
   saveIndicatorSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 import {
   CHART_AXIS_COLOR,
   CHART_GRID_COLOR,
@@ -132,9 +131,8 @@ function parseDate(value: string | null | undefined): Date | null {
 
 function buildTrainingReminder(
   status: AssignmentModelStatus | null,
-  translate?: (
-    pl: string,
-    en: string,
+  translate: (
+    key: string,
     interpolation?: Record<string, string | number>,
   ) => string,
 ): {
@@ -159,24 +157,21 @@ function buildTrainingReminder(
 
   let reason: string | null = null;
   if (dueToFeedback) {
-    reason = (translate ?? ((_: string, en: string) => en))(
-      'Masz {{feedbackCount}} korekt od ostatniego treningu (próg: {{threshold}}).',
-      'You have {{feedbackCount}} corrections since last training (threshold: {{threshold}}).',
+    reason = translate(
+      'ai_page.text.you_have_corrections_since_last_training_threshold',
       {
         feedbackCount: status.feedback_since_train,
         threshold: FEEDBACK_TRIGGER,
       },
     );
   } else if (dueToInterval) {
-    reason = (translate ?? ((_: string, en: string) => en))(
-      'Minęło ponad {{hours}}h od ostatniego treningu i są nowe korekty.',
-      'Over {{hours}}h passed since last training and there are new corrections.',
+    reason = translate(
+      'ai_page.text.over_h_passed_since_last_training_and_there_are',
       { hours: RETRAIN_INTERVAL_HOURS },
     );
   } else if (coldStart) {
-    reason = (translate ?? ((_: string, en: string) => en))(
-      'Model ma dane korekt, ale nigdy nie był trenowany.',
-      'The model has correction data but has never been trained.',
+    reason = translate(
+      'ai_page.text.the_model_has_correction_data_but_has_never_been',
     );
   }
 
@@ -193,11 +188,7 @@ function buildTrainingReminder(
 }
 
 export function AIPage() {
-  const { t: tr, i18n } = useTranslation();
-  const t = useMemo(
-    () => createInlineTranslator(tr, i18n.resolvedLanguage ?? i18n.language),
-    [tr, i18n.resolvedLanguage, i18n.language],
-  );
+  const { t: tr } = useTranslation();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -206,7 +197,6 @@ export function AIPage() {
   const isFetchingMetricsRef = useRef(false);
   const showErrorRef = useRef(showError);
   const translateRef = useRef(tr);
-  const inlineTranslateRef = useRef(t);
   const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
   const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
@@ -252,8 +242,11 @@ export function AIPage() {
   };
 
   const trainingReminder = useMemo(
-    () => buildTrainingReminder(status, t),
-    [status, t],
+    () =>
+      buildTrainingReminder(status, (key, interpolation) =>
+        tr(key, interpolation),
+      ),
+    [status, tr],
   );
 
   useEffect(() => {
@@ -264,9 +257,6 @@ export function AIPage() {
     translateRef.current = tr;
   }, [tr]);
 
-  useEffect(() => {
-    inlineTranslateRef.current = t;
-  }, [t]);
 
   const fetchStatus = useCallback(
     async () => {
@@ -280,10 +270,7 @@ export function AIPage() {
       } catch (e) {
         console.error(e);
         showErrorRef.current(
-          inlineTranslateRef.current(
-            'Nie udało się wczytać statusu modelu AI:',
-            'Failed to load AI model status:',
-          ) + ` ${String(e)}`,
+          `${translateRef.current('ai_page.errors.status_load_failed')} ${String(e)}`,
         );
       } finally {
         isFetchingRef.current = false;
@@ -362,7 +349,7 @@ export function AIPage() {
       const clampedFw = Math.max(1, Math.min(50, feedbackWeight));
       await setFeedbackWeightApi(clampedFw);
       dirtyRef.current = false;
-      showInfo(t('Ustawienia modelu zapisane.', 'Model settings saved.'));
+      showInfo(tr('ai_page.text.model_settings_saved'));
       // Force-sync form fields from backend after save
       const freshStatus = await getAssignmentModelStatus();
       syncFromStatus(freshStatus, true);
@@ -372,10 +359,7 @@ export function AIPage() {
     } catch (e) {
       console.error(e);
       showError(
-        t(
-          'Nie udało się zapisać ustawień modelu:',
-          'Failed to save model settings:',
-        ) + ` ${String(e)}`,
+        tr('ai_page.text.failed_to_save_model_settings') + ` ${String(e)}`,
       );
     } finally {
       setSavingMode(false);
@@ -388,12 +372,12 @@ export function AIPage() {
       const nextStatus = await trainAssignmentModel(true);
       syncFromStatus(nextStatus);
       await fetchMetrics(true);
-      showInfo(t('Trening modelu zakończony.', 'Model training completed.'));
+      showInfo(tr('ai_page.text.model_training_completed'));
     } catch (e) {
       console.error(e);
       await fetchStatus();
       showError(
-        t('Trening modelu nie powiódł się:', 'Model training failed:') +
+        tr('ai_page.text.model_training_failed') +
           ` ${String(e)}`,
       );
     } finally {
@@ -426,10 +410,7 @@ export function AIPage() {
   const handleRunAutoSafe = async () => {
     if (status?.mode !== 'auto_safe') {
       showError(
-        t(
-          'Auto-safe jest wyłączone. Ustaw tryb na auto_safe i zapisz ustawienia.',
-          'Auto-safe is disabled. Set mode to auto_safe and save settings.',
-        ),
+        tr('ai_page.text.auto_safe_is_disabled_set_mode_to_auto_safe_and'),
       );
       return;
     }
@@ -444,11 +425,7 @@ export function AIPage() {
         minDuration,
       );
       showInfo(
-        t(
-          'Auto-safe zakończone. Przypisano {{assigned}} z {{scanned}} przeskanowanych sesji.',
-          'Auto-safe completed. Assigned {{assigned}} / {{scanned}} scanned sessions.',
-          { assigned: result.assigned, scanned: result.scanned },
-        ),
+        tr('ai_page.text.auto_safe_completed_assigned_scanned_sessions', { assigned: result.assigned, scanned: result.scanned }),
       );
       triggerRefresh();
       await fetchStatus();
@@ -456,7 +433,7 @@ export function AIPage() {
     } catch (e) {
       console.error(e);
       showError(
-        t('Auto-safe nie powiodło się:', 'Auto-safe failed:') + ` ${String(e)}`,
+        tr('ai_page.text.auto_safe_failed') + ` ${String(e)}`,
       );
     } finally {
       setRunningAuto(false);
@@ -467,10 +444,7 @@ export function AIPage() {
     if (!status?.can_rollback_last_auto_run) return;
 
     const confirmed = await confirm(
-      t(
-        'Cofnąć ostatnią paczkę auto-safe? Cofnięte zostaną tylko sesje, które od tego czasu nie były ręcznie zmieniane.',
-        "Rollback the last auto-safe batch? This will only revert sessions that haven't been manually changed since.",
-      ),
+      tr('ai_page.text.rollback_the_last_auto_safe_batch_this_will_only'),
     );
     if (!confirmed) return;
 
@@ -478,11 +452,7 @@ export function AIPage() {
     try {
       const result = await rollbackLastAutoSafeRun();
       showInfo(
-        t(
-          'Cofanie zakończone. Cofnięto {{reverted}}, pominięto {{skipped}}.',
-          'Rollback completed. Reverted {{reverted}}, skipped {{skipped}}.',
-          { reverted: result.reverted, skipped: result.skipped },
-        ),
+        tr('ai_page.text.rollback_completed_reverted_skipped', { reverted: result.reverted, skipped: result.skipped }),
       );
       triggerRefresh();
       await fetchStatus();
@@ -490,7 +460,7 @@ export function AIPage() {
     } catch (e) {
       console.error(e);
       showError(
-        t('Cofanie nie powiodło się:', 'Rollback failed:') + ` ${String(e)}`,
+        tr('ai_page.text.rollback_failed') + ` ${String(e)}`,
       );
     } finally {
       setRollingBack(false);
@@ -505,19 +475,12 @@ export function AIPage() {
       );
       syncFromStatus(nextStatus);
       showInfo(
-        t(
-          'Przypomnienie odroczone na {{hours}}h.',
-          'Reminder snoozed for {{hours}}h.',
-          { hours: REMINDER_SNOOZE_HOURS },
-        ),
+        tr('ai_page.text.reminder_snoozed_for_h', { hours: REMINDER_SNOOZE_HOURS }),
       );
     } catch (e) {
       console.error(e);
       showError(
-        t(
-          'Nie udało się odroczyć przypomnienia:',
-          'Failed to snooze reminder:',
-        ) + ` ${String(e)}`,
+        tr('ai_page.text.failed_to_snooze_reminder') + ` ${String(e)}`,
       );
     } finally {
       setSnoozingReminder(false);
@@ -537,90 +500,47 @@ export function AIPage() {
   const indicatorItems = [
     {
       key: 'showAiBadge' as const,
-      label: t('Odznaka AI', 'AI badge'),
-      description: t(
-        'Pokaż ikonę iskry na sesjach przypisanych przez AI auto-safe',
-        'Show sparkle icon on sessions assigned by AI auto-safe',
-      ),
+      label: tr('ai_page.text.ai_badge'),
+      description: tr('ai_page.text.show_sparkle_icon_on_sessions_assigned_by_ai_aut'),
     },
     {
       key: 'showSuggestions' as const,
-      label: t('Sugestie AI', 'AI suggestions'),
-      description: t(
-        'Pokaż sugestie projektu dla nieprzypisanych sesji',
-        'Show project suggestions for unassigned sessions',
-      ),
+      label: tr('ai_page.text.ai_suggestions'),
+      description: tr('ai_page.text.show_project_suggestions_for_unassigned_sessions'),
     },
     {
       key: 'showScoreBreakdown' as const,
-      label: t('Przycisk rozbicia punktacji', 'Score breakdown button'),
-      description: t(
-        'Pokaż przycisk szczegółów punktacji (BarChart3) na każdej sesji',
-        'Show the score details button (BarChart3) on each session',
-      ),
+      label: tr('ai_page.text.score_breakdown_button'),
+      description: tr('ai_page.text.show_the_score_details_button_barchart3_on_each'),
     },
   ];
   const howToSections = [
     {
-      title: t('Kiedy trenować model', 'When to train the model'),
+      title: tr('ai_page.text.when_to_train_the_model'),
       paragraphs: [
-        t(
-          'Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.',
-          'Train after a larger series of manual corrections, after importing new data, or when the reminder indicates that the model needs refreshing.',
-        ),
-        t(
-          'Przypomnienie pojawia się automatycznie, gdy masz co najmniej {{feedbackTrigger}} nowych korekt lub minęło ponad {{retrainHours}}h od ostatniego treningu i są nowe korekty.',
-          'The reminder appears automatically when: you have at least {{feedbackTrigger}} new corrections or over {{retrainHours}}h passed since last training and there are new corrections.',
-          {
+        tr('ai_page.text.train_after_a_larger_series_of_manual_correction'),
+        tr('ai_page.text.the_reminder_appears_automatically_when_you_have', {
             feedbackTrigger: FEEDBACK_TRIGGER,
             retrainHours: RETRAIN_INTERVAL_HOURS,
-          },
-        ),
+          }),
       ],
     },
     {
-      title: t('Znaczenie parametrów', 'What parameters mean'),
+      title: tr('ai_page.text.what_parameters_mean'),
       paragraphs: [
-        t(
-          'Mode: off wyłącza sugestie, suggest pokazuje sugestie bez auto-zmian, auto_safe pozwala na automatyczne przypisania tylko przy wysokiej pewności.',
-          'Mode: off disables suggestions, suggest shows suggestions without auto-changes, auto_safe allows automatic assignments only with high confidence.',
-        ),
-        t(
-          'Suggest Min Confidence: minimalna pewność, by pokazać sugestię w sesjach.',
-          'Suggest Min Confidence: minimum confidence to show suggestion in sessions.',
-        ),
-        t(
-          'Auto-safe Min Confidence: wymagany próg pewności dla automatycznego przypisania.',
-          'Auto-safe Min Confidence: required confidence threshold for automatic assignment.',
-        ),
-        t(
-          'Auto-safe Min Evidence: ile sygnałów (np. app/token/historia czasu) musi potwierdzić decyzję.',
-          'Auto-safe Min Evidence: how many signals (e.g. app/token/time history) must confirm decision.',
-        ),
-        t(
-          'Session Limit: ile nieprzypisanych sesji auto-safe przeskanuje w jednej paczce.',
-          'Session Limit: how many unassigned sessions auto-safe will scan in one batch.',
-        ),
-        t(
-          'Feedback Weight: jak mocno ręczne korekty (kciuki/reassign) wpływają na model podczas treningu. Wyższa wartość = większy wpływ korekt. Domyślnie: 5.',
-          'Feedback Weight: how much manual corrections (thumbs up/down, reassignments) influence the model during training. Higher = corrections dominate more. Default: 5.',
-        ),
+        tr('ai_page.text.mode_off_disables_suggestions_suggest_shows_sugg'),
+        tr('ai_page.text.suggest_min_confidence_minimum_confidence_to_sho'),
+        tr('ai_page.text.auto_safe_min_confidence_required_confidence_thr'),
+        tr('ai_page.text.auto_safe_min_evidence_how_many_signals_e_g_app'),
+        tr('ai_page.text.session_limit_how_many_unassigned_sessions_auto'),
+        tr('ai_page.text.feedback_weight_how_much_manual_corrections_thum'),
       ],
     },
     {
-      title: t(
-        'Rekomendowane ustawienia startowe',
-        'Recommended starting settings',
-      ),
+      title: tr('ai_page.text.recommended_starting_settings'),
       paragraphs: [
-        t(
-          'Zacznij od mode=suggest, suggest=0.60, auto=0.85, evidence=3. Gdy sugestie są trafne, włącz auto_safe.',
-          'Start with mode=suggest, suggest=0.60, auto=0.85, evidence=3. When suggestions are accurate, enable auto_safe.',
-        ),
-        t(
-          'Jeśli auto-safe robi błędne przypisania: podnieś Auto-safe Min Confidence do 0.9+ albo Min Evidence do 4-5.',
-          'If auto-safe makes wrong assignments: raise Auto-safe Min Confidence to 0.9+ or Min Evidence to 4-5.',
-        ),
+        tr('ai_page.text.start_with_mode_suggest_suggest_0_60_auto_0_85_e'),
+        tr('ai_page.text.if_auto_safe_makes_wrong_assignments_raise_auto'),
       ],
     },
   ];
@@ -632,41 +552,38 @@ export function AIPage() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base font-semibold">
               <Brain className="h-4 w-4" />
-              {t('Status modelu', 'Model Status')}
+              {tr('ai_page.text.model_status')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {t('Tryb', 'Mode')}
+                  {tr('ai_page.text.mode')}
                 </p>
                 <p className="mt-1 font-medium">{status?.mode ?? '-'}</p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {t('Stan treningu', 'Training State')}
+                  {tr('ai_page.text.training_state')}
                 </p>
                 <p className="mt-1 font-medium">
                   {status?.is_training
-                    ? t('W trakcie', 'In progress')
-                    : t('Bezczynny', 'Idle')}
+                    ? tr('ai_page.text.in_progress')
+                    : tr('ai_page.text.idle')}
                 </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {t('Ostatni trening', 'Last Training')}
+                  {tr('ai_page.text.last_training')}
                 </p>
                 <p className="mt-1 font-medium">
-                  {formatDateTime(status?.last_train_at) || t('Nigdy', 'Never')}
+                  {formatDateTime(status?.last_train_at) || tr('ai_page.text.never')}
                 </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {t(
-                    'Korekty od ostatniego treningu',
-                    'Corrections since last training',
-                  )}
+                  {tr('ai_page.text.corrections_since_last_training')}
                 </p>
                 <p className="mt-1 font-medium">
                   {status?.feedback_since_train ?? 0}
@@ -674,39 +591,36 @@ export function AIPage() {
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {t('Metryki ostatniego treningu', 'Last training metrics')}
+                  {tr('ai_page.text.last_training_metrics')}
                 </p>
                 <p className="mt-1 font-medium">
                   {(status?.last_train_samples ?? 0) > 0
                     ? `${status?.last_train_samples} samples / ${status?.last_train_duration_ms ?? 0} ms`
-                    : t('Brak danych', 'No data')}
+                    : tr('ai_page.text.no_data')}
                 </p>
               </div>
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <p className="text-xs text-muted-foreground">
-                  {t('Ostatni przebieg auto-safe', 'Last auto-safe run')}
+                  {tr('ai_page.text.last_auto_safe_run')}
                 </p>
                 <p className="mt-1 font-medium">
                   {status?.last_auto_run_at
                     ? `${formatDateTime(status.last_auto_run_at)} (${status.last_auto_assigned_count} assigned)`
-                    : t('Nigdy', 'Never')}
+                    : tr('ai_page.text.never')}
                 </p>
               </div>
             </div>
 
             {status?.train_error_last && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {t('Błąd ostatniego treningu:', 'Last training error:')}{' '}
+                {tr('ai_page.text.last_training_error')}{' '}
                 {status.train_error_last}
               </div>
             )}
 
             {trainingReminder.cooldownUntil && !trainingReminder.shouldShow && (
               <div className="rounded-md border border-border/70 bg-background/35 px-3 py-2 text-xs text-muted-foreground">
-                {t(
-                  'Przypomnienie o treningu odroczone do:',
-                  'Training reminder snoozed until:',
-                )}{' '}
+                {tr('ai_page.text.training_reminder_snoozed_until')}{' '}
                 {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
               </div>
             )}
@@ -720,8 +634,8 @@ export function AIPage() {
               >
                 <PlayCircle className="mr-2 h-4 w-4" />
                 {training || status?.is_training
-                  ? t('Trening...', 'Training...')
-                  : t('Trenuj teraz', 'Train Now')}
+                  ? tr('ai_page.text.training')
+                  : tr('ai_page.text.train_now')}
               </Button>
               <Button
                 variant="outline"
@@ -737,8 +651,8 @@ export function AIPage() {
                   }`}
                 />
                 {refreshingStatus
-                  ? t('Odświeżanie...', 'Refreshing...')
-                  : t('Odśwież status', 'Refresh Status')}
+                  ? tr('ai_page.text.refreshing')
+                  : tr('ai_page.text.refresh_status')}
               </Button>
               <Button
                 variant="destructive"
@@ -748,8 +662,8 @@ export function AIPage() {
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 {resettingKnowledge
-                  ? t('Resetowanie...', 'Resetting...')
-                  : t('Reset wiedzy AI', 'Reset AI knowledge')}
+                  ? tr('ai_page.text.resetting')
+                  : tr('ai_page.text.reset_ai_knowledge')}
               </Button>
             </div>
           </CardContent>
@@ -766,14 +680,14 @@ export function AIPage() {
           <CardContent className="space-y-4">
             {loadingMetrics && !metrics ? (
               <p className="text-sm text-muted-foreground">
-                {t('Ładowanie metryk AI...', 'Loading AI metrics...')}
+                {tr('ai_page.text.loading_ai_metrics')}
               </p>
             ) : (
               <>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t('Precision AI', 'AI precision')}
+                      {tr('ai_page.text.ai_precision')}
                     </p>
                     <p className="mt-1 font-medium">
                       {formatPercent(metricsSummary?.feedback_precision ?? 0)}
@@ -781,7 +695,7 @@ export function AIPage() {
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t('Feedback łącznie', 'Total feedback')}
+                      {tr('ai_page.text.total_feedback')}
                     </p>
                     <p className="mt-1 font-medium">
                       {metricsSummary?.feedback_total ?? 0}
@@ -789,7 +703,7 @@ export function AIPage() {
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t('Auto-safe przypisania', 'Auto-safe assignments')}
+                      {tr('ai_page.text.auto_safe_assignments')}
                     </p>
                     <p className="mt-1 font-medium">
                       {metricsSummary?.auto_assigned ?? 0}
@@ -797,7 +711,7 @@ export function AIPage() {
                   </div>
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t('Pokrycie detected_path', 'Detected path coverage')}
+                      {tr('ai_page.text.detected_path_coverage')}
                     </p>
                     <p className="mt-1 font-medium">
                       {formatPercent(
@@ -808,27 +722,20 @@ export function AIPage() {
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  {t(
-                    'Pokrycie title_history: {{titleCoverage}}, activity_type: {{activityCoverage}}.',
-                    'title_history coverage: {{titleCoverage}}, activity_type: {{activityCoverage}}.',
-                    {
+                  {tr('ai_page.text.title_history_coverage_activity_type', {
                       titleCoverage: formatPercent(
                         metricsSummary?.coverage_title_history_ratio ?? 0,
                       ),
                       activityCoverage: formatPercent(
                         metricsSummary?.coverage_activity_type_ratio ?? 0,
                       ),
-                    },
-                  )}
+                    })}
                 </p>
 
                 <div className="grid gap-4 lg:grid-cols-2">
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t(
-                        'Trend feedbacku (accept/reject/manual)',
-                        'Feedback trend (accept/reject/manual)',
-                      )}
+                      {tr('ai_page.text.feedback_trend_accept_reject_manual')}
                     </p>
                     <div className="mt-2 h-56">
                       <ResponsiveContainer width="100%" height="100%">
@@ -862,19 +769,19 @@ export function AIPage() {
                             dataKey="feedback_accepted"
                             stackId="feedback"
                             fill="#22c55e"
-                            name={t('Accept', 'Accept')}
+                            name={tr('ai_page.text.accept')}
                           />
                           <Bar
                             dataKey="feedback_rejected"
                             stackId="feedback"
                             fill="#ef4444"
-                            name={t('Reject', 'Reject')}
+                            name={tr('ai_page.text.reject')}
                           />
                           <Bar
                             dataKey="feedback_manual_change"
                             stackId="feedback"
                             fill={CHART_PRIMARY_COLOR}
-                            name={t('Manual', 'Manual')}
+                            name={tr('ai_page.text.manual')}
                           />
                         </BarChart>
                       </ResponsiveContainer>
@@ -883,10 +790,7 @@ export function AIPage() {
 
                   <div className="rounded-md border border-border/70 bg-background/35 p-3">
                     <p className="text-xs text-muted-foreground">
-                      {t(
-                        'Auto-safe runs vs rollback',
-                        'Auto-safe runs vs rollback',
-                      )}
+                      {tr('ai_page.text.auto_safe_runs_vs_rollback')}
                     </p>
                     <div className="mt-2 h-56">
                       <ResponsiveContainer width="100%" height="100%">
@@ -919,7 +823,7 @@ export function AIPage() {
                           <Bar
                             dataKey="auto_assigned"
                             fill={CHART_PRIMARY_COLOR}
-                            name={t('Assigned', 'Assigned')}
+                            name={tr('ai_page.text.assigned')}
                           />
                           <Line
                             type="monotone"
@@ -927,7 +831,7 @@ export function AIPage() {
                             stroke="#a78bfa"
                             strokeWidth={2}
                             dot={false}
-                            name={t('Runs', 'Runs')}
+                            name={tr('ai_page.text.runs')}
                           />
                           <Line
                             type="monotone"
@@ -935,7 +839,7 @@ export function AIPage() {
                             stroke="#f97316"
                             strokeWidth={2}
                             dot={false}
-                            name={t('Rollbacks', 'Rollbacks')}
+                            name={tr('ai_page.text.rollbacks')}
                           />
                         </BarChart>
                       </ResponsiveContainer>
@@ -951,16 +855,13 @@ export function AIPage() {
           <Card className="border-amber-500/40 bg-amber-500/10">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold text-amber-100">
-                {t('Czas na trening modelu', 'Time for model training')}
+                {tr('ai_page.text.time_for_model_training')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <p className="text-amber-100/90">{trainingReminder.reason}</p>
               <p className="text-xs text-amber-100/80">
-                {t(
-                  'Szacowany koszt: lekki trening, zwykle poniżej 10 sekund.',
-                  'Estimated cost: light training, usually under 10 seconds.',
-                )}
+                {tr('ai_page.text.estimated_cost_light_training_usually_under_10_s')}
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -970,8 +871,8 @@ export function AIPage() {
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
                   {training || status?.is_training
-                    ? t('Trening...', 'Training...')
-                    : t('Trenuj teraz', 'Train Now')}
+                    ? tr('ai_page.text.training')
+                    : tr('ai_page.text.train_now')}
                 </Button>
                 <Button
                   variant="outline"
@@ -980,12 +881,8 @@ export function AIPage() {
                   disabled={snoozingReminder}
                 >
                   {snoozingReminder
-                    ? t('Zapisywanie...', 'Saving...')
-                    : t(
-                        'Przypomnij później ({{hours}}h)',
-                        'Remind me later ({{hours}}h)',
-                        { hours: REMINDER_SNOOZE_HOURS },
-                      )}
+                    ? tr('ai_page.text.saving')
+                    : tr('ai_page.text.remind_me_later_h', { hours: REMINDER_SNOOZE_HOURS })}
                 </Button>
               </div>
             </CardContent>
@@ -995,14 +892,14 @@ export function AIPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">
-              {t('Tryb i progi', 'Mode and Thresholds')}
+              {tr('ai_page.text.mode_and_thresholds')}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t('Tryb działania modelu', 'Model operation mode')}
+                  {tr('ai_page.text.model_operation_mode')}
                 </span>
                 <select
                   className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
@@ -1013,23 +910,20 @@ export function AIPage() {
                   }}
                 >
                   <option value="off">
-                    {t('Wyłączony (ręczny)', 'Off (manual)')}
+                    {tr('ai_page.text.off_manual')}
                   </option>
                   <option value="suggest">
-                    {t('Sugestie AI', 'AI suggestions')}
+                    {tr('ai_page.text.ai_suggestions')}
                   </option>
                   <option value="auto_safe">
-                    {t('Auto-safe', 'Auto-safe')}
+                    {tr('ai_page.text.auto_safe')}
                   </option>
                 </select>
               </label>
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t(
-                    'Minimalna pewność sugestii (0..1)',
-                    'Suggest Min Confidence (0..1)',
-                  )}
+                  {tr('ai_page.text.suggest_min_confidence_0_1')}
                 </span>
                 <input
                   type="number"
@@ -1048,10 +942,7 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t(
-                    'Minimalna pewność auto-safe (0..1)',
-                    'Auto-safe Min Confidence (0..1)',
-                  )}
+                  {tr('ai_page.text.auto_safe_min_confidence_0_1')}
                 </span>
                 <input
                   type="number"
@@ -1070,10 +961,7 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t(
-                    'Minimalny próg dowodów auto-safe (1..50)',
-                    'Auto-safe Min Evidence (1..50)',
-                  )}
+                  {tr('ai_page.text.auto_safe_min_evidence_1_50')}
                 </span>
                 <input
                   type="number"
@@ -1092,7 +980,7 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm md:col-span-2">
                 <span className="text-xs text-muted-foreground">
-                  {t('Horyzont treningu (dni)', 'Training horizon (days)')}
+                  {tr('ai_page.text.training_horizon_days')}
                 </span>
                 <div className="flex items-center gap-3">
                   <input
@@ -1109,14 +997,14 @@ export function AIPage() {
                     }}
                   />
                   <span className="min-w-[5rem] text-right text-xs text-muted-foreground">
-                    {trainingHorizonDays} {t('dni', 'days')}
+                    {trainingHorizonDays} {tr('ai_page.text.days')}
                   </span>
                 </div>
               </label>
 
               <label className="space-y-1.5 text-sm">
                 <span className="text-xs text-muted-foreground">
-                  {t('Waga feedbacku (1..50)', 'Feedback Weight (1..50)')}
+                  {tr('ai_page.text.feedback_weight_1_50')}
                 </span>
                 <input
                   type="number"
@@ -1135,10 +1023,7 @@ export function AIPage() {
 
               <label className="space-y-1.5 text-sm md:col-span-2">
                 <span className="text-xs text-muted-foreground">
-                  {t(
-                    'Blacklist aplikacji (exe, po jednej linii)',
-                    'Applications blacklist (exe, one per line)',
-                  )}
+                  {tr('ai_page.text.applications_blacklist_exe_one_per_line')}
                 </span>
                 <textarea
                   className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
@@ -1147,7 +1032,7 @@ export function AIPage() {
                     setTrainingAppBlacklistText(e.target.value);
                     dirtyRef.current = true;
                   }}
-                  placeholder={t('np. chrome.exe', 'e.g. chrome.exe')}
+                  placeholder={tr('ai_page.text.e_g_chrome_exe')}
                 />
               </label>
 
@@ -1162,10 +1047,7 @@ export function AIPage() {
                     setTrainingFolderBlacklistText(e.target.value);
                     dirtyRef.current = true;
                   }}
-                  placeholder={t(
-                    'np. C:\\Users\\me\\Downloads',
-                    'e.g. C:\\Users\\me\\Downloads',
-                  )}
+                  placeholder={tr('ai_page.text.e_g_c_users_me_downloads')}
                 />
               </label>
             </div>
@@ -1178,19 +1060,16 @@ export function AIPage() {
               >
                 <Save className="mr-2 h-4 w-4" />
                 {savingMode
-                  ? t('Zapisywanie...', 'Saving...')
-                  : t('Zapisz ustawienia modelu', 'Save model settings')}
+                  ? tr('ai_page.text.saving')
+                  : tr('ai_page.text.save_model_settings')}
               </Button>
             </div>
           </CardContent>
         </Card>
 
         <AiSessionIndicatorsCard
-          title={t('Wskaźniki sesji', 'Session Indicators')}
-          description={t(
-            'Skonfiguruj, które wskaźniki AI i kontrolki feedbacku są widoczne w wierszach sesji.',
-            'Configure which AI indicators and feedback controls are visible on session rows.',
-          )}
+          title={tr('ai_page.text.session_indicators')}
+          description={tr('ai_page.text.configure_which_ai_indicators_and_feedback_contr')}
           items={indicatorItems}
           indicators={indicators}
           onToggle={(key, checked) => {
@@ -1201,28 +1080,19 @@ export function AIPage() {
         />
 
         <AiBatchActionsCard
-          title={t('Akcje paczkowe auto-safe', 'Batch auto-safe actions')}
-          sessionLimitLabel={t(
-            'Limit sesji na przebieg',
-            'Session limit per run',
-          )}
+          title={tr('ai_page.text.batch_auto_safe_actions')}
+          sessionLimitLabel={tr('ai_page.text.session_limit_per_run')}
           autoLimit={autoLimit}
           onAutoLimitChange={(value) => {
             const nextValue = Math.max(1, Math.min(10_000, value));
             setAutoLimit(nextValue);
             saveAutoLimit(nextValue);
           }}
-          runLabel={t('Uruchom auto-safe', 'Run auto-safe')}
-          runStartingLabel={t('Uruchamianie...', 'Starting...')}
-          rollbackLabel={t(
-            'Cofnij ostatnią paczkę auto-safe',
-            'Rollback last auto-safe batch',
-          )}
-          rollbackRunningLabel={t('Cofanie...', 'Rolling back...')}
-          rollbackHint={t(
-            'Cofanie przywraca tylko sesje, które od przebiegu auto-safe nie zostały ręcznie zmienione.',
-            'Rollback only reverts sessions that have not been manually changed since the auto-safe run.',
-          )}
+          runLabel={tr('ai_page.text.run_auto_safe')}
+          runStartingLabel={tr('ai_page.text.starting')}
+          rollbackLabel={tr('ai_page.text.rollback_last_auto_safe_batch')}
+          rollbackRunningLabel={tr('ai_page.text.rolling_back')}
+          rollbackHint={tr('ai_page.text.rollback_only_reverts_sessions_that_have_not_bee')}
           modeIsAutoSafe={status?.mode === 'auto_safe'}
           runningAuto={runningAuto}
           rollingBack={rollingBack}
@@ -1232,7 +1102,7 @@ export function AIPage() {
         />
 
         <AiHowToCard
-          title={t('Jak trenować i konfigurować', 'How to train and configure')}
+          title={tr('ai_page.text.how_to_train_and_configure')}
           sections={howToSections}
         />
       </div>

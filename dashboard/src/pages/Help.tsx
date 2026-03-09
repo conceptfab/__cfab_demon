@@ -31,14 +31,9 @@ import {
 } from '@/lib/help-navigation';
 import { useTranslation } from 'react-i18next';
 import { getDaemonStatus } from '@/lib/tauri';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 
 export function Help() {
-  const { t: t18n, i18n } = useTranslation();
-  const t = createInlineTranslator(
-    t18n,
-    i18n.resolvedLanguage ?? i18n.language,
-  );
+  const { t: t18n } = useTranslation();
   const {
     helpTab: activeTab,
     setHelpTab: setActiveTab,
@@ -60,7 +55,7 @@ export function Help() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/10 pb-6">
         <div className="space-y-2">
           <h1 className="text-3xl font-light tracking-[0.1em] flex items-center gap-3">
-            {t('Witaj w', 'Welcome to')}{' '}
+            {t18n('help_page.welcome_to')}{' '}
             <div className="flex items-center gap-4 ml-1">
               <img
                 src={logo}
@@ -77,10 +72,7 @@ export function Help() {
           </h1>
           <div className="text-[11px] text-muted-foreground/70 tracking-wide ml-1 mt-1 flex items-center gap-2">
             <span className="uppercase font-extralight tracking-[0.15em]">
-              {t(
-                'Pomysł / kreacja / realizacja',
-                'Concept / creation / execution',
-              )}
+              {t18n('help_page.concept_creation_execution')}
             </span>
             <img
               src={cfab}
@@ -88,7 +80,7 @@ export function Help() {
               className="h-9 w-auto object-contain"
             />
             <span className="font-light">
-              {t('Wszystkie prawa zastrzeżone', 'All rights reserved')}
+              {t18n('help_page.all_rights_reserved')}
             </span>
           </div>
         </div>
@@ -102,68 +94,50 @@ export function Help() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Info className="h-5 w-5 text-primary" />
-            {t('O oprogramowaniu', 'About the software')}
+            {t18n('help_page.about_the_software')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground leading-relaxed">
             <strong className="text-foreground font-semibold">TIMEFLOW</strong>{' '}
-            {t(
-              'to zaawansowany ekosystem do monitorowania czasu pracy, który działa dyskretnie w tle, pozwalając Ci skupić się na tym, co naprawdę ważne.',
-              'is an advanced time tracking ecosystem that works discreetly in the background, letting you focus on what really matters.',
-            )}{' '}
-            {t(
-              'W przeciwieństwie do tradycyjnych narzędzi, TIMEFLOW inteligentnie analizuje aktywność okien, procesów oraz plików, aby precyzyjnie przypisać Twój czas do odpowiednich projektów.',
-              'Unlike traditional tools, TIMEFLOW intelligently analyzes window activity, processes, and files to precisely assign your time to the correct projects.',
-            )}
+            {t18n('help_page.is_an_advanced_time_tracking_ecosystem_that_works_discre')}{' '}
+            {t18n('help_page.unlike_traditional_tools_timeflow_intelligently_analyzes')}
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
                 <Activity className="h-4 w-4 text-emerald-500" />
-                {t('Automatyczne śledzenie', 'Automatic Tracking')}
+                {t18n('help_page.automatic_tracking')}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {t(
-                  'Daemon TIMEFLOW monitoruje używane aplikacje i aktywne dokumenty bez Twojej ingerencji.',
-                  'The TIMEFLOW Daemon monitors used applications and active documents without your intervention.',
-                )}
+                {t18n('help_page.the_timeflow_daemon_monitors_used_applications_and_activ')}
               </p>
             </div>
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
                 <Brain className="h-4 w-4 text-purple-400" />
-                {t('Inteligentna kategoryzacja', 'Intelligent Categorization')}
+                {t18n('help_page.intelligent_categorization')}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {t(
-                  'Lokalny silnik uczenia maszynowego (ML) uczy się Twoich nawyków bez wysyłania danych do chmury.',
-                  'A local machine learning (ML) engine learns your habits without sending any data to the cloud.',
-                )}
+                {t18n('help_page.a_local_machine_learning_ml_engine_learns_your_habits_wi')}
               </p>
             </div>
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
                 <CircleDollarSign className="h-4 w-4 text-amber-500" />
-                {t('Analiza finansowa', 'Financial Analysis')}
+                {t18n('help_page.financial_analysis')}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {t(
-                  'Zyskaj natychmiastowy wgląd w faktyczną wartość Twojej pracy dzięki systemowi stawek i wycen.',
-                  'Get instant insight into the actual value of your work thanks to the rate and estimate system.',
-                )}
+                {t18n('help_page.get_instant_insight_into_the_actual_value_of_your_work_t')}
               </p>
             </div>
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
                 <Settings className="h-4 w-4 text-blue-400" />
-                {t('Prywatność i lokalność', 'Privacy and Locality')}
+                {t18n('help_page.privacy_and_locality')}
               </h4>
               <p className="text-xs text-muted-foreground">
-                {t(
-                  'Twoje dane są Twoją własnością. Wszystko jest przechowywane lokalnie w bezpiecznej bazie danych SQLite.',
-                  'Your data is your property. Everything is stored locally in a secure SQLite database.',
-                )}
+                {t18n('help_page.your_data_is_your_property_everything_is_stored_locally')}
               </p>
             </div>
           </div>
@@ -176,10 +150,7 @@ export function Help() {
           >
             <span className="flex items-center gap-2">
               <Rocket className="h-4 w-4" />
-              {t(
-                'Uruchom samouczek Szybki Start',
-                'Launch Quick Start Tutorial',
-              )}
+              {t18n('help_page.launch_quick_start_tutorial')}
             </span>
             <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
           </Button>
@@ -189,7 +160,7 @@ export function Help() {
       <div className="space-y-4 pt-4">
         <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <h2 className="text-2xl font-light">
-            {t('Przewodnik po sekcjach', 'Section Guide')}
+            {t18n('help_page.section_guide')}
           </h2>
           <Button
             variant="outline"
@@ -198,8 +169,8 @@ export function Help() {
             className="w-fit border-primary/20 hover:bg-primary/5"
           >
             {activeTabValue === 'quickstart'
-              ? t('Uruchom pełny samouczek', 'Open full tutorial')
-              : t('Przejdź do opisywanego modułu', 'Open this module')}
+              ? t18n('help_page.open_full_tutorial')
+              : t18n('help_page.open_this_module')}
             <ArrowRight className="ml-2 h-3.5 w-3.5" />
           </Button>
         </div>
@@ -216,62 +187,62 @@ export function Help() {
             <HelpTabTrigger
               value="quickstart"
               icon={<Rocket className="h-3.5 w-3.5" />}
-              label={t('Quick Start', 'Quick Start')}
+              label={t18n('help_page.quick_start')}
             />
             <HelpTabTrigger
               value="dashboard"
               icon={<LayoutDashboard className="h-3.5 w-3.5" />}
-              label={t('Dashboard', 'Dashboard')}
+              label={t18n('help_page.dashboard')}
             />
             <HelpTabTrigger
               value="sessions"
               icon={<List className="h-3.5 w-3.5" />}
-              label={t('Sesje', 'Sessions')}
+              label={t18n('help_page.sessions')}
             />
             <HelpTabTrigger
               value="projects"
               icon={<FolderKanban className="h-3.5 w-3.5" />}
-              label={t('Projekty', 'Projects')}
+              label={t18n('help_page.projects')}
             />
             <HelpTabTrigger
               value="estimates"
               icon={<CircleDollarSign className="h-3.5 w-3.5" />}
-              label={t('Wyceny', 'Estimates')}
+              label={t18n('help_page.estimates')}
             />
             <HelpTabTrigger
               value="apps"
               icon={<AppWindow className="h-3.5 w-3.5" />}
-              label={t('Aplikacje', 'Applications')}
+              label={t18n('help_page.applications')}
             />
             <HelpTabTrigger
               value="analysis"
               icon={<BarChart3 className="h-3.5 w-3.5" />}
-              label={t('Analiza czasu', 'Time Analysis')}
+              label={t18n('help_page.time_analysis')}
             />
             <HelpTabTrigger
               value="ai"
               icon={<Brain className="h-3.5 w-3.5" />}
-              label={t('AI i model', 'AI & Model')}
+              label={t18n('help_page.ai_model')}
             />
             <HelpTabTrigger
               value="data"
               icon={<Import className="h-3.5 w-3.5" />}
-              label={t('Dane', 'Data')}
+              label={t18n('help_page.data')}
             />
             <HelpTabTrigger
               value="reports"
               icon={<FileText className="h-3.5 w-3.5" />}
-              label={t('Raporty', 'Reports')}
+              label={t18n('help_page.reports')}
             />
             <HelpTabTrigger
               value="daemon"
               icon={<Cpu className="h-3.5 w-3.5" />}
-              label={t('Daemon', 'Daemon')}
+              label={t18n('help_page.daemon')}
             />
             <HelpTabTrigger
               value="settings"
               icon={<Settings className="h-3.5 w-3.5" />}
-              label={t('Ustawienia', 'Settings')}
+              label={t18n('help_page.settings')}
             />
           </TabsList>
 
@@ -282,45 +253,21 @@ export function Help() {
             >
               <SectionHelp
                 icon={<Rocket className="h-6 w-6" />}
-                title={t('SZYBKI START', 'QUICK START')}
-                description={t(
-                  'Szybka konfiguracja TIMEFLOW dla nowych instalacji i pierwszego uruchomienia.',
-                  'Fast TIMEFLOW setup for a new install and first launch.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.quick_start_2')}
+                description={t18n('help_page.fast_timeflow_setup_for_a_new_install_and_first_launch')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Krok po kroku: od przygotowania plików .exe po uruchomienie Daemona.',
-                    'Step by step guidance from .exe preparation to launching the Daemon.',
-                  ),
-                  t(
-                    'Konfiguracja folderów projektowych i procesów aplikacji do monitorowania.',
-                    'Configuration of project folders and app processes to be tracked.',
-                  ),
-                  t(
-                    'Lista monitorowanych aplikacji nie powinna być pusta. Gdy nie dodasz żadnego procesu, daemon przełączy się na fallback monitor-all i zacznie śledzić wszystkie aplikacje.',
-                    'Your monitored applications list should not stay empty. If you add no processes, the daemon falls back to monitor-all and starts tracking all applications.',
-                  ),
-                  t(
-                    'Instrukcja pierwszego przypisywania sesji i uruchomienia lokalnego AI.',
-                    'First-session assignment and local AI onboarding instructions.',
-                  ),
-                  t(
-                    'Dostęp z ikony rakiety w sidebarze oraz z poziomu ekranu pomocy.',
-                    'Accessible from the sidebar rocket icon and from the Help screen.',
-                  ),
-                  t(
-                    "Automatyczne ukrycie wskaźnika 'first run' po zakończeniu samouczka.",
-                    'Automatically clears the first-run hint after finishing the tutorial.',
-                  ),
+                  t18n('help_page.step_by_step_guidance_from_exe_preparation_to_launching'),
+                  t18n('help_page.configuration_of_project_folders_and_app_processes_to_be'),
+                  t18n('help_page.your_monitored_applications_list_should_not_stay_empty_i'),
+                  t18n('help_page.first_session_assignment_and_local_ai_onboarding_instruc'),
+                  t18n('help_page.accessible_from_the_sidebar_rocket_icon_and_from_the_hel'),
+                  t18n('help_page.automatically_clears_the_first_run_hint_after_finishing'),
                 ]}
               >
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
                   <p className="text-muted-foreground">
-                    {t(
-                      'Pełny samouczek prowadzi przez wszystkie kroki instalacji i konfiguracji.',
-                      'The full tutorial walks through installation and configuration end-to-end.',
-                    )}
+                    {t18n('help_page.the_full_tutorial_walks_through_installation_and_configu')}
                   </p>
                   <Button
                     variant="ghost"
@@ -328,7 +275,7 @@ export function Help() {
                     onClick={() => setCurrentPage('quickstart')}
                   >
                     <Rocket className="mr-2 h-3.5 w-3.5" />
-                    {t('Uruchom Quick Start', 'Launch Quick Start')}
+                    {t18n('help_page.launch_quick_start')}
                   </Button>
                 </div>
               </SectionHelp>
@@ -341,60 +288,21 @@ export function Help() {
               <SectionHelp
                 icon={<LayoutDashboard className="h-6 w-6" />}
                 title={t18n('help.sections.dashboard.title')}
-                description={t(
-                  'Szybki podgląd Twojej bieżącej aktywności i najważniejszych wskaźników wydajności.',
-                  'Quick overview of your current activity and key performance indicators.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                description={t18n('help_page.quick_overview_of_your_current_activity_and_key_performa')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Zintegrowane karty metryk (łączny śledzony czas, liczba aplikacji, aktywne projekty).',
-                    'Integrated metrics cards (total tracked time, number of apps, active projects).',
-                  ),
-                  t(
-                    'Interaktywna oś czasu z widokiem godzinowym (dzisiaj) lub dziennym (dłuższe okresy).',
-                    'Interactive timeline with hourly view (today) or daily view (longer periods).',
-                  ),
-                  t(
-                    "Zestawienie 'Top 5 Projektów' oraz analiza najczęściej używanych aplikacji.",
-                    "'Top 5 Projects' charts and analysis of most used applications.",
-                  ),
-                  t(
-                    'Szybkie przełączanie zakresów czasowych: Dzisiaj, Tydzień, Miesiąc, Cały okres.',
-                    'Quick time range switching: Today, Week, Month, All Time.',
-                  ),
-                  t(
-                    'Tryb wizualizacji Timeline – pokazuje Twoje zaangażowanie w czasie rzeczywistym.',
-                    'Timeline visualization mode – shows your engagement in real-time.',
-                  ),
-                  t(
-                    'Powiadomienia o statusie auto-importu i ewentualnych błędach odczytu danych.',
-                    'Notifications on auto-import status and potential data read errors.',
-                  ),
-                  t(
-                    'Wskaźniki statusu w sidebarze działają jak centrum sterowania: pokazują stan demona, synchronizacji, AI i backupu, a kliknięcie otwiera odpowiedni ekran diagnostyczny.',
-                    'Sidebar status indicators act as a control center: they show daemon, sync, AI, and backup state, and clicking them opens the relevant diagnostic screen.',
-                  ),
-                  t(
-                    'Przycisk odświeżania synchronizujący dane bezpośrednio z pracującego Daemona.',
-                    'Refresh button synchronizing data directly from the running Daemon.',
-                  ),
-                  t(
-                    'Banner nieprzypisanych sesji – informuje o liczbie nieprzypisanych sesji z dzisiejszego dnia wraz z liczbą aplikacji i łącznym czasem. Kliknięcie przenosi do widoku Sesje.',
-                    'Unassigned sessions banner – shows the count of today\'s unassigned sessions with app count and total duration. Clicking navigates to Sessions.',
-                  ),
-                  t(
-                    'Powiadomienie o wykrytych projektach – po skanowaniu folderów przy starcie, dashboard wyświetla banner z listą nowo wykrytych projektów. Możesz je odrzucić lub przejść do zarządzania projektami.',
-                    'Discovered projects notification – after folder scanning on startup, the dashboard shows a banner listing newly detected projects. You can dismiss or navigate to project management.',
-                  ),
-                  t(
-                    'Dodawanie sesji manualnej z timeline – kliknij na osi czasu na dashboardzie, aby szybko dodać sesję manualną (np. spotkanie, telefon) bez przechodzenia do zakładki Sesje.',
-                    'Add manual session from timeline – click on the dashboard timeline to quickly add a manual session (e.g. meeting, call) without navigating to Sessions.',
-                  ),
-                  t(
-                    'Przegląd wszystkich projektów (All Projects) – wykres pokazujący rozkład czasu pracy na wszystkie projekty w wybranym okresie.',
-                    'All Projects overview – chart showing work time distribution across all projects for the selected period.',
-                  ),
+                  t18n('help_page.integrated_metrics_cards_total_tracked_time_number_of_ap'),
+                  t18n('help_page.interactive_timeline_with_hourly_view_today_or_daily_vie'),
+                  t18n('help_page.top_5_projects_charts_and_analysis_of_most_used_applicat'),
+                  t18n('help_page.quick_time_range_switching_today_week_month_all_time'),
+                  t18n('help_page.timeline_visualization_mode_shows_your_engagement_in_rea'),
+                  t18n('help_page.notifications_on_auto_import_status_and_potential_data_r'),
+                  t18n('help_page.sidebar_status_indicators_act_as_a_control_center_they_s'),
+                  t18n('help_page.refresh_button_synchronizing_data_directly_from_the_runn'),
+                  t18n('help_page.unassigned_sessions_banner_shows_the_count_of_today_s_un'),
+                  t18n('help_page.discovered_projects_notification_after_folder_scanning_o'),
+                  t18n('help_page.add_manual_session_from_timeline_click_on_the_dashboard'),
+                  t18n('help_page.all_projects_overview_chart_showing_work_time_distributi'),
                 ]}
               />
             </TabsContent>
@@ -405,137 +313,65 @@ export function Help() {
             >
               <SectionHelp
                 icon={<List className="h-6 w-6" />}
-                title={t('SESJE', 'SESSIONS')}
-                description={t(
-                  'Szczegółowa lista wszystkich zarejestrowanych bloków aktywności w systemie.',
-                  'Detailed list of all activity blocks registered in the system.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.sessions_2')}
+                description={t18n('help_page.detailed_list_of_all_activity_blocks_registered_in_the_s')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Dodawanie komentarzy i notatek – kliknij prawym przyciskiem myszy na sesję, aby stworzyć opis.',
-                    'Adding comments and notes – right-click a session to create a description.',
-                  ),
-                  t(
-                    'Mnożniki stawek (Multiplier) – definiuj stawki x2 lub własne dla pracy o wyższej wartości.',
-                    'Rate multipliers – define rate x2 or custom for higher-value work.',
-                  ),
-                  t(
-                    'AI Suggestions – przeglądaj i zatwierdzaj (lub odrzucaj) sugestie projektów wygenerowane przez AI.',
-                    'AI Suggestions – review and approve (or reject) project suggestions generated by AI.',
-                  ),
-                  t(
-                    'Ręczne dodawanie sesji (Add Session) – rejestruj spotkania, telefony lub pracę poza komputerem.',
-                    'Manual session addition – register meetings, calls, or offline work.',
-                  ),
-                  t(
-                    'Sesje ręczne wielodniowe – opcja "Pozwól rozciągnąć sesję na wiele dni" pozwala zapisać dłuższe zdarzenia przechodzące przez północ.',
-                    'Multi-day manual sessions – the "Allow session across multiple days" option lets you save longer events that cross midnight.',
-                  ),
-                  t(
-                    'Masowe przypisywanie (Batch Assign) – zaznacz wiele sesji i przypisz je do projektu jednym kliknięciem.',
-                    'Batch Assign – select multiple sessions and assign them to a project with one click.',
-                  ),
-                  t(
-                    'Dzielenie sesji (Split Session) – z menu kontekstowego lub ikony nożyczek podziel sesję na wiele części (max 5) i przypisz je do różnych projektów. AI automatycznie analizuje aktywność na plikach i sugeruje podział.',
-                    'Split Session – from the context menu or scissors icon, split a session into multiple parts (max 5) and assign each to a different project. AI automatically analyzes file activity and suggests the split.',
-                  ),
-                  t(
-                    'Tryby widoku: Detailed (pełne logi plików), Compact (sama lista aplikacji i sesji) oraz AI Data (precyzyjne statystyki i argumentacja modelu AI).',
-                    'View modes: Detailed (full file logs), Compact (apps and sessions list only), and AI Data (precise statistics and AI model reasoning).',
-                  ),
-                  t(
-                    'Tryb zakresu Daily/Weekly – przełączaj listę sesji między widokiem dziennym i tygodniowym, aby szybciej przeglądać dłuższe okresy.',
-                    'Daily/Weekly range mode – switch the sessions list between daily and weekly views to review longer periods faster.',
-                  ),
-                  t(
-                    'Sortowanie i filtrowanie po aplikacji, projekcie, dacie oraz czasie trwania.',
-                    'Sorting and filtering by application, project, date, and duration.',
-                  ),
-                  t(
-                    'Batch assign z nagłówka projektu – menu kontekstowe grupy pozwala przypisać lub odpiąć cały blok sesji danego projektu.',
-                    'Batch assign from project header – the group context menu lets you assign or unassign the whole block of sessions for a project.',
-                  ),
-                  t(
-                    'Filtr "Tylko nieprzypisane" – szybki fokus na sesjach wymagających decyzji przypisania.',
-                    '"Unassigned only" filter – quickly focus on sessions that still need assignment.',
-                  ),
-                  t(
-                    'Ustawienia podziału sesji – współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5), automatyczny podział. Konfiguracja w Ustawienia > Podział sesji.',
-                    'Session split settings – tolerance coefficient (0.2–1.0), max projects per session (2–5), automatic split. Configure in Settings > Session Split.',
-                  ),
-                  t(
-                    'Tryby listy projektów w menu przypisania: Aktywne A-Z, Najnowsze -> Top -> Reszta oraz Top -> Najnowsze -> Reszta. Pozwalają szybciej wskazać właściwy projekt przy dużej liczbie pozycji.',
-                    'Project list modes in the assignment menu: Active A-Z, Newest -> Top -> Rest, and Top -> Newest -> Rest. They speed up selection when you have many projects.',
-                  ),
-                  t(
-                    'Ikona nożyczek – pojawia się przy sesjach, w których AI wykrył aktywność na plikach wielu projektów. Kliknij aby podzielić sesję wg sugestii AI.',
-                    'Scissors icon – appears on sessions where AI detected file activity across multiple projects. Click to split the session based on AI suggestions.',
-                  ),
-                  t(
-                    'Auto-split działa cyklicznie: startuje po imporcie i ponawia się co 60 sekund. W jednym przebiegu analizuje do 50 nieprzypisanych sesji i wykonuje maksymalnie 5 podziałów.',
-                    'Auto-split runs in cycles: it starts after import and repeats every 60 seconds. In one pass it analyzes up to 50 unassigned sessions and performs at most 5 splits.',
-                  ),
+                  t18n('help_page.adding_comments_and_notes_right_click_a_session_to_creat'),
+                  t18n('help_page.rate_multipliers_define_rate_x2_or_custom_for_higher_val'),
+                  t18n('help_page.ai_suggestions_review_and_approve_or_reject_project_sugg'),
+                  t18n('help_page.manual_session_addition_register_meetings_calls_or_offli'),
+                  t18n('help_page.multi_day_manual_sessions_the_allow_session_across_multi'),
+                  t18n('help_page.batch_assign_select_multiple_sessions_and_assign_them_to'),
+                  t18n('help_page.split_session_from_the_context_menu_or_scissors_icon_spl'),
+                  t18n('help_page.view_modes_detailed_full_file_logs_compact_apps_and_sess'),
+                  t18n('help_page.daily_weekly_range_mode_switch_the_sessions_list_between'),
+                  t18n('help_page.sorting_and_filtering_by_application_project_date_and_du'),
+                  t18n('help_page.batch_assign_from_project_header_the_group_context_menu'),
+                  t18n('help_page.unassigned_only_filter_quickly_focus_on_sessions_that_st'),
+                  t18n('help_page.session_split_settings_tolerance_coefficient_0_2_1_0_max'),
+                  t18n('help_page.project_list_modes_in_the_assignment_menu_active_a_z_new'),
+                  t18n('help_page.scissors_icon_appears_on_sessions_where_ai_detected_file'),
+                  t18n('help_page.auto_split_runs_in_cycles_it_starts_after_import_and_rep'),
                 ]}
               >
                 <div className="text-sm space-y-4 text-foreground/90 leading-relaxed border-t border-border/10 pt-4">
                   <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
-                    {t(
-                      'Interpretacja widoku AI Data',
-                      'AI Data View Interpretation',
-                    )}
+                    {t18n('help_page.ai_data_view_interpretation')}
                   </h4>
                   <p className="text-muted-foreground">
-                    {t(
-                      'Widok "AI Data" prezentuje "tok myślenia" modelu dla przypisanych lub sugerowanych sesji. Oto jak czytać zawarte w nim wskaźniki:',
-                      'The "AI Data" view presents the model\'s "train of thought" for assigned or suggested sessions. Here is how to read its metrics:',
-                    )}
+                    {t18n('help_page.the_ai_data_view_presents_the_model_s_train_of_thought_f')}
                   </p>
                   <ul className="list-disc ml-5 space-y-2 text-muted-foreground">
                     <li>
                       <strong className="text-foreground">
-                        {t('Ufność:', 'Confidence:')}
+                        {t18n('help_page.confidence')}
                       </strong>{' '}
-                      {t(
-                        'Wyrażona w procentach (0-100%) pewność modelu względem dokonanego wyboru. Powyżej ustalonego progu (np. 40%) model generuje sugestię.',
-                        "Expressed in percentage (0-100%), it's the model's certainty about its choice. Above the set threshold (e.g., 40%), the model generates a suggestion.",
-                      )}
+                      {t18n('help_page.expressed_in_percentage_0_100_it_s_the_model_s_certainty')}
                     </li>
                     <li>
                       <strong className="text-foreground">
-                        {t('Dowody:', 'Evidence Count:')}
+                        {t18n('help_page.evidence_count')}
                       </strong>{' '}
-                      {t(
-                        'Ilość podobnych sesji w przeszłości, które ręcznie zatwierdziłeś/aś. To najtwardszy dowód dla modelu – im więcej dowodów, tym pewniejsza decyzja.',
-                        'The number of similar past sessions you manually approved. This is the hardest proof for the model – the more evidence, the more certain the decision.',
-                      )}
+                      {t18n('help_page.the_number_of_similar_past_sessions_you_manually_approve')}
                     </li>
                     <li>
                       <strong className="text-foreground">
                         Score & Base Log Prob:
                       </strong>{' '}
-                      {t(
-                        'Surowe matematyczne i probabilistyczne wyniki dopasowania wyliczone przez silnik ML. Służą gównie do celów diagnostycznych.',
-                        'Raw mathematical and probabilistic match scores calculated by the ML engine. Mainly used for diagnostic purposes.',
-                      )}
+                      {t18n('help_page.raw_mathematical_and_probabilistic_match_scores_calculat')}
                     </li>
                     <li>
                       <strong className="text-foreground">
                         Matched Tokens & Context Matches:
                       </strong>{' '}
-                      {t(
-                        'Słowa kluczowe z nazw plików, okien czy tytułów stron internetowych (oraz ogólny kontekst np. pory dnia), które model zidentyfikował jako bezpośrednio powiązane z tym wskazanym projektem.',
-                        'Keywords from filenames, windows, or website titles (and general context like time of day) that the model identified as directly linked to that specific project.',
-                      )}
+                      {t18n('help_page.keywords_from_filenames_windows_or_website_titles_and_ge')}
                     </li>
                     <li>
                       <strong className="text-foreground">
-                        {t('Penalty (Kara):', 'Penalty:')}
+                        {t18n('help_page.penalty')}
                       </strong>{' '}
-                      {t(
-                        'Punkty ujemne, jeśli model wykrył cechy wskazujące, że przypisanie może być mętne pomimo innych mocnych sygnałów.',
-                        'Negative points if the model detected traits suggesting the assignment could be murky despite other strong signals.',
-                      )}
+                      {t18n('help_page.negative_points_if_the_model_detected_traits_suggesting')}
                     </li>
                   </ul>
                 </div>
@@ -548,73 +384,25 @@ export function Help() {
             >
               <SectionHelp
                 icon={<FolderKanban className="h-6 w-6" />}
-                title={t('PROJEKTY', 'PROJECTS')}
-                description={t(
-                  'Zarządzanie strukturą Twoich zadań i inteligentną automatyzacją ich wykrywania.',
-                  'Managing task structure and intelligent automation of project detection.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.projects_2')}
+                description={t18n('help_page.managing_task_structure_and_intelligent_automation_of_pr')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Mrożenie (Freezing) – ukrywaj nieaktywne projekty, by nie przeszkadzały przy przypisywaniu sesji.',
-                    'Freezing – hide inactive projects to keep them from cluttering session assignment.',
-                  ),
-                  t(
-                    "Automatyczne mrożenie – system sam 'zamraża' projekty nieużywane przez określoną liczbę dni.",
-                    "Auto-freezing – the system automatically 'freezes' projects unused for a specified number of days.",
-                  ),
-                  t(
-                    'Odmrażanie (Unfreeze) – ikona płomienia przywraca projekt do listy aktywnych zadań.',
-                    'Unfreezing – use the flame icon to restore a project to the active tasks list.',
-                  ),
-                  t(
-                    'Synchronizacja folderów – TIMEFLOW skanuje ścieżki przy każdym uruchomieniu dashboardu i automatycznie dodaje nowe projekty (w tym repozytoria .git). Na dashboardzie pojawia się powiadomienie o wykrytych projektach.',
-                    'Folder Sync – TIMEFLOW scans paths on every dashboard startup and automatically adds new projects (including .git repositories). A notification about discovered projects appears on the dashboard.',
-                  ),
-                  t(
-                    'Detekcja kandydatów – system sugeruje utworzenie projektów na podstawie aktywności w folderach.',
-                    'Candidate Detection – the system suggests project creation based on folder activity.',
-                  ),
-                  t(
-                    'Root folders – zarządzaj miejscami na dysku, które TIMEFLOW ma obserwować.',
-                    'Root folders – manage disk locations that TIMEFLOW should monitor.',
-                  ),
-                  t(
-                    'Wykluczanie (Exclude) – usuwaj projekty z widoku bez ich permanentnego skasowania z bazy.',
-                    'Exclude – remove projects from view without permanently deleting them from the database.',
-                  ),
-                  t(
-                    'Wyszukiwanie – filtruj projekty po nazwie lub ścieżce folderu w czasie rzeczywistym.',
-                    'Search – filter projects by name or folder path in real time.',
-                  ),
-                  t(
-                    'Zmiana koloru – kliknij kropkę koloru w karcie projektu, aby zmienić kolor projektu (paleta presetów + dowolny kolor).',
-                    'Color change – click the color dot on the project card to change the project color (preset palette + custom color).',
-                  ),
-                  t(
-                    'Karta projektu (ProjectPage) – pełny widok projektu: kompaktowanie danych, reset czasu, edycja nazwy inline, timeline z komentarzami, sesje manualne oraz generowanie raportu.',
-                    'Project card (ProjectPage) – full project view: data compaction, time reset, inline name edit, timeline with comments, manual sessions, and report generation.',
-                  ),
-                  t(
-                    'Zapisany widok (Save View) – możesz utrwalić preferowany układ sortowania i prezentacji list/timeline, aby wracał po ponownym otwarciu ekranu.',
-                    'Saved View – persist your preferred sorting and presentation mode for lists/timeline so it comes back when you reopen the screen.',
-                  ),
-                  t(
-                    'Kompaktowanie danych projektu – akcja w widoku projektu redukująca rozmiar danych bez utraty podsumowań czasowych.',
-                    'Project data compaction – action in the project view that reduces data size without losing time summaries.',
-                  ),
-                  t(
-                    'Ostatnie komentarze (Recent Comments) – karta w widoku projektu pokazująca ostatnie komentarze sesji z kontekstem daty i aplikacji.',
-                    'Recent Comments – card in the project view showing latest session comments with date and app context.',
-                  ),
-                  t(
-                    'Sesje manualne projektu – dedykowana karta w widoku projektu do dodawania, edycji i usuwania sesji manualnych przypisanych do tego projektu.',
-                    'Project manual sessions – dedicated card in the project view for adding, editing, and deleting manual sessions assigned to this project.',
-                  ),
-                  t(
-                    'Menu kontekstowe na wykresie – kliknij prawym przyciskiem na dany dzień w timeline projektu, aby zobaczyć listę sesji z tego dnia.',
-                    'Chart context menu – right-click on a day in the project timeline to see the list of sessions for that date.',
-                  ),
+                  t18n('help_page.freezing_hide_inactive_projects_to_keep_them_from_clutte'),
+                  t18n('help_page.auto_freezing_the_system_automatically_freezes_projects'),
+                  t18n('help_page.unfreezing_use_the_flame_icon_to_restore_a_project_to_th'),
+                  t18n('help_page.folder_sync_timeflow_scans_paths_on_every_dashboard_star'),
+                  t18n('help_page.candidate_detection_the_system_suggests_project_creation'),
+                  t18n('help_page.root_folders_manage_disk_locations_that_timeflow_should'),
+                  t18n('help_page.exclude_remove_projects_from_view_without_permanently_de'),
+                  t18n('help_page.search_filter_projects_by_name_or_folder_path_in_real_ti'),
+                  t18n('help_page.color_change_click_the_color_dot_on_the_project_card_to'),
+                  t18n('help_page.project_card_projectpage_full_project_view_data_compacti'),
+                  t18n('help_page.saved_view_persist_your_preferred_sorting_and_presentati'),
+                  t18n('help_page.project_data_compaction_action_in_the_project_view_that'),
+                  t18n('help_page.recent_comments_card_in_the_project_view_showing_latest'),
+                  t18n('help_page.project_manual_sessions_dedicated_card_in_the_project_vi'),
+                  t18n('help_page.chart_context_menu_right_click_on_a_day_in_the_project_t'),
                 ]}
               />
             </TabsContent>
@@ -625,45 +413,18 @@ export function Help() {
             >
               <SectionHelp
                 icon={<CircleDollarSign className="h-6 w-6" />}
-                title={t('WYCENY', 'ESTIMATES')}
-                description={t(
-                  'Moduł biznesowy pozwalający na precyzyjne przeliczanie czasu na finanse.',
-                  'Business module for precise conversion of time into finances.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.estimates_2')}
+                description={t18n('help_page.business_module_for_precise_conversion_of_time_into_fina')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Konfiguracja globalnej stawki godzinowej oraz stawek specyficznych dla wybranych projektów.',
-                    'Global hourly rate configuration and specific rates for chosen projects.',
-                  ),
-                  t(
-                    'Uwzględnianie mnożników sesji (Multipliers) w końcowej wycenie projektu.',
-                    'Includes session multipliers in the final project valuation.',
-                  ),
-                  t(
-                    'Wycena sesji manualnych – spotkania i telefony są doliczane do budżetu projektu.',
-                    'Manual session valuation – meetings and calls are added to the project budget.',
-                  ),
-                  t(
-                    'Analiza dochodowości projektów w czasie (widok miesięczny i roczny).',
-                    'Project profitability analysis over time (monthly and yearly views).',
-                  ),
-                  t(
-                    'Wizualny podział na zarobki dzienne i tygodniowe.',
-                    'Visual breakdown into daily and weekly earnings.',
-                  ),
-                  t(
-                    'Możliwość porównywania wartości czasu poświęconego na różne grupy zadań.',
-                    'Ability to compare time value spent on different task groups.',
-                  ),
-                  t(
-                    'Reset stawki projektu – przycisk resetujący indywidualną stawkę projektu do wartości globalnej.',
-                    'Project rate reset – button to reset a project-specific rate back to the global rate.',
-                  ),
-                  t(
-                    'Badge mnożników – przy każdym projekcie widoczna jest liczba sesji z mnożnikiem stawki. Kliknięcie przenosi do Sesji przefiltrowanych po danym projekcie.',
-                    'Multiplier badge – each project shows the count of sessions with a rate multiplier. Clicking navigates to Sessions filtered by that project.',
-                  ),
+                  t18n('help_page.global_hourly_rate_configuration_and_specific_rates_for'),
+                  t18n('help_page.includes_session_multipliers_in_the_final_project_valuat'),
+                  t18n('help_page.manual_session_valuation_meetings_and_calls_are_added_to'),
+                  t18n('help_page.project_profitability_analysis_over_time_monthly_and_yea'),
+                  t18n('help_page.visual_breakdown_into_daily_and_weekly_earnings'),
+                  t18n('help_page.ability_to_compare_time_value_spent_on_different_task_gr'),
+                  t18n('help_page.project_rate_reset_button_to_reset_a_project_specific_ra'),
+                  t18n('help_page.multiplier_badge_each_project_shows_the_count_of_session'),
                 ]}
               />
             </TabsContent>
@@ -674,49 +435,19 @@ export function Help() {
             >
               <SectionHelp
                 icon={<AppWindow className="h-6 w-6" />}
-                title={t('APLIKACJE', 'APPLICATIONS')}
-                description={t(
-                  'Zarządzanie listą wykrytego oprogramowania i procesów.',
-                  'Managing the list of detected software and processes.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.applications_2')}
+                description={t18n('help_page.managing_the_list_of_detected_software_and_processes')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Pełna lista aplikacji, w których rejestrowana była aktywność wraz ze statystykami czasu.',
-                    'Full list of applications with activity history and time statistics.',
-                  ),
-                  t(
-                    "Aliasy aplikacji – zmieniaj nazwy procesów (np. 'cmd.exe') na czytelne (np. 'Terminal').",
-                    "App Aliases – change process names (e.g., 'cmd.exe') to readable ones (e.g., 'Terminal').",
-                  ),
-                  t(
-                    'Blokowanie śledzenia – usuwaj dane dla aplikacji, których nie chcesz monitorować.',
-                    "Tracking Block – remove data for applications you don't want to track.",
-                  ),
-                  t(
-                    'Archiwizacja danych aplikacji – możliwość zresetowania czasu bez usuwania definicji.',
-                    'App Data Archiving – reset tracking time without deleting the app definition.',
-                  ),
-                  t(
-                    'Bezpośrednie przypisanie całej aplikacji do konkretnego projektu.',
-                    'Directly assign an entire application to a specific project.',
-                  ),
-                  t(
-                    'Monitorowane aplikacje – sekcja zarządzania procesami, które Daemon aktywnie śledzi. Dodawaj nowe procesy (exe_name + nazwa wyświetlana), usuwaj zbędne, zmieniaj nazwy. Liczba monitorowanych aplikacji widoczna jako badge.',
-                    'Monitored Applications – section for managing processes actively tracked by the Daemon. Add new processes (exe_name + display name), remove unwanted ones, rename them. The monitored app count is shown as a badge.',
-                  ),
-                  t(
-                    'Kolorystyka aplikacji – inline picker z paletą presetów i dowolnym kolorem. Kliknij kolor obok nazwy aplikacji, aby go zmienić.',
-                    'App colors – inline picker with preset palette and custom color. Click the color next to an app name to change it.',
-                  ),
-                  t(
-                    'Oznaczenie "Imported" – badge przy aplikacjach, które pojawiły się z importowanych danych, a nie z bieżącego monitoringu.',
-                    '"Imported" badge – label on applications that came from imported data rather than live monitoring.',
-                  ),
-                  t(
-                    'Paginacja listy – dla dużej liczby aplikacji dostępna jest funkcja "Załaduj więcej", aby nie obciążać widoku.',
-                    'List pagination – for large app lists, a "Load more" control is available to keep the view performant.',
-                  ),
+                  t18n('help_page.full_list_of_applications_with_activity_history_and_time'),
+                  t18n('help_page.app_aliases_change_process_names_e_g_cmd_exe_to_readable'),
+                  t18n('help_page.tracking_block_remove_data_for_applications_you_don_t_wa'),
+                  t18n('help_page.app_data_archiving_reset_tracking_time_without_deleting'),
+                  t18n('help_page.directly_assign_an_entire_application_to_a_specific_proj'),
+                  t18n('help_page.monitored_applications_section_for_managing_processes_ac'),
+                  t18n('help_page.app_colors_inline_picker_with_preset_palette_and_custom'),
+                  t18n('help_page.imported_badge_label_on_applications_that_came_from_impo'),
+                  t18n('help_page.list_pagination_for_large_app_lists_a_load_more_control'),
                 ]}
               />
             </TabsContent>
@@ -727,45 +458,18 @@ export function Help() {
             >
               <SectionHelp
                 icon={<BarChart3 className="h-6 w-6" />}
-                title={t('ANALIZA CZASU', 'TIME ANALYSIS')}
-                description={t(
-                  'Głęboka wizualizacja Twoich nawyków i intensywności pracy.',
-                  'Deep visualization of your habits and work intensity.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.time_analysis_2')}
+                description={t18n('help_page.deep_visualization_of_your_habits_and_work_intensity')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Heatmapy aktywności – wizualizacja godzinowa i dzienna Twojego zaangażowania.',
-                    'Activity Heatmaps – hourly and daily visualization of your engagement.',
-                  ),
-                  t(
-                    'Widok miesięczny z numeracją tygodni – ułatwia planowanie i retrospekcję.',
-                    'Monthly view with week numbers – facilitates planning and retrospection.',
-                  ),
-                  t(
-                    'Analiza intensywności – wykresy pokazujące w jakich godzinach pracujesz najefektywniej.',
-                    'Intensity Analysis – charts showing what hours you work most effectively.',
-                  ),
-                  t(
-                    'Stacked Bar Charts – procentowy udział projektów w Twoim całkowitym czasie pracy.',
-                    'Stacked Bar Charts – percentage share of projects in your total work time.',
-                  ),
-                  t(
-                    'Timeline Project View – szczegółowa oś czasu z podziałem na konkretne zadania.',
-                    'Timeline Project View – detailed timeline broken down by specific tasks.',
-                  ),
-                  t(
-                    'Toolbar zakresów – przyciski Daily / Weekly / Monthly przełączają granularność widoku danych.',
-                    'Range toolbar – Daily / Weekly / Monthly buttons switch the data view granularity.',
-                  ),
-                  t(
-                    'Nawigacja po okresach – strzałki Poprzedni/Następny pozwalają przechodzić między dniami, tygodniami lub miesiącami.',
-                    'Period navigation – Previous/Next arrows let you move between days, weeks, or months.',
-                  ),
-                  t(
-                    'Interaktywna legenda – lista projektów z kolorami i czasami; kliknięcie pozycji filtruje wykres do wybranego projektu.',
-                    'Interactive legend – project list with colors and times; clicking an item filters the chart to the selected project.',
-                  ),
+                  t18n('help_page.activity_heatmaps_hourly_and_daily_visualization_of_your'),
+                  t18n('help_page.monthly_view_with_week_numbers_facilitates_planning_and'),
+                  t18n('help_page.intensity_analysis_charts_showing_what_hours_you_work_mo'),
+                  t18n('help_page.stacked_bar_charts_percentage_share_of_projects_in_your'),
+                  t18n('help_page.timeline_project_view_detailed_timeline_broken_down_by_s'),
+                  t18n('help_page.range_toolbar_daily_weekly_monthly_buttons_switch_the_da'),
+                  t18n('help_page.period_navigation_previous_next_arrows_let_you_move_betw'),
+                  t18n('help_page.interactive_legend_project_list_with_colors_and_times_cl'),
                 ]}
               />
             </TabsContent>
@@ -773,217 +477,118 @@ export function Help() {
             <TabsContent value="ai" className="m-0 focus-visible:outline-none">
               <SectionHelp
                 icon={<Brain className="h-6 w-6" />}
-                title={t('AI i model', 'AI & Model')}
-                description={t(
-                  'Autorski, lokalny silnik ML (Rust) analizujący kontekst aplikacji, pory dnia oraz tokeny z nazw plików i okien. Działa w 100% offline.',
-                  'Proprietary local ML engine (Rust) analyzing app context, time of day, and file/window tokens. Works 100% offline.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.ai_model')}
+                description={t18n('help_page.proprietary_local_ml_engine_rust_analyzing_app_context_t')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Tryb Auto-Safe – bezpieczne, masowe przypisywanie sesji (wymaga progu ufności i dowodów).',
-                    'Auto-Safe Mode – secure, batch session assignment (requires confidence and evidence thresholds).',
-                  ),
-                  t(
-                    'Cofanie zmian (Rollback) – możliwość odkręcenia ostatniego wsadowego przypisania przez AI.',
-                    'Rollback – ability to undo the last batch assignment run by the AI.',
-                  ),
-                  t(
-                    'Confidence Policy – ustalanie jak bardzo model musi być pewny, by samoczynnie przypisać dane.',
-                    'Confidence Policy – set how certain the model must be to automatically assign data.',
-                  ),
-                  t(
-                    'Learning Center – każda Twoja manualna korekta staje się nową lekcją dla modelu.',
-                    'Learning Center – every manual correction of yours becomes a new lesson for the model.',
-                  ),
-                  t(
-                    'Powiadomienia o potrzebie treningu – system informuje, gdy zebrano nową wiedzę.',
-                    'Training Notifications – the system notifies you when new knowledge has been gathered.',
-                  ),
-                  t(
-                    'Snooze Training Reminder – odłóż przypomnienie o treningu na 24h, gdy chcesz dokończyć pracę bez przerywania.',
-                    'Snooze Training Reminder – postpone the training reminder for 24h when you want to finish work without interruption.',
-                  ),
-                  t(
-                    'Tryby: Off (tylko ręczne), Suggest (podpowiedzi AI), Auto-Safe (automatyzacja).',
-                    'Modes: Off (manual only), Suggest (AI hints), Auto-Safe (automation).',
-                  ),
-                  t(
-                    'Training blacklists – wyklucz konkretne aplikacje i foldery z trenowania modelu, aby nie zanieczyszczać danych uczących.',
-                    'Training blacklists – exclude selected applications and folders from model training to keep the dataset clean.',
-                  ),
-                  t(
-                    'Postęp i jakość AI – panel metryk pokazuje trendy feedbacku, precision, auto-assigned i coverage.',
-                    'AI progress & quality – metrics panel shows feedback trends, precision, auto-assigned, and coverage.',
-                  ),
-                  t(
-                    'Training Horizon – ustaw zakres dni (np. 30–730), z których model pobiera dane uczące.',
-                    'Training Horizon – set how many days of history (e.g. 30–730) are used for training.',
-                  ),
-                  t(
-                    'Auto-safe limit – kontroluj maksymalną liczbę sesji przetwarzanych w jednym przebiegu Auto-safe.',
-                    'Auto-safe limit – control the maximum number of sessions processed in a single Auto-safe run.',
-                  ),
-                  t(
-                    'Session Indicators – konfiguracja wskaźników widocznych przy wierszach sesji (AI, sugestie, score breakdown).',
-                    'Session Indicators – configure indicators displayed on session rows (AI, suggestions, score breakdown).',
-                  ),
-                  t(
-                    'Prywatność 100% – Silnik ML działa lokalnie w Rust, nie korzysta z zewnętrznych API (jak ChatGPT) i nie wymaga internetu.',
-                    "100% Privacy – The ML engine runs locally in Rust, doesn't use external APIs (like ChatGPT), and requires no internet.",
-                  ),
-                  t(
-                    'Karta "Status modelu" – panel diagnostyczny z 6 kaflami: aktualny tryb, stan treningu (idle/in progress), data ostatniego treningu, liczba korekt od treningu, metryki ostatniego treningu (samples/czas) oraz ostatni przebieg auto-safe.',
-                    '"Model Status" card – diagnostic panel with 6 tiles: current mode, training state (idle/in progress), last training date, corrections since training, last training metrics (samples/time), and last auto-safe run.',
-                  ),
-                  t(
-                    'Wykresy postępu AI – dwa wykresy: (1) Trend feedbacku – stacked bar chart z liczbą Accept, Reject i Manual corrections per dzień; (2) Auto-safe runs vs rollback – słupki assigned + linie runs i rollbacks. Domyślne okno: 30 dni.',
-                    'AI progress charts – two charts: (1) Feedback trend – stacked bar chart with Accept, Reject, and Manual corrections per day; (2) Auto-safe runs vs rollback – assigned bars + runs and rollbacks lines. Default window: 30 days.',
-                  ),
-                  t(
-                    'Metryki podsumowujące – 4 kafle: Precision AI (% trafnych sugestii), Feedback łącznie, Auto-safe przypisania, Pokrycie detected_path. Dodatkowe wskaźniki: pokrycie title_history i activity_type.',
-                    'Summary metrics – 4 tiles: AI precision (% correct suggestions), Total feedback, Auto-safe assignments, Detected path coverage. Additional indicators: title_history and activity_type coverage.',
-                  ),
-                  t(
-                    'Reset wiedzy AI – przycisk kasujący całą nauczoną wiedzę modelu (z potwierdzeniem). Przydatny po dużej zmianie struktury projektów.',
-                    'Reset AI knowledge – button that clears all learned model knowledge (with confirmation). Useful after a major project structure change.',
-                  ),
-                  t(
-                    'Karta "Jak trenować i konfigurować" – wbudowany poradnik z trzema sekcjami: kiedy trenować, znaczenie parametrów oraz rekomendowane ustawienia startowe.',
-                    '"How to train and configure" card – built-in guide with three sections: when to train, what parameters mean, and recommended starting settings.',
-                  ),
+                  t18n('help_page.auto_safe_mode_secure_batch_session_assignment_requires'),
+                  t18n('help_page.rollback_ability_to_undo_the_last_batch_assignment_run_b'),
+                  t18n('help_page.confidence_policy_set_how_certain_the_model_must_be_to_a'),
+                  t18n('help_page.learning_center_every_manual_correction_of_yours_becomes'),
+                  t18n('help_page.training_notifications_the_system_notifies_you_when_new'),
+                  t18n('help_page.snooze_training_reminder_postpone_the_training_reminder'),
+                  t18n('help_page.modes_off_manual_only_suggest_ai_hints_auto_safe_automat'),
+                  t18n('help_page.training_blacklists_exclude_selected_applications_and_fo'),
+                  t18n('help_page.ai_progress_quality_metrics_panel_shows_feedback_trends'),
+                  t18n('help_page.training_horizon_set_how_many_days_of_history_e_g_30_730'),
+                  t18n('help_page.auto_safe_limit_control_the_maximum_number_of_sessions_p'),
+                  t18n('help_page.session_indicators_configure_indicators_displayed_on_ses'),
+                  t18n('help_page.k_100_privacy_the_ml_engine_runs_locally_in_rust_doesn_t'),
+                  t18n('help_page.model_status_card_diagnostic_panel_with_6_tiles_current'),
+                  t18n('help_page.ai_progress_charts_two_charts_1_feedback_trend_stacked_b'),
+                  t18n('help_page.summary_metrics_4_tiles_ai_precision_correct_suggestions'),
+                  t18n('help_page.reset_ai_knowledge_button_that_clears_all_learned_model'),
+                  t18n('help_page.how_to_train_and_configure_card_built_in_guide_with_thre'),
                 ]}
               >
                 <div className="text-sm space-y-4 text-foreground/90 leading-relaxed">
                   <p>
-                    {t(
-                      'W aplikacji TIMEFLOW zastosowano autorski, lokalny model uczenia maszynowego (Local ML) typu klasyfikacyjnego, napisanego w języku Rust. Nie jest to zewnętrzne AI (jak ChatGPT), lecz algorytm działający w 100% na Twoim komputerze, co zapewnia pełną prywatność.',
-                      "TIMEFLOW uses a proprietary, local machine learning model (Local ML) for classification, written in Rust. It's not an external AI (like ChatGPT), but an algorithm running 100% on your computer, ensuring full privacy.",
-                    )}
+                    {t18n('help_page.timeflow_uses_a_proprietary_local_machine_learning_model')}
                   </p>
 
                   <div className="space-y-2">
                     <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
-                      {t('1. Na czym się uczy?', '1. What does it learn from?')}
+                      {t18n('help_page.k_1_what_does_it_learn_from')}
                     </h4>
                     <p>
-                      {t(
-                        'Model analizuje Twoje historyczne, ręczne przypisania sesji do projektów. Podczas „treningu” buduje tablice statystyczne oparte na trzech głównych filarach:',
-                        "The model analyzes your historical, manual session assignments to projects. During 'training', it builds statistical tables based on three main pillars:",
-                      )}
+                      {t18n('help_page.the_model_analyzes_your_historical_manual_session_assign')}
                     </p>
                     <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
                       <li>
                         <strong>
-                          {t('Kontekst aplikacji', 'Application context')}:
+                          {t18n('help_page.application_context')}:
                         </strong>{' '}
-                        {t(
-                          'Które programy przypisujesz do których projektów.',
-                          'Which programs you assign to which projects.',
-                        )}
+                        {t18n('help_page.which_programs_you_assign_to_which_projects')}
                       </li>
                       <li>
                         <strong>
-                          {t('Kontekst czasowy', 'Time context')}:
+                          {t18n('help_page.time_context')}:
                         </strong>{' '}
-                        {t(
-                          'Pora dnia i dzień tygodnia (Twoje nawyki pracy).',
-                          'Time of day and day of the week (your work habits).',
-                        )}
+                        {t18n('help_page.time_of_day_and_day_of_the_week_your_work_habits')}
                       </li>
                       <li>
                         <strong>
-                          {t('Analiza tokenów', 'Token analysis')}:
+                          {t18n('help_page.token_analysis')}:
                         </strong>{' '}
-                        {t(
-                          'Słowa kluczowe wyciągane z nazw plików i okien (najsilniejszy sygnał).',
-                          'Keywords extracted from file names and windows (the strongest signal).',
-                        )}
+                        {t18n('help_page.keywords_extracted_from_file_names_and_windows_the_stron')}
                       </li>
                     </ul>
                   </div>
 
                   <div className="space-y-2">
                     <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
-                      {t('2. Algorytm decyzyjny', '2. Decision algorithm')}
+                      {t18n('help_page.k_2_decision_algorithm')}
                     </h4>
                     <p>
-                      {t(
-                        'Model nie zgaduje „na ślepo” – dla każdej nieprzypisanej sesji wylicza:',
-                        "The model doesn't guess 'blindly' – for each unassigned session it calculates:",
-                      )}
+                      {t18n('help_page.the_model_doesn_t_guess_blindly_for_each_unassigned_sess')}
                     </p>
                     <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
                       <li>
                         <strong>
-                          {t('Ufność', 'Confidence')}:
+                          {t18n('help_page.confidence_2')}:
                         </strong>{' '}
-                        {t(
-                          'Wartość od 0 do 1 określaną przez funkcję sigmoidalną.',
-                          'A value from 0 to 1 determined by a sigmoid function.',
-                        )}
+                        {t18n('help_page.a_value_from_0_to_1_determined_by_a_sigmoid_function')}
                       </li>
                       <li>
                         <strong>
-                          {t('Dowody', 'Evidence Count')}:
+                          {t18n('help_page.evidence_count_2')}:
                         </strong>{' '}
-                        {t(
-                          'Liczba historycznych „dowodów” potwierdzających decyzję.',
-                          "The number of historical 'proofs' confirming the decision.",
-                        )}
+                        {t18n('help_page.the_number_of_historical_proofs_confirming_the_decision')}
                       </li>
                       <li>
-                        <strong>{t('Margin', 'Margin')}:</strong>{' '}
-                        {t(
-                          'Różnica między najlepszym a drugim dopasowaniem (chroni przed błędami).',
-                          'The difference between the best and second match (protects against errors).',
-                        )}
+                        <strong>{t18n('help_page.margin')}:</strong>{' '}
+                        {t18n('help_page.the_difference_between_the_best_and_second_match_protect')}
                       </li>
                     </ul>
                   </div>
 
                   <div className="space-y-2">
                     <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
-                      {t('3. Tryby pracy', '3. Operating modes')}
+                      {t18n('help_page.k_3_operating_modes')}
                     </h4>
                     <ul className="list-disc ml-5 space-y-1 text-muted-foreground">
                       <li>
-                        <strong>{t('Suggest (Sugestie):', 'Suggest:')}</strong>{' '}
-                        {t(
-                          'Podpowiada projekt w menu (wymaga >60% pewności).',
-                          'Suggests a project in the menu (requires >60% confidence).',
-                        )}
+                        <strong>{t18n('help_page.suggest')}</strong>{' '}
+                        {t18n('help_page.suggests_a_project_in_the_menu_requires_60_confidence')}
                       </li>
                       <li>
-                        <strong>{t('Auto-Safe:', 'Auto-Safe:')}</strong>{' '}
-                        {t(
-                          'Samodzielnie przypisuje sesje (wymaga >85% pewności i silnych dowodów).',
-                          'Automatically assigns sessions (requires >85% confidence and strong evidence).',
-                        )}
+                        <strong>{t18n('help_page.auto_safe')}</strong>{' '}
+                        {t18n('help_page.automatically_assigns_sessions_requires_85_confidence_an')}
                       </li>
                     </ul>
                   </div>
 
                   <div className="space-y-4">
                     <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
-                      {t(
-                        '4. Optymalne ustawienia nauki',
-                        '4. Optimal learning settings',
-                      )}
+                      {t18n('help_page.k_4_optimal_learning_settings')}
                     </h4>
                     <div className="space-y-3 pl-2 text-muted-foreground">
                       <div>
                         <strong>
-                          {t(
-                            '1. Tryb działania modelu: suggest',
-                            '1. Model operation mode: suggest',
-                          )}
+                          {t18n('help_page.k_1_model_operation_mode_suggest')}
                         </strong>
                         <p className="mt-1 leading-relaxed">
-                          {t(
-                            `Pozostaw ten tryb. AI będzie podsuwać Ci propozycje powiązań/kategorii, ale nie przypisze ich automatycznie. Twoje ręczne akceptacje (lub odrzucenia/korekty) to najważniejszy element budowania "wiedzy" modelu. (W trybie auto, model nie pytałby o zdanie w pewnych przypadkach, tracąc potencjalną szansę na upewnienie).`,
-                            `Keep this mode. The AI will suggest connections/categories but won't assign them automatically. Your manual approvals (or rejections/corrections) are the most crucial element in building the model's "knowledge". (In auto mode, the model wouldn't ask your opinion in some cases, losing a potential chance for confirmation).`,
-                          )}
+                          {t18n('help_page.keep_this_mode_the_ai_will_suggest_connections_categorie')}
                         </p>
                       </div>
 
@@ -993,62 +598,38 @@ export function Help() {
                           0.6)
                         </strong>
                         <p className="mt-1 leading-relaxed">
-                          {t(
-                            `Obniżenie tego progu sprawi, że model będzie zgłaszał propozycje nawet wtedy, gdy nie jest super pewny. Konsekwencja: dostaniesz więcej sugestii, a poprawiając te błędne, model nauczy się znacznie szybciej rozróżniać trudniejsze przypadki. Jeśli jednak poczujesz się "zaspamowany" bzdurnymi sugestiami, podnieś powoli do 0.6.`,
-                            `Lowering this threshold means the model will make suggestions even when it's not super confident. Consequence: you'll get more suggestions, and by correcting the wrong ones, the model will learn to distinguish harder cases much faster. But if you feel "spammed" by nonsensical suggestions, slowly increase it to 0.6.`,
-                          )}
+                          {t18n('help_page.lowering_this_threshold_means_the_model_will_make_sugges')}
                         </p>
                       </div>
 
                       <div>
                         <strong>
-                          {t(
-                            '3. Feedback Weight: 10 - 15 (Zwiększ obecne 5)',
-                            '3. Feedback Weight: 10 - 15 (Increase the current 5)',
-                          )}
+                          {t18n('help_page.k_3_feedback_weight_10_15_increase_the_current_5')}
                         </strong>
                         <p className="mt-1 leading-relaxed">
-                          {t(
-                            `Waga feedbacku decyduje o tym, jak mocno jedna Twoja poprawka wpływa na kolejne decyzje modelu. Wyższa wartość = model szybciej adaptuje się do Twoich świeżych zachowań i włożonych korekt. Ważne: jeśli waga będzie zbyt wysoka (np. 50), model może "zwariować" po jednej Twojej przypadkowej pomyłce. Wartość 10-15 pozwala na wydajną naukę, będąc zarazem stosunkowo stabilną opcją.`,
-                            `Feedback weight determines how strongly a single correction from you affects the model's subsequent decisions. Higher value = the model adapts faster to your fresh behaviors and corrections. Important: if the weight is too high (e.g., 50), the model might "go crazy" after a single accidental mistake. A value of 10-15 allows for efficient learning while being a relatively stable option.`,
-                          )}
+                          {t18n('help_page.feedback_weight_determines_how_strongly_a_single_correct')}
                         </p>
                       </div>
 
                       <div>
                         <strong>
-                          {t(
-                            '4. Kryteria dla Auto-safe (na przyszłość/dla bezpieczeństwa)',
-                            '4. Criteria for Auto-safe (for the future / safety)',
-                          )}
+                          {t18n('help_page.k_4_criteria_for_auto_safe_for_the_future_safety')}
                         </strong>
                         <p className="mt-1 mb-1 leading-relaxed">
-                          {t(
-                            'Jeśli po okresie uczenia zechcesz włączyć tryb auto-safe, gdzie AI samo rozwiązuje oczywiste przypadki:',
-                            'If after the learning period you want to enable auto-safe mode, where AI solves obvious cases by itself:',
-                          )}
+                          {t18n('help_page.if_after_the_learning_period_you_want_to_enable_auto_saf')}
                         </p>
                         <ul className="list-disc ml-5 space-y-1">
                           <li>
                             <strong>
                               Auto-safe Min Confidence: 0.85 - 0.95
                             </strong>{' '}
-                            {t(
-                              '(zostaw wysoko, niech automatyzuje tylko absolutne pewniaki).',
-                              '(keep it high, let it automate only absolute certainties).',
-                            )}
+                            {t18n('help_page.keep_it_high_let_it_automate_only_absolute_certainties')}
                           </li>
                           <li>
                             <strong>
-                              {t(
-                                'Auto-safe Min Evidence: 5',
-                                'Auto-safe Min Evidence: 5',
-                              )}
+                              {t18n('help_page.auto_safe_min_evidence_5')}
                             </strong>{' '}
-                            {t(
-                              '(podnieś z 3. Oznacza to, że model musi mieć mocne potwierdzenie w min. 5 podobnych, wcześniej zatwierdzonych przez Ciebie sesjach, by zadziałać bez Twojej zgody).',
-                              '(increase from 3. This means the model must have strong confirmation in at least 5 similar, previously user-approved sessions to act without your consent).',
-                            )}
+                            {t18n('help_page.increase_from_3_this_means_the_model_must_have_strong_co')}
                           </li>
                         </ul>
                       </div>
@@ -1056,10 +637,7 @@ export function Help() {
                   </div>
 
                   <p className="text-xs italic text-muted-foreground pt-2 border-t border-border/10">
-                    {t(
-                      'Wszystkie dane modelu są przechowywane w Twojej lokalnej bazie SQLite (assignment_model_state itp.), więc system staje się mądrzejszy z każdą Twoją korektą.',
-                      'All model data is stored in your local SQLite database (assignment_model_state, etc.), so the system gets smarter with each of your corrections.',
-                    )}
+                    {t18n('help_page.all_model_data_is_stored_in_your_local_sqlite_database_a')}
                   </p>
                 </div>
               </SectionHelp>
@@ -1071,37 +649,16 @@ export function Help() {
             >
               <SectionHelp
                 icon={<Import className="h-6 w-6" />}
-                title={t('DANE', 'DATA')}
-                description={t(
-                  'Importowanie, eksportowanie i porządkowanie bazy wiedzy.',
-                  'Importing, exporting, and organizing the knowledge base.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.data_2')}
+                description={t18n('help_page.importing_exporting_and_organizing_the_knowledge_base')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Eksport ZIP – szybka archiwizacja całej bazy lub wybranych projektów do paczki .zip.',
-                    'ZIP Export – quick archiving of the entire database or selected projects to .zip.',
-                  ),
-                  t(
-                    'Import JSON – wczytywanie dziennych raportów generowanych przez Daemona.',
-                    'JSON Import – loading daily reports generated by the Daemon.',
-                  ),
-                  t(
-                    'Import archiwum (.zip) – walidacja paczki przed importem oraz bezpieczne scalenie danych historycznych.',
-                    'Archive import (.zip) – package validation before import and safe merge of historical data.',
-                  ),
-                  t(
-                    'System Maintenance – czyszczenie starych rekordów i optymalizacja rozmiaru plików.',
-                    'System Maintenance – cleaning old records and optimizing file size.',
-                  ),
-                  t(
-                    'Historia operacji – wgląd w to, kiedy i jakie dane były modyfikowane.',
-                    'Operation History – insight into when and what data was modified.',
-                  ),
-                  t(
-                    'Backup/Restore bazy – ręczne backupy, przywracanie z pliku oraz przegląd folderu z bazą SQLite.',
-                    'Backup/Restore database – manual backups, restore from file, and quick access to the SQLite database folder.',
-                  ),
+                  t18n('help_page.zip_export_quick_archiving_of_the_entire_database_or_sel'),
+                  t18n('help_page.json_import_loading_daily_reports_generated_by_the_daemo'),
+                  t18n('help_page.archive_import_zip_package_validation_before_import_and'),
+                  t18n('help_page.system_maintenance_cleaning_old_records_and_optimizing_f'),
+                  t18n('help_page.operation_history_insight_into_when_and_what_data_was_mo'),
+                  t18n('help_page.backup_restore_database_manual_backups_restore_from_file'),
                 ]}
               />
             </TabsContent>
@@ -1112,49 +669,19 @@ export function Help() {
             >
               <SectionHelp
                 icon={<FileText className="h-6 w-6" />}
-                title={t('RAPORTY', 'REPORTS')}
-                description={t(
-                  'Tworzenie konfigurowalnych raportów projektowych do wydruku i eksportu PDF.',
-                  'Create configurable project reports for print and PDF export.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.reports_2')}
+                description={t18n('help_page.create_configurable_project_reports_for_print_and_pdf_ex')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'System szablonów – twórz, duplikuj i zarządzaj wieloma szablonami raportów. Przed generowaniem wybierz szablon z listy.',
-                    'Template system – create, duplicate, and manage multiple report templates. Choose a template before generating.',
-                  ),
-                  t(
-                    'Edytor szablonu raportu – wybieraj sekcje raportu i ich kolejność (nagłówek, statystyki, finanse, aplikacje, sesje, boosty, sesje manualne, komentarze, AI).',
-                    'Report template editor – choose report sections and their order (header, stats, financials, apps, sessions, boosts, manual sessions, comments, AI).',
-                  ),
-                  t(
-                    'Logo i wersja TIMEFLOW – nagłówek raportu zawiera logo aplikacji i numer wersji, widoczne również w wydruku PDF.',
-                    'TIMEFLOW logo and version – the report header includes the app logo and version number, visible in PDF prints.',
-                  ),
-                  t(
-                    'Wybór fontu i skalowanie – zmień krój pisma (sans-serif, serif, monospace) i rozmiar tekstu (10–18px) w toolbarze raportu.',
-                    'Font selection and scaling – change font family (sans-serif, serif, monospace) and text size (10–18px) in the report toolbar.',
-                  ),
-                  t(
-                    'Generowanie raportu – przycisk w górnym pasku strony projektu. Wybierz szablon, a następnie przeglądaj, drukuj lub eksportuj do PDF.',
-                    'Report generation – button in the top toolbar of the project page. Select a template, then preview, print, or export to PDF.',
-                  ),
-                  t(
-                    'ReportView – pełnoekranowy podgląd raportu (tryb bez bocznego panelu) przygotowany pod wydruk i eksport PDF.',
-                    'ReportView – full-screen report preview (without the side panel) optimized for print and PDF export.',
-                  ),
-                  t(
-                    'Sekcja "Pliki/aktywność" – w szablonie raportu możesz uwzględnić listę plików i aktywności, nie tylko podsumowania czasowe.',
-                    '"Files/activity" section – report templates can include file/activity details, not only time summaries.',
-                  ),
-                  t(
-                    'Sekcje dodatkowe: Boosty (sesje z mnożnikiem czasu), Sesje manualne (ręcznie dodane), Komentarze, Statystyki AI.',
-                    'Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.',
-                  ),
-                  t(
-                    'Zmiana kolejności sekcji – strzałki góra/dół przy każdej sekcji w edytorze szablonu pozwalają ustalić własną kolejność elementów raportu.',
-                    'Section reordering – up/down arrows on each section in the template editor let you set a custom order of report elements.',
-                  ),
+                  t18n('help_page.template_system_create_duplicate_and_manage_multiple_rep'),
+                  t18n('help_page.report_template_editor_choose_report_sections_and_their'),
+                  t18n('help_page.timeflow_logo_and_version_the_report_header_includes_the'),
+                  t18n('help_page.font_selection_and_scaling_change_font_family_sans_serif'),
+                  t18n('help_page.report_generation_button_in_the_top_toolbar_of_the_proje'),
+                  t18n('help_page.reportview_full_screen_report_preview_without_the_side_p'),
+                  t18n('help_page.files_activity_section_report_templates_can_include_file'),
+                  t18n('help_page.additional_sections_boosts_sessions_with_time_multiplier'),
+                  t18n('help_page.section_reordering_up_down_arrows_on_each_section_in_the'),
                 ]}
               />
             </TabsContent>
@@ -1166,52 +693,19 @@ export function Help() {
               <SectionHelp
                 icon={<Cpu className="h-6 w-6" />}
                 title={t18n('help.sections.daemon.title')}
-                description={t(
-                  'Centrum sterowania procesem tła odpowiedzialnym za zbieranie danych.',
-                  'Control center for the background process responsible for data collection.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                description={t18n('help_page.control_center_for_the_background_process_responsible_fo')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Kontrola statusu i diagnostyka – monitoruj czy system śledzenia czasu działa poprawnie.',
-                    'Status Control & Diagnostics – monitor if the time tracking system is working correctly.',
-                  ),
-                  t(
-                    'Zarządzanie usługą – start, stop i restart Daemona bezpośrednio z dashboardu.',
-                    'Service Management – start, stop, and restart the Daemon directly from the dashboard.',
-                  ),
-                  t(
-                    'Windows Autostart – automatyczne pobudzenie TIMEFLOW przy logowaniu do systemu.',
-                    'Windows Autostart – automatic startup of TIMEFLOW upon system login.',
-                  ),
-                  t(
-                    'Real-time Logs – podgląd dziennika zdarzeń w celu identyfikacji problemów.',
-                    'Real-time Logs – preview of the event log to identify issues.',
-                  ),
-                  t(
-                    'Wgląd w wersję – informacja o kompatybilności wersji Daemona i Dashboardu.',
-                    'Version Insight – information on the compatibility of Daemon and Dashboard versions.',
-                  ),
-                  t(
-                    'Lokalizacja – menu tray Daemona automatycznie przełącza się między PL/EN na podstawie ustawień języka w Dashboardzie (Ustawienia > Język).',
-                    'Localization – the Daemon tray menu automatically switches between PL/EN based on the language setting in the Dashboard (Settings > Language).',
-                  ),
-                  t(
-                    'Fallback monitor-all – jeśli lista monitorowanych procesów jest pusta, daemon zaczyna śledzić wszystkie aplikacje, więc warto skonfigurować zakładkę Applications przed uruchomieniem pracy produkcyjnej.',
-                    'Monitor-all fallback – if the monitored process list is empty, the daemon starts tracking all applications, so it is worth configuring the Applications tab before production use.',
-                  ),
-                  t(
-                    'Wskaźnik nieprzypisanych sesji – badge z liczbą sesji wymagających przypisania, widoczny bezpośrednio na ekranie Daemona.',
-                    'Unassigned sessions indicator – badge with the count of sessions awaiting assignment, visible directly on the Daemon screen.',
-                  ),
-                  t(
-                    'Auto-refresh logów – przycisk włączający automatyczne odświeżanie podglądu logów w czasie rzeczywistym.',
-                    'Log auto-refresh – button to enable automatic real-time log preview updates.',
-                  ),
-                  t(
-                    'Kolorowanie logów – linie z ERROR i WARN są wyróżnione kolorem, ułatwiając szybką identyfikację problemów.',
-                    'Log coloring – ERROR and WARN lines are highlighted with color for quick problem identification.',
-                  ),
+                  t18n('help_page.status_control_diagnostics_monitor_if_the_time_tracking'),
+                  t18n('help_page.service_management_start_stop_and_restart_the_daemon_dir'),
+                  t18n('help_page.windows_autostart_automatic_startup_of_timeflow_upon_sys'),
+                  t18n('help_page.real_time_logs_preview_of_the_event_log_to_identify_issu'),
+                  t18n('help_page.version_insight_information_on_the_compatibility_of_daem'),
+                  t18n('help_page.localization_the_daemon_tray_menu_automatically_switches'),
+                  t18n('help_page.monitor_all_fallback_if_the_monitored_process_list_is_em'),
+                  t18n('help_page.unassigned_sessions_indicator_badge_with_the_count_of_se'),
+                  t18n('help_page.log_auto_refresh_button_to_enable_automatic_real_time_lo'),
+                  t18n('help_page.log_coloring_error_and_warn_lines_are_highlighted_with_c'),
                 ]}
               />
             </TabsContent>
@@ -1222,113 +716,35 @@ export function Help() {
             >
               <SectionHelp
                 icon={<Settings className="h-6 w-6" />}
-                title={t('USTAWIENIA', 'SETTINGS')}
-                description={t(
-                  'Pełna kontrola nad konfiguracją aplikacji i bezpieczeństwem.',
-                  'Full control over application configuration and security.',
-                )}
-                footer={t('Kluczowe funkcjonalności', 'Key Functionalities')}
+                title={t18n('help_page.settings_2')}
+                description={t18n('help_page.full_control_over_application_configuration_and_security')}
+                footer={t18n('help_page.key_functionalities')}
                 features={[
-                  t(
-                    'Working Hours – definiowanie godzin pracy (wpływa na kolorystykę osi czasu).',
-                    'Working Hours – define work hours (affects timeline color scheme).',
-                  ),
-                  t(
-                    'Session Management – ustalanie progu łączenia sesji (Gap Fill) oraz ignorowania krótkich bloków.',
-                    'Session Management – set session merging threshold (Gap Fill) and ignore short blocks.',
-                  ),
-                  t(
-                    'Auto-rebuild on startup – automatyczne scalanie sesji przy starcie aplikacji.',
-                    'Auto-rebuild on startup – automatically rebuild/merge sessions on application startup.',
-                  ),
-                  t(
-                    'Freeze Threshold – konfiguracja liczby dni, po których projekty są mrożone.',
-                    'Freeze Threshold – configure the number of days after which projects are frozen.',
-                  ),
-                  t(
-                    'Waluta (Currency) – wybór waluty wycen (PLN/USD/EUR) używanej w modułach finansowych.',
-                    'Currency – choose valuation currency (PLN/USD/EUR) used across financial modules.',
-                  ),
-                  t(
-                    'Język interfejsu (PL/EN) – przełącznik języka całego Dashboardu i menu tray Daemona.',
-                    'UI language (PL/EN) – language switch for the whole Dashboard and Daemon tray menu.',
-                  ),
-                  t(
-                    'Online Sync – ustawienie synchronizacji z zewnętrznym serwerem (URL, User ID, Token).',
-                    'Online Sync – set up synchronization with an external server (URL, User ID, Token).',
-                  ),
-                  t(
-                    'Device ID – identyfikator urządzenia jest generowany przy zapisie ustawień sync i rozróżnia tę konkretną maszynę po stronie serwera.',
-                    'Device ID – a device identifier is generated when sync settings are saved and distinguishes this specific machine on the server.',
-                  ),
-                  t(
-                    'Token synchronizacji jest przechowywany w secure storage po stronie aplikacji Rust; dashboard obsługuje też migrację starszego tokenu z localStorage.',
-                    'The sync token is stored in Rust-side secure storage; the dashboard also migrates an older token from localStorage when needed.',
-                  ),
-                  t(
-                    'Sync on startup – natychmiastowa synchronizacja po uruchomieniu Dashboardu.',
-                    'Sync on startup – perform synchronization immediately after Dashboard startup.',
-                  ),
-                  t(
-                    'Auto-sync interval – ustaw interwał automatycznej synchronizacji (1–1440 min).',
-                    'Auto-sync interval – configure automatic synchronization interval (1–1440 min).',
-                  ),
-                  t(
-                    'Statusy ACK w Online Sync – sekcja stanu pokazuje czy zmiany lokalne oczekują na potwierdzenie po stronie serwera (ACK pending).',
-                    'ACK statuses in Online Sync – the status area shows whether local changes are still waiting for server confirmation (ACK pending).',
-                  ),
-                  t(
-                    'Scenariusz server_snapshot_pruned – jeśli payload serwera został wyczyszczony po ACK, wykonaj lokalny reseed/eksport, aby odbudować stan synchronizacji.',
-                    'server_snapshot_pruned scenario – if the server payload was cleaned after ACK, run a local reseed/export to rebuild sync state.',
-                  ),
-                  t(
-                    'Sync logging – możesz włączyć logowanie synchronizacji do pliku, aby diagnozować błędy pull/push i przekazać log do wsparcia.',
-                    'Sync logging – you can enable file logging for synchronization to diagnose pull/push issues and share logs with support.',
-                  ),
-                  t(
-                    'Demo Mode – przełączanie na bazę demo (możliwość testowania bez wpływu na realne dane).',
-                    'Demo Mode – switch to a demo database (test without affecting real data).',
-                  ),
-                  t(
-                    'Tryb Demo a Sync – po przełączeniu na bazę demo synchronizacja online jest wyłączona, aby uniknąć mieszania danych testowych z produkcyjnymi.',
-                    'Demo Mode and Sync – when switched to the demo database, online synchronization is disabled to prevent mixing test and production data.',
-                  ),
-                  t(
-                    'Tryb demo korzysta z osobnego pliku SQLite i czyta dzienne odświeżenia z katalogu fake_data; pliki JSON powinny wtedy zawierać fake w nazwie, np. 2026-02-22_fake.json.',
-                    'Demo mode uses a separate SQLite file and reads live daily refreshes from the fake_data directory; JSON filenames should then include fake, for example 2026-02-22_fake.json.',
-                  ),
-                  t(
-                    'Auto Optimize DB – harmonogram automatycznej optymalizacji SQLite oraz ręczne uruchamianie optymalizacji.',
-                    'Auto Optimize DB – schedule automatic SQLite optimization and run optimization manually.',
-                  ),
-                  t(
-                    'Emergency Clear – opcja całkowitego wyczyszczenia bazy danych i ustawień.',
-                    'Emergency Clear – option to completely clear the database and settings.',
-                  ),
-                  t(
-                    'Appearance & Performance – wyłączanie animacji wykresów w celu poprawy responsywności UI.',
-                    'Appearance & Performance – disable chart animations to improve UI responsiveness.',
-                  ),
-                  t(
-                    'Highlight Color – wybór koloru podświetlenia strefy godzin pracy na wykresach.',
-                    'Highlight Color – choose the highlight color for working-hours zones on charts.',
-                  ),
-                  t(
-                    'BugHunter – ikona robaka w sidebarze umożliwia szybkie zgłaszanie błędów z załącznikami.',
-                    'BugHunter – the bug icon in the sidebar allows quick bug reporting with attachments.',
-                  ),
-                  t(
-                    'Podział sesji (Session Split) – ustawienia w osobnej karcie: współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5) oraz przełącznik auto-split. Wyższy próg tolerancji oznacza bardziej konserwatywny podział.',
-                    'Session Split – settings in a dedicated card: tolerance coefficient (0.2–1.0), max projects per session (2–5), and auto-split toggle. Higher tolerance means more conservative splits.',
-                  ),
-                  t(
-                    'Danger Zone (Strefa zagrożenia) – dwuetapowe potwierdzenie: najpierw „uzbrojenie" przyciskiem, potem kliknięcie potwierdzenia. Chroni przed przypadkowym wyczyszczeniem bazy.',
-                    'Danger Zone – two-step confirmation: first "arm" the button, then click to confirm. Protects against accidental database wipe.',
-                  ),
-                  t(
-                    'Ręczny rebuild sesji – przycisk w karcie Session Management wymusza ponowne scalenie sesji (gap fill) bez restartu aplikacji.',
-                    'Manual session rebuild – button in the Session Management card forces session re-merge (gap fill) without restarting the app.',
-                  ),
+                  t18n('help_page.working_hours_define_work_hours_affects_timeline_color_s'),
+                  t18n('help_page.session_management_set_session_merging_threshold_gap_fil'),
+                  t18n('help_page.auto_rebuild_on_startup_automatically_rebuild_merge_sess'),
+                  t18n('help_page.freeze_threshold_configure_the_number_of_days_after_whic'),
+                  t18n('help_page.currency_choose_valuation_currency_pln_usd_eur_used_acro'),
+                  t18n('help_page.ui_language_pl_en_language_switch_for_the_whole_dashboar'),
+                  t18n('help_page.online_sync_set_up_synchronization_with_an_external_serv'),
+                  t18n('help_page.device_id_a_device_identifier_is_generated_when_sync_set'),
+                  t18n('help_page.the_sync_token_is_stored_in_rust_side_secure_storage_the'),
+                  t18n('help_page.sync_on_startup_perform_synchronization_immediately_afte'),
+                  t18n('help_page.auto_sync_interval_configure_automatic_synchronization_i'),
+                  t18n('help_page.ack_statuses_in_online_sync_the_status_area_shows_whethe'),
+                  t18n('help_page.server_snapshot_pruned_scenario_if_the_server_payload_wa'),
+                  t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
+                  t18n('help_page.demo_mode_switch_to_a_demo_database_test_without_affecti'),
+                  t18n('help_page.demo_mode_and_sync_when_switched_to_the_demo_database_on'),
+                  t18n('help_page.demo_mode_uses_a_separate_sqlite_file_and_reads_live_dai'),
+                  t18n('help_page.auto_optimize_db_schedule_automatic_sqlite_optimization'),
+                  t18n('help_page.emergency_clear_option_to_completely_clear_the_database'),
+                  t18n('help_page.appearance_performance_disable_chart_animations_to_impro'),
+                  t18n('help_page.highlight_color_choose_the_highlight_color_for_working_h'),
+                  t18n('help_page.bughunter_the_bug_icon_in_the_sidebar_allows_quick_bug_r'),
+                  t18n('help_page.session_split_settings_in_a_dedicated_card_tolerance_coe'),
+                  t18n('help_page.danger_zone_two_step_confirmation_first_arm_the_button_t'),
+                  t18n('help_page.manual_session_rebuild_button_in_the_session_management'),
                 ]}
               />
             </TabsContent>

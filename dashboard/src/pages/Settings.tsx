@@ -48,7 +48,6 @@ import {
   type OnlineSyncRunResult,
   type OnlineSyncState,
 } from '@/lib/online-sync';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -76,7 +75,6 @@ function splitTime(value: string): [string, string] {
 
 export function Settings() {
   const { i18n, t } = useTranslation();
-  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
@@ -215,17 +213,14 @@ export function Settings() {
 
     if (startMinutes === null || endMinutes === null) {
       setWorkingHoursError(
-        tt('Użyj poprawnego czasu HH:mm.', 'Please use a valid HH:mm time.'),
+        t('settings_page.please_use_a_valid_hh_mm_time'),
       );
       setSavedSettings(false);
       return;
     }
     if (endMinutes <= startMinutes) {
       setWorkingHoursError(
-        tt(
-          "Godzina 'Do' musi być późniejsza niż 'Od'.",
-          "'To' time must be later than 'From' time.",
-        ),
+        t('settings_page.to_time_must_be_later_than_from_time'),
       );
       setSavedSettings(false);
       return;
@@ -283,16 +278,12 @@ export function Settings() {
     try {
       const merged = await rebuildSessions(sessionSettings.gapFillMinutes);
       showInfo(
-        tt(
-          'Pomyślnie połączono {{merged}} bliskich sesji.',
-          'Successfully merged {{merged}} close sessions.',
-          { merged },
-        ),
+        t('settings_page.successfully_merged_close_sessions', { merged }),
       );
     } catch (e) {
       console.error(e);
       showError(
-        tt('Błąd łączenia sesji: ', 'Error linking sessions: ') + String(e),
+        t('settings_page.error_linking_sessions') + String(e),
       );
     } finally {
       setRebuilding(false);
@@ -301,21 +292,18 @@ export function Settings() {
 
   const handleClearData = async () => {
     const confirmed = await confirm(
-      tt(
-        'Czy na pewno chcesz usunąć wszystkie dane? Tej operacji nie można cofnąć.',
-        'Are you sure you want to delete all data? This cannot be undone.',
-      ),
+      t('settings_page.are_you_sure_you_want_to_delete_all_data_this_cannot_be'),
     );
     if (!confirmed) return;
     setClearing(true);
     try {
       await clearAllData();
       setClearArmed(false);
-      showInfo(tt('Wszystkie dane usunięte.', 'All data removed.'));
+      showInfo(t('settings_page.all_data_removed'));
     } catch (e) {
       console.error(e);
       showError(
-        tt('Nie udało się wyczyścić danych: ', 'Failed to clear data: ') +
+        t('settings_page.failed_to_clear_data') +
           String(e),
       );
     } finally {
@@ -373,23 +361,14 @@ export function Settings() {
       setManualSyncResult(null);
       showInfo(
         status.enabled
-          ? tt(
-              'Tryb demo włączony. Dashboard używa teraz bazy demo.',
-              'Demo mode enabled. Dashboard now uses the demo database.',
-            )
-          : tt(
-              'Tryb demo wyłączony. Dashboard używa teraz głównej bazy.',
-              'Demo mode disabled. Dashboard now uses the primary database.',
-            ),
+          ? t('settings_page.demo_mode_enabled_dashboard_now_uses_the_demo_database')
+          : t('settings_page.demo_mode_disabled_dashboard_now_uses_the_primary_databa'),
       );
     } catch (e) {
       console.error(e);
       setDemoModeError(String(e));
       showError(
-        tt(
-          'Nie udało się przełączyć trybu demo: ',
-          'Failed to switch demo mode: ',
-        ) + String(e),
+        t('settings_page.failed_to_switch_demo_mode') + String(e),
       );
     } finally {
       setDemoModeSwitching(false);
@@ -398,7 +377,7 @@ export function Settings() {
 
   const lastSyncLabel = onlineSyncState.lastSyncAt
     ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
-    : tt('Nigdy', 'Never');
+    : t('settings_page.never');
   const shortHash = onlineSyncState.serverHash
     ? `${onlineSyncState.serverHash.slice(0, 12)}...`
     : 'n/a';
@@ -427,34 +406,19 @@ export function Settings() {
   const manualSyncResultText = manualSyncResult
     ? manualSyncResult.ok
       ? manualSyncResult.skipped && manualSyncResult.reason === 'demo_mode'
-        ? tt(
-            'Ostatni manualny sync: pominięto (wyłączony w trybie demo)',
-            'Last manual sync: skipped (disabled in Demo Mode)',
-          )
+        ? t('settings_page.last_manual_sync_skipped_disabled_in_demo_mode')
         : manualSyncResult.ackPending
-          ? tt(
-              'Ostatni manualny sync: pull zastosowany, ACK oczekuje ({{detail}})',
-              'Last manual sync: pull applied, ACK pending ({{detail}})',
-              {
+          ? t('settings_page.last_manual_sync_pull_applied_ack_pending', {
                 detail:
                   manualSyncResult.ackReason ?? manualSyncResult.reason,
-              },
-            )
-          : tt(
-              'Ostatni manualny sync: {{action}} ({{reason}})',
-              'Last manual sync: {{action}} ({{reason}})',
-              {
+              })
+          : t('settings_page.last_manual_sync', {
                 action: manualSyncResult.action,
                 reason: manualSyncResult.reason,
-              },
-            )
-      : tt(
-          'Ostatni manualny sync nie powiódł się: {{error}}',
-          'Last manual sync failed: {{error}}',
-          {
+              })
+      : t('settings_page.last_manual_sync_failed', {
             error: manualSyncResult.error ?? manualSyncResult.reason,
-          },
-        )
+          })
     : null;
   const manualSyncResultSuccess = manualSyncResult?.ok ?? false;
 
@@ -462,17 +426,14 @@ export function Settings() {
     <div className="mx-auto w-full max-w-3xl space-y-8 pb-20">
       <div className="space-y-4">
         <h2 className="text-xl font-bold tracking-tight px-1">
-          {tt('Ustawienia ogólne', 'General Settings')}
+          {t('settings_page.general_settings')}
         </h2>
         <WorkingHoursCard
-          title={tt('Godziny pracy', 'Working Hours')}
-          description={tt(
-            'Służy do podświetlenia oczekiwanego okna pracy na osi czasu.',
-            'Used to highlight expected work window on timeline.',
-          )}
-          fromLabel={tt('Od', 'From')}
-          toLabel={tt('Do', 'To')}
-          highlightColorLabel={tt('Kolor podświetlenia', 'Highlight Color')}
+          title={t('settings_page.working_hours')}
+          description={t('settings_page.used_to_highlight_expected_work_window_on_timeline')}
+          fromLabel={t('settings_page.from')}
+          toLabel={t('settings_page.to')}
+          highlightColorLabel={t('settings_page.highlight_color')}
           labelClassName={labelClassName}
           compactSelectClassName={compactSelectClassName}
           hours={HOURS}
@@ -491,12 +452,9 @@ export function Settings() {
           }}
         />
         <CurrencyCard
-          title={tt('Waluta', 'Currency')}
-          description={tt(
-            'Wybierz preferowaną walutę dla wycen projektów.',
-            'Select preferred currency for project values.',
-          )}
-          activeCurrencyLabel={tt('Aktywna waluta', 'Active Currency')}
+          title={t('settings_page.currency')}
+          description={t('settings_page.select_preferred_currency_for_project_values')}
+          activeCurrencyLabel={t('settings_page.active_currency')}
           labelClassName={labelClassName}
           currencies={currencyOptions}
           selectedCode={currencySettings.code}
@@ -519,16 +477,10 @@ export function Settings() {
           }}
         />
         <AppearanceCard
-          title={tt('Wygląd i wydajność', 'Appearance & Performance')}
-          description={tt(
-            'Dostosuj efekty wizualne i opcje wydajności.',
-            'Adjust visual effects and performance options.',
-          )}
-          animationsTitle={tt('Włącz animacje wykresów', 'Enable chart animations')}
-          animationsDescription={tt(
-            'Wyłącz, aby poprawić responsywność UI na wolniejszych urządzeniach.',
-            'Turn off to improve UI responsiveness on slower devices.',
-          )}
+          title={t('settings_page.appearance_performance')}
+          description={t('settings_page.adjust_visual_effects_and_performance_options')}
+          animationsTitle={t('settings_page.enable_chart_animations')}
+          animationsDescription={t('settings_page.turn_off_to_improve_ui_responsiveness_on_slower_devices')}
           checked={appearanceSettings.chartAnimations}
           onToggle={(enabled) => {
             setAppearanceSettings((prev) => ({ ...prev, chartAnimations: enabled }));
@@ -539,55 +491,31 @@ export function Settings() {
 
       <div className="space-y-4">
         <h2 className="text-xl font-bold tracking-tight px-1 mt-8 text-sky-400">
-          {tt('Zaawansowane / Algorytmy', 'Advanced / Algorithms')}
+          {t('settings_page.advanced_algorithms')}
         </h2>
 
         <SessionManagementCard
-          title={tt('Zarządzanie sesjami', 'Session Management')}
-          description={tt(
-            'Reguły automatycznego łączenia bliskich sesji.',
-            'Rules for automatic merging of nearby sessions.',
-          )}
-          mergeGapLabel={tt('Przerwa scalania', 'Merge Gap')}
-          mergeGapAriaLabel={tt(
-            'Przerwa scalania w minutach',
-            'Merge gap in minutes',
-          )}
-          minutesLabel={tt('min', 'min')}
+          title={t('settings_page.session_management')}
+          description={t('settings_page.rules_for_automatic_merging_of_nearby_sessions')}
+          mergeGapLabel={t('settings_page.merge_gap')}
+          mergeGapAriaLabel={t('settings_page.merge_gap_in_minutes')}
+          minutesLabel={t('settings_page.min')}
           sliderValue={sliderValue}
           skipShortSessionsTitle={t(
             'settings.session.skipShortTitle',
             'Skip short sessions',
           )}
-          skipShortSessionsDescription={tt(
-            'Sesje krótsze lub równe tej wartości będą ukryte na liście.',
-            'Sessions shorter than or equal to this duration will be hidden from the list.',
-          )}
-          minDurationAriaLabel={tt(
-            'Minimalna długość sesji w sekundach',
-            'Minimum session duration in seconds',
-          )}
+          skipShortSessionsDescription={t('settings_page.sessions_shorter_than_or_equal_to_this_duration_will_be')}
+          minDurationAriaLabel={t('settings_page.minimum_session_duration_in_seconds')}
           minDurationSeconds={sessionSettings.minSessionDurationSeconds}
-          secondsLabel={tt('sek', 'sec')}
-          autoRebuildTitle={tt(
-            'Auto-przebudowa przy starcie',
-            'Auto-rebuild on startup',
-          )}
-          autoRebuildDescription={tt(
-            'Automatycznie łącz bliskie sesje przy uruchomieniu aplikacji.',
-            'Automatically merge close sessions when app starts.',
-          )}
+          secondsLabel={t('settings_page.sec')}
+          autoRebuildTitle={t('settings_page.auto_rebuild_on_startup')}
+          autoRebuildDescription={t('settings_page.automatically_merge_close_sessions_when_app_starts')}
           rebuildOnStartup={sessionSettings.rebuildOnStartup}
-          rebuildExistingTitle={tt(
-            'Przebuduj istniejące sesje',
-            'Rebuild Existing Sessions',
-          )}
-          rebuildExistingDescription={tt(
-            'Zastosuj aktualny próg scalania do już zaimportowanych sesji.',
-            'Apply current merge gap to already imported sessions.',
-          )}
-          rebuildingLabel={tt('Przebudowa...', 'Rebuilding...')}
-          rebuildLabel={tt('Przebuduj', 'Rebuild')}
+          rebuildExistingTitle={t('settings_page.rebuild_existing_sessions')}
+          rebuildExistingDescription={t('settings_page.apply_current_merge_gap_to_already_imported_sessions')}
+          rebuildingLabel={t('settings_page.rebuilding')}
+          rebuildLabel={t('settings_page.rebuild')}
           rebuilding={rebuilding}
           onGapFillChange={(minutes) => {
             setSessionSettings((prev) => ({ ...prev, gapFillMinutes: minutes }));
@@ -649,89 +577,53 @@ export function Settings() {
           manualSyncing={manualSyncing}
           demoModeSyncDisabled={demoModeSyncDisabled}
           showToken={showOnlineSyncToken}
-          title={tt('Synchronizacja online', 'Online Sync')}
-          description={tt(
-            'Synchronizacja przy starcie z serwerem zdalnym (snapshot push/pull).',
-            'Startup synchronization with remote server using snapshot push/pull.',
-          )}
+          title={t('settings_page.online_sync')}
+          description={t('settings_page.startup_synchronization_with_remote_server_using_snapsho')}
           enableSyncTitle={t(
             'settings.online_sync.enableTitle',
             'Enable online sync',
           )}
-          enableSyncDescription={tt(
-            'Pozwala dashboardowi wymieniać snapshoty danych z serwerem sync.',
-            'Allows the dashboard to exchange data snapshots with the sync server.',
-          )}
-          syncOnStartupTitle={tt('Synchronizuj przy starcie', 'Sync on startup')}
-          syncOnStartupDescription={tt(
-            'Uruchamia status -> pull/push po zakończeniu lokalnego auto-importu.',
-            'Runs status -> pull/push after local auto-import finishes.',
-          )}
-          autoSyncIntervalTitle={tt('Interwał auto-sync', 'Auto sync interval')}
-          autoSyncIntervalDescription={tt(
-            'Cykliczny sync po uruchomieniu aplikacji. Domyślnie co 30 minut.',
-            'Periodic sync after app startup. Default is every 30 minutes.',
-          )}
-          minutesLabel={tt('min', 'min')}
+          enableSyncDescription={t('settings_page.allows_the_dashboard_to_exchange_data_snapshots_with_the')}
+          syncOnStartupTitle={t('settings_page.sync_on_startup')}
+          syncOnStartupDescription={t('settings_page.runs_status_pull_push_after_local_auto_import_finishes')}
+          autoSyncIntervalTitle={t('settings_page.auto_sync_interval')}
+          autoSyncIntervalDescription={t('settings_page.periodic_sync_after_app_startup_default_is_every_30_minu')}
+          minutesLabel={t('settings_page.min')}
           enableLoggingTitle={t(
             'settings.online_sync.loggingTitle',
             'Enable sync logging',
           )}
-          enableLoggingDescription={tt(
-            'Zapisuj szczegółowe operacje sync do logów diagnostycznych.',
-            'Save detailed sync operations to log file for debugging.',
-          )}
-          serverUrlLabel={tt('URL serwera', 'Server URL')}
+          enableLoggingDescription={t('settings_page.save_detailed_sync_operations_to_log_file_for_debugging')}
+          serverUrlLabel={t('settings_page.server_url')}
           useDefaultServerLabel={t(
             'settings.online_sync.useRailwayDefault',
             'Use Railway Default',
           )}
-          userIdLabel={tt('ID użytkownika', 'User ID')}
+          userIdLabel={t('settings_page.user_id')}
           userIdPlaceholder="e.g. demo-user / email / UUID"
-          apiTokenLabel={tt('Token API (Bearer)', 'API Token (Bearer)')}
-          apiTokenPlaceholder={tt(
-            "Wklej surowy token (bez prefiksu 'Bearer ' i bez cudzysłowów)",
-            "Paste the raw token (without 'Bearer ' prefix and without quotes)",
-          )}
-          showTokenLabel={tt('Pokaż token', 'Show token')}
-          hideTokenLabel={tt('Ukryj token', 'Hide token')}
-          apiTokenHint={tt(
-            'Wprowadź surowy token; aplikacja automatycznie doda nagłówek Bearer.',
-            'Enter the raw token; the app will add the Bearer header automatically.',
-          )}
-          deviceIdLabel={tt('ID urządzenia', 'Device ID')}
-          generatedOnSaveLabel={tt(
-            '(wygenerowane przy zapisie)',
-            '(generated on save)',
-          )}
-          deviceIdHint={tt(
-            'Generowane automatycznie i używane do identyfikacji tej maszyny podczas sync.',
-            'Generated automatically and used to identify this machine during sync.',
-          )}
-          statusTitle={tt('Status ostatniej synchronizacji', 'Last Sync Status')}
-          lastSuccessfulLabel={tt(
-            'Ostatni udany check/sync:',
-            'Last successful check/sync:',
-          )}
-          demoModeDisabledWarning={tt(
-            'Synchronizacja online jest wyłączona, gdy aktywny jest tryb demo.',
-            'Online sync is disabled while Demo Mode is active.',
-          )}
-          serverRevisionLabel={tt('Rewizja serwera:', 'Server revision:')}
-          serverHashLabel={tt('Hash serwera:', 'Server hash:')}
-          localRevisionHashLabel={tt('Lokalna rew/hash:', 'Local rev/hash:')}
-          pendingAckLabel={tt('Oczekujące ACK:', 'Pending ACK:')}
-          retriesLabel={tt('ponowienia', 'retries')}
-          reseedWarning={tt(
-            'Payload serwera został wyczyszczony po ACK. Wymagany lokalny reseed/eksport.',
-            'Server payload was cleaned up after ACKs. Local reseed/export is required.',
-          )}
-          syncingLabel={tt('Synchronizacja...', 'Syncing...')}
+          apiTokenLabel={t('settings_page.api_token_bearer')}
+          apiTokenPlaceholder={t('settings_page.paste_the_raw_token_without_bearer_prefix_and_without_qu')}
+          showTokenLabel={t('settings_page.show_token')}
+          hideTokenLabel={t('settings_page.hide_token')}
+          apiTokenHint={t('settings_page.enter_the_raw_token_the_app_will_add_the_bearer_header_a')}
+          deviceIdLabel={t('settings_page.device_id')}
+          generatedOnSaveLabel={t('settings_page.generated_on_save')}
+          deviceIdHint={t('settings_page.generated_automatically_and_used_to_identify_this_machin')}
+          statusTitle={t('settings_page.last_sync_status')}
+          lastSuccessfulLabel={t('settings_page.last_successful_check_sync')}
+          demoModeDisabledWarning={t('settings_page.online_sync_is_disabled_while_demo_mode_is_active')}
+          serverRevisionLabel={t('settings_page.server_revision')}
+          serverHashLabel={t('settings_page.server_hash')}
+          localRevisionHashLabel={t('settings_page.local_rev_hash')}
+          pendingAckLabel={t('settings_page.pending_ack')}
+          retriesLabel={t('settings_page.retries')}
+          reseedWarning={t('settings_page.server_payload_was_cleaned_up_after_acks_local_reseed_ex')}
+          syncingLabel={t('settings_page.syncing')}
           syncDisabledInDemoLabel={t(
             'settings.online_sync.syncDisabledInDemo',
             'Sync disabled in demo',
           )}
-          syncNowLabel={tt('Synchronizuj teraz', 'Sync now')}
+          syncNowLabel={t('settings_page.sync_now')}
           defaultServerUrl={DEFAULT_ONLINE_SYNC_SERVER_URL}
           labelClassName={labelClassName}
           lastSyncLabel={lastSyncLabel}
@@ -786,21 +678,12 @@ export function Settings() {
         />
         <ProjectFreezeCard
           thresholdDays={freezeSettings.thresholdDays}
-          title={tt('Zamrażanie projektów', 'Project Freezing')}
-          description={tt(
-            'Projekty nieaktywne przez zadany okres są automatycznie zamrażane i ukrywane na listach przypisań sesji.',
-            'Projects inactive for a set period are automatically frozen and hidden from session assignment lists.',
-          )}
-          thresholdTitle={tt('Próg nieaktywności', 'Inactivity threshold')}
-          thresholdDescription={tt(
-            'Liczba dni bez aktywności, po której projekt zostanie automatycznie zamrożony.',
-            'Number of days without activity after which a project is automatically frozen.',
-          )}
-          thresholdAriaLabel={tt(
-            'Próg zamrożenia w dniach',
-            'Freeze threshold in days',
-          )}
-          daysLabel={tt('dni', 'days')}
+          title={t('settings_page.project_freezing')}
+          description={t('settings_page.projects_inactive_for_a_set_period_are_automatically_fro')}
+          thresholdTitle={t('settings_page.inactivity_threshold')}
+          thresholdDescription={t('settings_page.number_of_days_without_activity_after_which_a_project_is')}
+          thresholdAriaLabel={t('settings_page.freeze_threshold_in_days')}
+          daysLabel={t('settings_page.days')}
           onThresholdChange={(val) => {
             setFreezeSettings((prev) => ({
               ...prev,
@@ -814,35 +697,20 @@ export function Settings() {
           demoModeLoading={demoModeLoading}
           demoModeSwitching={demoModeSwitching}
           demoModeError={demoModeError}
-          title={tt('Tryb demo', 'Demo Mode')}
-          description={tt(
-            'Przełącz źródło danych dashboardu na osobny plik bazy demo (trwałe po restarcie).',
-            'Switch dashboard data source to a separate demo database file (persists after restart).',
-          )}
-          toggleTitle={tt('Użyj bazy demo', 'Use demo database')}
-          toggleDescription={tt(
-            'Dotyczy całego dashboardu (odczyt/zapis/import) i przełącza na osobny plik SQLite. W trybie demo odświeżanie dzienne czyta z fake_data i oczekuje fake w nazwie pliku JSON (np. 2026-02-22_fake.json).',
-            'Applies to the whole dashboard app (reads/writes/imports) and switches to a separate SQLite file. In demo mode, live daily refresh reads from fake_data and expects fake in the JSON filename (for example 2026-02-22_fake.json).',
-          )}
-          loadingStatusText={tt(
-            'Wczytywanie statusu trybu demo...',
-            'Loading demo mode status...',
-          )}
-          activeDbLabel={tt('Aktywna DB:', 'Active DB:')}
-          primaryDbLabel={tt('Główna DB:', 'Primary DB:')}
-          demoDbLabel={tt('Demo DB:', 'Demo DB:')}
-          demoActiveText={tt(
-            'Tryb demo jest aktywny. Nowe importy/zmiany trafią do bazy demo.',
-            'Demo mode is active. New imports/changes will affect the demo database.',
-          )}
-          primaryActiveText={tt('Aktywny jest tryb główny.', 'Primary mode is active.')}
-          unavailableStatusText={tt(
-            'Status trybu demo niedostępny.',
-            'Demo mode status unavailable.',
-          )}
-          switchingLabel={tt('Przełączanie...', 'Switching...')}
-          disableLabel={tt('Wyłącz tryb demo', 'Disable Demo Mode')}
-          enableLabel={tt('Włącz tryb demo', 'Enable Demo Mode')}
+          title={t('settings_page.demo_mode')}
+          description={t('settings_page.switch_dashboard_data_source_to_a_separate_demo_database')}
+          toggleTitle={t('settings_page.use_demo_database')}
+          toggleDescription={t('settings_page.applies_to_the_whole_dashboard_app_reads_writes_imports')}
+          loadingStatusText={t('settings_page.loading_demo_mode_status')}
+          activeDbLabel={t('settings_page.active_db')}
+          primaryDbLabel={t('settings_page.primary_db')}
+          demoDbLabel={t('settings_page.demo_db')}
+          demoActiveText={t('settings_page.demo_mode_is_active_new_imports_changes_will_affect_the')}
+          primaryActiveText={t('settings_page.primary_mode_is_active')}
+          unavailableStatusText={t('settings_page.demo_mode_status_unavailable')}
+          switchingLabel={t('settings_page.switching')}
+          disableLabel={t('settings_page.disable_demo_mode')}
+          enableLabel={t('settings_page.enable_demo_mode')}
           onToggle={(enabled) => {
             void handleToggleDemoMode(enabled);
           }}
@@ -850,21 +718,15 @@ export function Settings() {
         <DangerZoneCard
           clearArmed={clearArmed}
           clearing={clearing}
-          title={tt('Strefa ryzyka', 'Danger Zone')}
-          description={tt(
-            'Domyślnie ukryte, aby uniknąć przypadkowych kliknięć.',
-            'Hidden by default to avoid accidental clicks.',
-          )}
-          controlsLabel={tt('Kontrolki czyszczenia danych', 'Data wipe controls')}
-          openLabel={tt('Otwórz', 'Open')}
-          closeLabel={tt('Zamknij', 'Close')}
-          detailsText={tt(
-            'Usuwa wszystkie zaimportowane sesje i historię z lokalnej bazy danych.',
-            'Deletes all imported sessions and history from local database.',
-          )}
-          enableLabel={tt('Włącz czyszczenie danych', 'Enable clear action')}
-          clearingLabel={tt('Czyszczenie...', 'Clearing...')}
-          clearLabel={tt('Wyczyść dane', 'Clear Data')}
+          title={t('settings_page.danger_zone')}
+          description={t('settings_page.hidden_by_default_to_avoid_accidental_clicks')}
+          controlsLabel={t('settings_page.data_wipe_controls')}
+          openLabel={t('settings_page.open')}
+          closeLabel={t('settings_page.close')}
+          detailsText={t('settings_page.deletes_all_imported_sessions_and_history_from_local_dat')}
+          enableLabel={t('settings_page.enable_clear_action')}
+          clearingLabel={t('settings_page.clearing')}
+          clearLabel={t('settings_page.clear_data')}
           onClearArmedChange={setClearArmed}
           onClearData={() => {
             void handleClearData();
@@ -875,7 +737,7 @@ export function Settings() {
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
         {showSavedToast && (
           <div className="rounded-full bg-emerald-500/20 px-3 py-1.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/40 shadow-xl animate-in fade-in zoom-in slide-in-from-bottom-2 duration-300">
-            {tt('Zapisano', 'Saved')}
+            {t('settings_page.saved')}
           </div>
         )}
 
@@ -884,7 +746,7 @@ export function Settings() {
             className="h-8 min-w-[7rem] rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 animate-shine text-white border-none font-black text-[10px] uppercase tracking-wider"
             onClick={handleSaveSettings}
           >
-            {tt('ZAPISZ ZMIANY!', 'SAVE CHANGES!')}
+            {t('settings_page.save_changes')}
           </Button>
         )}
       </div>

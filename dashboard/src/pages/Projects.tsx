@@ -75,7 +75,6 @@ import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { createInlineTranslator } from '@/lib/inline-i18n';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import {
   LOCAL_DATA_CHANGED_EVENT,
@@ -169,8 +168,7 @@ function renderDuration(seconds: number) {
 }
 
 export function Projects() {
-  const { t, i18n } = useTranslation();
-  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
+  const { t } = useTranslation();
   const { setProjectPageId, setCurrentPage } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
@@ -1083,7 +1081,7 @@ export function Projects() {
                 size="sm"
                 onClick={() => loadMoreProjects(listKey, projectList.length)}
               >
-                {tt('Wczytaj więcej projektów', 'Load more projects')} ({hiddenCount})
+                {t('projects_page.load_more_projects')} ({hiddenCount})
               </Button>
             </div>
           )}
@@ -1103,7 +1101,7 @@ export function Projects() {
               size="sm"
               onClick={() => loadMoreProjects(listKey, projectList.length)}
             >
-              {tt('Wczytaj więcej projektów', 'Load more projects')} ({hiddenCount})
+              {t('projects_page.load_more_projects')} ({hiddenCount})
             </Button>
           </div>
         )}
@@ -1363,14 +1361,14 @@ export function Projects() {
                     ))}
                     {extraInfo?.top_apps.length === 0 && (
                       <p className="text-xs text-muted-foreground italic">
-                        {tt('Brak danych', 'No data')}
+                        {t('projects_page.no_data')}
                       </p>
                     )}
 
                     <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">
-                          {tt('Połączone aplikacje:', 'Apps Linked:')}
+                          {t('projects_page.apps_linked')}
                         </span>
                         <span className="text-xs font-bold text-emerald-400">
                           {p.app_count}
@@ -1385,7 +1383,7 @@ export function Projects() {
                         }
                         disabled={isDeleting}
                       >
-                        {tt('Zarządzaj aplikacjami', 'Manage Apps')}
+                        {t('projects_page.manage_apps')}
                       </Button>
                     </div>
                   </div>
@@ -1394,7 +1392,7 @@ export function Projects() {
 
               <div className="rounded-lg bg-secondary/30 p-3 space-y-2">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center justify-between">
-                  {tt('Statystyki bazy danych', 'Database Statistics')}
+                  {t('projects_page.database_statistics')}
                   {extraInfo && (
                     <span className="text-[10px] lowercase font-normal opacity-70">
                       ~
@@ -1407,24 +1405,24 @@ export function Projects() {
                 </p>
                 {loadingExtra ? (
                   <p className="text-center py-2 text-xs text-muted-foreground">
-                    {tt('Wczytywanie statystyk...', 'Loading statistics...')}
+                    {t('projects_page.loading_statistics')}
                   </p>
                 ) : (
                   <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{tt('Sesje:', 'Sessions:')}</span>
+                      <span className="text-muted-foreground">{t('projects_page.sessions')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.session_count || 0}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{tt('Unikalne pliki:', 'Unique files:')}</span>
+                      <span className="text-muted-foreground">{t('projects_page.unique_files')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.file_activity_count || 0}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">{tt('Ręczne:', 'Manual:')}</span>
+                      <span className="text-muted-foreground">{t('projects_page.manual')}</span>
                       <span className="font-medium">
                         {extraInfo?.db_stats.manual_session_count || 0}
                       </span>
@@ -1494,20 +1492,20 @@ export function Projects() {
       <div className="flex items-center justify-between">
         <div className="flex flex-col">
           <p className="text-sm text-muted-foreground">
-            {projects.length} {tt('projektów', 'projects')}
+            {projects.length} {t('projects_page.projects')}
             {excludedProjects.length > 0
-              ? ` (${excludedProjects.length} ${tt('wykluczonych', 'excluded')})`
+              ? ` (${excludedProjects.length} ${t('projects_page.excluded')})`
               : ''}
           </p>
           {duplicateProjectsView.groupCount > 0 && (
             <p className="text-xs text-amber-600/90">
-              {tt('Oznaczone', 'Marked with')}{' '}
+              {t('projects_page.marked_with')}{' '}
               <span className="mx-1 inline-flex h-4 w-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
                 D
               </span>
-              = {tt('możliwe duplikaty nazw w tej zakładce', 'possible duplicate names in this tab')} (
-              {duplicateProjectsView.projectCount} {tt('projektów', 'projects')} {tt('w', 'in')}{' '}
-              {duplicateProjectsView.groupCount} {tt('grupach', 'groups')})
+              = {t('projects_page.possible_duplicate_names_in_this_tab')} (
+              {duplicateProjectsView.projectCount} {t('projects_page.projects')} {t('projects_page.in')}{' '}
+              {duplicateProjectsView.groupCount} {t('projects_page.groups')})
             </p>
           )}
         </div>
@@ -1516,7 +1514,7 @@ export function Projects() {
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               className="flex h-9 w-48 rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder={tt('Szukaj projektów...', 'Search projects...')}
+              placeholder={t('projects_page.search_projects')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -1592,7 +1590,7 @@ export function Projects() {
             </button>
           </div>
 
-          <AppTooltip content={tt('Zapisz widok jako domyślny', 'Save view as default')}>
+          <AppTooltip content={t('projects_page.save_view_as_default')}>
             <Button
               variant="ghost"
               size="icon"
@@ -1603,7 +1601,7 @@ export function Projects() {
           </AppTooltip>
 
           <Button size="sm" onClick={openCreate}>
-            <Plus className="mr-2 h-4 w-4" /> {tt('Nowy projekt', 'New Project')}
+            <Plus className="mr-2 h-4 w-4" /> {t('projects_page.new_project')}
           </Button>
         </div>
       </div>
@@ -1625,7 +1623,7 @@ export function Projects() {
                 )
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  {tt('Brak projektów dla tego folderu', 'No projects for this folder')}
+                  {t('projects_page.no_projects_for_this_folder')}
                 </p>
               )}
             </div>
@@ -1633,7 +1631,7 @@ export function Projects() {
           {projectsByFolder.outside.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-medium text-muted-foreground">
-                {tt('Inne projekty', 'Other projects')}
+                {t('projects_page.other_projects')}
               </p>
               {renderProjectList(projectsByFolder.outside, 'folder:outside')}
             </div>
@@ -1732,7 +1730,7 @@ export function Projects() {
                         )
                       }
                     >
-                      {tt('Wczytaj więcej projektów', 'Load more projects')} (
+                      {t('projects_page.load_more_projects')} (
                       {hiddenExcludedProjectsCount})
                     </Button>
                   </div>
@@ -1783,7 +1781,7 @@ export function Projects() {
                 onClick={handleBrowseFolder}
                 disabled={busy === 'add-folder'}
               >
-                  {tt('Przeglądaj...', 'Browse...')}
+                  {t('projects_page.browse')}
               </Button>
               <Button
                 size="sm"
@@ -1842,7 +1840,7 @@ export function Projects() {
                 disabled={busy === 'sync-folders'}
               >
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                {tt('Synchronizuj podfoldery jako projekty', 'Sync subfolders as projects')}
+                {t('projects_page.sync_subfolders_as_projects')}
               </Button>
             </div>
           </CardContent>
@@ -1861,7 +1859,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              {tt('Kandydaci projektów z folderów', 'Folder Project Candidates')}
+              {t('projects_page.folder_project_candidates')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1902,7 +1900,7 @@ export function Projects() {
             )}
             {hiddenRegisteredFolderCandidatesCount > 0 && (
               <p className="mt-2 text-xs text-muted-foreground">
-                {tt('Ukryte już zarejestrowane foldery:', 'Hidden already registered folders:')}{' '}
+                {t('projects_page.hidden_already_registered_folders')}{' '}
                 {hiddenRegisteredFolderCandidatesCount}
               </p>
             )}
@@ -1922,7 +1920,7 @@ export function Projects() {
               <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
             <CardTitle className="text-sm font-medium">
-              {tt('Wykryte projekty (otwarte >= 2 razy)', 'Detected Projects (opened >= 2 times)')}
+              {t('projects_page.detected_projects_opened_2_times')}
             </CardTitle>
           </div>
         </CardHeader>
@@ -1931,8 +1929,8 @@ export function Projects() {
             {detectedCandidatesView.visible.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {detectedProjects.length === 0
-                  ? tt('Brak wykrytych projektów', 'No detected projects')
-                  : tt('Brak projektów kandydujących (wykryte elementy pasują już do istniejących/wykluczonych projektów).', 'No candidate projects (detected items already match existing/excluded projects).')}
+                  ? t('projects_page.no_detected_projects')
+                  : t('projects_page.no_candidate_projects_detected_items_already_match_exist')}
               </p>
             ) : (
               <div className="max-h-52 space-y-1 overflow-y-auto">
@@ -1955,11 +1953,11 @@ export function Projects() {
                             className="truncate text-muted-foreground/80"
                             title={d.file_name}
                           >
-                            {tt('z:', 'from:')} {d.file_name}
+                            {t('projects_page.from')} {d.file_name}
                           </p>
                         )}
                       </div>
-                      <Badge variant="outline">{tt('Kandydat', 'Candidate')}</Badge>
+                      <Badge variant="outline">{t('projects_page.candidate')}</Badge>
                     </div>
                   );
                 })}
@@ -2015,7 +2013,7 @@ export function Projects() {
                 }
               >
                 <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                {tt('Automatycznie utwórz wykryte projekty', 'Auto-create detected projects')}
+                {t('projects_page.auto_create_detected_projects')}
               </Button>
             </div>
           </CardContent>
@@ -2040,11 +2038,11 @@ export function Projects() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{tt('Nowy projekt', 'New Project')}</DialogTitle>
+            <DialogTitle>{t('projects_page.new_project')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium">{tt('Nazwa', 'Name')}</label>
+              <label className="text-sm font-medium">{t('projects_page.name')}</label>
               <input
                 className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                 value={name}
@@ -2052,11 +2050,11 @@ export function Projects() {
                   setName(e.target.value);
                   setCreateProjectError(null);
                 }}
-                placeholder={tt('Nazwa projektu', 'Project name')}
+                placeholder={t('projects_page.project_name')}
               />
             </div>
             <div>
-              <label className="text-sm font-medium">{tt('Przypisany folder', 'Assigned Folder')}</label>
+              <label className="text-sm font-medium">{t('projects_page.assigned_folder')}</label>
               <div className="mt-1 flex gap-2">
                 <input
                   className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -2065,19 +2063,19 @@ export function Projects() {
                     setProjectFolderPath(e.target.value);
                     setCreateProjectError(null);
                   }}
-                  placeholder={tt('C:\\projekty\\moja-aplikacja', 'C:\\projects\\my-new-app')}
+                  placeholder={t('projects_page.c_projects_my_new_app')}
                 />
                 <Button
                   size="sm"
                   variant="outline"
                   onClick={handleBrowseProjectCreateFolder}
                 >
-                  {tt('Przeglądaj...', 'Browse...')}
+                  {t('projects_page.browse')}
                 </Button>
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium">{tt('Kolor', 'Color')}</label>
+              <label className="text-sm font-medium">{t('projects_page.color')}</label>
               <div className="mt-1 flex gap-2">
                 {PROJECT_COLORS.map((c) => (
                   <button

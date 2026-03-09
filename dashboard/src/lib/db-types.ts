@@ -488,6 +488,16 @@ export interface BackupFile {
   modified_at: string;
 }
 
+export interface DataFolderStats {
+  file_count: number;
+  total_bytes: number;
+}
+
+export interface CleanupResult {
+  files_deleted: number;
+  bytes_freed: number;
+}
+
 // ==================== Multi-Project Split Types ====================
 
 export interface ProjectCandidate {

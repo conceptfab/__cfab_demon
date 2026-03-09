@@ -301,3 +301,107 @@ pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String>
     files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
     Ok(files)
 }
+
+#[derive(Serialize)]
+pub struct DataFolderStats {
+    pub file_count: u64,
+    pub total_bytes: u64,
+}
+
+#[derive(Serialize)]
+pub struct CleanupResult {
+    pub files_deleted: u64,
+    pub bytes_freed: u64,
+}
+
+/// Collect removable files from archive/, import/ dirs and legacy .json files in root.
+fn collect_cleanup_paths(base_dir: &Path, demo_mode: bool) -> Vec<std::path::PathBuf> {
+    let archive_dir = if demo_mode {
+        base_dir.join("archive_demo")
+    } else {
+        base_dir.join("archive")
+    };
+    let import_dir = if demo_mode {
+        base_dir.join("import_demo")
+    } else {
+        base_dir.join("import")
+    };
+
+    let mut paths = Vec::new();
+
+    for dir in [&archive_dir, &import_dir] {
+        if dir.is_dir() {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let p = entry.path();
+                    if p.is_file() {
+                        paths.push(p);
+                    }
+                }
+            }
+        }
+    }
+
+    // Legacy .json files in root (already migrated to daily_store.db)
+    if let Ok(entries) = fs::read_dir(base_dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension() {
+                    if ext == "json" {
+                        paths.push(p);
+                    }
+                }
+            }
+        }
+    }
+
+    paths
+}
+
+#[tauri::command]
+pub async fn get_data_folder_stats(app: AppHandle) -> Result<DataFolderStats, String> {
+    let base_dir = super::helpers::timeflow_data_dir()?;
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let paths = collect_cleanup_paths(&base_dir, demo_mode);
+
+    let mut total_bytes: u64 = 0;
+    for p in &paths {
+        if let Ok(meta) = fs::metadata(p) {
+            total_bytes += meta.len();
+        }
+    }
+
+    Ok(DataFolderStats {
+        file_count: paths.len() as u64,
+        total_bytes,
+    })
+}
+
+#[tauri::command]
+pub async fn cleanup_data_folder(app: AppHandle) -> Result<CleanupResult, String> {
+    let base_dir = super::helpers::timeflow_data_dir()?;
+    let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let paths = collect_cleanup_paths(&base_dir, demo_mode);
+
+    let mut files_deleted: u64 = 0;
+    let mut bytes_freed: u64 = 0;
+
+    for p in &paths {
+        let size = fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+        match fs::remove_file(p) {
+            Ok(()) => {
+                files_deleted += 1;
+                bytes_freed += size;
+            }
+            Err(e) => {
+                log::warn!("Failed to delete '{}': {}", p.display(), e);
+            }
+        }
+    }
+
+    Ok(CleanupResult {
+        files_deleted,
+        bytes_freed,
+    })
+}

@@ -8,7 +8,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { PromptModal } from "@/components/ui/prompt-modal";
 import { useToast } from "@/components/ui/toast-notification";
 import { formatDuration, formatMultiplierLabel } from "@/lib/utils";
-import { createInlineTranslator } from "@/lib/inline-i18n";
 import {
   normalizeHexColor,
   loadFreezeSettings,
@@ -347,8 +346,7 @@ export function ProjectDayTimeline({
   onAddManualSession,
   onEditManualSession,
 }: Props) {
-  const { t, i18n } = useTranslation();
-  const tt = createInlineTranslator(t, i18n.resolvedLanguage ?? i18n.language);
+  const { t } = useTranslation();
   const { showError, showInfo } = useToast();
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
   const [clusterDetails, setClusterDetails] = useState<ClusterDetailsState | null>(null);
@@ -730,7 +728,7 @@ export function ProjectDayTimeline({
     }
 
     for (const item of valid) {
-      const projectName = item.s.project_name ?? tt("Nieprzypisane", "Unassigned");
+      const projectName = item.s.project_name ?? t('project_day_timeline.text.unassigned');
       const projectColor = item.s.project_color ?? "#64748b";
       const isUnassigned = item.s.project_name === null;
 
@@ -833,7 +831,7 @@ export function ProjectDayTimeline({
 
     const totalSeconds = rows.reduce((acc, row) => acc + row.totalSeconds, 0);
     return { rows, ticks, rangeStart, rangeSpan, totalSeconds, workingRange };
-  }, [sessions, manualSessions, workingHours, projects, sortMode, tt]);
+  }, [sessions, manualSessions, workingHours, projects, sortMode, t]);
 
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
@@ -853,7 +851,7 @@ export function ProjectDayTimeline({
       return [
         {
           key: "all",
-          label: tt("Aktywne projekty (A-Z)", "Active projects (A-Z)"),
+          label: t('project_day_timeline.text.active_projects_a_z'),
           projects: activeAlpha,
         },
       ];
@@ -885,17 +883,17 @@ export function ProjectDayTimeline({
       return [
         {
           key: "new",
-          label: tt("Najnowsze projekty (A-Z)", "Newest projects (A-Z)"),
+          label: t('project_day_timeline.text.newest_projects_a_z'),
           projects: newest,
         },
         {
           key: "top",
-          label: tt("Top projekty (A-Z)", "Top projects (A-Z)"),
+          label: t('project_day_timeline.text.top_projects_a_z'),
           projects: top,
         },
         {
           key: "rest",
-          label: tt("Pozostałe aktywne (A-Z)", "Remaining active (A-Z)"),
+          label: t('project_day_timeline.text.remaining_active_a_z'),
           projects: rest,
         },
       ];
@@ -911,21 +909,21 @@ export function ProjectDayTimeline({
     return [
       {
         key: "top",
-        label: tt("Top projekty (A-Z)", "Top projects (A-Z)"),
+        label: t('project_day_timeline.text.top_projects_a_z'),
         projects: top,
       },
       {
         key: "new",
-        label: tt("Najnowsze projekty (A-Z)", "Newest projects (A-Z)"),
+        label: t('project_day_timeline.text.newest_projects_a_z'),
         projects: newest,
       },
       {
         key: "rest",
-        label: tt("Pozostałe aktywne (A-Z)", "Remaining active (A-Z)"),
+        label: t('project_day_timeline.text.remaining_active_a_z'),
         projects: rest,
       },
     ];
-  }, [assignProjectListMode, projects, tt]);
+  }, [assignProjectListMode, projects, t]);
 
   const assignProjectsCount = useMemo(
     () => assignProjectSections.reduce((total, section) => total + section.projects.length, 0),
@@ -942,10 +940,10 @@ export function ProjectDayTimeline({
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex flex-wrap items-center justify-between gap-2">
-          <span>{title === "Activity Timeline" ? tt('Oś aktywności', 'Activity Timeline') : title}</span>
+          <span>{title === "Activity Timeline" ? t('project_day_timeline.text.activity_timeline') : title}</span>
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
-              <AppTooltip content={tt("Sortuj po czasie", "Sort by time")}>
+              <AppTooltip content={t('project_day_timeline.text.sort_by_time')}>
                 <button
                   type="button"
                   className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
@@ -954,12 +952,12 @@ export function ProjectDayTimeline({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                   onClick={() => setSortMode("time_desc")}
-                  aria-label={tt("Sortuj po czasie", "Sort by time")}
+                  aria-label={t('project_day_timeline.text.sort_by_time')}
                 >
                   <Clock3 className="h-3.5 w-3.5" />
                 </button>
               </AppTooltip>
-              <AppTooltip content={tt("Sortuj alfabetycznie", "Sort alphabetically")}>
+              <AppTooltip content={t('project_day_timeline.text.sort_alphabetically')}>
                 <button
                   type="button"
                   className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
@@ -968,13 +966,13 @@ export function ProjectDayTimeline({
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                   onClick={() => setSortMode("alpha_asc")}
-                  aria-label={tt("Sortuj alfabetycznie", "Sort alphabetically")}
+                  aria-label={t('project_day_timeline.text.sort_alphabetically')}
                 >
                   <Type className="h-3.5 w-3.5" />
                 </button>
               </AppTooltip>
             </div>
-            <AppTooltip content={saveView ? tt("Zapisany widok włączony", "Saved view enabled") : tt("Zapisany widok wyłączony", "Saved view disabled")}>
+            <AppTooltip content={saveView ? t('project_day_timeline.text.saved_view_enabled') : t('project_day_timeline.text.saved_view_disabled')}>
               <button
                 type="button"
                 className={`inline-flex h-7 w-7 items-center justify-center rounded-sm border transition-colors cursor-pointer ${
@@ -983,17 +981,17 @@ export function ProjectDayTimeline({
                     : "border-border/70 bg-secondary/20 text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={() => setSaveView((prev) => !prev)}
-                aria-label={saveView ? tt("Zapisany widok włączony", "Saved view enabled") : tt("Zapisany widok wyłączony", "Saved view disabled")}
+                aria-label={saveView ? t('project_day_timeline.text.saved_view_enabled') : t('project_day_timeline.text.saved_view_disabled')}
               >
                 <Save className="h-3.5 w-3.5" />
               </button>
             </AppTooltip>
             <span className="text-xs text-muted-foreground">
               {model
-                ? tt("Łącznie: {{duration}}", "Total: {{duration}}", {
+                ? t('project_day_timeline.text.total', {
                     duration: formatDuration(model.totalSeconds),
                   })
-                : tt("Brak danych", "No data")}
+                : t('project_day_timeline.text.no_data')}
             </span>
           </div>
         </CardTitle>
@@ -1001,10 +999,7 @@ export function ProjectDayTimeline({
       <CardContent className={minHeightClassName ?? ""}>
         {!model && (
           <p className="text-sm text-muted-foreground py-6">
-            {tt(
-              "Brak aktywności projektowej w wybranym dniu.",
-              "No project activity in selected day.",
-            )}
+            {t('project_day_timeline.text.no_project_activity_in_selected_day')}
           </p>
         )}
 
@@ -1017,11 +1012,8 @@ export function ProjectDayTimeline({
               if (!unassigned) return null;
               return (
                 <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                  <span className="font-semibold">{tt('Wykryto nieprzypisane sesje.', 'Unassigned sessions detected.')}</span>{" "}
-                  {tt(
-                    'Kliknij prawym przyciskiem segment, aby przypisać każdą sesję do projektu.',
-                    'Right-click their segments to assign each session to a project.',
-                  )}
+                  <span className="font-semibold">{t('project_day_timeline.text.unassigned_sessions_detected')}</span>{" "}
+                  {t('project_day_timeline.text.right_click_their_segments_to_assign_each_session_to_a_p')}
                 </div>
               );
             })()}
@@ -1036,7 +1028,12 @@ export function ProjectDayTimeline({
                   <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
                   <span className="truncate">{row.name}</span>
                   {row.boostedCount > 0 && (
-                    <AppTooltip content={tt(`${row.boostedCount} wzmocniona(-ych) sesji`, `${row.boostedCount} boosted session(s)`)}>
+                    <AppTooltip
+                      content={t(
+                        'project_day_timeline.text.boosted_sessions_count',
+                        { count: row.boostedCount },
+                      )}
+                    >
                       <span className="shrink-0">
                         <Flame className="h-3 w-3 text-emerald-400" />
                       </span>
@@ -1070,7 +1067,7 @@ export function ProjectDayTimeline({
                     const hasManyFragments = !segment.isManual && fragmentCount > 1;
                     const hasBoostedRate = (segment.rateMultiplier ?? 1) > 1.000001;
                     const multiplierLabel = segment.mixedRateMultiplier
-                      ? tt('mieszane', 'mixed')
+                      ? t('project_day_timeline.text.mixed')
                       : formatMultiplierLabel(segment.rateMultiplier);
                     const titleBase = segment.isManual
                       ? `[Manual] ${segment.manualTitle}`
@@ -1169,7 +1166,7 @@ export function ProjectDayTimeline({
           }}
         >
           <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            {tt('Akcje sesji', 'Session actions')} ({ctxMenu.segment.appName})
+            {t('project_day_timeline.text.session_actions')} ({ctxMenu.segment.appName})
             {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
                 <span className="ml-1 text-[10px] font-normal">
                 - {(ctxMenu.segment.fragmentCount ?? 1)} sessions
@@ -1181,7 +1178,7 @@ export function ProjectDayTimeline({
               <div className="flex items-center gap-1.5">
                 <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
                 <span className="text-[11px] text-sky-200">
-                  {tt('AI sugeruje:', 'AI suggests:')} <span className="font-medium">{ctxMenu.segment.suggestedProjectName || tt('Nieznane', 'Unknown')}</span>
+                  {t('project_day_timeline.text.ai_suggests')} <span className="font-medium">{ctxMenu.segment.suggestedProjectName || t('project_day_timeline.text.unknown')}</span>
                   {ctxMenu.segment.suggestedConfidence != null && (
                     <span className="ml-1 opacity-75">({((ctxMenu.segment.suggestedConfidence) * 100).toFixed(0)}%)</span>
                   )}
@@ -1193,13 +1190,13 @@ export function ProjectDayTimeline({
                     className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
                     onClick={() => void handleAssign(ctxMenu.segment.suggestedProjectId ?? null)}
                   >
-                    {tt("Akceptuj", "Accept")}
+                    {t('project_day_timeline.text.accept')}
                   </button>
                   <button
                     className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
                     onClick={() => void handleAssign(null)}
                   >
-                    {tt("Odrzuć", "Reject")}
+                    {t('project_day_timeline.text.reject')}
                   </button>
                 </div>
               )}
@@ -1210,7 +1207,7 @@ export function ProjectDayTimeline({
             className="mx-1 flex w-[calc(100%-0.5rem)] items-center justify-between rounded-sm px-2 py-1.5 text-left text-xs hover:bg-accent hover:text-accent-foreground cursor-pointer"
             onClick={handleOpenClusterDetails}
           >
-            <span>{tt('Szczegóły sesji', 'Session details')}</span>
+            <span>{t('project_day_timeline.text.session_details')}</span>
             {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 ? (
               <span className="font-mono text-[10px] opacity-80">
                 {(ctxMenu.segment.fragmentCount ?? 1)}
@@ -1222,18 +1219,14 @@ export function ProjectDayTimeline({
               <div className="h-px bg-border my-1" />
               {!ctxMenu.segment.isManual && (ctxMenu.segment.fragmentCount ?? 1) > 1 && (
                 <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                  {tt(
-                    'Dotyczy wszystkich {{count}} sesji w tym wizualnym segmencie',
-                    'Applies to all {{count}} sessions in this visual chunk',
-                    { count: ctxMenu.segment.fragmentCount ?? 1 },
-                  )}
+                  {t('project_day_timeline.text.applies_to_all_sessions_in_this_visual_chunk', { count: ctxMenu.segment.fragmentCount ?? 1 })}
                 </div>
               )}
               <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                {tt('Mnożnik stawki (domyślnie x2):', 'Rate multiplier (default x2):')} {" "}
+                {t('project_day_timeline.text.rate_multiplier_default_x2')} {" "}
                 <span className="font-mono">
                   {ctxMenu.segment.mixedRateMultiplier
-                    ? tt('mieszane', 'mixed')
+                    ? t('project_day_timeline.text.mixed')
                     : formatMultiplierLabel(ctxMenu.segment.rateMultiplier)}
                 </span>
               </div>
@@ -1248,7 +1241,7 @@ export function ProjectDayTimeline({
                   className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
                   onClick={() => void handleCustomRateMultiplier()}
                 >
-                  {tt("Niestandardowy...", "Custom...")}
+                  {t('project_day_timeline.text.custom')}
                 </button>
               </div>
             </>
@@ -1261,7 +1254,7 @@ export function ProjectDayTimeline({
                 onClick={() => void handleEditComment()}
               >
                 <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <span>{ctxMenu.segment.comment ? tt('Edytuj komentarz', 'Edit comment') : tt('Dodaj komentarz', 'Add comment')}</span>
+                <span>{ctxMenu.segment.comment ? t('project_day_timeline.text.edit_comment') : t('project_day_timeline.text.add_comment')}</span>
               </button>
             </>
           )}
@@ -1269,11 +1262,11 @@ export function ProjectDayTimeline({
             <>
               <div className="h-px bg-border my-1" />
               <div className="px-2 py-1 text-[11px] text-muted-foreground">
-                {tt('Przypisz do projektu', 'Assign to project')}
+                {t('project_day_timeline.text.assign_to_project')}
               </div>
               <div className="px-2 pb-1.5">
                 <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
-                  <AppTooltip content={tt("Aktywne alfabetycznie (A-Z)", "Active alphabetical (A-Z)")}>
+                  <AppTooltip content={t('project_day_timeline.text.active_alphabetical_a_z')}>
                     <button
                       type="button"
                       className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
@@ -1282,12 +1275,12 @@ export function ProjectDayTimeline({
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                       onClick={() => setAssignProjectListMode("alpha_active")}
-                      aria-label={tt("Aktywne alfabetycznie", "Active alphabetical")}
+                      aria-label={t('project_day_timeline.text.active_alphabetical')}
                     >
                       <Type className="h-3.5 w-3.5" />
                     </button>
                   </AppTooltip>
-                  <AppTooltip content={tt("Najnowsze -> Top -> Reszta (A-Z)", "Newest -> Top -> Rest (A-Z)")}>
+                  <AppTooltip content={t('project_day_timeline.text.newest_top_rest_a_z')}>
                     <button
                       type="button"
                       className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
@@ -1296,12 +1289,12 @@ export function ProjectDayTimeline({
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                       onClick={() => setAssignProjectListMode("new_top_rest")}
-                      aria-label={tt("Najnowsze, potem top", "Newest, then top")}
+                      aria-label={t('project_day_timeline.text.newest_then_top')}
                     >
                       <Sparkles className="h-3.5 w-3.5" />
                     </button>
                   </AppTooltip>
-                  <AppTooltip content={tt("Top -> Najnowsze -> Reszta (A-Z)", "Top -> Newest -> Rest (A-Z)")}>
+                  <AppTooltip content={t('project_day_timeline.text.top_newest_rest_a_z')}>
                     <button
                       type="button"
                       className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
@@ -1310,7 +1303,7 @@ export function ProjectDayTimeline({
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                       onClick={() => setAssignProjectListMode("top_new_rest")}
-                      aria-label={tt("Top, potem najnowsze", "Top, then newest")}
+                      aria-label={t('project_day_timeline.text.top_then_newest')}
                     >
                       <Flame className="h-3.5 w-3.5" />
                     </button>
@@ -1326,7 +1319,7 @@ export function ProjectDayTimeline({
                   onClick={() => handleAssign(null)}
                 >
                   <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-                  <span className="truncate">{tt('Nieprzypisane', 'Unassigned')}</span>
+                  <span className="truncate">{t('project_day_timeline.text.unassigned')}</span>
                 </button>
                 {assignProjectsCount > 0 ? (
                   assignProjectSections.map((section) => (
@@ -1353,7 +1346,7 @@ export function ProjectDayTimeline({
                   ))
                 ) : (
                   <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                    {tt('Brak dostępnych projektów', 'No projects available')}
+                    {t('project_day_timeline.text.no_projects_available')}
                   </div>
                 )}
               </div>
@@ -1377,41 +1370,41 @@ export function ProjectDayTimeline({
                     className="inline-block h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: clusterDetails.rowColor }}
                   />
-                  <span className="truncate">{tt("Szczegóły sesji", "Session details")}</span>
+                  <span className="truncate">{t('project_day_timeline.text.session_details')}</span>
                 </DialogTitle>
               </DialogHeader>
 
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-md border p-3">
-                  <p className="text-[11px] text-muted-foreground">{tt('Projekt', 'Project')}</p>
+                  <p className="text-[11px] text-muted-foreground">{t('project_day_timeline.text.project')}</p>
                   <p className="truncate text-sm font-medium" title={clusterDetails.rowName}>
                     {clusterDetails.rowName}
                   </p>
                 </div>
                 <div className="rounded-md border p-3">
-                  <p className="text-[11px] text-muted-foreground">{tt('Zakres czasu', 'Time range')}</p>
+                  <p className="text-[11px] text-muted-foreground">{t('project_day_timeline.text.time_range')}</p>
                   <p className="text-sm font-mono">
                     {fmtHourMinute(clusterDetails.segment.startMs)} - {fmtHourMinute(clusterDetails.segment.endMs)}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {tt("zakres", "span")} {formatDuration(Math.round(clusterDetailsSummary.spanMs / 1000))}
+                    {t('project_day_timeline.text.span')} {formatDuration(Math.round(clusterDetailsSummary.spanMs / 1000))}
                   </p>
                 </div>
                 <div className="rounded-md border p-3">
-                  <p className="text-[11px] text-muted-foreground">{tt('Sesje', 'Sessions')}</p>
+                  <p className="text-[11px] text-muted-foreground">{t('project_day_timeline.text.sessions')}</p>
                   <p className="text-sm font-medium">{clusterDetailsSummary.sessionIds.length}</p>
                   <p className="text-[11px] text-muted-foreground">
-                    {clusterDetailsSummary.appNames.length} {tt('aplikacja', 'app')}{clusterDetailsSummary.appNames.length === 1 ? "" : tt('e', 's')}
+                    {clusterDetailsSummary.appNames.length} {t('project_day_timeline.text.app')}{clusterDetailsSummary.appNames.length === 1 ? "" : t('project_day_timeline.text.s')}
                   </p>
                 </div>
                 <div className="rounded-md border p-3">
-                  <p className="text-[11px] text-muted-foreground">{tt('Aktywność', 'Activity')}</p>
+                  <p className="text-[11px] text-muted-foreground">{t('project_day_timeline.text.activity')}</p>
                   <p className="text-sm font-mono">
                     {formatDuration(Math.round(clusterDetailsSummary.unionMs / 1000))}
                   </p>
                   {clusterDetailsSummary.overlapMs > 0 && (
                     <p className="text-[11px] text-amber-300">
-                      {tt('nakładanie', 'overlap')} +{formatDuration(Math.round(clusterDetailsSummary.overlapMs / 1000))}
+                      {t('project_day_timeline.text.overlap')} +{formatDuration(Math.round(clusterDetailsSummary.overlapMs / 1000))}
                     </p>
                   )}
                 </div>
@@ -1419,7 +1412,7 @@ export function ProjectDayTimeline({
 
               <div className="rounded-md border p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] text-muted-foreground">{tt('Aplikacje w segmencie:', 'Apps in chunk:')}</span>
+                  <span className="text-[11px] text-muted-foreground">{t('project_day_timeline.text.apps_in_chunk')}</span>
                   {clusterDetailsSummary.appNames.map((appName) => (
                     <Badge key={appName} variant="secondary" className="text-[10px]">
                       {appName}
@@ -1437,10 +1430,10 @@ export function ProjectDayTimeline({
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-medium text-muted-foreground">
-                    {tt('Sesje wewnątrz połączonego segmentu', 'Sessions inside merged chunk')}
+                    {t('project_day_timeline.text.sessions_inside_merged_chunk')}
                   </p>
                   <p className="text-[11px] text-muted-foreground">
-                    {tt('Suma czasów:', 'Sum durations:')} {formatDuration(Math.round(clusterDetailsSummary.sumMs / 1000))}
+                    {t('project_day_timeline.text.sum_durations')} {formatDuration(Math.round(clusterDetailsSummary.sumMs / 1000))}
                   </p>
                 </div>
                 <div className="max-h-[50vh] space-y-1 overflow-y-auto rounded-md border p-2">
@@ -1494,8 +1487,8 @@ export function ProjectDayTimeline({
             onClick={handleAddSession}
           >
             {ctxMenu.editSession
-              ? tt('Edytuj/usuń sesję', 'Edit/Delete Session')
-              : tt('Dodaj sesję ({{time}})', 'Add Session ({{time}})', {
+              ? t('project_day_timeline.text.edit_delete_session')
+              : t('project_day_timeline.text.add_session', {
                   time: fmtHourMinute(ctxMenu.timeMs),
                 })}
           </button>

@@ -162,6 +162,8 @@ pub fn run() {
             commands::open_db_folder,
             commands::restore_database_from_file,
             commands::get_backup_files,
+            commands::get_data_folder_stats,
+            commands::cleanup_data_folder,
             commands::get_secure_token,
             commands::set_secure_token,
             commands::persist_language_for_daemon,
