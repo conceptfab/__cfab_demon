@@ -1,0 +1,496 @@
+use std::collections::{HashMap, HashSet};
+use tauri::AppHandle;
+
+use super::super::helpers::run_db_blocking;
+use super::super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
+use super::super::types::{FileActivity, SessionFilters, SessionWithApp};
+
+fn apply_session_filters(
+    filters: &SessionFilters,
+    sql: &mut String,
+    params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    idx: &mut usize,
+) {
+    if let Some(ref dr) = filters.date_range {
+        sql.push_str(&format!(" AND s.date >= ?{}", *idx));
+        params.push(Box::new(dr.start.clone()));
+        *idx += 1;
+        sql.push_str(&format!(" AND s.date <= ?{}", *idx));
+        params.push(Box::new(dr.end.clone()));
+        *idx += 1;
+    }
+    if let Some(aid) = filters.app_id {
+        sql.push_str(&format!(" AND s.app_id = ?{}", *idx));
+        params.push(Box::new(aid));
+        *idx += 1;
+    }
+    if let Some(min) = filters.min_duration {
+        sql.push_str(&format!(" AND s.duration_seconds >= ?{}", *idx));
+        params.push(Box::new(min));
+        *idx += 1;
+    }
+    if let Some(unassigned) = filters.unassigned {
+        if unassigned {
+            sql.push_str(" AND s.project_id IS NULL");
+        } else {
+            sql.push_str(" AND s.project_id IS NOT NULL");
+        }
+    }
+}
+
+pub async fn get_sessions(
+    app: AppHandle,
+    filters: SessionFilters,
+) -> Result<Vec<SessionWithApp>, String> {
+    let include_files = filters.include_files.unwrap_or(true);
+    let include_ai_suggestions = filters.include_ai_suggestions.unwrap_or(true);
+    let (mut sessions, needs_suggestion) = run_db_blocking(app.clone(), move |conn| {
+        let project_filter = filters.project_id;
+        let mut sql = if project_filter.is_some() {
+            format!(
+                "{SESSION_PROJECT_CTE_ALL_TIME}
+                 SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
+                    COALESCE(s.rate_multiplier, 1.0),
+                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
+                    s.comment,
+                    s.split_source_session_id,
+                    asug_latest.suggested_confidence,
+                    asug_latest.suggested_project_id,
+                    p_sug.name
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             LEFT JOIN session_projects sp_filter ON sp_filter.id = s.id
+             LEFT JOIN projects p ON p.id = s.project_id
+             LEFT JOIN (
+                 SELECT session_id, source
+                 FROM assignment_feedback
+                 WHERE id IN (SELECT MAX(id) FROM assignment_feedback GROUP BY session_id)
+             ) af_last ON af_last.session_id = s.id
+             LEFT JOIN (
+                 SELECT session_id, suggested_confidence, suggested_project_id
+                  FROM assignment_suggestions
+                  WHERE id IN (SELECT MAX(id) FROM assignment_suggestions GROUP BY session_id)
+              ) asug_latest ON asug_latest.session_id = s.id
+              LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
+             WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)"
+            )
+        } else {
+            String::from(
+                "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
+                    COALESCE(s.rate_multiplier, 1.0),
+                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
+                    s.comment,
+                    s.split_source_session_id,
+                    asug_latest.suggested_confidence,
+                    asug_latest.suggested_project_id,
+                    p_sug.name
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             LEFT JOIN projects p ON p.id = s.project_id
+             LEFT JOIN (
+                 SELECT session_id, source
+                 FROM assignment_feedback
+                 WHERE id IN (SELECT MAX(id) FROM assignment_feedback GROUP BY session_id)
+             ) af_last ON af_last.session_id = s.id
+             LEFT JOIN (
+                 SELECT session_id, suggested_confidence, suggested_project_id
+                 FROM assignment_suggestions
+                 WHERE id IN (SELECT MAX(id) FROM assignment_suggestions GROUP BY session_id)
+             ) asug_latest ON asug_latest.session_id = s.id
+             LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
+             WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)",
+            )
+        };
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut idx = 1;
+
+        if let Some(pid) = project_filter {
+            sql.push_str(&format!(" AND sp_filter.project_id = ?{}", idx));
+            params.push(Box::new(pid));
+            idx += 1;
+        }
+
+        apply_session_filters(&filters, &mut sql, &mut params, &mut idx);
+        sql.push_str(" ORDER BY s.start_time DESC");
+
+        if let Some(limit) = filters.limit {
+            sql.push_str(&format!(" LIMIT ?{}", idx));
+            params.push(Box::new(limit));
+            idx += 1;
+        }
+        if let Some(offset) = filters.offset {
+            sql.push_str(&format!(" OFFSET ?{}", idx));
+            params.push(Box::new(offset));
+        }
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+        let mut explicit_pids: HashMap<i64, Option<i64>> = HashMap::new();
+        let rows = stmt
+            .query_map(params_ref.as_slice(), |row| {
+                let id: i64 = row.get(0)?;
+                let explicit_pid: Option<i64> = row.get(8)?;
+                let explicit_pname: Option<String> = row.get(9)?;
+                let explicit_pcolor: Option<String> = row.get(10)?;
+                let ai_assigned_flag: i64 = row.get(11).unwrap_or(0);
+                let comment: Option<String> = row.get(12)?;
+                let split_source_session_id: Option<i64> = row.get(13)?;
+                let hist_confidence: Option<f64> = row.get(14).unwrap_or(None);
+                let hist_suggested_pid: Option<i64> = row.get(15).unwrap_or(None);
+                let hist_suggested_pname: Option<String> = row.get(16).unwrap_or(None);
+                Ok((
+                    SessionWithApp {
+                        id,
+                        app_id: row.get(1)?,
+                        project_id: explicit_pid,
+                        split_source_session_id,
+                        start_time: row.get(2)?,
+                        end_time: row.get(3)?,
+                        duration_seconds: row.get(4)?,
+                        rate_multiplier: row.get(5)?,
+                        app_name: row.get(6)?,
+                        executable_name: row.get(7)?,
+                        project_name: explicit_pname,
+                        project_color: explicit_pcolor,
+                        files: Vec::new(),
+                        suggested_project_id: hist_suggested_pid,
+                        suggested_project_name: hist_suggested_pname,
+                        suggested_confidence: hist_confidence,
+                        ai_assigned: ai_assigned_flag != 0,
+                        comment,
+                    },
+                    explicit_pid,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+
+        let mut sessions: Vec<SessionWithApp> = Vec::new();
+        for r in rows {
+            let r = r.map_err(|e| format!("Failed to read session row: {}", e))?;
+            explicit_pids.insert(r.0.id, r.1);
+            sessions.push(r.0);
+        }
+
+        let mut keys: Vec<(i64, String)> = Vec::new();
+        let mut key_set: HashSet<(i64, String)> = HashSet::new();
+        if include_files {
+            for s in &sessions {
+                let date = s.start_time.split('T').next().unwrap_or("").to_string();
+                if !date.is_empty() {
+                    let key = (s.app_id, date);
+                    if key_set.insert(key.clone()) {
+                        keys.push(key);
+                    }
+                }
+            }
+        }
+
+        let mut files_by_key: HashMap<(i64, String), Vec<FileActivity>> = HashMap::new();
+        if include_files && !keys.is_empty() {
+            conn.execute_batch(
+                "CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)",
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute_batch("DELETE FROM _fa_keys")
+                .map_err(|e| e.to_string())?;
+
+            {
+                let mut insert_key = conn
+                    .prepare_cached("INSERT INTO _fa_keys (app_id, date) VALUES (?1, ?2)")
+                    .map_err(|e| e.to_string())?;
+                for (app_id, date) in &keys {
+                    insert_key
+                        .execute(rusqlite::params![app_id, date])
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+
+            let mut fstmt = conn
+                .prepare_cached(
+                    "SELECT fa.id, fa.app_id, fa.date, fa.file_name, fa.total_seconds, fa.first_seen, fa.last_seen,
+                            fa.project_id, p.name, p.color
+                     FROM file_activities fa
+                     LEFT JOIN projects p ON p.id = fa.project_id
+                     INNER JOIN _fa_keys k ON fa.app_id = k.app_id AND fa.date = k.date",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = fstmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        FileActivity {
+                            id: row.get(0)?,
+                            app_id: row.get(1)?,
+                            file_name: row.get(3)?,
+                            total_seconds: row.get(4)?,
+                            first_seen: row.get(5)?,
+                            last_seen: row.get(6)?,
+                            project_id: row.get(7)?,
+                            project_name: row.get(8)?,
+                            project_color: row.get(9)?,
+                        },
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+
+            for row in rows {
+                let (app_id, date, activity) =
+                    row.map_err(|e| format!("Failed to read file_activities row: {}", e))?;
+                files_by_key
+                    .entry((app_id, date))
+                    .or_default()
+                    .push(activity);
+            }
+        }
+
+        let mut inferred_project_by_session: HashMap<i64, Option<i64>> = HashMap::new();
+        for session in &mut sessions {
+            if let Some(pid) = explicit_pids.get(&session.id).copied().flatten() {
+                inferred_project_by_session.insert(session.id, Some(pid));
+            } else {
+                inferred_project_by_session.insert(session.id, None);
+            }
+
+            if !include_files {
+                continue;
+            }
+
+            let session_start = match chrono::DateTime::parse_from_rfc3339(&session.start_time) {
+                Ok(dt) => dt.timestamp_millis(),
+                Err(_) => continue,
+            };
+            let session_end = match chrono::DateTime::parse_from_rfc3339(&session.end_time) {
+                Ok(dt) => dt.timestamp_millis(),
+                Err(_) => continue,
+            };
+            if session_end <= session_start {
+                continue;
+            }
+
+            let session_date = session
+                .start_time
+                .split('T')
+                .next()
+                .unwrap_or("")
+                .to_string();
+            session.files = files_by_key
+                .get(&(session.app_id, session_date))
+                .cloned()
+                .unwrap_or_default();
+
+            if explicit_pids.get(&session.id).copied().flatten().is_some() {
+                continue;
+            }
+
+            let mut overlap_by_project: HashMap<i64, (i64, String, String)> = HashMap::new();
+            for f in &session.files {
+                let Some(pid) = f.project_id else { continue };
+                let file_start = match chrono::DateTime::parse_from_rfc3339(&f.first_seen) {
+                    Ok(dt) => dt.timestamp_millis(),
+                    Err(_) => continue,
+                };
+                let file_end = match chrono::DateTime::parse_from_rfc3339(&f.last_seen) {
+                    Ok(dt) => dt.timestamp_millis(),
+                    Err(_) => continue,
+                };
+                if file_end <= file_start {
+                    continue;
+                }
+                let overlap_ms =
+                    std::cmp::min(session_end, file_end) - std::cmp::max(session_start, file_start);
+                if overlap_ms <= 0 {
+                    continue;
+                }
+                let name = f
+                    .project_name
+                    .clone()
+                    .unwrap_or_else(|| "Unassigned".to_string());
+                let color = f
+                    .project_color
+                    .clone()
+                    .unwrap_or_else(|| "#64748b".to_string());
+                let entry = overlap_by_project.entry(pid).or_insert((0, name, color));
+                entry.0 += overlap_ms;
+            }
+
+            if let Some((pid, (overlap_ms, name, _color))) = overlap_by_project
+                .into_iter()
+                .max_by_key(|(_, (ms, _, _))| *ms)
+            {
+                let span_ms = session_end - session_start;
+                if overlap_ms * 2 >= span_ms {
+                    inferred_project_by_session.insert(session.id, Some(pid));
+                    session.suggested_project_name = Some(name);
+                    session.suggested_project_id = Some(pid);
+                    session.suggested_confidence = Some(1.0);
+                }
+            }
+        }
+
+        let mut suggestion_candidate_batch: Vec<i64> = Vec::new();
+        for session in &mut sessions {
+            if inferred_project_by_session
+                .get(&session.id)
+                .unwrap_or(&None)
+                .is_none()
+            {
+                suggestion_candidate_batch.push(session.id);
+                continue;
+            }
+
+            if session.suggested_project_id.is_none()
+                && session.suggested_project_name.is_none()
+                && session.suggested_confidence.is_none()
+            {
+                suggestion_candidate_batch.push(session.id);
+            }
+        }
+        Ok((sessions, suggestion_candidate_batch))
+    })
+    .await?;
+
+    if include_ai_suggestions && !needs_suggestion.is_empty() {
+        let status = crate::commands::get_assignment_model_status(app.clone()).await?;
+        if status.mode != "off" {
+            sessions = run_db_blocking(app.clone(), move |conn| {
+                let mut suggestions =
+                    super::super::assignment_model::suggest_projects_for_sessions_with_status(
+                        conn,
+                        &status,
+                        &needs_suggestion,
+                    )?;
+
+                if suggestions.len() < needs_suggestion.len() {
+                    let needs_suggestion_set: HashSet<i64> =
+                        needs_suggestion.iter().copied().collect();
+                    let assigned_without_threshold: Vec<i64> = sessions
+                        .iter()
+                        .filter(|s| s.project_name.is_some())
+                        .map(|s| s.id)
+                        .filter(|id| {
+                            needs_suggestion_set.contains(id) && !suggestions.contains_key(id)
+                        })
+                        .collect();
+
+                    if !assigned_without_threshold.is_empty() {
+                        let raw =
+                            super::super::assignment_model::suggest_projects_for_sessions_raw(
+                                conn,
+                                &status,
+                                &assigned_without_threshold,
+                            )?;
+                        for (session_id, suggestion) in raw {
+                            suggestions.entry(session_id).or_insert(suggestion);
+                        }
+                    }
+                }
+
+                if !suggestions.is_empty() {
+                    let mut suggested_project_ids: HashSet<i64> = HashSet::new();
+                    for s in suggestions.values() {
+                        suggested_project_ids.insert(s.project_id);
+                    }
+
+                    let mut project_name_by_id: HashMap<i64, String> = HashMap::new();
+                    if !suggested_project_ids.is_empty() {
+                        let pid_list: Vec<i64> = suggested_project_ids.into_iter().collect();
+                        let placeholders =
+                            pid_list.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                        let sql = format!(
+                            "SELECT id, name FROM projects WHERE id IN ({})",
+                            placeholders
+                        );
+                        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+                        let params: Vec<&dyn rusqlite::types::ToSql> = pid_list
+                            .iter()
+                            .map(|id| id as &dyn rusqlite::types::ToSql)
+                            .collect();
+                        let rows = stmt
+                            .query_map(rusqlite::params_from_iter(params), |row| {
+                                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                            })
+                            .map_err(|e| e.to_string())?;
+                        for row in rows {
+                            let (pid, name) = row.map_err(|e| e.to_string())?;
+                            project_name_by_id.insert(pid, name);
+                        }
+                    }
+
+                    let mut index_by_session_id: HashMap<i64, usize> = HashMap::new();
+                    for (idx, session) in sessions.iter().enumerate() {
+                        index_by_session_id.insert(session.id, idx);
+                    }
+
+                    for (session_id, suggestion) in suggestions {
+                        if let Some(&idx) = index_by_session_id.get(&session_id) {
+                            if sessions[idx].suggested_project_id.is_none() {
+                                sessions[idx].suggested_project_id = Some(suggestion.project_id);
+                            }
+                            if sessions[idx].suggested_confidence.is_none() {
+                                sessions[idx].suggested_confidence = Some(suggestion.confidence);
+                            }
+                            if sessions[idx].suggested_project_name.is_none() {
+                                sessions[idx].suggested_project_name =
+                                    project_name_by_id.get(&suggestion.project_id).cloned();
+                            }
+                        }
+                    }
+                }
+
+                Ok(sessions)
+            })
+            .await?;
+        }
+    }
+
+    Ok(sessions)
+}
+
+pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, String> {
+    if let Some(pid) = filters.project_id {
+        return run_db_blocking(app, move |conn| {
+            let mut sql = format!(
+                "{SESSION_PROJECT_CTE_ALL_TIME}
+                 SELECT COUNT(*) FROM session_projects sp
+                 JOIN sessions s ON s.id = sp.id
+                 JOIN applications a ON a.id = s.app_id
+                 WHERE sp.project_id = ?1",
+            );
+            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(pid)];
+            let mut idx = 2;
+
+            let mut temp_filters = filters.clone();
+            temp_filters.project_id = None;
+            apply_session_filters(&temp_filters, &mut sql, &mut params, &mut idx);
+
+            let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+                params.iter().map(|p| p.as_ref()).collect();
+            conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0))
+                .map_err(|e| e.to_string())
+        })
+        .await;
+    }
+
+    run_db_blocking(app, move |conn| {
+        let mut sql = String::from(
+            "SELECT COUNT(*) FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)",
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut idx = 1;
+
+        apply_session_filters(&filters, &mut sql, &mut params, &mut idx);
+
+        let params_ref: Vec<&dyn rusqlite::types::ToSql> =
+            params.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, params_ref.as_slice(), |row| row.get(0))
+            .map_err(|e| e.to_string())
+    })
+    .await
+}

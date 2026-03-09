@@ -108,7 +108,8 @@ pub(crate) fn migrate_legacy_daily_json_to_store() -> Result<usize, String> {
 
 pub(crate) fn load_day(date: &str) -> Result<Option<DailyData>, String> {
     let conn = open_store()?;
-    super::daily_store::load_day_snapshot(&conn, date).map(|snapshot| snapshot.map(to_command_daily))
+    super::daily_store::load_day_snapshot(&conn, date)
+        .map(|snapshot| snapshot.map(to_command_daily))
 }
 
 pub(crate) fn save_day(daily: &DailyData) -> Result<super::daily_store::DaySignature, String> {

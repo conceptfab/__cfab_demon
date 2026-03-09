@@ -18,7 +18,9 @@ Stan na 2026-03-09:
 - [x] Faza 1: przepiete `analysis.rs`, `estimates.rs` i `monitored.rs` — mniejsze handlery analityczne, estymacyjne i monitored apps korzystaja juz z helperow blokujacych.
 - [x] Faza 1: przepiete `database.rs`, `settings.rs`, `import.rs`, `import_data.rs`, `export.rs`, `report.rs` i `daemon.rs` — backup/restore, import/export, refresh danych, raport projektu i status demona nie wykonuja juz synchronicznego SQLite na watku async.
 - [x] Faza 1: zakonczony audit komend `async` w `dashboard/src-tauri/src/commands` — pozostale bezposrednie wywolania `db::get_connection()` sa tylko w helperach blokujacych albo w komendach synchronicznych (`manual_sessions.rs`), wiec kryterium fazy jest spelnione.
-- [ ] Fazy 2-6 bez zmian implementacyjnych.
+- [x] Weryfikacja: wpis `Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji)` zostal potwierdzony w kodzie (`strip_split_markers()`, badge `GitBranch`, box `BrainCircuit`, klucze i18n, `sesje.md`) oraz checkami (`cargo test`, `npm run lint`, `npm test`, `npx tsc --noEmit`).
+- [x] Faza 2: zakonczone rozbicie modulu sesji — wydzielone `sessions/manual_overrides.rs`, `sessions/mutations.rs`, `sessions/query.rs`, `sessions/rebuild.rs`, `sessions/split.rs` i `sessions/tests.rs`, a dawny root `sessions.rs` zostal zastapiony przez docelowy `sessions/mod.rs` z cienkimi wrapperami Tauri.
+- [ ] Fazy 3-6 bez zmian implementacyjnych.
 
 Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji):
 

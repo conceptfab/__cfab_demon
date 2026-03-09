@@ -272,10 +272,7 @@ pub fn replace_day_snapshot(
     })
 }
 
-pub fn load_day_snapshot(
-    conn: &Connection,
-    date: &str,
-) -> Result<Option<StoredDailyData>, String> {
+pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredDailyData>, String> {
     ensure_schema(conn)?;
 
     let generated_at = conn
@@ -389,8 +386,8 @@ pub fn load_day_snapshot(
             title_history_json,
             activity_type,
         ) = row.map_err(|e| format!("Failed to map daily file row for {}: {}", date, e))?;
-        let title_history = serde_json::from_str::<Vec<String>>(&title_history_json)
-            .unwrap_or_else(|_| Vec::new());
+        let title_history =
+            serde_json::from_str::<Vec<String>>(&title_history_json).unwrap_or_else(|_| Vec::new());
         if let Some(app) = apps.get_mut(&exe_name) {
             app.files.push(StoredFileEntry {
                 name,
@@ -449,15 +446,15 @@ pub fn get_day_signature(conn: &Connection, date: &str) -> Result<Option<DaySign
 
     let signature = conn
         .query_row(
-        "SELECT updated_unix_ms, revision
+            "SELECT updated_unix_ms, revision
          FROM daily_snapshots
          WHERE date = ?1",
-        [date],
-        |row| {
-            let updated_unix_ms: u64 = row.get(0)?;
-            let revision: u64 = row.get(1)?;
-            Ok((updated_unix_ms, revision))
-        },
+            [date],
+            |row| {
+                let updated_unix_ms: u64 = row.get(0)?;
+                let revision: u64 = row.get(1)?;
+                Ok((updated_unix_ms, revision))
+            },
         )
         .optional()
         .map_err(|e| format!("Failed to read daily signature for {}: {}", date, e))?
@@ -469,8 +466,13 @@ pub fn get_day_signature(conn: &Connection, date: &str) -> Result<Option<DaySign
 }
 
 pub fn load_legacy_json_file(path: &Path) -> Result<StoredDailyData, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read legacy daily JSON '{}': {}", path.display(), e))?;
+    let content = fs::read_to_string(path).map_err(|e| {
+        format!(
+            "Failed to read legacy daily JSON '{}': {}",
+            path.display(),
+            e
+        )
+    })?;
     serde_json::from_str::<StoredDailyData>(&content).map_err(|e| {
         format!(
             "Failed to parse legacy daily JSON '{}': {}",
@@ -491,7 +493,13 @@ pub fn migrate_legacy_json_files(base_dir: &Path) -> Result<usize, String> {
         }
 
         let mut entries: Vec<PathBuf> = fs::read_dir(&dir_path)
-            .map_err(|e| format!("Failed to read legacy daily directory '{}': {}", dir_path.display(), e))?
+            .map_err(|e| {
+                format!(
+                    "Failed to read legacy daily directory '{}': {}",
+                    dir_path.display(),
+                    e
+                )
+            })?
             .filter_map(|entry| entry.ok().map(|value| value.path()))
             .filter(|path| {
                 path.is_file()
