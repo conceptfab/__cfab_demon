@@ -184,10 +184,12 @@ pub async fn get_daemon_status(
         .unwrap_or(false);
     let min_dur = min_duration.unwrap_or(0);
     let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app, min_dur);
-    // Only clear the signal file if the count dropped to 0 or daemon is not running.
-    // This avoids clobbering positive raw counts written by the daemon,
-    // as per refinement in problems.md (point 77).
-    if !running || unassigned_sessions == 0 {
+    // Always write the current unassigned count so the daemon tray icon
+    // can switch between normal and attention icons.
+    // When daemon is not running, write 0 (no point signalling).
+    if running {
+        write_assignment_signal(unassigned_sessions);
+    } else {
         write_assignment_signal(0);
     }
 
