@@ -1,6 +1,7 @@
 use tauri::AppHandle;
 
 use super::estimates::get_project_estimates;
+use super::helpers::run_app_blocking;
 use super::manual_sessions::get_manual_sessions;
 use super::projects::{get_project_extra_info, get_projects};
 use super::sessions::get_sessions;
@@ -48,6 +49,22 @@ pub async fn get_project_report_data(
             .await
         }
     });
+    let manual_sessions_handle = tauri::async_runtime::spawn({
+        let app = app.clone();
+        let date_range = date_range.clone();
+        async move {
+            run_app_blocking(app, move |app| {
+                get_manual_sessions(
+                    app,
+                    ManualSessionFilters {
+                        date_range: Some(date_range),
+                        project_id: Some(project_id),
+                    },
+                )
+            })
+            .await
+        }
+    });
 
     let projects = projects_handle
         .await
@@ -61,6 +78,9 @@ pub async fn get_project_report_data(
     let sessions = sessions_handle
         .await
         .map_err(|e| format!("Sessions task join failed: {}", e))??;
+    let manual_sessions = manual_sessions_handle
+        .await
+        .map_err(|e| format!("Manual sessions task join failed: {}", e))??;
 
     let project = projects
         .into_iter()
@@ -72,14 +92,6 @@ pub async fn get_project_report_data(
         .find(|row| row.project_id == project_id)
         .map(|row| row.estimated_value)
         .unwrap_or(0.0);
-
-    let manual_sessions = get_manual_sessions(
-        app,
-        ManualSessionFilters {
-            date_range: Some(date_range),
-            project_id: Some(project_id),
-        },
-    )?;
 
     Ok(ProjectReportData {
         project,

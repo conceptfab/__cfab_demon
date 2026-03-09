@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use tauri::AppHandle;
 
-use super::helpers::{timeflow_data_dir, validate_import_path};
+use super::helpers::{run_app_blocking, run_db_blocking, timeflow_data_dir, validate_import_path};
 use super::monitored::monitored_exe_name_set;
 use super::projects::{ensure_app_project_from_file_hint, load_project_folders_from_db};
 use super::types::{
@@ -48,23 +48,25 @@ pub async fn import_json_files(
     app: AppHandle,
     file_paths: Vec<String>,
 ) -> Result<Vec<ImportResult>, String> {
-    let mut conn = db::get_connection(&app)?;
-    let mut results = Vec::new();
+    run_db_blocking(app, move |conn| {
+        let mut results = Vec::new();
 
-    for path in &file_paths {
-        if let Err(e) = validate_import_path(path) {
-            results.push(ImportResult {
-                file_path: path.clone(),
-                success: false,
-                records_imported: 0,
-                error: Some(e),
-            });
-            continue;
+        for path in &file_paths {
+            if let Err(e) = validate_import_path(path) {
+                results.push(ImportResult {
+                    file_path: path.clone(),
+                    success: false,
+                    records_imported: 0,
+                    error: Some(e),
+                });
+                continue;
+            }
+            results.push(import_single_file(conn, path));
         }
-        results.push(import_single_file(&mut conn, path));
-    }
 
-    Ok(results)
+        Ok(results)
+    })
+    .await
 }
 
 /// Checks if a file path corresponds to today's data file.
@@ -437,37 +439,41 @@ fn purge_unregistered_apps(
 
 #[tauri::command]
 pub async fn check_file_imported(app: AppHandle, file_path: String) -> Result<bool, String> {
-    let conn = db::get_connection(&app)?;
-    conn.query_row(
-        "SELECT COUNT(*) > 0 FROM imported_files WHERE file_path = ?1",
-        [&file_path],
-        |row| row.get(0),
-    )
-    .map_err(|e| e.to_string())
+    run_db_blocking(app, move |conn| {
+        conn.query_row(
+            "SELECT COUNT(*) > 0 FROM imported_files WHERE file_path = ?1",
+            [&file_path],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_imported_files(app: AppHandle) -> Result<Vec<ImportedFileInfo>, String> {
-    let conn = db::get_connection(&app)?;
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT file_path, import_date, records_count FROM imported_files ORDER BY import_date DESC",
-        )
-        .map_err(|e| e.to_string())?;
+    run_db_blocking(app, move |conn| {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT file_path, import_date, records_count FROM imported_files ORDER BY import_date DESC",
+            )
+            .map_err(|e| e.to_string())?;
 
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(ImportedFileInfo {
-                file_path: row.get(0)?,
-                import_date: row.get::<_, String>(1).unwrap_or_default(),
-                records_count: row.get(2)?,
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(ImportedFileInfo {
+                    file_path: row.get(0)?,
+                    import_date: row.get::<_, String>(1).unwrap_or_default(),
+                    records_count: row.get(2)?,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect())
+        Ok(rows
+            .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
+            .collect())
+    })
+    .await
 }
 
 fn archive_json_file(
@@ -499,153 +505,159 @@ fn archive_json_file(
 
 #[tauri::command]
 pub async fn auto_import_from_data_dir(app: AppHandle) -> Result<AutoImportResult, String> {
-    let base_dir = timeflow_data_dir()?;
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
-    let import_dir = mode_import_dir(&base_dir, demo_mode);
-    let archive_dir = mode_archive_dir(&base_dir, demo_mode);
+    run_app_blocking(app, move |app| {
+        let base_dir = timeflow_data_dir()?;
+        let demo_mode = db::is_demo_mode_enabled(&app)?;
+        let import_dir = mode_import_dir(&base_dir, demo_mode);
+        let archive_dir = mode_archive_dir(&base_dir, demo_mode);
 
-    if !import_dir.exists() {
-        return Ok(AutoImportResult {
-            files_found: 0,
-            files_imported: 0,
-            files_skipped: 0,
-            files_archived: 0,
-            errors: vec![],
-        });
-    }
+        if !import_dir.exists() {
+            return Ok(AutoImportResult {
+                files_found: 0,
+                files_imported: 0,
+                files_skipped: 0,
+                files_archived: 0,
+                errors: vec![],
+            });
+        }
 
-    let mut json_files: Vec<std::path::PathBuf> = Vec::new();
-    let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&import_dir)
-        .map_err(|e| e.to_string())?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|p| {
-            p.extension().map(|e| e == "json").unwrap_or(false)
-                && !p
-                    .file_name()
-                    .map(|n| n.to_string_lossy().starts_with('.'))
-                    .unwrap_or(false)
-                && (demo_mode || !is_fake_named_json_file(p))
-        })
-        .collect();
-    json_files.append(&mut found);
+        let mut json_files: Vec<std::path::PathBuf> = Vec::new();
+        let mut found: Vec<std::path::PathBuf> = std::fs::read_dir(&import_dir)
+            .map_err(|e| e.to_string())?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .filter(|p| {
+                p.extension().map(|e| e == "json").unwrap_or(false)
+                    && !p
+                        .file_name()
+                        .map(|n| n.to_string_lossy().starts_with('.'))
+                        .unwrap_or(false)
+                    && (demo_mode || !is_fake_named_json_file(p))
+            })
+            .collect();
+        json_files.append(&mut found);
 
-    let files_found = json_files.len();
-    log::info!(
-        "Auto-import scan: import_dir='{}', files_found={}, mode={}",
-        import_dir.display(),
-        files_found,
-        if demo_mode { "demo" } else { "primary" }
-    );
-    let mut conn = db::get_connection(&app)?;
+        let files_found = json_files.len();
+        log::info!(
+            "Auto-import scan: import_dir='{}', files_found={}, mode={}",
+            import_dir.display(),
+            files_found,
+            if demo_mode { "demo" } else { "primary" }
+        );
+        let mut conn = db::get_connection(&app)?;
 
-    let mut files_imported = 0;
-    let mut files_skipped = 0;
-    let mut files_archived = 0;
-    let mut errors = Vec::new();
+        let mut files_imported = 0;
+        let mut files_skipped = 0;
+        let mut files_archived = 0;
+        let mut errors = Vec::new();
 
-    if !archive_dir.exists() {
-        std::fs::create_dir_all(&archive_dir).map_err(|e| e.to_string())?;
-    }
+        if !archive_dir.exists() {
+            std::fs::create_dir_all(&archive_dir).map_err(|e| e.to_string())?;
+        }
 
-    for json_path in &json_files {
-        let path_str = json_path.to_string_lossy().to_string();
-        let result = import_single_file(&mut conn, &path_str);
+        for json_path in &json_files {
+            let path_str = json_path.to_string_lossy().to_string();
+            let result = import_single_file(&mut conn, &path_str);
 
-        if result.success {
-            files_imported += 1;
+            if result.success {
+                files_imported += 1;
 
-            if !is_today_data_file(&path_str) {
-                match archive_json_file(json_path, &archive_dir, &path_str) {
-                    Ok(true) => files_archived += 1,
-                    Ok(false) => {}
-                    Err(e) => errors.push(e),
-                }
-            }
-        } else if let Some(ref err) = result.error {
-            if err.contains("already imported") {
-                files_skipped += 1;
                 if !is_today_data_file(&path_str) {
-                    if let Some(file_name) = json_path.file_name() {
-                        let archive_path = archive_dir.join(file_name);
-                        if !archive_path.exists() {
-                            match archive_json_file(json_path, &archive_dir, &path_str) {
-                                Ok(true) => files_archived += 1,
-                                Ok(false) => {}
-                                Err(e) => errors.push(e),
+                    match archive_json_file(json_path, &archive_dir, &path_str) {
+                        Ok(true) => files_archived += 1,
+                        Ok(false) => {}
+                        Err(e) => errors.push(e),
+                    }
+                }
+            } else if let Some(ref err) = result.error {
+                if err.contains("already imported") {
+                    files_skipped += 1;
+                    if !is_today_data_file(&path_str) {
+                        if let Some(file_name) = json_path.file_name() {
+                            let archive_path = archive_dir.join(file_name);
+                            if !archive_path.exists() {
+                                match archive_json_file(json_path, &archive_dir, &path_str) {
+                                    Ok(true) => files_archived += 1,
+                                    Ok(false) => {}
+                                    Err(e) => errors.push(e),
+                                }
                             }
                         }
                     }
+                } else {
+                    errors.push(format!("{}: {}", path_str, err));
                 }
-            } else {
-                errors.push(format!("{}: {}", path_str, err));
             }
         }
-    }
 
-    log::info!(
-        "Auto-import: found={}, imported={}, skipped={}, archived={}",
-        files_found,
-        files_imported,
-        files_skipped,
-        files_archived
-    );
+        log::info!(
+            "Auto-import: found={}, imported={}, skipped={}, archived={}",
+            files_found,
+            files_imported,
+            files_skipped,
+            files_archived
+        );
 
-    Ok(AutoImportResult {
-        files_found,
-        files_imported,
-        files_skipped,
-        files_archived,
-        errors,
+        Ok(AutoImportResult {
+            files_found,
+            files_imported,
+            files_skipped,
+            files_archived,
+            errors,
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_archive_files(app: AppHandle) -> Result<Vec<ArchivedFileInfo>, String> {
-    let base_dir = timeflow_data_dir()?;
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
-    let archive_dir = mode_archive_dir(&base_dir, demo_mode);
+    run_app_blocking(app, move |app| {
+        let base_dir = timeflow_data_dir()?;
+        let demo_mode = db::is_demo_mode_enabled(&app)?;
+        let archive_dir = mode_archive_dir(&base_dir, demo_mode);
 
-    if !archive_dir.exists() {
-        return Ok(Vec::new());
-    }
-
-    let mut files = Vec::new();
-    for entry in std::fs::read_dir(&archive_dir).map_err(|e| e.to_string())? {
-        let entry = match entry {
-            Ok(e) => e,
-            Err(_) => continue,
-        };
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
+        if !archive_dir.exists() {
+            return Ok(Vec::new());
         }
-        if !path.extension().map(|e| e == "json").unwrap_or(false) {
-            continue;
-        }
-        let meta = match entry.metadata() {
-            Ok(m) => m,
-            Err(_) => continue,
-        };
-        let modified_at = meta
-            .modified()
-            .ok()
-            .map(|t| chrono::DateTime::<chrono::Local>::from(t).to_rfc3339())
-            .unwrap_or_default();
-        let file_name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        files.push(ArchivedFileInfo {
-            file_name,
-            file_path: path.to_string_lossy().to_string(),
-            modified_at,
-            size_bytes: meta.len(),
-        });
-    }
 
-    files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
-    Ok(files)
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(&archive_dir).map_err(|e| e.to_string())? {
+            let entry = match entry {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            if !path.extension().map(|e| e == "json").unwrap_or(false) {
+                continue;
+            }
+            let meta = match entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+            let modified_at = meta
+                .modified()
+                .ok()
+                .map(|t| chrono::DateTime::<chrono::Local>::from(t).to_rfc3339())
+                .unwrap_or_default();
+            let file_name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            files.push(ArchivedFileInfo {
+                file_name,
+                file_path: path.to_string_lossy().to_string(),
+                modified_at,
+                size_bytes: meta.len(),
+            });
+        }
+
+        files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+        Ok(files)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -659,15 +671,18 @@ pub async fn delete_archive_file(app: AppHandle, file_name: String) -> Result<()
         return Err("Invalid file name".to_string());
     }
 
-    let base_dir = timeflow_data_dir()?;
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
-    let archive_dir = mode_archive_dir(&base_dir, demo_mode);
-    let target = archive_dir.join(&safe_name);
+    run_app_blocking(app, move |app| {
+        let base_dir = timeflow_data_dir()?;
+        let demo_mode = db::is_demo_mode_enabled(&app)?;
+        let archive_dir = mode_archive_dir(&base_dir, demo_mode);
+        let target = archive_dir.join(&safe_name);
 
-    if !target.exists() {
-        return Ok(());
-    }
-    std::fs::remove_file(target).map_err(|e| e.to_string())
+        if !target.exists() {
+            return Ok(());
+        }
+        std::fs::remove_file(target).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -675,46 +690,47 @@ pub async fn get_detected_projects(
     app: AppHandle,
     date_range: DateRange,
 ) -> Result<Vec<DetectedProject>, String> {
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT
+                    fa.file_name,
+                    SUM(fa.total_seconds) as total_seconds,
+                    COUNT(DISTINCT fa.date) as occurrence_count,
+                    COALESCE(GROUP_CONCAT(DISTINCT a.display_name), '') as apps_csv,
+                    MIN(fa.first_seen) as first_seen,
+                    MAX(fa.last_seen) as last_seen
+                 FROM file_activities fa
+                 JOIN applications a ON a.id = fa.app_id
+                 WHERE fa.date >= ?1 AND fa.date <= ?2
+                 GROUP BY fa.file_name
+                 HAVING occurrence_count > 1
+                 ORDER BY total_seconds DESC",
+            )
+            .map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT
-                fa.file_name,
-                SUM(fa.total_seconds) as total_seconds,
-                COUNT(DISTINCT fa.date) as occurrence_count,
-                COALESCE(GROUP_CONCAT(DISTINCT a.display_name), '') as apps_csv,
-                MIN(fa.first_seen) as first_seen,
-                MAX(fa.last_seen) as last_seen
-             FROM file_activities fa
-             JOIN applications a ON a.id = fa.app_id
-             WHERE fa.date >= ?1 AND fa.date <= ?2
-             GROUP BY fa.file_name
-             HAVING occurrence_count > 1
-             ORDER BY total_seconds DESC",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-            Ok(DetectedProject {
-                file_name: row.get(0)?,
-                total_seconds: row.get(1)?,
-                occurrence_count: row.get(2)?,
-                apps: row
-                    .get::<_, String>(3)
-                    .unwrap_or_default()
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .collect(),
-                first_seen: row.get::<_, String>(4).unwrap_or_default(),
-                last_seen: row.get::<_, String>(5).unwrap_or_default(),
+        let rows = stmt
+            .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
+                Ok(DetectedProject {
+                    file_name: row.get(0)?,
+                    total_seconds: row.get(1)?,
+                    occurrence_count: row.get(2)?,
+                    apps: row
+                        .get::<_, String>(3)
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect(),
+                    first_seen: row.get::<_, String>(4).unwrap_or_default(),
+                    last_seen: row.get::<_, String>(5).unwrap_or_default(),
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-    Ok(rows
-        .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-        .collect())
+        Ok(rows
+            .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
+            .collect())
+    })
+    .await
 }

@@ -4,9 +4,9 @@ use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
+use super::helpers::run_db_blocking;
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{DateRange, EstimateProjectRow, EstimateSettings, EstimateSummary};
-use crate::db;
 
 const DEFAULT_GLOBAL_HOURLY_RATE: f64 = 100.0;
 const MAX_HOURLY_RATE: f64 = 100000.0;
@@ -241,26 +241,30 @@ fn build_estimate_rows(
 
 #[tauri::command]
 pub async fn get_estimate_settings(app: AppHandle) -> Result<EstimateSettings, String> {
-    let conn = db::get_connection(&app)?;
-    Ok(EstimateSettings {
-        global_hourly_rate: get_global_hourly_rate(&conn)?,
+    run_db_blocking(app, move |conn| {
+        Ok(EstimateSettings {
+            global_hourly_rate: get_global_hourly_rate(conn)?,
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn update_global_hourly_rate(app: AppHandle, rate: f64) -> Result<(), String> {
     validate_hourly_rate(rate)?;
-    let conn = db::get_connection(&app)?;
-    conn.execute(
-        "INSERT INTO estimate_settings (key, value, updated_at)
-         VALUES ('global_hourly_rate', ?1, datetime('now'))
-         ON CONFLICT(key) DO UPDATE SET
-           value = excluded.value,
-           updated_at = datetime('now')",
-        rusqlite::params![rate.to_string()],
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at)
+             VALUES ('global_hourly_rate', ?1, datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = datetime('now')",
+            rusqlite::params![rate.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -272,17 +276,19 @@ pub async fn update_project_hourly_rate(
     if let Some(v) = rate {
         validate_hourly_rate(v)?;
     }
-    let conn = db::get_connection(&app)?;
-    let updated = conn
-        .execute(
-            "UPDATE projects SET hourly_rate = ?2 WHERE id = ?1",
-            rusqlite::params![project_id, rate],
-        )
-        .map_err(|e| e.to_string())?;
-    if updated == 0 {
-        return Err("Project not found".to_string());
-    }
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        let updated = conn
+            .execute(
+                "UPDATE projects SET hourly_rate = ?2 WHERE id = ?1",
+                rusqlite::params![project_id, rate],
+            )
+            .map_err(|e| e.to_string())?;
+        if updated == 0 {
+            return Err("Project not found".to_string());
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -290,8 +296,7 @@ pub async fn get_project_estimates(
     app: AppHandle,
     date_range: DateRange,
 ) -> Result<Vec<EstimateProjectRow>, String> {
-    let conn = db::get_connection(&app)?;
-    build_estimate_rows(&conn, &date_range)
+    run_db_blocking(app, move |conn| build_estimate_rows(conn, &date_range)).await
 }
 
 #[tauri::command]
@@ -299,25 +304,27 @@ pub async fn get_estimates_summary(
     app: AppHandle,
     date_range: DateRange,
 ) -> Result<EstimateSummary, String> {
-    let conn = db::get_connection(&app)?;
-    let rows = build_estimate_rows(&conn, &date_range)?;
+    run_db_blocking(app, move |conn| {
+        let rows = build_estimate_rows(conn, &date_range)?;
 
-    let total_seconds = rows.iter().map(|r| r.seconds).sum::<i64>();
-    let total_hours = total_seconds as f64 / 3600.0;
-    let total_value = rows.iter().map(|r| r.estimated_value).sum::<f64>();
-    let projects_count = rows.len() as i64;
-    let overrides_count = rows
-        .iter()
-        .filter(|r| r.project_hourly_rate.is_some())
-        .count() as i64;
+        let total_seconds = rows.iter().map(|r| r.seconds).sum::<i64>();
+        let total_hours = total_seconds as f64 / 3600.0;
+        let total_value = rows.iter().map(|r| r.estimated_value).sum::<f64>();
+        let projects_count = rows.len() as i64;
+        let overrides_count = rows
+            .iter()
+            .filter(|r| r.project_hourly_rate.is_some())
+            .count() as i64;
 
-    Ok(EstimateSummary {
-        total_seconds,
-        total_hours,
-        total_value,
-        projects_count,
-        overrides_count,
+        Ok(EstimateSummary {
+            total_seconds,
+            total_hours,
+            total_value,
+            projects_count,
+            overrides_count,
+        })
     })
+    .await
 }
 
 #[cfg(test)]

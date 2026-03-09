@@ -1,7 +1,7 @@
 use tauri::AppHandle;
 
 use super::daily_store_bridge;
-use super::helpers::timeflow_data_dir;
+use super::helpers::{run_app_blocking, run_db_blocking, timeflow_data_dir};
 use super::import::upsert_daily_data;
 use super::types::{DailyData, RefreshResult, TodayFileSignature};
 use crate::db;
@@ -100,7 +100,12 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
             )
         })?
     } else {
-        match daily_store_bridge::load_day(&today)? {
+        let today_for_load = today.clone();
+        match run_app_blocking(app.clone(), move |_| {
+            daily_store_bridge::load_day(&today_for_load)
+        })
+        .await?
+        {
             Some(daily) => daily,
             None => {
                 return Ok(RefreshResult {
@@ -111,8 +116,8 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
         }
     };
 
-    let mut conn = db::get_connection(&app)?;
-    let sessions_upserted = upsert_daily_data(&mut conn, &daily);
+    let sessions_upserted =
+        run_db_blocking(app, move |conn| Ok(upsert_daily_data(conn, &daily))).await?;
 
     Ok(RefreshResult {
         sessions_upserted,
@@ -122,66 +127,69 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
 
 #[tauri::command]
 pub async fn get_today_file_signature(app: AppHandle) -> Result<TodayFileSignature, String> {
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    run_app_blocking(app, move |app| {
+        let demo_mode = db::is_demo_mode_enabled(&app)?;
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
-    if demo_mode {
-        let data_path = resolve_today_demo_file(&app)?;
-        if !data_path.exists() {
+        if demo_mode {
+            let data_path = resolve_today_demo_file(&app)?;
+            if !data_path.exists() {
+                return Ok(TodayFileSignature {
+                    exists: false,
+                    path: data_path.to_string_lossy().to_string(),
+                    modified_unix_ms: None,
+                    size_bytes: None,
+                    revision: None,
+                });
+            }
+
+            let meta = std::fs::metadata(&data_path).map_err(|e| e.to_string())?;
+            let modified_unix_ms = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_millis());
+
             return Ok(TodayFileSignature {
-                exists: false,
+                exists: true,
                 path: data_path.to_string_lossy().to_string(),
-                modified_unix_ms: None,
-                size_bytes: None,
+                modified_unix_ms,
+                size_bytes: Some(meta.len()),
                 revision: None,
             });
         }
 
-        let meta = std::fs::metadata(&data_path).map_err(|e| e.to_string())?;
-        let modified_unix_ms = meta
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_millis());
+        let store_path = daily_store_bridge::store_path()?;
+        let signature = daily_store_bridge::get_day_signature(&today)?;
+        let meta = std::fs::metadata(&store_path).ok();
 
-        return Ok(TodayFileSignature {
-            exists: true,
-            path: data_path.to_string_lossy().to_string(),
-            modified_unix_ms,
-            size_bytes: Some(meta.len()),
-            revision: None,
-        });
-    }
-
-    let store_path = daily_store_bridge::store_path()?;
-    let signature = daily_store_bridge::get_day_signature(&today)?;
-    let meta = std::fs::metadata(&store_path).ok();
-
-    Ok(TodayFileSignature {
-        exists: signature.is_some(),
-        path: store_path.to_string_lossy().to_string(),
-        modified_unix_ms: signature.map(|sig| sig.updated_unix_ms as u128),
-        size_bytes: meta.map(|value| value.len()),
-        revision: signature.map(|sig| sig.revision),
+        Ok(TodayFileSignature {
+            exists: signature.is_some(),
+            path: store_path.to_string_lossy().to_string(),
+            modified_unix_ms: signature.map(|sig| sig.updated_unix_ms as u128),
+            size_bytes: meta.map(|value| value.len()),
+            revision: signature.map(|sig| sig.revision),
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
-        .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
-        .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
+    run_db_blocking(app, move |conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
+            .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
 
-    // Retrain the AI model so it stays in sync with remaining data
-    let conn2 = db::get_connection(&app)?;
-    if let Err(e) = super::assignment_model::retrain_model_sync(&conn2) {
-        log::warn!("Auto-retrain after reset_app_time failed: {}", e);
-    }
-    Ok(())
+        if let Err(e) = super::assignment_model::retrain_model_sync(conn) {
+            log::warn!("Auto-retrain after reset_app_time failed: {}", e);
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -195,155 +203,157 @@ pub async fn rename_application(
         return Err("Display name cannot be empty".to_string());
     }
 
-    let conn = db::get_connection(&app)?;
-    let updated = conn
-        .execute(
-            "UPDATE applications SET display_name = ?1 WHERE id = ?2",
-            rusqlite::params![new_name, app_id],
-        )
-        .map_err(|e| e.to_string())?;
+    let new_name = new_name.to_string();
+    run_db_blocking(app, move |conn| {
+        let updated = conn
+            .execute(
+                "UPDATE applications SET display_name = ?1 WHERE id = ?2",
+                rusqlite::params![new_name, app_id],
+            )
+            .map_err(|e| e.to_string())?;
 
-    if updated == 0 {
-        return Err("Application not found".to_string());
-    }
+        if updated == 0 {
+            return Err("Application not found".to_string());
+        }
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    run_db_blocking(app, move |conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-    let exists: bool = tx
-        .query_row(
-            "SELECT COUNT(*) > 0 FROM applications WHERE id = ?1",
+        let exists: bool = tx
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM applications WHERE id = ?1",
+                [app_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !exists {
+            return Err("Application not found".to_string());
+        }
+
+        tx.execute(
+            "DELETE FROM assignment_feedback WHERE app_id = ?1 OR session_id IN (SELECT id FROM sessions WHERE app_id = ?1)",
             [app_id],
-            |row| row.get(0),
         )
         .map_err(|e| e.to_string())?;
-    if !exists {
-        return Err("Application not found".to_string());
-    }
-
-    // Remove AI/model records first to avoid orphaned rows (some tables don't use FKs).
-    tx.execute(
-        "DELETE FROM assignment_feedback WHERE app_id = ?1 OR session_id IN (SELECT id FROM sessions WHERE app_id = ?1)",
-        [app_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM assignment_suggestions WHERE app_id = ?1 OR session_id IN (SELECT id FROM sessions WHERE app_id = ?1)",
-        [app_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM assignment_model_app WHERE app_id = ?1",
-        [app_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM assignment_model_time WHERE app_id = ?1",
-        [app_id],
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Session-linked auto-run items are removed by FK cascade when sessions are deleted.
-    tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
+        tx.execute(
+            "DELETE FROM assignment_suggestions WHERE app_id = ?1 OR session_id IN (SELECT id FROM sessions WHERE app_id = ?1)",
+            [app_id],
+        )
         .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
+        tx.execute(
+            "DELETE FROM assignment_model_app WHERE app_id = ?1",
+            [app_id],
+        )
         .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM applications WHERE id = ?1", [app_id])
+        tx.execute(
+            "DELETE FROM assignment_model_time WHERE app_id = ?1",
+            [app_id],
+        )
         .map_err(|e| e.to_string())?;
 
-    tx.commit().map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM sessions WHERE app_id = ?1", [app_id])
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM applications WHERE id = ?1", [app_id])
+            .map_err(|e| e.to_string())?;
 
-    // Retrain the AI model so it stays in sync with remaining data
-    let conn2 = db::get_connection(&app)?;
-    if let Err(e) = super::assignment_model::retrain_model_sync(&conn2) {
-        log::warn!("Auto-retrain after delete_app_and_data failed: {}", e);
-    }
-    Ok(())
+        tx.commit().map_err(|e| e.to_string())?;
+
+        if let Err(e) = super::assignment_model::retrain_model_sync(conn) {
+            log::warn!("Auto-retrain after delete_app_and_data failed: {}", e);
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM file_activities WHERE app_id IN (SELECT id FROM applications WHERE project_id = ?1)",
-        [project_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM sessions WHERE app_id IN (SELECT id FROM applications WHERE project_id = ?1)",
-        [project_id],
-    )
-    .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
+    run_db_blocking(app, move |conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM file_activities WHERE app_id IN (SELECT id FROM applications WHERE project_id = ?1)",
+            [project_id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM sessions WHERE app_id IN (SELECT id FROM applications WHERE project_id = ?1)",
+            [project_id],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
 
-    // Retrain the AI model so it stays in sync with remaining data
-    let conn2 = db::get_connection(&app)?;
-    if let Err(e) = super::assignment_model::retrain_model_sync(&conn2) {
-        log::warn!("Auto-retrain after reset_project_time failed: {}", e);
-    }
-    Ok(())
+        if let Err(e) = super::assignment_model::retrain_model_sync(conn) {
+            log::warn!("Auto-retrain after reset_project_time failed: {}", e);
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
-    let mut conn = db::get_connection(&app)?;
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
-    tx.execute_batch(
-        "DELETE FROM file_activities;
-         DELETE FROM sessions;
-         DELETE FROM manual_sessions;
-         DELETE FROM applications;
-         DELETE FROM imported_files;
-         DELETE FROM project_folders;
-         DELETE FROM projects;
-         DELETE FROM session_manual_overrides;
-         DELETE FROM tombstones;
-         DELETE FROM assignment_auto_run_items;
-         DELETE FROM assignment_auto_runs;
-         DELETE FROM assignment_feedback;
-         DELETE FROM assignment_suggestions;
-         DELETE FROM assignment_model_app;
-         DELETE FROM assignment_model_token;
-         DELETE FROM assignment_model_time;
-         DELETE FROM assignment_model_state;",
-    )
-    .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(())
+    run_db_blocking(app, move |conn| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        tx.execute_batch(
+            "DELETE FROM file_activities;
+             DELETE FROM sessions;
+             DELETE FROM manual_sessions;
+             DELETE FROM applications;
+             DELETE FROM imported_files;
+             DELETE FROM project_folders;
+             DELETE FROM projects;
+             DELETE FROM session_manual_overrides;
+             DELETE FROM tombstones;
+             DELETE FROM assignment_auto_run_items;
+             DELETE FROM assignment_auto_runs;
+             DELETE FROM assignment_feedback;
+             DELETE FROM assignment_suggestions;
+             DELETE FROM assignment_model_app;
+             DELETE FROM assignment_model_token;
+             DELETE FROM assignment_model_time;
+             DELETE FROM assignment_model_state;",
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn export_database(app: AppHandle, path: String) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        if path.contains('\0') {
+            return Err("Export path contains invalid null byte".to_string());
+        }
 
-    if path.contains('\0') {
-        return Err("Export path contains invalid null byte".to_string());
-    }
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .map_err(|e| format!("Failed WAL checkpoint before export: {}", e))?;
 
-    // Flush WAL content into the main database file before export.
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-        .map_err(|e| format!("Failed WAL checkpoint before export: {}", e))?;
+        let export_path = std::path::Path::new(&path);
+        if export_path.exists() {
+            std::fs::remove_file(export_path)
+                .map_err(|e| format!("Cannot replace existing export file: {}", e))?;
+        }
 
-    let export_path = std::path::Path::new(&path);
-    if export_path.exists() {
-        std::fs::remove_file(export_path)
-            .map_err(|e| format!("Cannot replace existing export file: {}", e))?;
-    }
-
-    // VACUUM INTO creates a consistent standalone SQLite snapshot.
-    let quoted_path: String = conn
-        .query_row("SELECT quote(?1)", [&path], |row| row.get(0))
-        .map_err(|e| format!("Failed to escape export path: {}", e))?;
-    let vacuum_sql = format!("VACUUM INTO {}", quoted_path);
-    conn.execute_batch(&vacuum_sql)
-        .map_err(|e| format!("Database export failed: {}", e))?;
-    Ok(())
+        let quoted_path: String = conn
+            .query_row("SELECT quote(?1)", [&path], |row| row.get(0))
+            .map_err(|e| format!("Failed to escape export path: {}", e))?;
+        let vacuum_sql = format!("VACUUM INTO {}", quoted_path);
+        conn.execute_batch(&vacuum_sql)
+            .map_err(|e| format!("Database export failed: {}", e))?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -365,5 +375,5 @@ pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, 
 
 #[tauri::command]
 pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, String> {
-    db::set_demo_mode(&app, enabled)
+    run_app_blocking(app, move |app| db::set_demo_mode(&app, enabled)).await
 }

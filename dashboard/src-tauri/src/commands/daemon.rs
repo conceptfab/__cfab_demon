@@ -5,7 +5,9 @@ use tauri::AppHandle;
 #[path = "../../../../shared/version_compat.rs"]
 mod version_compat;
 
-use super::helpers::{no_console, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
+use super::helpers::{
+    no_console, run_app_blocking, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME,
+};
 use super::types::DaemonStatus;
 use crate::db;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
@@ -148,80 +150,81 @@ pub async fn get_daemon_status(
     app: AppHandle,
     min_duration: Option<i64>,
 ) -> Result<DaemonStatus, String> {
-    let mut cmd = Command::new("tasklist");
-    no_console(&mut cmd);
-    let output = cmd
-        .args([
-            "/FI",
-            &format!("IMAGENAME eq {}", DAEMON_EXE_NAME),
-            "/FO",
-            "CSV",
-            "/NH",
-        ])
-        .output()
-        .map_err(|e| e.to_string())?;
+    run_app_blocking(app, move |app| {
+        let mut cmd = Command::new("tasklist");
+        no_console(&mut cmd);
+        let output = cmd
+            .args([
+                "/FI",
+                &format!("IMAGENAME eq {}", DAEMON_EXE_NAME),
+                "/FO",
+                "CSV",
+                "/NH",
+            ])
+            .output()
+            .map_err(|e| e.to_string())?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut running = false;
-    let mut pid = None;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let mut running = false;
+        let mut pid = None;
 
-    for line in stdout.lines() {
-        if line.contains(DAEMON_EXE_NAME) {
-            running = true;
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 2 {
-                pid = parts[1].trim_matches('"').parse::<u32>().ok();
-            }
-            break;
-        }
-    }
-
-    let exe_path = find_daemon_exe()
-        .ok()
-        .map(|p| p.to_string_lossy().to_string());
-    let autostart = startup_dir()
-        .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
-        .unwrap_or(false);
-    let min_dur = min_duration.unwrap_or(0);
-    let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app, min_dur);
-    // Always write the current unassigned count so the daemon tray icon
-    // can switch between normal and attention icons.
-    // When daemon is not running, write 0 (no point signalling).
-    if running {
-        write_assignment_signal(unassigned_sessions);
-    } else {
-        write_assignment_signal(0);
-    }
-
-    let mut daemon_version = None;
-    if let Ok(exe) = find_daemon_exe() {
-        let mut v_cmd = Command::new(&exe);
-        no_console(&mut v_cmd);
-        if let Ok(output) = v_cmd.arg("--version").output() {
-            if output.status.success() {
-                daemon_version = Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        for line in stdout.lines() {
+            if line.contains(DAEMON_EXE_NAME) {
+                running = true;
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() >= 2 {
+                    pid = parts[1].trim_matches('"').parse::<u32>().ok();
+                }
+                break;
             }
         }
-    }
 
-    let is_compatible = if let Some(ref dv) = daemon_version {
-        version_compat::check_version_compatibility(dv, crate::VERSION.trim())
-    } else {
-        true // If we can't find daemon version, we'll assume it's okay or handle it in UI
-    };
+        let exe_path = find_daemon_exe()
+            .ok()
+            .map(|p| p.to_string_lossy().to_string());
+        let autostart = startup_dir()
+            .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
+            .unwrap_or(false);
+        let min_dur = min_duration.unwrap_or(0);
+        let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app, min_dur);
+        if running {
+            write_assignment_signal(unassigned_sessions);
+        } else {
+            write_assignment_signal(0);
+        }
 
-    Ok(DaemonStatus {
-        running,
-        pid,
-        exe_path,
-        autostart,
-        needs_assignment: unassigned_sessions > 0,
-        unassigned_sessions,
-        unassigned_apps,
-        version: daemon_version,
-        dashboard_version: crate::VERSION.trim().to_string(),
-        is_compatible,
+        let mut daemon_version = None;
+        if let Ok(exe) = find_daemon_exe() {
+            let mut v_cmd = Command::new(&exe);
+            no_console(&mut v_cmd);
+            if let Ok(output) = v_cmd.arg("--version").output() {
+                if output.status.success() {
+                    daemon_version =
+                        Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+                }
+            }
+        }
+
+        let is_compatible = if let Some(ref dv) = daemon_version {
+            version_compat::check_version_compatibility(dv, crate::VERSION.trim())
+        } else {
+            true
+        };
+
+        Ok(DaemonStatus {
+            running,
+            pid,
+            exe_path,
+            autostart,
+            needs_assignment: unassigned_sessions > 0,
+            unassigned_sessions,
+            unassigned_apps,
+            version: daemon_version,
+            dashboard_version: crate::VERSION.trim().to_string(),
+            is_compatible,
+        })
     })
+    .await
 }
 
 #[tauri::command]

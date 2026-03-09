@@ -5,9 +5,9 @@ use chrono::{
 use std::collections::{BTreeMap, HashMap};
 use tauri::AppHandle;
 
+use super::helpers::run_db_blocking;
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{DateRange, HeatmapCell, StackedBarData};
-use crate::db;
 
 #[derive(Clone, Copy)]
 enum BucketKind {
@@ -370,37 +370,38 @@ pub async fn get_heatmap(
     app: AppHandle,
     date_range: DateRange,
 ) -> Result<Vec<HeatmapCell>, String> {
-    let conn = db::get_connection(&app)?;
+    run_db_blocking(app, move |conn| {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT CAST(strftime('%w', date) AS INTEGER) as day_of_week,
+                        CAST(SUBSTR(start_time, 12, 2) AS INTEGER) as hour,
+                        SUM(val)
+                 FROM (
+                     SELECT date, start_time, duration_seconds * COALESCE(rate_multiplier, 1.0) as val FROM sessions
+                     WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
+                     UNION ALL
+                     SELECT date, start_time, duration_seconds as val FROM manual_sessions
+                     WHERE date >= ?1 AND date <= ?2
+                 )
+                 GROUP BY day_of_week, hour
+                 ORDER BY day_of_week, hour",
+            )
+            .map_err(|e| e.to_string())?;
 
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT CAST(strftime('%w', date) AS INTEGER) as day_of_week,
-                    CAST(SUBSTR(start_time, 12, 2) AS INTEGER) as hour,
-                    SUM(val)
-             FROM (
-                 SELECT date, start_time, duration_seconds * COALESCE(rate_multiplier, 1.0) as val FROM sessions
-                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
-                 UNION ALL
-                 SELECT date, start_time, duration_seconds as val FROM manual_sessions
-                 WHERE date >= ?1 AND date <= ?2
-             )
-             GROUP BY day_of_week, hour
-             ORDER BY day_of_week, hour",
-        )
-        .map_err(|e| e.to_string())?;
-
-    let rows = stmt
-        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-            Ok(HeatmapCell {
-                day: row.get(0)?,
-                hour: row.get(1)?,
-                seconds: (row.get::<_, f64>(2)?).round() as i64,
+        let rows = stmt
+            .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
+                Ok(HeatmapCell {
+                    day: row.get(0)?,
+                    hour: row.get(1)?,
+                    seconds: (row.get::<_, f64>(2)?).round() as i64,
+                })
             })
-        })
-        .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?;
 
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("Failed to read heatmap row: {}", e))
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read heatmap row: {}", e))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -409,59 +410,61 @@ pub async fn get_stacked_timeline(
     date_range: DateRange,
     limit: i64,
 ) -> Result<Vec<StackedBarData>, String> {
-    let conn = db::get_connection(&app)?;
-    let mut stmt = conn
-        .prepare_cached(
-            "SELECT s.date, a.display_name, SUM(s.duration_seconds * COALESCE(s.rate_multiplier, 1.0))
-             FROM sessions s
-             JOIN applications a ON a.id = s.app_id
-             WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-             AND a.id IN (
-                SELECT app_id FROM sessions
-                WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
-                GROUP BY app_id
-                ORDER BY SUM(duration_seconds) DESC
-                LIMIT ?3
-             )
-             GROUP BY s.date, a.display_name
-             ORDER BY s.date",
-        )
-        .map_err(|e| e.to_string())?;
+    run_db_blocking(app, move |conn| {
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT s.date, a.display_name, SUM(s.duration_seconds * COALESCE(s.rate_multiplier, 1.0))
+                 FROM sessions s
+                 JOIN applications a ON a.id = s.app_id
+                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+                 AND a.id IN (
+                    SELECT app_id FROM sessions
+                    WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
+                    GROUP BY app_id
+                    ORDER BY SUM(duration_seconds) DESC
+                    LIMIT ?3
+                 )
+                 GROUP BY s.date, a.display_name
+                 ORDER BY s.date",
+            )
+            .map_err(|e| e.to_string())?;
 
-    let rows = stmt
-        .query_map(
-            rusqlite::params![date_range.start, date_range.end, limit],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, f64>(2)?,
-                ))
-            },
-        )
-        .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(
+                rusqlite::params![date_range.start, date_range.end, limit],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, f64>(2)?,
+                    ))
+                },
+            )
+            .map_err(|e| e.to_string())?;
 
-    let mut date_map: std::collections::BTreeMap<String, HashMap<String, i64>> =
-        std::collections::BTreeMap::new();
+        let mut date_map: std::collections::BTreeMap<String, HashMap<String, i64>> =
+            std::collections::BTreeMap::new();
 
-    for row in rows {
-        let row = row.map_err(|e| format!("Failed to read stacked timeline row: {}", e))?;
-        date_map
-            .entry(row.0)
-            .or_default()
-            .insert(row.1, row.2.round() as i64);
-    }
+        for row in rows {
+            let row = row.map_err(|e| format!("Failed to read stacked timeline row: {}", e))?;
+            date_map
+                .entry(row.0)
+                .or_default()
+                .insert(row.1, row.2.round() as i64);
+        }
 
-    Ok(date_map
-        .into_iter()
-        .map(|(date, data)| StackedBarData {
-            date,
-            data,
-            has_boost: false,
-            has_manual: false,
-            comments: Vec::new(),
-        })
-        .collect())
+        Ok(date_map
+            .into_iter()
+            .map(|(date, data)| StackedBarData {
+                date,
+                data,
+                has_boost: false,
+                has_manual: false,
+                comments: Vec::new(),
+            })
+            .collect())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -472,62 +475,65 @@ pub async fn get_project_timeline(
     granularity: Option<String>,
     id: Option<i64>,
 ) -> Result<Vec<StackedBarData>, String> {
-    let conn = db::get_connection(&app)?;
-    let limit = limit.unwrap_or(8).clamp(1, 200) as usize;
-    let hourly = matches!(granularity.as_deref(), Some("hour"));
-    let (bucket_project_seconds, total_by_project, bucket_flags, bucket_comments) =
-        compute_project_activity_unique(&conn, &date_range, hourly, true, id)?;
+    run_db_blocking(app, move |conn| {
+        let limit = limit.unwrap_or(8).clamp(1, 200) as usize;
+        let hourly = matches!(granularity.as_deref(), Some("hour"));
+        let (bucket_project_seconds, total_by_project, bucket_flags, bucket_comments) =
+            compute_project_activity_unique(conn, &date_range, hourly, true, id)?;
 
-    if bucket_project_seconds.is_empty() {
-        return Ok(Vec::new());
-    }
+        if bucket_project_seconds.is_empty() {
+            return Ok(Vec::new());
+        }
 
-    let mut ranked_projects: Vec<(String, f64)> = total_by_project.into_iter().collect();
-    ranked_projects.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-    let selected_projects: Vec<String> = ranked_projects
-        .into_iter()
-        .take(limit)
-        .map(|(name, _)| name)
-        .collect();
-    let selected_set: std::collections::HashSet<&str> =
-        selected_projects.iter().map(|s| s.as_str()).collect();
+        let mut ranked_projects: Vec<(String, f64)> = total_by_project.into_iter().collect();
+        ranked_projects.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let selected_projects: Vec<String> = ranked_projects
+            .into_iter()
+            .take(limit)
+            .map(|(name, _)| name)
+            .collect();
+        let selected_set: std::collections::HashSet<&str> =
+            selected_projects.iter().map(|s| s.as_str()).collect();
 
-    let mut output = Vec::with_capacity(bucket_project_seconds.len());
-    for (bucket, sec_map) in bucket_project_seconds {
-        let mut data: HashMap<String, i64> = HashMap::new();
-        let mut other_seconds = 0i64;
-        for project_name in &selected_projects {
-            if let Some(seconds) = sec_map.get(project_name) {
-                let rounded = seconds.round() as i64;
-                if rounded > 0 {
-                    data.insert(project_name.clone(), rounded);
+        let mut output = Vec::with_capacity(bucket_project_seconds.len());
+        for (bucket, sec_map) in bucket_project_seconds {
+            let mut data: HashMap<String, i64> = HashMap::new();
+            let mut other_seconds = 0i64;
+            for project_name in &selected_projects {
+                if let Some(seconds) = sec_map.get(project_name) {
+                    let rounded = seconds.round() as i64;
+                    if rounded > 0 {
+                        data.insert(project_name.clone(), rounded);
+                    }
                 }
             }
-        }
-        for (project_name, seconds) in &sec_map {
-            if selected_set.contains(project_name.as_str()) {
-                continue;
+            for (project_name, seconds) in &sec_map {
+                if selected_set.contains(project_name.as_str()) {
+                    continue;
+                }
+                let rounded = seconds.round() as i64;
+                if rounded > 0 {
+                    other_seconds += rounded;
+                }
             }
-            let rounded = seconds.round() as i64;
-            if rounded > 0 {
-                other_seconds += rounded;
+            if other_seconds > 0 {
+                data.insert("Other".to_string(), other_seconds);
             }
+            let (has_boost, has_manual) =
+                bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
+            let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
+            output.push(StackedBarData {
+                date: bucket,
+                data,
+                has_boost,
+                has_manual,
+                comments,
+            });
         }
-        if other_seconds > 0 {
-            data.insert("Other".to_string(), other_seconds);
-        }
-        let (has_boost, has_manual) = bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
-        let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
-        output.push(StackedBarData {
-            date: bucket,
-            data,
-            has_boost,
-            has_manual,
-            comments,
-        });
-    }
 
-    Ok(output)
+        Ok(output)
+    })
+    .await
 }
 
 #[cfg(test)]

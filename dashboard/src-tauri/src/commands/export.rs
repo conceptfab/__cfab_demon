@@ -1,5 +1,5 @@
 use super::daily_store_bridge;
-use super::helpers::timeflow_data_dir;
+use super::helpers::{run_app_blocking, timeflow_data_dir};
 use super::types::{
     AppDailyData, ApplicationRow, DailyData, DateRange, ExportArchive, ExportData, ExportMetadata,
     ManualSession, Project, SessionRow,
@@ -34,14 +34,14 @@ fn load_demo_daily_files(start: &str, end: &str) -> Result<BTreeMap<String, Dail
             continue;
         }
 
-        let Some(file_name) = path.file_name().map(|name| name.to_string_lossy().to_string()) else {
+        let Some(file_name) = path
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+        else {
             continue;
         };
         let date_prefix: String = file_name.chars().take(10).collect();
-        if date_prefix.len() != 10
-            || date_prefix.as_str() < start
-            || date_prefix.as_str() > end
-        {
+        if date_prefix.len() != 10 || date_prefix.as_str() < start || date_prefix.as_str() > end {
             continue;
         }
 
@@ -300,9 +300,7 @@ fn build_export_archive(
                     let filtered_apps: BTreeMap<String, AppDailyData> = daily
                         .apps
                         .into_iter()
-                        .filter(|(exe, _)| {
-                            applications.iter().any(|a| a.executable_name == *exe)
-                        })
+                        .filter(|(exe, _)| applications.iter().any(|a| a.executable_name == *exe))
                         .collect();
                     if filtered_apps.is_empty() {
                         None
@@ -381,7 +379,10 @@ pub async fn export_data(
     date_start: Option<String>,
     date_end: Option<String>,
 ) -> Result<String, String> {
-    let (archive, default_name) = build_export_archive(&app, project_id, date_start, date_end)?;
+    let (archive, default_name) = run_app_blocking(app, move |app| {
+        build_export_archive(&app, project_id, date_start, date_end)
+    })
+    .await?;
 
     // Save dialog
     let path = AsyncFileDialog::new()
@@ -406,6 +407,9 @@ pub async fn export_data_archive(
     date_start: Option<String>,
     date_end: Option<String>,
 ) -> Result<ExportArchive, String> {
-    let (archive, _default_name) = build_export_archive(&app, project_id, date_start, date_end)?;
+    let (archive, _default_name) = run_app_blocking(app, move |app| {
+        build_export_archive(&app, project_id, date_start, date_end)
+    })
+    .await?;
     Ok(archive)
 }

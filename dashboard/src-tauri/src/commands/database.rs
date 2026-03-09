@@ -1,3 +1,4 @@
+use super::helpers::{run_app_blocking, run_db_blocking, timeflow_data_dir};
 use crate::db;
 use chrono::{DateTime, Local};
 use rusqlite::OpenFlags;
@@ -32,57 +33,41 @@ pub struct DatabaseSettings {
     pub last_optimize_at: Option<String>,
 }
 
-#[tauri::command]
-pub async fn get_db_info(app: AppHandle) -> Result<DbInfo, String> {
-    let status = db::get_demo_mode_status(&app)?;
-    let path = status.active_db_path;
-    let meta = fs::metadata(&path).map_err(|e| format!("Failed to read DB metadata: {}", e))?;
-
-    Ok(DbInfo {
-        path,
-        size_bytes: meta.len(),
-    })
-}
-
-#[tauri::command]
-pub async fn vacuum_database(app: AppHandle) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    conn.execute_batch("VACUUM;")
-        .map_err(|e| format!("VACUUM failed: {}", e))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, String> {
-    let vacuum_on_startup = db::get_system_setting(&app, "vacuum_on_startup")?
+fn load_database_settings(app: &AppHandle) -> Result<DatabaseSettings, String> {
+    let vacuum_on_startup = db::get_system_setting(app, "vacuum_on_startup")?
         .map(|v| v == "true")
         .unwrap_or(false);
 
-    let backup_enabled = db::get_system_setting(&app, "backup_enabled")?
+    let backup_enabled = db::get_system_setting(app, "backup_enabled")?
         .map(|v| v == "true")
         .unwrap_or(false);
 
-    let backup_path = db::get_system_setting(&app, "backup_path")?.unwrap_or_default();
+    let backup_path = db::get_system_setting(app, "backup_path")?.unwrap_or_default();
 
-    let backup_interval_days = db::get_system_setting(&app, "backup_interval_days")?
+    let backup_interval_days = db::get_system_setting(app, "backup_interval_days")?
         .and_then(|v| v.parse().ok())
         .unwrap_or(7);
 
-    let last_backup_at = db::get_system_setting(&app, "last_backup_at")?;
+    let last_backup_at = db::get_system_setting(app, "last_backup_at")?;
 
-    let auto_optimize_enabled = db::get_system_setting(&app, "auto_optimize_enabled")?
+    let auto_optimize_enabled = db::get_system_setting(app, "auto_optimize_enabled")?
         .map(|v| v == "true")
         .unwrap_or(true);
 
-    let auto_optimize_interval_hours =
-        db::get_system_setting(&app, "auto_optimize_interval_hours")?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(24);
+    let auto_optimize_interval_hours = db::get_system_setting(app, "auto_optimize_interval_hours")?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(24);
 
-    let last_optimize_at = db::get_system_setting(&app, "last_optimize_at")?;
+    let last_optimize_at = db::get_system_setting(app, "last_optimize_at")?;
 
-    log::info!("Loaded database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
-        vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, auto_optimize_interval_hours);
+    log::info!(
+        "Loaded database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
+        vacuum_on_startup,
+        backup_enabled,
+        backup_interval_days,
+        auto_optimize_enabled,
+        auto_optimize_interval_hours
+    );
 
     Ok(DatabaseSettings {
         vacuum_on_startup,
@@ -94,6 +79,36 @@ pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, S
         auto_optimize_interval_hours,
         last_optimize_at,
     })
+}
+
+#[tauri::command]
+pub async fn get_db_info(app: AppHandle) -> Result<DbInfo, String> {
+    run_app_blocking(app, move |app| {
+        let status = db::get_demo_mode_status(&app)?;
+        let path = status.active_db_path;
+        let meta = fs::metadata(&path).map_err(|e| format!("Failed to read DB metadata: {}", e))?;
+
+        Ok(DbInfo {
+            path,
+            size_bytes: meta.len(),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn vacuum_database(app: AppHandle) -> Result<(), String> {
+    run_db_blocking(app, move |conn| {
+        conn.execute_batch("VACUUM;")
+            .map_err(|e| format!("VACUUM failed: {}", e))?;
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, String> {
+    run_app_blocking(app, move |app| load_database_settings(&app)).await
 }
 
 #[tauri::command]
@@ -110,65 +125,73 @@ pub async fn update_database_settings(
     log::info!("Updating database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
         vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, normalized_auto_optimize_interval_hours);
 
-    db::set_system_setting(&app, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
-    db::set_system_setting(&app, "backup_enabled", &backup_enabled.to_string())?;
-    db::set_system_setting(&app, "backup_path", &backup_path)?;
-    db::set_system_setting(
-        &app,
-        "backup_interval_days",
-        &backup_interval_days.to_string(),
-    )?;
-    db::set_system_setting(
-        &app,
-        "auto_optimize_enabled",
-        &auto_optimize_enabled.to_string(),
-    )?;
-    db::set_system_setting(
-        &app,
-        "auto_optimize_interval_hours",
-        &normalized_auto_optimize_interval_hours.to_string(),
-    )?;
-    Ok(())
+    run_app_blocking(app, move |app| {
+        db::set_system_setting(&app, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
+        db::set_system_setting(&app, "backup_enabled", &backup_enabled.to_string())?;
+        db::set_system_setting(&app, "backup_path", &backup_path)?;
+        db::set_system_setting(
+            &app,
+            "backup_interval_days",
+            &backup_interval_days.to_string(),
+        )?;
+        db::set_system_setting(
+            &app,
+            "auto_optimize_enabled",
+            &auto_optimize_enabled.to_string(),
+        )?;
+        db::set_system_setting(
+            &app,
+            "auto_optimize_interval_hours",
+            &normalized_auto_optimize_interval_hours.to_string(),
+        )?;
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn optimize_database(app: AppHandle) -> Result<(), String> {
-    let conn = db::get_connection(&app)?;
-    db::optimize_database_internal(&conn)
+    run_db_blocking(app, move |conn| db::optimize_database_internal(conn)).await
 }
 
 #[tauri::command]
 pub async fn perform_manual_backup(app: AppHandle) -> Result<String, String> {
-    let settings = get_database_settings(app.clone()).await?;
-    if settings.backup_path.is_empty() {
-        return Err("Backup path is not configured".to_string());
-    }
+    run_app_blocking(app, move |app| {
+        let settings = load_database_settings(&app)?;
+        if settings.backup_path.is_empty() {
+            return Err("Backup path is not configured".to_string());
+        }
 
-    let conn = db::get_connection(&app)?;
-    let result = db::perform_backup_internal(&conn, &settings.backup_path)?;
+        let conn = db::get_connection(&app)?;
+        let result = db::perform_backup_internal(&conn, &settings.backup_path)?;
 
-    let now = chrono::Local::now().to_rfc3339();
-    db::set_system_setting(&app, "last_backup_at", &now)?;
+        let now = chrono::Local::now().to_rfc3339();
+        db::set_system_setting(&app, "last_backup_at", &now)?;
 
-    Ok(result)
+        Ok(result)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
-    let status = db::get_demo_mode_status(&app)?;
-    let path = Path::new(&status.active_db_path);
-    let folder = path.parent().ok_or("Invalid DB path")?;
+    run_app_blocking(app, move |app| {
+        let status = db::get_demo_mode_status(&app)?;
+        let path = Path::new(&status.active_db_path);
+        let folder = path.parent().ok_or("Invalid DB path")?;
 
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        Command::new("explorer")
-            .arg(folder)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
+        #[cfg(target_os = "windows")]
+        {
+            use std::process::Command;
+            Command::new("explorer")
+                .arg(folder)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
 
-    Ok(())
+        Ok(())
+    })
+    .await
 }
 
 pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Result<(), String> {
@@ -263,43 +286,49 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
 
 #[tauri::command]
 pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<(), String> {
-    restore_database_from_file_internal(&app, &path)
+    run_app_blocking(app, move |app| {
+        restore_database_from_file_internal(&app, &path)
+    })
+    .await
 }
 #[tauri::command]
 pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String> {
-    let backup_path_str = db::get_system_setting(&app, "backup_path")?.unwrap_or_default();
+    run_app_blocking(app, move |app| {
+        let backup_path_str = db::get_system_setting(&app, "backup_path")?.unwrap_or_default();
 
-    if backup_path_str.is_empty() {
-        return Ok(vec![]);
-    }
+        if backup_path_str.is_empty() {
+            return Ok(vec![]);
+        }
 
-    let backup_path = Path::new(&backup_path_str);
-    if !backup_path.exists() || !backup_path.is_dir() {
-        return Ok(vec![]);
-    }
+        let backup_path = Path::new(&backup_path_str);
+        if !backup_path.exists() || !backup_path.is_dir() {
+            return Ok(vec![]);
+        }
 
-    let mut files = vec![];
-    if let Ok(entries) = fs::read_dir(backup_path) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("db") {
-                if let Ok(meta) = entry.metadata() {
-                    if let Ok(modified) = meta.modified() {
-                        let dt: DateTime<Local> = modified.into();
-                        files.push(BackupFile {
-                            name: entry.file_name().to_string_lossy().to_string(),
-                            path: path.to_string_lossy().to_string(),
-                            size_bytes: meta.len(),
-                            modified_at: dt.to_rfc3339(),
-                        });
+        let mut files = vec![];
+        if let Ok(entries) = fs::read_dir(backup_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("db") {
+                    if let Ok(meta) = entry.metadata() {
+                        if let Ok(modified) = meta.modified() {
+                            let dt: DateTime<Local> = modified.into();
+                            files.push(BackupFile {
+                                name: entry.file_name().to_string_lossy().to_string(),
+                                path: path.to_string_lossy().to_string(),
+                                size_bytes: meta.len(),
+                                modified_at: dt.to_rfc3339(),
+                            });
+                        }
                     }
                 }
             }
         }
-    }
 
-    files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
-    Ok(files)
+        files.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+        Ok(files)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -361,47 +390,53 @@ fn collect_cleanup_paths(base_dir: &Path, demo_mode: bool) -> Vec<std::path::Pat
 
 #[tauri::command]
 pub async fn get_data_folder_stats(app: AppHandle) -> Result<DataFolderStats, String> {
-    let base_dir = super::helpers::timeflow_data_dir()?;
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
-    let paths = collect_cleanup_paths(&base_dir, demo_mode);
+    run_app_blocking(app, move |app| {
+        let base_dir = timeflow_data_dir()?;
+        let demo_mode = db::is_demo_mode_enabled(&app)?;
+        let paths = collect_cleanup_paths(&base_dir, demo_mode);
 
-    let mut total_bytes: u64 = 0;
-    for p in &paths {
-        if let Ok(meta) = fs::metadata(p) {
-            total_bytes += meta.len();
+        let mut total_bytes: u64 = 0;
+        for p in &paths {
+            if let Ok(meta) = fs::metadata(p) {
+                total_bytes += meta.len();
+            }
         }
-    }
 
-    Ok(DataFolderStats {
-        file_count: paths.len() as u64,
-        total_bytes,
+        Ok(DataFolderStats {
+            file_count: paths.len() as u64,
+            total_bytes,
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn cleanup_data_folder(app: AppHandle) -> Result<CleanupResult, String> {
-    let base_dir = super::helpers::timeflow_data_dir()?;
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
-    let paths = collect_cleanup_paths(&base_dir, demo_mode);
+    run_app_blocking(app, move |app| {
+        let base_dir = timeflow_data_dir()?;
+        let demo_mode = db::is_demo_mode_enabled(&app)?;
+        let paths = collect_cleanup_paths(&base_dir, demo_mode);
 
-    let mut files_deleted: u64 = 0;
-    let mut bytes_freed: u64 = 0;
+        let mut files_deleted: u64 = 0;
+        let mut bytes_freed: u64 = 0;
 
-    for p in &paths {
-        let size = fs::metadata(p).map(|m| m.len()).unwrap_or(0);
-        match fs::remove_file(p) {
-            Ok(()) => {
-                files_deleted += 1;
-                bytes_freed += size;
-            }
-            Err(e) => {
-                log::warn!("Failed to delete '{}': {}", p.display(), e);
+        for p in &paths {
+            let size = fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+            match fs::remove_file(p) {
+                Ok(()) => {
+                    files_deleted += 1;
+                    bytes_freed += size;
+                }
+                Err(e) => {
+                    log::warn!("Failed to delete '{}': {}", p.display(), e);
+                }
             }
         }
-    }
 
-    Ok(CleanupResult {
-        files_deleted,
-        bytes_freed,
+        Ok(CleanupResult {
+            files_deleted,
+            bytes_freed,
+        })
     })
+    .await
 }

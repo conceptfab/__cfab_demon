@@ -1,5 +1,5 @@
 use super::daily_store_bridge;
-use super::helpers::{timeflow_data_dir, validate_import_path};
+use super::helpers::{run_app_blocking, timeflow_data_dir, validate_import_path};
 use super::types::{ExportArchive, ImportSummary, ImportValidation, SessionConflict, SessionRow};
 use crate::db;
 use std::collections::{HashMap, HashSet};
@@ -8,7 +8,10 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
-fn save_demo_daily_file(date: &str, daily: &crate::commands::types::DailyData) -> Result<(), String> {
+fn save_demo_daily_file(
+    date: &str,
+    daily: &crate::commands::types::DailyData,
+) -> Result<(), String> {
     let fake_data_dir = timeflow_data_dir()?.join("fake_data");
     if !fake_data_dir.exists() {
         fs::create_dir_all(&fake_data_dir).map_err(|e| e.to_string())?;
@@ -38,91 +41,92 @@ pub async fn validate_import(
     app: AppHandle,
     archive_path: String,
 ) -> Result<ImportValidation, String> {
-    validate_import_path(&archive_path)?;
-    let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
-    let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    let conn = db::get_connection(&app)?;
+    run_app_blocking(app, move |app| {
+        validate_import_path(&archive_path)?;
+        let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
+        let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        let conn = db::get_connection(&app)?;
 
-    let mut existing_projects: HashSet<String> = HashSet::new();
-    let mut stmt = conn
-        .prepare_cached("SELECT name FROM projects")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let name = row.map_err(|e| format!("Failed to read existing project row: {}", e))?;
-        existing_projects.insert(name);
-    }
-
-    let mut existing_apps: HashSet<String> = HashSet::new();
-    let mut stmt = conn
-        .prepare_cached("SELECT executable_name FROM applications")
-        .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|e| e.to_string())?;
-    for row in rows {
-        let exe = row.map_err(|e| format!("Failed to read existing application row: {}", e))?;
-        existing_apps.insert(exe);
-    }
-
-    let mut missing_projects = Vec::new();
-    let mut missing_applications = Vec::new();
-    let mut overlapping_sessions = Vec::new();
-    let app_exe_by_id: HashMap<i64, String> = archive
-        .data
-        .applications
-        .iter()
-        .map(|a| (a.id, a.executable_name.clone()))
-        .collect();
-
-    // Check Projects
-    for p in &archive.data.projects {
-        if !existing_projects.contains(&p.name) {
-            missing_projects.push(p.name.clone());
+        let mut existing_projects: HashSet<String> = HashSet::new();
+        let mut stmt = conn
+            .prepare_cached("SELECT name FROM projects")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let name = row.map_err(|e| format!("Failed to read existing project row: {}", e))?;
+            existing_projects.insert(name);
         }
-    }
 
-    // Check Applications
-    for a in &archive.data.applications {
-        if !existing_apps.contains(&a.executable_name) {
-            missing_applications.push(format!("{} ({})", a.display_name, a.executable_name));
+        let mut existing_apps: HashSet<String> = HashSet::new();
+        let mut stmt = conn
+            .prepare_cached("SELECT executable_name FROM applications")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let exe = row.map_err(|e| format!("Failed to read existing application row: {}", e))?;
+            existing_apps.insert(exe);
         }
-    }
 
-    // Check Overlapping Sessions in one DB pass:
-    // stage archive sessions into a TEMP table and join with local sessions.
-    if !archive.data.sessions.is_empty() {
-        conn.execute_batch(
-            "CREATE TEMP TABLE IF NOT EXISTS _tf_import_session_probe (
+        let mut missing_projects = Vec::new();
+        let mut missing_applications = Vec::new();
+        let mut overlapping_sessions = Vec::new();
+        let app_exe_by_id: HashMap<i64, String> = archive
+            .data
+            .applications
+            .iter()
+            .map(|a| (a.id, a.executable_name.clone()))
+            .collect();
+
+        // Check Projects
+        for p in &archive.data.projects {
+            if !existing_projects.contains(&p.name) {
+                missing_projects.push(p.name.clone());
+            }
+        }
+
+        // Check Applications
+        for a in &archive.data.applications {
+            if !existing_apps.contains(&a.executable_name) {
+                missing_applications.push(format!("{} ({})", a.display_name, a.executable_name));
+            }
+        }
+
+        // Check Overlapping Sessions in one DB pass:
+        // stage archive sessions into a TEMP table and join with local sessions.
+        if !archive.data.sessions.is_empty() {
+            conn.execute_batch(
+                "CREATE TEMP TABLE IF NOT EXISTS _tf_import_session_probe (
                  executable_name TEXT NOT NULL,
                  start_time TEXT NOT NULL,
                  end_time TEXT NOT NULL
              );
              DELETE FROM _tf_import_session_probe;",
-        )
-        .map_err(|e| e.to_string())?;
+            )
+            .map_err(|e| e.to_string())?;
 
-        {
-            let mut insert_probe = conn
+            {
+                let mut insert_probe = conn
                 .prepare_cached(
                     "INSERT INTO _tf_import_session_probe (executable_name, start_time, end_time)
                      VALUES (?1, ?2, ?3)",
                 )
                 .map_err(|e| e.to_string())?;
-            for s in &archive.data.sessions {
-                if let Some(exe) = app_exe_by_id.get(&s.app_id) {
-                    insert_probe
-                        .execute(rusqlite::params![exe, s.start_time, s.end_time])
-                        .map_err(|e| e.to_string())?;
+                for s in &archive.data.sessions {
+                    if let Some(exe) = app_exe_by_id.get(&s.app_id) {
+                        insert_probe
+                            .execute(rusqlite::params![exe, s.start_time, s.end_time])
+                            .map_err(|e| e.to_string())?;
+                    }
                 }
             }
-        }
 
-        let mut overlap_stmt = conn
-            .prepare_cached(
-                "SELECT
+            let mut overlap_stmt = conn
+                .prepare_cached(
+                    "SELECT
                      i.start_time,
                      i.end_time,
                      s.start_time,
@@ -136,47 +140,50 @@ pub async fn validate_import(
                   AND i.start_time < s.end_time
                   AND i.end_time > s.start_time
                  LIMIT 11",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = overlap_stmt
-            .query_map([], |row| {
-                Ok(SessionConflict {
-                    app_name: row.get(4)?,
-                    start: row.get(0)?,
-                    end: row.get(1)?,
-                    existing_start: row.get(2)?,
-                    existing_end: row.get(3)?,
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = overlap_stmt
+                .query_map([], |row| {
+                    Ok(SessionConflict {
+                        app_name: row.get(4)?,
+                        start: row.get(0)?,
+                        end: row.get(1)?,
+                        existing_start: row.get(2)?,
+                        existing_end: row.get(3)?,
+                    })
                 })
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            overlapping_sessions
-                .push(row.map_err(|e| format!("Failed to read overlap conflict row: {}", e))?);
-            if overlapping_sessions.len() > 10 {
-                break;
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                overlapping_sessions
+                    .push(row.map_err(|e| format!("Failed to read overlap conflict row: {}", e))?);
+                if overlapping_sessions.len() > 10 {
+                    break;
+                }
             }
+
+            conn.execute("DELETE FROM _tf_import_session_probe", [])
+                .map_err(|e| e.to_string())?;
         }
 
-        conn.execute("DELETE FROM _tf_import_session_probe", [])
-            .map_err(|e| e.to_string())?;
-    }
-
-    Ok(ImportValidation {
-        valid: missing_projects.is_empty()
-            && missing_applications.is_empty()
-            && overlapping_sessions.is_empty(),
-        missing_projects,
-        missing_applications,
-        overlapping_sessions,
+        Ok(ImportValidation {
+            valid: missing_projects.is_empty()
+                && missing_applications.is_empty()
+                && overlapping_sessions.is_empty(),
+            missing_projects,
+            missing_applications,
+            overlapping_sessions,
+        })
     })
+    .await
 }
 
 #[tauri::command]
 pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportSummary, String> {
-    validate_import_path(&archive_path)?;
-    let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
-    let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    let mut conn = db::get_connection(&app)?;
+    run_app_blocking(app, move |app| {
+        validate_import_path(&archive_path)?;
+        let content = fs::read_to_string(&archive_path).map_err(|e| e.to_string())?;
+        let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        let mut conn = db::get_connection(&app)?;
 
     let mut summary = ImportSummary {
         projects_created: 0,
@@ -458,7 +465,9 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         }
     }
 
-    Ok(summary)
+        Ok(summary)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -466,7 +475,8 @@ pub async fn import_data_archive(
     app: AppHandle,
     archive: ExportArchive,
 ) -> Result<ImportSummary, String> {
-    let backup_path = create_sync_restore_backup(&app)?;
+    let backup_path =
+        run_app_blocking(app.clone(), move |app| create_sync_restore_backup(&app)).await?;
 
     // Online sync pull should converge to exactly the server snapshot.
     // Replace synchronized tables first to avoid legacy merge conflicts
@@ -475,7 +485,7 @@ pub async fn import_data_archive(
     // AI configuration keys (mode, confidence thresholds, feedback_weight, cooldown_until)
     // are local user preferences not included in the sync payload — preserve them
     // so a pull does not revert the user's AI settings to defaults.
-    {
+    run_app_blocking(app.clone(), move |app| {
         let conn = db::get_connection(&app)?;
         conn.execute_batch(
             "DELETE FROM file_activities;
@@ -501,7 +511,9 @@ pub async fn import_data_archive(
                );",
         )
         .map_err(|e| e.to_string())?;
-    }
+        Ok(())
+    })
+    .await?;
 
     let timestamp_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -521,32 +533,40 @@ pub async fn import_data_archive(
     let _ = fs::remove_file(&temp_path);
     match result {
         Ok(summary) => {
-            let _ = fs::remove_file(&backup_path);
-            if let Ok(conn) = db::get_connection(&app) {
-                match super::sessions::apply_manual_session_overrides(&conn) {
-                    Ok(reapplied) if reapplied > 0 => {
-                        log::info!(
-                            "Reapplied {} manual session override(s) after sync import",
-                            reapplied
-                        );
+            let backup_path_for_cleanup = backup_path.clone();
+            run_app_blocking(app.clone(), move |app| {
+                let _ = fs::remove_file(&backup_path_for_cleanup);
+                if let Ok(conn) = db::get_connection(&app) {
+                    match super::sessions::apply_manual_session_overrides(&conn) {
+                        Ok(reapplied) if reapplied > 0 => {
+                            log::info!(
+                                "Reapplied {} manual session override(s) after sync import",
+                                reapplied
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to reapply manual session overrides after sync import: {}",
+                                e
+                            );
+                        }
                     }
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to reapply manual session overrides after sync import: {}",
-                            e
-                        );
+                    if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
+                        log::warn!("Auto-retrain after sync import failed: {}", e);
                     }
                 }
-                // Retrain the AI model from the imported data plus reapplied local overrides.
-                if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
-                    log::warn!("Auto-retrain after sync import failed: {}", e);
-                }
-            }
+                Ok(())
+            })
+            .await?;
             Ok(summary)
         }
         Err(import_error) => {
-            let restore_result = restore_db_from_backup(&app, &backup_path);
+            let backup_path_for_restore = backup_path.clone();
+            let restore_result = run_app_blocking(app.clone(), move |app| {
+                restore_db_from_backup(&app, &backup_path_for_restore)
+            })
+            .await;
             let _ = fs::remove_file(&backup_path);
             match restore_result {
                 Ok(()) => Err(format!(

@@ -10,11 +10,14 @@ Dokument powstal na bazie `refactor.md` oraz weryfikacji aktualnego kodu i check
 Stan na 2026-03-09:
 
 - [x] Faza 1: dodany wspolny helper `run_db_blocking()` w `dashboard/src-tauri/src/commands/helpers.rs` oparty o `spawn_blocking`.
+- [x] Faza 1: dodany dodatkowy helper `run_app_blocking()` w `dashboard/src-tauri/src/commands/helpers.rs` do izolacji synchronicznych helperow DB i IO bez lokalnego powielania `spawn_blocking`.
 - [x] Faza 1: przepiete wszystkie komendy z `dashboard/src-tauri/src/commands/dashboard.rs`, aby otwieraly SQLite poza watkiem async.
 - [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/sessions.rs` — wszystkie handlery async korzystajace z SQLite otwieraja polaczenie przez `run_db_blocking()`.
 - [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/assignment_model.rs` — training, scoring, auto-safe i rollback nie wykonuja juz bezposrednio SQLite na watku async.
 - [x] Faza 1: przepiety caly `dashboard/src-tauri/src/commands/projects.rs` — CRUD projektow, sync folderow, auto-freeze i compact dzialaja przez `run_db_blocking()`.
-- [ ] Faza 1: pozostale mniejsze moduly backendu nadal czekaja na przepiecie.
+- [x] Faza 1: przepiete `analysis.rs`, `estimates.rs` i `monitored.rs` — mniejsze handlery analityczne, estymacyjne i monitored apps korzystaja juz z helperow blokujacych.
+- [x] Faza 1: przepiete `database.rs`, `settings.rs`, `import.rs`, `import_data.rs`, `export.rs`, `report.rs` i `daemon.rs` — backup/restore, import/export, refresh danych, raport projektu i status demona nie wykonuja juz synchronicznego SQLite na watku async.
+- [x] Faza 1: zakonczony audit komend `async` w `dashboard/src-tauri/src/commands` — pozostale bezposrednie wywolania `db::get_connection()` sa tylko w helperach blokujacych albo w komendach synchronicznych (`manual_sessions.rs`), wiec kryterium fazy jest spelnione.
 - [ ] Fazy 2-6 bez zmian implementacyjnych.
 
 ## 1. Stan po weryfikacji

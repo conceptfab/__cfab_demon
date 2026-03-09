@@ -67,3 +67,27 @@ where
     .await
     .map_err(|e| format!("Blocking DB task join error: {}", e))?
 }
+
+pub(crate) async fn run_app_blocking<T, F>(app: AppHandle, operation: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(AppHandle) -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || operation(app))
+        .await
+        .map_err(|e| format!("Blocking app task join error: {}", e))?
+}
+
+pub(crate) async fn run_db_primary_blocking<T, F>(app: AppHandle, operation: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&mut rusqlite::Connection) -> Result<T, String> + Send + 'static,
+{
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut conn = db::get_primary_connection(&app)?;
+        operation(&mut conn)
+    })
+    .await
+    .map_err(|e| format!("Blocking primary DB task join error: {}", e))?
+}
