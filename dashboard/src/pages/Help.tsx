@@ -336,6 +336,7 @@ export function Help() {
                   t18n('help_page.project_list_modes_in_the_assignment_menu_active_a_z_new'),
                   t18n('help_page.scissors_icon_appears_on_sessions_where_ai_detected_file'),
                   t18n('help_page.auto_split_runs_in_cycles_it_starts_after_import_and_rep'),
+                  t18n('help_page.sessions_refresh_when_filters_or_data_change_and_when_yo'),
                 ]}
               >
                 <div className="text-sm space-y-4 text-foreground/90 leading-relaxed border-t border-border/10 pt-4">

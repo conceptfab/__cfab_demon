@@ -1374,6 +1374,7 @@
     "project_list_modes_in_the_assignment_menu_active_a_z_new": "Tryby listy projektów w menu przypisania: Aktywne A-Z, Najnowsze -> Top -> Reszta oraz Top -> Najnowsze -> Reszta. Pozwalają szybciej wskazać właściwy projekt przy dużej liczbie pozycji.",
     "scissors_icon_appears_on_sessions_where_ai_detected_file": "Ikona nożyczek – pojawia się przy sesjach, w których AI wykrył aktywność na plikach wielu projektów. Kliknij aby podzielić sesję wg sugestii AI.",
     "auto_split_runs_in_cycles_it_starts_after_import_and_rep": "Auto-split działa cyklicznie: startuje po imporcie i ponawia się co 60 sekund. W jednym przebiegu analizuje do 50 nieprzypisanych sesji i wykonuje maksymalnie 5 podziałów.",
+    "sessions_refresh_when_filters_or_data_change_and_when_yo": "Lista sesji odświeża się po zmianie filtrów, po realnych zmianach danych i po powrocie do okna TIMEFLOW, bez osobnego timera 15 s na tej stronie.",
     "ai_data_view_interpretation": "Interpretacja widoku AI Data",
     "the_ai_data_view_presents_the_model_s_train_of_thought_f": "Widok \"AI Data\" prezentuje \"tok myślenia\" modelu dla przypisanych lub sugerowanych sesji. Oto jak czytać zawarte w nim wskaźniki:",
     "confidence": "Ufność:",

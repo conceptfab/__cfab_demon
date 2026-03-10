@@ -441,6 +441,11 @@ export function Sessions() {
     }
   }, []);
 
+  const loadFirstSessionsPage = useCallback(async () => {
+    const data = await getSessions(buildFetchParams(0));
+    replaceSessionsPage(data);
+  }, [buildFetchParams, replaceSessionsPage]);
+
   useEffect(() => {
     let cancelled = false;
     getSessions(buildFetchParams(0))
@@ -618,29 +623,22 @@ export function Sessions() {
     };
   }, [sessions, indicators.showScoreBreakdown, scoreBreakdown]);
 
-  // Auto-refresh sessions every 15 seconds
-  const isAutoRefreshing = useRef(false);
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (
-        typeof document !== 'undefined' &&
-        document.visibilityState !== 'visible'
-      ) {
-        return;
-      }
-      if (isAutoRefreshing.current) return;
-      isAutoRefreshing.current = true;
-      getSessions(buildFetchParams(0))
-        .then((data) => {
-          replaceSessionsPage(data);
-        })
-        .catch(console.error)
-        .finally(() => {
-          isAutoRefreshing.current = false;
-        });
-    }, 15_000);
-    return () => clearInterval(interval);
-  }, [buildFetchParams, replaceSessionsPage]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadFirstSessionsPage().catch(console.error);
+    };
+    const handleWindowFocus = () => {
+      void loadFirstSessionsPage().catch(console.error);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [loadFirstSessionsPage]);
 
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{
     left: number;

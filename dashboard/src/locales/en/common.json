@@ -1373,6 +1373,7 @@
     "project_list_modes_in_the_assignment_menu_active_a_z_new": "Project list modes in the assignment menu: Active A-Z, Newest -> Top -> Rest, and Top -> Newest -> Rest. They speed up selection when you have many projects.",
     "scissors_icon_appears_on_sessions_where_ai_detected_file": "Scissors icon – appears on sessions where AI detected file activity across multiple projects. Click to split the session based on AI suggestions.",
     "auto_split_runs_in_cycles_it_starts_after_import_and_rep": "Auto-split runs in cycles: it starts after import and repeats every 60 seconds. In one pass it analyzes up to 50 unassigned sessions and performs at most 5 splits.",
+    "sessions_refresh_when_filters_or_data_change_and_when_yo": "The sessions list refreshes when filters change, when real data changes, and when you return to the TIMEFLOW window, without a separate 15s timer on this page.",
     "ai_data_view_interpretation": "AI Data View Interpretation",
     "the_ai_data_view_presents_the_model_s_train_of_thought_f": "The \"AI Data\" view presents the model's \"train of thought\" for assigned or suggested sessions. Here is how to read its metrics:",
     "confidence": "Confidence:",
