@@ -1,4 +1,4 @@
-import type { ExportArchive, ImportSummary } from '@/lib/db-types';
+import type { ExportArchive } from '@/lib/db-types';
 import {
   appendSyncLog,
   exportDataArchive,
@@ -7,6 +7,34 @@ import {
   importDataArchive,
   setSecureToken,
 } from '@/lib/tauri';
+import type {
+  OnlineSyncSettings,
+  OnlineSyncPendingAck,
+  OnlineSyncState,
+  OnlineSyncRunResult,
+  RunOnlineSyncOptions,
+  OnlineSyncIndicatorStatus,
+  OnlineSyncIndicatorSnapshot,
+  SyncStatusResponse,
+  SyncPushResponse,
+  SyncPullResponse,
+  SyncAckResponse,
+  OnlineSyncStateEnvelope,
+  LocalDatasetState,
+  FlushPendingAckResult,
+  SyncHttpErrorKind,
+  OnlineSyncStatusListener,
+} from '@/lib/online-sync-types';
+
+export type {
+  OnlineSyncSettings,
+  OnlineSyncPendingAck,
+  OnlineSyncState,
+  OnlineSyncRunResult,
+  RunOnlineSyncOptions,
+  OnlineSyncIndicatorStatus,
+  OnlineSyncIndicatorSnapshot,
+} from '@/lib/online-sync-types';
 
 const ONLINE_SYNC_SETTINGS_KEY = 'timeflow.settings.online-sync';
 const ONLINE_SYNC_STATE_KEY = 'timeflow.sync.state';
@@ -18,147 +46,6 @@ const LEGACY_ONLINE_SYNC_STATE_KEY = 'cfab.sync.state';
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
   'https://cfabserver-production.up.railway.app';
 
-export interface OnlineSyncSettings {
-  enabled: boolean;
-  autoSyncOnStartup: boolean;
-  autoSyncIntervalMinutes: number;
-  serverUrl: string;
-  userId: string;
-  apiToken: string;
-  deviceId: string;
-  requestTimeoutMs: number;
-  enableLogging: boolean;
-}
-
-export interface OnlineSyncPendingAck {
-  revision: number;
-  payloadSha256: string;
-  createdAt: string;
-  retries: number;
-  lastError?: string;
-}
-
-export interface OnlineSyncState {
-  serverRevision: number;
-  serverHash: string | null;
-  localRevision: number | null;
-  localHash: string | null;
-  pendingAck: OnlineSyncPendingAck | null;
-  lastSyncAt: string | null;
-  needsReseed: boolean;
-}
-
-export interface OnlineSyncRunResult {
-  ok: boolean;
-  skipped?: boolean;
-  action: 'none' | 'push' | 'pull' | 'noop';
-  reason: string;
-  serverRevision: number | null;
-  importSummary?: ImportSummary;
-  error?: string;
-  ackAccepted?: boolean;
-  ackPending?: boolean;
-  ackReason?: string | null;
-  ackIsLatest?: boolean | null;
-  needsReseed?: boolean;
-}
-
-export interface RunOnlineSyncOptions {
-  ignoreStartupToggle?: boolean;
-}
-
-export type OnlineSyncIndicatorStatus =
-  | 'disabled'
-  | 'unconfigured'
-  | 'idle'
-  | 'syncing'
-  | 'success'
-  | 'warning'
-  | 'error';
-
-export interface OnlineSyncIndicatorSnapshot {
-  status: OnlineSyncIndicatorStatus;
-  label: string;
-  detail: string;
-  serverRevision: number;
-  serverHash: string | null;
-  lastSyncAt: string | null;
-  lastAction: OnlineSyncRunResult['action'] | null;
-  lastReason: string | null;
-  error: string | null;
-  pendingAck: OnlineSyncPendingAck | null;
-  needsReseed: boolean;
-}
-
-interface SyncStatusResponse {
-  ok: true;
-  serverRevision: number;
-  serverHash: string | null;
-  shouldPush: boolean;
-  shouldPull: boolean;
-  reason: string;
-}
-
-interface SyncPushResponse {
-  ok: true;
-  accepted?: boolean;
-  noOp: boolean;
-  revision: number;
-  payloadSha256: string;
-  receivedAt?: string;
-  reason: string;
-}
-
-interface SyncPullResponse {
-  ok: true;
-  hasUpdate: boolean;
-  revision: number | null;
-  payloadSha256: string | null;
-  receivedAt: string | null;
-  archive?: ExportArchive;
-  reason: string;
-}
-
-interface SyncAckResponse {
-  ok: true;
-  accepted: boolean;
-  revision: number;
-  payloadSha256: string;
-  serverRevision: number;
-  serverHash: string | null;
-  isLatest: boolean;
-  reason: string;
-}
-
-interface OnlineSyncStateEnvelope {
-  version: number;
-  scopes: Record<string, Partial<OnlineSyncState>>;
-}
-
-interface LocalDatasetState {
-  exportOk: boolean;
-  hasReseedData: boolean;
-  revision: number | null;
-  payloadSha256: string | null;
-  archive: ExportArchive | null;
-  exportError?: string;
-}
-
-interface FlushPendingAckResult {
-  attempted: boolean;
-  accepted: boolean;
-  pendingRemains: boolean;
-  reason: string;
-  response?: SyncAckResponse;
-  error?: string;
-}
-
-type SyncHttpErrorKind =
-  | 'timeout'
-  | 'network'
-  | 'http'
-  | 'invalid_json'
-  | 'unknown';
 
 class SyncHttpError extends Error {
   readonly kind: SyncHttpErrorKind;
@@ -197,8 +84,6 @@ const DEFAULT_ONLINE_SYNC_STATE: OnlineSyncState = {
   lastSyncAt: null,
   needsReseed: false,
 };
-
-type OnlineSyncStatusListener = (snapshot: OnlineSyncIndicatorSnapshot) => void;
 
 const onlineSyncStatusListeners = new Set<OnlineSyncStatusListener>();
 let onlineSyncIndicatorSnapshotCache: OnlineSyncIndicatorSnapshot | null = null;
@@ -388,6 +273,23 @@ function readOnlineSyncStateEnvelope(): OnlineSyncStateEnvelope | null {
   };
 }
 
+function buildSnapshot(
+  state: OnlineSyncState,
+  overrides: Partial<OnlineSyncIndicatorSnapshot> & Pick<OnlineSyncIndicatorSnapshot, 'status' | 'label' | 'detail'>,
+): OnlineSyncIndicatorSnapshot {
+  return {
+    serverRevision: state.serverRevision,
+    serverHash: state.serverHash,
+    lastSyncAt: state.lastSyncAt,
+    lastAction: null,
+    lastReason: null,
+    error: null,
+    pendingAck: state.pendingAck,
+    needsReseed: state.needsReseed,
+    ...overrides,
+  };
+}
+
 function formatLastSyncDetail(state: OnlineSyncState): string {
   if (!state.lastSyncAt) return 'No sync yet';
   const timestamp = new Date(state.lastSyncAt);
@@ -409,83 +311,46 @@ function buildIndicatorSnapshotFromStorage(): OnlineSyncIndicatorSnapshot {
   const state = loadOnlineSyncState(settings);
 
   if (!settings.enabled) {
-    return {
+    return buildSnapshot(state, {
       status: 'disabled',
       label: 'Sync Off',
       detail: 'Online sync disabled',
-      serverRevision: state.serverRevision,
-      serverHash: state.serverHash,
-      lastSyncAt: state.lastSyncAt,
-      lastAction: null,
-      lastReason: null,
-      error: null,
-      pendingAck: state.pendingAck,
-      needsReseed: state.needsReseed,
-    };
+    });
   }
 
   if (!settings.serverUrl || !settings.userId) {
-    return {
+    return buildSnapshot(state, {
       status: 'unconfigured',
       label: 'Sync Setup',
       detail: 'Configure server URL and user ID',
-      serverRevision: state.serverRevision,
-      serverHash: state.serverHash,
-      lastSyncAt: state.lastSyncAt,
-      lastAction: null,
-      lastReason: null,
-      error: null,
-      pendingAck: state.pendingAck,
-      needsReseed: state.needsReseed,
-    };
+    });
   }
 
   if (state.needsReseed) {
-    return {
+    return buildSnapshot(state, {
       status: 'error',
       label: 'Reseed Required',
       detail:
         'Server payload was cleaned up and local reseed data is unavailable',
-      serverRevision: state.serverRevision,
-      serverHash: state.serverHash,
-      lastSyncAt: state.lastSyncAt,
-      lastAction: null,
       lastReason: 'server_snapshot_pruned',
       error: 'server_snapshot_pruned',
-      pendingAck: state.pendingAck,
-      needsReseed: state.needsReseed,
-    };
+    });
   }
 
   if (state.pendingAck) {
-    return {
+    return buildSnapshot(state, {
       status: 'warning',
       label: 'ACK Pending',
       detail: formatPendingAckDetail(state),
-      serverRevision: state.serverRevision,
-      serverHash: state.serverHash,
-      lastSyncAt: state.lastSyncAt,
-      lastAction: null,
       lastReason: 'pending_ack',
-      error: null,
-      pendingAck: state.pendingAck,
-      needsReseed: state.needsReseed,
-    };
+    });
   }
 
-  return {
+  return buildSnapshot(state, {
     status: 'idle',
     label: 'Sync Ready',
     detail: formatLastSyncDetail(state),
-    serverRevision: state.serverRevision,
-    serverHash: state.serverHash,
-    lastSyncAt: state.lastSyncAt,
-    lastAction: null,
-    lastReason: null,
-    error: null,
-    pendingAck: state.pendingAck,
-    needsReseed: state.needsReseed,
-  };
+  });
 }
 
 function emitOnlineSyncIndicatorSnapshot(
@@ -506,19 +371,13 @@ function updateIndicatorFromRunResult(result: OnlineSyncRunResult): void {
 
   if (result.skipped) {
     if (result.reason === 'demo_mode') {
-      emitOnlineSyncIndicatorSnapshot({
+      emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
         status: 'disabled',
         label: 'Sync Off (Demo)',
         detail: 'Online sync is disabled while Demo Mode is active',
-        serverRevision: state.serverRevision,
-        serverHash: state.serverHash,
-        lastSyncAt: state.lastSyncAt,
         lastAction: result.action,
         lastReason: result.reason,
-        error: null,
-        pendingAck: state.pendingAck,
-        needsReseed: state.needsReseed,
-      });
+      }));
       return;
     }
 
@@ -527,42 +386,31 @@ function updateIndicatorFromRunResult(result: OnlineSyncRunResult): void {
   }
 
   if (!result.ok) {
-    emitOnlineSyncIndicatorSnapshot({
+    emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
       status: 'error',
       label:
         result.needsReseed || state.needsReseed
           ? 'Reseed Required'
           : 'Sync Error',
       detail: result.error ?? result.reason,
-      serverRevision: state.serverRevision,
-      serverHash: state.serverHash,
-      lastSyncAt: state.lastSyncAt,
       lastAction: result.action,
       lastReason: result.reason,
       error: result.error ?? result.reason,
-      pendingAck: state.pendingAck,
-      needsReseed: state.needsReseed,
-    });
+    }));
     return;
   }
 
   if (result.ackPending || state.pendingAck) {
-    emitOnlineSyncIndicatorSnapshot({
+    emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
       status: 'warning',
       label: 'ACK Pending',
       detail:
         result.ackReason && result.ackReason !== 'ack_deferred'
           ? `Waiting for ACK retry (${result.ackReason})`
           : formatPendingAckDetail(state),
-      serverRevision: state.serverRevision,
-      serverHash: state.serverHash,
-      lastSyncAt: state.lastSyncAt,
       lastAction: result.action,
       lastReason: result.reason,
-      error: null,
-      pendingAck: state.pendingAck,
-      needsReseed: state.needsReseed,
-    });
+    }));
     return;
   }
 
@@ -573,19 +421,13 @@ function updateIndicatorFromRunResult(result: OnlineSyncRunResult): void {
     pull: 'Sync Pulled',
   };
 
-  emitOnlineSyncIndicatorSnapshot({
+  emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
     status: 'success',
     label: labelMap[result.action],
     detail: formatLastSyncDetail(state),
-    serverRevision: state.serverRevision,
-    serverHash: state.serverHash,
-    lastSyncAt: state.lastSyncAt,
     lastAction: result.action,
     lastReason: result.reason,
-    error: null,
-    pendingAck: state.pendingAck,
-    needsReseed: state.needsReseed,
-  });
+  }));
 }
 
 export function getOnlineSyncIndicatorSnapshot(): OnlineSyncIndicatorSnapshot {
