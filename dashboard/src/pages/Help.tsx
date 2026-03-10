@@ -720,6 +720,7 @@ export function Help() {
                   t18n('help_page.version_insight_information_on_the_compatibility_of_daem'),
                   t18n('help_page.localization_the_daemon_tray_menu_automatically_switches'),
                   t18n('help_page.monitor_all_fallback_if_the_monitored_process_list_is_em'),
+                  t18n('help_page.monitored_apps_with_empty_window_titles_are_still_counted'),
                   t18n('help_page.unassigned_sessions_indicator_badge_with_the_count_of_se'),
                   t18n('help_page.log_auto_refresh_button_to_enable_automatic_real_time_lo'),
                   t18n('help_page.log_auto_refresh_runs_only_while_the_daemon_screen_is_v'),
@@ -764,6 +765,7 @@ export function Help() {
                   t18n('help_page.session_split_settings_in_a_dedicated_card_tolerance_coe'),
                   t18n('help_page.danger_zone_two_step_confirmation_first_arm_the_button_t'),
                   t18n('help_page.manual_session_rebuild_button_in_the_session_management'),
+                  t18n('help_page.unsaved_changes_warning_before_leaving_settings'),
                 ]}
               />
             </TabsContent>

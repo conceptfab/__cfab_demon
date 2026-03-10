@@ -1296,7 +1296,8 @@
     "clearing": "Czyszczenie...",
     "clear_data": "Wyczyść dane",
     "saved": "Zapisano",
-    "save_changes": "ZAPISZ ZMIANY!"
+    "save_changes": "ZAPISZ ZMIANY!",
+    "unsaved_changes_confirm": "Masz niezapisane zmiany w ustawieniach. Opuścić ten ekran bez zapisywania?"
   },
   "help_page": {
     "welcome_to": "Witaj w",
@@ -1528,6 +1529,7 @@
     "version_insight_information_on_the_compatibility_of_daem": "Wgląd w wersję – informacja o kompatybilności wersji Daemona i Dashboardu.",
     "localization_the_daemon_tray_menu_automatically_switches": "Lokalizacja – menu tray Daemona automatycznie przełącza się między PL/EN na podstawie ustawień języka w Dashboardzie (Ustawienia > Język).",
     "monitor_all_fallback_if_the_monitored_process_list_is_em": "Fallback monitor-all – jeśli lista monitorowanych procesów jest pusta, daemon zaczyna śledzić wszystkie aplikacje, więc warto skonfigurować zakładkę Applications przed uruchomieniem pracy produkcyjnej.",
+    "monitored_apps_with_empty_window_titles_are_still_counted": "Monitorowane aplikacje z pustym tytułem okna nadal naliczają czas pracy. W takim przypadku TIMEFLOW może nie mieć nazwy dokumentu/pliku, ale sama sesja aplikacji nie znika z trackingu.",
     "unassigned_sessions_indicator_badge_with_the_count_of_se": "Wskaźnik nieprzypisanych sesji – badge z liczbą sesji wymagających przypisania, widoczny bezpośrednio na ekranie Daemona.",
     "log_auto_refresh_button_to_enable_automatic_real_time_lo": "Auto-refresh logów – przycisk włączający automatyczne odświeżanie podglądu logów w czasie rzeczywistym.",
     "log_auto_refresh_runs_only_while_the_daemon_screen_is_v": "Auto-refresh logów działa tylko wtedy, gdy ekran Daemon jest otwarty i okno TIMEFLOW jest widoczne; po powrocie aplikacja natychmiast dociąga najnowszy fragment logu.",
@@ -1560,7 +1562,8 @@
     "bughunter_the_bug_icon_in_the_sidebar_allows_quick_bug_r": "BugHunter – ikona robaka w sidebarze umożliwia szybkie zgłaszanie błędów z załącznikami.",
     "session_split_settings_in_a_dedicated_card_tolerance_coe": "Podział sesji (Session Split) – ustawienia w osobnej karcie: współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5) oraz przełącznik auto-split. Wyższy próg tolerancji oznacza bardziej konserwatywny podział.",
     "danger_zone_two_step_confirmation_first_arm_the_button_t": "Danger Zone (Strefa zagrożenia) – dwuetapowe potwierdzenie: najpierw „uzbrojenie\" przyciskiem, potem kliknięcie potwierdzenia. Chroni przed przypadkowym wyczyszczeniem bazy.",
-    "manual_session_rebuild_button_in_the_session_management": "Ręczny rebuild sesji – przycisk w karcie Session Management wymusza ponowne scalenie sesji (gap fill) bez restartu aplikacji."
+    "manual_session_rebuild_button_in_the_session_management": "Ręczny rebuild sesji – przycisk w karcie Session Management wymusza ponowne scalenie sesji (gap fill) bez restartu aplikacji.",
+    "unsaved_changes_warning_before_leaving_settings": "Niezapisane zmiany w ustawieniach – przy próbie opuszczenia ekranu bez zapisu TIMEFLOW poprosi o potwierdzenie. Zamknięcie lub odświeżenie okna także wywoła ostrzeżenie przeglądarki."
   },
   "projects_page": {
     "load_more_projects": "Wczytaj więcej projektów",

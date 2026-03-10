@@ -2,6 +2,11 @@ import { create } from 'zustand';
 import type { DateRange } from '@/lib/db-types';
 import { DEFAULT_HELP_TAB, type HelpTabId } from '@/lib/help-navigation';
 
+type PageChangeGuard = (
+  nextPage: string,
+  currentPage: string,
+) => boolean | Promise<boolean>;
+
 function readFirstRunFlag(): boolean {
   try {
     return localStorage.getItem('timeflow_first_run') !== 'false';
@@ -21,6 +26,8 @@ function writeFirstRunFlag(firstRun: boolean): void {
 interface UIState {
   currentPage: string;
   setCurrentPage: (page: string) => void;
+  pageChangeGuard: PageChangeGuard | null;
+  setPageChangeGuard: (guard: PageChangeGuard | null) => void;
   helpTab: HelpTabId;
   setHelpTab: (tab: HelpTabId) => void;
   sessionsFocusDate: string | null;
@@ -38,9 +45,25 @@ interface UIState {
   setFirstRun: (firstRun: boolean) => void;
 }
 
-export const useUIStore = create<UIState>((set) => ({
+export const useUIStore = create<UIState>((set, get) => ({
   currentPage: 'dashboard',
-  setCurrentPage: (page) => set({ currentPage: page }),
+  pageChangeGuard: null,
+  setCurrentPage: (page) => {
+    void (async () => {
+      const currentPage = get().currentPage;
+      if (page === currentPage) return;
+
+      const guard = get().pageChangeGuard;
+      if (guard) {
+        const allowed = await guard(page, currentPage);
+        if (!allowed) return;
+      }
+
+      if (get().currentPage !== currentPage) return;
+      set({ currentPage: page });
+    })();
+  },
+  setPageChangeGuard: (guard) => set({ pageChangeGuard: guard }),
   helpTab: DEFAULT_HELP_TAB,
   setHelpTab: (tab) => set({ helpTab: tab }),
   sessionsFocusDate: null,

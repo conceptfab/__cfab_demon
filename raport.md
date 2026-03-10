@@ -1,6 +1,7 @@
 # TIMEFLOW — Raport z analizy kodu
 
 > Data: 2026-03-10
+> Status aktualizacji: 2026-03-11
 > Zakres: cały codebase (daemon Rust + dashboard React/Tauri)
 > Analiza: poprawność logiki, wydajność, optymalizacje, nadmiarowy kod, brakujące tłumaczenia, pokrycie Help
 
@@ -22,8 +23,10 @@
 
 ## Status prac
 
+- [x] `1.1` Dashboard używa teraz jednego endpointu `get_dashboard_data` dla statystyk, top projektów, listy projektów do wykresu i timeline, więc ciężka agregacja nie leci już 4× przy jednym ładowaniu widoku.
 - [x] `1.2` `unwrap()` na `Mutex` w `src/tray.rs` zastąpiony bezpiecznym odzyskaniem locka; dodane też nazwane okno double-click.
 - [x] `1.3` Startup sync respektuje `enabled` już w warstwie UI job pool; doprecyzowany opis w Help/Settings.
+- [x] `2.1` Polling aplikacyjny został scentralizowany w store + `BackgroundServices`: `Sidebar`, `AI.tsx`, `Sessions.tsx`, `DataHistory.tsx` i auto-split nie mają już własnych interwałów pollingowych poza centralnym job pool. `DaemonControl` zostawia tylko page-scoped refresh logów przy widocznym oknie, a `useTimeAnalysisData` ma wyłącznie lokalny timer odświeżający datę w UI, bez odpytywania API.
 - [x] `2.2` Polling `checkFileChange` spowolniony z `5s` do `30s`.
 - [x] `2.3` `getProjects()` bez zakresu dat korzysta teraz ze wspólnego cache w Zustand store z invalidacją po mutacjach projektów i danych wpływających na statystyki projektów.
 - [x] `2.4` Dashboard nie przeładowuje wszystkich danych tylko dlatego, że zmienił się język UI.
@@ -33,6 +36,10 @@
 - [x] `2.8` Pełny `build_process_snapshot()` dla background apps jest cache'owany i odświeżany co `30s`, zamiast przy każdym ticku `poll_interval`; foreground tracking dalej działa niezależnie od tego snapshotu.
 - [x] `2.9` `ensure_schema()` nie jest już wywoływane przy każdym `load_day_snapshot()`, `load_range_snapshots()`, `get_day_signature()` i `replace_day_snapshot()`; inicjalizacja schematu zostaje przy `open_store()`.
 - [x] `2.10` Zbędny indeks `idx_daily_snapshots_date` na kolumnie `date` (PRIMARY KEY) został usunięty z `ensure_schema()`, a istniejące bazy czyszczą go przez `DROP INDEX IF EXISTS`.
+- [x] `2.11` `classify_activity_type()` zwraca teraz `Option<&'static str>`; monitor nie alokuje `String` przy klasyfikacji procesów, a konwersja do `String` zostaje dopiero przy zapisie do storage.
+- [x] `3.1` Granice czasowe sesji są teraz spójne: nowa sesja startuje od `now - actual_elapsed`, a przy kontynuacji `duration_seconds` jest liczone z tych samych `start/end`, które trafiają do danych.
+- [x] `3.2` Foreground tracking nie odrzuca już monitorowanej aplikacji tylko dlatego, że aktywne okno ma pusty tytuł; w takim przypadku TIMEFLOW zapisuje czas aplikacji bez nazwy dokumentu.
+- [x] `3.5` Settings ostrzegają teraz o niezapisanych zmianach przed zmianą ekranu i przy zamknięciu/odświeżeniu okna, więc wyjście bez zapisu nie gubi już zmian bez potwierdzenia.
 - [x] `3.3` `ReportView` nie trzyma już stale memoizowanej daty wygenerowania.
 - [x] `3.4` `DaemonControl` nie wykonuje zbędnego `refresh()` przy wyłączeniu auto-refresh.
 - [x] `3.6` `App.tsx` nie subskrybuje już całego `currentPage`, tylko pochodny boolean dla `showChrome`.
@@ -40,10 +47,8 @@
 - [x] `4.4` `Dashboard` nie trzyma już osobnego stanu `projectCount`; licznik jest pochodną `projectsList.length`.
 - [x] `4.5` Miejsca wcześniej wołające bezpośrednio `getProjects()` korzystają teraz ze współdzielonego loadera/cache `loadProjectsAllTime()`.
 - [x] `5.1` Hardkodowane błędy widoczne w UI w `Projects`, `Settings` i `CreateProjectDialog` zostały przepięte na tłumaczenia.
-- [x] Weryfikacja techniczna: `cargo test`, `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
-- [x] `1.1` Dashboard używa teraz jednego endpointu `get_dashboard_data` dla statystyk, top projektów, listy projektów do wykresu i timeline, więc ciężka agregacja nie leci już 4× przy jednym ładowaniu widoku.
 - [x] `8.1` Nieużywana zależność `sysinfo` usunięta z demona.
-- [x] `2.1` Polling aplikacyjny został scentralizowany w store + `BackgroundServices`: `Sidebar`, `AI.tsx`, `Sessions.tsx`, `DataHistory.tsx` i auto-split nie mają już własnych interwałów pollingowych poza centralnym job pool. `DaemonControl` zostawia tylko page-scoped refresh logów przy widocznym oknie, a `useTimeAnalysisData` ma wyłącznie lokalny timer odświeżający datę w UI, bez odpytywania API.
+- [x] Weryfikacja techniczna ostatnich iteracji: `cargo test`, `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 
 ---
 
@@ -126,7 +131,7 @@
 - **Opis:** `CREATE INDEX idx_daily_snapshots_date ON daily_snapshots(date)` — `date` jest już PRIMARY KEY.
 - **Rozwiązanie:** Usunąć zbędny indeks.
 
-### 2.11 [NISKI] `classify_activity_type` alokuje String
+### [x] 2.11 [NISKI] `classify_activity_type` alokuje String
 - **Plik:** `monitor.rs`, linie 504-553
 - **Opis:** Zwraca `Option<String>` zamiast `Option<&'static str>`.
 - **Rozwiązanie:** Zmienić na `&'static str` — eliminacja alokacji.
@@ -135,11 +140,11 @@
 
 ## 3. Poprawność logiki
 
-### 3.1 Niespójność `duration_seconds` vs `end - start` w sesji
+### [x] 3.1 Niespójność `duration_seconds` vs `end - start` w sesji
 - **Plik:** `src/tracker.rs`, linie 153-154
 - **Opis:** Gdy sesja jest kontynuowana, `duration_seconds` zwiększane jest o `poll_interval`, ale `end` ustawiany na `now_str` (czas zegara). Jeśli sleep trwał dłużej niż `poll_interval`, pola `end - start` i `duration_seconds` mogą się różnić.
 
-### 3.2 Ignorowanie okien bez tytułu
+### [x] 3.2 Ignorowanie okien bez tytułu
 - **Plik:** `src/monitor.rs`, linia 155
 - **Opis:** `get_foreground_info()` zwraca `None` dla okien bez tytułu. Niektóre aplikacje (np. full-screen games, renderery) mają puste tytuły — czas pracy w nich nie jest zliczany.
 
@@ -151,7 +156,7 @@
 - **Plik:** `DaemonControl.tsx`, linia 86-91
 - **Opis:** Gdy `autoRefresh` zmieni się z `true` na `false`, `refresh()` w useEffect nadal zostaje wywołane niepotrzebnie.
 
-### 3.5 Brak ostrzeżenia o niezapisanych zmianach w Settings
+### [x] 3.5 Brak ostrzeżenia o niezapisanych zmianach w Settings
 - **Plik:** `Settings.tsx`
 - **Opis:** Flaga `savedSettings` jest resetowana przy każdej indywidualnej zmianie. Użytkownik może wyjść ze strony bez zapisu, tracąc zmiany — brak dialogu "unsaved changes".
 
@@ -270,7 +275,7 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 
 ### 7.2 Stringly-typed activity types
 - **Plik:** `src/monitor.rs`, linia 504-553
-- **Opis:** `classify_activity_type` zwraca `Option<String>` z wartościami "coding", "browsing", "design". Te same stringi porównywane w `should_detect_path_for_activity` (linia 228-229).
+- **Opis:** Po poprawce `2.11` nie ma już alokacji `String`, ale logika nadal opiera się na literalach `"coding"`, `"browsing"` i `"design"` przekazywanych między funkcjami zamiast na typowanym enumie.
 - **Rozwiązanie:** Enum `ActivityType`.
 
 ### 7.3 Zbyt duże komponenty
@@ -294,7 +299,6 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - **Opis:** Zarządza wieloma timers/refs/intervals. Logika sync, refresh, file-signature-check powinna być rozdzielona.
 
 ### 7.8 Magic numbers
-- `tray.rs:203` — `500` ms dla double-click bez nazwanej stałej
 - `monitor.rs:34` — `WMI_PATH_LOOKUP_BATCH_LIMIT = 16` bez uzasadnienia
 
 ### 7.9 Mutex dla `action` w tray (single-threaded context)
@@ -322,42 +326,31 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 
 ## 9. Podsumowanie priorytetów
 
-### Krytyczne (natychmiastowa naprawa)
-| # | Problem | Wpływ |
-|---|---------|-------|
-| 1 | `compute_project_activity_unique` 4× na tych samych danych | Każdy load dashboardu — podwójne/poczwórne obciążenie |
-| 2 | `unwrap()` na Mutex w tray.rs | Potencjalny panic w produkcji |
-| 3 | Startup sync ignoruje flagę `enabled` | Niechciany sync przy starcie |
+### Zamknięte w tej serii prac
+- `1.1–1.3` krytyczne problemy dashboard/tray/startup sync
+- `2.1–2.11` główne poprawki wydajnościowe dashboardu, store i daily store
+- `3.1–3.6` poprawki poprawności logiki i UX
+- `4.2`, `4.4`, `4.5` wybrane duplikacje i nadmiarowy stan
+- `5.1` brakujące tłumaczenia widoczne w UI
+- `8.1` usunięcie nieużywanej zależności `sysinfo`
 
-### Wysokie (następna iteracja)
-| # | Problem | Wpływ |
-|---|---------|-------|
-| 4 | 6+ aktywnych setInterval jednocześnie | Nadmierny CPU/IPC |
-| 5 | `checkFileChange` co 5s (daemon zapisuje co 5min) | Zbędne IPC |
-| 6 | Nieużywana zależność `sysinfo` | Czas kompilacji |
-| 7 | `t` w dependency array useEffect w Dashboard | Zbędny reload 7 zapytań przy zmianie języka |
-| 8 | 9 hardkodowanych angielskich stringów w UI | Użytkownik widzi angielski tekst |
-| 9 | Brak cache na `getProjects()` | Zbędne zapytania |
+### Otwarte priorytety
+| Priorytet | Punkt | Problem | Wpływ |
+|---|---|---|---|
+| Wysoki | `4.3` | Duplikacja process snapshot w `tray.rs` i `monitor.rs` | Maintainability + ryzyko dalszego rozjazdu logiki |
+| Wysoki | `6 / ProjectPage` | `ProjectPage` bez dedykowanej sekcji Help | Dokumentacja nie nadąża za złożonością widoku |
+| Średni | `4.1` | Duplikacja `renderDuration()` vs `formatDuration()` | Drobna duplikacja logiki formatowania |
+| Średni | `4.6` | 40+ powtórzonych `console.error('Failed to ...')` | Rozproszony handling błędów |
+| Średni | `4.7` | Powtórzona walidacja boost/multiplier | Duplikacja logiki biznesowej |
+| Średni | `4.8` | Własny toast w `Settings` zamiast `useToast` | Niespójność UX i kodu |
+| Średni | `5.2` | Niespójność języka logów Rust | Utrudniony debugging |
+| Średni | `6 / Help gaps` | Luki w Help dla BugHunter / ManualSessionDialog / Online Sync | Dokumentacja użytkowa |
+| Średni | `7.1`, `7.3–7.9` | Code smells i zbyt duże moduły | Czytelność i koszt utrzymania |
+| Niski | `7.2` | Stringly-typed activity types | Type safety |
+| Niski | `8.2` | Weryfikacja sensowności `lettre` w dashboard Cargo | Potencjalne uproszczenie zależności |
+| Niski | `8.3` | Ocena `opt-level = "s"` dla dashboardu | Potencjalny zysk runtime |
 
-### Średnie (planowana poprawa)
-| # | Problem | Wpływ |
-|---|---------|-------|
-| 10 | Nowe połączenie SQLite per komendę | Overhead per IPC |
-| 11 | N+1 w `load_range_snapshots` | Wolne ładowanie zakresu dat |
-| 12 | Duplikacja process snapshot (tray/monitor) | Maintainability |
-| 13 | Duplikacja `isSessionAlreadySplit` | Maintainability |
-| 14 | `renderDuration()` vs `formatDuration()` | Maintainability |
-| 15 | Parameter sprawl 12 args w `record_app_activity` | Czytelność |
-| 16 | Brak ostrzeżenia "unsaved changes" w Settings | UX |
-| 17 | ProjectPage bez dedykowanej sekcji Help | Dokumentacja |
-
-### Niskie (przy okazji)
-| # | Problem | Wpływ |
-|---|---------|-------|
-| 18 | Stringly-typed activity types | Type safety |
-| 19 | Zbyt duże komponenty (2000+ linii) | Maintainability |
-| 20 | Settings >20 useState | Czytelność |
-| 21 | `ensure_schema` przy każdej operacji | Drobne koszty SQL |
-| 22 | Zbędny indeks na PK `daily_snapshots(date)` | Marginalne |
-| 23 | Niespójność języka logów w Rust | Debugging |
-| 24 | `tauri.ts` 80+ flat exports | Organizacja kodu |
+### Najbliższe sensowne kroki
+1. `4.1` i `4.8` jako szybkie, mało ryzykowne porządki w dashboardzie.
+2. `4.3` jako największy otwarty duplikat po stronie Rust.
+3. Sekcja Help dla `ProjectPage`, `BugHunter`, `ManualSessionDialog` i `Online Sync`, żeby dokumentacja dogoniła aktualny produkt.

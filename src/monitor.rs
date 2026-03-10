@@ -25,7 +25,7 @@ pub struct PidCacheEntry {
     pub cached_at: Instant,
     pub last_alive_check: Instant,
     pub detected_path: Option<String>,
-    pub activity_type: Option<String>,
+    pub activity_type: Option<&'static str>,
     pub path_detection_attempted: bool,
 }
 
@@ -41,7 +41,7 @@ pub struct ProcessInfo {
     pub pid: u32,
     pub window_title: String,
     pub detected_path: Option<String>,
-    pub activity_type: Option<String>,
+    pub activity_type: Option<&'static str>,
 }
 
 /// Gets the creation time of a process as u64. Returns None if unable to fetch.
@@ -121,6 +121,21 @@ fn has_utf16_replacement_char(s: &str) -> bool {
     s.contains('\u{FFFD}')
 }
 
+fn decode_window_title(title_buf: &[u16], title_len: i32) -> String {
+    if title_len <= 0 {
+        return String::new();
+    }
+
+    let s = String::from_utf16_lossy(&title_buf[..title_len as usize]);
+    if has_utf16_replacement_char(&s) {
+        log::debug!(
+            "Tytuł okna zawiera nieprawidłowe sekwencje UTF-16: {:?}",
+            s
+        );
+    }
+    s
+}
+
 /// Pobiera informację o aktualnie aktywnym oknie (foreground).
 /// Koszt: 3 wywołania WinAPI + HashMap lookup.
 /// `pid_cache` mapuje PID → (exe_name, timestamp) — przy hicie walidujemy czy proces żyje.
@@ -141,19 +156,7 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
         // Tytuł okna
         let mut title_buf = [0u16; 512];
         let title_len = GetWindowTextW(hwnd, title_buf.as_mut_ptr(), title_buf.len() as i32);
-        let window_title = if title_len > 0 {
-            let s = String::from_utf16_lossy(&title_buf[..title_len as usize]);
-            if has_utf16_replacement_char(&s) {
-                log::debug!(
-                    "Tytuł okna zawiera nieprawidłowe sekwencje UTF-16 (PID {}): {:?}",
-                    pid,
-                    s
-                );
-            }
-            s
-        } else {
-            return None; // Brak tytułu = systemowe okno, ignorujemy
-        };
+        let window_title = decode_window_title(&title_buf, title_len);
 
         let now = Instant::now();
 
@@ -163,7 +166,7 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
         let entry = pid_cache.get(&pid)?;
         let exe_name = entry.exe_name.clone();
         let detected_path = entry.detected_path.clone();
-        let activity_type = entry.activity_type.clone();
+        let activity_type = entry.activity_type;
 
         Some(ProcessInfo {
             exe_name,
@@ -501,7 +504,7 @@ fn extract_path_from_command_line(command_line: &str) -> Option<String> {
 }
 
 /// Lightweight app category used by the tracker to tag file activities.
-pub fn classify_activity_type(exe_name: &str) -> Option<String> {
+pub fn classify_activity_type(exe_name: &str) -> Option<&'static str> {
     let exe = exe_name.to_lowercase();
 
     if matches!(
@@ -519,7 +522,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<String> {
             | "vim.exe"
             | "nvim.exe"
     ) {
-        return Some("coding".to_string());
+        return Some("coding");
     }
 
     if matches!(
@@ -533,7 +536,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<String> {
             | "vivaldi.exe"
             | "arc.exe"
     ) {
-        return Some("browsing".to_string());
+        return Some("browsing");
     }
 
     if matches!(
@@ -546,7 +549,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<String> {
             | "inkscape.exe"
             | "adobexd.exe"
     ) {
-        return Some("design".to_string());
+        return Some("design");
     }
 
     None
@@ -787,13 +790,13 @@ pub fn measure_cpu_for_app(
 mod tests {
     use super::{
         build_wmi_process_command_line_query, classify_activity_type,
-        collect_pending_detected_path_pids, extract_file_from_title,
+        collect_pending_detected_path_pids, decode_window_title, extract_file_from_title,
         extract_path_from_command_line, PidCache, PidCacheEntry,
     };
     use std::time::Instant;
 
     fn sample_pid_cache_entry(
-        activity_type: Option<&str>,
+        activity_type: Option<&'static str>,
         detected_path: Option<&str>,
         path_detection_attempted: bool,
     ) -> PidCacheEntry {
@@ -804,7 +807,7 @@ mod tests {
             cached_at: now,
             last_alive_check: now,
             detected_path: detected_path.map(str::to_string),
-            activity_type: activity_type.map(str::to_string),
+            activity_type,
             path_detection_attempted,
         }
     }
@@ -855,6 +858,12 @@ mod tests {
     }
 
     #[test]
+    fn decode_window_title_allows_empty_title() {
+        let empty: [u16; 0] = [];
+        assert_eq!(decode_window_title(&empty, 0), "");
+    }
+
+    #[test]
     fn extracts_detected_path_from_command_line() {
         let cmd = r#""C:\Users\me\AppData\Local\Programs\Microsoft VS Code\Code.exe" "C:\work\timeflow\src\main.rs""#;
         assert_eq!(
@@ -891,15 +900,15 @@ mod tests {
     #[test]
     fn classify_activity_type_for_known_apps() {
         assert_eq!(
-            classify_activity_type("code.exe").as_deref(),
+            classify_activity_type("code.exe"),
             Some("coding")
         );
         assert_eq!(
-            classify_activity_type("chrome.exe").as_deref(),
+            classify_activity_type("chrome.exe"),
             Some("browsing")
         );
         assert_eq!(
-            classify_activity_type("blender.exe").as_deref(),
+            classify_activity_type("blender.exe"),
             Some("design")
         );
         assert_eq!(classify_activity_type("unknown.exe"), None);

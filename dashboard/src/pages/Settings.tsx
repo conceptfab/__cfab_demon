@@ -11,6 +11,7 @@ import {
 import type { DemoModeStatus } from '@/lib/db-types';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
+import { useUIStore } from '@/store/ui-store';
 import {
   type AppLanguageCode,
   type LanguageSettings,
@@ -76,6 +77,7 @@ export function Settings() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const setCurrencyCode = useSettingsStore((s) => s.setCurrencyCode);
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
+  const setPageChangeGuard = useUIStore((s) => s.setPageChangeGuard);
   const [clearing, setClearing] = useState(false);
   const [showSavedToast, setShowSavedToast] = useState(false);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -129,6 +131,34 @@ export function Settings() {
   useEffect(() => {
     return () => clearTimeout(toastTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (savedSettings) {
+      setPageChangeGuard(null);
+      return;
+    }
+
+    const pageChangeGuard = async (nextPage: string, currentPage: string) => {
+      if (currentPage !== 'settings' || nextPage === 'settings') return true;
+      return confirm(t('settings_page.unsaved_changes_confirm'));
+    };
+
+    setPageChangeGuard(pageChangeGuard);
+    return () => setPageChangeGuard(null);
+  }, [confirm, savedSettings, setPageChangeGuard, t]);
+
+  useEffect(() => {
+    if (savedSettings) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [savedSettings]);
+
   const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(
     null,
   );

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use chrono::Local;
+use chrono::{DateTime, Local, Timelike};
 
 use crate::config;
 use crate::monitor::{self, CpuState, PidCache};
@@ -119,6 +119,32 @@ fn push_title_history(history: &mut Vec<String>, window_title: &str) {
     history.push(normalized);
 }
 
+fn aligned_local_now() -> DateTime<Local> {
+    let now = Local::now();
+    now.with_nanosecond(0).unwrap_or(now)
+}
+
+fn session_start_time_for_elapsed(now: DateTime<Local>, elapsed: Duration) -> DateTime<Local> {
+    now - chrono::Duration::seconds(elapsed.as_secs().min(i64::MAX as u64) as i64)
+}
+
+fn compute_session_duration_seconds(
+    session_start: &str,
+    session_end: DateTime<Local>,
+    fallback_seconds: u64,
+) -> u64 {
+    DateTime::parse_from_rfc3339(session_start)
+        .ok()
+        .and_then(|start| {
+            session_end
+                .signed_duration_since(start.with_timezone(&Local))
+                .to_std()
+                .ok()
+        })
+        .map(|duration| duration.as_secs())
+        .unwrap_or(fallback_seconds)
+}
+
 /// Records application activity (adds time, updates sessions and files).
 fn record_app_activity(
     exe_name: &str,
@@ -133,7 +159,9 @@ fn record_app_activity(
     active_sessions: &mut HashMap<String, Instant>,
     file_index_cache: &mut HashMap<String, HashMap<String, usize>>,
 ) {
-    let now_str = Local::now().to_rfc3339();
+    let now = aligned_local_now();
+    let now_str = now.to_rfc3339();
+    let elapsed_seconds = poll_interval.as_secs();
     let normalized_detected_path = detected_path
         .map(storage::sanitize_detected_path)
         .filter(|value| !value.is_empty());
@@ -164,14 +192,19 @@ fn record_app_activity(
         Some(last) if now_instant.duration_since(last) < session_gap => {
             if let Some(session) = app_data.sessions.last_mut() {
                 session.end = now_str.clone();
-                session.duration_seconds += poll_interval.as_secs();
+                session.duration_seconds = compute_session_duration_seconds(
+                    &session.start,
+                    now,
+                    session.duration_seconds.saturating_add(elapsed_seconds),
+                );
             }
         }
         _ => {
+            let session_start = session_start_time_for_elapsed(now, poll_interval).to_rfc3339();
             app_data.sessions.push(Session {
-                start: now_str.clone(),
+                start: session_start,
                 end: now_str.clone(),
-                duration_seconds: poll_interval.as_secs(),
+                duration_seconds: elapsed_seconds,
             });
         }
     }
@@ -452,8 +485,10 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
 #[cfg(test)]
 mod tests {
     use super::{
+        compute_session_duration_seconds, session_start_time_for_elapsed,
         should_refresh_background_process_snapshot, BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
     };
+    use chrono::{Local, TimeZone, Timelike};
     use std::time::{Duration, Instant};
 
     #[test]
@@ -473,5 +508,33 @@ mod tests {
             Some(now - BACKGROUND_PROCESS_SNAPSHOT_INTERVAL),
             now,
         ));
+    }
+
+    #[test]
+    fn session_start_time_matches_elapsed_seconds() {
+        let now = Local
+            .with_ymd_and_hms(2026, 3, 11, 12, 0, 30)
+            .single()
+            .expect("valid datetime")
+            .with_nanosecond(0)
+            .expect("zero nanos");
+        let start = session_start_time_for_elapsed(now, Duration::from_secs(15));
+        assert_eq!(now.signed_duration_since(start).num_seconds(), 15);
+    }
+
+    #[test]
+    fn session_duration_uses_same_bounds_as_stored_timestamps() {
+        let end = Local
+            .with_ymd_and_hms(2026, 3, 11, 12, 5, 0)
+            .single()
+            .expect("valid datetime")
+            .with_nanosecond(0)
+            .expect("zero nanos");
+        let duration = compute_session_duration_seconds(
+            "2026-03-11T12:00:15+01:00",
+            end,
+            0,
+        );
+        assert_eq!(duration, 285);
     }
 }
