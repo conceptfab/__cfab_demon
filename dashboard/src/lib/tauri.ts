@@ -157,6 +157,17 @@ export function assignSessionToProject(
     source,
   });
 }
+export function assignSessionsToProjectBatch(
+  sessionIds: number[],
+  projectId: number | null,
+  source?: string,
+) {
+  return invokeMutation('assign_sessions_to_project', {
+    sessionIds,
+    projectId,
+    source,
+  });
+}
 export const getProjectExtraInfo = (id: number, dateRange: DateRange) =>
   invoke<ProjectExtraInfo>('get_project_extra_info', { id, dateRange });
 export const getProjectReportData = (projectId: number, dateRange: DateRange) =>
@@ -168,6 +179,8 @@ export const compactProjectData = (id: number) =>
   invokeMutation<void>('compact_project_data', { id });
 export const deleteSession = (sessionId: number) =>
   invokeMutation<void>('delete_session', { sessionId });
+export const deleteSessionsBatch = (sessionIds: number[]) =>
+  invokeMutation<void>('delete_sessions', { sessionIds });
 export const updateSessionRateMultiplier = (
   sessionId: number,
   multiplier: number | null,
@@ -176,10 +189,22 @@ export const updateSessionRateMultiplier = (
     sessionId,
     multiplier,
   });
+export const updateSessionRateMultipliersBatch = (
+  sessionIds: number[],
+  multiplier: number | null,
+) =>
+  invokeMutation<void>('update_session_rate_multipliers', {
+    sessionIds,
+    multiplier,
+  });
 export const updateSessionComment = (
   sessionId: number,
   comment: string | null,
 ) => invokeMutation<void>('update_session_comment', { sessionId, comment });
+export const updateSessionCommentsBatch = (
+  sessionIds: number[],
+  comment: string | null,
+) => invokeMutation<void>('update_session_comments', { sessionIds, comment });
 export const getProjectFolders = () =>
   invoke<ProjectFolder[]>('get_project_folders');
 export const addProjectFolder = (path: string) =>
@@ -445,6 +470,8 @@ export const updateManualSession = (
 
 export const deleteManualSession = (id: number) =>
   invokeMutation<void>('delete_manual_session', { id });
+export const deleteManualSessionsBatch = (ids: number[]) =>
+  invokeMutation<void>('delete_manual_sessions', { ids });
 
 // Settings
 export const clearAllData = () => invokeMutation<void>('clear_all_data');

@@ -38,6 +38,16 @@ pub async fn assign_session_to_project(
 }
 
 #[tauri::command]
+pub async fn assign_sessions_to_project(
+    app: AppHandle,
+    session_ids: Vec<i64>,
+    project_id: Option<i64>,
+    source: Option<String>,
+) -> Result<(), String> {
+    mutations::assign_sessions_to_project(app, session_ids, project_id, source).await
+}
+
+#[tauri::command]
 pub async fn update_session_rate_multiplier(
     app: AppHandle,
     session_id: i64,
@@ -47,8 +57,22 @@ pub async fn update_session_rate_multiplier(
 }
 
 #[tauri::command]
+pub async fn update_session_rate_multipliers(
+    app: AppHandle,
+    session_ids: Vec<i64>,
+    multiplier: Option<f64>,
+) -> Result<(), String> {
+    mutations::update_session_rate_multipliers(app, session_ids, multiplier).await
+}
+
+#[tauri::command]
 pub async fn delete_session(app: AppHandle, session_id: i64) -> Result<(), String> {
     mutations::delete_session(app, session_id).await
+}
+
+#[tauri::command]
+pub async fn delete_sessions(app: AppHandle, session_ids: Vec<i64>) -> Result<(), String> {
+    mutations::delete_sessions(app, session_ids).await
 }
 
 #[tauri::command]
@@ -58,6 +82,15 @@ pub async fn update_session_comment(
     comment: Option<String>,
 ) -> Result<(), String> {
     mutations::update_session_comment(app, session_id, comment).await
+}
+
+#[tauri::command]
+pub async fn update_session_comments(
+    app: AppHandle,
+    session_ids: Vec<i64>,
+    comment: Option<String>,
+) -> Result<(), String> {
+    mutations::update_session_comments(app, session_ids, comment).await
 }
 
 #[tauri::command]

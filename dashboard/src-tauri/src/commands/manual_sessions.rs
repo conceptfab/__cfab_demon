@@ -6,6 +6,13 @@ use super::types::{
 };
 use crate::db;
 
+fn sanitize_ids(ids: Vec<i64>) -> Vec<i64> {
+    let mut seen = std::collections::HashSet::new();
+    ids.into_iter()
+        .filter(|id| *id > 0 && seen.insert(*id))
+        .collect()
+}
+
 #[tauri::command]
 pub fn create_manual_session(
     app: AppHandle,
@@ -168,5 +175,27 @@ pub fn delete_manual_session(app: AppHandle, id: i64) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
     conn.execute("DELETE FROM manual_sessions WHERE id = ?1", [id])
         .map_err(|e| format!("Failed to delete manual session: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_manual_sessions(app: AppHandle, ids: Vec<i64>) -> Result<(), String> {
+    let ids = sanitize_ids(ids);
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    let mut conn = db::get_connection(&app)?;
+    let tx = conn
+        .transaction()
+        .map_err(|e| format!("Failed to start manual session delete transaction: {}", e))?;
+
+    for id in ids {
+        tx.execute("DELETE FROM manual_sessions WHERE id = ?1", [id])
+            .map_err(|e| format!("Failed to delete manual session: {}", e))?;
+    }
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit manual session delete transaction: {}", e))?;
     Ok(())
 }

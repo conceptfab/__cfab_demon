@@ -1,10 +1,15 @@
 import { useCallback } from 'react';
 import {
   assignSessionToProject,
+  assignSessionsToProjectBatch,
   deleteManualSession,
+  deleteManualSessionsBatch,
   deleteSession,
+  deleteSessionsBatch,
   updateSessionComment,
+  updateSessionCommentsBatch,
   updateSessionRateMultiplier,
+  updateSessionRateMultipliersBatch,
 } from '@/lib/tauri';
 
 type SessionIdsInput = number | number[];
@@ -37,6 +42,21 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
     [onAfterMutation, onError],
   );
 
+  const runForSessionIds = useCallback(
+    async (
+      sessionIds: number[],
+      runSingle: (sessionId: number) => Promise<void>,
+      runBatch: (sessionIds: number[]) => Promise<void>,
+    ) => {
+      if (sessionIds.length === 1) {
+        await runSingle(sessionIds[0]);
+        return;
+      }
+      await runBatch(sessionIds);
+    },
+    [],
+  );
+
   const assignSessions = useCallback(
     async (
       sessionIdsInput: SessionIdsInput,
@@ -46,14 +66,14 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       const sessionIds = toSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('assignSessions', async () => {
-        await Promise.all(
-          sessionIds.map((sessionId) =>
-            assignSessionToProject(sessionId, projectId, source),
-          ),
+        await runForSessionIds(
+          sessionIds,
+          (sessionId) => assignSessionToProject(sessionId, projectId, source),
+          (ids) => assignSessionsToProjectBatch(ids, projectId, source),
         );
       });
     },
-    [runMutation],
+    [runForSessionIds, runMutation],
   );
 
   const updateSessionRateMultipliers = useCallback(
@@ -61,14 +81,14 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       const sessionIds = toSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('updateSessionRateMultipliers', async () => {
-        await Promise.all(
-          sessionIds.map((sessionId) =>
-            updateSessionRateMultiplier(sessionId, multiplier),
-          ),
+        await runForSessionIds(
+          sessionIds,
+          (sessionId) => updateSessionRateMultiplier(sessionId, multiplier),
+          (ids) => updateSessionRateMultipliersBatch(ids, multiplier),
         );
       });
     },
-    [runMutation],
+    [runForSessionIds, runMutation],
   );
 
   const updateSessionComments = useCallback(
@@ -76,12 +96,14 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       const sessionIds = toSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('updateSessionComments', async () => {
-        await Promise.all(
-          sessionIds.map((sessionId) => updateSessionComment(sessionId, comment)),
+        await runForSessionIds(
+          sessionIds,
+          (sessionId) => updateSessionComment(sessionId, comment),
+          (ids) => updateSessionCommentsBatch(ids, comment),
         );
       });
     },
-    [runMutation],
+    [runForSessionIds, runMutation],
   );
 
   const updateOneSessionComment = useCallback(
@@ -96,10 +118,14 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       const sessionIds = toSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('deleteSessions', async () => {
-        await Promise.all(sessionIds.map((sessionId) => deleteSession(sessionId)));
+        await runForSessionIds(
+          sessionIds,
+          (sessionId) => deleteSession(sessionId),
+          (ids) => deleteSessionsBatch(ids),
+        );
       });
     },
-    [runMutation],
+    [runForSessionIds, runMutation],
   );
 
   const deleteManualSessions = useCallback(
@@ -107,12 +133,14 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       const sessionIds = toSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('deleteManualSessions', async () => {
-        await Promise.all(
-          sessionIds.map((sessionId) => deleteManualSession(sessionId)),
+        await runForSessionIds(
+          sessionIds,
+          (sessionId) => deleteManualSession(sessionId),
+          (ids) => deleteManualSessionsBatch(ids),
         );
       });
     },
-    [runMutation],
+    [runForSessionIds, runMutation],
   );
 
   return {

@@ -1313,25 +1313,35 @@ export function Sessions() {
   return (
     <div className="space-y-4">
       <SessionsToolbar
-        summaryText={sessionsSummaryText}
-        showUnassignedOnly={activeProjectId === 'unassigned'}
-        unassignedOnlyText={t('sessions.unassigned_only')}
-        rangeMode={rangeMode}
-        onRangeModeChange={setRangeMode}
-        onClearOverrideRange={() => setOverrideDateRange(null)}
-        rangeTodayLabel={t('sessions.range.today')}
-        rangeWeekLabel={t('sessions.range.week')}
-        previousTooltip={t('layout.tooltips.previous_period')}
-        nextTooltip={t('layout.tooltips.next_period')}
-        rangeLabel={activeRangeLabel}
-        onShiftBackward={() => shiftDateRange(-1)}
-        onShiftForward={() => shiftDateRange(1)}
-        canShiftForward={canShiftForward}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        viewAiDataLabel={t('sessions.view.ai_data')}
-        viewDetailedLabel={t('sessions.view.detailed')}
-        viewCompactLabel={t('sessions.view.compact')}
+        summary={{
+          text: sessionsSummaryText,
+          showUnassignedOnly: activeProjectId === 'unassigned',
+          unassignedOnlyText: t('sessions.unassigned_only'),
+        }}
+        range={{
+          mode: rangeMode,
+          label: activeRangeLabel,
+          canShiftForward,
+          labels: {
+            today: t('sessions.range.today'),
+            week: t('sessions.range.week'),
+            previousTooltip: t('layout.tooltips.previous_period'),
+            nextTooltip: t('layout.tooltips.next_period'),
+          },
+          onModeChange: setRangeMode,
+          onClearOverrideRange: () => setOverrideDateRange(null),
+          onShiftBackward: () => shiftDateRange(-1),
+          onShiftForward: () => shiftDateRange(1),
+        }}
+        view={{
+          mode: viewMode,
+          labels: {
+            aiData: t('sessions.view.ai_data'),
+            detailed: t('sessions.view.detailed'),
+            compact: t('sessions.view.compact'),
+          },
+          onModeChange: setViewMode,
+        }}
       />
 
       {unassignedGroup &&

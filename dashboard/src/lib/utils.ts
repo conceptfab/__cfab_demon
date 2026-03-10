@@ -1,3 +1,5 @@
+import { format, parseISO } from 'date-fns';
+import type { Locale } from 'date-fns';
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -121,4 +123,26 @@ export function formatDateLabel(value: string): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+export function formatSessionTime(value: string): string {
+  try {
+    return format(parseISO(value), 'HH:mm');
+  } catch {
+    return value;
+  }
+}
+
+export function formatSessionDate(
+  value: string,
+  locale?: Locale | null,
+): string {
+  try {
+    const dateFormat = locale?.code?.startsWith('pl')
+      ? 'd MMM yyyy'
+      : 'MMM d, yyyy';
+    return format(parseISO(value), dateFormat, { locale: locale ?? undefined });
+  } catch {
+    return value;
+  }
 }

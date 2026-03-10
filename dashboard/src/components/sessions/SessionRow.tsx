@@ -7,61 +7,18 @@ import {
   MessageSquare,
   BarChart3,
   Scissors,
-  Check,
-  X,
   GitBranch,
 } from 'lucide-react';
-import { format, parseISO } from 'date-fns';
-import { formatDuration } from '@/lib/utils';
+import {
+  formatDuration,
+  formatSessionDate,
+  formatSessionTime,
+} from '@/lib/utils';
 import type { SessionWithApp, ScoreBreakdown } from '@/lib/db-types';
 import type { SessionIndicatorSettings } from '@/lib/user-settings';
 import { resolveDateFnsLocale } from '@/lib/date-locale';
-import type { Locale } from 'date-fns';
-
-function formatTime(t: string) {
-  try {
-    return format(parseISO(t), 'HH:mm');
-  } catch {
-    return t;
-  }
-}
-
-function formatDate(t: string, locale: Locale) {
-  try {
-    const dateFormat = locale.code?.startsWith('pl')
-      ? 'd MMM yyyy'
-      : 'MMM d, yyyy';
-    return format(parseISO(t), dateFormat, { locale });
-  } catch {
-    return t;
-  }
-}
-
-function computeConfidence(
-  session: SessionWithApp,
-  scoreBreakdownData: ScoreBreakdown | null | undefined,
-) {
-  const bdCandidate = scoreBreakdownData?.candidates?.[0] ?? null;
-  const bdCandidate2 = scoreBreakdownData?.candidates?.[1] ?? null;
-  const isTied =
-    bdCandidate != null &&
-    bdCandidate2 != null &&
-    bdCandidate.total_score === bdCandidate2.total_score;
-  const bdConf = scoreBreakdownData?.final_suggestion?.confidence ?? null;
-
-  const targetName = isTied
-    ? `${bdCandidate!.project_name} / ${bdCandidate2!.project_name}`
-    : (session.suggested_project_name ??
-      bdCandidate?.project_name ??
-      (session.ai_assigned ? session.project_name : null));
-
-  const conf =
-    session.suggested_confidence ??
-    bdConf ??
-    (bdCandidate ? Math.min(bdCandidate.total_score / 10, 1) : null);
-
-  return { targetName, conf, isTied };
-}
+import { SessionScoreBadge } from '@/components/sessions/SessionScoreBadge';
+import { SessionSuggestionBadge } from '@/components/sessions/SessionSuggestionBadge';
 
 export interface SessionRowProps {
   session: SessionWithApp;
@@ -179,98 +136,24 @@ export const SessionRow = memo(function SessionRow({
 
             <div className="flex items-center gap-2 shrink-0">
               {ind.showSuggestions && isSuggested && (
-                <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-                  <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
-                  <span
-                    className="text-[9px] text-sky-300 font-medium truncate max-w-[150px]"
-                    title={s.suggested_project_name}
-                  >
-                    {s.suggested_project_name}
-                    {s.suggested_confidence != null &&
-                      ` ${(s.suggested_confidence * 100).toFixed(0)}%`}
-                  </span>
-                  <div className="flex items-center gap-0.5 ml-1 border-l border-sky-500/20 pl-1.5">
-                    {onAcceptSuggestion && (
-                      <button
-                        title={t(
-                          'sessions.menu.accept_suggestion',
-                        )}
-                        className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100"
-                        onClick={(e) => onAcceptSuggestion(s, e)}
-                      >
-                        <Check className="h-3 w-3" />
-                      </button>
-                    )}
-                    {onRejectSuggestion && (
-                      <button
-                        title={t(
-                          'sessions.menu.reject_suggestion',
-                        )}
-                        className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100"
-                        onClick={(e) => onRejectSuggestion(s, e)}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <SessionSuggestionBadge
+                  session={s}
+                  variant="compact"
+                  onAcceptSuggestion={onAcceptSuggestion}
+                  onRejectSuggestion={onRejectSuggestion}
+                />
               )}
               {ind.showAiBadge && s.ai_assigned && !isSuggested && (
                 <Sparkles className="h-3 w-3 text-violet-400/60 shrink-0" />
               )}
-              {ind.showScoreBreakdown &&
-                (() => {
-                  const { targetName, conf, isTied } = computeConfidence(
-                    s,
-                    scoreBreakdownData,
-                  );
-
-                  return (
-                    <div className="flex items-center gap-1 rounded-sm px-1 py-0.5 transform-gpu">
-                      {isLoadingScoreBreakdown ? (
-                        <span className="text-[8px] text-muted-foreground/40 italic px-1 animate-pulse">
-                          {t('sessions.row.loading_short')}
-                        </span>
-                      ) : targetName ? (
-                        <span
-                          className={`text-[8px] font-medium truncate max-w-[180px] ${isTied ? 'text-amber-300' : 'text-violet-300'}`}
-                          title={targetName ?? undefined}
-                        >
-                          {targetName}
-                        </span>
-                      ) : (
-                        <span className="text-[8px] text-muted-foreground/30 font-medium px-1">
-                          {t('sessions.row.no_ai_data_short')}
-                        </span>
-                      )}
-                      <div className="w-[32px] h-[6px] rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width:
-                              conf != null
-                                ? `${Math.max(8, conf * 100)}%`
-                                : '0%',
-                            backgroundColor: isTied
-                              ? '#eab308'
-                              : conf != null
-                                ? conf >= 0.8
-                                  ? '#22c55e'
-                                  : conf >= 0.5
-                                    ? '#eab308'
-                                    : '#ef4444'
-                                : 'transparent',
-                          }}
-                        />
-                      </div>
-                      {conf != null && (
-                        <span className="text-[7px] font-mono text-muted-foreground">
-                          {(conf * 100).toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })()}
+              {ind.showScoreBreakdown && (
+                <SessionScoreBadge
+                  session={s}
+                  scoreBreakdownData={scoreBreakdownData}
+                  isLoading={isLoadingScoreBreakdown}
+                  variant="compact"
+                />
+              )}
               <button
                 className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[2px] text-destructive/30 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
                 onClick={async (e) => {
@@ -390,98 +273,26 @@ export const SessionRow = memo(function SessionRow({
               <Scissors className="h-4 w-4 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
             </button>
           )}
-          {ind.showScoreBreakdown &&
-            (() => {
-              const { targetName, conf, isTied } = computeConfidence(
-                s,
-                scoreBreakdownData,
-              );
-
-              return (
-                <button
-                  className="flex items-center gap-1.5 rounded-sm px-1 py-0.5 cursor-pointer hover:bg-white/10 !transition-none transform-gpu"
-                  onClick={(e) => handleToggleScoreBreakdown(s.id, e)}
-                >
-                  {isLoadingScoreBreakdown ? (
-                    <span className="text-[9px] text-muted-foreground/40 italic px-1 animate-pulse">
-                      {t('sessions.row.loading_short')}
-                    </span>
-                  ) : targetName ? (
-                    <span
-                      className={`text-[11px] font-medium truncate max-w-[240px] ${isTied ? 'text-amber-300' : 'text-violet-300'}`}
-                      title={targetName ?? undefined}
-                    >
-                      {targetName}
-                    </span>
-                  ) : (
-                    <span className="text-[9px] text-muted-foreground/30 font-medium px-1">
-                      {t('sessions.row.no_ai_data_short')}
-                    </span>
-                  )}
-                  <div className="w-[40px] h-[7px] rounded-full bg-white/10 overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width:
-                          conf != null ? `${Math.max(8, conf * 100)}%` : '0%',
-                        backgroundColor: isTied
-                          ? '#eab308'
-                          : conf != null
-                            ? conf >= 0.8
-                              ? '#22c55e'
-                              : conf >= 0.5
-                                ? '#eab308'
-                                : '#ef4444'
-                            : 'transparent',
-                      }}
-                    />
-                  </div>
-                  {conf != null && (
-                    <span className="text-[10px] font-mono text-muted-foreground">
-                      {(conf * 100).toFixed(0)}%
-                    </span>
-                  )}
-                </button>
-              );
-            })()}
+          {ind.showScoreBreakdown && (
+            <SessionScoreBadge
+              session={s}
+              scoreBreakdownData={scoreBreakdownData}
+              isLoading={isLoadingScoreBreakdown}
+              variant="detailed"
+              onToggle={handleToggleScoreBreakdown}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-3">
           {ind.showSuggestions && isSuggested && (
-            <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-              <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
-              <button
-                className="text-[9px] text-sky-300 italic font-medium hover:underline cursor-pointer"
-                onClick={(e) => handleToggleScoreBreakdown(s.id, e)}
-              >
-                {t('sessions.row.ai_suggestion', {
-                  project: s.suggested_project_name,
-                  confidence: ((s.suggested_confidence ?? 0) * 100).toFixed(0),
-                })}
-              </button>
-              <div className="flex items-center gap-0.5 ml-1 border-l border-sky-500/20 pl-1.5">
-                {onAcceptSuggestion && (
-                  <button
-                    title={t(
-                      'sessions.menu.accept_suggestion',
-                    )}
-                    className="p-0.5 hover:bg-sky-500/20 rounded cursor-pointer text-sky-400 opacity-70 hover:opacity-100 text-[10px]"
-                    onClick={(e) => onAcceptSuggestion(s, e)}
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                {onRejectSuggestion && (
-                  <button
-                    title={t('sessions.menu.reject_suggestion')}
-                    className="p-0.5 hover:bg-destructive/20 rounded cursor-pointer text-destructive opacity-70 hover:opacity-100 text-[10px]"
-                    onClick={(e) => onRejectSuggestion(s, e)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            </div>
+            <SessionSuggestionBadge
+              session={s}
+              variant="detailed"
+              onAcceptSuggestion={onAcceptSuggestion}
+              onRejectSuggestion={onRejectSuggestion}
+              onOpenBreakdown={handleToggleScoreBreakdown}
+            />
           )}
           <div className="flex items-center">
             <button
@@ -504,10 +315,10 @@ export const SessionRow = memo(function SessionRow({
       <div className="grid grid-cols-[140px_1fr] gap-x-4 border-t border-border/5 pt-1.5">
         <div className="flex flex-col text-[10px] text-muted-foreground/40 font-medium leading-tight border-r border-border/5 pr-2">
           <p className="text-muted-foreground/60">
-            {formatDate(s.start_time, locale)}
+            {formatSessionDate(s.start_time, locale)}
           </p>
           <p>
-            {formatTime(s.start_time)} - {formatTime(s.end_time)}
+            {formatSessionTime(s.start_time)} - {formatSessionTime(s.end_time)}
           </p>
           <div className="mt-1 font-mono text-[11px] font-bold text-foreground/40 leading-none">
             {formatDuration(s.duration_seconds)}
