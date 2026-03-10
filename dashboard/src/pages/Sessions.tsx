@@ -143,6 +143,77 @@ function readMinSessionDuration(): number | undefined {
     : undefined;
 }
 
+function areFileActivitiesEqual(
+  left: SessionWithApp['files'][number],
+  right: SessionWithApp['files'][number],
+): boolean {
+  return (
+    left.id === right.id &&
+    left.app_id === right.app_id &&
+    left.file_name === right.file_name &&
+    (left.file_path ?? null) === (right.file_path ?? null) &&
+    left.total_seconds === right.total_seconds &&
+    left.first_seen === right.first_seen &&
+    left.last_seen === right.last_seen &&
+    (left.project_id ?? null) === (right.project_id ?? null) &&
+    (left.project_name ?? null) === (right.project_name ?? null) &&
+    (left.project_color ?? null) === (right.project_color ?? null)
+  );
+}
+
+function areSessionsEqual(left: SessionWithApp, right: SessionWithApp): boolean {
+  if (
+    left.id !== right.id ||
+    left.app_id !== right.app_id ||
+    left.app_name !== right.app_name ||
+    left.executable_name !== right.executable_name ||
+    (left.project_id ?? null) !== (right.project_id ?? null) ||
+    left.start_time !== right.start_time ||
+    left.end_time !== right.end_time ||
+    left.duration_seconds !== right.duration_seconds ||
+    (left.rate_multiplier ?? null) !== (right.rate_multiplier ?? null) ||
+    (left.comment ?? null) !== (right.comment ?? null) ||
+    (left.is_hidden ?? null) !== (right.is_hidden ?? null) ||
+    (left.split_source_session_id ?? null) !==
+      (right.split_source_session_id ?? null) ||
+    (left.project_name ?? null) !== (right.project_name ?? null) ||
+    (left.project_color ?? null) !== (right.project_color ?? null) ||
+    (left.suggested_project_id ?? null) !==
+      (right.suggested_project_id ?? null) ||
+    (left.suggested_project_name ?? null) !==
+      (right.suggested_project_name ?? null) ||
+    (left.suggested_confidence ?? null) !==
+      (right.suggested_confidence ?? null) ||
+    (left.ai_assigned ?? null) !== (right.ai_assigned ?? null) ||
+    left.files.length !== right.files.length
+  ) {
+    return false;
+  }
+
+  for (let index = 0; index < left.files.length; index += 1) {
+    if (!areFileActivitiesEqual(left.files[index], right.files[index])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function areSessionListsEqual(
+  left: SessionWithApp[],
+  right: SessionWithApp[],
+): boolean {
+  if (left.length !== right.length) return false;
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (!areSessionsEqual(left[index], right[index])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function Sessions() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
@@ -185,6 +256,8 @@ export function Sessions() {
     new Set(),
   );
   const [hasMore, setHasMore] = useState(false);
+  const sessionsRef = useRef<SessionWithApp[]>([]);
+  const hasMoreRef = useRef(false);
   const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [projectCtxMenu, setProjectCtxMenu] =
@@ -221,6 +294,7 @@ export function Sessions() {
   const [aiBreakdowns, setAiBreakdowns] = useState<Map<number, ScoreBreakdown>>(
     new Map(),
   );
+  const aiBreakdownsRef = useRef<Map<number, ScoreBreakdown>>(new Map());
   const [loadingBreakdownIds, setLoadingBreakdownIds] = useState<Set<number>>(
     new Set(),
   );
@@ -344,18 +418,41 @@ export function Sessions() {
   );
 
   useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+
+  useEffect(() => {
+    aiBreakdownsRef.current = aiBreakdowns;
+  }, [aiBreakdowns]);
+
+  const replaceSessionsPage = useCallback((data: SessionWithApp[]) => {
+    const nextHasMore = data.length >= PAGE_SIZE;
+    if (!areSessionListsEqual(sessionsRef.current, data)) {
+      sessionsRef.current = data;
+      setSessions(data);
+    }
+    if (hasMoreRef.current !== nextHasMore) {
+      hasMoreRef.current = nextHasMore;
+      setHasMore(nextHasMore);
+    }
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     getSessions(buildFetchParams(0))
       .then((data) => {
         if (cancelled) return;
-        setSessions(data);
-        setHasMore(data.length >= PAGE_SIZE);
+        replaceSessionsPage(data);
       })
       .catch(console.error);
     return () => {
       cancelled = true;
     };
-  }, [buildFetchParams, refreshKey]);
+  }, [buildFetchParams, refreshKey, replaceSessionsPage]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -500,6 +597,7 @@ export function Sessions() {
             next.set(sessionId, value);
           }
         });
+        aiBreakdownsRef.current = next;
         return next;
       });
       setLoadingBreakdownIds((prev) => {
@@ -534,8 +632,7 @@ export function Sessions() {
       isAutoRefreshing.current = true;
       getSessions(buildFetchParams(0))
         .then((data) => {
-          setSessions(data);
-          setHasMore(data.length >= PAGE_SIZE);
+          replaceSessionsPage(data);
         })
         .catch(console.error)
         .finally(() => {
@@ -543,7 +640,7 @@ export function Sessions() {
         });
     }, 15_000);
     return () => clearInterval(interval);
-  }, [buildFetchParams]);
+  }, [buildFetchParams, replaceSessionsPage]);
 
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{
     left: number;
@@ -727,11 +824,13 @@ export function Sessions() {
       try {
         await updateSessionComments(missingIds, normalized);
         const missingSet = new Set(missingIds);
-        setSessions((prev) =>
-          prev.map((s) =>
+        setSessions((prev) => {
+          const next = prev.map((s) =>
             missingSet.has(s.id) ? { ...s, comment: normalized } : s,
-          ),
-        );
+          );
+          sessionsRef.current = next;
+          return next;
+        });
         return true;
       } catch (err) {
         console.error('Failed to save required boost comment:', err);
@@ -819,11 +918,13 @@ export function Sessions() {
         const trimmed = raw.trim();
         try {
           await updateOneSessionComment(sessionId, trimmed || null);
-          setSessions((prev) =>
-            prev.map((s) =>
+          setSessions((prev) => {
+            const next = prev.map((s) =>
               s.id === sessionId ? { ...s, comment: trimmed || null } : s,
-            ),
-          );
+            );
+            sessionsRef.current = next;
+            return next;
+          });
         } catch (err) {
           console.error('Failed to update session comment:', err);
         }
@@ -863,8 +964,8 @@ export function Sessions() {
           next.add(session.id);
           return next;
         });
-        setSessions((prev) =>
-          prev.map((item) =>
+        setSessions((prev) => {
+          const next = prev.map((item) =>
             item.id === session.id
               ? {
                   ...item,
@@ -873,8 +974,10 @@ export function Sessions() {
                   suggested_confidence: undefined,
                 }
               : item,
-          ),
-        );
+          );
+          sessionsRef.current = next;
+          return next;
+        });
       } catch (err) {
         console.error('Failed to reject AI suggestion:', err);
       }
@@ -884,13 +987,16 @@ export function Sessions() {
 
   const loadScoreBreakdown = useCallback(
     async (sessionId: number): Promise<ScoreBreakdown> => {
-      const cached = aiBreakdowns.get(sessionId) ?? getCachedBreakdown(sessionId);
+      const currentBreakdowns = aiBreakdownsRef.current;
+      const cached =
+        currentBreakdowns.get(sessionId) ?? getCachedBreakdown(sessionId);
       if (cached) {
-        if (!aiBreakdowns.has(sessionId)) {
+        if (!currentBreakdowns.has(sessionId)) {
           setAiBreakdowns((prev) => {
             if (prev.has(sessionId)) return prev;
             const next = new Map(prev);
             next.set(sessionId, cached);
+            aiBreakdownsRef.current = next;
             return next;
           });
         }
@@ -916,6 +1022,7 @@ export function Sessions() {
             if (prev.has(sessionId)) return prev;
             const next = new Map(prev);
             next.set(sessionId, data);
+            aiBreakdownsRef.current = next;
             return next;
           });
           return data;
@@ -936,35 +1043,55 @@ export function Sessions() {
       scoreBreakdownRequestsRef.current.set(sessionId, request);
       return request;
     },
-    [aiBreakdowns, getCachedBreakdown],
+    [getCachedBreakdown],
   );
 
-  // Background fetch for ALL visible sessions, to bypass the Rust batch analyzer which can fail or fallback to false
+  const breakdownPrefetchIdsKey = useMemo(
+    () =>
+      sessions
+        .filter((session) => !isAlreadySplitSession(session))
+        .map((session) => session.id)
+        .join(','),
+    [sessions],
+  );
+
+  // Prefetch breakdowns only when the visible session ID set changes,
+  // which avoids rerunning the effect after each individual breakdown arrives.
   useEffect(() => {
+    const sessionIds = breakdownPrefetchIdsKey
+      ? breakdownPrefetchIdsKey
+          .split(',')
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value))
+      : [];
+    if (sessionIds.length === 0) return;
+
+    const missingIds = sessionIds.filter(
+      (id) =>
+        !aiBreakdownsRef.current.has(id) &&
+        !getCachedBreakdown(id) &&
+        !scoreBreakdownRequestsRef.current.has(id),
+    );
+    if (missingIds.length === 0) return;
+
     let cancelled = false;
+    const batchSize = viewMode === 'ai_detailed' ? 8 : missingIds.length;
 
-    const idsToFetch = sessions
-      .filter(
-        (s) =>
-          !aiBreakdowns.has(s.id) &&
-          !getCachedBreakdown(s.id) &&
-          !scoreBreakdownRequestsRef.current.has(s.id),
-      )
-      .filter((s) => !isAlreadySplitSession(s))
-      .map((s) => s.id);
+    const prefetch = async () => {
+      for (let index = 0; index < missingIds.length; index += batchSize) {
+        if (cancelled) return;
+        const batch = missingIds.slice(index, index + batchSize);
+        await Promise.allSettled(
+          batch.map((sessionId) => loadScoreBreakdown(sessionId)),
+        );
+      }
+    };
 
-    if (idsToFetch.length === 0) return;
-
-    void Promise.allSettled(
-      idsToFetch.map((id) => loadScoreBreakdown(id)),
-    ).then(() => {
-      if (cancelled) return;
-    });
-
+    void prefetch();
     return () => {
       cancelled = true;
     };
-  }, [sessions, aiBreakdowns, getCachedBreakdown, loadScoreBreakdown]);
+  }, [breakdownPrefetchIdsKey, getCachedBreakdown, loadScoreBreakdown, viewMode]);
 
   const handleToggleScoreBreakdown = useCallback(
     async (sessionId: number, e: React.MouseEvent) => {
@@ -979,43 +1106,17 @@ export function Sessions() {
     [loadScoreBreakdown, scoreBreakdown],
   );
 
-  useEffect(() => {
-    if (viewMode !== 'ai_detailed' || sessions.length === 0) return;
-
-    const missingIds = sessions
-      .map((s) => s.id)
-      .filter(
-        (id) =>
-          !aiBreakdowns.has(id) &&
-          !getCachedBreakdown(id) &&
-          !scoreBreakdownRequestsRef.current.has(id),
-      );
-    if (missingIds.length === 0) return;
-
-    let cancelled = false;
-    const BATCH_SIZE = 8;
-
-    const prefetch = async () => {
-      for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
-        if (cancelled) return;
-        const batch = missingIds.slice(i, i + BATCH_SIZE);
-        await Promise.allSettled(
-          batch.map((sessionId) => loadScoreBreakdown(sessionId)),
-        );
-      }
-    };
-
-    void prefetch();
-    return () => {
-      cancelled = true;
-    };
-  }, [viewMode, sessions, aiBreakdowns, getCachedBreakdown, loadScoreBreakdown]);
-
   const loadMore = () => {
     getSessions(buildFetchParams(sessions.length))
       .then((data) => {
-        setSessions((prev) => [...prev, ...data]);
-        setHasMore(data.length >= PAGE_SIZE);
+        setSessions((prev) => {
+          const next = [...prev, ...data];
+          sessionsRef.current = next;
+          return next;
+        });
+        const nextHasMore = data.length >= PAGE_SIZE;
+        hasMoreRef.current = nextHasMore;
+        setHasMore(nextHasMore);
       })
       .catch(console.error);
   };

@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use native_windows_gui as nwg;
 use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
@@ -181,6 +181,10 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let action = Arc::new(Mutex::new(TrayExitAction::Exit));
     let action_clone = action.clone();
 
+    // To track double clicks on tray icon
+    let last_tray_click = Arc::new(Mutex::new(None::<Instant>));
+    let last_tray_click_clone = last_tray_click.clone();
+
     let handler =
         nwg::full_bind_event_handler(&window_handle, move |evt, _evt_data, handle| match evt {
             nwg::Event::OnContextMenu => {
@@ -190,6 +194,28 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                     tray_clone.borrow_mut().set_tip(&refreshed_tip);
                     let (x, y) = nwg::GlobalCursor::position();
                     menu_clone.popup(x, y);
+                }
+            }
+
+            nwg::Event::OnMousePress(btn) => {
+                if handle == tray_handle {
+                    if btn == nwg::MousePressEvent::MousePressLeftUp {
+                        let mut last_click = last_tray_click_clone.lock().unwrap();
+                        let now = Instant::now();
+                        let is_double_click = if let Some(last) = *last_click {
+                            now.duration_since(last).as_millis() < 500
+                        } else {
+                            false
+                        };
+                        
+                        if is_double_click {
+                            log::info!("Tray icon double-clicked, launching Dashboard");
+                            launch_dashboard(lang_clone.get());
+                            *last_click = None; // Reset after double click
+                        } else {
+                            *last_click = Some(now);
+                        }
+                    }
                 }
             }
 

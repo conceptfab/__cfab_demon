@@ -49,17 +49,21 @@ const projectExtraInfoCacheRef = useRef<Record<number, ProjectExtraInfo>>({});
 
 ---
 
-#### [C4] `Sessions.tsx:942–967` — kaskada re-renderów z background fetch breakdownów `[DO ZROBIENIA]`
+#### [C4] `Sessions.tsx:942–967` — kaskada re-renderów z background fetch breakdownów `[ZROBIONE]`
 useEffect z deps `[sessions, aiBreakdowns, ...]` — każdy fetch breakdownu mutuje `aiBreakdowns`, co trigguje ponowne uruchomienie efektu. Dla 100 sesji: **kaskada 100 re-renderów**.
 
 Dodatkowo bliźniaczy efekt na linii 982 (`viewMode === 'ai_detailed'`) robi to samo — **potencjalne podwójne fetch-y**.
+
+**Status (2026-03-10):** zrobione. Prefetch breakdownów został scalony do jednego efektu reagującego na zmianę listy ID widocznych sesji oraz `viewMode`, a `loadScoreBreakdown()` przestał zmieniać swoją referencję przy każdej aktualizacji `aiBreakdowns`.
 
 **Naprawa:** śledzić listę ID sesji przez `useRef`, uruchamiać bulk-fetch tylko gdy zmienia się lista sesji, nie stan breakdownów.
 
 ---
 
-#### [C5] `Sessions.tsx:523–546` — 15s polling bez change detection `[DO ZROBIENIA]`
+#### [C5] `Sessions.tsx:523–546` — 15s polling bez change detection `[ZROBIONE]`
 Auto-refresh co 15 s bezwarunkowo nadpisuje cały `sessions` state nową referencją tablicy → pełne przeliczenie `flattenedItems` → re-render Virtuoso. BackgroundServices już ma `refreshKey` mechanizm (co 5 s) — ten polling może być redundantny.
+
+**Status (2026-03-10):** zrobione. Polling używa teraz porównania aktualnej i nowej strony sesji przed `setSessions`, więc identyczne wyniki nie powodują re-renderu listy.
 
 **Naprawa:** porównywać dane przed `setSessions` (np. hash/length) lub usunąć na rzecz `refreshKey`.
 
@@ -241,9 +245,9 @@ Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przet
 
 ### Średni priorytet:
 4. **C4**: Refactor kaskady breakdownów w Sessions — oddzielić deps
-   Status: `[DO ZROBIENIA]`
+   Status: `[ZROBIONE]`
 5. **C5**: Usunąć lub ulepszyć 15s polling (redundantny z refreshKey)
-   Status: `[DO ZROBIENIA]`
+   Status: `[ZROBIONE]`
 6. Przetłumaczyć error messages w showError (5 miejsc)
    Status: `[ZROBIONE]`
 7. Zsynchronizować klucze EN/PL (1 brakujący + 8 nadmiarowych)

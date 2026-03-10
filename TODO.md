@@ -22,6 +22,8 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
+- [x] dwuklik w demo uruchamia dashboard
+
 - podział sesji
 - refactor duży plików
 - znaczek na NEW
