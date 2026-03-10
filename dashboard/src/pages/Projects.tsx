@@ -9,8 +9,6 @@ import {
   CircleOff,
   TimerReset,
   Wand2,
-  ChevronDown,
-  ChevronRight,
   Snowflake,
   LayoutDashboard,
   CircleDollarSign,
@@ -29,8 +27,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
 } from '@/components/ui/dialog';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
@@ -62,6 +58,8 @@ import {
 } from '@/lib/tauri';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
+import { CollapsibleSection } from '@/components/project/CollapsibleSection';
+import { CreateProjectDialog } from '@/components/project/CreateProjectDialog';
 import {
   formatDuration,
   formatPathForDisplay,
@@ -125,6 +123,46 @@ function normalizeProjectDuplicateKey(name: string): string {
   return name.trim().toLowerCase().replace(/[_-]+/g, '').replace(/\s+/g, '');
 }
 
+function sortProjectList(
+  list: ProjectWithStats[],
+  sortBy: string,
+  estimates: Record<number, number>,
+): ProjectWithStats[] {
+  return [...list].sort((a, b) => {
+    const valA = estimates[a.id] || 0;
+    const valB = estimates[b.id] || 0;
+    switch (sortBy) {
+      case 'name-asc':
+        return a.name.localeCompare(b.name);
+      case 'name-desc':
+        return b.name.localeCompare(a.name);
+      case 'time-asc':
+        return a.total_seconds - b.total_seconds;
+      case 'time-desc':
+        return b.total_seconds - a.total_seconds;
+      case 'value-asc':
+        return valA - valB;
+      case 'value-desc':
+        return valB - valA;
+      default:
+        return 0;
+    }
+  });
+}
+
+function filterProjectList(
+  list: ProjectWithStats[],
+  search: string,
+): ProjectWithStats[] {
+  if (!search) return list;
+  const q = search.toLowerCase();
+  return list.filter(
+    (p) =>
+      p.name.toLowerCase().includes(q) ||
+      (p.assigned_folder_path && p.assigned_folder_path.toLowerCase().includes(q)),
+  );
+}
+
 function renderDuration(seconds: number) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -183,12 +221,6 @@ export function Projects() {
   const [projectDialogId, setProjectDialogId] = useState<number | null>(null);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
   const [pendingColor, setPendingColor] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [color, setColor] = useState(PROJECT_COLORS[0]);
-  const [projectFolderPath, setProjectFolderPath] = useState('');
-  const [createProjectError, setCreateProjectError] = useState<string | null>(
-    null,
-  );
   const [assignOpen, setAssignOpen] = useState<number | null>(null);
   const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>([]);
   const [folderCandidates, setFolderCandidates] = useState<
@@ -367,7 +399,9 @@ export function Projects() {
       getExcludedProjects(),
       getApplications(),
       getDemoModeStatus(),
-    ]).then(([projectsRes, excludedRes, appsRes, demoModeRes]) => {
+      getProjectFolders(),
+      getFolderProjectCandidates(),
+    ]).then(([projectsRes, excludedRes, appsRes, demoModeRes, foldersRes, candidatesRes]) => {
       if (cancelled) return;
 
       if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
@@ -384,34 +418,23 @@ export function Projects() {
       if (demoModeRes.status === 'fulfilled')
         setIsDemoMode(demoModeRes.value.enabled);
       else console.error('Failed to load demo mode status:', demoModeRes.reason);
+
+      if (foldersRes.status === 'fulfilled') {
+        setProjectFolders(foldersRes.value);
+        setFolderError(null);
+      } else {
+        console.error('Failed to load project folders:', foldersRes.reason);
+        setFolderError('Failed to load project folders');
+      }
+
+      if (candidatesRes.status === 'fulfilled')
+        setFolderCandidates(candidatesRes.value);
+      else
+        console.error(
+          'Failed to load folder candidates:',
+          candidatesRes.reason,
+        );
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled([getProjectFolders(), getFolderProjectCandidates()]).then(
-      ([foldersRes, candidatesRes]) => {
-        if (cancelled) return;
-        if (foldersRes.status === 'fulfilled') {
-          setProjectFolders(foldersRes.value);
-          setFolderError(null);
-        } else {
-          console.error('Failed to load project folders:', foldersRes.reason);
-          setFolderError('Failed to load project folders');
-        }
-
-        if (candidatesRes.status === 'fulfilled')
-          setFolderCandidates(candidatesRes.value);
-        else
-          console.error(
-            'Failed to load folder candidates:',
-            candidatesRes.reason,
-          );
-      },
-    );
     return () => {
       cancelled = true;
     };
@@ -476,26 +499,8 @@ export function Projects() {
     setEditingColorId(null);
   };
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      setCreateProjectError(t('projects.errors.project_name_required'));
-      return;
-    }
-    if (!projectFolderPath.trim()) {
-      setCreateProjectError(
-        t('projects.errors.project_folder_required'),
-      );
-      return;
-    }
-    setCreateProjectError(null);
-    try {
-      await createProject(name.trim(), color, projectFolderPath.trim());
-      setCreateDialogOpen(false);
-      setName('');
-      setProjectFolderPath('');
-    } catch (e) {
-      setCreateProjectError(getErrorMessage(e, 'Failed to create project'));
-    }
+  const handleCreateProject = async (name: string, color: string, folderPath: string) => {
+    await createProject(name, color, folderPath);
   };
 
   const handleExclude = async (id: number) => {
@@ -571,29 +576,6 @@ export function Projects() {
     await assignAppToProject(appId, projectId);
   };
 
-  const openCreate = () => {
-    setName('');
-    setProjectFolderPath('');
-    setCreateProjectError(null);
-    setColor(PROJECT_COLORS[projects.length % PROJECT_COLORS.length]);
-    setCreateDialogOpen(true);
-  };
-
-  const handleBrowseProjectCreateFolder = async () => {
-    try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: t('projects.dialogs.select_assigned_project_folder'),
-      });
-      if (selected && typeof selected === 'string') {
-        setProjectFolderPath(selected);
-        setCreateProjectError(null);
-      }
-    } catch (e) {
-      console.error('Failed to open folder dialog:', e);
-    }
-  };
 
   const openEdit = (project: ProjectWithStats) => {
     setProjectDialogId(project.id);
@@ -687,73 +669,25 @@ export function Projects() {
     }
   };
 
-  const sortedProjects = useMemo(() => {
-    return [...projects].sort((a, b) => {
-      const valA = estimates[a.id] || 0;
-      const valB = estimates[b.id] || 0;
+  const sortedProjects = useMemo(
+    () => sortProjectList(projects, sortBy, estimates),
+    [projects, sortBy, estimates],
+  );
 
-      switch (sortBy) {
-        case 'name-asc':
-          return a.name.localeCompare(b.name);
-        case 'name-desc':
-          return b.name.localeCompare(a.name);
-        case 'time-asc':
-          return a.total_seconds - b.total_seconds;
-        case 'time-desc':
-          return b.total_seconds - a.total_seconds;
-        case 'value-asc':
-          return valA - valB;
-        case 'value-desc':
-          return valB - valA;
-        default:
-          return 0;
-      }
-    });
-  }, [projects, sortBy, estimates]);
+  const sortedExcludedProjects = useMemo(
+    () => sortProjectList(excludedProjects, sortBy, estimates),
+    [excludedProjects, sortBy, estimates],
+  );
 
-  const sortedExcludedProjects = useMemo(() => {
-    return [...excludedProjects].sort((a, b) => {
-      const valA = estimates[a.id] || 0;
-      const valB = estimates[b.id] || 0;
+  const filteredProjects = useMemo(
+    () => filterProjectList(sortedProjects, search),
+    [sortedProjects, search],
+  );
 
-      switch (sortBy) {
-        case 'name-asc':
-          return a.name.localeCompare(b.name);
-        case 'name-desc':
-          return b.name.localeCompare(a.name);
-        case 'time-asc':
-          return a.total_seconds - b.total_seconds;
-        case 'time-desc':
-          return b.total_seconds - a.total_seconds;
-        case 'value-asc':
-          return valA - valB;
-        case 'value-desc':
-          return valB - valA;
-        default:
-          return 0;
-      }
-    });
-  }, [excludedProjects, sortBy, estimates]);
-
-  const filteredProjects = useMemo(() => {
-    if (!search) return sortedProjects;
-    const q = search.toLowerCase();
-    return sortedProjects.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.assigned_folder_path && p.assigned_folder_path.toLowerCase().includes(q)),
-    );
-  }, [sortedProjects, search]);
-
-  const filteredExcludedProjects = useMemo(() => {
-    if (!search) return sortedExcludedProjects;
-    const q = search.toLowerCase();
-    return sortedExcludedProjects.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.assigned_folder_path && p.assigned_folder_path.toLowerCase().includes(q)),
-    );
-  }, [sortedExcludedProjects, search]);
+  const filteredExcludedProjects = useMemo(
+    () => filterProjectList(sortedExcludedProjects, search),
+    [sortedExcludedProjects, search],
+  );
 
   useEffect(() => {
     setProjectRenderLimits({});
@@ -1600,7 +1534,7 @@ export function Projects() {
             </Button>
           </AppTooltip>
 
-          <Button size="sm" onClick={openCreate}>
+          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> {t('projects_page.new_project')}
           </Button>
         </div>
@@ -1659,24 +1593,11 @@ export function Projects() {
         </button>
       </div>
 
-      <Card>
-        <CardHeader
-          className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection('excluded')}
-        >
-          <div className="flex items-center gap-2">
-            {sectionOpen.excluded ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <CardTitle className="text-sm font-medium">
-              {t('projects.sections.excluded_projects')}
-            </CardTitle>
-          </div>
-        </CardHeader>
-        {sectionOpen.excluded && (
-          <CardContent>
+      <CollapsibleSection
+        title={t('projects.sections.excluded_projects')}
+        isOpen={sectionOpen.excluded}
+        onToggle={toggleSection('excluded')}
+      >
             {filteredExcludedProjects.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {t('projects.empty.no_excluded_projects')}
@@ -1737,28 +1658,14 @@ export function Projects() {
                 )}
               </div>
             )}
-          </CardContent>
-        )}
-      </Card>
+      </CollapsibleSection>
 
-      <Card>
-        <CardHeader
-          className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection('folders')}
-        >
-          <div className="flex items-center gap-2">
-            {sectionOpen.folders ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <CardTitle className="text-sm font-medium">
-              {t('projects.sections.project_folders')}
-            </CardTitle>
-          </div>
-        </CardHeader>
-        {sectionOpen.folders && (
-          <CardContent className="space-y-3">
+      <CollapsibleSection
+        title={t('projects.sections.project_folders')}
+        isOpen={sectionOpen.folders}
+        onToggle={toggleSection('folders')}
+      >
+          <div className="space-y-3">
             <div className="flex gap-2">
               <input
                 className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -1843,28 +1750,14 @@ export function Projects() {
                 {t('projects_page.sync_subfolders_as_projects')}
               </Button>
             </div>
-          </CardContent>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader
-          className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection('candidates')}
-        >
-          <div className="flex items-center gap-2">
-            {sectionOpen.candidates ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <CardTitle className="text-sm font-medium">
-              {t('projects_page.folder_project_candidates')}
-            </CardTitle>
           </div>
-        </CardHeader>
-        {sectionOpen.candidates && (
-          <CardContent>
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title={t('projects_page.folder_project_candidates')}
+        isOpen={sectionOpen.candidates}
+        onToggle={toggleSection('candidates')}
+      >
             {visibleFolderCandidates.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {t('projects.empty.no_subfolder_candidates')}
@@ -1904,28 +1797,14 @@ export function Projects() {
                 {hiddenRegisteredFolderCandidatesCount}
               </p>
             )}
-          </CardContent>
-        )}
-      </Card>
+      </CollapsibleSection>
 
-      <Card>
-        <CardHeader
-          className="cursor-pointer select-none py-3 px-6"
-          onClick={toggleSection('detected')}
-        >
-          <div className="flex items-center gap-2">
-            {sectionOpen.detected ? (
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <CardTitle className="text-sm font-medium">
-              {t('projects_page.detected_projects_opened_2_times')}
-            </CardTitle>
-          </div>
-        </CardHeader>
-        {sectionOpen.detected && (
-          <CardContent className="space-y-3">
+      <CollapsibleSection
+        title={t('projects_page.detected_projects_opened_2_times')}
+        isOpen={sectionOpen.detected}
+        onToggle={toggleSection('detected')}
+      >
+          <div className="space-y-3">
             {detectedCandidatesView.visible.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 {detectedProjects.length === 0
@@ -2016,9 +1895,8 @@ export function Projects() {
                 {t('projects_page.auto_create_detected_projects')}
               </Button>
             </div>
-          </CardContent>
-        )}
-      </Card>
+          </div>
+      </CollapsibleSection>
 
       <Dialog
         open={projectDialogId !== null}
@@ -2035,71 +1913,12 @@ export function Projects() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('projects_page.new_project')}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">{t('projects_page.name')}</label>
-              <input
-                className="mt-1 flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                value={name}
-                onChange={(e) => {
-                  setName(e.target.value);
-                  setCreateProjectError(null);
-                }}
-                placeholder={t('projects_page.project_name')}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">{t('projects_page.assigned_folder')}</label>
-              <div className="mt-1 flex gap-2">
-                <input
-                  className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                  value={projectFolderPath}
-                  onChange={(e) => {
-                    setProjectFolderPath(e.target.value);
-                    setCreateProjectError(null);
-                  }}
-                  placeholder={t('projects_page.c_projects_my_new_app')}
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleBrowseProjectCreateFolder}
-                >
-                  {t('projects_page.browse')}
-                </Button>
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium">{t('projects_page.color')}</label>
-              <div className="mt-1 flex gap-2">
-                {PROJECT_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    className="h-8 w-8 rounded-full border-2 transition-transform"
-                    style={{
-                      backgroundColor: c,
-                      borderColor: color === c ? '#fff' : 'transparent',
-                      transform: color === c ? 'scale(1.1)' : 'scale(1)',
-                    }}
-                    onClick={() => setColor(c)}
-                  />
-                ))}
-              </div>
-            </div>
-            {createProjectError && (
-              <p className="text-sm text-destructive">{createProjectError}</p>
-            )}
-            <Button onClick={handleSave} className="w-full mt-2">
-              {t('projects.actions.create')}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateProjectDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        projectCount={projects.length}
+        onSave={handleCreateProject}
+      />
 
       <ManualSessionDialog
         open={sessionDialogOpen}
