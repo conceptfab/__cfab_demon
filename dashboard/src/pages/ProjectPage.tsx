@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import {
@@ -16,14 +16,12 @@ import {
   Trash2,
   Plus,
   PenLine,
-  Save,
   FileText,
 } from 'lucide-react';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Badge } from '@/components/ui/badge';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { useToast } from '@/components/ui/toast-notification';
@@ -63,9 +61,53 @@ import type {
 } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
-import { PROJECT_COLORS } from '@/lib/project-colors';
+import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import { fetchAllSessions } from '@/lib/session-pagination';
+
+function RateMultiplierPanel({
+  description,
+  currentMultiplier,
+  boostLabel,
+  customLabel,
+  onBoost,
+  onCustom,
+}: {
+  description: string;
+  currentMultiplier: number | null | undefined;
+  boostLabel: string;
+  customLabel: string;
+  onBoost: () => void;
+  onCustom: () => void;
+}) {
+  return (
+    <div className="px-3 py-2 space-y-2">
+      <p className="text-[10px] text-muted-foreground/50 leading-tight">
+        {description}
+      </p>
+      <p className="text-[10px] text-muted-foreground/80 font-medium">
+        Rate multiplier{' '}
+        <span className="text-emerald-400 font-mono">
+          {formatMultiplierLabel(currentMultiplier)}
+        </span>
+      </p>
+      <div className="flex gap-2">
+        <button
+          className="flex-1 flex items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/25 active:scale-95 cursor-pointer shadow-[0_0_15px_-5px_rgba(16,185,129,0.3)]"
+          onClick={onBoost}
+        >
+          {boostLabel}
+        </button>
+        <button
+          className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/15 active:scale-95 cursor-pointer"
+          onClick={onCustom}
+        >
+          {customLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 type AutoSessionRow = SessionWithApp & { isManual: false };
 
@@ -144,28 +186,18 @@ export function ProjectPage() {
     `${count} ${count === 1
       ? t('project_page.text.app')
       : t('project_page.text.apps')}`;
-  const toAutoSessionRow = useCallback(
-    (session: SessionWithApp): AutoSessionRow => ({
-      ...session,
-      isManual: false,
-    }),
-    [],
-  );
-  const toManualSessionRow = useCallback(
-    (session: ManualSessionWithProject): ManualSessionRow => ({
-      ...session,
-      app_id: session.app_id ?? 0,
-      app_name: t('project_page.text.manual_session'),
-      executable_name: 'manual',
-      project_id: session.project_id,
-      project_name: session.project_name,
-      project_color: session.project_color,
-      comment: session.title,
-      files: [],
-      isManual: true,
-    }),
-    [t],
-  );
+  const toManualSessionRow = (session: ManualSessionWithProject): ManualSessionRow => ({
+    ...session,
+    app_id: session.app_id ?? 0,
+    app_name: t('project_page.text.manual_session'),
+    executable_name: 'manual',
+    project_id: session.project_id,
+    project_name: session.project_name,
+    project_color: session.project_color,
+    comment: session.title,
+    files: [],
+    isManual: true,
+  });
 
   const groupedSessions = useMemo(() => {
     const groups: {
@@ -175,24 +207,35 @@ export function ProjectPage() {
     recentSessions.forEach((s) => {
       const date = s.start_time.substring(0, 10);
       if (!groups[date]) groups[date] = [];
-      groups[date].push(toAutoSessionRow(s));
+      groups[date].push({ ...s, isManual: false as const });
     });
 
     manualSessions.forEach((m) => {
       const date = m.start_time.substring(0, 10);
       if (!groups[date]) groups[date] = [];
-      groups[date].push(toManualSessionRow(m));
+      groups[date].push({
+        ...m,
+        app_id: m.app_id ?? 0,
+        app_name: t('project_page.text.manual_session'),
+        executable_name: 'manual',
+        project_id: m.project_id,
+        project_name: m.project_name,
+        project_color: m.project_color,
+        comment: m.title,
+        files: [],
+        isManual: true as const,
+      });
     });
 
     return Object.entries(groups)
-      .sort((a, b) => b[0].localeCompare(a[0])) // Most recent days first
+      .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([date, sessions]) => ({
         date,
         sessions: sessions.sort((a, b) =>
           b.start_time.localeCompare(a.start_time),
-        ), // Most recent sessions first within day
+        ),
       }));
-  }, [recentSessions, manualSessions, toAutoSessionRow, toManualSessionRow]);
+  }, [recentSessions, manualSessions, t]);
 
   const recentComments = useMemo<RecentCommentItem[]>(() => {
     const automatic = recentSessions
@@ -243,8 +286,6 @@ export function ProjectPage() {
 
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
-  const [editingColor, setEditingColor] = useState(false);
-  const [pendingColor, setPendingColor] = useState<string | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -339,10 +380,10 @@ export function ProjectPage() {
     } as const;
   };
 
+  const projectName = project?.name;
   const filteredTimeline = useMemo(() => {
-    if (!project) return timelineData;
+    if (!projectName) return timelineData;
 
-    // Group comments by date from both recentSessions and manualSessions
     const commentsByDate = new Map<string, Set<string>>();
     recentSessions.forEach((s) => {
       if (s.comment?.trim()) {
@@ -367,12 +408,12 @@ export function ProjectPage() {
       const comments = commentsByDate.get(row.date);
       return {
         ...row,
-        [project.name]: row[project.name] || 0,
+        [projectName]: row[projectName] || 0,
         comments: comments ? Array.from(comments) : undefined,
         has_manual: row.has_manual || manualByDate.has(row.date),
       };
     });
-  }, [timelineData, project, recentSessions, manualSessions]);
+  }, [timelineData, projectName, recentSessions, manualSessions]);
 
   const handleBack = () => {
     setProjectPageId(null);
@@ -652,66 +693,18 @@ export function ProjectPage() {
           data-project-name={project.name}
           className="text-xl font-semibold flex items-center gap-2"
         >
-          <div className="relative group">
-            <AppTooltip content={t('project_page.text.change_color')}>
-              <div
-                className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                style={{
-                  backgroundColor:
-                    pendingColor && editingColor ? pendingColor : project.color,
-                }}
-                onClick={() => {
-                  setEditingColor(!editingColor);
-                  setPendingColor(null);
-                }}
-              />
-            </AppTooltip>
-            {editingColor && (
-              <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
-                <div className="flex items-center gap-1">
-                  <input
-                    type="color"
-                    defaultValue={project.color}
-                    className="w-16 h-8 border border-border rounded cursor-pointer"
-                    onChange={(e) => setPendingColor(e.target.value)}
-                    title={t('project_page.text.choose_color')}
-                  />
-                  {pendingColor && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-green-500 hover:text-green-400"
-                      onClick={async () => {
-                        await updateProject(project.id, pendingColor);
-                        setProject({ ...project, color: pendingColor });
-                        setEditingColor(false);
-                        setPendingColor(null);
-                      }}
-                      title={t('project_page.text.save_color')}
-                    >
-                      <Save className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <div className="mt-2 flex gap-1">
-                  {PROJECT_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
-                      style={{ backgroundColor: c }}
-                      onClick={async () => {
-                        await updateProject(project.id, c);
-                        setProject({ ...project, color: c });
-                        setEditingColor(false);
-                        setPendingColor(null);
-                      }}
-                      title={c}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <ProjectColorPicker
+            currentColor={project.color}
+            labels={{
+              changeColor: t('project_page.text.change_color'),
+              chooseColor: t('project_page.text.choose_color'),
+              saveColor: t('project_page.text.save_color'),
+            }}
+            onSave={async (color) => {
+              await updateProject(project.id, color);
+              setProject({ ...project, color });
+            }}
+          />
           {project.name}
         </h1>
         <Button
@@ -798,61 +791,27 @@ export function ProjectPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="rounded-lg bg-secondary/20 p-4 border border-border/40">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  {t('project_page.text.sessions')}
-                </p>
-                <p className="text-2xl font-light">
-                  {extraInfo?.db_stats.session_count || 0}
-                </p>
-              </div>
-              <div className="rounded-lg bg-secondary/20 p-4 border border-border/40">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  {t('project_page.text.unique_files')}
-                </p>
-                <p className="text-2xl font-light">
-                  {extraInfo?.db_stats.file_activity_count || 0}
-                </p>
-              </div>
-              <div className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  {t('project_page.text.manual_sessions')}
-                </p>
-                <p className="text-2xl font-light flex items-center justify-between">
-                  <span>{extraInfo?.db_stats.manual_session_count || 0}</span>
-                  {(extraInfo?.db_stats.manual_session_count || 0) > 0 && (
-                    <div className="h-6 w-6 rounded bg-orange-500/10 flex items-center justify-center text-orange-400">
-                      <MousePointerClick className="h-3.5 w-3.5" />
-                    </div>
-                  )}
-                </p>
-              </div>
-              <div className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  {t('project_page.text.comments')}
-                </p>
-                <p className="text-2xl font-light flex items-center justify-between">
-                  <span>{extraInfo?.db_stats.comment_count || 0}</span>
-                  {(extraInfo?.db_stats.comment_count || 0) > 0 && (
-                    <div className="h-6 w-6 rounded bg-sky-500/10 flex items-center justify-center text-sky-400">
-                      <MessageSquare className="h-3.5 w-3.5" />
-                    </div>
-                  )}
-                </p>
-              </div>
-              <div className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                  {t('project_page.text.boosted_sessions')}
-                </p>
-                <p className="text-2xl font-light flex items-center justify-between">
-                  <span>{extraInfo?.db_stats.boosted_session_count || 0}</span>
-                  {(extraInfo?.db_stats.boosted_session_count || 0) > 0 && (
-                    <div className="h-6 w-6 rounded bg-emerald-500/10 flex items-center justify-center text-emerald-400">
-                      <CircleDollarSign className="h-3.5 w-3.5" />
-                    </div>
-                  )}
-                </p>
-              </div>
+              {([
+                { label: t('project_page.text.sessions'), value: extraInfo?.db_stats.session_count || 0 },
+                { label: t('project_page.text.unique_files'), value: extraInfo?.db_stats.file_activity_count || 0 },
+                { label: t('project_page.text.manual_sessions'), value: extraInfo?.db_stats.manual_session_count || 0, icon: MousePointerClick, iconBg: 'bg-orange-500/10', iconText: 'text-orange-400' },
+                { label: t('project_page.text.comments'), value: extraInfo?.db_stats.comment_count || 0, icon: MessageSquare, iconBg: 'bg-sky-500/10', iconText: 'text-sky-400' },
+                { label: t('project_page.text.boosted_sessions'), value: extraInfo?.db_stats.boosted_session_count || 0, icon: CircleDollarSign, iconBg: 'bg-emerald-500/10', iconText: 'text-emerald-400' },
+              ] as const).map(({ label, value, icon: Icon, iconBg, iconText }) => (
+                <div key={label} className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
+                    {label}
+                  </p>
+                  <p className="text-2xl font-light flex items-center justify-between">
+                    <span>{value}</span>
+                    {Icon && value > 0 && (
+                      <div className={`h-6 w-6 rounded flex items-center justify-center ${iconBg} ${iconText}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
+                    )}
+                  </p>
+                </div>
+              ))}
             </div>
 
             {project.assigned_folder_path && (
@@ -954,10 +913,10 @@ export function ProjectPage() {
             setSessionDialogOpen(true);
           }}
           onBarContextMenu={(date, x, y) => {
-            const dayLogSessions = recentSessions
+            const dayLogSessions: ProjectSessionRow[] = recentSessions
               .filter((s) => s.start_time.startsWith(date))
-              .map(toAutoSessionRow);
-            const dayManualSessions = manualSessions
+              .map((s) => ({ ...s, isManual: false as const }));
+            const dayManualSessions: ProjectSessionRow[] = manualSessions
               .filter((s) => s.start_time.startsWith(date))
               .map(toManualSessionRow);
             const daySessions = [...dayLogSessions, ...dayManualSessions];
@@ -1200,38 +1159,14 @@ export function ProjectPage() {
 
               <div className="h-px bg-white/5 my-1" />
 
-              <div className="px-3 py-2 space-y-2">
-                <p className="text-[10px] text-muted-foreground/50 leading-tight italic">
-                  {t('project_page.text.applies_to_all_sessions_in_this_visual_chunk', { count: ctxMenu.sessions.length })}
-                </p>
-                <p className="text-[10px] text-muted-foreground/80 font-medium">
-                  {t('project_page.text.rate_multiplier_default_x2')}{' '}
-                  <span className="text-emerald-400 font-mono">
-                    {formatMultiplierLabel(
-                      ctxMenu.sessions[0]?.rate_multiplier,
-                    )}
-                  </span>
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    className="flex-1 flex items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/25 active:scale-95 cursor-pointer shadow-[0_0_15px_-5px_rgba(16,185,129,0.3)]"
-                    onClick={() =>
-                      handleSetRateMultiplier(
-                        2,
-                        ctxMenu.sessions.map((s) => s.id),
-                      )
-                    }
-                  >
-                    {t('project_page.text.boost_x2')}
-                  </button>
-                  <button
-                    className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/15 active:scale-95 cursor-pointer"
-                    onClick={handleCustomRateMultiplier}
-                  >
-                    {t('project_page.text.custom')}
-                  </button>
-                </div>
-              </div>
+              <RateMultiplierPanel
+                description={t('project_page.text.applies_to_all_sessions_in_this_visual_chunk', { count: ctxMenu.sessions.length })}
+                currentMultiplier={ctxMenu.sessions[0]?.rate_multiplier}
+                boostLabel={t('project_page.text.boost_x2')}
+                customLabel={t('project_page.text.custom')}
+                onBoost={() => handleSetRateMultiplier(2, ctxMenu.sessions.map((s) => s.id))}
+                onCustom={handleCustomRateMultiplier}
+              />
 
               <div className="h-px bg-white/5 my-1" />
 
@@ -1415,33 +1350,14 @@ export function ProjectPage() {
 
           {!ctxMenu.session.isManual && (
             <>
-              <div className="px-3 py-2 space-y-2">
-                <p className="text-[10px] text-muted-foreground/50 leading-tight">
-                  {t('project_page.text.applies_to_this_session_record')}
-                </p>
-                <p className="text-[10px] text-muted-foreground/80 font-medium">
-                  {t('project_page.text.rate_multiplier_default_x2')}{' '}
-                  <span className="text-emerald-400">
-                    x{(ctxMenu.session.rate_multiplier || 1).toFixed(1)}
-                  </span>
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    className="flex-1 flex items-center justify-center rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-bold text-emerald-400 transition-all hover:bg-emerald-500/20 active:scale-95 cursor-pointer"
-                    onClick={() =>
-                      handleSetRateMultiplier(2, [ctxMenu.session.id])
-                    }
-                  >
-                    {t('project_page.text.boost_x2')}
-                  </button>
-                  <button
-                    className="flex-1 flex items-center justify-center rounded border border-white/10 bg-white/5 py-2 text-xs font-medium text-white transition-all hover:bg-white/10 active:scale-95 cursor-pointer"
-                    onClick={handleCustomRateMultiplier}
-                  >
-                    {t('project_page.text.custom')}
-                  </button>
-                </div>
-              </div>
+              <RateMultiplierPanel
+                description={t('project_page.text.applies_to_this_session_record')}
+                currentMultiplier={ctxMenu.session.rate_multiplier}
+                boostLabel={t('project_page.text.boost_x2')}
+                customLabel={t('project_page.text.custom')}
+                onBoost={() => handleSetRateMultiplier(2, [ctxMenu.session.id])}
+                onCustom={handleCustomRateMultiplier}
+              />
               <div className="h-px bg-white/5 my-1" />
             </>
           )}
