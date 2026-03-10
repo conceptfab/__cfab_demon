@@ -722,6 +722,7 @@ export function Help() {
                   t18n('help_page.monitor_all_fallback_if_the_monitored_process_list_is_em'),
                   t18n('help_page.unassigned_sessions_indicator_badge_with_the_count_of_se'),
                   t18n('help_page.log_auto_refresh_button_to_enable_automatic_real_time_lo'),
+                  t18n('help_page.log_auto_refresh_runs_only_while_the_daemon_screen_is_v'),
                   t18n('help_page.log_coloring_error_and_warn_lines_are_highlighted_with_c'),
                 ]}
               />

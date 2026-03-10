@@ -21,7 +21,6 @@ import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import {
   getDashboardData,
-  getProjects,
   getSessions,
   refreshToday,
   getManualSessions,
@@ -45,6 +44,7 @@ import type {
   StackedBarData,
 } from '@/lib/db-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import { loadProjectsAllTime } from '@/store/projects-cache-store';
 
 function AutoImportBanner() {
   const { t } = useTranslation();
@@ -318,10 +318,10 @@ export function Dashboard() {
         projectTimelineSeriesLimit,
         timelineGranularity,
       ),
-      getProjects(),
+      loadProjectsAllTime(),
       shouldLoadTodayData
         ? getSessions({
-            dateRange,
+          dateRange,
             limit: 500,
             offset: 0,
             minDuration,

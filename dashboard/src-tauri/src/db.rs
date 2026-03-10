@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager};
 
 const SCHEMA: &str = include_str!("../resources/sql/schema.sql");
@@ -11,6 +12,7 @@ const DB_MODE_FILE_NAME: &str = "timeflow_dashboard_mode.json";
 const LEGACY_PRIMARY_DB_FILE_NAME: &str = "cfab_dashboard.db";
 const LEGACY_DEMO_DB_FILE_NAME: &str = "cfab_dashboard_demo.db";
 const LEGACY_DB_MODE_FILE_NAME: &str = "cfab_dashboard_mode.json";
+const DB_POOL_MAX_IDLE_CONNECTIONS: usize = 4;
 
 #[derive(Serialize, Deserialize, Default)]
 struct StoredDbModeConfig {
@@ -25,6 +27,110 @@ pub struct DemoModeStatus {
     pub active_db_path: String,
     pub primary_db_path: String,
     pub demo_db_path: String,
+}
+
+#[derive(Default)]
+struct ConnectionPoolInner {
+    path: Option<String>,
+    idle: Vec<rusqlite::Connection>,
+}
+
+struct ConnectionPool {
+    inner: Mutex<ConnectionPoolInner>,
+    max_idle: usize,
+}
+
+pub struct PooledConnection {
+    conn: Option<rusqlite::Connection>,
+    path: String,
+    pool: Arc<ConnectionPool>,
+}
+
+struct ActiveDbPool(pub Arc<ConnectionPool>);
+struct PrimaryDbPool(pub Arc<ConnectionPool>);
+
+impl ConnectionPool {
+    fn new(max_idle: usize) -> Self {
+        Self {
+            inner: Mutex::new(ConnectionPoolInner::default()),
+            max_idle,
+        }
+    }
+
+    fn acquire(self: &Arc<Self>, path: &str) -> Result<PooledConnection, String> {
+        let maybe_conn = {
+            let mut inner = self
+                .inner
+                .lock()
+                .map_err(|_| "DB connection pool mutex poisoned".to_string())?;
+            if inner.path.as_deref() != Some(path) {
+                inner.path = Some(path.to_string());
+                inner.idle.clear();
+            }
+            inner.idle.pop()
+        };
+
+        let conn = match maybe_conn {
+            Some(conn) => conn,
+            None => rusqlite_open(path).map_err(|e| e.to_string())?,
+        };
+
+        Ok(PooledConnection {
+            conn: Some(conn),
+            path: path.to_string(),
+            pool: Arc::clone(self),
+        })
+    }
+
+    fn reset(&self, path: &str) -> Result<(), String> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| "DB connection pool mutex poisoned".to_string())?;
+        inner.path = Some(path.to_string());
+        inner.idle.clear();
+        Ok(())
+    }
+
+    fn release(&self, path: &str, mut conn: rusqlite::Connection) {
+        if !prepare_connection_for_pool(&mut conn) {
+            return;
+        }
+
+        let Ok(mut inner) = self.inner.lock() else {
+            return;
+        };
+        if inner.path.as_deref() != Some(path) || inner.idle.len() >= self.max_idle {
+            return;
+        }
+        inner.idle.push(conn);
+    }
+}
+
+impl Deref for PooledConnection {
+    type Target = rusqlite::Connection;
+
+    fn deref(&self) -> &Self::Target {
+        self.conn
+            .as_ref()
+            .expect("pooled database connection missing")
+    }
+}
+
+impl DerefMut for PooledConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.conn
+            .as_mut()
+            .expect("pooled database connection missing")
+    }
+}
+
+impl Drop for PooledConnection {
+    fn drop(&mut self) {
+        if let Some(conn) = self.conn.take() {
+            self.pool.release(&self.path, conn);
+        }
+    }
 }
 
 fn copy_first_existing_file_if_missing(
@@ -273,9 +379,16 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
         }
     }
 
-    // Store db path for later use
+    let active_pool = Arc::new(ConnectionPool::new(DB_POOL_MAX_IDLE_CONNECTIONS));
+    active_pool.reset(&path_str)?;
+    let primary_pool = Arc::new(ConnectionPool::new(DB_POOL_MAX_IDLE_CONNECTIONS));
+    primary_pool.reset(&db_path(app).to_string_lossy())?;
+
+    // Store db state for later use.
     app.manage(DbPath(Mutex::new(path_str)));
     app.manage(DemoModeFlag(Mutex::new(demo_mode)));
+    app.manage(ActiveDbPool(active_pool));
+    app.manage(PrimaryDbPool(primary_pool));
 
     Ok(())
 }
@@ -386,6 +499,15 @@ fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), rusqli
     crate::db_migrations::ensure_post_migration_indexes(db)
 }
 
+fn prepare_connection_for_pool(conn: &mut rusqlite::Connection) -> bool {
+    if !conn.is_autocommit() {
+        let _ = conn.execute_batch("ROLLBACK;");
+    }
+
+    conn.execute_batch("PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;")
+        .is_ok()
+}
+
 // THREADING: Each call creates a new connection. WAL mode allows concurrent readers.
 // busy_timeout=5000ms prevents SQLITE_BUSY on short write contention.
 // No PRAGMA locking_mode=EXCLUSIVE — concurrent access is safe.
@@ -398,25 +520,24 @@ fn rusqlite_open(path: &str) -> Result<rusqlite::Connection, rusqlite::Error> {
     Ok(conn)
 }
 
-// THREADING: Opens a fresh connection per command. This is safe with WAL mode
-// but long transactions (VACUUM, large imports) may block other writers for up to busy_timeout.
-pub fn get_connection(app: &AppHandle) -> Result<rusqlite::Connection, String> {
-    let db_path = app
-        .try_state::<DbPath>()
-        .ok_or_else(|| "DbPath state unavailable (database not initialized)".to_string())?;
-    let path = db_path
-        .0
-        .lock()
-        .map_err(|_| "DbPath mutex poisoned".to_string())?
-        .clone();
-    rusqlite_open(&path).map_err(|e| e.to_string())
+// THREADING: Reuses a small pool of warm connections for the currently active DB.
+// WAL mode still allows concurrent readers; long write transactions may still block other writers.
+pub fn get_connection(app: &AppHandle) -> Result<PooledConnection, String> {
+    let path = current_active_db_path_string(app)?;
+    let pool = app
+        .try_state::<ActiveDbPool>()
+        .ok_or_else(|| "ActiveDbPool state unavailable (database not initialized)".to_string())?;
+    pool.0.acquire(&path)
 }
 
-pub fn get_primary_connection(app: &AppHandle) -> Result<rusqlite::Connection, String> {
+pub fn get_primary_connection(app: &AppHandle) -> Result<PooledConnection, String> {
     let path = db_path(app);
     let path_str = path.to_string_lossy().to_string();
     initialize_database_file(&path_str)?;
-    rusqlite_open(&path_str).map_err(|e| e.to_string())
+    let pool = app
+        .try_state::<PrimaryDbPool>()
+        .ok_or_else(|| "PrimaryDbPool state unavailable (database not initialized)".to_string())?;
+    pool.0.acquire(&path_str)
 }
 
 fn current_demo_mode_enabled(app: &AppHandle) -> Result<bool, String> {
@@ -481,6 +602,10 @@ pub fn set_demo_mode(app: &AppHandle, enabled: bool) -> Result<DemoModeStatus, S
             .lock()
             .map_err(|_| "DemoModeFlag mutex poisoned".to_string())?;
         *guard = enabled;
+    }
+
+    if let Some(active_pool) = app.try_state::<ActiveDbPool>() {
+        active_pool.0.reset(&target_path_str)?;
     }
 
     log::info!(

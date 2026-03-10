@@ -13,7 +13,6 @@ import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import {
   getSessions,
-  getProjects,
   getSessionScoreBreakdown,
   analyzeSessionProjects,
   analyzeSessionsSplittable,
@@ -55,6 +54,7 @@ import {
   buildAnalysisFromBreakdown,
   withTimeout,
 } from '@/lib/session-analysis';
+import { loadProjectsAllTime } from '@/store/projects-cache-store';
 
 interface ContextMenu {
   x: number;
@@ -466,7 +466,7 @@ export function Sessions() {
   }, [activeDateRange.start, activeDateRange.end]);
 
   useEffect(() => {
-    getProjects().then(setProjects).catch(console.error);
+    loadProjectsAllTime().then(setProjects).catch(console.error);
   }, [refreshKey]);
 
   useEffect(() => {

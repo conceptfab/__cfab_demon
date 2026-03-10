@@ -30,6 +30,7 @@ import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
 
 const JOB_LOOP_TICK_MS = 5000;
 const FILE_SIGNATURE_CHECK_MS = 30_000;
+const AUTO_SPLIT_INTERVAL_MS = 60_000;
 const AUTO_SPLIT_THROTTLE_MS = 100;
 const AI_AND_SPLIT_OPERATION_KEY = 'ai_and_split_pipeline';
 
@@ -200,8 +201,67 @@ function useAutoAiAssignment() {
   }, [autoImportDone]);
 }
 
-function useAutoSplitSessions() {
-  const { autoImportDone } = useDataStore();
+// === UNIVERSAL JOB POOL ===
+// Replaces multiple setTimeouts/setIntervals scattered across components with a single event loop
+function useJobPool() {
+  const { autoImportDone, triggerRefresh } = useDataStore();
+  const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
+  const refreshDatabaseSettings = useBackgroundStatusStore(
+    (s) => s.refreshDatabaseSettings,
+  );
+  const loopRef = useRef<number | null>(null);
+
+  const nextDiagnosticsRef = useRef(0);
+  const nextRefreshRef = useRef(0);
+  const nextSigCheckRef = useRef(0);
+  const nextAutoSplitRef = useRef(0);
+  const nextSyncIntervalRef = useRef(0);
+  const nextSyncPollRef = useRef(0);
+
+  const syncSettingsRef = useRef(loadOnlineSyncSettings());
+  const syncFailCountRef = useRef(0);
+
+  const lastSignatureRef = useRef<string | null>(null);
+  const localChangeRefreshTimer = useRef<number | null>(null);
+  const localChangeSyncTimer = useRef<number | null>(null);
+  const isRefreshingRef = useRef(false);
+  const isSyncingRef = useRef(false);
+
+  const checkFileChange = useCallback(async () => {
+    if (!autoImportDone || !isDocumentVisible()) return;
+    try {
+      const sig = await getTodayFileSignature();
+      const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}:${sig.revision ?? 'na'}`;
+      if (
+        lastSignatureRef.current !== null &&
+        lastSignatureRef.current !== current
+      ) {
+        triggerRefresh('background_file_signature_changed');
+      }
+      lastSignatureRef.current = current;
+    } catch (error) {
+      console.warn('[useJobPool] Failed to check today file signature', error);
+    }
+  }, [autoImportDone, triggerRefresh]);
+
+  const runRefresh = useCallback(async () => {
+    if (!autoImportDone || isRefreshingRef.current || !isDocumentVisible()) return;
+    isRefreshingRef.current = true;
+    try {
+      const result = await refreshToday();
+      if (result.sessions_upserted > 0) {
+        await runAutoAiAssignmentCycle();
+      }
+    } catch (error) {
+      console.warn('[useJobPool] Refresh today failed', error);
+    } finally {
+      isRefreshingRef.current = false;
+    }
+  }, [autoImportDone]);
+
+  const refreshSyncSettingsCache = useCallback(() => {
+    syncSettingsRef.current = loadOnlineSyncSettings();
+  }, []);
 
   const runAutoSplit = useCallback(async () => {
     if (!autoImportDone) return;
@@ -252,83 +312,6 @@ function useAutoSplitSessions() {
       return splitCount;
     });
   }, [autoImportDone]);
-
-  const runAutoSplitRef = useRef(runAutoSplit);
-  useEffect(() => {
-    runAutoSplitRef.current = runAutoSplit;
-  }, [runAutoSplit]);
-
-  useEffect(() => {
-    if (!autoImportDone) return;
-
-    void runAutoSplitRef.current();
-    const interval = window.setInterval(() => {
-      void runAutoSplitRef.current();
-    }, 60_000);
-    return () => clearInterval(interval);
-  }, [autoImportDone]);
-}
-
-// === UNIVERSAL JOB POOL ===
-// Replaces multiple setTimeouts/setIntervals scattered across components with a single event loop
-function useJobPool() {
-  const { autoImportDone, triggerRefresh } = useDataStore();
-  const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
-  const refreshDatabaseSettings = useBackgroundStatusStore(
-    (s) => s.refreshDatabaseSettings,
-  );
-  const loopRef = useRef<number | null>(null);
-
-  const nextDiagnosticsRef = useRef(0);
-  const nextRefreshRef = useRef(0);
-  const nextSigCheckRef = useRef(0);
-  const nextSyncIntervalRef = useRef(0);
-  const nextSyncPollRef = useRef(0);
-
-  const syncSettingsRef = useRef(loadOnlineSyncSettings());
-  const syncFailCountRef = useRef(0);
-
-  const lastSignatureRef = useRef<string | null>(null);
-  const localChangeRefreshTimer = useRef<number | null>(null);
-  const localChangeSyncTimer = useRef<number | null>(null);
-  const isRefreshingRef = useRef(false);
-  const isSyncingRef = useRef(false);
-
-  const checkFileChange = useCallback(async () => {
-    if (!autoImportDone || !isDocumentVisible()) return;
-    try {
-      const sig = await getTodayFileSignature();
-      const current = `${sig.exists ? 1 : 0}:${sig.modified_unix_ms ?? 'na'}:${sig.size_bytes ?? 'na'}:${sig.revision ?? 'na'}`;
-      if (
-        lastSignatureRef.current !== null &&
-        lastSignatureRef.current !== current
-      ) {
-        triggerRefresh('background_file_signature_changed');
-      }
-      lastSignatureRef.current = current;
-    } catch (error) {
-      console.warn('[useJobPool] Failed to check today file signature', error);
-    }
-  }, [autoImportDone, triggerRefresh]);
-
-  const runRefresh = useCallback(async () => {
-    if (!autoImportDone || isRefreshingRef.current || !isDocumentVisible()) return;
-    isRefreshingRef.current = true;
-    try {
-      const result = await refreshToday();
-      if (result.sessions_upserted > 0) {
-        await runAutoAiAssignmentCycle();
-      }
-    } catch (error) {
-      console.warn('[useJobPool] Refresh today failed', error);
-    } finally {
-      isRefreshingRef.current = false;
-    }
-  }, [autoImportDone]);
-
-  const refreshSyncSettingsCache = useCallback(() => {
-    syncSettingsRef.current = loadOnlineSyncSettings();
-  }, []);
 
   const runSync = useCallback(
     async (reason: string, isAuto = true) => {
@@ -384,8 +367,14 @@ function useJobPool() {
 
     // Universal Event Loop (1 second tick)
     loopRef.current = window.setInterval(() => {
-      if (!isDocumentVisible()) return;
       const now = Date.now();
+
+      if (autoImportDone && now >= nextAutoSplitRef.current) {
+        nextAutoSplitRef.current = now + AUTO_SPLIT_INTERVAL_MS;
+        void runAutoSplit();
+      }
+
+      if (!isDocumentVisible()) return;
 
       if (now >= nextDiagnosticsRef.current) {
         nextDiagnosticsRef.current = now + 10_000;
@@ -427,6 +416,7 @@ function useJobPool() {
     checkFileChange,
     refreshDatabaseSettings,
     refreshDiagnostics,
+    runAutoSplit,
     runRefresh,
     runSync,
     refreshSyncSettingsCache,
@@ -446,6 +436,7 @@ function useJobPool() {
       if (!autoImportDone) return;
       nextRefreshRef.current = 0;
       nextSigCheckRef.current = 0;
+      nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
       nextSyncIntervalRef.current = 0;
       nextSyncPollRef.current = 0;
       void runRefresh();
@@ -506,10 +497,12 @@ function useJobPool() {
 
   useEffect(() => {
     if (!autoImportDone) return;
+    nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
+    void runAutoSplit();
     refreshSyncSettingsCache();
     if (!syncSettingsRef.current.enabled) return;
     void runSync('startup', false);
-  }, [autoImportDone, runSync, refreshSyncSettingsCache]);
+  }, [autoImportDone, runAutoSplit, runSync, refreshSyncSettingsCache]);
 }
 
 export function BackgroundServices() {
@@ -517,7 +510,6 @@ export function BackgroundServices() {
   useAutoProjectSync();
   useAutoSessionRebuild();
   useAutoAiAssignment();
-  useAutoSplitSessions();
   useJobPool();
 
   return null;

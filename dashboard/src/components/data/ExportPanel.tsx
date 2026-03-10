@@ -4,9 +4,10 @@ import { Download, Calendar, Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { getProjects, exportData } from "@/lib/tauri";
+import { exportData } from "@/lib/tauri";
 import type { ProjectWithStats } from "@/lib/db-types";
 import { useToast } from "@/components/ui/toast-notification";
+import { loadProjectsAllTime } from "@/store/projects-cache-store";
 
 const labelClassName = "text-sm font-medium text-muted-foreground";
 const compactSelectClassName =
@@ -24,7 +25,7 @@ export function ExportPanel() {
   const { showInfo, showError } = useToast();
 
   useEffect(() => {
-    getProjects().then(setProjects).catch(console.error);
+    loadProjectsAllTime().then(setProjects).catch(console.error);
   }, []);
 
   const handleExport = async () => {

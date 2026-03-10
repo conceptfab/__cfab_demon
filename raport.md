@@ -25,32 +25,41 @@
 - [x] `1.2` `unwrap()` na `Mutex` w `src/tray.rs` zastąpiony bezpiecznym odzyskaniem locka; dodane też nazwane okno double-click.
 - [x] `1.3` Startup sync respektuje `enabled` już w warstwie UI job pool; doprecyzowany opis w Help/Settings.
 - [x] `2.2` Polling `checkFileChange` spowolniony z `5s` do `30s`.
+- [x] `2.3` `getProjects()` bez zakresu dat korzysta teraz ze wspólnego cache w Zustand store z invalidacją po mutacjach projektów i danych wpływających na statystyki projektów.
 - [x] `2.4` Dashboard nie przeładowuje wszystkich danych tylko dlatego, że zmienił się język UI.
+- [x] `2.5` `db::get_connection()` i `get_primary_connection()` korzystają teraz z małego poola ciepłych połączeń SQLite z resetem stanu przy zwrocie i czyszczeniem po zmianie trybu demo/primary.
+- [x] `2.6` `load_range_snapshots()` ładuje zakres batchowo (snapshot headers + apps + sessions + files), zamiast wykonywać `load_day_snapshot()` osobno dla każdego dnia.
+- [x] `2.7` `replace_day_snapshot()` nie kasuje już całego dnia przez `DELETE FROM daily_snapshots`; zapis używa upsertów nagłówka/app/sesji/plików i usuwa tylko rekordy, które zniknęły z nowego snapshotu.
+- [x] `2.8` Pełny `build_process_snapshot()` dla background apps jest cache'owany i odświeżany co `30s`, zamiast przy każdym ticku `poll_interval`; foreground tracking dalej działa niezależnie od tego snapshotu.
+- [x] `2.9` `ensure_schema()` nie jest już wywoływane przy każdym `load_day_snapshot()`, `load_range_snapshots()`, `get_day_signature()` i `replace_day_snapshot()`; inicjalizacja schematu zostaje przy `open_store()`.
+- [x] `2.10` Zbędny indeks `idx_daily_snapshots_date` na kolumnie `date` (PRIMARY KEY) został usunięty z `ensure_schema()`, a istniejące bazy czyszczą go przez `DROP INDEX IF EXISTS`.
 - [x] `3.3` `ReportView` nie trzyma już stale memoizowanej daty wygenerowania.
 - [x] `3.4` `DaemonControl` nie wykonuje zbędnego `refresh()` przy wyłączeniu auto-refresh.
 - [x] `3.6` `App.tsx` nie subskrybuje już całego `currentPage`, tylko pochodny boolean dla `showChrome`.
 - [x] `4.2` Usunięta duplikacja `isSessionAlreadySplit` na rzecz współdzielonego helpera.
+- [x] `4.4` `Dashboard` nie trzyma już osobnego stanu `projectCount`; licznik jest pochodną `projectsList.length`.
+- [x] `4.5` Miejsca wcześniej wołające bezpośrednio `getProjects()` korzystają teraz ze współdzielonego loadera/cache `loadProjectsAllTime()`.
 - [x] `5.1` Hardkodowane błędy widoczne w UI w `Projects`, `Settings` i `CreateProjectDialog` zostały przepięte na tłumaczenia.
-- [x] Weryfikacja techniczna: `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
+- [x] Weryfikacja techniczna: `cargo test`, `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 - [x] `1.1` Dashboard używa teraz jednego endpointu `get_dashboard_data` dla statystyk, top projektów, listy projektów do wykresu i timeline, więc ciężka agregacja nie leci już 4× przy jednym ładowaniu widoku.
 - [x] `8.1` Nieużywana zależność `sysinfo` usunięta z demona.
-- [ ] `2.1` Częściowo: wspólny polling statusów tła przeniesiony do store + `BackgroundServices`; lokalny interwał usunięty z `Sidebar`, a `DaemonControl` używa już centralnego statusu zamiast własnego pollingu statusowego. `DataHistory` nie ma już minutowego `setInterval` i odświeża się po realnych mutacjach danych oraz po powrocie do okna. `AI.tsx` nie ma już lokalnego pollingu `30s`; status modelu idzie ze wspólnego store, a metryki odświeżają się zdarzeniowo. `Sessions.tsx` nie ma już lokalnego pollingu `15s`; lista odświeża się po zmianie filtrów, `refreshKey` oraz po powrocie do okna. Pozostały interwały specyficzne dla poszczególnych ekranów.
+- [x] `2.1` Polling aplikacyjny został scentralizowany w store + `BackgroundServices`: `Sidebar`, `AI.tsx`, `Sessions.tsx`, `DataHistory.tsx` i auto-split nie mają już własnych interwałów pollingowych poza centralnym job pool. `DaemonControl` zostawia tylko page-scoped refresh logów przy widocznym oknie, a `useTimeAnalysisData` ma wyłącznie lokalny timer odświeżający datę w UI, bez odpytywania API.
 
 ---
 
 ## 1. Problemy krytyczne
 
-### 1.1 `compute_project_activity_unique` wywoływane 4× na tych samych danych
+### [x] 1.1 `compute_project_activity_unique` wywoływane 4× na tych samych danych
 - **Pliki:** `dashboard/src-tauri/src/commands/dashboard.rs` (linie 18, 225, 264, 311)
 - **Opis:** `get_dashboard_stats`, `get_top_projects`, `get_dashboard_projects` i `get_timeline` — wszystkie 4 komendy wywołują `compute_project_activity_unique` niezależnie. Dashboard woła je równocześnie (`Promise.allSettled`), więc ta sama ciężka operacja jest wykonywana 4 razy na tych samych danych.
 - **Rozwiązanie:** Stworzyć jeden endpoint `get_dashboard_data`, który wykona obliczenia raz i zwróci wszystkie potrzebne dane w jednej odpowiedzi.
 
-### 1.2 `unwrap()` na Mutex lock w tray.rs
+### [x] 1.2 `unwrap()` na Mutex lock w tray.rs
 - **Plik:** `src/tray.rs`, linia 203
 - **Opis:** `last_tray_click_clone.lock().unwrap()` — może spowodować panic jeśli mutex zostanie "poisoned" (np. panic w innym miejscu trzymającym lock).
 - **Rozwiązanie:** Użyć `unwrap_or_else(|e| e.into_inner())` jak w loggerze (main.rs:156-158).
 
-### 1.3 Startup sync ignoruje flagę `enabled`
+### [x] 1.3 Startup sync ignoruje flagę `enabled`
 - **Plik:** `dashboard/src/components/sync/BackgroundServices.tsx`, linia 483-486
 - **Opis:** `runSync('startup', false)` — `isAuto=false` pomija sprawdzenie `settings.enabled`. Sync startupowy uruchomi się nawet jeśli sync jest wyłączony w ustawieniach.
 - **Rozwiązanie:** Sprawdzić `settings.enabled` przed wywołaniem sync startupowego.
@@ -59,7 +68,7 @@
 
 ## 2. Wydajność i optymalizacje
 
-### 2.1 [WYSOKI] 6+ aktywnych setInterval jednocześnie
+### [x] 2.1 [WYSOKI] 6+ aktywnych setInterval jednocześnie
 - Job Pool tick: 5s (`BackgroundServices.tsx`)
 - `checkFileChange`: co 5s
 - `runRefresh`: co 60s
@@ -72,47 +81,47 @@
 
 **Rozwiązanie:** Scentralizować polling w jednym job pool i udostępniać dane przez store (Zustand), zamiast każdej stronie mieć własny polling.
 
-### 2.2 [WYSOKI] `checkFileChange` co 5s vs daemon zapisuje co 5 minut
+### [x] 2.2 [WYSOKI] `checkFileChange` co 5s vs daemon zapisuje co 5 minut
 - **Plik:** `BackgroundServices.tsx`, linia 393
 - **Opis:** `getTodayFileSignature()` jest wywoływane co 5 sekund. Demon zapisuje dane co 300s.
 - **Rozwiązanie:** Zwiększyć interwał do 30-60s.
 
-### 2.3 [WYSOKI] Brak cache na `getProjects()`
+### [x] 2.3 [WYSOKI] Brak cache na `getProjects()`
 - **Plik:** `Dashboard.tsx`, linia 321
 - **Opis:** Lista projektów zmienia się rzadko, ale ładowana jest przy każdym refresh (co 60s + manual + zmiana danych).
 - **Rozwiązanie:** Cache w Zustand store z invalidacją tylko po mutacjach projektów.
 
-### 2.4 [WYSOKI] `t` w tablicy zależności useEffect w Dashboard
+### [x] 2.4 [WYSOKI] `t` w tablicy zależności useEffect w Dashboard
 - **Plik:** `Dashboard.tsx`, linia 422-429
 - **Opis:** Funkcja `t` z `useTranslation()` jest w tablicy zależności głównego useEffect ładującego dane. Zmiana języka powoduje ponowne załadowanie 7 równoczesnych zapytań API.
 - **Rozwiązanie:** Usunąć `t` z dependency array — nie wpływa na zapytania API.
 
-### 2.5 [ŚREDNI] Nowe połączenie SQLite per komendę Tauri
+### [x] 2.5 [ŚREDNI] Nowe połączenie SQLite per komendę Tauri
 - **Plik:** `db.rs`, linia 403 + `helpers.rs`, linia 64
 - **Opis:** Każde wywołanie komendy Tauri tworzy nowe połączenie SQLite. Przy 4 równoczesnych komendach z dashboardu = 4 nowe połączenia.
 - **Rozwiązanie:** Pula połączeń lub jedno współdzielone połączenie za Mutex.
 
-### 2.6 [ŚREDNI] N+1 pattern w `load_range_snapshots`
+### [x] 2.6 [ŚREDNI] N+1 pattern w `load_range_snapshots`
 - **Plik:** `daily_store.rs`, linie 416-442
 - **Opis:** Dla zakresu 30 dni: 1 + 3×30 = 91 zapytań SQL.
 - **Rozwiązanie:** 3-4 zapytania z `WHERE date BETWEEN ? AND ?`.
 
-### 2.7 [ŚREDNI] DELETE + INSERT zamiast UPDATE w daily store
+### [x] 2.7 [ŚREDNI] DELETE + INSERT zamiast UPDATE w daily store
 - **Plik:** `daily_store.rs`, linia 161
 - **Opis:** `DELETE FROM daily_snapshots WHERE date = ?1` kasuje kaskadowo apps/sessions/files, po czym wstawia od nowa.
 - **Rozwiązanie:** Chirurgiczny UPDATE zmienonych rekordów.
 
-### 2.8 [ŚREDNI] `build_process_snapshot` — pełny snapshot co 10s
+### [x] 2.8 [ŚREDNI] `build_process_snapshot` — pełny snapshot co 10s
 - **Plik:** `tracker.rs:337`, `monitor.rs:653`
 - **Opis:** `CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS)` iteruje przez WSZYSTKIE procesy systemu co 10s.
 - **Rozwiązanie:** Zwiększyć interwał do 30s dla background apps; foreground tracking nie wymaga pełnego snapshotu.
 
-### 2.9 [NISKI] `ensure_schema()` przy każdej operacji
+### [x] 2.9 [NISKI] `ensure_schema()` przy każdej operacji
 - **Plik:** `daily_store.rs`, linie 86, 137, 277
 - **Opis:** `CREATE TABLE IF NOT EXISTS...` wykonywane przy każdym `load_day_snapshot` i `replace_day_snapshot`.
 - **Rozwiązanie:** Wywoływać raz przy otwarciu połączenia.
 
-### 2.10 [NISKI] Zbędny indeks na PRIMARY KEY
+### [x] 2.10 [NISKI] Zbędny indeks na PRIMARY KEY
 - **Plik:** `daily_store.rs`, linia 127
 - **Opis:** `CREATE INDEX idx_daily_snapshots_date ON daily_snapshots(date)` — `date` jest już PRIMARY KEY.
 - **Rozwiązanie:** Usunąć zbędny indeks.
@@ -134,11 +143,11 @@
 - **Plik:** `src/monitor.rs`, linia 155
 - **Opis:** `get_foreground_info()` zwraca `None` dla okien bez tytułu. Niektóre aplikacje (np. full-screen games, renderery) mają puste tytuły — czas pracy w nich nie jest zliczany.
 
-### 3.3 `ReportView` — `generatedAt` memoizowane bez deps
+### [x] 3.3 `ReportView` — `generatedAt` memoizowane bez deps
 - **Plik:** `ReportView.tsx`, linia 34
 - **Opis:** `useMemo(() => format(new Date(), 'yyyy-MM-dd HH:mm'), [])` — data jest ustawiana raz na cały cykl życia komponentu. Jeśli użytkownik wróci następnego dnia, data będzie stara.
 
-### 3.4 `DaemonControl` — zbędny `refresh()` przy wyłączeniu auto-refresh
+### [x] 3.4 `DaemonControl` — zbędny `refresh()` przy wyłączeniu auto-refresh
 - **Plik:** `DaemonControl.tsx`, linia 86-91
 - **Opis:** Gdy `autoRefresh` zmieni się z `true` na `false`, `refresh()` w useEffect nadal zostaje wywołane niepotrzebnie.
 
@@ -146,7 +155,7 @@
 - **Plik:** `Settings.tsx`
 - **Opis:** Flaga `savedSettings` jest resetowana przy każdej indywidualnej zmianie. Użytkownik może wyjść ze strony bez zapisu, tracąc zmiany — brak dialogu "unsaved changes".
 
-### 3.6 `App.tsx` — podwójne subskrybowanie `currentPage`
+### [x] 3.6 `App.tsx` — podwójne subskrybowanie `currentPage`
 - **Plik:** `App.tsx`, linie 62 i 155
 - **Opis:** `currentPage` odczytywane zarówno w `PageRouter` jak i w `App`. Powoduje re-render całego `App` przy każdej zmianie strony.
 - **Rozwiązanie:** Zmienić selector w App na `useUIStore(s => s.currentPage !== 'report-view')`.
@@ -160,7 +169,7 @@
 - **Opis:** Identyczna logika obliczenia `Math.floor(seconds / 3600)` i `Math.floor((seconds % 3600) / 60)`. Różnica: JSX vs string.
 - **Rozwiązanie:** Wydzielić wspólną logikę obliczeniową.
 
-### 4.2 Zduplikowana `isSessionAlreadySplit`
+### [x] 4.2 Zduplikowana `isSessionAlreadySplit`
 - **Pliki:** `BackgroundServices.tsx:61-65` vs `session-analysis.ts:10-13`
 - **Opis:** Identyczna funkcja w dwóch miejscach.
 - **Rozwiązanie:** `BackgroundServices.tsx` powinno importować z `session-analysis.ts`.
@@ -170,11 +179,11 @@
 - **Opis:** Niemal identyczny kod iterowania procesów przez `CreateToolhelp32Snapshot`.
 - **Rozwiązanie:** Wydzielić do `process_utils.rs`.
 
-### 4.4 Nadmiarowy stan `projectCount`
+### [x] 4.4 Nadmiarowy stan `projectCount`
 - **Plik:** `Dashboard.tsx`, linie 188, 192, 368-369
 - **Opis:** `projectCount` to zawsze `projectsList.length`. Zbędny dodatkowy useState.
 
-### 4.5 `getProjects()` wołany niezależnie w 7 miejscach
+### [x] 4.5 `getProjects()` wołany niezależnie w 7 miejscach
 - **Pliki:** Dashboard, ProjectPage, Projects, Sessions, useTimeAnalysisData, DataStats, ExportPanel
 - **Opis:** Każde miejsce: `getProjects().then(set).catch(console.error)`.
 - **Rozwiązanie:** Scentralizować w Zustand store lub shared hook.
@@ -195,7 +204,7 @@
 
 ## 5. Brakujące tłumaczenia
 
-### 5.1 Hardkodowane angielskie stringi widoczne dla użytkownika
+### [x] 5.1 Hardkodowane angielskie stringi widoczne dla użytkownika
 
 | Plik | Linia | Hardkodowany tekst |
 |------|-------|--------------------|
@@ -297,7 +306,7 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 
 ## 8. Build i zależności
 
-### 8.1 [WYSOKI] Nieużywana zależność `sysinfo`
+### [x] 8.1 [WYSOKI] Nieużywana zależność `sysinfo`
 - **Plik:** `Cargo.toml`, linia 31
 - **Opis:** `sysinfo = "0.13"` — grep `use sysinfo` w `src/` zwraca 0 wyników. Cała detekcja procesów oparta na WinAPI. Ciężka zależność (długa kompilacja).
 - **Rozwiązanie:** Usunąć.

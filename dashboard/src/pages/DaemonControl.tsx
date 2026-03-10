@@ -25,6 +25,10 @@ import { useTranslation } from "react-i18next";
 import { formatPathForDisplay, cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
 
+function isDocumentVisible(): boolean {
+  return typeof document === "undefined" || document.visibilityState === "visible";
+}
+
 export function DaemonControl() {
   const { t } = useTranslation();
   const status = useBackgroundStatusStore((s) => s.daemonStatus);
@@ -35,6 +39,7 @@ export function DaemonControl() {
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [isWindowVisible, setIsWindowVisible] = useState(() => isDocumentVisible());
   const refreshAsync = useCancellableAsync();
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
@@ -80,12 +85,34 @@ export function DaemonControl() {
     refreshLogs();
   }, [refreshDiagnostics, refreshLogs, status]);
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = isDocumentVisible();
+      setIsWindowVisible(visible);
+      if (!visible) return;
+      refreshLogs();
+    };
+    const handleWindowFocus = () => {
+      const visible = isDocumentVisible();
+      setIsWindowVisible(visible);
+      if (!visible) return;
+      refreshLogs();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [refreshLogs]);
+
   // Auto-refresh every 5s when enabled
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || !isWindowVisible) return;
     const interval = setInterval(refreshLogs, 5000);
     return () => clearInterval(interval);
-  }, [refreshLogs, autoRefresh]);
+  }, [refreshLogs, autoRefresh, isWindowVisible]);
 
   // Scroll logs to bottom on update
   useEffect(() => {

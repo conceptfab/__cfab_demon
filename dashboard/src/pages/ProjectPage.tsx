@@ -31,7 +31,6 @@ import { ProjectManualSessionsCard } from '@/components/project/ProjectManualSes
 import { ProjectRecentCommentsCard } from '@/components/project/ProjectRecentCommentsCard';
 import {
   getProject,
-  getProjects,
   getProjectExtraInfo,
   compactProjectData,
   getProjectEstimates,
@@ -65,6 +64,7 @@ import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import { loadProjectsAllTime } from '@/store/projects-cache-store';
 import { fetchAllSessions } from '@/lib/session-pagination';
 
 function RateMultiplierPanel({
@@ -395,7 +395,7 @@ export function ProjectPage() {
     }
 
     let cancelled = false;
-    getProjects()
+    loadProjectsAllTime()
       .then((projects) => {
         if (cancelled) return;
         setProjectsList(projects);

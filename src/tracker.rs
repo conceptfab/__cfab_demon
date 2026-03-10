@@ -39,6 +39,7 @@ fn write_heartbeat() {
 }
 
 static WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
+const BACKGROUND_PROCESS_SNAPSHOT_INTERVAL: Duration = Duration::from_secs(30);
 
 fn check_dashboard_compatibility() {
     if let Ok(dir) = config::config_dir() {
@@ -81,6 +82,18 @@ fn check_dashboard_compatibility() {
                 // Reset flag if versions become compatible again (e.g. after update)
                 WARNING_SHOWN.store(false, Ordering::SeqCst);
             }
+        }
+    }
+}
+
+fn should_refresh_background_process_snapshot(
+    last_refresh: Option<Instant>,
+    now: Instant,
+) -> bool {
+    match last_refresh {
+        None => true,
+        Some(last_refresh) => {
+            now.duration_since(last_refresh) >= BACKGROUND_PROCESS_SNAPSHOT_INTERVAL
         }
     }
 }
@@ -229,6 +242,8 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut file_index_cache = rebuild_file_index_cache(&daily_data);
     // CPU state per application (for background activity detection)
     let mut cpu_state: CpuState = HashMap::new();
+    let mut process_snapshot_cache: Option<monitor::ProcessSnapshot> = None;
+    let mut last_process_snapshot_refresh: Option<Instant> = None;
 
     let mut poll_interval = Duration::from_secs(iv.poll_secs);
     let mut save_interval = Duration::from_secs(iv.save_secs);
@@ -276,6 +291,8 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             session_gap = Duration::from_secs(iv.session_gap_secs);
             config_reload_interval = Duration::from_secs(iv.config_reload_secs);
             cpu_thresh = iv.cpu_threshold;
+            process_snapshot_cache = None;
+            last_process_snapshot_refresh = None;
         }
 
         // Calculate actual elapsed time since last poll (D-9, D-11)
@@ -332,9 +349,20 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
         }
 
         // CPU-based background tracking (for monitored apps NOT in foreground)
-        // Build process snapshot once per tick (instead of 2N snapshots for N apps)
+        // Build process snapshot at most every 30s for background apps.
+        // Foreground tracking uses GetForegroundWindow/PID cache and does not need this snapshot.
         if tracking_enabled {
-            let proc_snap = monitor::build_process_snapshot();
+            let snapshot_now = Instant::now();
+            if should_refresh_background_process_snapshot(
+                last_process_snapshot_refresh,
+                snapshot_now,
+            ) {
+                process_snapshot_cache = Some(monitor::build_process_snapshot());
+                last_process_snapshot_refresh = Some(snapshot_now);
+            }
+            let Some(proc_snap) = process_snapshot_cache.as_ref() else {
+                continue;
+            };
 
             for exe_name in &monitored {
                 if recorded_this_tick.contains(exe_name) {
@@ -418,5 +446,32 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                 thread::sleep(Duration::from_secs(1).min(remaining_now));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        should_refresh_background_process_snapshot, BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
+    };
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn refreshes_background_process_snapshot_when_never_built() {
+        let now = Instant::now();
+        assert!(should_refresh_background_process_snapshot(None, now));
+    }
+
+    #[test]
+    fn refreshes_background_process_snapshot_after_interval_elapsed() {
+        let now = Instant::now();
+        assert!(!should_refresh_background_process_snapshot(
+            Some(now - Duration::from_secs(5)),
+            now,
+        ));
+        assert!(should_refresh_background_process_snapshot(
+            Some(now - BACKGROUND_PROCESS_SNAPSHOT_INTERVAL),
+            now,
+        ));
     }
 }

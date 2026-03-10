@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
-import { getTimeline, getProjectTimeline, getProjects } from "@/lib/tauri";
+import { getTimeline, getProjectTimeline } from "@/lib/tauri";
 import {
   addDays, addMonths, subMonths, format, parseISO, subDays,
   startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
@@ -10,6 +10,7 @@ import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
 import { resolveDateFnsLocale } from "@/lib/date-locale";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
+import { loadProjectsAllTime } from "@/store/projects-cache-store";
 
 export type RangeMode = "daily" | "weekly" | "monthly";
 
@@ -83,7 +84,7 @@ export function useTimeAnalysisData() {
     Promise.all([
       getTimeline(activeDateRange),
       hpPromise,
-      getProjects(),
+      loadProjectsAllTime(),
     ]).then(([tl, hp, projects]) => {
       if (cancelled) return;
       const colorMap = new Map<string, string>();

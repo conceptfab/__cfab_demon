@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from 'react-i18next';
 import { Database, Clock, Briefcase, Layout } from "lucide-react";
-import { getActivityDateSpan, getDashboardStats, getProjects } from "@/lib/tauri";
+import { getActivityDateSpan, getDashboardStats } from "@/lib/tauri";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDurationSlim } from "@/lib/utils";
+import { loadProjectsAllTime } from "@/store/projects-cache-store";
 
 export function DataStats() {
   const { t } = useTranslation();
@@ -19,7 +20,10 @@ export function DataStats() {
 
     const load = async () => {
       try {
-        const [range, projects] = await Promise.all([getActivityDateSpan(), getProjects()]);
+        const [range, projects] = await Promise.all([
+          getActivityDateSpan(),
+          loadProjectsAllTime(),
+        ]);
         if (cancelled) return;
 
         if (!range) {

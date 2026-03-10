@@ -30,7 +30,6 @@ import {
 } from '@/components/ui/dialog';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  getProjects,
   getExcludedProjects,
   createProject,
   updateProject,
@@ -93,6 +92,7 @@ import type {
   ProjectExtraInfo,
 } from '@/lib/db-types';
 import { PROJECT_COLORS } from '@/lib/project-colors';
+import { loadProjectsAllTime } from '@/store/projects-cache-store';
 
 const PROJECT_RENDER_PAGE_SIZE = 120;
 const PROJECT_FOLDERS_LOAD_ERROR = '__projects_load_folders_failed__';
@@ -399,7 +399,7 @@ export function Projects() {
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
-      getProjects(),
+      loadProjectsAllTime(),
       getExcludedProjects(),
       getApplications(),
       getDemoModeStatus(),

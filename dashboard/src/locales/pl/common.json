@@ -1530,6 +1530,7 @@
     "monitor_all_fallback_if_the_monitored_process_list_is_em": "Fallback monitor-all – jeśli lista monitorowanych procesów jest pusta, daemon zaczyna śledzić wszystkie aplikacje, więc warto skonfigurować zakładkę Applications przed uruchomieniem pracy produkcyjnej.",
     "unassigned_sessions_indicator_badge_with_the_count_of_se": "Wskaźnik nieprzypisanych sesji – badge z liczbą sesji wymagających przypisania, widoczny bezpośrednio na ekranie Daemona.",
     "log_auto_refresh_button_to_enable_automatic_real_time_lo": "Auto-refresh logów – przycisk włączający automatyczne odświeżanie podglądu logów w czasie rzeczywistym.",
+    "log_auto_refresh_runs_only_while_the_daemon_screen_is_v": "Auto-refresh logów działa tylko wtedy, gdy ekran Daemon jest otwarty i okno TIMEFLOW jest widoczne; po powrocie aplikacja natychmiast dociąga najnowszy fragment logu.",
     "log_coloring_error_and_warn_lines_are_highlighted_with_c": "Kolorowanie logów – linie z ERROR i WARN są wyróżnione kolorem, ułatwiając szybką identyfikację problemów.",
     "settings_2": "USTAWIENIA",
     "full_control_over_application_configuration_and_security": "Pełna kontrola nad konfiguracją aplikacji i bezpieczeństwem.",

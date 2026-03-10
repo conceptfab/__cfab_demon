@@ -3,6 +3,7 @@ import type { EstimateProjectRow } from '@/lib/db-types';
 import {
   buildEstimateMap,
   shouldInvalidateProjectExtraInfo,
+  shouldRefreshProjectsCache,
   shouldRefreshProjectsAllTime,
 } from './projects-all-time';
 
@@ -20,6 +21,14 @@ describe('projects-all-time helpers', () => {
     expect(shouldInvalidateProjectExtraInfo('delete_project')).toBe(true);
     expect(shouldInvalidateProjectExtraInfo('compact_project_data')).toBe(true);
     expect(shouldInvalidateProjectExtraInfo('update_project')).toBe(false);
+  });
+
+  it('refreshes cached projects list for project and assignment mutations', () => {
+    expect(shouldRefreshProjectsCache('create_project')).toBe(true);
+    expect(shouldRefreshProjectsCache('assign_session_to_project')).toBe(true);
+    expect(shouldRefreshProjectsCache('run_auto_safe_assignment')).toBe(true);
+    expect(shouldRefreshProjectsCache('update_project')).toBe(true);
+    expect(shouldRefreshProjectsCache('assign_app_to_project')).toBe(false);
   });
 
   it('builds estimate map by project id', () => {

@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -124,8 +124,7 @@ pub fn ensure_schema(conn: &Connection) -> Result<(), String> {
              PRIMARY KEY (date, exe_name, file_name),
              FOREIGN KEY (date, exe_name) REFERENCES daily_apps(date, exe_name) ON DELETE CASCADE
          );
-         CREATE INDEX IF NOT EXISTS idx_daily_snapshots_date
-             ON daily_snapshots(date);
+         DROP INDEX IF EXISTS idx_daily_snapshots_date;
          CREATE INDEX IF NOT EXISTS idx_daily_sessions_date_exe
              ON daily_sessions(date, exe_name, session_index);
          CREATE INDEX IF NOT EXISTS idx_daily_files_date_exe
@@ -138,8 +137,6 @@ pub fn replace_day_snapshot(
     conn: &mut Connection,
     snapshot: &StoredDailyData,
 ) -> Result<DaySignature, String> {
-    ensure_schema(conn)?;
-
     let tx = conn
         .transaction()
         .map_err(|e| format!("Failed to start daily store transaction: {}", e))?;
@@ -159,13 +156,12 @@ pub fn replace_day_snapshot(
         .as_millis() as u64;
 
     tx.execute(
-        "DELETE FROM daily_snapshots WHERE date = ?1",
-        [snapshot.date.as_str()],
-    )
-    .map_err(|e| format!("Failed to clear previous daily snapshot: {}", e))?;
-    tx.execute(
         "INSERT INTO daily_snapshots (date, generated_at, updated_unix_ms, revision)
-         VALUES (?1, ?2, ?3, ?4)",
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(date) DO UPDATE SET
+             generated_at = excluded.generated_at,
+             updated_unix_ms = excluded.updated_unix_ms,
+             revision = excluded.revision",
         params![
             snapshot.date,
             snapshot.generated_at,
@@ -175,19 +171,64 @@ pub fn replace_day_snapshot(
     )
     .map_err(|e| format!("Failed to persist daily snapshot header: {}", e))?;
 
+    let incoming_app_names: BTreeSet<String> = snapshot.apps.keys().cloned().collect();
+    let mut existing_apps_stmt = tx
+        .prepare_cached(
+            "SELECT exe_name
+             FROM daily_apps
+             WHERE date = ?1",
+        )
+        .map_err(|e| format!("Failed to prepare daily app cleanup select: {}", e))?;
+    let existing_app_rows = existing_apps_stmt
+        .query_map([snapshot.date.as_str()], |row| row.get::<_, String>(0))
+        .map_err(|e| format!("Failed to query existing daily apps for cleanup: {}", e))?;
+    let mut removed_apps = Vec::new();
+    for row in existing_app_rows {
+        let exe_name = row.map_err(|e| format!("Failed to map existing daily app row: {}", e))?;
+        if !incoming_app_names.contains(&exe_name) {
+            removed_apps.push(exe_name);
+        }
+    }
+    drop(existing_apps_stmt);
+
+    let mut delete_app_stmt = tx
+        .prepare_cached(
+            "DELETE FROM daily_apps
+             WHERE date = ?1 AND exe_name = ?2",
+        )
+        .map_err(|e| format!("Failed to prepare daily app delete: {}", e))?;
+    for exe_name in removed_apps {
+        delete_app_stmt
+            .execute(params![snapshot.date, exe_name])
+            .map_err(|e| format!("Failed to delete removed daily app: {}", e))?;
+    }
+
     let mut app_stmt = tx
         .prepare_cached(
             "INSERT INTO daily_apps (date, exe_name, display_name, total_seconds)
-             VALUES (?1, ?2, ?3, ?4)",
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(date, exe_name) DO UPDATE SET
+                 display_name = excluded.display_name,
+                 total_seconds = excluded.total_seconds",
         )
         .map_err(|e| format!("Failed to prepare daily app insert: {}", e))?;
     let mut session_stmt = tx
         .prepare_cached(
             "INSERT INTO daily_sessions (
                  date, exe_name, session_index, start_time, end_time, duration_seconds
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(date, exe_name, session_index) DO UPDATE SET
+                 start_time = excluded.start_time,
+                 end_time = excluded.end_time,
+                 duration_seconds = excluded.duration_seconds",
         )
         .map_err(|e| format!("Failed to prepare daily session insert: {}", e))?;
+    let mut delete_extra_sessions_stmt = tx
+        .prepare_cached(
+            "DELETE FROM daily_sessions
+             WHERE date = ?1 AND exe_name = ?2 AND session_index >= ?3",
+        )
+        .map_err(|e| format!("Failed to prepare daily session trim: {}", e))?;
     let mut file_stmt = tx
         .prepare_cached(
             "INSERT INTO daily_files (
@@ -195,9 +236,29 @@ pub fn replace_day_snapshot(
                  window_title, detected_path, title_history_json, activity_type
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
              ON CONFLICT(date, exe_name, file_name) DO UPDATE SET
-                 total_seconds = daily_files.total_seconds + excluded.total_seconds",
+                 ordinal = excluded.ordinal,
+                 total_seconds = excluded.total_seconds,
+                 first_seen = excluded.first_seen,
+                 last_seen = excluded.last_seen,
+                 window_title = excluded.window_title,
+                 detected_path = excluded.detected_path,
+                 title_history_json = excluded.title_history_json,
+                 activity_type = excluded.activity_type",
         )
         .map_err(|e| format!("Failed to prepare daily file insert: {}", e))?;
+    let mut existing_files_stmt = tx
+        .prepare_cached(
+            "SELECT file_name
+             FROM daily_files
+             WHERE date = ?1 AND exe_name = ?2",
+        )
+        .map_err(|e| format!("Failed to prepare daily file cleanup select: {}", e))?;
+    let mut delete_file_stmt = tx
+        .prepare_cached(
+            "DELETE FROM daily_files
+             WHERE date = ?1 AND exe_name = ?2 AND file_name = ?3",
+        )
+        .map_err(|e| format!("Failed to prepare daily file delete: {}", e))?;
 
     for (exe_name, app) in &snapshot.apps {
         app_stmt
@@ -232,6 +293,34 @@ pub fn replace_day_snapshot(
                 })?;
         }
 
+        delete_extra_sessions_stmt
+            .execute(params![snapshot.date, exe_name, app.sessions.len() as i64])
+            .map_err(|e| {
+                format!(
+                    "Failed to trim stale sessions for app '{}' on {}: {}",
+                    exe_name, snapshot.date, e
+                )
+            })?;
+
+        let existing_file_rows = existing_files_stmt
+            .query_map(params![snapshot.date, exe_name], |row| row.get::<_, String>(0))
+            .map_err(|e| {
+                format!(
+                    "Failed to query existing files for app '{}' on {}: {}",
+                    exe_name, snapshot.date, e
+                )
+            })?;
+        let mut removed_file_names = BTreeSet::new();
+        for row in existing_file_rows {
+            let file_name = row.map_err(|e| {
+                format!(
+                    "Failed to map existing file row for app '{}' on {}: {}",
+                    exe_name, snapshot.date, e
+                )
+            })?;
+            removed_file_names.insert(file_name);
+        }
+
         for (ordinal, file) in app.files.iter().enumerate() {
             let title_history_json = serde_json::to_string(&file.title_history).map_err(|e| {
                 format!(
@@ -259,12 +348,28 @@ pub fn replace_day_snapshot(
                         file.name, exe_name, snapshot.date, e
                     )
                 })?;
+            removed_file_names.remove(&file.name);
+        }
+
+        for file_name in removed_file_names {
+            delete_file_stmt
+                .execute(params![snapshot.date, exe_name, file_name])
+                .map_err(|e| {
+                    format!(
+                        "Failed to delete removed file for app '{}' on {}: {}",
+                        exe_name, snapshot.date, e
+                    )
+                })?;
         }
     }
 
+    drop(delete_file_stmt);
+    drop(existing_files_stmt);
     drop(file_stmt);
+    drop(delete_extra_sessions_stmt);
     drop(session_stmt);
     drop(app_stmt);
+    drop(delete_app_stmt);
     tx.commit()
         .map_err(|e| format!("Failed to commit daily store transaction: {}", e))?;
 
@@ -274,9 +379,11 @@ pub fn replace_day_snapshot(
     })
 }
 
-pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredDailyData>, String> {
-    ensure_schema(conn)?;
+fn parse_title_history_json(title_history_json: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(title_history_json).unwrap_or_default()
+}
 
+pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredDailyData>, String> {
     let generated_at = conn
         .query_row(
             "SELECT generated_at FROM daily_snapshots WHERE date = ?1",
@@ -388,8 +495,7 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
             title_history_json,
             activity_type,
         ) = row.map_err(|e| format!("Failed to map daily file row for {}: {}", date, e))?;
-        let title_history =
-            serde_json::from_str::<Vec<String>>(&title_history_json).unwrap_or_else(|_| Vec::new());
+        let title_history = parse_title_history_json(&title_history_json);
         if let Some(app) = apps.get_mut(&exe_name) {
             app.files.push(StoredFileEntry {
                 name,
@@ -418,24 +524,157 @@ pub fn load_range_snapshots(
     start: &str,
     end: &str,
 ) -> Result<BTreeMap<String, StoredDailyData>, String> {
-    ensure_schema(conn)?;
-    let mut dates_stmt = conn
+    let mut headers_stmt = conn
         .prepare_cached(
-            "SELECT date
+            "SELECT date, generated_at
              FROM daily_snapshots
              WHERE date >= ?1 AND date <= ?2
              ORDER BY date ASC",
         )
         .map_err(|e| format!("Failed to prepare daily snapshot range query: {}", e))?;
-    let date_rows = dates_stmt
-        .query_map(params![start, end], |row| row.get::<_, String>(0))
+    let header_rows = headers_stmt
+        .query_map(params![start, end], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(|e| format!("Failed to query daily snapshot range: {}", e))?;
 
     let mut snapshots = BTreeMap::new();
-    for row in date_rows {
-        let date = row.map_err(|e| format!("Failed to map daily snapshot date row: {}", e))?;
-        if let Some(snapshot) = load_day_snapshot(conn, &date)? {
-            snapshots.insert(date, snapshot);
+    for row in header_rows {
+        let (date, generated_at) =
+            row.map_err(|e| format!("Failed to map daily snapshot header row: {}", e))?;
+        snapshots.insert(
+            date.clone(),
+            StoredDailyData {
+                date,
+                generated_at,
+                apps: BTreeMap::new(),
+            },
+        );
+    }
+    drop(headers_stmt);
+
+    if snapshots.is_empty() {
+        return Ok(snapshots);
+    }
+
+    let mut app_stmt = conn
+        .prepare_cached(
+            "SELECT date, exe_name, display_name, total_seconds
+             FROM daily_apps
+             WHERE date >= ?1 AND date <= ?2
+             ORDER BY date ASC, exe_name COLLATE NOCASE",
+        )
+        .map_err(|e| format!("Failed to prepare daily app range select: {}", e))?;
+    let app_rows = app_stmt
+        .query_map(params![start, end], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, u64>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query daily app range: {}", e))?;
+    for row in app_rows {
+        let (date, exe_name, display_name, total_seconds) =
+            row.map_err(|e| format!("Failed to map daily app range row: {}", e))?;
+        if let Some(snapshot) = snapshots.get_mut(&date) {
+            snapshot.apps.insert(
+                exe_name,
+                StoredAppDailyData {
+                    display_name,
+                    total_seconds,
+                    sessions: Vec::new(),
+                    files: Vec::new(),
+                },
+            );
+        }
+    }
+    drop(app_stmt);
+
+    let mut session_stmt = conn
+        .prepare_cached(
+            "SELECT date, exe_name, start_time, end_time, duration_seconds
+             FROM daily_sessions
+             WHERE date >= ?1 AND date <= ?2
+             ORDER BY date ASC, exe_name COLLATE NOCASE, session_index ASC",
+        )
+        .map_err(|e| format!("Failed to prepare daily session range select: {}", e))?;
+    let session_rows = session_stmt
+        .query_map(params![start, end], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                StoredSession {
+                    start: row.get(2)?,
+                    end: row.get(3)?,
+                    duration_seconds: row.get(4)?,
+                },
+            ))
+        })
+        .map_err(|e| format!("Failed to query daily session range: {}", e))?;
+    for row in session_rows {
+        let (date, exe_name, session) =
+            row.map_err(|e| format!("Failed to map daily session range row: {}", e))?;
+        if let Some(snapshot) = snapshots.get_mut(&date) {
+            if let Some(app) = snapshot.apps.get_mut(&exe_name) {
+                app.sessions.push(session);
+            }
+        }
+    }
+    drop(session_stmt);
+
+    let mut file_stmt = conn
+        .prepare_cached(
+            "SELECT date, exe_name, file_name, total_seconds, first_seen, last_seen,
+                    window_title, detected_path, title_history_json, activity_type
+             FROM daily_files
+             WHERE date >= ?1 AND date <= ?2
+             ORDER BY date ASC, exe_name COLLATE NOCASE, ordinal ASC",
+        )
+        .map_err(|e| format!("Failed to prepare daily file range select: {}", e))?;
+    let file_rows = file_stmt
+        .query_map(params![start, end], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, u64>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, Option<String>>(9)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query daily file range: {}", e))?;
+    for row in file_rows {
+        let (
+            date,
+            exe_name,
+            name,
+            total_seconds,
+            first_seen,
+            last_seen,
+            window_title,
+            detected_path,
+            title_history_json,
+            activity_type,
+        ) = row.map_err(|e| format!("Failed to map daily file range row: {}", e))?;
+        if let Some(snapshot) = snapshots.get_mut(&date) {
+            if let Some(app) = snapshot.apps.get_mut(&exe_name) {
+                app.files.push(StoredFileEntry {
+                    name,
+                    total_seconds,
+                    first_seen,
+                    last_seen,
+                    window_title,
+                    detected_path,
+                    title_history: parse_title_history_json(&title_history_json),
+                    activity_type,
+                });
+            }
         }
     }
     Ok(snapshots)
@@ -444,8 +683,6 @@ pub fn load_range_snapshots(
 // Used by the dashboard Tauri crate via the shared module include.
 #[allow(dead_code)]
 pub fn get_day_signature(conn: &Connection, date: &str) -> Result<Option<DaySignature>, String> {
-    ensure_schema(conn)?;
-
     let signature = conn
         .query_row(
             "SELECT updated_unix_ms, revision
@@ -605,14 +842,63 @@ mod tests {
         let mut conn = Connection::open_in_memory().expect("in-memory sqlite");
         ensure_schema(&conn).expect("schema");
 
-        for date in ["2026-03-07", "2026-03-08"] {
+        let day_one = StoredDailyData {
+            date: "2026-03-07".to_string(),
+            generated_at: "2026-03-07T08:00:00+00:00".to_string(),
+            apps: BTreeMap::from([(
+                "code.exe".to_string(),
+                StoredAppDailyData {
+                    display_name: "VS Code".to_string(),
+                    total_seconds: 120,
+                    sessions: vec![StoredSession {
+                        start: "2026-03-07T08:00:00+00:00".to_string(),
+                        end: "2026-03-07T08:02:00+00:00".to_string(),
+                        duration_seconds: 120,
+                    }],
+                    files: vec![StoredFileEntry {
+                        name: "client".to_string(),
+                        total_seconds: 120,
+                        first_seen: "2026-03-07T08:00:00+00:00".to_string(),
+                        last_seen: "2026-03-07T08:02:00+00:00".to_string(),
+                        window_title: "TIMEFLOW".to_string(),
+                        detected_path: Some("C:/repo/client".to_string()),
+                        title_history: vec!["TIMEFLOW".to_string()],
+                        activity_type: Some("coding".to_string()),
+                    }],
+                },
+            )]),
+        };
+        let day_two = StoredDailyData {
+            date: "2026-03-08".to_string(),
+            generated_at: "2026-03-08T09:00:00+00:00".to_string(),
+            apps: BTreeMap::from([(
+                "figma.exe".to_string(),
+                StoredAppDailyData {
+                    display_name: "Figma".to_string(),
+                    total_seconds: 300,
+                    sessions: vec![StoredSession {
+                        start: "2026-03-08T09:00:00+00:00".to_string(),
+                        end: "2026-03-08T09:05:00+00:00".to_string(),
+                        duration_seconds: 300,
+                    }],
+                    files: vec![StoredFileEntry {
+                        name: "design.fig".to_string(),
+                        total_seconds: 300,
+                        first_seen: "2026-03-08T09:00:00+00:00".to_string(),
+                        last_seen: "2026-03-08T09:05:00+00:00".to_string(),
+                        window_title: "Design".to_string(),
+                        detected_path: Some("C:/repo/design.fig".to_string()),
+                        title_history: vec!["Design".to_string()],
+                        activity_type: Some("design".to_string()),
+                    }],
+                },
+            )]),
+        };
+
+        for snapshot in [day_one.clone(), day_two.clone()] {
             replace_day_snapshot(
                 &mut conn,
-                &StoredDailyData {
-                    date: date.to_string(),
-                    generated_at: String::new(),
-                    apps: BTreeMap::new(),
-                },
+                &snapshot,
             )
             .expect("save");
         }
@@ -623,5 +909,146 @@ mod tests {
             snapshots.keys().cloned().collect::<Vec<_>>(),
             vec!["2026-03-07".to_string(), "2026-03-08".to_string()]
         );
+        assert_eq!(snapshots.get("2026-03-07"), Some(&day_one));
+        assert_eq!(snapshots.get("2026-03-08"), Some(&day_two));
+    }
+
+    #[test]
+    fn replace_day_snapshot_updates_existing_rows_without_recreating_whole_day() {
+        let mut conn = Connection::open_in_memory().expect("in-memory sqlite");
+        ensure_schema(&conn).expect("schema");
+
+        let initial = StoredDailyData {
+            date: "2026-03-09".to_string(),
+            generated_at: "2026-03-09T10:00:00+00:00".to_string(),
+            apps: BTreeMap::from([
+                (
+                    "code.exe".to_string(),
+                    StoredAppDailyData {
+                        display_name: "VS Code".to_string(),
+                        total_seconds: 300,
+                        sessions: vec![
+                            StoredSession {
+                                start: "2026-03-09T10:00:00+00:00".to_string(),
+                                end: "2026-03-09T10:03:00+00:00".to_string(),
+                                duration_seconds: 180,
+                            },
+                            StoredSession {
+                                start: "2026-03-09T10:05:00+00:00".to_string(),
+                                end: "2026-03-09T10:07:00+00:00".to_string(),
+                                duration_seconds: 120,
+                            },
+                        ],
+                        files: vec![
+                            StoredFileEntry {
+                                name: "client".to_string(),
+                                total_seconds: 180,
+                                first_seen: "2026-03-09T10:00:00+00:00".to_string(),
+                                last_seen: "2026-03-09T10:03:00+00:00".to_string(),
+                                window_title: "Client".to_string(),
+                                detected_path: Some("C:/repo/client".to_string()),
+                                title_history: vec!["Client".to_string()],
+                                activity_type: Some("coding".to_string()),
+                            },
+                            StoredFileEntry {
+                                name: "server".to_string(),
+                                total_seconds: 120,
+                                first_seen: "2026-03-09T10:05:00+00:00".to_string(),
+                                last_seen: "2026-03-09T10:07:00+00:00".to_string(),
+                                window_title: "Server".to_string(),
+                                detected_path: Some("C:/repo/server".to_string()),
+                                title_history: vec!["Server".to_string()],
+                                activity_type: Some("coding".to_string()),
+                            },
+                        ],
+                    },
+                ),
+                (
+                    "slack.exe".to_string(),
+                    StoredAppDailyData {
+                        display_name: "Slack".to_string(),
+                        total_seconds: 60,
+                        sessions: vec![StoredSession {
+                            start: "2026-03-09T11:00:00+00:00".to_string(),
+                            end: "2026-03-09T11:01:00+00:00".to_string(),
+                            duration_seconds: 60,
+                        }],
+                        files: vec![StoredFileEntry {
+                            name: "general".to_string(),
+                            total_seconds: 60,
+                            first_seen: "2026-03-09T11:00:00+00:00".to_string(),
+                            last_seen: "2026-03-09T11:01:00+00:00".to_string(),
+                            window_title: "general".to_string(),
+                            detected_path: None,
+                            title_history: vec!["general".to_string()],
+                            activity_type: Some("communication".to_string()),
+                        }],
+                    },
+                ),
+            ]),
+        };
+
+        let updated = StoredDailyData {
+            date: "2026-03-09".to_string(),
+            generated_at: "2026-03-09T12:00:00+00:00".to_string(),
+            apps: BTreeMap::from([(
+                "code.exe".to_string(),
+                StoredAppDailyData {
+                    display_name: "VS Code Insiders".to_string(),
+                    total_seconds: 240,
+                    sessions: vec![StoredSession {
+                        start: "2026-03-09T12:00:00+00:00".to_string(),
+                        end: "2026-03-09T12:04:00+00:00".to_string(),
+                        duration_seconds: 240,
+                    }],
+                    files: vec![StoredFileEntry {
+                        name: "client".to_string(),
+                        total_seconds: 240,
+                        first_seen: "2026-03-09T12:00:00+00:00".to_string(),
+                        last_seen: "2026-03-09T12:04:00+00:00".to_string(),
+                        window_title: "Client Updated".to_string(),
+                        detected_path: Some("C:/repo/client-new".to_string()),
+                        title_history: vec!["Client Updated".to_string()],
+                        activity_type: Some("coding".to_string()),
+                    }],
+                },
+            )]),
+        };
+
+        let initial_signature = replace_day_snapshot(&mut conn, &initial).expect("initial save");
+        let updated_signature = replace_day_snapshot(&mut conn, &updated).expect("updated save");
+
+        assert_eq!(updated_signature.revision, initial_signature.revision + 1);
+
+        let loaded = load_day_snapshot(&conn, "2026-03-09")
+            .expect("load")
+            .expect("snapshot should exist");
+        assert_eq!(loaded, updated);
+
+        let app_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM daily_apps WHERE date = '2026-03-09'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("app count");
+        let session_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM daily_sessions WHERE date = '2026-03-09'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("session count");
+        let file_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM daily_files WHERE date = '2026-03-09'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("file count");
+
+        assert_eq!(app_count, 1);
+        assert_eq!(session_count, 1);
+        assert_eq!(file_count, 1);
     }
 }
