@@ -28,10 +28,12 @@
 - [x] `2.4` Dashboard nie przeładowuje wszystkich danych tylko dlatego, że zmienił się język UI.
 - [x] `3.3` `ReportView` nie trzyma już stale memoizowanej daty wygenerowania.
 - [x] `3.4` `DaemonControl` nie wykonuje zbędnego `refresh()` przy wyłączeniu auto-refresh.
+- [x] `3.6` `App.tsx` nie subskrybuje już całego `currentPage`, tylko pochodny boolean dla `showChrome`.
 - [x] `4.2` Usunięta duplikacja `isSessionAlreadySplit` na rzecz współdzielonego helpera.
+- [x] `5.1` Hardkodowane błędy widoczne w UI w `Projects`, `Settings` i `CreateProjectDialog` zostały przepięte na tłumaczenia.
 - [x] Weryfikacja techniczna: `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 - [x] `1.1` Dashboard używa teraz jednego endpointu `get_dashboard_data` dla statystyk, top projektów, listy projektów do wykresu i timeline, więc ciężka agregacja nie leci już 4× przy jednym ładowaniu widoku.
-- [ ] `8.1` Usunięcie nieużywanej zależności `sysinfo` zostawione na osobny krok, żeby nie mieszać tego z bieżącą paczką poprawek.
+- [x] `8.1` Nieużywana zależność `sysinfo` usunięta z demona.
 
 ---
 

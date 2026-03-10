@@ -74,7 +74,7 @@ export function CreateProjectDialog({
       setName('');
       setFolderPath('');
     } catch (e) {
-      setError(getErrorMessage(e, 'Failed to create project'));
+      setError(getErrorMessage(e, t('projects.errors.create_project_failed')));
     }
   };
 

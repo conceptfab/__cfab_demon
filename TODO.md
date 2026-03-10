@@ -23,7 +23,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 TODO ??
 
 - [x] dwuklik w demo uruchamia dashboard
-
+- czy refresh w Dashbordzie jest potrzebny?
 - podział sesji
 - refactor duży plików
 - znaczek na NEW

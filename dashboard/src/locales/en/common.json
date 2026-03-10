@@ -1,7 +1,8 @@
 {
   "ui": {
     "common": {
-      "not_available": "—"
+      "not_available": "—",
+      "unknown_error": "Unknown error"
     },
     "buttons": {
       "ok": "OK",
@@ -465,6 +466,9 @@
       "project_name_required": "Project name is required.",
       "project_folder_required": "Project folder is required to identify tracked files.",
       "folder_path_required": "Please enter a folder path",
+      "load_project_folders_failed": "Failed to load project folders",
+      "add_folder_failed": "Failed to add folder",
+      "create_project_failed": "Failed to create project",
       "delete_project_failed": "Failed to delete project \"{{projectLabel}}\": {{error}}",
       "compact_project_failed": "Failed to compact project data: {{error}}"
     },

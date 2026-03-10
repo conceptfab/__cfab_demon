@@ -1,7 +1,8 @@
 {
   "ui": {
     "common": {
-      "not_available": "—"
+      "not_available": "—",
+      "unknown_error": "Nieznany błąd"
     },
     "buttons": {
       "ok": "OK",
@@ -466,6 +467,9 @@
       "project_name_required": "Nazwa projektu jest wymagana.",
       "project_folder_required": "Folder projektu jest wymagany do identyfikacji śledzonych plików.",
       "folder_path_required": "Podaj ścieżkę folderu",
+      "load_project_folders_failed": "Nie udało się wczytać folderów projektów",
+      "add_folder_failed": "Nie udało się dodać folderu",
+      "create_project_failed": "Nie udało się utworzyć projektu",
       "delete_project_failed": "Nie udało się usunąć projektu \"{{projectLabel}}\": {{error}}",
       "compact_project_failed": "Nie udało się skondensować danych projektu: {{error}}"
     },

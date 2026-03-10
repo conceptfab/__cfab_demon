@@ -95,6 +95,7 @@ import type {
 import { PROJECT_COLORS } from '@/lib/project-colors';
 
 const PROJECT_RENDER_PAGE_SIZE = 120;
+const PROJECT_FOLDERS_LOAD_ERROR = '__projects_load_folders_failed__';
 
 const VIEW_MODE_STORAGE_KEY = 'timeflow-dashboard-projects-view-mode';
 const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
@@ -427,7 +428,7 @@ export function Projects() {
         setFolderError(null);
       } else {
         console.error('Failed to load project folders:', foldersRes.reason);
-        setFolderError('Failed to load project folders');
+        setFolderError(PROJECT_FOLDERS_LOAD_ERROR);
       }
 
       if (candidatesRes.status === 'fulfilled')
@@ -541,7 +542,7 @@ export function Projects() {
       showError(
         t('projects.errors.delete_project_failed', {
           projectLabel,
-          error: getErrorMessage(e, 'Unknown error'),
+          error: getErrorMessage(e, t('ui.common.unknown_error')),
         }),
       );
     } finally {
@@ -570,7 +571,7 @@ export function Projects() {
       console.error('Failed to compact project data:', e);
       showError(
         t('projects.errors.compact_project_failed', {
-          error: getErrorMessage(e, 'Unknown error'),
+          error: getErrorMessage(e, t('ui.common.unknown_error')),
         }),
       );
     } finally {
@@ -602,7 +603,9 @@ export function Projects() {
       setNewFolderPath('');
       setFolderInfo(t('projects.messages.folder_saved'));
     } catch (error: unknown) {
-      setFolderError(getErrorMessage(error, 'Failed to add folder'));
+      setFolderError(
+        getErrorMessage(error, t('projects.errors.add_folder_failed')),
+      );
       console.error(error);
     } finally {
       setBusy(null);
@@ -1706,7 +1709,11 @@ export function Projects() {
               </Button>
             </div>
             {folderError && (
-              <p className="text-xs text-destructive">{folderError}</p>
+              <p className="text-xs text-destructive">
+                {folderError === PROJECT_FOLDERS_LOAD_ERROR
+                  ? t('projects.errors.load_project_folders_failed')
+                  : folderError}
+              </p>
             )}
             {folderInfo && !folderError && (
               <p className="text-xs text-emerald-400">{folderInfo}</p>

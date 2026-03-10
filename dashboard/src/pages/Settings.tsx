@@ -283,7 +283,10 @@ export function Settings() {
       );
     } catch (e) {
       console.error(e);
-      showError(t('settings_page.error_linking_sessions') + getErrorMessage(e, 'Unknown error'));
+      showError(
+        t('settings_page.error_linking_sessions') +
+          getErrorMessage(e, t('ui.common.unknown_error')),
+      );
     } finally {
       setRebuilding(false);
     }
@@ -301,7 +304,10 @@ export function Settings() {
       showInfo(t('settings_page.all_data_removed'));
     } catch (e) {
       console.error(e);
-      showError(t('settings_page.failed_to_clear_data') + getErrorMessage(e, 'Unknown error'));
+      showError(
+        t('settings_page.failed_to_clear_data') +
+          getErrorMessage(e, t('ui.common.unknown_error')),
+      );
     } finally {
       setClearing(false);
     }
@@ -341,7 +347,7 @@ export function Settings() {
         action: 'none',
         reason: 'sync_failed',
         serverRevision: onlineSyncState.serverRevision,
-        error: getErrorMessage(e, 'Unknown error'),
+        error: getErrorMessage(e, t('ui.common.unknown_error')),
       });
     } finally {
       setManualSyncing(false);
@@ -362,7 +368,7 @@ export function Settings() {
       );
     } catch (e) {
       console.error(e);
-      const errorMessage = getErrorMessage(e, 'Unknown error');
+      const errorMessage = getErrorMessage(e, t('ui.common.unknown_error'));
       setDemoModeError(errorMessage);
       showError(t('settings_page.failed_to_switch_demo_mode') + errorMessage);
     } finally {

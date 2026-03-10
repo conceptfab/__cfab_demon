@@ -152,7 +152,7 @@ class ErrorBoundary extends Component<
 }
 
 export default function App() {
-  const currentPage = useUIStore((s) => s.currentPage);
+  const showChrome = useUIStore((s) => s.currentPage !== 'report-view');
 
   return (
     <ErrorBoundary>
@@ -160,7 +160,7 @@ export default function App() {
         <TooltipProvider>
           <SplashScreen />
           <BackgroundServices />
-          <MainLayout showChrome={currentPage !== 'report-view'}>
+          <MainLayout showChrome={showChrome}>
             <PageRouter />
           </MainLayout>
         </TooltipProvider>
