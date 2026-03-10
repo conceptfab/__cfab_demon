@@ -244,14 +244,14 @@ export function Sessions() {
   );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
-  const customScrollParent = useMemo<HTMLElement | undefined>(() => {
+  const [customScrollParent] = useState<HTMLElement | undefined>(() => {
     if (typeof document === 'undefined') return undefined;
     const el = document.querySelector('main');
     return el instanceof HTMLElement ? el : undefined;
-  }, []);
+  });
   const PAGE_SIZE = 100;
   const minDuration = readMinSessionDuration();
-  const today = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+  const today = format(new Date(), 'yyyy-MM-dd');
   const canShiftForward = anchorDate < today;
   const shiftStepDays = rangeMode === 'weekly' ? 7 : 1;
 

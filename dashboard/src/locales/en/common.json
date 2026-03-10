@@ -312,6 +312,7 @@
       "boost_label_single": "this session",
       "boost_label_multi": "{{count}} sessions",
       "boost_requires_comment_prompt": "Boost requires a comment. Enter a comment for {{label}}:",
+      "boost_requires_comment_unavailable_here": "Boost requires a comment, but comment editing is unavailable here.",
       "boost_comment_required": "Comment is required to add boost.",
       "boost_comment_save_failed": "Failed to save comment required for boost: {{error}}",
       "multiplier_title": "Set session rate multiplier",
@@ -321,6 +322,7 @@
       "session_comment_desc": "(leave empty to remove)"
     },
     "errors": {
+      "assign_failed": "Failed to assign session(s): {{error}}",
       "update_multiplier": "Failed to update session rate multiplier: {{error}}"
     },
     "row": {
@@ -462,7 +464,9 @@
     "errors": {
       "project_name_required": "Project name is required.",
       "project_folder_required": "Project folder is required to identify tracked files.",
-      "folder_path_required": "Please enter a folder path"
+      "folder_path_required": "Please enter a folder path",
+      "delete_project_failed": "Failed to delete project \"{{projectLabel}}\": {{error}}",
+      "compact_project_failed": "Failed to compact project data: {{error}}"
     },
     "confirm": {
       "exclude_project": "Exclude this project? It can be restored later.",
@@ -1434,6 +1438,13 @@
     "train_now_button_is_highlighted_when_sidebar_ai_status_shows_new_data": "\"Train Now\" highlight – when the AI status in the sidebar shows \"New data\", the Model Status card highlights the training action.",
     "snooze_training_reminder_postpone_the_training_reminder": "Snooze Training Reminder – postpone the training reminder for 24h when you want to finish work without interruption.",
     "modes_off_manual_only_suggest_ai_hints_auto_safe_automat": "Modes: Off (manual only), Suggest (AI hints), Auto-Safe (automation).",
+    "training_blacklists_exclude_selected_applications_and_fo": "Training blacklists – exclude selected applications and folders from model training to avoid contaminating the learning data.",
+    "ai_progress_quality_metrics_panel_shows_feedback_trends": "AI progress and quality – the metrics panel shows feedback trends, precision, auto-assigned results, and coverage.",
+    "training_horizon_set_how_many_days_of_history_e_g_30_730": "Training Horizon – set the day range (for example 30-730) from which the model takes training data.",
+    "auto_safe_limit_control_the_maximum_number_of_sessions_p": "Auto-safe limit – control the maximum number of sessions processed in a single Auto-safe run.",
+    "session_indicators_configure_indicators_displayed_on_ses": "Session Indicators – configure the indicators shown next to session rows (AI, suggestions, score breakdown).",
+    "k_100_privacy_the_ml_engine_runs_locally_in_rust_doesn_t": "100% privacy – the ML engine runs locally in Rust, does not use external APIs (such as ChatGPT), and does not require internet access.",
+    "model_status_card_diagnostic_panel_with_6_tiles_current": "\"Model Status\" card – a diagnostic panel with 6 tiles: current mode, training state (idle/in progress), last training date, correction count since training, last training metrics (samples/time), and the last Auto-safe run.",
     "ai_progress_charts_two_charts_1_feedback_trend_stacked_b": "AI progress charts – two charts: (1) Feedback trend – stacked bar chart with Accept, Reject, and Manual corrections per day; (2) Auto-safe runs vs rollback – assigned bars + runs and rollbacks lines. Default window: 30 days.",
     "summary_metrics_4_tiles_ai_precision_correct_suggestions": "Summary metrics – 4 tiles: AI precision (% correct suggestions), Total feedback, Auto-safe assignments, Detected path coverage. Additional indicators: title_history and activity_type coverage.",
     "reset_ai_knowledge_button_that_clears_all_learned_model": "Reset AI knowledge – button that clears all learned model knowledge (with confirmation). Useful after a major project structure change.",
@@ -1447,6 +1458,8 @@
     "time_of_day_and_day_of_the_week_your_work_habits": "Time of day and day of the week (your work habits).",
     "token_analysis": "Token analysis",
     "keywords_extracted_from_file_names_and_windows_the_stron": "Keywords extracted from file names and windows (the strongest signal).",
+    "score_and_base_log_prob": "Score & Base Log Prob:",
+    "matched_tokens_and_context_matches": "Matched Tokens & Context Matches:",
     "k_2_decision_algorithm": "2. Decision algorithm",
     "the_model_doesn_t_guess_blindly_for_each_unassigned_sess": "The model doesn't guess 'blindly' – for each unassigned session it calculates:",
     "confidence_2": "Confidence",
@@ -1462,12 +1475,14 @@
     "automatically_assigns_sessions_requires_85_confidence_an": "Automatically assigns sessions (requires >85% confidence and strong evidence).",
     "k_4_optimal_learning_settings": "4. Optimal learning settings",
     "k_1_model_operation_mode_suggest": "1. Model operation mode: suggest",
+    "suggest_min_confidence_0_4_0_5_lower_current_0_6": "2. Suggest Min Confidence: 0.4 - 0.5 (Lower the current 0.6)",
     "keep_this_mode_the_ai_will_suggest_connections_categorie": "Keep this mode. The AI will suggest connections/categories but won't assign them automatically. Your manual approvals (or rejections/corrections) are the most crucial element in building the model's \"knowledge\". (In auto mode, the model wouldn't ask your opinion in some cases, losing a potential chance for confirmation).",
     "lowering_this_threshold_means_the_model_will_make_sugges": "Lowering this threshold means the model will make suggestions even when it's not super confident. Consequence: you'll get more suggestions, and by correcting the wrong ones, the model will learn to distinguish harder cases much faster. But if you feel \"spammed\" by nonsensical suggestions, slowly increase it to 0.6.",
     "k_3_feedback_weight_10_15_increase_the_current_5": "3. Feedback Weight: 10 - 15 (Increase the current 5)",
     "feedback_weight_determines_how_strongly_a_single_correct": "Feedback weight determines how strongly a single correction from you affects the model's subsequent decisions. Higher value = the model adapts faster to your fresh behaviors and corrections. Important: if the weight is too high (e.g., 50), the model might \"go crazy\" after a single accidental mistake. A value of 10-15 allows for efficient learning while being a relatively stable option.",
     "k_4_criteria_for_auto_safe_for_the_future_safety": "4. Criteria for Auto-safe (for the future / safety)",
     "if_after_the_learning_period_you_want_to_enable_auto_saf": "If after the learning period you want to enable auto-safe mode, where AI solves obvious cases by itself:",
+    "auto_safe_min_confidence_0_85_0_95": "Auto-safe Min Confidence: 0.85 - 0.95",
     "keep_it_high_let_it_automate_only_absolute_certainties": "(keep it high, let it automate only absolute certainties).",
     "auto_safe_min_evidence_5": "Auto-safe Min Evidence: 5",
     "increase_from_3_this_means_the_model_must_have_strong_co": "(increase from 3. This means the model must have strong confirmation in at least 5 similar, previously user-approved sessions to act without your consent).",

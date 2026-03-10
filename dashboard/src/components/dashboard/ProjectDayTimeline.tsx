@@ -483,12 +483,12 @@ export function ProjectDayTimeline({
         await onAssignSession(sessionIds, projectId);
       } catch (err) {
         console.error("Failed to assign session(s) to project:", err);
-        showError(`Failed to assign session(s): ${String(err)}`);
+        showError(t('sessions.errors.assign_failed', { error: String(err) }));
       } finally {
         setCtxMenu(null);
       }
     },
-    [ctxMenu, onAssignSession, showError]
+    [ctxMenu, onAssignSession, showError, t]
   );
 
   const ensureCommentForBoost = useCallback(
@@ -502,7 +502,9 @@ export function ProjectDayTimeline({
       if (missingIds.length === 0) return true;
 
       if (!onUpdateSessionComment) {
-        showInfo("Boost requires a comment, but comment editing is unavailable here.");
+        showInfo(
+          t('sessions.prompts.boost_requires_comment_unavailable_here'),
+        );
         return false;
       }
 
@@ -531,7 +533,11 @@ export function ProjectDayTimeline({
         return true;
       } catch (err) {
         console.error("Failed to save required boost comment:", err);
-        showError(`Failed to save comment required for boost: ${String(err)}`);
+        showError(
+          t('sessions.prompts.boost_comment_save_failed', {
+            error: String(err),
+          }),
+        );
         return false;
       }
     },
@@ -552,10 +558,12 @@ export function ProjectDayTimeline({
         setCtxMenu(null);
       } catch (err) {
         console.error("Failed to update session rate multiplier:", err);
-        showError(`Failed to update session rate multiplier: ${String(err)}`);
+        showError(
+          t('sessions.errors.update_multiplier', { error: String(err) }),
+        );
       }
     },
-    [ctxMenu, ensureCommentForBoost, onUpdateSessionRateMultiplier, showError]
+    [ctxMenu, ensureCommentForBoost, onUpdateSessionRateMultiplier, showError, t]
   );
 
   const handleCustomRateMultiplier = useCallback(async () => {
@@ -567,21 +575,21 @@ export function ProjectDayTimeline({
     const suggested = current > 1 ? current : 2;
 
     setPromptConfig({
-      title: "Set session rate multiplier",
-      description: "Set multiplier (> 0). Use 1 to reset.",
+      title: t('sessions.prompts.multiplier_title'),
+      description: t('sessions.prompts.multiplier_desc'),
       initialValue: String(suggested),
       onConfirm: async (raw) => {
         const normalizedRaw = raw.trim().replace(",", ".");
         const parsed = Number(normalizedRaw);
         if (!Number.isFinite(parsed) || parsed <= 0) {
-          showError("Multiplier must be a positive number.");
+          showError(t('sessions.prompts.multiplier_positive'));
           return;
         }
         await handleSetRateMultiplier(parsed);
       }
     });
     setCtxMenu(null);
-  }, [ctxMenu, handleSetRateMultiplier, showError]);
+  }, [ctxMenu, handleSetRateMultiplier, showError, t]);
 
   const handleEditComment = useCallback(async () => {
     if (!ctxMenu || ctxMenu.type !== "assign" || !onUpdateSessionComment) return;

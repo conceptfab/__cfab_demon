@@ -263,9 +263,11 @@ export function AIPage() {
       if (isFetchingRef.current) return;
       isFetchingRef.current = true;
       try {
-        const nextStatus = await getAssignmentModelStatus();
+        const [nextStatus, fw] = await Promise.all([
+          getAssignmentModelStatus(),
+          getFeedbackWeight(),
+        ]);
         syncFromStatus(nextStatus);
-        const fw = await getFeedbackWeight();
         if (!dirtyRef.current) setFeedbackWeight(fw);
       } catch (e) {
         console.error(e);
@@ -508,7 +510,7 @@ export function AIPage() {
       {
         title: tr('ai_page.text.when_to_train_the_model'),
         paragraphs: [
-          tr('ai_page.text.train_after_a_larger_series_of_manual_correction'),
+          tr('ai_page.text.train_after_a_larger_series_of_manual_corrections'),
           tr('ai_page.text.the_reminder_appears_automatically_when_you_have', {
             feedbackTrigger: FEEDBACK_TRIGGER,
             retrainHours: RETRAIN_INTERVAL_HOURS,

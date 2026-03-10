@@ -359,13 +359,13 @@ export function Help() {
                     </li>
                     <li>
                       <strong className="text-foreground">
-                        Score & Base Log Prob:
+                        {t18n('help_page.score_and_base_log_prob')}
                       </strong>{' '}
                       {t18n('help_page.raw_mathematical_and_probabilistic_match_scores_calculat')}
                     </li>
                     <li>
                       <strong className="text-foreground">
-                        Matched Tokens & Context Matches:
+                        {t18n('help_page.matched_tokens_and_context_matches')}
                       </strong>{' '}
                       {t18n('help_page.keywords_from_filenames_windows_or_website_titles_and_ge')}
                     </li>
@@ -599,8 +599,9 @@ export function Help() {
 
                       <div>
                         <strong>
-                          2. Suggest Min Confidence: 0.4 - 0.5 (Zmniejsz obecne
-                          0.6)
+                          {t18n(
+                            'help_page.suggest_min_confidence_0_4_0_5_lower_current_0_6',
+                          )}
                         </strong>
                         <p className="mt-1 leading-relaxed">
                           {t18n('help_page.lowering_this_threshold_means_the_model_will_make_sugges')}
@@ -626,7 +627,9 @@ export function Help() {
                         <ul className="list-disc ml-5 space-y-1">
                           <li>
                             <strong>
-                              Auto-safe Min Confidence: 0.85 - 0.95
+                              {t18n(
+                                'help_page.auto_safe_min_confidence_0_85_0_95',
+                              )}
                             </strong>{' '}
                             {t18n('help_page.keep_it_high_let_it_automate_only_absolute_certainties')}
                           </li>

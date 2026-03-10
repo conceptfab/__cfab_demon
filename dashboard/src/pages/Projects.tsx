@@ -253,9 +253,9 @@ export function Projects() {
   >({});
   const autoFreezeInitializedRef = useRef(false);
   const [allTimeRefreshKey, setAllTimeRefreshKey] = useState(0);
-  const [projectExtraInfoCache, setProjectExtraInfoCache] = useState<
-    Record<number, ProjectExtraInfo>
-  >({});
+  const projectExtraInfoCacheRef = useRef<Record<number, ProjectExtraInfo>>({});
+  const [projectExtraInfoCacheVersion, setProjectExtraInfoCacheVersion] =
+    useState(0);
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -332,7 +332,8 @@ export function Projects() {
   }, []);
 
   const invalidateProjectExtraInfoCache = useCallback(() => {
-    setProjectExtraInfoCache({});
+    projectExtraInfoCacheRef.current = {};
+    setProjectExtraInfoCacheVersion((prev) => prev + 1);
   }, []);
 
   useEffect(() => {
@@ -386,10 +387,12 @@ export function Projects() {
   }, [invalidateAllTimeData, invalidateProjectExtraInfoCache]);
 
   const hotProjectIds = useMemo(() => {
-    return [...projects]
-      .sort((a, b) => b.total_seconds - a.total_seconds)
-      .slice(0, 5)
-      .map((p) => p.id);
+    return new Set(
+      [...projects]
+        .sort((a, b) => b.total_seconds - a.total_seconds)
+        .slice(0, 5)
+        .map((p) => p.id),
+    );
   }, [projects]);
 
   useEffect(() => {
@@ -475,7 +478,7 @@ export function Projects() {
       setExtraInfo(null);
       return;
     }
-    const cachedInfo = projectExtraInfoCache[projectDialogId];
+    const cachedInfo = projectExtraInfoCacheRef.current[projectDialogId];
     if (cachedInfo) {
       setExtraInfo(cachedInfo);
       setLoadingExtra(false);
@@ -484,15 +487,12 @@ export function Projects() {
     setLoadingExtra(true);
     getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
       .then((info) => {
-        setProjectExtraInfoCache((prev) => ({
-          ...prev,
-          [projectDialogId]: info,
-        }));
+        projectExtraInfoCacheRef.current[projectDialogId] = info;
         setExtraInfo(info);
       })
       .catch(console.error)
       .finally(() => setLoadingExtra(false));
-  }, [projectDialogId, projectExtraInfoCache]);
+  }, [projectDialogId, projectExtraInfoCacheVersion]);
 
   const handleUpdateProjectColor = async (projectId: number, color: string) => {
     await updateProject(projectId, color);
@@ -538,7 +538,12 @@ export function Projects() {
       setEditingColorId((prev) => (prev === project.id ? null : prev));
     } catch (e) {
       console.error('Failed to delete project:', e);
-      showError(`Failed to delete project "${projectLabel}": ${getErrorMessage(e, 'Unknown error')}`);
+      showError(
+        t('projects.errors.delete_project_failed', {
+          projectLabel,
+          error: getErrorMessage(e, 'Unknown error'),
+        }),
+      );
     } finally {
       setBusy((prev) => (prev === busyKey ? null : prev));
     }
@@ -559,14 +564,15 @@ export function Projects() {
     try {
       await compactProjectData(id);
       const info = await getProjectExtraInfo(id, ALL_TIME_DATE_RANGE);
-      setProjectExtraInfoCache((prev) => ({
-        ...prev,
-        [id]: info,
-      }));
+      projectExtraInfoCacheRef.current[id] = info;
       setExtraInfo(info);
     } catch (e) {
       console.error('Failed to compact project data:', e);
-      showError(`Failed to compact project data: ${getErrorMessage(e, 'Unknown error')}`);
+      showError(
+        t('projects.errors.compact_project_failed', {
+          error: getErrorMessage(e, 'Unknown error'),
+        }),
+      );
     } finally {
       setBusy(null);
     }
@@ -997,7 +1003,7 @@ export function Projects() {
                     </AppTooltip>
                   )}
                   {renderDuplicateMarker(p)}
-                  {hotProjectIds.includes(p.id) && (
+                  {hotProjectIds.has(p.id) && (
                     <AppTooltip content={t('projects.labels.hot_project')}>
                       <span className="shrink-0">
                         <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
@@ -1209,7 +1215,7 @@ export function Projects() {
                 </span>
 
                 <span className="ml-1 flex items-center gap-2">
-                  {hotProjectIds.includes(p.id) && (
+                  {hotProjectIds.has(p.id) && (
                     <AppTooltip content={t('projects.labels.hot_project')}>
                       <span>
                         <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />

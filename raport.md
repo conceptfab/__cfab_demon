@@ -3,14 +3,22 @@
 **Data:** 2026-03-10
 **Zakres:** dashboard/src/ (React + Tauri)
 
+**Statusy realizacji:**
+- `[ZROBIONE]` — wdrożone
+- `[CZĘŚCIOWO]` — wdrożone inaczej albo częściowo
+- `[ZWERYFIKOWANE - NIEAKTUALNE]` — raport wskazał problem, ale po sprawdzeniu założenie okazało się nieaktualne
+- `[DO ZROBIENIA]` — nadal otwarte
+
 ---
 
 ## 1. WYDAJNOŚĆ I OPTYMALIZACJE
 
 ### 1.1 KRYTYCZNE (pewność 90–95%)
 
-#### [C1] `Sessions.tsx:253` — `readMinSessionDuration()` w render-body
+#### [C1] `Sessions.tsx:253` — `readMinSessionDuration()` w render-body `[ZWERYFIKOWANE - NIEAKTUALNE]`
 `readMinSessionDuration()` wywołuje `loadSessionSettings()`, która parsuje JSON z `localStorage` przy **każdym** re-renderze komponentu Sessions. Komponent re-renderuje się przy każdym wyszukiwaniu, tick-u timera, zmianie `aiBreakdowns` itp.
+
+**Status (2026-03-10):** nie wdrażano proponowanego `useMemo`, bo `loadSessionSettings()` korzysta już z cache in-memory w `dashboard/src/lib/user-settings.ts`, więc teza o parsowaniu `localStorage` przy każdym renderze jest nieaktualna.
 
 **Naprawa:**
 ```ts
@@ -19,16 +27,20 @@ const minDuration = useMemo(() => readMinSessionDuration(), [refreshKey]);
 
 ---
 
-#### [C2] `Projects.tsx:259 + 341` — `loadFreezeSettings()` podwójnie, bez cache
+#### [C2] `Projects.tsx:259 + 341` — `loadFreezeSettings()` podwójnie, bez cache `[ZWERYFIKOWANE - NIEAKTUALNE]`
 Linia 259: `loadFreezeSettings()` wołane w render-body (parsuje localStorage przy każdym re-renderze).
 Linia 341: `loadFreezeSettings()` wołane **ponownie** w `useEffect` — podwójny odczyt bez powodu.
+
+**Status (2026-03-10):** nie wdrażano proponowanego `useMemo`, bo `loadFreezeSettings()` także korzysta z cache in-memory; raport poprawnie wskazał duplikację wywołań, ale nieaktualnie opisał ich koszt.
 
 **Naprawa:** jedno `useMemo(() => loadFreezeSettings(), [])` przypisane do zmiennej, używane w obu miejscach.
 
 ---
 
-#### [C3] `Projects.tsx:256–258` — `projectExtraInfoCache` w `useState` zamiast `useRef`
+#### [C3] `Projects.tsx:256–258` — `projectExtraInfoCache` w `useState` zamiast `useRef` `[ZROBIONE]`
 Cache dla `ProjectExtraInfo` jest w `useState`, co oznacza że każde wpisanie nowego projektu do cache triggeruje **pełny re-render** komponentu Projects (~1934 linii, wiele `useMemo`). Cache powinien być w `useRef`, bo nie wpływa na render.
+
+**Status (2026-03-10):** zrobione. Cache przeniesiony do `useRef`, a invalidacja działa przez osobną wersję cache.
 
 **Naprawa:**
 ```ts
@@ -37,7 +49,7 @@ const projectExtraInfoCacheRef = useRef<Record<number, ProjectExtraInfo>>({});
 
 ---
 
-#### [C4] `Sessions.tsx:942–967` — kaskada re-renderów z background fetch breakdownów
+#### [C4] `Sessions.tsx:942–967` — kaskada re-renderów z background fetch breakdownów `[DO ZROBIENIA]`
 useEffect z deps `[sessions, aiBreakdowns, ...]` — każdy fetch breakdownu mutuje `aiBreakdowns`, co trigguje ponowne uruchomienie efektu. Dla 100 sesji: **kaskada 100 re-renderów**.
 
 Dodatkowo bliźniaczy efekt na linii 982 (`viewMode === 'ai_detailed'`) robi to samo — **potencjalne podwójne fetch-y**.
@@ -46,7 +58,7 @@ Dodatkowo bliźniaczy efekt na linii 982 (`viewMode === 'ai_detailed'`) robi to 
 
 ---
 
-#### [C5] `Sessions.tsx:523–546` — 15s polling bez change detection
+#### [C5] `Sessions.tsx:523–546` — 15s polling bez change detection `[DO ZROBIENIA]`
 Auto-refresh co 15 s bezwarunkowo nadpisuje cały `sessions` state nową referencją tablicy → pełne przeliczenie `flattenedItems` → re-render Virtuoso. BackgroundServices już ma `refreshKey` mechanizm (co 5 s) — ten polling może być redundantny.
 
 **Naprawa:** porównywać dane przed `setSessions` (np. hash/length) lub usunąć na rzecz `refreshKey`.
@@ -55,17 +67,21 @@ Auto-refresh co 15 s bezwarunkowo nadpisuje cały `sessions` state nową referen
 
 ### 1.2 WAŻNE (pewność 80–88%)
 
-#### [I1] `BackgroundServices.tsx:111,216` — `loadSessionSettings()`/`loadSplitSettings()` w job-loop bez cache
+#### [I1] `BackgroundServices.tsx:111,216` — `loadSessionSettings()`/`loadSplitSettings()` w job-loop bez cache `[ZWERYFIKOWANE - NIEAKTUALNE]`
 Funkcje parsujące localStorage wołane w cyklach co 5–60 s. Dla `syncSettingsRef` zrobiono już ref-cache (linia 286) — ten sam wzorzec powinien być dla session/split settings.
 
+**Status (2026-03-10):** po weryfikacji `loadSessionSettings()`/`loadSplitSettings()` korzystają już z cache managera w `user-settings.ts`, więc opis „bez cache” jest nieaktualny.
+
 ---
 
-#### [I2] `Sessions.tsx:1037` — `loadFreezeSettings()` wewnątrz `useMemo`
+#### [I2] `Sessions.tsx:1037` — `loadFreezeSettings()` wewnątrz `useMemo` `[ZWERYFIKOWANE - NIEAKTUALNE]`
 `loadFreezeSettings()` czyta localStorage wewnątrz `useMemo` przy każdej zmianie `projects`. Wynik nie zmienia się jeśli użytkownik nie zmienia ustawień.
 
+**Status (2026-03-10):** odczyt nie parsuje już `localStorage` za każdym razem, bo bazuje na cache in-memory.
+
 ---
 
-#### [I3] `Projects.tsx:388–393` — `hotProjectIds` jako Array zamiast Set
+#### [I3] `Projects.tsx:388–393` — `hotProjectIds` jako Array zamiast Set `[ZROBIONE]`
 `.includes()` na tablicy = O(n) przy każdym renderze projektu. Zamiana na `Set` jest trywialna:
 ```ts
 const hotProjectIds = useMemo(() =>
@@ -74,9 +90,11 @@ const hotProjectIds = useMemo(() =>
 );
 ```
 
+**Status (2026-03-10):** zrobione. `hotProjectIds` działa jako `Set`, a odczyt w renderze używa `.has()`.
+
 ---
 
-#### [I4] `AI.tsx:261–278` — missed concurrency
+#### [I4] `AI.tsx:261–278` — missed concurrency `[ZROBIONE]`
 `getAssignmentModelStatus()` i `getFeedbackWeight()` wołane sekwencyjnie, mogą być równoległe:
 ```ts
 const [nextStatus, fw] = await Promise.all([
@@ -85,26 +103,32 @@ const [nextStatus, fw] = await Promise.all([
 ]);
 ```
 
+**Status (2026-03-10):** zrobione.
+
 ---
 
-#### [I5] `Dashboard.tsx:399` — `loadWorkingHoursSettings()` przy każdym refreshKey
+#### [I5] `Dashboard.tsx:399` — `loadWorkingHoursSettings()` przy każdym refreshKey `[CZĘŚCIOWO]`
 `workingHours` zmienia się tylko gdy użytkownik zmienia ustawienia, nie przy każdym `refreshKey`. To localStorage read + setState przy każdym odświeżeniu dashboardu (co 60 s + mutacje).
 
+**Status (2026-03-10):** wdrożone inaczej niż w raporcie. Nie ograniczano do `mount only`, ale dodano change detection, więc `setWorkingHours` wykonuje się tylko przy realnej zmianie ustawień.
+
 ---
 
-#### [I6] `ProjectPage.tsx:306` — `getProjects()` fetchuje całą listę dla jednego projektu
+#### [I6] `ProjectPage.tsx:306` — `getProjects()` fetchuje całą listę dla jednego projektu `[DO ZROBIENIA]`
 `getProjects()` ładuje wszystkie projekty, a następnie `.find(x => x.id === projectPageId)`. Jeśli projekty są dostępne w `useDataStore`, można je pobrać stamtąd.
 
 ---
 
-#### [I7] `Sessions.tsx:247` — `document.querySelector('main')` w `useMemo([], [])`
+#### [I7] `Sessions.tsx:247` — `document.querySelector('main')` w `useMemo([], [])` `[CZĘŚCIOWO]`
 `useMemo` z `[]` jest wyliczane w trakcie renderowania — `main` element może jeszcze nie istnieć. Lepiej użyć `useRef` + `useEffect`.
+
+**Status (2026-03-10):** uproszczono do leniwej inicjalizacji `useState`, ale nie wdrożono dokładnie wariantu `useRef + useEffect`.
 
 ---
 
 ## 2. BRAKUJĄCE TŁUMACZENIA
 
-### 2.1 Hardcoded stringi w Help.tsx (bez t18n)
+### 2.1 Hardcoded stringi w Help.tsx (bez t18n) `[ZROBIONE]`
 
 | Linia | Tekst | Problem |
 |-------|-------|---------|
@@ -113,7 +137,7 @@ const [nextStatus, fw] = await Promise.all([
 | 602 | `2. Suggest Min Confidence: 0.4 - 0.5 (Zmniejsz obecne 0.6)` | Hardcoded PL+EN mix, brak t18n |
 | 629 | `Auto-safe Min Confidence: 0.85 - 0.95` | Hardcoded EN, brak tłumaczenia |
 
-### 2.2 Hardcoded error messages (showError)
+### 2.2 Hardcoded error messages (showError) `[ZROBIONE]`
 
 | Plik:linia | Tekst |
 |------------|-------|
@@ -125,7 +149,9 @@ const [nextStatus, fw] = await Promise.all([
 
 Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przetłumaczone.
 
-### 2.3 Niezgodność kluczy EN/PL w common.json
+### 2.3 Niezgodność kluczy EN/PL w common.json `[ZROBIONE]`
+
+**Status (2026-03-10):** dodano brakujący klucz `ai_page.text.train_after_a_larger_series_of_manual_corrections` do PL, przepięto użycie kodu na wersję z `corrections`, a brakujące klucze `help_page.*` dopisano do EN. Stary klucz z literówką pozostawiono w PL jako alias kompatybilności.
 
 **Brakuje w PL (jest w EN):**
 - `ai_page.text.train_after_a_larger_series_of_manual_corrections`
@@ -160,7 +186,7 @@ Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przet
 - Daemon ✅
 - Settings ✅
 
-### 3.2 Strony/funkcje BEZ opisu w Help
+### 3.2 Strony/funkcje BEZ opisu w Help `[DO ZROBIENIA]`
 
 | Strona / funkcja | Uwagi |
 |-------------------|-------|
@@ -168,7 +194,7 @@ Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przet
 | **Project Card** (`project-card` / ProjectPage.tsx) | Widok szczegółowy projektu — brak dedykowanej zakładki w Help. Częściowo opisany w "Projects" (punkt o ProjectPage), ale brak szczegółowego opisu timeline projektu, karty komentarzy, sesji manualnych, kompaktowania danych, generowania raportów z poziomu projektu. |
 | **Report View** (`report-view` / ReportView.tsx) | Podgląd raportu pełnoekranowy — wspomniany w sekcji Reports, ale bez szczegółów (drukowanie, eksport PDF, skalowanie). |
 
-### 3.3 Funkcje nieudokumentowane lub słabo opisane
+### 3.3 Funkcje nieudokumentowane lub słabo opisane `[DO ZROBIENIA]`
 
 | Funkcja | Plik | Opis w Help |
 |---------|------|-------------|
@@ -184,6 +210,8 @@ Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przet
 
 ### 4.1 Nadmiarowy kod / duplikacja
 
+**Status (2026-03-10):** po weryfikacji pierwsze dwa punkty są częściowo nieaktualne, bo `loadFreezeSettings()` i `loadSessionSettings()` korzystają z cache in-memory w `user-settings.ts`. Otwarty pozostaje głównie temat duplikacji efektów fetch-breakdownów.
+
 | Problem | Lokalizacja |
 |---------|-------------|
 | `loadFreezeSettings()` wołane w 4+ miejscach bez cachowania | Sessions.tsx:1037, Projects.tsx:259, Projects.tsx:341, BackgroundServices.tsx |
@@ -191,6 +219,8 @@ Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przet
 | Efekty fetch-breakdownów (linie 942 i 982 w Sessions.tsx) robią niemal to samo z minimalną różnicą warunku | Sessions.tsx:942, Sessions.tsx:982 |
 
 ### 4.2 Potencjalne problemy logiczne
+
+**Status (2026-03-10):** drugi punkt (`today` po północy) został naprawiony. Pierwszy punkt (`document.querySelector('main')`) jest rozwiązany częściowo.
 
 | Problem | Lokalizacja |
 |---------|-------------|
@@ -203,17 +233,28 @@ Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przet
 
 ### Wysoki priorytet (szybki zysk, niskie ryzyko):
 1. **C1–C2**: Cache `loadFreezeSettings` / `readMinSessionDuration` w `useMemo` — eliminuje parsowanie localStorage przy każdym re-renderze
+   Status: `[ZWERYFIKOWANE - NIEAKTUALNE]`
 2. **C3**: `projectExtraInfoCache` → `useRef` — eliminuje zbędne re-rendery Projects
+   Status: `[ZROBIONE]`
 3. Hardcoded stringi w Help.tsx (linie 362, 368, 602, 629) — przetłumaczyć
+   Status: `[ZROBIONE]`
 
 ### Średni priorytet:
 4. **C4**: Refactor kaskady breakdownów w Sessions — oddzielić deps
+   Status: `[DO ZROBIENIA]`
 5. **C5**: Usunąć lub ulepszyć 15s polling (redundantny z refreshKey)
+   Status: `[DO ZROBIENIA]`
 6. Przetłumaczyć error messages w showError (5 miejsc)
+   Status: `[ZROBIONE]`
 7. Zsynchronizować klucze EN/PL (1 brakujący + 8 nadmiarowych)
+   Status: `[ZROBIONE]`
 
 ### Niski priorytet:
 8. **I3**: `hotProjectIds` Array → Set
+   Status: `[ZROBIONE]`
 9. **I4**: Promise.all w fetchStatus (AI.tsx)
+   Status: `[ZROBIONE]`
 10. **I5**: loadWorkingHoursSettings only on mount
+    Status: `[CZĘŚCIOWO]`
 11. Uzupełnić Help o Import, multi-split, ProjectPage details
+    Status: `[DO ZROBIENIA]`

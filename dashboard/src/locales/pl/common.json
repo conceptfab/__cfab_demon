@@ -312,6 +312,7 @@
       "boost_label_single": "tej sesji",
       "boost_label_multi": "{{count}} sesji",
       "boost_requires_comment_prompt": "Mnożnik wymaga komentarza. Wpisz komentarz dla {{label}}:",
+      "boost_requires_comment_unavailable_here": "Mnożnik wymaga komentarza, ale edycja komentarzy nie jest tutaj dostępna.",
       "boost_comment_required": "Komentarz jest wymagany do dodania mnożnika.",
       "boost_comment_save_failed": "Nie udało się zapisać komentarza wymaganego do mnożnika: {{error}}",
       "multiplier_title": "Ustaw mnożnik stawki sesji",
@@ -321,6 +322,7 @@
       "session_comment_desc": "(zostaw puste, aby usunąć)"
     },
     "errors": {
+      "assign_failed": "Nie udało się przypisać sesji: {{error}}",
       "update_multiplier": "Nie udało się zaktualizować mnożnika stawki sesji: {{error}}"
     },
     "row": {
@@ -381,6 +383,7 @@
       "show_the_score_details_button_barchart3_on_each": "Pokaż przycisk szczegółów punktacji (BarChart3) na każdej sesji",
       "when_to_train_the_model": "Kiedy trenować model",
       "train_after_a_larger_series_of_manual_correction": "Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.",
+      "train_after_a_larger_series_of_manual_corrections": "Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.",
       "the_reminder_appears_automatically_when_you_have": "Przypomnienie pojawia się automatycznie, gdy masz co najmniej {{feedbackTrigger}} nowych korekt lub minęło ponad {{retrainHours}}h od ostatniego treningu i są nowe korekty.",
       "what_parameters_mean": "Znaczenie parametrów",
       "mode_off_disables_suggestions_suggest_shows_sugg": "Mode: off wyłącza sugestie, suggest pokazuje sugestie bez auto-zmian, auto_safe pozwala na automatyczne przypisania tylko przy wysokiej pewności.",
@@ -462,7 +465,9 @@
     "errors": {
       "project_name_required": "Nazwa projektu jest wymagana.",
       "project_folder_required": "Folder projektu jest wymagany do identyfikacji śledzonych plików.",
-      "folder_path_required": "Podaj ścieżkę folderu"
+      "folder_path_required": "Podaj ścieżkę folderu",
+      "delete_project_failed": "Nie udało się usunąć projektu \"{{projectLabel}}\": {{error}}",
+      "compact_project_failed": "Nie udało się skondensować danych projektu: {{error}}"
     },
     "confirm": {
       "exclude_project": "Wykluczyć ten projekt? Można go później przywrócić.",
@@ -1454,6 +1459,8 @@
     "time_of_day_and_day_of_the_week_your_work_habits": "Pora dnia i dzień tygodnia (Twoje nawyki pracy).",
     "token_analysis": "Analiza tokenów",
     "keywords_extracted_from_file_names_and_windows_the_stron": "Słowa kluczowe wyciągane z nazw plików i okien (najsilniejszy sygnał).",
+    "score_and_base_log_prob": "Score & Base Log Prob:",
+    "matched_tokens_and_context_matches": "Matched Tokens & Context Matches:",
     "k_2_decision_algorithm": "2. Algorytm decyzyjny",
     "the_model_doesn_t_guess_blindly_for_each_unassigned_sess": "Model nie zgaduje „na ślepo” – dla każdej nieprzypisanej sesji wylicza:",
     "confidence_2": "Ufność",
@@ -1469,12 +1476,14 @@
     "automatically_assigns_sessions_requires_85_confidence_an": "Samodzielnie przypisuje sesje (wymaga >85% pewności i silnych dowodów).",
     "k_4_optimal_learning_settings": "4. Optymalne ustawienia nauki",
     "k_1_model_operation_mode_suggest": "1. Tryb działania modelu: suggest",
+    "suggest_min_confidence_0_4_0_5_lower_current_0_6": "2. Suggest Min Confidence: 0.4 - 0.5 (Obniż obecne 0.6)",
     "keep_this_mode_the_ai_will_suggest_connections_categorie": "Pozostaw ten tryb. AI będzie podsuwać Ci propozycje powiązań/kategorii, ale nie przypisze ich automatycznie. Twoje ręczne akceptacje (lub odrzucenia/korekty) to najważniejszy element budowania \"wiedzy\" modelu. (W trybie auto, model nie pytałby o zdanie w pewnych przypadkach, tracąc potencjalną szansę na upewnienie).",
     "lowering_this_threshold_means_the_model_will_make_sugges": "Obniżenie tego progu sprawi, że model będzie zgłaszał propozycje nawet wtedy, gdy nie jest super pewny. Konsekwencja: dostaniesz więcej sugestii, a poprawiając te błędne, model nauczy się znacznie szybciej rozróżniać trudniejsze przypadki. Jeśli jednak poczujesz się \"zaspamowany\" bzdurnymi sugestiami, podnieś powoli do 0.6.",
     "k_3_feedback_weight_10_15_increase_the_current_5": "3. Feedback Weight: 10 - 15 (Zwiększ obecne 5)",
     "feedback_weight_determines_how_strongly_a_single_correct": "Waga feedbacku decyduje o tym, jak mocno jedna Twoja poprawka wpływa na kolejne decyzje modelu. Wyższa wartość = model szybciej adaptuje się do Twoich świeżych zachowań i włożonych korekt. Ważne: jeśli waga będzie zbyt wysoka (np. 50), model może \"zwariować\" po jednej Twojej przypadkowej pomyłce. Wartość 10-15 pozwala na wydajną naukę, będąc zarazem stosunkowo stabilną opcją.",
     "k_4_criteria_for_auto_safe_for_the_future_safety": "4. Kryteria dla Auto-safe (na przyszłość/dla bezpieczeństwa)",
     "if_after_the_learning_period_you_want_to_enable_auto_saf": "Jeśli po okresie uczenia zechcesz włączyć tryb auto-safe, gdzie AI samo rozwiązuje oczywiste przypadki:",
+    "auto_safe_min_confidence_0_85_0_95": "Auto-safe Min Confidence: 0.85 - 0.95",
     "keep_it_high_let_it_automate_only_absolute_certainties": "(zostaw wysoko, niech automatyzuje tylko absolutne pewniaki).",
     "auto_safe_min_evidence_5": "Auto-safe Min Evidence: 5",
     "increase_from_3_this_means_the_model_must_have_strong_co": "(podnieś z 3. Oznacza to, że model musi mieć mocne potwierdzenie w min. 5 podobnych, wcześniej zatwierdzonych przez Ciebie sesjach, by zadziałać bez Twojej zgody).",

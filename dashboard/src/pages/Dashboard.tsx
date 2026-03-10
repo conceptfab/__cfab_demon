@@ -154,6 +154,17 @@ function DiscoveredProjectsBanner() {
   );
 }
 
+function areWorkingHoursEqual(
+  left: WorkingHoursSettings,
+  right: WorkingHoursSettings,
+): boolean {
+  return (
+    left.start === right.start &&
+    left.end === right.end &&
+    left.color === right.color
+  );
+}
+
 export function Dashboard() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
@@ -396,7 +407,12 @@ export function Dashboard() {
           }
         }
 
-        setWorkingHours(loadWorkingHoursSettings());
+        const nextWorkingHours = loadWorkingHoursSettings();
+        setWorkingHours((current) =>
+          areWorkingHoursEqual(current, nextWorkingHours)
+            ? current
+            : nextWorkingHours,
+        );
         setProjectTimelineLoading(false);
       },
     );
