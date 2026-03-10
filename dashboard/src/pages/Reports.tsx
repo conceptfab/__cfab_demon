@@ -417,7 +417,7 @@ export function Reports() {
 
       {activeTemplate ? (
         <>
-          <div className="mt-3 grid gap-3 rounded-lg border border-border/20 bg-card/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-3 grid gap-3 rounded-lg border border-border/20 bg-card/20 p-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-[11px]">
               <span className="font-semibold text-muted-foreground/70">
                 {t('reports_page.fields.template_name')}
@@ -428,44 +428,6 @@ export function Reports() {
                 className="rounded border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
                 placeholder={t('reports_page.fields.name_placeholder')}
               />
-            </label>
-            <label className="flex flex-col gap-1 text-[11px]">
-              <span className="font-semibold text-muted-foreground/70">
-                {t('reports_page.fields.base_font')}
-              </span>
-              <select
-                value={activeTemplate.fontFamily}
-                onChange={(e) =>
-                  patchTemplate({
-                    fontFamily: e.target.value as ReportTemplate['fontFamily'],
-                  })
-                }
-                className="rounded border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
-              >
-                <option value="system">{t('reports_page.fonts.sans')}</option>
-                <option value="serif">{t('reports_page.fonts.serif')}</option>
-                <option value="mono">{t('reports_page.fonts.mono')}</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[11px]">
-              <span className="font-semibold text-muted-foreground/70">
-                {t('reports_page.fields.base_size')}
-              </span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="range"
-                  min={10}
-                  max={18}
-                  value={activeTemplate.baseFontSize}
-                  onChange={(e) =>
-                    patchTemplate({ baseFontSize: Number(e.target.value) })
-                  }
-                  className="w-full accent-sky-500"
-                />
-                <span className="w-8 text-[10px] font-mono text-muted-foreground/70">
-                  {activeTemplate.baseFontSize}px
-                </span>
-              </div>
             </label>
             <label className="flex items-center gap-2 rounded border border-border/40 bg-secondary/10 px-2 py-2 text-[11px]">
               <input

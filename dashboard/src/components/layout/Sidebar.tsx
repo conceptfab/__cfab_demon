@@ -26,6 +26,7 @@ import { useUIStore } from '@/store/ui-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { tryStartWindowDrag } from '@/lib/window-drag';
+import { hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
@@ -251,6 +252,8 @@ export function Sidebar() {
 
   const unassignedSessions =
     todayUnassigned > 0 ? todayUnassigned : allUnassigned;
+  const hasPendingAiTrainingData =
+    hasPendingAssignmentModelTrainingData(aiStatus);
   const sessionsBadge =
     unassignedSessions > 99 ? '99+' : String(unassignedSessions);
   const sessionsAttentionTitle =
@@ -363,10 +366,7 @@ export function Sidebar() {
                 : 'text-muted-foreground/40'
             }
             onClick={() => setCurrentPage('ai')}
-            pulse={
-              !aiStatus?.is_training &&
-              (aiStatus?.feedback_since_train ?? 0) > 0
-            }
+            pulse={hasPendingAiTrainingData}
           />
 
           {aiStatus?.is_training ? (
@@ -378,7 +378,7 @@ export function Sidebar() {
               pulse
               onClick={() => setCurrentPage('ai')}
             />
-          ) : (aiStatus?.feedback_since_train ?? 0) > 0 ? (
+          ) : hasPendingAiTrainingData ? (
             <StatusIndicator
               icon={Activity}
               label={t('layout.status.ai')}

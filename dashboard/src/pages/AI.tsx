@@ -38,6 +38,7 @@ import {
   formatMultilineList,
   parseMultilineList,
 } from '@/lib/utils';
+import { hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import { AiSessionIndicatorsCard } from '@/components/ai/AiSessionIndicatorsCard';
 import { AiBatchActionsCard } from '@/components/ai/AiBatchActionsCard';
 import { AiHowToCard } from '@/components/ai/AiHowToCard';
@@ -230,6 +231,8 @@ export function AIPage() {
       ),
     [status, tr],
   );
+  const highlightTrainAction =
+    hasPendingAssignmentModelTrainingData(status);
 
   useEffect(() => {
     showErrorRef.current = showError;
@@ -584,6 +587,7 @@ export function AIPage() {
           training={training}
           refreshingStatus={refreshingStatus}
           resettingKnowledge={resettingKnowledge}
+          highlightTrainAction={highlightTrainAction}
           snoozedUntil={trainingReminder.cooldownUntil}
           reminderSuppressed={!trainingReminder.shouldShow}
           onTrainNow={handleTrainNow}

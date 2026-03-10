@@ -1431,6 +1431,7 @@
     "confidence_policy_set_how_certain_the_model_must_be_to_a": "Confidence Policy – set how certain the model must be to automatically assign data.",
     "learning_center_every_manual_correction_of_yours_becomes": "Learning Center – every manual correction of yours becomes a new lesson for the model.",
     "training_notifications_the_system_notifies_you_when_new": "Training Notifications – the system notifies you when new knowledge has been gathered.",
+    "train_now_button_is_highlighted_when_sidebar_ai_status_shows_new_data": "\"Train Now\" highlight – when the AI status in the sidebar shows \"New data\", the Model Status card highlights the training action.",
     "snooze_training_reminder_postpone_the_training_reminder": "Snooze Training Reminder – postpone the training reminder for 24h when you want to finish work without interruption.",
     "modes_off_manual_only_suggest_ai_hints_auto_safe_automat": "Modes: Off (manual only), Suggest (AI hints), Auto-Safe (automation).",
     "training_blacklists_exclude_selected_applications_and_fo": "Training blacklists – exclude selected applications and folders from model training to keep the dataset clean.",

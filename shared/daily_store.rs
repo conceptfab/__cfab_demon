@@ -193,7 +193,9 @@ pub fn replace_day_snapshot(
             "INSERT INTO daily_files (
                  date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
                  window_title, detected_path, title_history_json, activity_type
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT(date, exe_name, file_name) DO UPDATE SET
+                 total_seconds = daily_files.total_seconds + excluded.total_seconds",
         )
         .map_err(|e| format!("Failed to prepare daily file insert: {}", e))?;
 

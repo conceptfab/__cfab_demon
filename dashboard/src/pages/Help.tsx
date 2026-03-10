@@ -491,6 +491,7 @@ export function Help() {
                   t18n('help_page.confidence_policy_set_how_certain_the_model_must_be_to_a'),
                   t18n('help_page.learning_center_every_manual_correction_of_yours_becomes'),
                   t18n('help_page.training_notifications_the_system_notifies_you_when_new'),
+                  t18n('help_page.train_now_button_is_highlighted_when_sidebar_ai_status_shows_new_data'),
                   t18n('help_page.snooze_training_reminder_postpone_the_training_reminder'),
                   t18n('help_page.modes_off_manual_only_suggest_ai_hints_auto_safe_automat'),
                   t18n('help_page.training_blacklists_exclude_selected_applications_and_fo'),

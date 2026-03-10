@@ -2,14 +2,16 @@ import { useTranslation } from 'react-i18next';
 import { Brain, PlayCircle, RefreshCw, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import type { AssignmentModelStatus } from '@/lib/db-types';
-import { formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 
 interface AiModelStatusCardProps {
   status: AssignmentModelStatus | null;
   training: boolean;
   refreshingStatus: boolean;
   resettingKnowledge: boolean;
+  highlightTrainAction: boolean;
   snoozedUntil: Date | null;
   reminderSuppressed: boolean;
   onTrainNow: () => void;
@@ -22,6 +24,7 @@ export function AiModelStatusCard({
   training,
   refreshingStatus,
   resettingKnowledge,
+  highlightTrainAction,
   snoozedUntil,
   reminderSuppressed,
   onTrainNow,
@@ -29,6 +32,8 @@ export function AiModelStatusCard({
   onResetKnowledge,
 }: AiModelStatusCardProps) {
   const { t: tr } = useTranslation();
+  const trainActionHighlighted =
+    highlightTrainAction && !training && !status?.is_training;
 
   return (
     <Card>
@@ -106,9 +111,21 @@ export function AiModelStatusCard({
         )}
 
         <div className="flex flex-wrap gap-2">
+          {trainActionHighlighted && (
+            <Badge
+              variant="outline"
+              className="h-5 border-amber-400/45 bg-amber-500/12 text-amber-100 shadow-[0_0_12px_rgba(245,158,11,0.18)]"
+            >
+              {tr('layout.status.new_data')}
+            </Badge>
+          )}
           <Button
             variant="outline"
-            className="h-8"
+            className={cn(
+              'h-8',
+              trainActionHighlighted &&
+                'border-amber-400/60 bg-amber-500/14 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.32),0_0_20px_rgba(245,158,11,0.16)] hover:border-amber-300/80 hover:bg-amber-500/20 hover:text-amber-50',
+            )}
             onClick={onTrainNow}
             disabled={training || status?.is_training}
           >

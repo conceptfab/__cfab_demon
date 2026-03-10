@@ -1431,6 +1431,7 @@
     "confidence_policy_set_how_certain_the_model_must_be_to_a": "Confidence Policy – ustalanie jak bardzo model musi być pewny, by samoczynnie przypisać dane.",
     "learning_center_every_manual_correction_of_yours_becomes": "Learning Center – każda Twoja manualna korekta staje się nową lekcją dla modelu.",
     "training_notifications_the_system_notifies_you_when_new": "Powiadomienia o potrzebie treningu – system informuje, gdy zebrano nową wiedzę.",
+    "train_now_button_is_highlighted_when_sidebar_ai_status_shows_new_data": "Wyróżniony przycisk \"Trenuj teraz\" – gdy wskaźnik AI w sidebarze pokazuje \"Nowe dane\", karta Status modelu podświetla akcję treningu.",
     "snooze_training_reminder_postpone_the_training_reminder": "Snooze Training Reminder – odłóż przypomnienie o treningu na 24h, gdy chcesz dokończyć pracę bez przerywania.",
     "modes_off_manual_only_suggest_ai_hints_auto_safe_automat": "Tryby: Off (tylko ręczne), Suggest (podpowiedzi AI), Auto-Safe (automatyzacja).",
     "training_blacklists_exclude_selected_applications_and_fo": "Training blacklists – wyklucz konkretne aplikacje i foldery z trenowania modelu, aby nie zanieczyszczać danych uczących.",
