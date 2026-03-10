@@ -2,8 +2,6 @@ export interface ReportTemplate {
   id: string;
   name: string;
   sections: string[];
-  fontFamily: 'system' | 'serif' | 'mono';
-  baseFontSize: number;
   showLogo: boolean;
   createdAt: string;
   updatedAt: string;
@@ -23,8 +21,6 @@ function createDefaultTemplate(): ReportTemplate {
     id: 'default',
     name: 'Standard',
     sections: [...DEFAULT_SECTIONS],
-    fontFamily: 'system',
-    baseFontSize: 13,
     showLogo: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

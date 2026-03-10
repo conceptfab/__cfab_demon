@@ -293,8 +293,6 @@ export function Reports() {
         : `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       name: t('reports_page.template.new_template'),
       sections: [...DEFAULT_IDS],
-      fontFamily: 'system',
-      baseFontSize: 13,
       showLogo: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

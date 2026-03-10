@@ -11,8 +11,6 @@ export interface AiSettingsFormValues {
   autoEvidence: number;
   trainingHorizonDays: number;
   feedbackWeight: number;
-  trainingAppBlacklistText: string;
-  trainingFolderBlacklistText: string;
 }
 
 interface AiSettingsFormProps {
@@ -150,34 +148,6 @@ export function AiSettingsForm({
                 const next = Number.parseFloat(e.target.value);
                 onChange({ feedbackWeight: Number.isNaN(next) ? 5 : next });
               }}
-            />
-          </label>
-
-          <label className="space-y-1.5 text-sm md:col-span-2">
-            <span className="text-xs text-muted-foreground">
-              {tr('ai_page.text.applications_blacklist_exe_one_per_line')}
-            </span>
-            <textarea
-              className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
-              value={values.trainingAppBlacklistText}
-              onChange={(e) =>
-                onChange({ trainingAppBlacklistText: e.target.value })
-              }
-              placeholder={tr('ai_page.text.e_g_chrome_exe')}
-            />
-          </label>
-
-          <label className="space-y-1.5 text-sm md:col-span-2">
-            <span className="text-xs text-muted-foreground">
-              {tr('ai_page.fields.folders_blacklist')}
-            </span>
-            <textarea
-              className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
-              value={values.trainingFolderBlacklistText}
-              onChange={(e) =>
-                onChange({ trainingFolderBlacklistText: e.target.value })
-              }
-              placeholder={tr('ai_page.text.e_g_c_users_me_downloads')}
             />
           </label>
         </div>

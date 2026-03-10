@@ -494,7 +494,6 @@ export function Help() {
                   t18n('help_page.train_now_button_is_highlighted_when_sidebar_ai_status_shows_new_data'),
                   t18n('help_page.snooze_training_reminder_postpone_the_training_reminder'),
                   t18n('help_page.modes_off_manual_only_suggest_ai_hints_auto_safe_automat'),
-                  t18n('help_page.training_blacklists_exclude_selected_applications_and_fo'),
                   t18n('help_page.ai_progress_quality_metrics_panel_shows_feedback_trends'),
                   t18n('help_page.training_horizon_set_how_many_days_of_history_e_g_30_730'),
                   t18n('help_page.auto_safe_limit_control_the_maximum_number_of_sessions_p'),

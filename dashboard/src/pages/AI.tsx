@@ -14,11 +14,8 @@ import {
   runAutoSafeAssignment,
   setAssignmentModelCooldown,
   setAssignmentMode,
-  setTrainingBlacklists,
-  setTrainingHorizonDays as setTrainingHorizonDaysApi,
   trainAssignmentModel,
   getFeedbackWeight,
-  setFeedbackWeight as setFeedbackWeightApi,
 } from '@/lib/tauri';
 import type {
   AssignmentMode,
@@ -33,11 +30,7 @@ import {
   saveIndicatorSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
-import {
-  clampNumber,
-  formatMultilineList,
-  parseMultilineList,
-} from '@/lib/utils';
+import { clampNumber } from '@/lib/utils';
 import { hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import { AiSessionIndicatorsCard } from '@/components/ai/AiSessionIndicatorsCard';
 import { AiBatchActionsCard } from '@/components/ai/AiBatchActionsCard';
@@ -191,10 +184,6 @@ export function AIPage() {
   const [autoConf, setAutoConf] = useState<number>(0.85);
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
   const [trainingHorizonDays, setTrainingHorizonDays] = useState<number>(730);
-  const [trainingAppBlacklistText, setTrainingAppBlacklistText] =
-    useState<string>('');
-  const [trainingFolderBlacklistText, setTrainingFolderBlacklistText] =
-    useState<string>('');
   const [autoLimit, setAutoLimit] = useState<number>(
     () => loadAiAutoAssignmentSettings().autoLimit,
   );
@@ -213,12 +202,6 @@ export function AIPage() {
         setAutoConf(nextStatus.min_confidence_auto);
         setAutoEvidence(nextStatus.min_evidence_auto);
         setTrainingHorizonDays(nextStatus.training_horizon_days);
-        setTrainingAppBlacklistText(
-          formatMultilineList(nextStatus.training_app_blacklist),
-        );
-        setTrainingFolderBlacklistText(
-          formatMultilineList(nextStatus.training_folder_blacklist),
-        );
       }
     },
     [],
@@ -252,15 +235,6 @@ export function AIPage() {
       if (patch.trainingHorizonDays !== undefined) {
         setTrainingHorizonDays(patch.trainingHorizonDays);
       }
-      if (patch.feedbackWeight !== undefined) {
-        setFeedbackWeight(patch.feedbackWeight);
-      }
-      if (patch.trainingAppBlacklistText !== undefined) {
-        setTrainingAppBlacklistText(patch.trainingAppBlacklistText);
-      }
-      if (patch.trainingFolderBlacklistText !== undefined) {
-        setTrainingFolderBlacklistText(patch.trainingFolderBlacklistText);
-      }
     },
     [],
   );
@@ -273,8 +247,6 @@ export function AIPage() {
       autoEvidence,
       trainingHorizonDays,
       feedbackWeight,
-      trainingAppBlacklistText,
-      trainingFolderBlacklistText,
     }),
     [
       mode,
@@ -283,8 +255,6 @@ export function AIPage() {
       autoEvidence,
       trainingHorizonDays,
       feedbackWeight,
-      trainingAppBlacklistText,
-      trainingFolderBlacklistText,
     ],
   );
 
@@ -371,18 +341,6 @@ export function AIPage() {
         normalizedAuto,
         normalizedEvidence,
       );
-      await setTrainingHorizonDaysApi(
-        Math.round(clampNumber(trainingHorizonDays, 30, 730)),
-      );
-      await setTrainingBlacklists(
-        parseMultilineList(trainingAppBlacklistText),
-        parseMultilineList(trainingFolderBlacklistText),
-      );
-      const clampedFw = Math.max(1, Math.min(50, feedbackWeight));
-      await setFeedbackWeightApi(clampedFw);
-      dirtyRef.current = false;
-      showInfo(tr('ai_page.text.model_settings_saved'));
-      // Force-sync form fields from backend after save
       const freshStatus = await getAssignmentModelStatus();
       syncFromStatus(freshStatus, true);
       const freshFw = await getFeedbackWeight();

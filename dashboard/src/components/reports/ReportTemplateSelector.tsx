@@ -50,7 +50,7 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
                 <span className="text-sm font-medium">{tpl.name}</span>
               </div>
               <p className="text-[10px] text-muted-foreground/50 mt-1 pl-6">
-                {tpl.sections.length} {t('reports.template_selector.sections_label')} · {tpl.fontFamily} · {tpl.baseFontSize}px
+                {tpl.sections.length} {t('reports.template_selector.sections_label')}
               </p>
             </button>
           ))}
