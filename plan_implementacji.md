@@ -24,7 +24,8 @@ Stan na 2026-03-09:
 - [x] Faza 3: fallback `analyze_session_projects()` zostal przepiety z `app_id + date` na overlap sesji, a `analyze_sessions_splittable()` korzysta z tej samej logiki per sesja, wiec nozyczki i auto-split opieraja sie na identycznych kryteriach.
 - [x] Faza 3: `assignment_feedback` ma addytywna kolumne `weight REAL NOT NULL DEFAULT 1.0`; split single/multi zapisuje wage rowna ratio czesci, a reinforcement w `retrain_model_sync()` liczy `SUM(weight)` i uwzglednia zrodla `manual_session_split_part_1..5`.
 - [x] Faza 3: zaktualizowane testy backendu (overlap, AI fallback, weight splitu, weighted retraining) oraz Help/i18n dla zmienionego zachowania split suggestion.
-- [ ] Fazy 4-6 bez zmian implementacyjnych.
+- [x] Faza 4: zakończone rozbicie assignment_model.rs na mniejsze moduły (context, scoring, training, auto_safe, config) i zlikwidowanie duplikacji warstw AI.
+- [ ] Fazy 5-6 czekają na realizację.
 
 Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji):
 
@@ -187,17 +188,20 @@ Kontekst: obecny system wazenia feedbacku opiera sie na globalnym `feedback_weig
 Dwie opcje (do wyboru):
 
 **Opcja A — kolumna `weight` per rekord (rekomendowana):**
+
 - Dodac kompatybilna migracje: `ALTER TABLE assignment_feedback ADD COLUMN weight REAL NOT NULL DEFAULT 1.0`
 - Przy `split_session()` i `split_session_multi()` zapisywac `weight` proporcjonalnie do ratio danej czesci (np. ratio 0.7 → weight 0.7)
 - W `retrain_model_sync()`: zamienic `COUNT(*)` na `SUM(weight)` w obu zapytaniach reinforcement (App Model linia ~1337, Time Model linia ~1394)
 - Stare rekordy bez jawnego weight dostana DEFAULT 1.0 — brak regresji
 
 **Opcja B — tylko dodanie zrodel do listy IN (prostsze):**
+
 - Bez migracji schematu
 - Dodac `'manual_session_split_part_1'` do `'manual_session_split_part_5'` do list `IN (...)` w obu zapytaniach reinforcement
 - Kazdy split part liczy sie jako 1 rekord, niezaleznie od ratio
 
 W obu opcjach:
+
 - Zachowac dotychczasowe 8/5 zrodel manualnych i AI accept/reject
 - Format zrodel splitu to `manual_session_split_part_{i+1}` (generowany w `apply_split_side_effects`)
 - Nie uzywac `LIKE` — dodac jawna liste wartosci do `IN (...)`

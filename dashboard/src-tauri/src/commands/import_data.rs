@@ -536,7 +536,7 @@ pub async fn import_data_archive(
             let backup_path_for_cleanup = backup_path.clone();
             run_app_blocking(app.clone(), move |app| {
                 let _ = fs::remove_file(&backup_path_for_cleanup);
-                if let Ok(conn) = db::get_connection(&app) {
+                if let Ok(mut conn) = db::get_connection(&app) {
                     match super::sessions::apply_manual_session_overrides(&conn) {
                         Ok(reapplied) if reapplied > 0 => {
                             log::info!(
@@ -552,7 +552,7 @@ pub async fn import_data_archive(
                             );
                         }
                     }
-                    if let Err(e) = super::assignment_model::retrain_model_sync(&conn) {
+                    if let Err(e) = super::assignment_model::retrain_model_sync(&mut conn) {
                         log::warn!("Auto-retrain after sync import failed: {}", e);
                     }
                 }

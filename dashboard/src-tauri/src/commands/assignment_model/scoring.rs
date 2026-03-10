@@ -1,0 +1,395 @@
+use std::cmp::Ordering;
+use std::collections::{HashMap, HashSet};
+use rusqlite::{OptionalExtension, ToSql};
+
+use crate::commands::assignment_model::{
+    config::is_project_active_cached,
+    context::{build_session_context, SessionContext},
+    AssignmentModelStatus, CandidateScore, ProjectSuggestion, ScoreBreakdown, SuggestionBreakdown,
+    AUTO_SAFE_MIN_MARGIN,
+};
+
+/// Check if a session has a manual override that forces it to a specific project.
+/// Returns Some(project_id) if override exists and target project is valid, None otherwise.
+pub fn check_manual_override(conn: &rusqlite::Connection, session_id: i64) -> Option<i64> {
+    let meta = match conn
+        .query_row(
+            "SELECT a.executable_name, s.start_time, s.end_time
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             WHERE s.id = ?1",
+            rusqlite::params![session_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Failed to read session metadata for manual override check (session_id={}): {}",
+                session_id,
+                e
+            );
+            return None;
+        }
+    }?;
+
+    let (exe_name, start_time, end_time) = meta;
+
+    let project_name: Option<String> = match conn
+        .query_row(
+            "SELECT project_name
+             FROM session_manual_overrides
+             WHERE session_id = ?1
+                OR (
+                    session_id IS NULL
+                    AND lower(executable_name) = lower(?2)
+                    AND start_time = ?3
+                    AND end_time = ?4
+                )
+             ORDER BY CASE WHEN session_id = ?1 THEN 0 ELSE 1 END, updated_at DESC
+             LIMIT 1",
+            rusqlite::params![session_id, exe_name, start_time, end_time],
+            |row| row.get(0),
+        )
+        .optional()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Failed to read manual override mapping (session_id={}): {}",
+                session_id,
+                e
+            );
+            return None;
+        }
+    };
+
+    let project_name = project_name?;
+
+    match conn
+        .query_row(
+            "SELECT id FROM projects
+         WHERE lower(name) = lower(?1)
+           AND excluded_at IS NULL
+           AND frozen_at IS NULL
+         LIMIT 1",
+            rusqlite::params![project_name],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+    {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!(
+                "Failed to resolve target project for manual override (session_id={}): {}",
+                session_id,
+                e
+            );
+            None
+        }
+    }
+}
+
+pub fn compute_score_breakdowns(
+    conn: &rusqlite::Connection,
+    context: &SessionContext,
+) -> Result<(Vec<CandidateScore>, Option<ProjectSuggestion>), String> {
+    let mut layer0: HashMap<i64, f64> = HashMap::new();
+    let mut layer1: HashMap<i64, f64> = HashMap::new();
+    let mut layer2: HashMap<i64, f64> = HashMap::new();
+    let mut layer3: HashMap<i64, f64> = HashMap::new();
+    let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
+    let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
+
+    // Layer 0: direct file-activity project evidence
+    for &pid in &context.file_project_ids {
+        if is_project_active_cached(conn, &mut active_project_cache, pid) {
+            *layer0.entry(pid).or_insert(0.0) += 0.80;
+            *candidate_evidence.entry(pid).or_insert(0) += 2;
+        }
+    }
+
+    // Layer 1: app
+    let mut stmt = conn
+        .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(rusqlite::params![context.app_id])
+        .map_err(|e| e.to_string())?;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+        if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+            continue;
+        }
+        let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+        let score = 0.30 * (1.0 + cnt).ln();
+        *layer1.entry(pid).or_insert(0.0) += score;
+        *candidate_evidence.entry(pid).or_insert(0) += 1;
+    }
+
+    // Layer 2: time
+    let mut stmt = conn
+        .prepare(
+            "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
+        )
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt
+        .query(rusqlite::params![
+            context.app_id,
+            context.hour_bucket,
+            context.weekday
+        ])
+        .map_err(|e| e.to_string())?;
+    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+        if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+            continue;
+        }
+        let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+        let score = 0.10 * (1.0 + cnt).ln();
+        *layer2.entry(pid).or_insert(0.0) += score;
+        *candidate_evidence.entry(pid).or_insert(0) += 1;
+    }
+
+    // Layer 3: tokens
+    if !context.tokens.is_empty() {
+        let mut token_stats: HashMap<i64, (f64, f64)> = HashMap::new();
+        for chunk in context.tokens.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT project_id, SUM(cnt), COUNT(cnt) FROM assignment_model_token WHERE token IN ({}) GROUP BY project_id",
+                placeholders
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
+            let mut rows = stmt
+                .query(rusqlite::params_from_iter(params))
+                .map_err(|e| e.to_string())?;
+            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+                let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
+                let entry = token_stats.entry(pid).or_insert((0.0, 0.0));
+                entry.0 += sum_cnt;
+                entry.1 += matches_cnt;
+            }
+        }
+        let token_total = context.tokens.len() as f64;
+        for (pid, (sum_cnt, matches_cnt)) in token_stats {
+            if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                continue;
+            }
+            let avg_log =
+                (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+            let score = 0.30 * avg_log;
+            *layer3.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
+    let mut all_pids: HashSet<i64> = HashSet::new();
+    all_pids.extend(layer0.keys());
+    all_pids.extend(layer1.keys());
+    all_pids.extend(layer2.keys());
+    all_pids.extend(layer3.keys());
+
+    let mut candidates: Vec<CandidateScore> = Vec::with_capacity(all_pids.len());
+
+    for pid in all_pids {
+        let l0 = *layer0.get(&pid).unwrap_or(&0.0);
+        let l1 = *layer1.get(&pid).unwrap_or(&0.0);
+        let l2 = *layer2.get(&pid).unwrap_or(&0.0);
+        let l3 = *layer3.get(&pid).unwrap_or(&0.0);
+        let total = l0 + l1 + l2 + l3;
+        let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
+
+        let project_name: String = conn
+            .query_row(
+                "SELECT name FROM projects WHERE id = ?1",
+                rusqlite::params![pid],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| format!("#{}", pid));
+
+        candidates.push(CandidateScore {
+            project_id: pid,
+            project_name,
+            layer0_file_score: (l0 * 1000.0).round() / 1000.0,
+            layer1_app_score: (l1 * 1000.0).round() / 1000.0,
+            layer2_time_score: (l2 * 1000.0).round() / 1000.0,
+            layer3_token_score: (l3 * 1000.0).round() / 1000.0,
+            total_score: (total * 1000.0).round() / 1000.0,
+            evidence_count: evidence,
+        });
+    }
+
+    candidates.sort_by(|a, b| {
+        b.total_score
+            .partial_cmp(&a.total_score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| a.project_id.cmp(&b.project_id))
+    });
+
+    let suggestion = if let Some(best) = candidates.first() {
+        let second_score = candidates.get(1).map(|c| c.total_score).unwrap_or(0.0);
+        let margin = (best.total_score - second_score).max(0.0);
+        let evidence_factor = 1.0 - (-(best.evidence_count as f64) / 2.0).exp();
+        let sigmoid_margin = 1.0 / (1.0 + (-margin).exp());
+        let confidence = sigmoid_margin * evidence_factor;
+
+        let breakdown = SuggestionBreakdown {
+            file_score: best.layer0_file_score,
+            app_score: best.layer1_app_score,
+            time_score: best.layer2_time_score,
+            token_score: best.layer3_token_score,
+        };
+
+        Some(ProjectSuggestion {
+            project_id: best.project_id,
+            confidence,
+            evidence_count: best.evidence_count,
+            margin,
+            breakdown: Some(breakdown),
+        })
+    } else {
+        None
+    };
+
+    Ok((candidates, suggestion))
+}
+
+pub fn compute_raw_suggestion(
+    conn: &rusqlite::Connection,
+    context: &SessionContext,
+) -> Result<Option<ProjectSuggestion>, String> {
+    let (_, suggestion) = compute_score_breakdowns(conn, context)?;
+    Ok(suggestion)
+}
+
+pub fn get_session_score_breakdown_sync(
+    conn: &rusqlite::Connection,
+    session_id: i64,
+) -> Result<ScoreBreakdown, String> {
+    let context = build_session_context(conn, session_id)?;
+    let manual_override_pid = check_manual_override(conn, session_id);
+
+    let Some(context) = context else {
+        return Ok(ScoreBreakdown {
+            candidates: vec![],
+            final_suggestion: None,
+            has_manual_override: manual_override_pid.is_some(),
+            manual_override_project_id: manual_override_pid,
+        });
+    };
+
+    let (candidates, final_suggestion) = compute_score_breakdowns(conn, &context)?;
+
+    Ok(ScoreBreakdown {
+        candidates,
+        final_suggestion,
+        has_manual_override: manual_override_pid.is_some(),
+        manual_override_project_id: manual_override_pid,
+    })
+}
+
+pub fn meets_suggest_threshold(status: &AssignmentModelStatus, suggestion: &ProjectSuggestion) -> bool {
+    suggestion.confidence >= status.min_confidence_suggest
+}
+
+pub fn meets_auto_safe_threshold(
+    status: &AssignmentModelStatus,
+    suggestion: &ProjectSuggestion,
+) -> bool {
+    suggestion.confidence >= status.min_confidence_auto
+        && suggestion.evidence_count >= status.min_evidence_auto
+        && suggestion.margin >= AUTO_SAFE_MIN_MARGIN
+}
+
+pub fn suggest_project_for_session_with_status(
+    conn: &rusqlite::Connection,
+    status: &AssignmentModelStatus,
+    session_id: i64,
+) -> Result<Option<ProjectSuggestion>, String> {
+    if status.mode == "off" {
+        return Ok(None);
+    }
+
+    let Some(context) = build_session_context(conn, session_id)? else {
+        return Ok(None);
+    };
+    let Some(suggestion) = compute_raw_suggestion(conn, &context)? else {
+        return Ok(None);
+    };
+
+    let accepted = if status.mode == "auto_safe" {
+        meets_auto_safe_threshold(status, &suggestion)
+    } else {
+        meets_suggest_threshold(status, &suggestion)
+    };
+
+    if accepted {
+        Ok(Some(suggestion))
+    } else {
+        Ok(None)
+    }
+}
+
+pub fn suggest_projects_for_sessions_with_status(
+    conn: &rusqlite::Connection,
+    status: &AssignmentModelStatus,
+    session_ids: &[i64],
+) -> Result<HashMap<i64, ProjectSuggestion>, String> {
+    let mut out = HashMap::new();
+    if status.mode == "off" || session_ids.is_empty() {
+        return Ok(out);
+    }
+
+    for &session_id in session_ids {
+        if let Some(suggestion) = suggest_project_for_session_with_status(conn, status, session_id)?
+        {
+            out.insert(session_id, suggestion);
+        }
+    }
+    Ok(out)
+}
+
+pub fn suggest_project_for_session_raw(
+    conn: &rusqlite::Connection,
+    status: &AssignmentModelStatus,
+    session_id: i64,
+) -> Result<Option<ProjectSuggestion>, String> {
+    if status.mode == "off" {
+        return Ok(None);
+    }
+
+    let Some(context) = build_session_context(conn, session_id)? else {
+        return Ok(None);
+    };
+    compute_raw_suggestion(conn, &context)
+}
+
+pub fn suggest_projects_for_sessions_raw(
+    conn: &rusqlite::Connection,
+    status: &AssignmentModelStatus,
+    session_ids: &[i64],
+) -> Result<HashMap<i64, ProjectSuggestion>, String> {
+    let mut out = HashMap::new();
+    if status.mode == "off" || session_ids.is_empty() {
+        return Ok(out);
+    }
+
+    for &session_id in session_ids {
+        if let Some(suggestion) = suggest_project_for_session_raw(conn, status, session_id)? {
+            out.insert(session_id, suggestion);
+        }
+    }
+
+    Ok(out)
+}
