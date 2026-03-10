@@ -303,6 +303,7 @@ export function Help() {
                   t18n('help_page.discovered_projects_notification_after_folder_scanning_o'),
                   t18n('help_page.add_manual_session_from_timeline_click_on_the_dashboard'),
                   t18n('help_page.all_projects_overview_chart_showing_work_time_distributi'),
+                  t18n('help_page.timeline_states_loading_empty_and_error_messages_help_yo'),
                 ]}
               />
             </TabsContent>
@@ -404,6 +405,7 @@ export function Help() {
                   t18n('help_page.recent_comments_card_in_the_project_view_showing_latest'),
                   t18n('help_page.project_manual_sessions_dedicated_card_in_the_project_vi'),
                   t18n('help_page.chart_context_menu_right_click_on_a_day_in_the_project_t'),
+                  t18n('help_page.project_timeline_states_loading_empty_and_error_messages'),
                 ]}
               />
             </TabsContent>

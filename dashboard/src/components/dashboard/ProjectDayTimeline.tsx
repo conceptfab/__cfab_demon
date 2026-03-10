@@ -9,11 +9,11 @@ import { PromptModal } from "@/components/ui/prompt-modal";
 import { useToast } from "@/components/ui/toast-notification";
 import { formatDuration, formatMultiplierLabel } from "@/lib/utils";
 import {
-  normalizeHexColor,
   loadFreezeSettings,
   timeToMinutes,
   type WorkingHoursSettings,
 } from "@/lib/user-settings";
+import { normalizeHexColor } from "@/lib/normalize";
 import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
 import type { PromptConfig } from "@/lib/ui-types";
 

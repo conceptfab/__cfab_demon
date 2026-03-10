@@ -46,6 +46,7 @@ import {
   formatDuration,
   formatMoney,
   formatMultiplierLabel,
+  getErrorMessage,
   cn,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
@@ -88,7 +89,7 @@ function RateMultiplierPanel({
       <p className="text-[10px] text-muted-foreground/80 font-medium">
         Rate multiplier{' '}
         <span className="text-emerald-400 font-mono">
-          {formatMultiplierLabel(currentMultiplier)}
+          {formatMultiplierLabel(currentMultiplier ?? undefined)}
         </span>
       </p>
       <div className="flex gap-2">
@@ -167,6 +168,7 @@ export function ProjectPage() {
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [timelineData, setTimelineData] = useState<StackedBarData[]>([]);
+  const [timelineError, setTimelineError] = useState<string | null>(null);
   const [recentSessions, setRecentSessions] = useState<SessionWithApp[]>([]);
   const [manualSessions, setManualSessions] = useState<
     ManualSessionWithProject[]
@@ -179,14 +181,18 @@ export function ProjectPage() {
     return byId;
   }, [recentSessions]);
   const sessionCountLabel = (count: number) =>
-    `${count} ${count === 1
-      ? t('project_page.text.session')
-      : t('project_page.text.sessions')}`;
+    `${count} ${
+      count === 1
+        ? t('project_page.text.session')
+        : t('project_page.text.sessions')
+    }`;
   const appCountLabel = (count: number) =>
-    `${count} ${count === 1
-      ? t('project_page.text.app')
-      : t('project_page.text.apps')}`;
-  const toManualSessionRow = (session: ManualSessionWithProject): ManualSessionRow => ({
+    `${count} ${
+      count === 1 ? t('project_page.text.app') : t('project_page.text.apps')
+    }`;
+  const toManualSessionRow = (
+    session: ManualSessionWithProject,
+  ): ManualSessionRow => ({
     ...session,
     app_id: session.app_id ?? 0,
     app_name: t('project_page.text.manual_session'),
@@ -296,16 +302,20 @@ export function ProjectPage() {
 
     let cancelled = false;
     setLoading(true);
+    setTimelineError(null);
     Promise.all([
       getProjects(),
       getProjectExtraInfo(projectPageId, ALL_TIME_DATE_RANGE),
       getProjectEstimates(ALL_TIME_DATE_RANGE),
-      getProjectTimeline(
-        ALL_TIME_DATE_RANGE,
-        100,
-        'day',
-        projectPageId,
-      ).catch(() => [] as StackedBarData[]),
+      getProjectTimeline(ALL_TIME_DATE_RANGE, 100, 'day', projectPageId)
+        .then((data) => ({ data, error: null as string | null }))
+        .catch((error) => ({
+          data: [] as StackedBarData[],
+          error: getErrorMessage(
+            error,
+            t('components.timeline_chart.load_failed'),
+          ),
+        })),
       fetchAllSessions({
         projectId: projectPageId,
         dateRange: ALL_TIME_DATE_RANGE,
@@ -313,22 +323,25 @@ export function ProjectPage() {
       }),
       getManualSessions({ projectId: projectPageId }),
     ])
-      .then(([projects, info, estimates, timeline, sessions, manuals]) => {
-        if (cancelled) return;
-        const p = projects.find((x) => x.id === projectPageId);
-        if (p) {
-          setProject(p);
-          setProjectsList(projects);
-          setExtraInfo(info);
-          setTimelineData(timeline);
-          setRecentSessions(sessions);
-          setManualSessions(manuals);
-          const est = estimates.find((e) => e.project_id === projectPageId);
-          setEstimate(est?.estimated_value || 0);
-        } else {
-          setCurrentPage('projects');
-        }
-      })
+      .then(
+        ([projects, info, estimates, timelineResult, sessions, manuals]) => {
+          if (cancelled) return;
+          const p = projects.find((x) => x.id === projectPageId);
+          if (p) {
+            setProject(p);
+            setProjectsList(projects);
+            setExtraInfo(info);
+            setTimelineData(timelineResult.data);
+            setTimelineError(timelineResult.error);
+            setRecentSessions(sessions);
+            setManualSessions(manuals);
+            const est = estimates.find((e) => e.project_id === projectPageId);
+            setEstimate(est?.estimated_value || 0);
+          } else {
+            setCurrentPage('projects');
+          }
+        },
+      )
       .catch((err) => {
         if (cancelled) return;
         console.error('Critical error fetching project data:', err);
@@ -340,7 +353,7 @@ export function ProjectPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectPageId, refreshKey, setCurrentPage]);
+  }, [projectPageId, refreshKey, setCurrentPage, t]);
 
   // Handle click outside for context menu
   useEffect(() => {
@@ -424,7 +437,9 @@ export function ProjectPage() {
     if (!project) return;
     if (
       !(await confirm(
-        t('project_page.text.compact_this_project_s_data_this_will_remove_detailed_fi'),
+        t(
+          'project_page.text.compact_this_project_s_data_this_will_remove_detailed_fi',
+        ),
       ))
     ) {
       return;
@@ -535,8 +550,12 @@ export function ProjectPage() {
     } else if (ctxMenu.type === 'chart' && ctxMenu.sessions.length > 0) {
       const sessions = ctxMenu.sessions;
       setPromptConfig({
-        title: t('project_page.text.comment_for_sessions', { count: sessions.length }),
-        description: t('project_page.text.apply_this_comment_to_all_sessions_in_this_group'),
+        title: t('project_page.text.comment_for_sessions', {
+          count: sessions.length,
+        }),
+        description: t(
+          'project_page.text.apply_this_comment_to_all_sessions_in_this_group',
+        ),
         initialValue: sessions[0].comment || '',
         onConfirm: async (raw) => {
           const trimmed = raw.trim();
@@ -560,13 +579,17 @@ export function ProjectPage() {
     );
     if (autoSessions.length === 0) {
       showInfo(
-        t('project_page.text.manual_sessions_cannot_be_unassigned_they_must_belong_to'),
+        t(
+          'project_page.text.manual_sessions_cannot_be_unassigned_they_must_belong_to',
+        ),
       );
       return;
     }
     if (
       !(await confirm(
-        t('project_page.text.unassign_automatic_sessions_from_this_project', { count: autoSessions.length }),
+        t('project_page.text.unassign_automatic_sessions_from_this_project', {
+          count: autoSessions.length,
+        }),
       ))
     )
       return;
@@ -585,7 +608,9 @@ export function ProjectPage() {
   const handleBulkDelete = async (sessions: ProjectSessionRow[]) => {
     if (
       !(await confirm(
-        t('project_page.text.permanently_delete_sessions', { count: sessions.length }),
+        t('project_page.text.permanently_delete_sessions', {
+          count: sessions.length,
+        }),
       ))
     )
       return;
@@ -612,7 +637,9 @@ export function ProjectPage() {
 
     setPromptConfig({
       title: t('project_page.text.session_comment'),
-      description: t('project_page.text.enter_a_comment_for_this_session_leave_empty_to_remove'),
+      description: t(
+        'project_page.text.enter_a_comment_for_this_session_leave_empty_to_remove',
+      ),
       initialValue: current,
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
@@ -730,7 +757,9 @@ export function ProjectPage() {
                 onClick={() =>
                   handleAction(
                     () => resetProjectTime(project.id),
-                    t('project_page.text.reset_tracked_time_for_this_project_this_cannot_be_undon'),
+                    t(
+                      'project_page.text.reset_tracked_time_for_this_project_this_cannot_be_undon',
+                    ),
                   )
                 }
                 title={t('project_page.text.reset_time')}
@@ -791,21 +820,58 @@ export function ProjectPage() {
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {([
-                { label: t('project_page.text.sessions'), value: extraInfo?.db_stats.session_count || 0 },
-                { label: t('project_page.text.unique_files'), value: extraInfo?.db_stats.file_activity_count || 0 },
-                { label: t('project_page.text.manual_sessions'), value: extraInfo?.db_stats.manual_session_count || 0, icon: MousePointerClick, iconBg: 'bg-orange-500/10', iconText: 'text-orange-400' },
-                { label: t('project_page.text.comments'), value: extraInfo?.db_stats.comment_count || 0, icon: MessageSquare, iconBg: 'bg-sky-500/10', iconText: 'text-sky-400' },
-                { label: t('project_page.text.boosted_sessions'), value: extraInfo?.db_stats.boosted_session_count || 0, icon: CircleDollarSign, iconBg: 'bg-emerald-500/10', iconText: 'text-emerald-400' },
-              ] as const).map(({ label, value, icon: Icon, iconBg, iconText }) => (
-                <div key={label} className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between">
+              {(
+                [
+                  {
+                    label: t('project_page.text.sessions'),
+                    value: extraInfo?.db_stats.session_count || 0,
+                  },
+                  {
+                    label: t('project_page.text.unique_files'),
+                    value: extraInfo?.db_stats.file_activity_count || 0,
+                  },
+                  {
+                    label: t('project_page.text.manual_sessions'),
+                    value: extraInfo?.db_stats.manual_session_count || 0,
+                    icon: MousePointerClick,
+                    iconBg: 'bg-orange-500/10',
+                    iconText: 'text-orange-400',
+                  },
+                  {
+                    label: t('project_page.text.comments'),
+                    value: extraInfo?.db_stats.comment_count || 0,
+                    icon: MessageSquare,
+                    iconBg: 'bg-sky-500/10',
+                    iconText: 'text-sky-400',
+                  },
+                  {
+                    label: t('project_page.text.boosted_sessions'),
+                    value: extraInfo?.db_stats.boosted_session_count || 0,
+                    icon: CircleDollarSign,
+                    iconBg: 'bg-emerald-500/10',
+                    iconText: 'text-emerald-400',
+                  },
+                ] as {
+                  label: string;
+                  value: number;
+                  icon?: React.ElementType;
+                  iconBg?: string;
+                  iconText?: string;
+                }[]
+              ).map(({ label, value, icon: Icon, iconBg, iconText }) => (
+                <div
+                  key={label}
+                  className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between"
+                >
                   <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
                     {label}
                   </p>
                   <p className="text-2xl font-light flex items-center justify-between">
                     <span>{value}</span>
                     {Icon && value > 0 && (
-                      <div className={`h-6 w-6 rounded flex items-center justify-center ${iconBg} ${iconText}`}>
+                      <div
+                        className={`h-6 w-6 rounded flex items-center justify-center ${iconBg} ${iconText}`}
+                      >
                         <Icon className="h-3.5 w-3.5" />
                       </div>
                     )}
@@ -894,7 +960,9 @@ export function ProjectPage() {
                 {t('project_page.text.compact_detailed_records')}
               </Button>
               <p className="text-[10px] text-muted-foreground mt-2 px-1 leading-tight">
-                {t('project_page.text.compaction_removes_detailed_file_level_history_while_pre')}
+                {t(
+                  'project_page.text.compaction_removes_detailed_file_level_history_while_pre',
+                )}
               </p>
             </div>
           </CardContent>
@@ -903,30 +971,38 @@ export function ProjectPage() {
 
       <div className="grid grid-cols-1 gap-6">
         <TimelineChart
-          title={t('project_page.timeline.activity_over_time')}
           data={filteredTimeline}
-          projectColors={project ? { [project.name]: project.color } : {}}
-          granularity="day"
-          heightClassName="h-64"
-          onBarClick={(date) => {
-            setSessionDialogDate(date);
-            setSessionDialogOpen(true);
+          presentation={{
+            title: t('project_page.timeline.activity_over_time'),
+            projectColors: project ? { [project.name]: project.color } : {},
+            granularity: 'day',
+            heightClassName: 'h-64',
           }}
-          onBarContextMenu={(date, x, y) => {
-            const dayLogSessions: ProjectSessionRow[] = recentSessions
-              .filter((s) => s.start_time.startsWith(date))
-              .map((s) => ({ ...s, isManual: false as const }));
-            const dayManualSessions: ProjectSessionRow[] = manualSessions
-              .filter((s) => s.start_time.startsWith(date))
-              .map(toManualSessionRow);
-            const daySessions = [...dayLogSessions, ...dayManualSessions];
-            setCtxMenu({
-              type: 'chart',
-              x,
-              y,
-              date,
-              sessions: daySessions,
-            });
+          interaction={{
+            onBarClick: (date) => {
+              setSessionDialogDate(date);
+              setSessionDialogOpen(true);
+            },
+            onBarContextMenu: (date, x, y) => {
+              const dayLogSessions: ProjectSessionRow[] = recentSessions
+                .filter((s) => s.start_time.startsWith(date))
+                .map((s) => ({ ...s, isManual: false as const }));
+              const dayManualSessions: ProjectSessionRow[] = manualSessions
+                .filter((s) => s.start_time.startsWith(date))
+                .map(toManualSessionRow);
+              const daySessions = [...dayLogSessions, ...dayManualSessions];
+              setCtxMenu({
+                type: 'chart',
+                x,
+                y,
+                date,
+                sessions: daySessions,
+              });
+            },
+          }}
+          state={{
+            isLoading: loading && timelineData.length === 0,
+            errorMessage: timelineError,
           }}
         />
 
@@ -1073,7 +1149,9 @@ export function ProjectPage() {
                                 title={
                                   s.comment
                                     ? t('project_page.text.click_to_edit')
-                                    : t('project_page.text.click_to_add_comment')
+                                    : t(
+                                        'project_page.text.click_to_add_comment',
+                                      )
                                 }
                               >
                                 {s.comment ? (
@@ -1105,7 +1183,9 @@ export function ProjectPage() {
                         colSpan={4}
                         className="px-4 py-8 text-center text-muted-foreground italic"
                       >
-                        {t('project_page.text.no_sessions_found_for_this_project')}
+                        {t(
+                          'project_page.text.no_sessions_found_for_this_project',
+                        )}
                       </td>
                     </tr>
                   )}
@@ -1146,7 +1226,10 @@ export function ProjectPage() {
                     new Set(ctxMenu.sessions.map((s) => s.app_name)),
                   ).join(', ');
                   showInfo(
-                    t('project_page.text.bulk_action_on_sessions_apps_affected', { count, apps }),
+                    t(
+                      'project_page.text.bulk_action_on_sessions_apps_affected',
+                      { count, apps },
+                    ),
                   );
                   setCtxMenu(null);
                 }}
@@ -1160,11 +1243,19 @@ export function ProjectPage() {
               <div className="h-px bg-white/5 my-1" />
 
               <RateMultiplierPanel
-                description={t('project_page.text.applies_to_all_sessions_in_this_visual_chunk', { count: ctxMenu.sessions.length })}
+                description={t(
+                  'project_page.text.applies_to_all_sessions_in_this_visual_chunk',
+                  { count: ctxMenu.sessions.length },
+                )}
                 currentMultiplier={ctxMenu.sessions[0]?.rate_multiplier}
                 boostLabel={t('project_page.text.boost_x2')}
                 customLabel={t('project_page.text.custom')}
-                onBoost={() => handleSetRateMultiplier(2, ctxMenu.sessions.map((s) => s.id))}
+                onBoost={() =>
+                  handleSetRateMultiplier(
+                    2,
+                    ctxMenu.sessions.map((s) => s.id),
+                  )
+                }
                 onCustom={handleCustomRateMultiplier}
               />
 
@@ -1237,7 +1328,8 @@ export function ProjectPage() {
                         <PenLine className="h-3.5 w-3.5" />
                         <span className="font-bold uppercase tracking-tight">
                           {t('project_page.text.edit_manual_session')}{' '}
-                          {manuals[0].comment || t('project_page.text.time_log')}
+                          {manuals[0].comment ||
+                            t('project_page.text.time_log')}
                         </span>
                       </button>
                     ) : (
@@ -1326,9 +1418,7 @@ export function ProjectPage() {
           style={getContextMenuStyle(ctxMenu.x, ctxMenu.y, 240)}
         >
           <div className="px-3 py-2 text-[11px] font-semibold text-muted-foreground/60 border-b border-white/5 mb-1 flex items-center justify-between">
-            <span>
-              {t('project_page.text.session_actions_1_app')}
-            </span>
+            <span>{t('project_page.text.session_actions_1_app')}</span>
             <span className="text-[10px] opacity-40">
               {sessionCountLabel(1)}
             </span>
@@ -1351,7 +1441,9 @@ export function ProjectPage() {
           {!ctxMenu.session.isManual && (
             <>
               <RateMultiplierPanel
-                description={t('project_page.text.applies_to_this_session_record')}
+                description={t(
+                  'project_page.text.applies_to_this_session_record',
+                )}
                 currentMultiplier={ctxMenu.session.rate_multiplier}
                 boostLabel={t('project_page.text.boost_x2')}
                 customLabel={t('project_page.text.custom')}
@@ -1407,9 +1499,7 @@ export function ProjectPage() {
           <button
             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-red-500/10 text-red-400/70 hover:text-red-400 cursor-pointer transition-colors group"
             onClick={async () => {
-              if (
-                await confirm(t('project_page.text.delete_this_session'))
-              ) {
+              if (await confirm(t('project_page.text.delete_this_session'))) {
                 try {
                   if (ctxMenu.session.isManual) {
                     await deleteManualSessions(ctxMenu.session.id);

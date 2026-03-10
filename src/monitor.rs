@@ -1,8 +1,8 @@
 // Moduł monitora procesów — ultra-lekkie odpytywanie WinAPI
 // Tylko GetForegroundWindow + PID → exe_name cache
 
-use std::collections::HashMap;
-use std::time::Instant;
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use winapi::shared::minwindef::{DWORD, FILETIME};
 use winapi::um::handleapi::CloseHandle;
@@ -17,9 +17,22 @@ thread_local! {
         std::cell::RefCell::new(None);
 }
 
-/// Cache PID -> (exe_name, creation_time, cached_at, last_alive_check, detected_path).
-/// Used to evict old entries and validate PID reuse.
-pub type PidCache = HashMap<u32, (String, u64, Instant, Instant, Option<String>)>;
+/// Cache PID -> metadata used for PID reuse validation and detected path hints.
+#[derive(Debug, Clone)]
+pub struct PidCacheEntry {
+    pub exe_name: String,
+    pub creation_time: u64,
+    pub cached_at: Instant,
+    pub last_alive_check: Instant,
+    pub detected_path: Option<String>,
+    pub activity_type: Option<String>,
+    pub path_detection_attempted: bool,
+}
+
+pub type PidCache = HashMap<u32, PidCacheEntry>;
+
+const PID_LIVENESS_REVALIDATION_INTERVAL: Duration = Duration::from_secs(180);
+const WMI_PATH_LOOKUP_BATCH_LIMIT: usize = 16;
 
 /// Informacja o aktywnym procesie
 #[derive(Debug, Clone)]
@@ -64,6 +77,45 @@ fn process_still_alive(pid: u32, expected_creation_time: u64) -> bool {
     }
 }
 
+fn ensure_pid_cache_entry(pid: u32, pid_cache: &mut PidCache, now: Instant) -> Option<()> {
+    let mut needs_refresh = false;
+
+    if let Some(entry) = pid_cache.get_mut(&pid) {
+        if now.duration_since(entry.last_alive_check) >= PID_LIVENESS_REVALIDATION_INTERVAL {
+            if process_still_alive(pid, entry.creation_time) {
+                entry.last_alive_check = now;
+            } else {
+                needs_refresh = true;
+            }
+        }
+
+        if !needs_refresh {
+            entry.cached_at = now;
+            return Some(());
+        }
+    }
+
+    if needs_refresh {
+        pid_cache.remove(&pid);
+    }
+
+    let (exe_name, creation_time) = get_exe_name_and_creation_time(pid)?;
+    let activity_type = classify_activity_type(&exe_name);
+    pid_cache.insert(
+        pid,
+        PidCacheEntry {
+            exe_name,
+            creation_time,
+            cached_at: now,
+            last_alive_check: now,
+            detected_path: None,
+            activity_type,
+            path_detection_attempted: false,
+        },
+    );
+    Some(())
+}
+
 /// Sprawdza czy string zawiera znak zastępczy U+FFFD (nieprawidłowe UTF-16).
 fn has_utf16_replacement_char(s: &str) -> bool {
     s.contains('\u{FFFD}')
@@ -103,49 +155,15 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
             return None; // Brak tytułu = systemowe okno, ignorujemy
         };
 
-        // Nazwa exe + path hint — z cache (z walidacją PID reuse) lub przez OpenProcess
         let now = Instant::now();
-        let (exe_name, detected_path, activity_type) =
-            if let Some((name, creation_time, cached_at, last_alive_check, cached_detected_path)) =
-                pid_cache.get_mut(&pid)
-            {
-                // Re-walidacja PID ograniczona do 60s, aby zredukować koszt OpenProcess.
-                if now.duration_since(*last_alive_check) < std::time::Duration::from_secs(60) {
-                    *cached_at = now;
-                    let activity_type = classify_activity_type(name);
-                    (name.clone(), cached_detected_path.clone(), activity_type)
-                } else if process_still_alive(pid, *creation_time) {
-                    *cached_at = now;
-                    *last_alive_check = now;
-                    let activity_type = classify_activity_type(name);
-                    (name.clone(), cached_detected_path.clone(), activity_type)
-                } else {
-                    pid_cache.remove(&pid);
-                    let (name, new_creation_time) = get_exe_name_and_creation_time(pid)?;
-                    let activity_type = classify_activity_type(&name);
-                    let detected_path = detect_path_from_process(pid, activity_type.as_deref());
-                    pid_cache.insert(
-                        pid,
-                        (
-                            name.clone(),
-                            new_creation_time,
-                            now,
-                            now,
-                            detected_path.clone(),
-                        ),
-                    );
-                    (name, detected_path, activity_type)
-                }
-            } else {
-                let (name, creation_time) = get_exe_name_and_creation_time(pid)?;
-                let activity_type = classify_activity_type(&name);
-                let detected_path = detect_path_from_process(pid, activity_type.as_deref());
-                pid_cache.insert(
-                    pid,
-                    (name.clone(), creation_time, now, now, detected_path.clone()),
-                );
-                (name, detected_path, activity_type)
-            };
+
+        ensure_pid_cache_entry(pid, pid_cache, now)?;
+        hydrate_detected_paths_for_pending_pids(pid_cache);
+
+        let entry = pid_cache.get(&pid)?;
+        let exe_name = entry.exe_name.clone();
+        let detected_path = entry.detected_path.clone();
+        let activity_type = entry.activity_type.clone();
 
         Some(ProcessInfo {
             exe_name,
@@ -211,44 +229,110 @@ fn should_detect_path_for_activity(activity_type: Option<&str>) -> bool {
     matches!(activity_type, Some("coding") | Some("design"))
 }
 
-fn detect_path_from_process(pid: u32, activity_type: Option<&str>) -> Option<String> {
-    if !should_detect_path_for_activity(activity_type) {
-        return None;
-    }
-    let command_line = get_process_command_line_wmi(pid)?;
-    extract_path_from_command_line(&command_line)
+fn collect_pending_detected_path_pids(pid_cache: &PidCache) -> Vec<u32> {
+    let mut pids: Vec<u32> = pid_cache
+        .iter()
+        .filter_map(|(&pid, entry)| {
+            if entry.detected_path.is_none()
+                && !entry.path_detection_attempted
+                && should_detect_path_for_activity(entry.activity_type.as_deref())
+            {
+                Some(pid)
+            } else {
+                None
+            }
+        })
+        .collect();
+    pids.sort_unstable();
+    pids.truncate(WMI_PATH_LOOKUP_BATCH_LIMIT);
+    pids
 }
 
-fn get_process_command_line_wmi(pid: u32) -> Option<String> {
+fn hydrate_detected_paths_for_pending_pids(pid_cache: &mut PidCache) {
+    let pending_pids = collect_pending_detected_path_pids(pid_cache);
+    if pending_pids.is_empty() {
+        return;
+    }
+
+    let command_lines = match get_process_command_lines_wmi(&pending_pids) {
+        Ok(lines) => lines,
+        Err(()) => return,
+    };
+
+    for pid in pending_pids {
+        if let Some(entry) = pid_cache.get_mut(&pid) {
+            entry.path_detection_attempted = true;
+            entry.detected_path = command_lines
+                .get(&pid)
+                .and_then(|command_line| extract_path_from_command_line(command_line));
+        }
+    }
+}
+
+fn build_wmi_process_command_line_query(pids: &[u32]) -> Option<String> {
+    let mut unique_pids = Vec::new();
+    let mut seen = HashSet::new();
+
+    for pid in pids.iter().copied().filter(|pid| *pid > 0) {
+        if seen.insert(pid) {
+            unique_pids.push(pid);
+        }
+    }
+
+    if unique_pids.is_empty() {
+        return None;
+    }
+
+    let pid_list = unique_pids
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "SELECT ProcessId, CommandLine FROM Win32_Process WHERE ProcessId IN ({})",
+        pid_list
+    ))
+}
+
+fn get_process_command_lines_wmi(pids: &[u32]) -> Result<HashMap<u32, String>, ()> {
     #[derive(serde::Deserialize, Debug)]
     struct Win32ProcessCommandLineRow {
+        #[serde(rename = "ProcessId")]
+        process_id: u32,
         #[serde(rename = "CommandLine")]
         command_line: Option<String>,
     }
 
-    let query = format!(
-        "SELECT CommandLine FROM Win32_Process WHERE ProcessId = {}",
-        pid
-    );
+    let query = build_wmi_process_command_line_query(pids).ok_or(())?;
     WMI_CONN_CACHE.with(|cache| {
         let mut cached_conn = cache.borrow_mut();
         if cached_conn.is_none() {
-            let com = wmi::COMLibrary::new().ok()?;
-            let conn = wmi::WMIConnection::new(com.into()).ok()?;
+            let com = wmi::COMLibrary::new().map_err(|_| ())?;
+            let conn = wmi::WMIConnection::new(com.into()).map_err(|_| ())?;
             *cached_conn = Some(conn);
         }
 
         let query_result: Result<Vec<Win32ProcessCommandLineRow>, _> = {
-            let conn = cached_conn.as_ref()?;
+            let conn = cached_conn.as_ref().ok_or(())?;
             conn.raw_query(&query)
         };
 
         match query_result {
-            Ok(mut rows) => rows.pop()?.command_line,
+            Ok(rows) => {
+                let mut command_lines = HashMap::new();
+                for row in rows {
+                    if let Some(command_line) =
+                        row.command_line.filter(|value| !value.trim().is_empty())
+                    {
+                        command_lines.insert(row.process_id, command_line);
+                    }
+                }
+                Ok(command_lines)
+            }
             Err(_) => {
                 // Reset cached connection; next call will reinitialize COM/WMI.
                 *cached_conn = None;
-                None
+                Err(())
             }
         }
     })
@@ -472,7 +556,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<String> {
 /// Zmniejsza serię wywołań OpenProcess po wyczyszczeniu.
 pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: std::time::Duration) {
     let now = Instant::now();
-    pid_cache.retain(|_, (_, _, ts, _, _)| now.duration_since(*ts) < max_age);
+    pid_cache.retain(|_, entry| now.duration_since(entry.cached_at) < max_age);
 }
 
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
@@ -701,7 +785,29 @@ pub fn measure_cpu_for_app(
 
 #[cfg(test)]
 mod tests {
-    use super::{classify_activity_type, extract_file_from_title, extract_path_from_command_line};
+    use super::{
+        build_wmi_process_command_line_query, classify_activity_type,
+        collect_pending_detected_path_pids, extract_file_from_title,
+        extract_path_from_command_line, PidCache, PidCacheEntry,
+    };
+    use std::time::Instant;
+
+    fn sample_pid_cache_entry(
+        activity_type: Option<&str>,
+        detected_path: Option<&str>,
+        path_detection_attempted: bool,
+    ) -> PidCacheEntry {
+        let now = Instant::now();
+        PidCacheEntry {
+            exe_name: "code.exe".to_string(),
+            creation_time: 123,
+            cached_at: now,
+            last_alive_check: now,
+            detected_path: detected_path.map(str::to_string),
+            activity_type: activity_type.map(str::to_string),
+            path_detection_attempted,
+        }
+    }
 
     #[test]
     fn extract_file_single_separator() {
@@ -755,6 +861,31 @@ mod tests {
             extract_path_from_command_line(cmd).as_deref(),
             Some(r"C:\work\timeflow\src\main.rs")
         );
+    }
+
+    #[test]
+    fn builds_batched_wmi_query_with_unique_pids() {
+        let query = build_wmi_process_command_line_query(&[42, 7, 42, 0]).unwrap();
+        assert_eq!(
+            query,
+            "SELECT ProcessId, CommandLine FROM Win32_Process WHERE ProcessId IN (42, 7)"
+        );
+    }
+
+    #[test]
+    fn collects_only_pending_detected_path_pids_for_relevant_apps() {
+        let mut pid_cache: PidCache = PidCache::new();
+        pid_cache.insert(11, sample_pid_cache_entry(Some("coding"), None, false));
+        pid_cache.insert(12, sample_pid_cache_entry(Some("design"), None, false));
+        pid_cache.insert(
+            13,
+            sample_pid_cache_entry(Some("coding"), Some(r"C:\work\done.rs"), true),
+        );
+        pid_cache.insert(14, sample_pid_cache_entry(Some("browsing"), None, false));
+        pid_cache.insert(15, sample_pid_cache_entry(Some("coding"), None, true));
+
+        let pending = collect_pending_detected_path_pids(&pid_cache);
+        assert_eq!(pending, vec![11, 12]);
     }
 
     #[test]

@@ -13,7 +13,6 @@ import type {
   OnlineSyncState,
   OnlineSyncRunResult,
   RunOnlineSyncOptions,
-  OnlineSyncIndicatorStatus,
   OnlineSyncIndicatorSnapshot,
   SyncStatusResponse,
   SyncPushResponse,
@@ -45,7 +44,6 @@ const LEGACY_ONLINE_SYNC_SETTINGS_KEY = 'cfab.settings.online-sync';
 const LEGACY_ONLINE_SYNC_STATE_KEY = 'cfab.sync.state';
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
   'https://cfabserver-production.up.railway.app';
-
 
 class SyncHttpError extends Error {
   readonly kind: SyncHttpErrorKind;
@@ -275,7 +273,8 @@ function readOnlineSyncStateEnvelope(): OnlineSyncStateEnvelope | null {
 
 function buildSnapshot(
   state: OnlineSyncState,
-  overrides: Partial<OnlineSyncIndicatorSnapshot> & Pick<OnlineSyncIndicatorSnapshot, 'status' | 'label' | 'detail'>,
+  overrides: Partial<OnlineSyncIndicatorSnapshot> &
+    Pick<OnlineSyncIndicatorSnapshot, 'status' | 'label' | 'detail'>,
 ): OnlineSyncIndicatorSnapshot {
   return {
     serverRevision: state.serverRevision,
@@ -371,13 +370,15 @@ function updateIndicatorFromRunResult(result: OnlineSyncRunResult): void {
 
   if (result.skipped) {
     if (result.reason === 'demo_mode') {
-      emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
-        status: 'disabled',
-        label: 'Sync Off (Demo)',
-        detail: 'Online sync is disabled while Demo Mode is active',
-        lastAction: result.action,
-        lastReason: result.reason,
-      }));
+      emitOnlineSyncIndicatorSnapshot(
+        buildSnapshot(state, {
+          status: 'disabled',
+          label: 'Sync Off (Demo)',
+          detail: 'Online sync is disabled while Demo Mode is active',
+          lastAction: result.action,
+          lastReason: result.reason,
+        }),
+      );
       return;
     }
 
@@ -386,31 +387,35 @@ function updateIndicatorFromRunResult(result: OnlineSyncRunResult): void {
   }
 
   if (!result.ok) {
-    emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
-      status: 'error',
-      label:
-        result.needsReseed || state.needsReseed
-          ? 'Reseed Required'
-          : 'Sync Error',
-      detail: result.error ?? result.reason,
-      lastAction: result.action,
-      lastReason: result.reason,
-      error: result.error ?? result.reason,
-    }));
+    emitOnlineSyncIndicatorSnapshot(
+      buildSnapshot(state, {
+        status: 'error',
+        label:
+          result.needsReseed || state.needsReseed
+            ? 'Reseed Required'
+            : 'Sync Error',
+        detail: result.error ?? result.reason,
+        lastAction: result.action,
+        lastReason: result.reason,
+        error: result.error ?? result.reason,
+      }),
+    );
     return;
   }
 
   if (result.ackPending || state.pendingAck) {
-    emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
-      status: 'warning',
-      label: 'ACK Pending',
-      detail:
-        result.ackReason && result.ackReason !== 'ack_deferred'
-          ? `Waiting for ACK retry (${result.ackReason})`
-          : formatPendingAckDetail(state),
-      lastAction: result.action,
-      lastReason: result.reason,
-    }));
+    emitOnlineSyncIndicatorSnapshot(
+      buildSnapshot(state, {
+        status: 'warning',
+        label: 'ACK Pending',
+        detail:
+          result.ackReason && result.ackReason !== 'ack_deferred'
+            ? `Waiting for ACK retry (${result.ackReason})`
+            : formatPendingAckDetail(state),
+        lastAction: result.action,
+        lastReason: result.reason,
+      }),
+    );
     return;
   }
 
@@ -421,13 +426,15 @@ function updateIndicatorFromRunResult(result: OnlineSyncRunResult): void {
     pull: 'Sync Pulled',
   };
 
-  emitOnlineSyncIndicatorSnapshot(buildSnapshot(state, {
-    status: 'success',
-    label: labelMap[result.action],
-    detail: formatLastSyncDetail(state),
-    lastAction: result.action,
-    lastReason: result.reason,
-  }));
+  emitOnlineSyncIndicatorSnapshot(
+    buildSnapshot(state, {
+      status: 'success',
+      label: labelMap[result.action],
+      detail: formatLastSyncDetail(state),
+      lastAction: result.action,
+      lastReason: result.reason,
+    }),
+  );
 }
 
 export function getOnlineSyncIndicatorSnapshot(): OnlineSyncIndicatorSnapshot {
@@ -461,16 +468,20 @@ export function loadOnlineSyncSettings(): OnlineSyncSettings {
   // Migrate legacy token from localStorage to secure storage (fire-and-forget)
   const legacyToken = normalizeApiToken(parsed?.apiToken);
   if (legacyToken) {
-    setSecureToken(legacyToken).then(() => {
-      // Remove token from localStorage after successful migration
-      const raw = readJsonStorage<OnlineSyncSettings>(ONLINE_SYNC_SETTINGS_KEY);
-      if (raw && 'apiToken' in raw) {
-        delete (raw as Record<string, unknown>).apiToken;
-        writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, raw);
-      }
-    }).catch(() => {
-      // Migration failed silently — token stays in localStorage until next attempt
-    });
+    setSecureToken(legacyToken)
+      .then(() => {
+        // Remove token from localStorage after successful migration
+        const raw = readJsonStorage<OnlineSyncSettings>(
+          ONLINE_SYNC_SETTINGS_KEY,
+        );
+        if (raw && 'apiToken' in raw) {
+          delete (raw as Record<string, unknown>).apiToken;
+          writeJsonStorage(ONLINE_SYNC_SETTINGS_KEY, raw);
+        }
+      })
+      .catch(() => {
+        // Migration failed silently — token stays in localStorage until next attempt
+      });
   }
 
   const normalized: OnlineSyncSettings = {
@@ -525,7 +536,9 @@ export function saveOnlineSyncSettings(
   if (next.apiToken !== undefined) {
     const tokenToStore = normalizeApiToken(next.apiToken);
     setSecureToken(tokenToStore).catch(() => {
-      console.warn('[online-sync] Failed to persist API token to secure storage');
+      console.warn(
+        '[online-sync] Failed to persist API token to secure storage',
+      );
     });
   }
 
@@ -930,12 +943,17 @@ async function flushPendingAck(
 
   try {
     const t0 = Date.now();
-    const ackRes = await postAckWithRetries(settings, {
-      userId: settings.userId,
-      deviceId: settings.deviceId,
-      revision: pendingAck.revision,
-      payloadSha256: pendingAck.payloadSha256,
-    }, apiToken, log);
+    const ackRes = await postAckWithRetries(
+      settings,
+      {
+        userId: settings.userId,
+        deviceId: settings.deviceId,
+        revision: pendingAck.revision,
+        payloadSha256: pendingAck.payloadSha256,
+      },
+      apiToken,
+      log,
+    );
     const ackDurationMs = Date.now() - t0;
 
     log?.info('ACK response received', {
@@ -1088,7 +1106,13 @@ export async function runOnlineSyncOnce(
 ): Promise<OnlineSyncRunResult> {
   if (_syncRunning) {
     console.info('[online-sync] Skipped: already running');
-    return { ok: true, skipped: true, action: 'none', reason: 'already_running', serverRevision: null };
+    return {
+      ok: true,
+      skipped: true,
+      action: 'none',
+      reason: 'already_running',
+      serverRevision: null,
+    };
   }
   _syncRunning = true;
   try {
@@ -1180,7 +1204,12 @@ async function _runOnlineSyncOnceImpl(
     log?.info('Flushing pending ACK', {
       hasPendingAck: state.pendingAck !== null,
     });
-    const pendingAckResult = await flushPendingAck(settings, state, secureApiToken, log);
+    const pendingAckResult = await flushPendingAck(
+      settings,
+      state,
+      secureApiToken,
+      log,
+    );
     log?.info('Pending ACK result', {
       attempted: pendingAckResult.attempted,
       accepted: pendingAckResult.accepted,
@@ -1369,7 +1398,12 @@ async function _runOnlineSyncOnceImpl(
         saveOnlineSyncState(state, settings);
 
         log?.info('Flushing post-pull ACK');
-        const ackResult = await flushPendingAck(settings, state, secureApiToken, log);
+        const ackResult = await flushPendingAck(
+          settings,
+          state,
+          secureApiToken,
+          log,
+        );
         log?.info('Post-pull ACK result', {
           accepted: ackResult.accepted,
           reason: ackResult.reason,
@@ -1484,7 +1518,10 @@ async function _runOnlineSyncOnceImpl(
       );
 
       if (push.accepted === false) {
-        log?.error('Push rejected', { reason: push.reason, durationMs: Date.now() - pushT0 });
+        log?.error('Push rejected', {
+          reason: push.reason,
+          durationMs: Date.now() - pushT0,
+        });
         throw new Error(`push rejected: ${push.reason}`);
       }
 

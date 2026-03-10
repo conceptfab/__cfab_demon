@@ -29,7 +29,7 @@ import {
   refreshToday,
   getManualSessions,
 } from '@/lib/tauri';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, getErrorMessage } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
@@ -169,6 +169,10 @@ export function Dashboard() {
   } = useDataStore();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [projectTimeline, setProjectTimeline] = useState<StackedBarData[]>([]);
+  const [projectTimelineLoading, setProjectTimelineLoading] = useState(true);
+  const [projectTimelineError, setProjectTimelineError] = useState<
+    string | null
+  >(null);
   const [todaySessions, setTodaySessions] = useState<SessionWithApp[]>([]);
   const [projectCount, setProjectCount] = useState(0);
   const [topProjects, setTopProjects] = useState<ProjectTimeRow[]>([]);
@@ -296,6 +300,8 @@ export function Dashboard() {
     const minDuration =
       loadSessionSettings().minSessionDurationSeconds || undefined;
     const shouldLoadTodayData = timePreset === 'today';
+    setProjectTimelineLoading(true);
+    setProjectTimelineError(null);
 
     Promise.allSettled([
       getDashboardStats(dateRange),
@@ -356,7 +362,15 @@ export function Dashboard() {
 
         if (timelineRes.status === 'fulfilled') {
           setProjectTimeline(timelineRes.value);
+          setProjectTimelineError(null);
         } else {
+          setProjectTimeline([]);
+          setProjectTimelineError(
+            getErrorMessage(
+              timelineRes.reason,
+              t('components.timeline_chart.load_failed'),
+            ),
+          );
           console.error('Failed to load project timeline:', timelineRes.reason);
         }
 
@@ -383,6 +397,7 @@ export function Dashboard() {
         }
 
         setWorkingHours(loadWorkingHoursSettings());
+        setProjectTimelineLoading(false);
       },
     );
     return () => {
@@ -394,6 +409,7 @@ export function Dashboard() {
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,
+    t,
   ]);
 
   return (
@@ -504,12 +520,18 @@ export function Dashboard() {
       ) : (
         <TimelineChart
           data={projectTimeline}
-          projectColors={projectColorMap}
-          granularity={timelineGranularity}
-          dateRange={dateRange}
-          trimLeadingToFirstData={timePreset === 'all'}
-          heightClassName="h-[24rem]"
-          disableAnimation
+          presentation={{
+            projectColors: projectColorMap,
+            granularity: timelineGranularity,
+            dateRange,
+            trimLeadingToFirstData: timePreset === 'all',
+            heightClassName: 'h-[24rem]',
+            disableAnimation: true,
+          }}
+          state={{
+            isLoading: projectTimelineLoading,
+            errorMessage: projectTimelineError,
+          }}
         />
       )}
 

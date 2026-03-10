@@ -15,7 +15,6 @@ import {
   type AppLanguageCode,
   type LanguageSettings,
   loadWorkingHoursSettings,
-  normalizeHexColor,
   saveWorkingHoursSettings,
   timeToMinutes,
   type WorkingHoursSettings,
@@ -37,6 +36,7 @@ import {
   saveSplitSettings,
   type SplitSettings,
 } from '@/lib/user-settings';
+import { normalizeHexColor } from '@/lib/normalize';
 import { splitTime } from '@/lib/form-validation';
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,

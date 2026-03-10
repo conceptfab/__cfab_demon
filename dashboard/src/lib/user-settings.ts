@@ -1,3 +1,5 @@
+import { isValidTime, normalizeHexColor } from '@/lib/normalize';
+
 export interface WorkingHoursSettings {
   start: string;
   end: string;
@@ -91,18 +93,6 @@ export const DEFAULT_WORKING_HOURS: WorkingHoursSettings = {
   color: '#10b981',
 };
 
-function isValidTime(value: string): boolean {
-  return /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
-}
-
-function isValidHexColor(value: string): boolean {
-  return /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/.test(value);
-}
-
-export function normalizeHexColor(value: string): string {
-  return isValidHexColor(value) ? value : DEFAULT_WORKING_HOURS.color;
-}
-
 export function timeToMinutes(value: string): number | null {
   if (!isValidTime(value)) return null;
   const [hours, minutes] = value.split(':').map(Number);
@@ -120,7 +110,10 @@ const workingHoursManager = createSettingsManager<WorkingHoursSettings>({
     const end = isValidTime(input.end ?? '')
       ? input.end!
       : DEFAULT_WORKING_HOURS.end;
-    const color = normalizeHexColor(input.color ?? '');
+    const color = normalizeHexColor(
+      input.color ?? '',
+      DEFAULT_WORKING_HOURS.color,
+    );
     const startMinutes = timeToMinutes(start);
     const endMinutes = timeToMinutes(end);
     if (

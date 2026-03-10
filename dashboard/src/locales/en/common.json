@@ -142,6 +142,9 @@
     },
     "timeline_chart": {
       "default_title": "Activity Timeline",
+      "loading": "Loading timeline...",
+      "no_data": "No timeline data available for this range.",
+      "load_failed": "Failed to load timeline data. Try refreshing.",
       "boosted_activity": "BOOSTED ACTIVITY",
       "manual_data_included": "MANUAL DATA INCLUDED"
     },
@@ -1341,6 +1344,7 @@
     "discovered_projects_notification_after_folder_scanning_o": "Discovered projects notification – after folder scanning on startup, the dashboard shows a banner listing newly detected projects. You can dismiss or navigate to project management.",
     "add_manual_session_from_timeline_click_on_the_dashboard": "Add manual session from timeline – click on the dashboard timeline to quickly add a manual session (e.g. meeting, call) without navigating to Sessions.",
     "all_projects_overview_chart_showing_work_time_distributi": "All Projects overview – chart showing work time distribution across all projects for the selected period.",
+    "timeline_states_loading_empty_and_error_messages_help_yo": "Timeline states – dashboard charts show loading, no-data, and error states instead of an empty panel when the selected range has no results or refresh fails.",
     "sessions_2": "SESSIONS",
     "detailed_list_of_all_activity_blocks_registered_in_the_s": "Detailed list of all activity blocks registered in the system.",
     "adding_comments_and_notes_right_click_a_session_to_creat": "Adding comments and notes – right-click a session to create a description.",
@@ -1387,6 +1391,7 @@
     "recent_comments_card_in_the_project_view_showing_latest": "Recent Comments – card in the project view showing latest session comments with date and app context.",
     "project_manual_sessions_dedicated_card_in_the_project_vi": "Project manual sessions – dedicated card in the project view for adding, editing, and deleting manual sessions assigned to this project.",
     "chart_context_menu_right_click_on_a_day_in_the_project_t": "Chart context menu – right-click on a day in the project timeline to see the list of sessions for that date.",
+    "project_timeline_states_loading_empty_and_error_messages": "Project timeline states – the project chart shows loading, no-data, and error states, so you can immediately tell whether the range is empty or the refresh failed.",
     "estimates_2": "ESTIMATES",
     "business_module_for_precise_conversion_of_time_into_fina": "Business module for precise conversion of time into finances.",
     "global_hourly_rate_configuration_and_specific_rates_for": "Global hourly rate configuration and specific rates for chosen projects.",

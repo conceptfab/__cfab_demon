@@ -21,6 +21,7 @@ import {
   restartDaemon,
 } from "@/lib/tauri";
 import { loadSessionSettings } from "@/lib/user-settings";
+import { useCancellableAsync } from "@/lib/async-utils";
 import { useTranslation } from "react-i18next";
 import { formatPathForDisplay, cn } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
@@ -32,25 +33,54 @@ export function DaemonControl() {
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const refreshAsync = useCancellableAsync();
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
-  const refreshStatus = useCallback(() => {
-    getDaemonStatus().then(setStatus).catch(console.error);
+  const fetchStatusSnapshot = useCallback(async () => {
     const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
-    getSessionCount({ unassigned: true, minDuration })
-      .then((n) => setFilteredUnassigned(Math.max(0, n)))
-      .catch(console.error);
+    const [nextStatus, unassignedCount] = await Promise.all([
+      getDaemonStatus(),
+      getSessionCount({ unassigned: true, minDuration }),
+    ]);
+    return {
+      status: nextStatus,
+      filteredUnassigned: Math.max(0, unassignedCount),
+    };
   }, []);
 
-  const refreshLogs = useCallback(() => {
-    getDaemonLogs(200).then(setLogs).catch(console.error);
-  }, []);
+  const refresh = useCallback(
+    ({ includeLogs = true }: { includeLogs?: boolean } = {}) => {
+      void refreshAsync(
+        async () => {
+          const [statusResult, logsResult] = await Promise.allSettled([
+            fetchStatusSnapshot(),
+            includeLogs ? getDaemonLogs(200) : Promise.resolve<string | null>(null),
+          ]);
+          return { includeLogs, statusResult, logsResult };
+        },
+        {
+          onSuccess: ({ includeLogs, statusResult, logsResult }) => {
+            if (statusResult.status === "fulfilled") {
+              setStatus(statusResult.value.status);
+              setFilteredUnassigned(statusResult.value.filteredUnassigned);
+            } else {
+              console.error("Failed to refresh daemon status:", statusResult.reason);
+            }
 
-  const refresh = useCallback(() => {
-    refreshStatus();
-    refreshLogs();
-  }, [refreshStatus, refreshLogs]);
+            if (!includeLogs) return;
+
+            if (logsResult.status === "fulfilled" && typeof logsResult.value === "string") {
+              setLogs(logsResult.value);
+            } else if (logsResult.status === "rejected") {
+              console.error("Failed to refresh daemon logs:", logsResult.reason);
+            }
+          },
+        },
+      );
+    },
+    [fetchStatusSnapshot, refreshAsync],
+  );
 
   // Initial load + auto-refresh every 5s
   useEffect(() => {
@@ -157,7 +187,7 @@ export function DaemonControl() {
                 variant="ghost"
                 size="sm"
                 className="ml-auto h-7 w-7 p-0"
-                onClick={refresh}
+                onClick={() => refresh({ includeLogs: false })}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
@@ -323,7 +353,7 @@ export function DaemonControl() {
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0"
-                onClick={refreshLogs}
+                onClick={() => refresh()}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>

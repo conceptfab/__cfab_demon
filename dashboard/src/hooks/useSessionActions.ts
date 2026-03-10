@@ -21,7 +21,9 @@ interface UseSessionActionsOptions {
 
 function toSessionIds(input: SessionIdsInput): number[] {
   if (Array.isArray(input)) {
-    return Array.from(new Set(input.filter((id) => Number.isFinite(id) && id > 0)));
+    return Array.from(
+      new Set(input.filter((id) => Number.isFinite(id) && id > 0)),
+    );
   }
   return Number.isFinite(input) && input > 0 ? [input] : [];
 }
@@ -45,8 +47,8 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
   const runForSessionIds = useCallback(
     async (
       sessionIds: number[],
-      runSingle: (sessionId: number) => Promise<void>,
-      runBatch: (sessionIds: number[]) => Promise<void>,
+      runSingle: (sessionId: number) => Promise<unknown>,
+      runBatch: (sessionIds: number[]) => Promise<unknown>,
     ) => {
       if (sessionIds.length === 1) {
         await runSingle(sessionIds[0]);

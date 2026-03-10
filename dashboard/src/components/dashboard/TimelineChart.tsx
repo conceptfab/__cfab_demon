@@ -1,9 +1,11 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  AlertTriangle,
   Flame,
   PenLine,
   MessageSquare,
+  RefreshCw,
 } from "lucide-react";
 import {
   TOOLTIP_CONTENT_STYLE,
@@ -30,8 +32,7 @@ import { formatDuration } from "@/lib/utils";
 import type { DateRange, StackedBarData } from "@/lib/db-types";
 import { resolveDateFnsLocale } from "@/lib/date-locale";
 
-interface Props {
-  data: StackedBarData[];
+interface TimelineChartPresentationProps {
   projectColors?: Record<string, string>;
   granularity?: "hour" | "day";
   dateRange?: DateRange;
@@ -39,8 +40,25 @@ interface Props {
   title?: string;
   heightClassName?: string;
   disableAnimation?: boolean;
+}
+
+interface TimelineChartInteractionProps {
   onBarClick?: (date: string) => void;
   onBarContextMenu?: (date: string, x: number, y: number) => void;
+}
+
+interface TimelineChartStateProps {
+  isLoading?: boolean;
+  errorMessage?: string | null;
+  emptyMessage?: string;
+  loadingMessage?: string;
+}
+
+interface TimelineChartProps {
+  data: StackedBarData[];
+  presentation?: TimelineChartPresentationProps;
+  interaction?: TimelineChartInteractionProps;
+  state?: TimelineChartStateProps;
 }
 
 const PALETTE = TOKYO_NIGHT_CHART_PALETTE;
@@ -77,18 +95,28 @@ function extractDateFromChartState(state: unknown): string | null {
 
 export function TimelineChart({
   data,
-  projectColors = {},
-  granularity = "day",
-  dateRange,
-  trimLeadingToFirstData = false,
-  title,
-  heightClassName,
-  disableAnimation = false,
-  onBarClick,
-  onBarContextMenu,
-}: Props) {
+  presentation,
+  interaction,
+  state,
+}: TimelineChartProps) {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+  const {
+    projectColors = {},
+    granularity = "day",
+    dateRange,
+    trimLeadingToFirstData = false,
+    title,
+    heightClassName,
+    disableAnimation = false,
+  } = presentation ?? {};
+  const { onBarClick, onBarContextMenu } = interaction ?? {};
+  const {
+    isLoading = false,
+    errorMessage = null,
+    emptyMessage = t("components.timeline_chart.no_data"),
+    loadingMessage = t("components.timeline_chart.loading"),
+  } = state ?? {};
   const effectiveTitle = title ?? t("components.timeline_chart.default_title");
   const hoveredDateRef = useRef<string | null>(null);
   const seriesKeys = useMemo(() => {
@@ -177,6 +205,7 @@ export function TimelineChart({
   }, [chartData]);
 
   const isHourly = granularity === "hour";
+  const chartHeightClassName = heightClassName ?? (isHourly ? "h-64" : "h-56");
   const chartComplexity = chartData.length * Math.max(seriesKeys.length, 1);
   const useSimpleRendering = chartComplexity > 180;
   const barAnimation = useMemo(
@@ -354,6 +383,17 @@ export function TimelineChart({
       </g>
     );
   }, [chartDataByDate, xTickFormatter]);
+  const hasChartData = useMemo(
+    () =>
+      seriesKeys.length > 0 &&
+      chartData.some((row) =>
+        seriesKeys.some((key) => {
+          const value = row[key];
+          return typeof value === "number" && Number.isFinite(value) && value > 0;
+        }),
+      ),
+    [chartData, seriesKeys],
+  );
 
   return (
     <Card>
@@ -361,128 +401,150 @@ export function TimelineChart({
         <CardTitle className="text-sm font-medium">{effectiveTitle}</CardTitle>
       </CardHeader>
       <CardContent>
-        <div 
-          className={(heightClassName ?? (isHourly ? "h-64" : "h-56")) + " outline-none focus:outline-none focus:ring-0"}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            if (hoveredDateRef.current && onBarContextMenu) {
-                onBarContextMenu(hoveredDateRef.current, e.clientX, e.clientY);
-            }
-          }}
-        >
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart 
-                data={chartData}
-                onMouseMove={(state: unknown) => {
-                    hoveredDateRef.current = extractDateFromChartState(state);
-                }}
-                onMouseLeave={() => {
-                  hoveredDateRef.current = null;
-                }}
-                onClick={(state: unknown) => {
-                  const date = extractDateFromChartState(state);
-                  if (date) onBarClick?.(date);
-                }}
-                accessibilityLayer={false}
-                tabIndex={-1}
-              >
-                <defs>
-                  <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                    <rect width="2" height="4" fill="rgba(255,255,255,0.15)" />
-                  </pattern>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
-                <XAxis
-                  dataKey="date"
-                  tick={useSimpleRendering ? undefined : renderCustomAxisTick}
-                  tickFormatter={useSimpleRendering ? xTickFormatter : undefined}
-                  stroke={CHART_AXIS_COLOR}
-                  fontSize={11}
-                  tickLine={false}
-                  axisLine={false}
-                  interval={isHourly ? 2 : undefined}
-                  minTickGap={isHourly ? undefined : 18}
-                  height={useSimpleRendering ? 28 : 50}
-                />
-                <YAxis
-                  stroke={CHART_AXIS_COLOR}
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => formatDuration(Number(v))}
-                  domain={isHourly ? undefined : [0, (dataMax: number) => Math.max(86_400, Number(dataMax || 0))]}
-                />
-                <Tooltip
-                  content={renderTooltip}
-                  cursor={false}
-                />
-                {seriesKeys.map((key, idx) => {
-                  const color =
-                    key === "Other"
-                      ? CHART_MUTED_SERIES_COLOR
-                      : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
-                  return (
-                    <Bar
-                      key={key}
-                      dataKey={key}
-                      name={key}
-                      stackId="projects"
-                      fill={color}
-                      radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}
-                      isAnimationActive={finalBarAnimation.isAnimationActive}
-                      animationDuration={finalBarAnimation.animationDuration}
-                      animationEasing={finalBarAnimation.animationEasing}
-                      shape={
-                        useSimpleRendering
-                          ? undefined
-                          : ((props: unknown) => {
-                              const {
-                                x = 0,
-                                y = 0,
-                                width = 0,
-                                height = 0,
-                                fill,
-                                payload,
-                                radius,
-                              } = (props ?? {}) as BarShapeProps;
-                              if (height <= 0 || width <= 0) return null;
-                              const cornerRadius = Array.isArray(radius)
-                                ? (radius[0] ?? 0)
-                                : (radius ?? 0);
-                              return (
-                                <g>
-                                  <rect
-                                    x={x}
-                                    y={y}
-                                    width={width}
-                                    height={height}
-                                    fill={fill}
-                                    rx={cornerRadius}
-                                  />
-                                  {payload?.has_manual && (
+        {isLoading ? (
+          <div
+            className={`${chartHeightClassName} flex flex-col items-center justify-center gap-3 text-muted-foreground`}
+          >
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            <p className="text-xs font-medium">{loadingMessage}</p>
+          </div>
+        ) : errorMessage ? (
+          <div
+            className={`${chartHeightClassName} flex flex-col items-center justify-center gap-3 text-center`}
+          >
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            <p className="max-w-sm text-xs text-muted-foreground">{errorMessage}</p>
+          </div>
+        ) : !hasChartData ? (
+          <div
+            className={`${chartHeightClassName} flex items-center justify-center text-center`}
+          >
+            <p className="max-w-sm text-xs text-muted-foreground">{emptyMessage}</p>
+          </div>
+        ) : (
+          <div 
+            className={chartHeightClassName + " outline-none focus:outline-none focus:ring-0"}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              if (hoveredDateRef.current && onBarContextMenu) {
+                  onBarContextMenu(hoveredDateRef.current, e.clientX, e.clientY);
+              }
+            }}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                  data={chartData}
+                  onMouseMove={(state: unknown) => {
+                      hoveredDateRef.current = extractDateFromChartState(state);
+                  }}
+                  onMouseLeave={() => {
+                    hoveredDateRef.current = null;
+                  }}
+                  onClick={(state: unknown) => {
+                    const date = extractDateFromChartState(state);
+                    if (date) onBarClick?.(date);
+                  }}
+                  accessibilityLayer={false}
+                  tabIndex={-1}
+                >
+                  <defs>
+                    <pattern id="hatch" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                      <rect width="2" height="4" fill="rgba(255,255,255,0.15)" />
+                    </pattern>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID_COLOR} opacity={0.45} />
+                  <XAxis
+                    dataKey="date"
+                    tick={useSimpleRendering ? undefined : renderCustomAxisTick}
+                    tickFormatter={useSimpleRendering ? xTickFormatter : undefined}
+                    stroke={CHART_AXIS_COLOR}
+                    fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={isHourly ? 2 : undefined}
+                    minTickGap={isHourly ? undefined : 18}
+                    height={useSimpleRendering ? 28 : 50}
+                  />
+                  <YAxis
+                    stroke={CHART_AXIS_COLOR}
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v) => formatDuration(Number(v))}
+                    domain={isHourly ? undefined : [0, (dataMax: number) => Math.max(86_400, Number(dataMax || 0))]}
+                  />
+                  <Tooltip
+                    content={renderTooltip}
+                    cursor={false}
+                  />
+                  {seriesKeys.map((key, idx) => {
+                    const color =
+                      key === "Other"
+                        ? CHART_MUTED_SERIES_COLOR
+                        : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
+                    return (
+                      <Bar
+                        key={key}
+                        dataKey={key}
+                        name={key}
+                        stackId="projects"
+                        fill={color}
+                        radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}
+                        isAnimationActive={finalBarAnimation.isAnimationActive}
+                        animationDuration={finalBarAnimation.animationDuration}
+                        animationEasing={finalBarAnimation.animationEasing}
+                        shape={
+                          useSimpleRendering
+                            ? undefined
+                            : ((props: unknown) => {
+                                const {
+                                  x = 0,
+                                  y = 0,
+                                  width = 0,
+                                  height = 0,
+                                  fill,
+                                  payload,
+                                  radius,
+                                } = (props ?? {}) as BarShapeProps;
+                                if (height <= 0 || width <= 0) return null;
+                                const cornerRadius = Array.isArray(radius)
+                                  ? (radius[0] ?? 0)
+                                  : (radius ?? 0);
+                                return (
+                                  <g>
                                     <rect
                                       x={x}
                                       y={y}
                                       width={width}
                                       height={height}
-                                      fill="url(#hatch)"
+                                      fill={fill}
                                       rx={cornerRadius}
-                                      style={{ pointerEvents: "none" }}
                                     />
-                                  )}
-                                </g>
-                              );
-                            })
-                      }
-                      style={{ 
-                        cursor: onBarClick ? "pointer" : "default",
-                      }}
-                    />
-                  );
-                })}
-              </BarChart>
-          </ResponsiveContainer>
-        </div>
+                                    {payload?.has_manual && (
+                                      <rect
+                                        x={x}
+                                        y={y}
+                                        width={width}
+                                        height={height}
+                                        fill="url(#hatch)"
+                                        rx={cornerRadius}
+                                        style={{ pointerEvents: "none" }}
+                                      />
+                                    )}
+                                  </g>
+                                );
+                              })
+                        }
+                        style={{ 
+                          cursor: onBarClick ? "pointer" : "default",
+                        }}
+                      />
+                    );
+                  })}
+                </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
