@@ -80,3 +80,45 @@ export function formatBytes(bytes: number, fractionDigits = 2): string {
   const value = bytes / Math.pow(base, unitIndex);
   return `${value.toFixed(fractionDigits)} ${units[unitIndex]}`;
 }
+
+export function formatDateTime(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return typeof value === 'string' ? value : '';
+  }
+  return parsed.toLocaleString();
+}
+
+export function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+export function parseMultilineList(value: string): string[] {
+  const unique = new Set<string>();
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    unique.add(trimmed);
+  }
+  return Array.from(unique);
+}
+
+export function formatMultilineList(values: string[]): string {
+  return values.join('\n');
+}
+
+export function formatPercent(value: number, fractionDigits = 1): string {
+  if (!Number.isFinite(value)) return '0%';
+  return `${(value * 100).toFixed(fractionDigits)}%`;
+}
+
+export function formatDateLabel(value: string): string {
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+}

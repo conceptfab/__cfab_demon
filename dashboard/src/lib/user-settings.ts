@@ -300,6 +300,47 @@ const indicatorManager = createSettingsManager<SessionIndicatorSettings>({
 export const loadIndicatorSettings = indicatorManager.load;
 export const saveIndicatorSettings = indicatorManager.save;
 
+export interface AiAutoAssignmentSettings {
+  autoLimit: number;
+}
+const AI_AUTO_ASSIGNMENT_STORAGE_KEY = 'timeflow.settings.ai-auto-assignment';
+const LEGACY_AI_AUTO_LIMIT_STORAGE_KEY = 'timeflow.ai.auto-limit';
+export const DEFAULT_AI_AUTO_ASSIGNMENT_SETTINGS: AiAutoAssignmentSettings = {
+  autoLimit: 500,
+};
+const aiAutoAssignmentManager = createSettingsManager<AiAutoAssignmentSettings>({
+  key: AI_AUTO_ASSIGNMENT_STORAGE_KEY,
+  legacyKey: LEGACY_AI_AUTO_LIMIT_STORAGE_KEY,
+  defaults: DEFAULT_AI_AUTO_ASSIGNMENT_SETTINGS,
+  normalize: (parsed) => {
+    const rawValue =
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      'autoLimit' in parsed
+        ? parsed.autoLimit
+        : (parsed as unknown);
+    return {
+      autoLimit:
+        typeof rawValue === 'number' && Number.isFinite(rawValue)
+          ? Math.min(10_000, Math.max(1, Math.round(rawValue)))
+          : typeof rawValue === 'string'
+            ? Math.min(
+                10_000,
+                Math.max(
+                  1,
+                  Math.round(
+                    Number.parseInt(rawValue, 10) ||
+                      DEFAULT_AI_AUTO_ASSIGNMENT_SETTINGS.autoLimit,
+                  ),
+                ),
+              )
+            : DEFAULT_AI_AUTO_ASSIGNMENT_SETTINGS.autoLimit,
+    };
+  },
+});
+export const loadAiAutoAssignmentSettings = aiAutoAssignmentManager.load;
+export const saveAiAutoAssignmentSettings = aiAutoAssignmentManager.save;
+
 export interface ReportFontSettings {
   fontFamily: 'system' | 'serif' | 'mono';
   baseFontSize: number;

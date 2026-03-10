@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { Brain, PlayCircle, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast-notification';
@@ -27,101 +27,30 @@ import type {
 } from '@/lib/db-types';
 import {
   loadSessionSettings,
+  loadAiAutoAssignmentSettings,
   loadIndicatorSettings,
+  saveAiAutoAssignmentSettings,
   saveIndicatorSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
 import {
-  CHART_AXIS_COLOR,
-  CHART_GRID_COLOR,
-  CHART_PRIMARY_COLOR,
-  CHART_TOOLTIP_TEXT_COLOR,
-  CHART_TOOLTIP_TITLE_COLOR,
-  TOOLTIP_CONTENT_STYLE,
-} from '@/lib/chart-styles';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+  clampNumber,
+  formatMultilineList,
+  parseMultilineList,
+} from '@/lib/utils';
 import { AiSessionIndicatorsCard } from '@/components/ai/AiSessionIndicatorsCard';
 import { AiBatchActionsCard } from '@/components/ai/AiBatchActionsCard';
 import { AiHowToCard } from '@/components/ai/AiHowToCard';
+import { AiModelStatusCard } from '@/components/ai/AiModelStatusCard';
+import {
+  AiSettingsForm,
+  type AiSettingsFormValues,
+} from '@/components/ai/AiSettingsForm';
+import { AiMetricsCharts } from '@/components/ai/AiMetricsCharts';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
 const REMINDER_SNOOZE_HOURS = 24;
-
-const AUTO_LIMIT_STORAGE_KEY = 'timeflow.ai.auto-limit';
-const DEFAULT_AUTO_LIMIT = 500;
-
-function loadAutoLimit(): number {
-  try {
-    if (typeof window === 'undefined') return DEFAULT_AUTO_LIMIT;
-    const raw = window.localStorage.getItem(AUTO_LIMIT_STORAGE_KEY);
-    if (!raw) return DEFAULT_AUTO_LIMIT;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 1 && n <= 10_000 ? n : DEFAULT_AUTO_LIMIT;
-  } catch {
-    return DEFAULT_AUTO_LIMIT;
-  }
-}
-
-function saveAutoLimit(value: number): void {
-  try {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(AUTO_LIMIT_STORAGE_KEY, String(value));
-    }
-  } catch {
-    // ignore
-  }
-}
-
-function formatDateTime(value: string | null | undefined): string {
-  if (!value) return '';
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString();
-}
-
-function clampNumber(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) return min;
-  return Math.max(min, Math.min(max, value));
-}
-
-function parseMultilineList(value: string): string[] {
-  const unique = new Set<string>();
-  for (const line of value.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    unique.add(trimmed);
-  }
-  return Array.from(unique);
-}
-
-function formatMultilineList(values: string[]): string {
-  return values.join('\n');
-}
-
-function formatPercent(value: number): string {
-  if (!Number.isFinite(value)) return '0%';
-  return `${(value * 100).toFixed(1)}%`;
-}
-
-function formatDateLabel(value: string): string {
-  const parsed = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 function parseDate(value: string | null | undefined): Date | null {
   if (!value) return null;
@@ -187,6 +116,54 @@ function buildTrainingReminder(
   };
 }
 
+function areMetricsEqual(
+  current: AssignmentModelMetrics | null,
+  next: AssignmentModelMetrics,
+): boolean {
+  if (!current) return false;
+  if (current.window_days !== next.window_days) return false;
+
+  if (
+    current.summary.feedback_total !== next.summary.feedback_total ||
+    current.summary.feedback_accepted !== next.summary.feedback_accepted ||
+    current.summary.feedback_rejected !== next.summary.feedback_rejected ||
+    current.summary.feedback_manual_change !== next.summary.feedback_manual_change ||
+    current.summary.feedback_precision !== next.summary.feedback_precision ||
+    current.summary.auto_runs !== next.summary.auto_runs ||
+    current.summary.auto_assigned !== next.summary.auto_assigned ||
+    current.summary.auto_rollbacks !== next.summary.auto_rollbacks ||
+    current.summary.coverage_total_entries !== next.summary.coverage_total_entries ||
+    current.summary.coverage_detected_path_ratio !==
+      next.summary.coverage_detected_path_ratio ||
+    current.summary.coverage_title_history_ratio !==
+      next.summary.coverage_title_history_ratio ||
+    current.summary.coverage_activity_type_ratio !==
+      next.summary.coverage_activity_type_ratio
+  ) {
+    return false;
+  }
+
+  if (current.points.length !== next.points.length) return false;
+
+  return current.points.every((point, index) => {
+    const nextPoint = next.points[index];
+    return (
+      point.date === nextPoint.date &&
+      point.feedback_total === nextPoint.feedback_total &&
+      point.feedback_accepted === nextPoint.feedback_accepted &&
+      point.feedback_rejected === nextPoint.feedback_rejected &&
+      point.feedback_manual_change === nextPoint.feedback_manual_change &&
+      point.auto_runs === nextPoint.auto_runs &&
+      point.auto_assigned === nextPoint.auto_assigned &&
+      point.auto_rollbacks === nextPoint.auto_rollbacks &&
+      point.coverage_total_entries === nextPoint.coverage_total_entries &&
+      point.coverage_with_detected_path === nextPoint.coverage_with_detected_path &&
+      point.coverage_with_title_history === nextPoint.coverage_with_title_history &&
+      point.coverage_with_activity_type === nextPoint.coverage_with_activity_type
+    );
+  });
+}
+
 export function AIPage() {
   const { t: tr } = useTranslation();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
@@ -217,29 +194,34 @@ export function AIPage() {
     useState<string>('');
   const [trainingFolderBlacklistText, setTrainingFolderBlacklistText] =
     useState<string>('');
-  const [autoLimit, setAutoLimit] = useState<number>(loadAutoLimit);
+  const [autoLimit, setAutoLimit] = useState<number>(
+    () => loadAiAutoAssignmentSettings().autoLimit,
+  );
   const [feedbackWeight, setFeedbackWeight] = useState<number>(5.0);
   const dirtyRef = useRef(false);
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
 
-  const syncFromStatus = (nextStatus: AssignmentModelStatus, force = false) => {
-    setStatus(nextStatus);
-    if (force || !dirtyRef.current) {
-      setMode(nextStatus.mode);
-      setSuggestConf(nextStatus.min_confidence_suggest);
-      setAutoConf(nextStatus.min_confidence_auto);
-      setAutoEvidence(nextStatus.min_evidence_auto);
-      setTrainingHorizonDays(nextStatus.training_horizon_days);
-      setTrainingAppBlacklistText(
-        formatMultilineList(nextStatus.training_app_blacklist),
-      );
-      setTrainingFolderBlacklistText(
-        formatMultilineList(nextStatus.training_folder_blacklist),
-      );
-    }
-  };
+  const syncFromStatus = useCallback(
+    (nextStatus: AssignmentModelStatus, force = false) => {
+      setStatus(nextStatus);
+      if (force || !dirtyRef.current) {
+        setMode(nextStatus.mode);
+        setSuggestConf(nextStatus.min_confidence_suggest);
+        setAutoConf(nextStatus.min_confidence_auto);
+        setAutoEvidence(nextStatus.min_evidence_auto);
+        setTrainingHorizonDays(nextStatus.training_horizon_days);
+        setTrainingAppBlacklistText(
+          formatMultilineList(nextStatus.training_app_blacklist),
+        );
+        setTrainingFolderBlacklistText(
+          formatMultilineList(nextStatus.training_folder_blacklist),
+        );
+      }
+    },
+    [],
+  );
 
   const trainingReminder = useMemo(
     () =>
@@ -257,6 +239,51 @@ export function AIPage() {
     translateRef.current = tr;
   }, [tr]);
 
+  const handleSettingsChange = useCallback(
+    (patch: Partial<AiSettingsFormValues>) => {
+      dirtyRef.current = true;
+      if (patch.mode !== undefined) setMode(patch.mode);
+      if (patch.suggestConf !== undefined) setSuggestConf(patch.suggestConf);
+      if (patch.autoConf !== undefined) setAutoConf(patch.autoConf);
+      if (patch.autoEvidence !== undefined) setAutoEvidence(patch.autoEvidence);
+      if (patch.trainingHorizonDays !== undefined) {
+        setTrainingHorizonDays(patch.trainingHorizonDays);
+      }
+      if (patch.feedbackWeight !== undefined) {
+        setFeedbackWeight(patch.feedbackWeight);
+      }
+      if (patch.trainingAppBlacklistText !== undefined) {
+        setTrainingAppBlacklistText(patch.trainingAppBlacklistText);
+      }
+      if (patch.trainingFolderBlacklistText !== undefined) {
+        setTrainingFolderBlacklistText(patch.trainingFolderBlacklistText);
+      }
+    },
+    [],
+  );
+
+  const settingsFormValues = useMemo<AiSettingsFormValues>(
+    () => ({
+      mode,
+      suggestConf,
+      autoConf,
+      autoEvidence,
+      trainingHorizonDays,
+      feedbackWeight,
+      trainingAppBlacklistText,
+      trainingFolderBlacklistText,
+    }),
+    [
+      mode,
+      suggestConf,
+      autoConf,
+      autoEvidence,
+      trainingHorizonDays,
+      feedbackWeight,
+      trainingAppBlacklistText,
+      trainingFolderBlacklistText,
+    ],
+  );
 
   const fetchStatus = useCallback(
     async () => {
@@ -276,7 +303,7 @@ export function AIPage() {
         isFetchingRef.current = false;
       }
     },
-    [],
+    [syncFromStatus],
   );
 
   const fetchMetrics = useCallback(
@@ -286,7 +313,9 @@ export function AIPage() {
       if (!silent) setLoadingMetrics(true);
       try {
         const nextMetrics = await getAssignmentModelMetrics(30);
-        setMetrics(nextMetrics);
+        setMetrics((current) =>
+          areMetricsEqual(current, nextMetrics) ? current : nextMetrics,
+        );
       } catch (e) {
         console.error(e);
         showErrorRef.current(
@@ -487,369 +516,84 @@ export function AIPage() {
     }
   };
 
-  const metricsChartData = useMemo(
-    () =>
-      (metrics?.points ?? []).map((point) => ({
-        ...point,
-        label: formatDateLabel(point.date),
-      })),
-    [metrics],
+  const indicatorItems = useMemo(
+    () => [
+      {
+        key: 'showAiBadge' as const,
+        label: tr('ai_page.text.ai_badge'),
+        description: tr(
+          'ai_page.text.show_sparkle_icon_on_sessions_assigned_by_ai_aut',
+        ),
+      },
+      {
+        key: 'showSuggestions' as const,
+        label: tr('ai_page.text.ai_suggestions'),
+        description: tr(
+          'ai_page.text.show_project_suggestions_for_unassigned_sessions',
+        ),
+      },
+      {
+        key: 'showScoreBreakdown' as const,
+        label: tr('ai_page.text.score_breakdown_button'),
+        description: tr(
+          'ai_page.text.show_the_score_details_button_barchart3_on_each',
+        ),
+      },
+    ],
+    [tr],
   );
-
-  const metricsSummary = metrics?.summary ?? null;
-  const indicatorItems = [
-    {
-      key: 'showAiBadge' as const,
-      label: tr('ai_page.text.ai_badge'),
-      description: tr('ai_page.text.show_sparkle_icon_on_sessions_assigned_by_ai_aut'),
-    },
-    {
-      key: 'showSuggestions' as const,
-      label: tr('ai_page.text.ai_suggestions'),
-      description: tr('ai_page.text.show_project_suggestions_for_unassigned_sessions'),
-    },
-    {
-      key: 'showScoreBreakdown' as const,
-      label: tr('ai_page.text.score_breakdown_button'),
-      description: tr('ai_page.text.show_the_score_details_button_barchart3_on_each'),
-    },
-  ];
-  const howToSections = [
-    {
-      title: tr('ai_page.text.when_to_train_the_model'),
-      paragraphs: [
-        tr('ai_page.text.train_after_a_larger_series_of_manual_correction'),
-        tr('ai_page.text.the_reminder_appears_automatically_when_you_have', {
+  const howToSections = useMemo(
+    () => [
+      {
+        title: tr('ai_page.text.when_to_train_the_model'),
+        paragraphs: [
+          tr('ai_page.text.train_after_a_larger_series_of_manual_correction'),
+          tr('ai_page.text.the_reminder_appears_automatically_when_you_have', {
             feedbackTrigger: FEEDBACK_TRIGGER,
             retrainHours: RETRAIN_INTERVAL_HOURS,
           }),
-      ],
-    },
-    {
-      title: tr('ai_page.text.what_parameters_mean'),
-      paragraphs: [
-        tr('ai_page.text.mode_off_disables_suggestions_suggest_shows_sugg'),
-        tr('ai_page.text.suggest_min_confidence_minimum_confidence_to_sho'),
-        tr('ai_page.text.auto_safe_min_confidence_required_confidence_thr'),
-        tr('ai_page.text.auto_safe_min_evidence_how_many_signals_e_g_app'),
-        tr('ai_page.text.session_limit_how_many_unassigned_sessions_auto'),
-        tr('ai_page.text.feedback_weight_how_much_manual_corrections_thum'),
-      ],
-    },
-    {
-      title: tr('ai_page.text.recommended_starting_settings'),
-      paragraphs: [
-        tr('ai_page.text.start_with_mode_suggest_suggest_0_60_auto_0_85_e'),
-        tr('ai_page.text.if_auto_safe_makes_wrong_assignments_raise_auto'),
-      ],
-    },
-  ];
+        ],
+      },
+      {
+        title: tr('ai_page.text.what_parameters_mean'),
+        paragraphs: [
+          tr('ai_page.text.mode_off_disables_suggestions_suggest_shows_sugg'),
+          tr('ai_page.text.suggest_min_confidence_minimum_confidence_to_sho'),
+          tr('ai_page.text.auto_safe_min_confidence_required_confidence_thr'),
+          tr('ai_page.text.auto_safe_min_evidence_how_many_signals_e_g_app'),
+          tr('ai_page.text.session_limit_how_many_unassigned_sessions_auto'),
+          tr('ai_page.text.feedback_weight_how_much_manual_corrections_thum'),
+        ],
+      },
+      {
+        title: tr('ai_page.text.recommended_starting_settings'),
+        paragraphs: [
+          tr('ai_page.text.start_with_mode_suggest_suggest_0_60_auto_0_85_e'),
+          tr('ai_page.text.if_auto_safe_makes_wrong_assignments_raise_auto'),
+        ],
+      },
+    ],
+    [tr],
+  );
 
   return (
     <>
       <div className="mx-auto w-full max-w-4xl space-y-5">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base font-semibold">
-              <Brain className="h-4 w-4" />
-              {tr('ai_page.text.model_status')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.mode')}
-                </p>
-                <p className="mt-1 font-medium">{status?.mode ?? '-'}</p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.training_state')}
-                </p>
-                <p className="mt-1 font-medium">
-                  {status?.is_training
-                    ? tr('ai_page.text.in_progress')
-                    : tr('ai_page.text.idle')}
-                </p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.last_training')}
-                </p>
-                <p className="mt-1 font-medium">
-                  {formatDateTime(status?.last_train_at) || tr('ai_page.text.never')}
-                </p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.corrections_since_last_training')}
-                </p>
-                <p className="mt-1 font-medium">
-                  {status?.feedback_since_train ?? 0}
-                </p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.last_training_metrics')}
-                </p>
-                <p className="mt-1 font-medium">
-                  {(status?.last_train_samples ?? 0) > 0
-                    ? `${status?.last_train_samples} samples / ${status?.last_train_duration_ms ?? 0} ms`
-                    : tr('ai_page.text.no_data')}
-                </p>
-              </div>
-              <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.last_auto_safe_run')}
-                </p>
-                <p className="mt-1 font-medium">
-                  {status?.last_auto_run_at
-                    ? `${formatDateTime(status.last_auto_run_at)} (${status.last_auto_assigned_count} assigned)`
-                    : tr('ai_page.text.never')}
-                </p>
-              </div>
-            </div>
+        <AiModelStatusCard
+          status={status}
+          training={training}
+          refreshingStatus={refreshingStatus}
+          resettingKnowledge={resettingKnowledge}
+          snoozedUntil={trainingReminder.cooldownUntil}
+          reminderSuppressed={!trainingReminder.shouldShow}
+          onTrainNow={handleTrainNow}
+          onRefreshStatus={() => {
+            void handleRefreshStatus();
+          }}
+          onResetKnowledge={handleResetKnowledge}
+        />
 
-            {status?.train_error_last && (
-              <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                {tr('ai_page.text.last_training_error')}{' '}
-                {status.train_error_last}
-              </div>
-            )}
-
-            {trainingReminder.cooldownUntil && !trainingReminder.shouldShow && (
-              <div className="rounded-md border border-border/70 bg-background/35 px-3 py-2 text-xs text-muted-foreground">
-                {tr('ai_page.text.training_reminder_snoozed_until')}{' '}
-                {formatDateTime(trainingReminder.cooldownUntil.toISOString())}
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                className="h-8"
-                onClick={handleTrainNow}
-                disabled={training || status?.is_training}
-              >
-                <PlayCircle className="mr-2 h-4 w-4" />
-                {training || status?.is_training
-                  ? tr('ai_page.text.training')
-                  : tr('ai_page.text.train_now')}
-              </Button>
-              <Button
-                variant="outline"
-                className="h-8"
-                onClick={() => {
-                  void handleRefreshStatus();
-                }}
-                disabled={refreshingStatus}
-              >
-                <RefreshCw
-                  className={`mr-2 h-4 w-4 ${
-                    refreshingStatus ? 'animate-spin' : ''
-                  }`}
-                />
-                {refreshingStatus
-                  ? tr('ai_page.text.refreshing')
-                  : tr('ai_page.text.refresh_status')}
-              </Button>
-              <Button
-                variant="destructive"
-                className="h-8"
-                onClick={handleResetKnowledge}
-                disabled={resettingKnowledge}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                {resettingKnowledge
-                  ? tr('ai_page.text.resetting')
-                  : tr('ai_page.text.reset_ai_knowledge')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">
-              {tr('ai_page.titles.progress_and_quality', {
-                days: metrics?.window_days ?? 30,
-              })}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {loadingMetrics && !metrics ? (
-              <p className="text-sm text-muted-foreground">
-                {tr('ai_page.text.loading_ai_metrics')}
-              </p>
-            ) : (
-              <>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tr('ai_page.text.ai_precision')}
-                    </p>
-                    <p className="mt-1 font-medium">
-                      {formatPercent(metricsSummary?.feedback_precision ?? 0)}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tr('ai_page.text.total_feedback')}
-                    </p>
-                    <p className="mt-1 font-medium">
-                      {metricsSummary?.feedback_total ?? 0}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tr('ai_page.text.auto_safe_assignments')}
-                    </p>
-                    <p className="mt-1 font-medium">
-                      {metricsSummary?.auto_assigned ?? 0}
-                    </p>
-                  </div>
-                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tr('ai_page.text.detected_path_coverage')}
-                    </p>
-                    <p className="mt-1 font-medium">
-                      {formatPercent(
-                        metricsSummary?.coverage_detected_path_ratio ?? 0,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <p className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.title_history_coverage_activity_type', {
-                      titleCoverage: formatPercent(
-                        metricsSummary?.coverage_title_history_ratio ?? 0,
-                      ),
-                      activityCoverage: formatPercent(
-                        metricsSummary?.coverage_activity_type_ratio ?? 0,
-                      ),
-                    })}
-                </p>
-
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tr('ai_page.text.feedback_trend_accept_reject_manual')}
-                    </p>
-                    <div className="mt-2 h-56">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={metricsChartData}>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke={CHART_GRID_COLOR}
-                            opacity={0.45}
-                          />
-                          <XAxis
-                            dataKey="label"
-                            stroke={CHART_AXIS_COLOR}
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <YAxis
-                            stroke={CHART_AXIS_COLOR}
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                            allowDecimals={false}
-                          />
-                          <Tooltip
-                            contentStyle={TOOLTIP_CONTENT_STYLE}
-                            labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR }}
-                            itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                          />
-                          <Legend wrapperStyle={{ fontSize: 11 }} />
-                          <Bar
-                            dataKey="feedback_accepted"
-                            stackId="feedback"
-                            fill="#22c55e"
-                            name={tr('ai_page.text.accept')}
-                          />
-                          <Bar
-                            dataKey="feedback_rejected"
-                            stackId="feedback"
-                            fill="#ef4444"
-                            name={tr('ai_page.text.reject')}
-                          />
-                          <Bar
-                            dataKey="feedback_manual_change"
-                            stackId="feedback"
-                            fill={CHART_PRIMARY_COLOR}
-                            name={tr('ai_page.text.manual')}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="rounded-md border border-border/70 bg-background/35 p-3">
-                    <p className="text-xs text-muted-foreground">
-                      {tr('ai_page.text.auto_safe_runs_vs_rollback')}
-                    </p>
-                    <div className="mt-2 h-56">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={metricsChartData}>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            stroke={CHART_GRID_COLOR}
-                            opacity={0.45}
-                          />
-                          <XAxis
-                            dataKey="label"
-                            stroke={CHART_AXIS_COLOR}
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <YAxis
-                            stroke={CHART_AXIS_COLOR}
-                            fontSize={11}
-                            tickLine={false}
-                            axisLine={false}
-                            allowDecimals={false}
-                          />
-                          <Tooltip
-                            contentStyle={TOOLTIP_CONTENT_STYLE}
-                            labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR }}
-                            itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
-                          />
-                          <Legend wrapperStyle={{ fontSize: 11 }} />
-                          <Bar
-                            dataKey="auto_assigned"
-                            fill={CHART_PRIMARY_COLOR}
-                            name={tr('ai_page.text.assigned')}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="auto_runs"
-                            stroke="#a78bfa"
-                            strokeWidth={2}
-                            dot={false}
-                            name={tr('ai_page.text.runs')}
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="auto_rollbacks"
-                            stroke="#f97316"
-                            strokeWidth={2}
-                            dot={false}
-                            name={tr('ai_page.text.rollbacks')}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        <AiMetricsCharts metrics={metrics} loading={loadingMetrics} />
 
         {trainingReminder.shouldShow && trainingReminder.reason && (
           <Card className="border-amber-500/40 bg-amber-500/10">
@@ -889,183 +633,14 @@ export function AIPage() {
           </Card>
         )}
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-semibold">
-              {tr('ai_page.text.mode_and_thresholds')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="space-y-1.5 text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.model_operation_mode')}
-                </span>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={mode}
-                  onChange={(e) => {
-                    setMode(e.target.value as AssignmentMode);
-                    dirtyRef.current = true;
-                  }}
-                >
-                  <option value="off">
-                    {tr('ai_page.text.off_manual')}
-                  </option>
-                  <option value="suggest">
-                    {tr('ai_page.text.ai_suggestions')}
-                  </option>
-                  <option value="auto_safe">
-                    {tr('ai_page.text.auto_safe')}
-                  </option>
-                </select>
-              </label>
-
-              <label className="space-y-1.5 text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.suggest_min_confidence_0_1')}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={suggestConf}
-                  onChange={(e) => {
-                    const next = Number.parseFloat(e.target.value);
-                    setSuggestConf(Number.isNaN(next) ? 0 : next);
-                    dirtyRef.current = true;
-                  }}
-                />
-              </label>
-
-              <label className="space-y-1.5 text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.auto_safe_min_confidence_0_1')}
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={autoConf}
-                  onChange={(e) => {
-                    const next = Number.parseFloat(e.target.value);
-                    setAutoConf(Number.isNaN(next) ? 0 : next);
-                    dirtyRef.current = true;
-                  }}
-                />
-              </label>
-
-              <label className="space-y-1.5 text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.auto_safe_min_evidence_1_50')}
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  step={1}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={autoEvidence}
-                  onChange={(e) => {
-                    const next = Number.parseInt(e.target.value, 10);
-                    setAutoEvidence(Number.isNaN(next) ? 1 : next);
-                    dirtyRef.current = true;
-                  }}
-                />
-              </label>
-
-              <label className="space-y-1.5 text-sm md:col-span-2">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.training_horizon_days')}
-                </span>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={30}
-                    max={730}
-                    step={1}
-                    className="h-9 w-full"
-                    value={trainingHorizonDays}
-                    onChange={(e) => {
-                      const next = Number.parseInt(e.target.value, 10);
-                      setTrainingHorizonDays(Number.isNaN(next) ? 730 : next);
-                      dirtyRef.current = true;
-                    }}
-                  />
-                  <span className="min-w-[5rem] text-right text-xs text-muted-foreground">
-                    {trainingHorizonDays} {tr('ai_page.text.days')}
-                  </span>
-                </div>
-              </label>
-
-              <label className="space-y-1.5 text-sm">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.feedback_weight_1_50')}
-                </span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  step={0.5}
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
-                  value={feedbackWeight}
-                  onChange={(e) => {
-                    const next = Number.parseFloat(e.target.value);
-                    setFeedbackWeight(Number.isNaN(next) ? 5 : next);
-                    dirtyRef.current = true;
-                  }}
-                />
-              </label>
-
-              <label className="space-y-1.5 text-sm md:col-span-2">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.text.applications_blacklist_exe_one_per_line')}
-                </span>
-                <textarea
-                  className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
-                  value={trainingAppBlacklistText}
-                  onChange={(e) => {
-                    setTrainingAppBlacklistText(e.target.value);
-                    dirtyRef.current = true;
-                  }}
-                  placeholder={tr('ai_page.text.e_g_chrome_exe')}
-                />
-              </label>
-
-              <label className="space-y-1.5 text-sm md:col-span-2">
-                <span className="text-xs text-muted-foreground">
-                  {tr('ai_page.fields.folders_blacklist')}
-                </span>
-                <textarea
-                  className="min-h-[90px] w-full rounded-md border border-input bg-background px-2 py-2 text-sm"
-                  value={trainingFolderBlacklistText}
-                  onChange={(e) => {
-                    setTrainingFolderBlacklistText(e.target.value);
-                    dirtyRef.current = true;
-                  }}
-                  placeholder={tr('ai_page.text.e_g_c_users_me_downloads')}
-                />
-              </label>
-            </div>
-
-            <div className="flex justify-end">
-              <Button
-                className="h-9 min-w-[9rem]"
-                onClick={handleSaveMode}
-                disabled={savingMode}
-              >
-                <Save className="mr-2 h-4 w-4" />
-                {savingMode
-                  ? tr('ai_page.text.saving')
-                  : tr('ai_page.text.save_model_settings')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        <AiSettingsForm
+          values={settingsFormValues}
+          saving={savingMode}
+          onChange={handleSettingsChange}
+          onSave={() => {
+            void handleSaveMode();
+          }}
+        />
 
         <AiSessionIndicatorsCard
           title={tr('ai_page.text.session_indicators')}
@@ -1086,7 +661,7 @@ export function AIPage() {
           onAutoLimitChange={(value) => {
             const nextValue = Math.max(1, Math.min(10_000, value));
             setAutoLimit(nextValue);
-            saveAutoLimit(nextValue);
+            saveAiAutoAssignmentSettings({ autoLimit: nextValue });
           }}
           runLabel={tr('ai_page.text.run_auto_safe')}
           runStartingLabel={tr('ai_page.text.starting')}
