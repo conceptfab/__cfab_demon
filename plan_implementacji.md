@@ -26,7 +26,7 @@ Stan na 2026-03-09:
 - [x] Faza 3: zaktualizowane testy backendu (overlap, AI fallback, weight splitu, weighted retraining) oraz Help/i18n dla zmienionego zachowania split suggestion.
 - [x] Faza 4: zakończone rozbicie assignment_model.rs na mniejsze moduły (context, scoring, training, auto_safe, config) i zlikwidowanie duplikacji warstw AI.
 - [x] Faza 5: uporządkowanie `db.rs` — wyniesienie bazy (SCHEMA) do pliku `schema.sql` (ładowanego przez `include_str!`) oraz rozbicie monolitu migracyjnego do nowego modułu `db_migrations.rs`.
-- [ ] Faza 6 czeka na realizację.
+- [x] Faza 6: frontendowe poprawki zrealizowane (`MultiSplitSessionModal.tsx` internacjonalizowane, Help odświeżony).
 
 Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji):
 

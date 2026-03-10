@@ -353,8 +353,8 @@ export function MultiSplitSessionModal({
             <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-300/80">
               <BrainCircuit className="h-4 w-4 shrink-0 mt-0.5 text-sky-400/60" />
               <div>
-                <p className="font-medium">{t('sessions.split_multi.learning_title', 'This split trains AI')}</p>
-                <p className="text-sky-300/50 mt-0.5">{t('sessions.split_multi.learning_desc', 'Your decision will improve future automatic project assignments. Split sessions cannot be split again.')}</p>
+                <p className="font-medium">{t('sessions.split_multi.learning_title')}</p>
+                <p className="text-sky-300/50 mt-0.5">{t('sessions.split_multi.learning_desc')}</p>
               </div>
             </div>
           </>
@@ -373,7 +373,7 @@ export function MultiSplitSessionModal({
             onClick={onCancel}
             disabled={isSubmitting}
           >
-            {t('ui.buttons.cancel', 'Anuluj')}
+            {t('ui.buttons.cancel')}
           </Button>
           <Button
             size="sm"
@@ -387,8 +387,8 @@ export function MultiSplitSessionModal({
             className="bg-sky-600 hover:bg-sky-700 text-white"
           >
             {isSubmitting
-              ? t('sessions.split.splitting', 'Dzielenie...')
-              : t('sessions.split.confirm', 'Podziel')}
+              ? t('sessions.split.splitting')
+              : t('sessions.split.confirm')}
           </Button>
         </div>
       </div>
