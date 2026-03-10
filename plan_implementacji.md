@@ -25,7 +25,8 @@ Stan na 2026-03-09:
 - [x] Faza 3: `assignment_feedback` ma addytywna kolumne `weight REAL NOT NULL DEFAULT 1.0`; split single/multi zapisuje wage rowna ratio czesci, a reinforcement w `retrain_model_sync()` liczy `SUM(weight)` i uwzglednia zrodla `manual_session_split_part_1..5`.
 - [x] Faza 3: zaktualizowane testy backendu (overlap, AI fallback, weight splitu, weighted retraining) oraz Help/i18n dla zmienionego zachowania split suggestion.
 - [x] Faza 4: zakończone rozbicie assignment_model.rs na mniejsze moduły (context, scoring, training, auto_safe, config) i zlikwidowanie duplikacji warstw AI.
-- [ ] Fazy 5-6 czekają na realizację.
+- [x] Faza 5: uporządkowanie `db.rs` — wyniesienie bazy (SCHEMA) do pliku `schema.sql` (ładowanego przez `include_str!`) oraz rozbicie monolitu migracyjnego do nowego modułu `db_migrations.rs`.
+- [ ] Faza 6 czeka na realizację.
 
 Stan na 2026-03-09 (sesja 2 — naprawa logiki podzialu sesji):
 
