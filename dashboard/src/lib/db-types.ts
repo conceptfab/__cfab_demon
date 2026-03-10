@@ -205,6 +205,13 @@ export interface DashboardStats {
   top_project: { name: string; seconds: number; color: string } | null;
 }
 
+export interface DashboardData {
+  stats: DashboardStats;
+  top_projects: ProjectTimeRow[];
+  all_projects: ProjectTimeRow[];
+  project_timeline: StackedBarData[];
+}
+
 export interface ProjectTimeRow {
   name: string;
   seconds: number;

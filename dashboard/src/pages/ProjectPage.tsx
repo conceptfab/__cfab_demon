@@ -30,6 +30,7 @@ import { ProjectSessionDetailDialog } from '@/components/project/ProjectSessionD
 import { ProjectManualSessionsCard } from '@/components/project/ProjectManualSessionsCard';
 import { ProjectRecentCommentsCard } from '@/components/project/ProjectRecentCommentsCard';
 import {
+  getProject,
   getProjects,
   getProjectExtraInfo,
   compactProjectData,
@@ -142,6 +143,20 @@ type RecentCommentItem = {
   source: string;
 };
 
+function upsertProjectInList(
+  projects: ProjectWithStats[],
+  nextProject: ProjectWithStats,
+): ProjectWithStats[] {
+  const existingIndex = projects.findIndex((project) => project.id === nextProject.id);
+  if (existingIndex === -1) {
+    return [nextProject, ...projects];
+  }
+
+  const nextProjects = [...projects];
+  nextProjects[existingIndex] = nextProject;
+  return nextProjects;
+}
+
 export function ProjectPage() {
   const { t } = useTranslation();
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
@@ -166,6 +181,7 @@ export function ProjectPage() {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
+  const [hasLoadedProjectsList, setHasLoadedProjectsList] = useState(false);
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [timelineData, setTimelineData] = useState<StackedBarData[]>([]);
   const [timelineError, setTimelineError] = useState<string | null>(null);
@@ -296,6 +312,9 @@ export function ProjectPage() {
 
   useEffect(() => {
     if (projectPageId === null) {
+      setProject(null);
+      setProjectsList([]);
+      setHasLoadedProjectsList(false);
       setCurrentPage('projects');
       return;
     }
@@ -303,8 +322,22 @@ export function ProjectPage() {
     let cancelled = false;
     setLoading(true);
     setTimelineError(null);
+    setHasLoadedProjectsList(false);
     Promise.all([
-      getProjects(),
+      getProject(projectPageId)
+        .then((project) => ({
+          project,
+          missing: false as const,
+        }))
+        .catch((error) => {
+          if (String(error).includes('Project not found')) {
+            return {
+              project: null,
+              missing: true as const,
+            };
+          }
+          throw error;
+        }),
       getProjectExtraInfo(projectPageId, ALL_TIME_DATE_RANGE),
       getProjectEstimates(ALL_TIME_DATE_RANGE),
       getProjectTimeline(ALL_TIME_DATE_RANGE, 100, 'day', projectPageId)
@@ -324,22 +357,23 @@ export function ProjectPage() {
       getManualSessions({ projectId: projectPageId }),
     ])
       .then(
-        ([projects, info, estimates, timelineResult, sessions, manuals]) => {
+        ([projectResult, info, estimates, timelineResult, sessions, manuals]) => {
           if (cancelled) return;
-          const p = projects.find((x) => x.id === projectPageId);
-          if (p) {
-            setProject(p);
-            setProjectsList(projects);
-            setExtraInfo(info);
-            setTimelineData(timelineResult.data);
-            setTimelineError(timelineResult.error);
-            setRecentSessions(sessions);
-            setManualSessions(manuals);
-            const est = estimates.find((e) => e.project_id === projectPageId);
-            setEstimate(est?.estimated_value || 0);
-          } else {
+          if (projectResult.missing || projectResult.project === null) {
             setCurrentPage('projects');
+            return;
           }
+
+          const nextProject = projectResult.project;
+          setProject(nextProject);
+          setProjectsList((prev) => upsertProjectInList(prev, nextProject));
+          setExtraInfo(info);
+          setTimelineData(timelineResult.data);
+          setTimelineError(timelineResult.error);
+          setRecentSessions(sessions);
+          setManualSessions(manuals);
+          const est = estimates.find((e) => e.project_id === projectPageId);
+          setEstimate(est?.estimated_value || 0);
         },
       )
       .catch((err) => {
@@ -354,6 +388,28 @@ export function ProjectPage() {
       cancelled = true;
     };
   }, [projectPageId, refreshKey, setCurrentPage, t]);
+
+  useEffect(() => {
+    if (!sessionDialogOpen || projectPageId === null || hasLoadedProjectsList) {
+      return;
+    }
+
+    let cancelled = false;
+    getProjects()
+      .then((projects) => {
+        if (cancelled) return;
+        setProjectsList(projects);
+        setHasLoadedProjectsList(true);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.error('Failed to load projects list for manual sessions:', error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLoadedProjectsList, projectPageId, sessionDialogOpen]);
 
   // Handle click outside for context menu
   useEffect(() => {

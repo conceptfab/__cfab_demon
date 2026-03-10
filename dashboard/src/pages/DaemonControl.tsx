@@ -82,9 +82,13 @@ export function DaemonControl() {
     [fetchStatusSnapshot, refreshAsync],
   );
 
-  // Initial load + auto-refresh every 5s
+  // Initial load
   useEffect(() => {
     refresh();
+  }, [refresh]);
+
+  // Auto-refresh every 5s when enabled
+  useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(refresh, 5000);
     return () => clearInterval(interval);

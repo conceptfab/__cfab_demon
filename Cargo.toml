@@ -49,9 +49,12 @@ wmi = "0.13"
 [build-dependencies]
 embed-resource = "3"
 
+[profile.dev]
+opt-level = 1
+
 [profile.release]
 opt-level = "s"
-lto = true
+lto = "thin"
 codegen-units = 1
 strip = false
 panic = "abort"

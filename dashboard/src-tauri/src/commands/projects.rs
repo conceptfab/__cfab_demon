@@ -4,7 +4,7 @@ use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
 use super::helpers::{run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
-use super::sql_fragments::SESSION_PROJECT_CTE;
+use super::sql_fragments::{SESSION_PROJECT_CTE, SESSION_PROJECT_CTE_ALL_TIME};
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
     ProjectFolder, ProjectWithStats, TopApp,
@@ -483,6 +483,115 @@ fn query_projects_with_stats(
     Ok(out)
 }
 
+fn query_active_project_with_stats(
+    conn: &rusqlite::Connection,
+    id: i64,
+) -> Result<ProjectWithStats, String> {
+    let (
+        project_id,
+        name,
+        color,
+        created_at,
+        excluded_at,
+        frozen_at,
+        assigned_folder_path,
+        app_count,
+        last_session_activity,
+        last_manual_activity,
+    ): (
+        i64,
+        String,
+        String,
+        String,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        i64,
+        Option<String>,
+        Option<String>,
+    ) = conn
+        .query_row(
+            "SELECT p.id,
+                    p.name,
+                    p.color,
+                    p.created_at,
+                    p.excluded_at,
+                    p.frozen_at,
+                    p.assigned_folder_path,
+                    COUNT(DISTINCT a.id) as app_count,
+                    (SELECT MAX(s.end_time)
+                     FROM sessions s
+                     JOIN applications a2 ON a2.id = s.app_id
+                     WHERE a2.project_id = p.id) as last_session_activity,
+                    (SELECT MAX(ms.end_time)
+                     FROM manual_sessions ms
+                     WHERE ms.project_id = p.id) as last_manual_activity
+             FROM projects p
+             LEFT JOIN applications a ON a.project_id = p.id
+             WHERE p.id = ?1
+               AND p.excluded_at IS NULL
+             GROUP BY p.id",
+            [id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get::<_, String>(3).unwrap_or_default(),
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                ))
+            },
+        )
+        .map_err(|e| format!("Project not found: {}", e))?;
+
+    let total_auto_seconds: f64 = {
+        let sql = format!(
+            "{SESSION_PROJECT_CTE_ALL_TIME}
+             SELECT COALESCE(SUM(sp.duration_seconds), 0.0)
+             FROM session_projects sp
+             WHERE sp.project_id = ?1"
+        );
+        conn.query_row(&sql, [id], |row| row.get(0))
+            .map_err(|e| e.to_string())?
+    };
+
+    let manual_seconds: i64 = conn
+        .query_row(
+            "SELECT COALESCE(SUM(duration_seconds), 0)
+             FROM manual_sessions
+             WHERE project_id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let last_activity = match (last_session_activity, last_manual_activity) {
+        (Some(a), Some(b)) => Some(if a >= b { a } else { b }),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    };
+
+    Ok(ProjectWithStats {
+        id: project_id,
+        name,
+        color,
+        created_at,
+        excluded_at,
+        frozen_at,
+        total_seconds: total_auto_seconds.round() as i64 + manual_seconds,
+        period_seconds: None,
+        app_count,
+        last_activity,
+        assigned_folder_path,
+    })
+}
+
 pub(crate) fn collect_project_subfolders(roots: &[ProjectFolder]) -> Vec<(String, String, String)> {
     let mut out = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -650,6 +759,15 @@ pub async fn get_projects(
     run_db_blocking(app, move |conn| {
         prune_if_stale(conn)?;
         query_projects_with_stats(conn, false, date_range.as_ref())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_project(app: AppHandle, id: i64) -> Result<ProjectWithStats, String> {
+    run_db_blocking(app, move |conn| {
+        prune_if_stale(conn)?;
+        query_active_project_with_stats(conn, id)
     })
     .await
 }

@@ -16,6 +16,7 @@ use crate::i18n::{self, Lang, TrayText};
 use crate::process_utils::no_console;
 use crate::APP_NAME;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
+const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Zmienia tekst menu item przez WinAPI (NWG nie ma set_text na MenuItem).
 fn set_menu_item_text(item: &nwg::MenuItem, text: &str) {
@@ -200,10 +201,12 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
             nwg::Event::OnMousePress(btn) => {
                 if handle == tray_handle {
                     if btn == nwg::MousePressEvent::MousePressLeftUp {
-                        let mut last_click = last_tray_click_clone.lock().unwrap();
+                        let mut last_click = last_tray_click_clone
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
                         let now = Instant::now();
                         let is_double_click = if let Some(last) = *last_click {
-                            now.duration_since(last).as_millis() < 500
+                            now.duration_since(last) < TRAY_DOUBLE_CLICK_WINDOW
                         } else {
                             false
                         };

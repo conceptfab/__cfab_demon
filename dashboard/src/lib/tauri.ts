@@ -7,6 +7,7 @@ import type {
   AutoSafeRollbackResult,
   AutoSafeRunResult,
   Project,
+  DashboardData,
   DashboardStats,
   ProjectTimeRow,
   TimelinePoint,
@@ -109,6 +110,8 @@ export const deleteArchiveFile = (fileName: string) =>
 // Projects
 export const getProjects = (dateRange?: DateRange) =>
   invoke<ProjectWithStats[]>('get_projects', { dateRange });
+export const getProject = (id: number) =>
+  invoke<ProjectWithStats>('get_project', { id });
 export const getExcludedProjects = (dateRange?: DateRange) =>
   invoke<ProjectWithStats[]>('get_excluded_projects', { dateRange });
 export const createProject = (
@@ -237,6 +240,18 @@ export const autoCreateProjectsFromDetection = (
 // Dashboard
 export const getActivityDateSpan = () =>
   invoke<DateRange | null>('get_activity_date_span');
+export const getDashboardData = (
+  dateRange: DateRange,
+  topLimit = 5,
+  timelineLimit = 8,
+  timelineGranularity: 'hour' | 'day' = 'day',
+) =>
+  invoke<DashboardData>('get_dashboard_data', {
+    dateRange,
+    topLimit,
+    timelineLimit,
+    timelineGranularity,
+  });
 export const getDashboardStats = (dateRange: DateRange) =>
   invoke<DashboardStats>('get_dashboard_stats', { dateRange });
 export const getTopProjects = (dateRange: DateRange, limit = 8) =>

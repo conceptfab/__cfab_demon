@@ -20,12 +20,9 @@ import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import {
-  getDashboardStats,
-  getDashboardProjects,
+  getDashboardData,
   getProjects,
-  getProjectTimeline,
   getSessions,
-  getTopProjects,
   refreshToday,
   getManualSessions,
 } from '@/lib/tauri';
@@ -182,10 +179,9 @@ export function Dashboard() {
   const [projectTimeline, setProjectTimeline] = useState<StackedBarData[]>([]);
   const [projectTimelineLoading, setProjectTimelineLoading] = useState(true);
   const [projectTimelineError, setProjectTimelineError] = useState<
-    string | null
+    unknown | null
   >(null);
   const [todaySessions, setTodaySessions] = useState<SessionWithApp[]>([]);
-  const [projectCount, setProjectCount] = useState(0);
   const [topProjects, setTopProjects] = useState<ProjectTimeRow[]>([]);
   const [allProjects, setAllProjects] = useState<ProjectTimeRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -202,6 +198,7 @@ export function Dashboard() {
   const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
     loadWorkingHoursSettings(),
   );
+  const projectCount = projectsList.length;
 
   const projectColorMap = useMemo(
     () =>
@@ -315,16 +312,13 @@ export function Dashboard() {
     setProjectTimelineError(null);
 
     Promise.allSettled([
-      getDashboardStats(dateRange),
-      getTopProjects(dateRange, 5),
-      getDashboardProjects(dateRange),
-      getProjects(),
-      getProjectTimeline(
+      getDashboardData(
         dateRange,
+        5,
         projectTimelineSeriesLimit,
         timelineGranularity,
-        undefined,
       ),
+      getProjects(),
       shouldLoadTodayData
         ? getSessions({
             dateRange,
@@ -340,49 +334,31 @@ export function Dashboard() {
         : Promise.resolve([] as ManualSessionWithProject[]),
     ]).then(
       ([
-        statsRes,
-        topProjectsRes,
-        allProjectsRes,
+        dashboardDataRes,
         projectsRes,
-        timelineRes,
         todaySessionsRes,
         manualSessionsRes,
       ]) => {
         if (cancelled) return;
-        if (statsRes.status === 'fulfilled') setStats(statsRes.value);
-        else console.error('Failed to load dashboard stats:', statsRes.reason);
-
-        if (topProjectsRes.status === 'fulfilled')
-          setTopProjects(topProjectsRes.value);
-        else console.error('Failed to load top projects:', topProjectsRes.reason);
-
-        if (allProjectsRes.status === 'fulfilled')
-          setAllProjects(allProjectsRes.value);
-        else
-          console.error(
-            'Failed to load all projects for chart:',
-            allProjectsRes.reason,
-          );
+        if (dashboardDataRes.status === 'fulfilled') {
+          setStats(dashboardDataRes.value.stats);
+          setTopProjects(dashboardDataRes.value.top_projects);
+          setAllProjects(dashboardDataRes.value.all_projects);
+          setProjectTimeline(dashboardDataRes.value.project_timeline);
+          setProjectTimelineError(null);
+        } else {
+          setStats(null);
+          setTopProjects([]);
+          setAllProjects([]);
+          setProjectTimeline([]);
+          setProjectTimelineError(dashboardDataRes.reason);
+          console.error('Failed to load dashboard data:', dashboardDataRes.reason);
+        }
 
         if (projectsRes.status === 'fulfilled') {
-          setProjectCount(projectsRes.value.length);
           setProjectsList(projectsRes.value);
         } else {
           console.error('Failed to load projects count:', projectsRes.reason);
-        }
-
-        if (timelineRes.status === 'fulfilled') {
-          setProjectTimeline(timelineRes.value);
-          setProjectTimelineError(null);
-        } else {
-          setProjectTimeline([]);
-          setProjectTimelineError(
-            getErrorMessage(
-              timelineRes.reason,
-              t('components.timeline_chart.load_failed'),
-            ),
-          );
-          console.error('Failed to load project timeline:', timelineRes.reason);
         }
 
         if (!shouldLoadTodayData) {
@@ -425,7 +401,6 @@ export function Dashboard() {
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,
-    t,
   ]);
 
   return (
@@ -546,7 +521,12 @@ export function Dashboard() {
           }}
           state={{
             isLoading: projectTimelineLoading,
-            errorMessage: projectTimelineError,
+            errorMessage: projectTimelineError
+              ? getErrorMessage(
+                  projectTimelineError,
+                  t('components.timeline_chart.load_failed'),
+                )
+              : null,
           }}
         />
       )}

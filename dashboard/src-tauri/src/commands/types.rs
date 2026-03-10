@@ -147,6 +147,14 @@ pub struct DashboardStats {
 }
 
 #[derive(Serialize)]
+pub struct DashboardData {
+    pub stats: DashboardStats,
+    pub top_projects: Vec<ProjectTimeRow>,
+    pub all_projects: Vec<ProjectTimeRow>,
+    pub project_timeline: Vec<StackedBarData>,
+}
+
+#[derive(Serialize)]
 pub struct TopApp {
     pub name: String,
     pub seconds: i64,

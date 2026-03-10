@@ -29,9 +29,7 @@ export function ReportView() {
   const template = useMemo(() => getTemplate(reportTemplateId || 'default'), [reportTemplateId]);
   const sections = template.sections;
   const has = (id: string) => sections.includes(id);
-
-
-  const generatedAt = useMemo(() => format(new Date(), 'yyyy-MM-dd HH:mm'), []);
+  const generatedAt = format(new Date(), 'yyyy-MM-dd HH:mm');
 
   useEffect(() => {
     if (!projectPageId) return;

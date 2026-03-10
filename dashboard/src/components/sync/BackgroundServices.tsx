@@ -24,9 +24,11 @@ import {
 } from '@/lib/sync-events';
 import { loadSessionSettings, loadSplitSettings } from '@/lib/user-settings';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import { isAlreadySplitSession } from '@/lib/session-analysis';
 import type { MultiProjectAnalysis, SplitPart } from '@/lib/db-types';
 
 const JOB_LOOP_TICK_MS = 5000;
+const FILE_SIGNATURE_CHECK_MS = 30_000;
 const AUTO_SPLIT_THROTTLE_MS = 100;
 const AI_AND_SPLIT_OPERATION_KEY = 'ai_and_split_pipeline';
 
@@ -56,12 +58,6 @@ function sleep(ms: number): Promise<void> {
 
 function isDocumentVisible(): boolean {
   return typeof document === 'undefined' || document.visibilityState === 'visible';
-}
-
-function isSessionAlreadySplit(session: {
-  split_source_session_id?: number | null;
-}): boolean {
-  return typeof session.split_source_session_id === 'number';
 }
 
 function buildAutoSplits(
@@ -232,7 +228,7 @@ function useAutoSplitSessions() {
         }
         firstIteration = false;
 
-        if (isSessionAlreadySplit(session)) continue;
+        if (isAlreadySplitSession(session)) continue;
 
         const analysis = await analyzeSessionProjects(
           session.id,
@@ -388,7 +384,7 @@ function useJobPool() {
         void runRefresh();
       }
       if (autoImportDone && now >= nextSigCheckRef.current) {
-        nextSigCheckRef.current = now + 5_000;
+        nextSigCheckRef.current = now + FILE_SIGNATURE_CHECK_MS;
         void checkFileChange();
       }
 
@@ -482,8 +478,10 @@ function useJobPool() {
 
   useEffect(() => {
     if (!autoImportDone) return;
+    refreshSyncSettingsCache();
+    if (!syncSettingsRef.current.enabled) return;
     void runSync('startup', false);
-  }, [autoImportDone, runSync]);
+  }, [autoImportDone, runSync, refreshSyncSettingsCache]);
 }
 
 export function BackgroundServices() {

@@ -27,6 +27,7 @@ export default defineConfig({
           if (id.includes("lucide-react")) {
             return "ui-kit";
           }
+          if (id.includes("@radix-ui")) return "radix";
           return undefined;
         },
       },

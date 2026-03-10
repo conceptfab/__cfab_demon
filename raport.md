@@ -1,264 +1,351 @@
-# TIMEFLOW — Raport analizy kodu
+# TIMEFLOW — Raport z analizy kodu
 
-**Data:** 2026-03-10
-**Zakres:** dashboard/src/ (React + Tauri)
-
-**Statusy realizacji:**
-- `[ZROBIONE]` — wdrożone
-- `[CZĘŚCIOWO]` — wdrożone inaczej albo częściowo
-- `[ZWERYFIKOWANE - NIEAKTUALNE]` — raport wskazał problem, ale po sprawdzeniu założenie okazało się nieaktualne
-- `[DO ZROBIENIA]` — nadal otwarte
+> Data: 2026-03-10
+> Zakres: cały codebase (daemon Rust + dashboard React/Tauri)
+> Analiza: poprawność logiki, wydajność, optymalizacje, nadmiarowy kod, brakujące tłumaczenia, pokrycie Help
 
 ---
 
-## 1. WYDAJNOŚĆ I OPTYMALIZACJE
+## Spis treści
 
-### 1.1 KRYTYCZNE (pewność 90–95%)
-
-#### [C1] `Sessions.tsx:253` — `readMinSessionDuration()` w render-body `[ZWERYFIKOWANE - NIEAKTUALNE]`
-`readMinSessionDuration()` wywołuje `loadSessionSettings()`, która parsuje JSON z `localStorage` przy **każdym** re-renderze komponentu Sessions. Komponent re-renderuje się przy każdym wyszukiwaniu, tick-u timera, zmianie `aiBreakdowns` itp.
-
-**Status (2026-03-10):** nie wdrażano proponowanego `useMemo`, bo `loadSessionSettings()` korzysta już z cache in-memory w `dashboard/src/lib/user-settings.ts`, więc teza o parsowaniu `localStorage` przy każdym renderze jest nieaktualna.
-
-**Naprawa:**
-```ts
-const minDuration = useMemo(() => readMinSessionDuration(), [refreshKey]);
-```
+1. [Problemy krytyczne](#1-problemy-krytyczne)
+2. [Wydajność i optymalizacje](#2-wydajność-i-optymalizacje)
+3. [Poprawność logiki](#3-poprawność-logiki)
+4. [Nadmiarowy i zduplikowany kod](#4-nadmiarowy-i-zduplikowany-kod)
+5. [Brakujące tłumaczenia](#5-brakujące-tłumaczenia)
+6. [Pokrycie Help.tsx](#6-pokrycie-helptsx)
+7. [Jakość kodu — code smells](#7-jakość-kodu--code-smells)
+8. [Build i zależności](#8-build-i-zależności)
+9. [Podsumowanie priorytetów](#9-podsumowanie-priorytetów)
 
 ---
 
-#### [C2] `Projects.tsx:259 + 341` — `loadFreezeSettings()` podwójnie, bez cache `[ZWERYFIKOWANE - NIEAKTUALNE]`
-Linia 259: `loadFreezeSettings()` wołane w render-body (parsuje localStorage przy każdym re-renderze).
-Linia 341: `loadFreezeSettings()` wołane **ponownie** w `useEffect` — podwójny odczyt bez powodu.
+## Status prac
 
-**Status (2026-03-10):** nie wdrażano proponowanego `useMemo`, bo `loadFreezeSettings()` także korzysta z cache in-memory; raport poprawnie wskazał duplikację wywołań, ale nieaktualnie opisał ich koszt.
-
-**Naprawa:** jedno `useMemo(() => loadFreezeSettings(), [])` przypisane do zmiennej, używane w obu miejscach.
-
----
-
-#### [C3] `Projects.tsx:256–258` — `projectExtraInfoCache` w `useState` zamiast `useRef` `[ZROBIONE]`
-Cache dla `ProjectExtraInfo` jest w `useState`, co oznacza że każde wpisanie nowego projektu do cache triggeruje **pełny re-render** komponentu Projects (~1934 linii, wiele `useMemo`). Cache powinien być w `useRef`, bo nie wpływa na render.
-
-**Status (2026-03-10):** zrobione. Cache przeniesiony do `useRef`, a invalidacja działa przez osobną wersję cache.
-
-**Naprawa:**
-```ts
-const projectExtraInfoCacheRef = useRef<Record<number, ProjectExtraInfo>>({});
-```
+- [x] `1.2` `unwrap()` na `Mutex` w `src/tray.rs` zastąpiony bezpiecznym odzyskaniem locka; dodane też nazwane okno double-click.
+- [x] `1.3` Startup sync respektuje `enabled` już w warstwie UI job pool; doprecyzowany opis w Help/Settings.
+- [x] `2.2` Polling `checkFileChange` spowolniony z `5s` do `30s`.
+- [x] `2.4` Dashboard nie przeładowuje wszystkich danych tylko dlatego, że zmienił się język UI.
+- [x] `3.3` `ReportView` nie trzyma już stale memoizowanej daty wygenerowania.
+- [x] `3.4` `DaemonControl` nie wykonuje zbędnego `refresh()` przy wyłączeniu auto-refresh.
+- [x] `4.2` Usunięta duplikacja `isSessionAlreadySplit` na rzecz współdzielonego helpera.
+- [x] Weryfikacja techniczna: `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
+- [x] `1.1` Dashboard używa teraz jednego endpointu `get_dashboard_data` dla statystyk, top projektów, listy projektów do wykresu i timeline, więc ciężka agregacja nie leci już 4× przy jednym ładowaniu widoku.
+- [ ] `8.1` Usunięcie nieużywanej zależności `sysinfo` zostawione na osobny krok, żeby nie mieszać tego z bieżącą paczką poprawek.
 
 ---
 
-#### [C4] `Sessions.tsx:942–967` — kaskada re-renderów z background fetch breakdownów `[ZROBIONE]`
-useEffect z deps `[sessions, aiBreakdowns, ...]` — każdy fetch breakdownu mutuje `aiBreakdowns`, co trigguje ponowne uruchomienie efektu. Dla 100 sesji: **kaskada 100 re-renderów**.
+## 1. Problemy krytyczne
 
-Dodatkowo bliźniaczy efekt na linii 982 (`viewMode === 'ai_detailed'`) robi to samo — **potencjalne podwójne fetch-y**.
+### 1.1 `compute_project_activity_unique` wywoływane 4× na tych samych danych
+- **Pliki:** `dashboard/src-tauri/src/commands/dashboard.rs` (linie 18, 225, 264, 311)
+- **Opis:** `get_dashboard_stats`, `get_top_projects`, `get_dashboard_projects` i `get_timeline` — wszystkie 4 komendy wywołują `compute_project_activity_unique` niezależnie. Dashboard woła je równocześnie (`Promise.allSettled`), więc ta sama ciężka operacja jest wykonywana 4 razy na tych samych danych.
+- **Rozwiązanie:** Stworzyć jeden endpoint `get_dashboard_data`, który wykona obliczenia raz i zwróci wszystkie potrzebne dane w jednej odpowiedzi.
 
-**Status (2026-03-10):** zrobione. Prefetch breakdownów został scalony do jednego efektu reagującego na zmianę listy ID widocznych sesji oraz `viewMode`, a `loadScoreBreakdown()` przestał zmieniać swoją referencję przy każdej aktualizacji `aiBreakdowns`.
+### 1.2 `unwrap()` na Mutex lock w tray.rs
+- **Plik:** `src/tray.rs`, linia 203
+- **Opis:** `last_tray_click_clone.lock().unwrap()` — może spowodować panic jeśli mutex zostanie "poisoned" (np. panic w innym miejscu trzymającym lock).
+- **Rozwiązanie:** Użyć `unwrap_or_else(|e| e.into_inner())` jak w loggerze (main.rs:156-158).
 
-**Naprawa:** śledzić listę ID sesji przez `useRef`, uruchamiać bulk-fetch tylko gdy zmienia się lista sesji, nie stan breakdownów.
-
----
-
-#### [C5] `Sessions.tsx:523–546` — 15s polling bez change detection `[ZROBIONE]`
-Auto-refresh co 15 s bezwarunkowo nadpisuje cały `sessions` state nową referencją tablicy → pełne przeliczenie `flattenedItems` → re-render Virtuoso. BackgroundServices już ma `refreshKey` mechanizm (co 5 s) — ten polling może być redundantny.
-
-**Status (2026-03-10):** zrobione. Polling używa teraz porównania aktualnej i nowej strony sesji przed `setSessions`, więc identyczne wyniki nie powodują re-renderu listy.
-
-**Naprawa:** porównywać dane przed `setSessions` (np. hash/length) lub usunąć na rzecz `refreshKey`.
-
----
-
-### 1.2 WAŻNE (pewność 80–88%)
-
-#### [I1] `BackgroundServices.tsx:111,216` — `loadSessionSettings()`/`loadSplitSettings()` w job-loop bez cache `[ZWERYFIKOWANE - NIEAKTUALNE]`
-Funkcje parsujące localStorage wołane w cyklach co 5–60 s. Dla `syncSettingsRef` zrobiono już ref-cache (linia 286) — ten sam wzorzec powinien być dla session/split settings.
-
-**Status (2026-03-10):** po weryfikacji `loadSessionSettings()`/`loadSplitSettings()` korzystają już z cache managera w `user-settings.ts`, więc opis „bez cache” jest nieaktualny.
+### 1.3 Startup sync ignoruje flagę `enabled`
+- **Plik:** `dashboard/src/components/sync/BackgroundServices.tsx`, linia 483-486
+- **Opis:** `runSync('startup', false)` — `isAuto=false` pomija sprawdzenie `settings.enabled`. Sync startupowy uruchomi się nawet jeśli sync jest wyłączony w ustawieniach.
+- **Rozwiązanie:** Sprawdzić `settings.enabled` przed wywołaniem sync startupowego.
 
 ---
 
-#### [I2] `Sessions.tsx:1037` — `loadFreezeSettings()` wewnątrz `useMemo` `[ZWERYFIKOWANE - NIEAKTUALNE]`
-`loadFreezeSettings()` czyta localStorage wewnątrz `useMemo` przy każdej zmianie `projects`. Wynik nie zmienia się jeśli użytkownik nie zmienia ustawień.
+## 2. Wydajność i optymalizacje
 
-**Status (2026-03-10):** odczyt nie parsuje już `localStorage` za każdym razem, bo bazuje na cache in-memory.
+### 2.1 [WYSOKI] 6+ aktywnych setInterval jednocześnie
+- Job Pool tick: 5s (`BackgroundServices.tsx`)
+- `checkFileChange`: co 5s
+- `runRefresh`: co 60s
+- Auto-split sessions: co 60s
+- Sidebar: co 10s (status demona + unassigned sessions)
+- Sessions: auto-refresh co 15s
+- AI: refresh co 30s
+- DaemonControl: refresh co 5s
+- DataHistory: refresh co 60s
 
----
+**Rozwiązanie:** Scentralizować polling w jednym job pool i udostępniać dane przez store (Zustand), zamiast każdej stronie mieć własny polling.
 
-#### [I3] `Projects.tsx:388–393` — `hotProjectIds` jako Array zamiast Set `[ZROBIONE]`
-`.includes()` na tablicy = O(n) przy każdym renderze projektu. Zamiana na `Set` jest trywialna:
-```ts
-const hotProjectIds = useMemo(() =>
-  new Set([...projects].sort(...).slice(0, 5).map(p => p.id)),
-  [projects]
-);
-```
+### 2.2 [WYSOKI] `checkFileChange` co 5s vs daemon zapisuje co 5 minut
+- **Plik:** `BackgroundServices.tsx`, linia 393
+- **Opis:** `getTodayFileSignature()` jest wywoływane co 5 sekund. Demon zapisuje dane co 300s.
+- **Rozwiązanie:** Zwiększyć interwał do 30-60s.
 
-**Status (2026-03-10):** zrobione. `hotProjectIds` działa jako `Set`, a odczyt w renderze używa `.has()`.
+### 2.3 [WYSOKI] Brak cache na `getProjects()`
+- **Plik:** `Dashboard.tsx`, linia 321
+- **Opis:** Lista projektów zmienia się rzadko, ale ładowana jest przy każdym refresh (co 60s + manual + zmiana danych).
+- **Rozwiązanie:** Cache w Zustand store z invalidacją tylko po mutacjach projektów.
 
----
+### 2.4 [WYSOKI] `t` w tablicy zależności useEffect w Dashboard
+- **Plik:** `Dashboard.tsx`, linia 422-429
+- **Opis:** Funkcja `t` z `useTranslation()` jest w tablicy zależności głównego useEffect ładującego dane. Zmiana języka powoduje ponowne załadowanie 7 równoczesnych zapytań API.
+- **Rozwiązanie:** Usunąć `t` z dependency array — nie wpływa na zapytania API.
 
-#### [I4] `AI.tsx:261–278` — missed concurrency `[ZROBIONE]`
-`getAssignmentModelStatus()` i `getFeedbackWeight()` wołane sekwencyjnie, mogą być równoległe:
-```ts
-const [nextStatus, fw] = await Promise.all([
-  getAssignmentModelStatus(),
-  getFeedbackWeight(),
-]);
-```
+### 2.5 [ŚREDNI] Nowe połączenie SQLite per komendę Tauri
+- **Plik:** `db.rs`, linia 403 + `helpers.rs`, linia 64
+- **Opis:** Każde wywołanie komendy Tauri tworzy nowe połączenie SQLite. Przy 4 równoczesnych komendach z dashboardu = 4 nowe połączenia.
+- **Rozwiązanie:** Pula połączeń lub jedno współdzielone połączenie za Mutex.
 
-**Status (2026-03-10):** zrobione.
+### 2.6 [ŚREDNI] N+1 pattern w `load_range_snapshots`
+- **Plik:** `daily_store.rs`, linie 416-442
+- **Opis:** Dla zakresu 30 dni: 1 + 3×30 = 91 zapytań SQL.
+- **Rozwiązanie:** 3-4 zapytania z `WHERE date BETWEEN ? AND ?`.
 
----
+### 2.7 [ŚREDNI] DELETE + INSERT zamiast UPDATE w daily store
+- **Plik:** `daily_store.rs`, linia 161
+- **Opis:** `DELETE FROM daily_snapshots WHERE date = ?1` kasuje kaskadowo apps/sessions/files, po czym wstawia od nowa.
+- **Rozwiązanie:** Chirurgiczny UPDATE zmienonych rekordów.
 
-#### [I5] `Dashboard.tsx:399` — `loadWorkingHoursSettings()` przy każdym refreshKey `[CZĘŚCIOWO]`
-`workingHours` zmienia się tylko gdy użytkownik zmienia ustawienia, nie przy każdym `refreshKey`. To localStorage read + setState przy każdym odświeżeniu dashboardu (co 60 s + mutacje).
+### 2.8 [ŚREDNI] `build_process_snapshot` — pełny snapshot co 10s
+- **Plik:** `tracker.rs:337`, `monitor.rs:653`
+- **Opis:** `CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS)` iteruje przez WSZYSTKIE procesy systemu co 10s.
+- **Rozwiązanie:** Zwiększyć interwał do 30s dla background apps; foreground tracking nie wymaga pełnego snapshotu.
 
-**Status (2026-03-10):** wdrożone inaczej niż w raporcie. Nie ograniczano do `mount only`, ale dodano change detection, więc `setWorkingHours` wykonuje się tylko przy realnej zmianie ustawień.
+### 2.9 [NISKI] `ensure_schema()` przy każdej operacji
+- **Plik:** `daily_store.rs`, linie 86, 137, 277
+- **Opis:** `CREATE TABLE IF NOT EXISTS...` wykonywane przy każdym `load_day_snapshot` i `replace_day_snapshot`.
+- **Rozwiązanie:** Wywoływać raz przy otwarciu połączenia.
 
----
+### 2.10 [NISKI] Zbędny indeks na PRIMARY KEY
+- **Plik:** `daily_store.rs`, linia 127
+- **Opis:** `CREATE INDEX idx_daily_snapshots_date ON daily_snapshots(date)` — `date` jest już PRIMARY KEY.
+- **Rozwiązanie:** Usunąć zbędny indeks.
 
-#### [I6] `ProjectPage.tsx:306` — `getProjects()` fetchuje całą listę dla jednego projektu `[DO ZROBIENIA]`
-`getProjects()` ładuje wszystkie projekty, a następnie `.find(x => x.id === projectPageId)`. Jeśli projekty są dostępne w `useDataStore`, można je pobrać stamtąd.
-
----
-
-#### [I7] `Sessions.tsx:247` — `document.querySelector('main')` w `useMemo([], [])` `[CZĘŚCIOWO]`
-`useMemo` z `[]` jest wyliczane w trakcie renderowania — `main` element może jeszcze nie istnieć. Lepiej użyć `useRef` + `useEffect`.
-
-**Status (2026-03-10):** uproszczono do leniwej inicjalizacji `useState`, ale nie wdrożono dokładnie wariantu `useRef + useEffect`.
-
----
-
-## 2. BRAKUJĄCE TŁUMACZENIA
-
-### 2.1 Hardcoded stringi w Help.tsx (bez t18n) `[ZROBIONE]`
-
-| Linia | Tekst | Problem |
-|-------|-------|---------|
-| 362 | `Score & Base Log Prob:` | Hardcoded EN, brak tłumaczenia |
-| 368 | `Matched Tokens & Context Matches:` | Hardcoded EN, brak tłumaczenia |
-| 602 | `2. Suggest Min Confidence: 0.4 - 0.5 (Zmniejsz obecne 0.6)` | Hardcoded PL+EN mix, brak t18n |
-| 629 | `Auto-safe Min Confidence: 0.85 - 0.95` | Hardcoded EN, brak tłumaczenia |
-
-### 2.2 Hardcoded error messages (showError) `[ZROBIONE]`
-
-| Plik:linia | Tekst |
-|------------|-------|
-| `ProjectDayTimeline.tsx:486` | `Failed to assign session(s): ...` |
-| `ProjectDayTimeline.tsx:534` | `Failed to save comment required for boost: ...` |
-| `ProjectDayTimeline.tsx:555` | `Failed to update session rate multiplier: ...` |
-| `Projects.tsx:541` | `Failed to delete project "...": ...` |
-| `Projects.tsx:569` | `Failed to compact project data: ...` |
-
-Te komunikaty błędów są widoczne dla użytkownika (toast), ale nie są przetłumaczone.
-
-### 2.3 Niezgodność kluczy EN/PL w common.json `[ZROBIONE]`
-
-**Status (2026-03-10):** dodano brakujący klucz `ai_page.text.train_after_a_larger_series_of_manual_corrections` do PL, przepięto użycie kodu na wersję z `corrections`, a brakujące klucze `help_page.*` dopisano do EN. Stary klucz z literówką pozostawiono w PL jako alias kompatybilności.
-
-**Brakuje w PL (jest w EN):**
-- `ai_page.text.train_after_a_larger_series_of_manual_corrections`
-
-**Brakuje w EN (jest w PL):**
-- `ai_page.text.train_after_a_larger_series_of_manual_correction` (literówka — brak "s" na końcu)
-- `help_page.training_blacklists_exclude_selected_applications_and_fo`
-- `help_page.ai_progress_quality_metrics_panel_shows_feedback_trends`
-- `help_page.training_horizon_set_how_many_days_of_history_e_g_30_730`
-- `help_page.auto_safe_limit_control_the_maximum_number_of_sessions_p`
-- `help_page.session_indicators_configure_indicators_displayed_on_ses`
-- `help_page.k_100_privacy_the_ml_engine_runs_locally_in_rust_doesn_t`
-- `help_page.model_status_card_diagnostic_panel_with_6_tiles_current`
-
-**Podsumowanie:** EN ma 1296 kluczy, PL ma 1303 kluczy — 8 kluczy istnieje tylko w PL.
+### 2.11 [NISKI] `classify_activity_type` alokuje String
+- **Plik:** `monitor.rs`, linie 504-553
+- **Opis:** Zwraca `Option<String>` zamiast `Option<&'static str>`.
+- **Rozwiązanie:** Zmienić na `&'static str` — eliminacja alokacji.
 
 ---
 
-## 3. POKRYCIE HELP
+## 3. Poprawność logiki
 
-### 3.1 Sekcje obecne w Help.tsx
-- Quick Start ✅
-- Dashboard ✅
-- Sessions ✅
-- Projects ✅
-- Estimates ✅
-- Applications ✅
-- Time Analysis ✅
-- AI Model ✅
-- Data ✅
-- Reports ✅
-- Daemon ✅
-- Settings ✅
+### 3.1 Niespójność `duration_seconds` vs `end - start` w sesji
+- **Plik:** `src/tracker.rs`, linie 153-154
+- **Opis:** Gdy sesja jest kontynuowana, `duration_seconds` zwiększane jest o `poll_interval`, ale `end` ustawiany na `now_str` (czas zegara). Jeśli sleep trwał dłużej niż `poll_interval`, pola `end - start` i `duration_seconds` mogą się różnić.
 
-### 3.2 Strony/funkcje BEZ opisu w Help `[DO ZROBIENIA]`
+### 3.2 Ignorowanie okien bez tytułu
+- **Plik:** `src/monitor.rs`, linia 155
+- **Opis:** `get_foreground_info()` zwraca `None` dla okien bez tytułu. Niektóre aplikacje (np. full-screen games, renderery) mają puste tytuły — czas pracy w nich nie jest zliczany.
 
-| Strona / funkcja | Uwagi |
-|-------------------|-------|
-| **Import** (`import` / ImportPage.tsx) | Strona importu plików jest osobną stroną w routerze (`case 'import'`), ale nie ma dedykowanej zakładki w Help. Import jest częściowo opisany w sekcji "Data", ale ImportPage to oddzielna strona z drag & drop. |
-| **Project Card** (`project-card` / ProjectPage.tsx) | Widok szczegółowy projektu — brak dedykowanej zakładki w Help. Częściowo opisany w "Projects" (punkt o ProjectPage), ale brak szczegółowego opisu timeline projektu, karty komentarzy, sesji manualnych, kompaktowania danych, generowania raportów z poziomu projektu. |
-| **Report View** (`report-view` / ReportView.tsx) | Podgląd raportu pełnoekranowy — wspomniany w sekcji Reports, ale bez szczegółów (drukowanie, eksport PDF, skalowanie). |
+### 3.3 `ReportView` — `generatedAt` memoizowane bez deps
+- **Plik:** `ReportView.tsx`, linia 34
+- **Opis:** `useMemo(() => format(new Date(), 'yyyy-MM-dd HH:mm'), [])` — data jest ustawiana raz na cały cykl życia komponentu. Jeśli użytkownik wróci następnego dnia, data będzie stara.
 
-### 3.3 Funkcje nieudokumentowane lub słabo opisane `[DO ZROBIENIA]`
+### 3.4 `DaemonControl` — zbędny `refresh()` przy wyłączeniu auto-refresh
+- **Plik:** `DaemonControl.tsx`, linia 86-91
+- **Opis:** Gdy `autoRefresh` zmieni się z `true` na `false`, `refresh()` w useEffect nadal zostaje wywołane niepotrzebnie.
 
-| Funkcja | Plik | Opis w Help |
-|---------|------|-------------|
-| Multi-split sesji (podział na wiele części) | `MultiSplitSessionModal.tsx` | Brak — Help opisuje split, ale nie multi-split |
-| BugHunter (raportowanie błędów) | `BugHunter.tsx` | Wspomniany jednym zdaniem w Settings |
-| Online Sync szczegóły (conflict resolution, ACK) | `OnlineSyncCard.tsx` | Opisany, ale bez szczegółów conflict resolution |
-| Session score badges (AI quality indicators) | `SessionScoreBadge.tsx` | Częściowo opisany w AI |
-| DateRangeToolbar (nawigacja zakresami dat) | `DateRangeToolbar.tsx` | Nie opisany osobno |
+### 3.5 Brak ostrzeżenia o niezapisanych zmianach w Settings
+- **Plik:** `Settings.tsx`
+- **Opis:** Flaga `savedSettings` jest resetowana przy każdej indywidualnej zmianie. Użytkownik może wyjść ze strony bez zapisu, tracąc zmiany — brak dialogu "unsaved changes".
+
+### 3.6 `App.tsx` — podwójne subskrybowanie `currentPage`
+- **Plik:** `App.tsx`, linie 62 i 155
+- **Opis:** `currentPage` odczytywane zarówno w `PageRouter` jak i w `App`. Powoduje re-render całego `App` przy każdej zmianie strony.
+- **Rozwiązanie:** Zmienić selector w App na `useUIStore(s => s.currentPage !== 'report-view')`.
 
 ---
 
-## 4. JAKOŚĆ KODU — PROBLEMY
+## 4. Nadmiarowy i zduplikowany kod
 
-### 4.1 Nadmiarowy kod / duplikacja
+### 4.1 Zduplikowana `renderDuration()` vs `formatDuration()`
+- **Pliki:** `Projects.tsx:166` vs `lib/utils.ts:10`
+- **Opis:** Identyczna logika obliczenia `Math.floor(seconds / 3600)` i `Math.floor((seconds % 3600) / 60)`. Różnica: JSX vs string.
+- **Rozwiązanie:** Wydzielić wspólną logikę obliczeniową.
 
-**Status (2026-03-10):** po weryfikacji pierwsze dwa punkty są częściowo nieaktualne, bo `loadFreezeSettings()` i `loadSessionSettings()` korzystają z cache in-memory w `user-settings.ts`. Otwarty pozostaje głównie temat duplikacji efektów fetch-breakdownów.
+### 4.2 Zduplikowana `isSessionAlreadySplit`
+- **Pliki:** `BackgroundServices.tsx:61-65` vs `session-analysis.ts:10-13`
+- **Opis:** Identyczna funkcja w dwóch miejscach.
+- **Rozwiązanie:** `BackgroundServices.tsx` powinno importować z `session-analysis.ts`.
 
-| Problem | Lokalizacja |
-|---------|-------------|
-| `loadFreezeSettings()` wołane w 4+ miejscach bez cachowania | Sessions.tsx:1037, Projects.tsx:259, Projects.tsx:341, BackgroundServices.tsx |
-| `loadSessionSettings()` wołane w 3+ miejscach bez cachowania | Sessions.tsx:253, BackgroundServices.tsx:111, BackgroundServices.tsx:216 |
-| Efekty fetch-breakdownów (linie 942 i 982 w Sessions.tsx) robią niemal to samo z minimalną różnicą warunku | Sessions.tsx:942, Sessions.tsx:982 |
+### 4.3 Duplikacja process snapshot (Rust)
+- **Pliki:** `tray.rs:289-327` vs `monitor.rs:653-687`
+- **Opis:** Niemal identyczny kod iterowania procesów przez `CreateToolhelp32Snapshot`.
+- **Rozwiązanie:** Wydzielić do `process_utils.rs`.
 
-### 4.2 Potencjalne problemy logiczne
+### 4.4 Nadmiarowy stan `projectCount`
+- **Plik:** `Dashboard.tsx`, linie 188, 192, 368-369
+- **Opis:** `projectCount` to zawsze `projectsList.length`. Zbędny dodatkowy useState.
 
-**Status (2026-03-10):** drugi punkt (`today` po północy) został naprawiony. Pierwszy punkt (`document.querySelector('main')`) jest rozwiązany częściowo.
+### 4.5 `getProjects()` wołany niezależnie w 7 miejscach
+- **Pliki:** Dashboard, ProjectPage, Projects, Sessions, useTimeAnalysisData, DataStats, ExportPanel
+- **Opis:** Każde miejsce: `getProjects().then(set).catch(console.error)`.
+- **Rozwiązanie:** Scentralizować w Zustand store lub shared hook.
 
-| Problem | Lokalizacja |
-|---------|-------------|
-| `useMemo([], [])` dla DOM query — element `main` może nie istnieć przy pierwszym renderze | Sessions.tsx:247 |
-| `today` w `useMemo(() => format(new Date(), 'yyyy-MM-dd'), [])` — nie aktualizuje się po północy jeśli app jest otwarta | Sessions.tsx:254 |
+### 4.6 40+ powtórzonych `console.error('Failed to ...')`
+- **Rozwiązanie:** Scentralizować w helperze `logTauriError(context, error)`.
+
+### 4.7 Powtórzona walidacja boost/multiplier
+- **Pliki:** `Sessions.tsx:820,892` vs `ProjectPage.tsx:561`
+- **Opis:** Logika walidacji boost comment i rate multiplier niemal identyczna.
+- **Rozwiązanie:** Przenieść do `useSessionActions` hook.
+
+### 4.8 Settings — własny toast z `setTimeout` zamiast `useToast`
+- **Plik:** `Settings.tsx`, linie 80-83, 261-263
+- **Opis:** Niespójność z resztą aplikacji, która używa dedykowanego systemu `useToast`.
 
 ---
 
-## 5. PODSUMOWANIE PRIORYTETÓW
+## 5. Brakujące tłumaczenia
 
-### Wysoki priorytet (szybki zysk, niskie ryzyko):
-1. **C1–C2**: Cache `loadFreezeSettings` / `readMinSessionDuration` w `useMemo` — eliminuje parsowanie localStorage przy każdym re-renderze
-   Status: `[ZWERYFIKOWANE - NIEAKTUALNE]`
-2. **C3**: `projectExtraInfoCache` → `useRef` — eliminuje zbędne re-rendery Projects
-   Status: `[ZROBIONE]`
-3. Hardcoded stringi w Help.tsx (linie 362, 368, 602, 629) — przetłumaczyć
-   Status: `[ZROBIONE]`
+### 5.1 Hardkodowane angielskie stringi widoczne dla użytkownika
 
-### Średni priorytet:
-4. **C4**: Refactor kaskady breakdownów w Sessions — oddzielić deps
-   Status: `[ZROBIONE]`
-5. **C5**: Usunąć lub ulepszyć 15s polling (redundantny z refreshKey)
-   Status: `[ZROBIONE]`
-6. Przetłumaczyć error messages w showError (5 miejsc)
-   Status: `[ZROBIONE]`
-7. Zsynchronizować klucze EN/PL (1 brakujący + 8 nadmiarowych)
-   Status: `[ZROBIONE]`
+| Plik | Linia | Hardkodowany tekst |
+|------|-------|--------------------|
+| `Projects.tsx` | 430 | `'Failed to load project folders'` |
+| `Projects.tsx` | 544 | `'Unknown error'` |
+| `Projects.tsx` | 573 | `'Unknown error'` |
+| `Projects.tsx` | 605 | `'Failed to add folder'` |
+| `Settings.tsx` | 286 | `'Unknown error'` |
+| `Settings.tsx` | 304 | `'Unknown error'` |
+| `Settings.tsx` | 344 | `'Unknown error'` |
+| `Settings.tsx` | 365 | `'Unknown error'` |
+| `CreateProjectDialog.tsx` | 77 | `'Failed to create project'` |
 
-### Niski priorytet:
-8. **I3**: `hotProjectIds` Array → Set
-   Status: `[ZROBIONE]`
-9. **I4**: Promise.all w fetchStatus (AI.tsx)
-   Status: `[ZROBIONE]`
-10. **I5**: loadWorkingHoursSettings only on mount
-    Status: `[CZĘŚCIOWO]`
-11. Uzupełnić Help o Import, multi-split, ProjectPage details
-    Status: `[DO ZROBIENIA]`
+Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i widoczne w UI. Powinny używać `t('klucz')`.
+
+### 5.2 Niespójność języka w logach Rust daemon
+- `config.rs` — komunikaty po polsku: `"Brak zmiennej APPDATA"`, `"Nie mozna otworzyc DB dashboardu"`
+- `tracker.rs`, `monitor.rs` — komunikaty po angielsku
+- Logi nie są widoczne dla użytkownika, ale niespójność utrudnia debugging.
+
+---
+
+## 6. Pokrycie Help.tsx
+
+### Strony/widoki w aplikacji vs dokumentacja Help
+
+| Strona | Identyfikator | Udokumentowana w Help? |
+|--------|---------------|------------------------|
+| Dashboard | `dashboard` | Tak — osobny tab |
+| Sessions | `sessions` | Tak — osobny tab |
+| Projects | `projects` | Tak — osobny tab |
+| ProjectPage | `project-card` | Częściowo — wspomniana w "Projects", brak osobnego tabu |
+| Estimates | `estimates` | Tak — osobny tab |
+| Applications | `applications` | Tak — osobny tab |
+| TimeAnalysis | `analysis` | Tak — osobny tab |
+| AI | `ai` | Tak — osobny tab |
+| Data | `data` | Tak — osobny tab |
+| ImportPage | `import` | Częściowo — wspomniana w "Data" |
+| Reports | `reports` | Tak — osobny tab |
+| ReportView | `report-view` | Częściowo — wspomniana w "Reports" |
+| DaemonControl | `daemon` | Tak — osobny tab |
+| Settings | `settings` | Tak — osobny tab |
+| Help | `help` | N/A |
+| QuickStart | `quickstart` | Tak — osobny tab |
+
+### Funkcjonalności z niepełną dokumentacją
+
+1. **ProjectPage** — rozbudowany widok z timeline, komentarzami, sesjami manualnymi, raportami. Wspomniany jedynie jako element sekcji "Projects". Przy obecnej złożoności zasługuje na osobną sekcję.
+
+2. **BugHunter** — wspomniany w Settings (`bughunter_the_bug_icon`), ale brak opisu jak działa formularz zgłaszania błędu.
+
+3. **ManualSessionDialog** — wspólny komponent używany w wielu miejscach. Wspomniany w Sessions i Projects, ale brak spójnego opisu reguł walidacji (daty, cross-midnight sessions).
+
+4. **Online Sync** — długo opisany w Settings, ale brak procedury pierwszej konfiguracji krok po kroku (co wpisać, skąd wziąć token).
+
+---
+
+## 7. Jakość kodu — code smells
+
+### 7.1 Parameter sprawl: `record_app_activity` — 12 parametrów
+- **Plik:** `src/tracker.rs`, linia 110-122
+- **Rozwiązanie:** Struct `ActivityContext` grupujący powiązane parametry.
+
+### 7.2 Stringly-typed activity types
+- **Plik:** `src/monitor.rs`, linia 504-553
+- **Opis:** `classify_activity_type` zwraca `Option<String>` z wartościami "coding", "browsing", "design". Te same stringi porównywane w `should_detect_path_for_activity` (linia 228-229).
+- **Rozwiązanie:** Enum `ActivityType`.
+
+### 7.3 Zbyt duże komponenty
+- `Sessions.tsx` — ~2000+ linii
+- `Projects.tsx` — ~2000+ linii
+- `ProjectPage.tsx` — ~1800+ linii
+- **Rozwiązanie:** Podzielić na mniejsze podkomponenty.
+
+### 7.4 Settings — >20 stanów w jednym komponencie
+- **Rozwiązanie:** Wydzielić grupy ustawień (working hours, session, freeze, currency, language, appearance, split, online sync, demo mode) do oddzielnych hooków/komponentów.
+
+### 7.5 `tauri.ts` — 80+ flat exports
+- **Rozwiązanie:** Pogrupować w moduły/obiekty (projects, sessions, daemon, data, ai).
+
+### 7.6 `AI.tsx` — `showErrorRef` i `translateRef`
+- **Plik:** `AI.tsx`, linie 169-170, 220-226
+- **Opis:** `useRef` do przechowywania `showError` i `tr` z synchronizacją przez `useEffect` — nieelegancki wzorzec.
+
+### 7.7 `useJobPool` — 210 linii w jednym hooku
+- **Plik:** `BackgroundServices.tsx`, linia 277-487
+- **Opis:** Zarządza wieloma timers/refs/intervals. Logika sync, refresh, file-signature-check powinna być rozdzielona.
+
+### 7.8 Magic numbers
+- `tray.rs:203` — `500` ms dla double-click bez nazwanej stałej
+- `monitor.rs:34` — `WMI_PATH_LOOKUP_BATCH_LIMIT = 16` bez uzasadnienia
+
+### 7.9 Mutex dla `action` w tray (single-threaded context)
+- **Plik:** `src/tray.rs`, linie 181, 261, 286
+- **Opis:** `Arc<Mutex<TrayExitAction>>` mimo single-threaded NWG event loop.
+- **Rozwiązanie:** `Rc<Cell<TrayExitAction>>` byłoby prostsze.
+
+---
+
+## 8. Build i zależności
+
+### 8.1 [WYSOKI] Nieużywana zależność `sysinfo`
+- **Plik:** `Cargo.toml`, linia 31
+- **Opis:** `sysinfo = "0.13"` — grep `use sysinfo` w `src/` zwraca 0 wyników. Cała detekcja procesów oparta na WinAPI. Ciężka zależność (długa kompilacja).
+- **Rozwiązanie:** Usunąć.
+
+### 8.2 [NISKI] `lettre` w dashboard Cargo.toml
+- **Plik:** `dashboard/src-tauri/Cargo.toml`, linia 31
+- **Opis:** Email client (SMTP) — sprawdzić czy nie można użyć prostszego HTTP endpointu.
+
+### 8.3 [NISKI] `opt-level = "s"` w dashboard
+- **Opis:** Dla dashboardu (nie dystrybuowanego jako mały plik) można rozważyć `opt-level = 2` dla lepszej wydajności runtime.
+
+---
+
+## 9. Podsumowanie priorytetów
+
+### Krytyczne (natychmiastowa naprawa)
+| # | Problem | Wpływ |
+|---|---------|-------|
+| 1 | `compute_project_activity_unique` 4× na tych samych danych | Każdy load dashboardu — podwójne/poczwórne obciążenie |
+| 2 | `unwrap()` na Mutex w tray.rs | Potencjalny panic w produkcji |
+| 3 | Startup sync ignoruje flagę `enabled` | Niechciany sync przy starcie |
+
+### Wysokie (następna iteracja)
+| # | Problem | Wpływ |
+|---|---------|-------|
+| 4 | 6+ aktywnych setInterval jednocześnie | Nadmierny CPU/IPC |
+| 5 | `checkFileChange` co 5s (daemon zapisuje co 5min) | Zbędne IPC |
+| 6 | Nieużywana zależność `sysinfo` | Czas kompilacji |
+| 7 | `t` w dependency array useEffect w Dashboard | Zbędny reload 7 zapytań przy zmianie języka |
+| 8 | 9 hardkodowanych angielskich stringów w UI | Użytkownik widzi angielski tekst |
+| 9 | Brak cache na `getProjects()` | Zbędne zapytania |
+
+### Średnie (planowana poprawa)
+| # | Problem | Wpływ |
+|---|---------|-------|
+| 10 | Nowe połączenie SQLite per komendę | Overhead per IPC |
+| 11 | N+1 w `load_range_snapshots` | Wolne ładowanie zakresu dat |
+| 12 | Duplikacja process snapshot (tray/monitor) | Maintainability |
+| 13 | Duplikacja `isSessionAlreadySplit` | Maintainability |
+| 14 | `renderDuration()` vs `formatDuration()` | Maintainability |
+| 15 | Parameter sprawl 12 args w `record_app_activity` | Czytelność |
+| 16 | Brak ostrzeżenia "unsaved changes" w Settings | UX |
+| 17 | ProjectPage bez dedykowanej sekcji Help | Dokumentacja |
+
+### Niskie (przy okazji)
+| # | Problem | Wpływ |
+|---|---------|-------|
+| 18 | Stringly-typed activity types | Type safety |
+| 19 | Zbyt duże komponenty (2000+ linii) | Maintainability |
+| 20 | Settings >20 useState | Czytelność |
+| 21 | `ensure_schema` przy każdej operacji | Drobne koszty SQL |
+| 22 | Zbędny indeks na PK `daily_snapshots(date)` | Marginalne |
+| 23 | Niespójność języka logów w Rust | Debugging |
+| 24 | `tauri.ts` 80+ flat exports | Organizacja kodu |

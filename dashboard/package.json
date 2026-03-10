@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "typecheck": "tsc -b",
     "lint": "eslint . && npm run lint:i18n-hardcoded && npm run lint:inline-i18n-bridge",
     "lint:i18n-hardcoded": "node scripts/check-hardcoded-i18n.cjs",
     "lint:inline-i18n-bridge": "node scripts/check-inline-i18n-bridge.cjs",

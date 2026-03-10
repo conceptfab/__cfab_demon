@@ -5,9 +5,255 @@ use super::analysis::compute_project_activity_unique;
 use super::helpers::run_db_blocking;
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
-    AppWithStats, DashboardStats, DateRange, HourlyData, ProjectTimeRow, TimelinePoint, TopApp,
-    TopProject,
+    AppWithStats, DashboardData, DashboardStats, DateRange, HourlyData, ProjectTimeRow,
+    StackedBarData, TimelinePoint, TopApp, TopProject,
 };
+
+fn build_dashboard_stats(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+    project_totals: &HashMap<String, f64>,
+) -> Result<DashboardStats, String> {
+    let total_seconds = project_totals.values().copied().sum::<f64>().round() as i64;
+
+    let (app_count, session_count, day_count) =
+        query_dashboard_counters(conn, &date_range.start, &date_range.end)?;
+
+    let avg_daily = if day_count == 0 {
+        0
+    } else {
+        total_seconds / day_count
+    };
+
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT a.display_name, SUM(s.duration_seconds) as total, 
+                    COALESCE(a.color, p.color) as color
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             LEFT JOIN projects p ON p.id = a.project_id
+             WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
+             GROUP BY s.app_id
+             ORDER BY total DESC
+             LIMIT 5",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![&date_range.start, &date_range.end], |row| {
+            let color: Option<String> = row.get(2)?;
+            Ok(TopApp {
+                name: row.get(0)?,
+                seconds: row.get(1)?,
+                color,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut top_apps: Vec<TopApp> = Vec::new();
+    for row in rows {
+        let mut app = row.map_err(|e| format!("Failed to read top app row: {}", e))?;
+        if app.color.is_none() {
+            app.color = Some(generate_color_for_app(&app.name));
+        }
+        top_apps.push(app);
+    }
+
+    let project_colors = query_project_color_map(conn)?;
+    let top_project = project_totals
+        .iter()
+        .max_by(|a, b| a.1.total_cmp(b.1).then_with(|| b.0.cmp(a.0)))
+        .map(|(name, seconds)| TopProject {
+            color: project_colors
+                .get(&name.to_lowercase())
+                .cloned()
+                .unwrap_or_else(|| "#64748b".to_string()),
+            name: name.clone(),
+            seconds: seconds.round() as i64,
+        });
+
+    Ok(DashboardStats {
+        total_seconds,
+        app_count,
+        session_count,
+        avg_daily_seconds: avg_daily,
+        top_apps,
+        top_project,
+    })
+}
+
+fn build_top_project_rows(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+    project_totals: &HashMap<String, f64>,
+    limit: usize,
+) -> Result<Vec<ProjectTimeRow>, String> {
+    if project_totals.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let colors = query_project_color_map(conn)?;
+    let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
+
+    let mut rows: Vec<ProjectTimeRow> = project_totals
+        .iter()
+        .map(|(name, seconds_f)| {
+            let key = name.to_lowercase();
+            let (session_count, app_count) = counts.get(&key).copied().unwrap_or((0, 0));
+            ProjectTimeRow {
+                name: name.clone(),
+                color: colors
+                    .get(&key)
+                    .cloned()
+                    .unwrap_or_else(|| "#64748b".to_string()),
+                seconds: seconds_f.round() as i64,
+                session_count,
+                app_count,
+            }
+        })
+        .collect();
+
+    rows.sort_by(|a, b| b.seconds.cmp(&a.seconds).then_with(|| a.name.cmp(&b.name)));
+    rows.truncate(limit);
+    Ok(rows)
+}
+
+fn build_dashboard_project_rows(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+    project_totals: &HashMap<String, f64>,
+) -> Result<Vec<ProjectTimeRow>, String> {
+    let totals_ci: HashMap<String, f64> = project_totals
+        .iter()
+        .map(|(name, secs)| (name.to_lowercase(), *secs))
+        .collect();
+    let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
+
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT p.name, p.color
+             FROM projects p
+             WHERE p.excluded_at IS NULL
+             ORDER BY lower(p.name) ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read dashboard project row: {}", e))?;
+        let key = row.0.to_lowercase();
+        let (session_count, app_count) = counts.get(&key).copied().unwrap_or((0, 0));
+        let seconds = totals_ci.get(&key).copied().unwrap_or(0.0).round() as i64;
+        out.push(ProjectTimeRow {
+            name: row.0,
+            color: row.1,
+            seconds,
+            session_count,
+            app_count,
+        });
+    }
+
+    Ok(out)
+}
+
+fn build_project_timeline_rows(
+    bucket_project_seconds: std::collections::BTreeMap<String, HashMap<String, f64>>,
+    total_by_project: &HashMap<String, f64>,
+    bucket_flags: HashMap<String, (bool, bool)>,
+    bucket_comments: HashMap<String, Vec<String>>,
+    limit: usize,
+) -> Vec<StackedBarData> {
+    if bucket_project_seconds.is_empty() {
+        return Vec::new();
+    }
+
+    let mut ranked_projects: Vec<(&String, &f64)> = total_by_project.iter().collect();
+    ranked_projects.sort_by(|a, b| b.1.total_cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    let selected_projects: Vec<String> = ranked_projects
+        .into_iter()
+        .take(limit)
+        .map(|(name, _)| name.clone())
+        .collect();
+    let selected_set: std::collections::HashSet<&str> =
+        selected_projects.iter().map(|s| s.as_str()).collect();
+
+    let mut output = Vec::with_capacity(bucket_project_seconds.len());
+    for (bucket, sec_map) in bucket_project_seconds {
+        let mut data: HashMap<String, i64> = HashMap::new();
+        let mut other_seconds = 0i64;
+
+        for project_name in &selected_projects {
+            if let Some(seconds) = sec_map.get(project_name) {
+                let rounded = seconds.round() as i64;
+                if rounded > 0 {
+                    data.insert(project_name.clone(), rounded);
+                }
+            }
+        }
+
+        for (project_name, seconds) in &sec_map {
+            if selected_set.contains(project_name.as_str()) {
+                continue;
+            }
+            let rounded = seconds.round() as i64;
+            if rounded > 0 {
+                other_seconds += rounded;
+            }
+        }
+
+        if other_seconds > 0 {
+            data.insert("Other".to_string(), other_seconds);
+        }
+
+        let (has_boost, has_manual) = bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
+        let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
+        output.push(StackedBarData {
+            date: bucket,
+            data,
+            has_boost,
+            has_manual,
+            comments,
+        });
+    }
+
+    output
+}
+
+#[tauri::command]
+pub async fn get_dashboard_data(
+    app: AppHandle,
+    date_range: DateRange,
+    top_limit: Option<i64>,
+    timeline_limit: Option<i64>,
+    timeline_granularity: Option<String>,
+) -> Result<DashboardData, String> {
+    run_db_blocking(app, move |conn| {
+        let top_limit = top_limit.unwrap_or(5).clamp(1, 50) as usize;
+        let timeline_limit = timeline_limit.unwrap_or(8).clamp(1, 200) as usize;
+        let hourly = matches!(timeline_granularity.as_deref(), Some("hour"));
+
+        let (bucket_project_seconds, project_totals, bucket_flags, bucket_comments) =
+            compute_project_activity_unique(conn, &date_range, hourly, true, None)?;
+
+        Ok(DashboardData {
+            stats: build_dashboard_stats(conn, &date_range, &project_totals)?,
+            top_projects: build_top_project_rows(conn, &date_range, &project_totals, top_limit)?,
+            all_projects: build_dashboard_project_rows(conn, &date_range, &project_totals)?,
+            project_timeline: build_project_timeline_rows(
+                bucket_project_seconds,
+                &project_totals,
+                bucket_flags,
+                bucket_comments,
+                timeline_limit,
+            ),
+        })
+    })
+    .await
+}
 
 #[tauri::command]
 pub async fn get_dashboard_stats(
@@ -17,71 +263,7 @@ pub async fn get_dashboard_stats(
     run_db_blocking(app, move |conn| {
         let (_, project_totals, _, _) =
             compute_project_activity_unique(conn, &date_range, false, true, None)?;
-        let total_seconds = project_totals.values().copied().sum::<f64>().round() as i64;
-
-        let (app_count, session_count, day_count) =
-            query_dashboard_counters(conn, &date_range.start, &date_range.end)?;
-
-        let avg_daily = if day_count == 0 {
-            0
-        } else {
-            total_seconds / day_count
-        };
-
-        let mut stmt = conn
-            .prepare_cached(
-                "SELECT a.display_name, SUM(s.duration_seconds) as total, 
-                        COALESCE(a.color, p.color) as color
-                 FROM sessions s
-                 JOIN applications a ON a.id = s.app_id
-                 LEFT JOIN projects p ON p.id = a.project_id
-                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                 GROUP BY s.app_id
-                 ORDER BY total DESC
-                 LIMIT 5",
-            )
-            .map_err(|e| e.to_string())?;
-
-        let rows = stmt
-            .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-                let color: Option<String> = row.get(2)?;
-                Ok(TopApp {
-                    name: row.get(0)?,
-                    seconds: row.get(1)?,
-                    color,
-                })
-            })
-            .map_err(|e| e.to_string())?;
-        let mut top_apps: Vec<TopApp> = Vec::new();
-        for row in rows {
-            let mut app = row.map_err(|e| format!("Failed to read top app row: {}", e))?;
-            if app.color.is_none() {
-                app.color = Some(generate_color_for_app(&app.name));
-            }
-            top_apps.push(app);
-        }
-
-        let project_colors = query_project_color_map(conn)?;
-        let top_project = project_totals
-            .into_iter()
-            .max_by(|a, b| a.1.total_cmp(&b.1).then_with(|| b.0.cmp(&a.0)))
-            .map(|(name, seconds)| TopProject {
-                color: project_colors
-                    .get(&name.to_lowercase())
-                    .cloned()
-                    .unwrap_or_else(|| "#64748b".to_string()),
-                name,
-                seconds: seconds.round() as i64,
-            });
-
-        Ok(DashboardStats {
-            total_seconds,
-            app_count,
-            session_count,
-            avg_daily_seconds: avg_daily,
-            top_apps,
-            top_project,
-        })
+        build_dashboard_stats(conn, &date_range, &project_totals)
     })
     .await
 }
@@ -223,33 +405,7 @@ pub async fn get_top_projects(
         let limit = limit.unwrap_or(8).clamp(1, 50) as usize;
         let (_, totals, _, _) =
             compute_project_activity_unique(conn, &date_range, false, true, None)?;
-        if totals.is_empty() {
-            return Ok(Vec::new());
-        }
-        let colors = query_project_color_map(conn)?;
-        let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
-
-        let mut rows: Vec<ProjectTimeRow> = totals
-            .into_iter()
-            .map(|(name, seconds_f)| {
-                let key = name.to_lowercase();
-                let (session_count, app_count) = counts.get(&key).copied().unwrap_or((0, 0));
-                ProjectTimeRow {
-                    name,
-                    color: colors
-                        .get(&key)
-                        .cloned()
-                        .unwrap_or_else(|| "#64748b".to_string()),
-                    seconds: seconds_f.round() as i64,
-                    session_count,
-                    app_count,
-                }
-            })
-            .collect();
-
-        rows.sort_by(|a, b| b.seconds.cmp(&a.seconds).then_with(|| a.name.cmp(&b.name)));
-        rows.truncate(limit);
-        Ok(rows)
+        build_top_project_rows(conn, &date_range, &totals, limit)
     })
     .await
 }
@@ -262,42 +418,7 @@ pub async fn get_dashboard_projects(
     run_db_blocking(app, move |conn| {
         let (_, totals, _, _) =
             compute_project_activity_unique(conn, &date_range, false, true, None)?;
-        let totals_ci: HashMap<String, f64> = totals
-            .into_iter()
-            .map(|(name, secs)| (name.to_lowercase(), secs))
-            .collect();
-        let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
-
-        let mut stmt = conn
-            .prepare_cached(
-                "SELECT p.name, p.color
-                 FROM projects p
-                 WHERE p.excluded_at IS NULL
-                 ORDER BY lower(p.name) ASC",
-            )
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-
-        let mut out = Vec::new();
-        for row in rows {
-            let row = row.map_err(|e| format!("Failed to read dashboard project row: {}", e))?;
-            let key = row.0.to_lowercase();
-            let (session_count, app_count) = counts.get(&key).copied().unwrap_or((0, 0));
-            let seconds = totals_ci.get(&key).copied().unwrap_or(0.0).round() as i64;
-            out.push(ProjectTimeRow {
-                name: row.0,
-                color: row.1,
-                seconds,
-                session_count,
-                app_count,
-            });
-        }
-
-        Ok(out)
+        build_dashboard_project_rows(conn, &date_range, &totals)
     })
     .await
 }
