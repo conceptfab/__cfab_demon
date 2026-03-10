@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CircleDollarSign,
   Clock3,
   FolderOpen,
+  RefreshCw,
   Save,
   SlidersHorizontal,
 } from 'lucide-react';
@@ -28,20 +29,9 @@ import type {
 import { getErrorMessage } from '@/lib/utils';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import { useTranslation } from 'react-i18next';
+import { formatRateInput, parseRateInput } from '@/lib/form-validation';
 
 const MAX_RATE = 100000;
-
-function parseRateInput(raw: string): number | null {
-  const normalized = raw.trim().replace(',', '.');
-  if (!normalized) return null;
-  const value = Number(normalized);
-  if (!Number.isFinite(value)) return null;
-  return value;
-}
-
-function formatRateInput(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
 
 export function Estimates() {
   const { t } = useTranslation();
@@ -70,7 +60,6 @@ export function Estimates() {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [tableMessage, setTableMessage] = useState<string | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
-  const hasLoadedOnceRef = useRef(false);
 
   const currency = useMemo(
     () =>
@@ -92,10 +81,7 @@ export function Estimates() {
 
   useEffect(() => {
     let cancelled = false;
-    const isInitialLoad = !hasLoadedOnceRef.current;
-    if (isInitialLoad) {
-      setLoading(true);
-    }
+    setLoading(true);
     setGlobalError(null);
     setTableError(null);
 
@@ -155,10 +141,7 @@ export function Estimates() {
       })
       .finally(() => {
         if (!cancelled) {
-          if (isInitialLoad) {
-            hasLoadedOnceRef.current = true;
-            setLoading(false);
-          }
+          setLoading(false);
         }
       });
 
@@ -185,7 +168,7 @@ export function Estimates() {
     try {
       await updateGlobalHourlyRate(parsed);
       setGlobalMessage(t('estimates_page.messages.global_rate_saved'));
-      triggerRefresh();
+      triggerRefresh('estimates_global_rate_saved');
     } catch (error) {
       setGlobalError(
         getErrorMessage(error, t('estimates_page.errors.save_global_rate')),
@@ -214,7 +197,7 @@ export function Estimates() {
     try {
       await updateProjectHourlyRate(projectId, parsed);
       setTableMessage(t('estimates_page.messages.project_rate_updated'));
-      triggerRefresh();
+      triggerRefresh('estimates_project_rate_updated');
     } catch (error) {
       setTableError(
         getErrorMessage(error, t('estimates_page.errors.update_project_rate')),
@@ -232,7 +215,7 @@ export function Estimates() {
       await updateProjectHourlyRate(projectId, null);
       setDrafts((prev) => ({ ...prev, [projectId]: '' }));
       setTableMessage(t('estimates_page.messages.project_rate_reset'));
-      triggerRefresh();
+      triggerRefresh('estimates_project_rate_reset');
     } catch (error) {
       setTableError(
         getErrorMessage(error, t('estimates_page.errors.reset_project_rate')),
@@ -486,6 +469,7 @@ export function Estimates() {
                           }
                           className="h-8 w-24 rounded-md border bg-transparent px-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
                           placeholder={t('estimates_page.placeholders.global')}
+                          disabled={isSaving}
                         />
                         <Button
                           size="sm"
@@ -493,7 +477,17 @@ export function Estimates() {
                           onClick={() => handleSaveProjectRate(row.project_id)}
                           disabled={isSaving}
                         >
-                          {t('estimates_page.actions.save')}
+                          {isSaving ? (
+                            <>
+                              <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              {t('estimates_page.actions.saving')}
+                            </>
+                          ) : (
+                            <>
+                              <Save className="mr-1.5 h-3.5 w-3.5" />
+                              {t('estimates_page.actions.save')}
+                            </>
+                          )}
                         </Button>
                         <Button
                           size="sm"

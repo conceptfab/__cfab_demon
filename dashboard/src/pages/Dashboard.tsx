@@ -68,41 +68,46 @@ function AutoImportBanner() {
   }
 
   if (!result) return null;
+  const importFailed = result.errors.length > 0 && result.files_imported === 0;
+  if (result.files_imported === 0 && !importFailed) return null;
 
-  if (result.errors.length > 0 && result.files_imported === 0) {
-    return (
-      <Card className="border-destructive/30 bg-destructive/5">
-        <CardContent className="flex items-center gap-2.5 p-3">
-          <Archive className="icon-colored h-4 w-4 text-destructive" />
-          <span className="text-xs text-destructive">
-            {t('dashboard.auto_import.failed', { error: result.errors[0] })}
-          </span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (result.files_imported === 0) return null;
+  const cardClassName = importFailed
+    ? 'border-destructive/30 bg-destructive/5'
+    : 'border-emerald-500/30 bg-emerald-500/5';
+  const iconClassName = importFailed
+    ? 'icon-colored h-4 w-4 text-destructive'
+    : 'h-4 w-4 text-emerald-400';
+  const messageClassName = importFailed
+    ? 'text-xs text-destructive'
+    : 'text-xs text-emerald-300';
+  const message = importFailed
+    ? t('dashboard.auto_import.failed', { error: result.errors[0] })
+    : t('dashboard.auto_import.imported_summary', {
+        imported: result.files_imported,
+        archived: result.files_archived,
+      });
+  const skippedMessage =
+    !importFailed && result.files_skipped > 0
+      ? ` ${t('dashboard.auto_import.already_in_database', { skipped: result.files_skipped })}`
+      : '';
+  const errorCount =
+    result.errors.length > 0 ? (
+      <span className="ml-auto text-[10px] text-destructive">
+        {t('dashboard.auto_import.errors_count', {
+          count: result.errors.length,
+        })}
+      </span>
+    ) : null;
 
   return (
-    <Card className="border-emerald-500/30 bg-emerald-500/5">
+    <Card className={cardClassName}>
       <CardContent className="flex items-center gap-2.5 p-3">
-        <Archive className="h-4 w-4 text-emerald-400" />
-        <span className="text-xs text-emerald-300">
-          {t('dashboard.auto_import.imported_summary', {
-            imported: result.files_imported,
-            archived: result.files_archived,
-          })}
-          {result.files_skipped > 0 &&
-            ` ${t('dashboard.auto_import.already_in_database', { skipped: result.files_skipped })}`}
+        <Archive className={iconClassName} />
+        <span className={messageClassName}>
+          {message}
+          {skippedMessage}
         </span>
-        {result.errors.length > 0 && (
-          <span className="ml-auto text-[10px] text-destructive">
-            {t('dashboard.auto_import.errors_count', {
-              count: result.errors.length,
-            })}
-          </span>
-        )}
+        {errorCount}
       </CardContent>
     </Card>
   );
@@ -115,6 +120,8 @@ function DiscoveredProjectsBanner() {
   const { setCurrentPage } = useUIStore();
 
   if (dismissed || projects.length === 0) return null;
+  const previewProjects = projects.slice(0, 5).join(', ');
+  const extraProjectsCount = projects.length - 5;
 
   return (
     <Card className="border-sky-500/30 bg-sky-500/5">
@@ -125,8 +132,8 @@ function DiscoveredProjectsBanner() {
             count: projects.length,
           })}
           {': '}
-          <span className="font-medium">{projects.slice(0, 5).join(', ')}</span>
-          {projects.length > 5 && ` (+${projects.length - 5})`}
+          <span className="font-medium">{previewProjects}</span>
+          {extraProjectsCount > 0 && ` (+${extraProjectsCount})`}
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -227,7 +234,7 @@ export function Dashboard() {
   }, [timePreset]);
   const { assignSessions, updateSessionRateMultipliers, updateSessionComment } =
     useSessionActions({
-      onAfterMutation: triggerRefresh,
+      onAfterMutation: () => triggerRefresh('dashboard_session_mutation'),
       onError: (action, error) => {
         console.error(`Dashboard session action failed (${action}):`, error);
       },
@@ -279,7 +286,7 @@ export function Dashboard() {
     } catch (e) {
       console.error('Refresh failed:', e);
     } finally {
-      triggerRefresh();
+      triggerRefresh('dashboard_manual_refresh');
       setRefreshing(false);
     }
   };
@@ -546,7 +553,7 @@ export function Dashboard() {
         projects={projectsList}
         defaultStartTime={sessionDialogStartTime}
         editSession={editingManualSession}
-        onSaved={triggerRefresh}
+        onSaved={() => triggerRefresh('dashboard_manual_session_saved')}
       />
     </div>
   );

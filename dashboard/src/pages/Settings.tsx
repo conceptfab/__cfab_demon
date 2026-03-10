@@ -37,6 +37,7 @@ import {
   saveSplitSettings,
   type SplitSettings,
 } from '@/lib/user-settings';
+import { splitTime } from '@/lib/form-validation';
 import {
   DEFAULT_ONLINE_SYNC_SERVER_URL,
   loadOnlineSyncState,
@@ -49,6 +50,7 @@ import {
   type OnlineSyncState,
 } from '@/lib/online-sync';
 import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
+import { getErrorMessage } from '@/lib/utils';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ProjectFreezeCard } from '@/components/settings/ProjectFreezeCard';
@@ -66,12 +68,6 @@ const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, i) =>
   String(i).padStart(2, '0'),
 );
-
-function splitTime(value: string): [string, string] {
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(value);
-  if (!match) return ['09', '00'];
-  return [match[1], match[2]];
-}
 
 export function Settings() {
   const { i18n, t } = useTranslation();
@@ -177,7 +173,12 @@ export function Settings() {
         }
       } catch (e) {
         if (!cancelled) {
-          setDemoModeError(String(e));
+          setDemoModeError(
+            getErrorMessage(
+              e,
+              t('settings_page.demo_mode_status_unavailable'),
+            ),
+          );
         }
       } finally {
         if (!cancelled) {
@@ -190,7 +191,7 @@ export function Settings() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const updateTimePart = (
     field: 'start' | 'end',
@@ -260,7 +261,7 @@ export function Settings() {
     setShowSavedToast(true);
     clearTimeout(toastTimerRef.current);
     toastTimerRef.current = setTimeout(() => setShowSavedToast(false), 3000);
-    triggerRefresh();
+    triggerRefresh('settings_saved');
   };
 
   const handleSplitChange = <K extends keyof SplitSettings>(
@@ -282,9 +283,7 @@ export function Settings() {
       );
     } catch (e) {
       console.error(e);
-      showError(
-        t('settings_page.error_linking_sessions') + String(e),
-      );
+      showError(t('settings_page.error_linking_sessions') + getErrorMessage(e, 'Unknown error'));
     } finally {
       setRebuilding(false);
     }
@@ -302,10 +301,7 @@ export function Settings() {
       showInfo(t('settings_page.all_data_removed'));
     } catch (e) {
       console.error(e);
-      showError(
-        t('settings_page.failed_to_clear_data') +
-          String(e),
-      );
+      showError(t('settings_page.failed_to_clear_data') + getErrorMessage(e, 'Unknown error'));
     } finally {
       setClearing(false);
     }
@@ -337,7 +333,7 @@ export function Settings() {
 
       if (result.ok && result.action === 'pull') {
         emitProjectsAllTimeInvalidated('online_sync_pull');
-        triggerRefresh();
+        triggerRefresh('settings_manual_sync_pull');
       }
     } catch (e) {
       setManualSyncResult({
@@ -345,7 +341,7 @@ export function Settings() {
         action: 'none',
         reason: 'sync_failed',
         serverRevision: onlineSyncState.serverRevision,
-        error: String(e),
+        error: getErrorMessage(e, 'Unknown error'),
       });
     } finally {
       setManualSyncing(false);
@@ -366,10 +362,9 @@ export function Settings() {
       );
     } catch (e) {
       console.error(e);
-      setDemoModeError(String(e));
-      showError(
-        t('settings_page.failed_to_switch_demo_mode') + String(e),
-      );
+      const errorMessage = getErrorMessage(e, 'Unknown error');
+      setDemoModeError(errorMessage);
+      showError(t('settings_page.failed_to_switch_demo_mode') + errorMessage);
     } finally {
       setDemoModeSwitching(false);
     }

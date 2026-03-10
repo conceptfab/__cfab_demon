@@ -426,7 +426,7 @@ export function AIPage() {
       dirtyRef.current = false;
       syncFromStatus(nextStatus, true);
       await fetchMetrics(true);
-      triggerRefresh();
+      triggerRefresh('ai_knowledge_reset');
       showInfo(tr('ai_page.info.knowledge_reset'));
     } catch (e) {
       console.error(e);
@@ -456,7 +456,7 @@ export function AIPage() {
       showInfo(
         tr('ai_page.text.auto_safe_completed_assigned_scanned_sessions', { assigned: result.assigned, scanned: result.scanned }),
       );
-      triggerRefresh();
+      triggerRefresh('ai_auto_safe_run');
       await fetchStatus();
       await fetchMetrics(true);
     } catch (e) {
@@ -483,7 +483,7 @@ export function AIPage() {
       showInfo(
         tr('ai_page.text.rollback_completed_reverted_skipped', { reverted: result.reverted, skipped: result.skipped }),
       );
-      triggerRefresh();
+      triggerRefresh('ai_auto_safe_rollback');
       await fetchStatus();
       await fetchMetrics(true);
     } catch (e) {

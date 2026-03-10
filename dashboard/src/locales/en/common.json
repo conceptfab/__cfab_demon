@@ -996,7 +996,10 @@
       "available_sections": "Available sections"
     },
     "empty": {
-      "add_sections": "Add sections from the list on the left"
+      "add_sections": "Add sections from the list on the left",
+      "templates": "No report templates available yet.",
+      "create_template": "Create template",
+      "preview_loading": "Loading preview..."
     },
     "sections": {
       "header": "Header & title",
@@ -1394,6 +1397,8 @@
     "ability_to_compare_time_value_spent_on_different_task_gr": "Ability to compare time value spent on different task groups.",
     "project_rate_reset_button_to_reset_a_project_specific_ra": "Project rate reset – button to reset a project-specific rate back to the global rate.",
     "multiplier_badge_each_project_shows_the_count_of_session": "Multiplier badge – each project shows the count of sessions with a rate multiplier. Clicking navigates to Sessions filtered by that project.",
+    "estimates_loading_and_empty_states_the_table_shows_a_loa": "Loading and empty states – the estimates table shows a loading state while recalculating for a new range and a clear message when no project time is available.",
+    "per_row_save_indicator_when_you_save_a_project_specific_": "Per-row save indicator – when you save a project-specific rate, TIMEFLOW disables that row and shows a saving indicator until the update finishes.",
     "applications_2": "APPLICATIONS",
     "managing_the_list_of_detected_software_and_processes": "Managing the list of detected software and processes.",
     "full_list_of_applications_with_activity_history_and_time": "Full list of applications with activity history and time statistics.",
@@ -1487,6 +1492,8 @@
     "files_activity_section_report_templates_can_include_file": "\"Files/activity\" section – report templates can include file/activity details, not only time summaries.",
     "additional_sections_boosts_sessions_with_time_multiplier": "Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.",
     "section_reordering_up_down_arrows_on_each_section_in_the": "Section reordering – up/down arrows on each section in the template editor let you set a custom order of report elements.",
+    "preview_loading_state_when_switching_templates_or_rebuild": "Preview loading state – when switching templates or rebuilding the section layout, the preview panel shows a temporary loading state instead of stale content.",
+    "empty_templates_state_if_no_report_templates_are_availab": "Empty templates state – if no report templates are available, TIMEFLOW shows a clear empty state with a button to create a new template.",
     "control_center_for_the_background_process_responsible_fo": "Control center for the background process responsible for data collection.",
     "status_control_diagnostics_monitor_if_the_time_tracking": "Status Control & Diagnostics – monitor if the time tracking system is working correctly.",
     "service_management_start_stop_and_restart_the_daemon_dir": "Service Management – start, stop, and restart the Daemon directly from the dashboard.",

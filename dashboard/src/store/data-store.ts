@@ -13,6 +13,7 @@ import type { AutoImportResult, DateRange } from '@/lib/db-types';
 import { ALL_TIME_START } from '@/lib/date-ranges';
 
 export type TimePreset = 'today' | 'week' | 'month' | 'all' | 'custom';
+type RefreshReason = string;
 
 interface DataState {
   dateRange: DateRange;
@@ -22,7 +23,7 @@ interface DataState {
   shiftDateRange: (direction: -1 | 1) => void;
   canShiftForward: () => boolean;
   refreshKey: number;
-  triggerRefresh: () => void;
+  triggerRefresh: (reason?: RefreshReason) => void;
   autoImportDone: boolean;
   autoImportResult: AutoImportResult | null;
   setAutoImportDone: (done: boolean, result?: AutoImportResult | null) => void;
@@ -32,26 +33,59 @@ interface DataState {
 }
 
 const REFRESH_THROTTLE_MS = 250;
+const REASON_REFRESH_DEDUPE_MS = 1_000;
 let lastRefreshAtMs = 0;
 let scheduledRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+const pendingRefreshReasons = new Set<RefreshReason>();
+const lastRefreshAtByReason = new Map<RefreshReason, number>();
+let hasPendingAnonymousRefresh = false;
 
-function scheduleThrottledRefresh(increment: () => void) {
+function flushPendingRefresh(increment: () => void) {
+  if (!hasPendingAnonymousRefresh && pendingRefreshReasons.size === 0) {
+    scheduledRefreshTimer = null;
+    return;
+  }
   const now = Date.now();
+  lastRefreshAtMs = now;
+  pendingRefreshReasons.forEach((reason) => {
+    lastRefreshAtByReason.set(reason, now);
+  });
+  pendingRefreshReasons.clear();
+  hasPendingAnonymousRefresh = false;
+  scheduledRefreshTimer = null;
+  increment();
+}
+
+function scheduleThrottledRefresh(
+  reason: RefreshReason | undefined,
+  increment: () => void,
+) {
+  const now = Date.now();
+  if (reason) {
+    const lastReasonRefreshAt = lastRefreshAtByReason.get(reason);
+    if (
+      lastReasonRefreshAt !== undefined &&
+      now - lastReasonRefreshAt < REASON_REFRESH_DEDUPE_MS
+    ) {
+      return;
+    }
+    pendingRefreshReasons.add(reason);
+  } else {
+    hasPendingAnonymousRefresh = true;
+  }
+
   const elapsed = now - lastRefreshAtMs;
   if (elapsed >= REFRESH_THROTTLE_MS) {
-    lastRefreshAtMs = now;
-    increment();
+    flushPendingRefresh(increment);
     return;
   }
 
   const delay = REFRESH_THROTTLE_MS - elapsed;
   if (scheduledRefreshTimer !== null) {
-    clearTimeout(scheduledRefreshTimer);
+    return;
   }
   scheduledRefreshTimer = setTimeout(() => {
-    lastRefreshAtMs = Date.now();
-    scheduledRefreshTimer = null;
-    increment();
+    flushPendingRefresh(increment);
   }, delay);
 }
 
@@ -149,8 +183,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   refreshKey: 0,
-  triggerRefresh: () =>
-    scheduleThrottledRefresh(() =>
+  triggerRefresh: (reason) =>
+    scheduleThrottledRefresh(reason, () =>
       set((s) => ({ refreshKey: s.refreshKey + 1 })),
     ),
 

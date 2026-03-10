@@ -996,7 +996,10 @@
       "available_sections": "Dostępne sekcje"
     },
     "empty": {
-      "add_sections": "Dodaj sekcje z listy po lewej"
+      "add_sections": "Dodaj sekcje z listy po lewej",
+      "templates": "Brak dostępnych szablonów raportów.",
+      "create_template": "Utwórz szablon",
+      "preview_loading": "Ładowanie podglądu..."
     },
     "sections": {
       "header": "Nagłówek i tytuł",
@@ -1394,6 +1397,8 @@
     "ability_to_compare_time_value_spent_on_different_task_gr": "Możliwość porównywania wartości czasu poświęconego na różne grupy zadań.",
     "project_rate_reset_button_to_reset_a_project_specific_ra": "Reset stawki projektu – przycisk resetujący indywidualną stawkę projektu do wartości globalnej.",
     "multiplier_badge_each_project_shows_the_count_of_session": "Badge mnożników – przy każdym projekcie widoczna jest liczba sesji z mnożnikiem stawki. Kliknięcie przenosi do Sesji przefiltrowanych po danym projekcie.",
+    "estimates_loading_and_empty_states_the_table_shows_a_loa": "Stany ładowania i pustej listy – tabela estymacji pokazuje stan ładowania przy przeliczeniu nowego zakresu i czytelny komunikat, gdy brak czasu projektowego.",
+    "per_row_save_indicator_when_you_save_a_project_specific_": "Wskaźnik zapisu per wiersz – przy zapisie stawki konkretnego projektu TIMEFLOW blokuje ten wiersz i pokazuje stan zapisywania do końca operacji.",
     "applications_2": "APLIKACJE",
     "managing_the_list_of_detected_software_and_processes": "Zarządzanie listą wykrytego oprogramowania i procesów.",
     "full_list_of_applications_with_activity_history_and_time": "Pełna lista aplikacji, w których rejestrowana była aktywność wraz ze statystykami czasu.",
@@ -1487,6 +1492,8 @@
     "files_activity_section_report_templates_can_include_file": "Sekcja \"Pliki/aktywność\" – w szablonie raportu możesz uwzględnić listę plików i aktywności, nie tylko podsumowania czasowe.",
     "additional_sections_boosts_sessions_with_time_multiplier": "Sekcje dodatkowe: Boosty (sesje z mnożnikiem czasu), Sesje manualne (ręcznie dodane), Komentarze, Statystyki AI.",
     "section_reordering_up_down_arrows_on_each_section_in_the": "Zmiana kolejności sekcji – strzałki góra/dół przy każdej sekcji w edytorze szablonu pozwalają ustalić własną kolejność elementów raportu.",
+    "preview_loading_state_when_switching_templates_or_rebuild": "Stan ładowania podglądu – przy przełączaniu szablonów lub przebudowie układu sekcji panel podglądu pokazuje krótki stan ładowania zamiast starej zawartości.",
+    "empty_templates_state_if_no_report_templates_are_availab": "Pusty stan szablonów – jeśli nie ma dostępnych szablonów raportów, TIMEFLOW pokazuje czytelny komunikat i przycisk do utworzenia nowego szablonu.",
     "control_center_for_the_background_process_responsible_fo": "Centrum sterowania procesem tła odpowiedzialnym za zbieranie danych.",
     "status_control_diagnostics_monitor_if_the_time_tracking": "Kontrola statusu i diagnostyka – monitoruj czy system śledzenia czasu działa poprawnie.",
     "service_management_start_stop_and_restart_the_daemon_dir": "Zarządzanie usługą – start, stop i restart Daemona bezpośrednio z dashboardu.",

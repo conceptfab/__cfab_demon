@@ -137,7 +137,7 @@ function useAutoImporter() {
       .then((result) => {
         setAutoImportDone(true, result);
         if (result.files_imported > 0) {
-          triggerRefresh();
+          triggerRefresh('background_auto_import');
         }
       })
       .catch((e) => {
@@ -301,7 +301,7 @@ function useJobPool() {
         lastSignatureRef.current !== null &&
         lastSignatureRef.current !== current
       ) {
-        triggerRefresh();
+        triggerRefresh('background_file_signature_changed');
       }
       lastSignatureRef.current = current;
     } catch (error) {
@@ -342,7 +342,7 @@ function useJobPool() {
         if (result.action === 'pull') {
           emitProjectsAllTimeInvalidated('online_sync_pull');
         }
-        triggerRefresh();
+        triggerRefresh(`background_sync_${reason}`);
         syncFailCountRef.current = 0; // Reset na sukces
       } catch (e) {
         console.warn('Sync failed:', e);
@@ -441,7 +441,7 @@ function useJobPool() {
       if (localChangeRefreshTimer.current)
         window.clearTimeout(localChangeRefreshTimer.current);
       localChangeRefreshTimer.current = window.setTimeout(
-        () => triggerRefresh(),
+        () => triggerRefresh('background_local_data_changed'),
         120,
       );
 

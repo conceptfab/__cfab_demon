@@ -426,6 +426,8 @@ export function Help() {
                   t18n('help_page.ability_to_compare_time_value_spent_on_different_task_gr'),
                   t18n('help_page.project_rate_reset_button_to_reset_a_project_specific_ra'),
                   t18n('help_page.multiplier_badge_each_project_shows_the_count_of_session'),
+                  t18n('help_page.estimates_loading_and_empty_states_the_table_shows_a_loa'),
+                  t18n('help_page.per_row_save_indicator_when_you_save_a_project_specific_'),
                 ]}
               />
             </TabsContent>
@@ -683,6 +685,8 @@ export function Help() {
                   t18n('help_page.files_activity_section_report_templates_can_include_file'),
                   t18n('help_page.additional_sections_boosts_sessions_with_time_multiplier'),
                   t18n('help_page.section_reordering_up_down_arrows_on_each_section_in_the'),
+                  t18n('help_page.preview_loading_state_when_switching_templates_or_rebuild'),
+                  t18n('help_page.empty_templates_state_if_no_report_templates_are_availab'),
                 ]}
               />
             </TabsContent>

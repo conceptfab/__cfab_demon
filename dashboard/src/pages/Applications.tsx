@@ -29,6 +29,7 @@ import {
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { formatDuration } from '@/lib/utils';
+import { handleSettledResult } from '@/lib/async-utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -68,25 +69,26 @@ export function Applications() {
       (results) => {
         const [appsResult, monitoredResult] = results;
 
-        if (appsResult.status === 'fulfilled') {
-          setApps(appsResult.value);
-          setVisibleRows(APP_ROWS_PAGE_SIZE);
-        } else {
-          console.error('Failed to load applications:', appsResult.reason);
-        }
+        handleSettledResult(appsResult, {
+          onFulfilled: (value) => {
+            setApps(value);
+            setVisibleRows(APP_ROWS_PAGE_SIZE);
+          },
+          onRejected: (reason) => {
+            console.error('Failed to load applications:', reason);
+          },
+        });
 
-        if (monitoredResult.status === 'fulfilled') {
-          setMonitored(monitoredResult.value);
-          setMonitoredError('');
-        } else {
-          console.error(
-            'Failed to load monitored apps:',
-            monitoredResult.reason,
-          );
-          setMonitoredError(
-            t('applications_page.errors.load_monitored'),
-          );
-        }
+        handleSettledResult(monitoredResult, {
+          onFulfilled: (value) => {
+            setMonitored(value);
+            setMonitoredError('');
+          },
+          onRejected: (reason) => {
+            console.error('Failed to load monitored apps:', reason);
+            setMonitoredError(t('applications_page.errors.load_monitored'));
+          },
+        });
       },
     );
   }, [refreshKey, t]);
@@ -204,7 +206,7 @@ export function Applications() {
   const handleResetAppTime = async (appId: number) => {
     try {
       await resetAppTime(appId);
-      triggerRefresh();
+      triggerRefresh('applications_changed');
     } catch (err) {
       console.error('Failed to reset app time:', err);
     }
@@ -214,7 +216,7 @@ export function Applications() {
     try {
       await updateAppColor(appId, color);
       setEditingColorId(null);
-      triggerRefresh();
+      triggerRefresh('applications_changed');
     } catch (error) {
       console.error('Failed to update app color:', error);
       showError(
@@ -239,7 +241,7 @@ export function Applications() {
 
         try {
           await renameApplication(app.id, trimmed);
-          triggerRefresh();
+          triggerRefresh('applications_changed');
         } catch (e) {
           console.error('Failed to rename application:', e);
           showError(
@@ -263,7 +265,7 @@ export function Applications() {
 
     try {
       await deleteAppAndData(app.id);
-      triggerRefresh();
+      triggerRefresh('applications_changed');
     } catch (e) {
       console.error('Failed to delete app and data:', e);
       showError(

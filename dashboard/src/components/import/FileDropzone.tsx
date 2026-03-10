@@ -30,7 +30,7 @@ export function FileDropzone() {
         const res = await importJsonFiles(paths);
         setResults(res);
         setProgress(100);
-        triggerRefresh();
+        triggerRefresh('import_json_files');
       } catch (e) {
         setResults([
           {

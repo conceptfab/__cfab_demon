@@ -37,7 +37,7 @@
 
 ---
 
-## Priorytet: SREDNI
+## Priorytet: ŚREDNI
 
 ### 6. `dashboard/src/pages/Settings.tsx` (756 linii)
 - **Duplikacja:** `splitTime()` duplikuje logikę parsowania czasu — przenieść do `lib/form-validation.ts`

@@ -165,7 +165,7 @@ export function Sessions() {
     updateSessionComment: updateOneSessionComment,
     deleteSessions,
   } = useSessionActions({
-    onAfterMutation: triggerRefresh,
+    onAfterMutation: () => triggerRefresh('sessions_mutation'),
     onError: (action, error) => {
       console.error(`Session action failed (${action}):`, error);
     },
@@ -1837,7 +1837,7 @@ export function Sessions() {
           onConfirm={async (splits: SplitPart[]) => {
             await splitSessionMultiInvoke(multiSplitSession.id, splits);
             setMultiSplitSession(null);
-            void triggerRefresh();
+            void triggerRefresh('sessions_multi_split');
           }}
           onCancel={() => setMultiSplitSession(null)}
         />

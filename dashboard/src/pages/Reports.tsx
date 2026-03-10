@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useDeferredValue } from 'react';
 import {
   ArrowUp,
   ArrowDown,
@@ -252,12 +252,18 @@ export function Reports() {
     getSelectedTemplateId(),
   );
   const activeTemplate =
-    templates.find((template) => template.id === activeTemplateId) ||
-    templates[0];
-  const activeIds = activeTemplate.sections;
+    templates.find((template) => template.id === activeTemplateId) ??
+    templates[0] ??
+    null;
+  const activeIds = activeTemplate?.sections ?? [];
+  const deferredActiveTemplate = useDeferredValue(activeTemplate);
+  const previewTemplate = deferredActiveTemplate ?? activeTemplate;
+  const previewLoading = deferredActiveTemplate !== activeTemplate;
+  const previewIds = previewTemplate?.sections ?? [];
 
   const saveSections = useCallback(
     (sections: string[]) => {
+      if (!activeTemplate) return;
       const updated = { ...activeTemplate, sections };
       const newList = saveTemplate(updated);
       setTemplates(newList);
@@ -267,6 +273,7 @@ export function Reports() {
 
   const patchTemplate = useCallback(
     (patch: Partial<ReportTemplate>) => {
+      if (!activeTemplate) return;
       const updated = { ...activeTemplate, ...patch };
       const newList = saveTemplate(updated);
       setTemplates(newList);
@@ -298,6 +305,7 @@ export function Reports() {
   };
 
   const handleDuplicate = () => {
+    if (!activeTemplate) return;
     const newList = duplicateTemplate(
       activeTemplate.id,
       t('reports_page.template.copy_suffix'),
@@ -308,7 +316,7 @@ export function Reports() {
   };
 
   const handleDelete = () => {
-    if (templates.length <= 1) return;
+    if (!activeTemplate || templates.length <= 1) return;
     const newList = deleteTemplate(activeTemplate.id);
     setTemplates(newList);
     handleSelectTemplate(newList[0].id);
@@ -356,20 +364,26 @@ export function Reports() {
       </div>
 
       <div className="flex items-center gap-2 pt-3 pb-2 shrink-0 overflow-x-auto">
-        {templates.map((template) => (
-          <button
-            key={template.id}
-            onClick={() => handleSelectTemplate(template.id)}
-            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-              template.id === activeTemplate.id
-                ? 'border-sky-500/50 bg-sky-500/10 text-sky-300'
-                : 'border-border/20 text-muted-foreground/50 hover:border-border/40 hover:text-foreground/70'
-            }`}
-          >
-            <FileText className="h-3 w-3" />
-            {template.name}
-          </button>
-        ))}
+        {templates.length > 0 ? (
+          templates.map((template) => (
+            <button
+              key={template.id}
+              onClick={() => handleSelectTemplate(template.id)}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
+                template.id === activeTemplate?.id
+                  ? 'border-sky-500/50 bg-sky-500/10 text-sky-300'
+                  : 'border-border/20 text-muted-foreground/50 hover:border-border/40 hover:text-foreground/70'
+              }`}
+            >
+              <FileText className="h-3 w-3" />
+              {template.name}
+            </button>
+          ))
+        ) : (
+          <div className="rounded-lg border border-dashed border-border/30 px-3 py-1.5 text-xs text-muted-foreground/60">
+            {t('reports_page.empty.templates')}
+          </div>
+        )}
         <Button
           variant="ghost"
           size="sm"
@@ -401,159 +415,180 @@ export function Reports() {
         )}
       </div>
 
-      <div className="mt-3 grid gap-3 rounded-lg border border-border/20 bg-card/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="font-semibold text-muted-foreground/70">
-            {t('reports_page.fields.template_name')}
-          </span>
-          <input
-            value={activeTemplate.name}
-            onChange={(e) => patchTemplate({ name: e.target.value })}
-            className="rounded border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
-            placeholder={t('reports_page.fields.name_placeholder')}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="font-semibold text-muted-foreground/70">
-            {t('reports_page.fields.base_font')}
-          </span>
-          <select
-            value={activeTemplate.fontFamily}
-            onChange={(e) =>
-              patchTemplate({
-                fontFamily: e.target.value as ReportTemplate['fontFamily'],
-              })
-            }
-            className="rounded border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
-          >
-            <option value="system">{t('reports_page.fonts.sans')}</option>
-            <option value="serif">{t('reports_page.fonts.serif')}</option>
-            <option value="mono">{t('reports_page.fonts.mono')}</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-[11px]">
-          <span className="font-semibold text-muted-foreground/70">
-            {t('reports_page.fields.base_size')}
-          </span>
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min={10}
-              max={18}
-              value={activeTemplate.baseFontSize}
-              onChange={(e) =>
-                patchTemplate({ baseFontSize: Number(e.target.value) })
-              }
-              className="w-full accent-sky-500"
-            />
-            <span className="w-8 text-[10px] font-mono text-muted-foreground/70">
-              {activeTemplate.baseFontSize}px
-            </span>
-          </div>
-        </label>
-        <label className="flex items-center gap-2 rounded border border-border/40 bg-secondary/10 px-2 py-2 text-[11px]">
-          <input
-            type="checkbox"
-            checked={activeTemplate.showLogo}
-            onChange={(e) => patchTemplate({ showLogo: e.target.checked })}
-            className="h-3.5 w-3.5 accent-sky-500"
-          />
-          <span className="font-semibold text-muted-foreground/80">
-            {t('reports_page.fields.show_logo')}
-          </span>
-        </label>
-      </div>
-
-      <div className="flex flex-1 min-h-0 mt-3 gap-4">
-        <div className="w-56 shrink-0 flex flex-col gap-3 overflow-y-auto pr-1">
-          <div>
-            <div className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-wider mb-1.5">
-              {t('reports_page.panel.active_sections')}
-            </div>
-            <div className="space-y-1">
-              {activeIds.map((id, idx) => {
-                const def = getSectionDef(id);
-                if (!def) return null;
-                return (
-                  <div
-                    key={id}
-                    className="flex items-center gap-1 rounded-md border border-sky-500/20 bg-sky-500/5 px-2 py-1.5 text-[11px] text-sky-300"
-                  >
-                    <span className="flex-1 truncate">{t(def.labelKey)}</span>
-                    <button
-                      onClick={() => moveUp(idx)}
-                      className="text-muted-foreground/30 hover:text-foreground"
-                      title="↑"
-                    >
-                      <ArrowUp className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={() => moveDown(idx)}
-                      className="text-muted-foreground/30 hover:text-foreground"
-                      title="↓"
-                    >
-                      <ArrowDown className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={() => removeSection(id)}
-                      className="text-muted-foreground/30 hover:text-destructive"
-                      title="×"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+      {activeTemplate ? (
+        <>
+          <div className="mt-3 grid gap-3 rounded-lg border border-border/20 bg-card/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="flex flex-col gap-1 text-[11px]">
+              <span className="font-semibold text-muted-foreground/70">
+                {t('reports_page.fields.template_name')}
+              </span>
+              <input
+                value={activeTemplate.name}
+                onChange={(e) => patchTemplate({ name: e.target.value })}
+                className="rounded border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
+                placeholder={t('reports_page.fields.name_placeholder')}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px]">
+              <span className="font-semibold text-muted-foreground/70">
+                {t('reports_page.fields.base_font')}
+              </span>
+              <select
+                value={activeTemplate.fontFamily}
+                onChange={(e) =>
+                  patchTemplate({
+                    fontFamily: e.target.value as ReportTemplate['fontFamily'],
+                  })
+                }
+                className="rounded border border-border/40 bg-secondary/20 px-2 py-1.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-sky-500"
+              >
+                <option value="system">{t('reports_page.fonts.sans')}</option>
+                <option value="serif">{t('reports_page.fonts.serif')}</option>
+                <option value="mono">{t('reports_page.fonts.mono')}</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[11px]">
+              <span className="font-semibold text-muted-foreground/70">
+                {t('reports_page.fields.base_size')}
+              </span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={10}
+                  max={18}
+                  value={activeTemplate.baseFontSize}
+                  onChange={(e) =>
+                    patchTemplate({ baseFontSize: Number(e.target.value) })
+                  }
+                  className="w-full accent-sky-500"
+                />
+                <span className="w-8 text-[10px] font-mono text-muted-foreground/70">
+                  {activeTemplate.baseFontSize}px
+                </span>
+              </div>
+            </label>
+            <label className="flex items-center gap-2 rounded border border-border/40 bg-secondary/10 px-2 py-2 text-[11px]">
+              <input
+                type="checkbox"
+                checked={activeTemplate.showLogo}
+                onChange={(e) => patchTemplate({ showLogo: e.target.checked })}
+                className="h-3.5 w-3.5 accent-sky-500"
+              />
+              <span className="font-semibold text-muted-foreground/80">
+                {t('reports_page.fields.show_logo')}
+              </span>
+            </label>
           </div>
 
-          {availableSections.length > 0 && (
-            <div>
-              <div className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-wider mb-1.5">
-                {t('reports_page.panel.available_sections')}
-              </div>
-              <div className="space-y-1">
-                {availableSections.map((section) => (
-                  <button
-                    key={section.id}
-                    onClick={() => addSection(section.id)}
-                    className="flex items-center gap-1.5 w-full rounded-md border border-border/20 bg-secondary/5 px-2 py-1.5 text-[11px] text-muted-foreground/40 hover:border-sky-500/30 hover:text-sky-300 transition-colors"
-                  >
-                    <Plus className="h-3 w-3" />
-                    <span>{t(section.labelKey)}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="flex-1 overflow-y-auto rounded-xl border border-border/20 bg-card/30 p-6">
-          <div className="max-w-2xl mx-auto space-y-4">
-            {activeIds.map((id) => {
-              const def = getSectionDef(id);
-              if (!def) return null;
-              return (
-                <div
-                  key={id}
-                  className="rounded-lg border border-dashed border-muted-foreground/15 p-3 hover:border-sky-500/30 transition-colors"
-                >
-                  <div className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/25 mb-2">
-                    {t(def.labelKey)}
-                  </div>
-                  {def.preview(t)}
+          <div className="flex flex-1 min-h-0 mt-3 gap-4">
+            <div className="w-56 shrink-0 flex flex-col gap-3 overflow-y-auto pr-1">
+              <div>
+                <div className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-wider mb-1.5">
+                  {t('reports_page.panel.active_sections')}
                 </div>
-              );
-            })}
-
-            {activeIds.length === 0 && (
-              <div className="text-center text-muted-foreground/30 py-16 text-sm">
-                {t('reports_page.empty.add_sections')}
+                <div className="space-y-1">
+                  {activeIds.map((id, idx) => {
+                    const def = getSectionDef(id);
+                    if (!def) return null;
+                    return (
+                      <div
+                        key={id}
+                        className="flex items-center gap-1 rounded-md border border-sky-500/20 bg-sky-500/5 px-2 py-1.5 text-[11px] text-sky-300"
+                      >
+                        <span className="flex-1 truncate">{t(def.labelKey)}</span>
+                        <button
+                          onClick={() => moveUp(idx)}
+                          className="text-muted-foreground/30 hover:text-foreground"
+                          title="↑"
+                        >
+                          <ArrowUp className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => moveDown(idx)}
+                          className="text-muted-foreground/30 hover:text-foreground"
+                          title="↓"
+                        >
+                          <ArrowDown className="h-3 w-3" />
+                        </button>
+                        <button
+                          onClick={() => removeSection(id)}
+                          className="text-muted-foreground/30 hover:text-destructive"
+                          title="×"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
+
+              {availableSections.length > 0 && (
+                <div>
+                  <div className="text-[9px] font-bold text-muted-foreground/50 uppercase tracking-wider mb-1.5">
+                    {t('reports_page.panel.available_sections')}
+                  </div>
+                  <div className="space-y-1">
+                    {availableSections.map((section) => (
+                      <button
+                        key={section.id}
+                        onClick={() => addSection(section.id)}
+                        className="flex items-center gap-1.5 w-full rounded-md border border-border/20 bg-secondary/5 px-2 py-1.5 text-[11px] text-muted-foreground/40 hover:border-sky-500/30 hover:text-sky-300 transition-colors"
+                      >
+                        <Plus className="h-3 w-3" />
+                        <span>{t(section.labelKey)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="relative flex-1 overflow-y-auto rounded-xl border border-border/20 bg-card/30 p-6">
+              {previewLoading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-background/70 backdrop-blur-sm">
+                  <div className="rounded-full border border-border/40 bg-card/80 px-3 py-1.5 text-xs text-muted-foreground">
+                    {t('reports_page.empty.preview_loading')}
+                  </div>
+                </div>
+              )}
+              <div className="max-w-2xl mx-auto space-y-4">
+                {previewIds.map((id) => {
+                  const def = getSectionDef(id);
+                  if (!def) return null;
+                  return (
+                    <div
+                      key={id}
+                      className="rounded-lg border border-dashed border-muted-foreground/15 p-3 hover:border-sky-500/30 transition-colors"
+                    >
+                      <div className="text-[8px] font-bold uppercase tracking-widest text-muted-foreground/25 mb-2">
+                        {t(def.labelKey)}
+                      </div>
+                      {def.preview(t)}
+                    </div>
+                  );
+                })}
+
+                {previewIds.length === 0 && !previewLoading && (
+                  <div className="text-center text-muted-foreground/30 py-16 text-sm">
+                    {t('reports_page.empty.add_sections')}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
+        </>
+      ) : (
+        <div className="mt-3 rounded-xl border border-dashed border-border/30 bg-card/20 px-6 py-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t('reports_page.empty.templates')}
+          </p>
+          <Button className="mt-4" onClick={handleNewTemplate}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t('reports_page.empty.create_template')}
+          </Button>
         </div>
-      </div>
+      )}
     </div>
   );
 }

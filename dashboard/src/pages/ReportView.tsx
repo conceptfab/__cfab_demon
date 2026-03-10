@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { getProjectReportData, getDaemonStatus } from '@/lib/tauri';
 import logoSrc from '@/assets/logo.png';
 import { formatDuration, formatMoney } from '@/lib/utils';
+import { useCancellableAsync } from '@/lib/async-utils';
 import { useUIStore } from '@/store/ui-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { getTemplate } from '@/lib/report-templates';
@@ -20,6 +21,8 @@ export function ReportView() {
 
   const { setCurrentPage, projectPageId, reportTemplateId } = useUIStore();
   const { currencyCode } = useSettingsStore();
+  const runReportRequest = useCancellableAsync();
+  const runDaemonRequest = useCancellableAsync();
 
   const [report, setReport] = useState<ProjectReportData | null>(null);
   const [loadedProjectId, setLoadedProjectId] = useState<number | null>(null);
@@ -53,31 +56,30 @@ export function ReportView() {
 
   useEffect(() => {
     if (!projectPageId) return;
-    let cancelled = false;
     const dr = ALL_TIME_DATE_RANGE;
-    getProjectReportData(projectPageId, dr)
-      .then((data) => {
-        if (cancelled) return;
+    void runReportRequest(
+      () => getProjectReportData(projectPageId, dr),
+      {
+        onSuccess: (data) => {
         setReport(data);
         setLoadedProjectId(projectPageId);
-      })
-      .catch((err) => {
-        console.error('Report error:', err);
-        if (!cancelled) {
+        },
+        onError: (err) => {
+          console.error('Report error:', err);
           setReport(null);
           setLoadedProjectId(projectPageId);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectPageId]);
+        },
+      },
+    );
+  }, [projectPageId, runReportRequest]);
 
   useEffect(() => {
-    getDaemonStatus()
-      .then((s) => setAppVersion(s.dashboard_version ?? ''))
-      .catch(() => {});
-  }, []);
+    void runDaemonRequest(() => getDaemonStatus(), {
+      onSuccess: (status) => {
+        setAppVersion(status.dashboard_version ?? '');
+      },
+    });
+  }, [runDaemonRequest]);
 
   if (!projectPageId) {
     return (
