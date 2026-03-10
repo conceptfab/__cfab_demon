@@ -506,6 +506,7 @@ export function Help() {
                   t18n('help_page.summary_metrics_4_tiles_ai_precision_correct_suggestions'),
                   t18n('help_page.reset_ai_knowledge_button_that_clears_all_learned_model'),
                   t18n('help_page.how_to_train_and_configure_card_built_in_guide_with_thre'),
+                  t18n('help_page.ai_status_uses_central_background_diagnostics_and_the_me'),
                 ]}
               >
                 <div className="text-sm space-y-4 text-foreground/90 leading-relaxed">
@@ -670,6 +671,7 @@ export function Help() {
                   t18n('help_page.system_maintenance_cleaning_old_records_and_optimizing_f'),
                   t18n('help_page.operation_history_insight_into_when_and_what_data_was_mo'),
                   t18n('help_page.backup_restore_database_manual_backups_restore_from_file'),
+                  t18n('help_page.data_history_refreshes_after_real_data_changes_and_when_'),
                 ]}
               />
             </TabsContent>

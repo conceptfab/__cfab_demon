@@ -34,6 +34,7 @@
 - [x] Weryfikacja techniczna: `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 - [x] `1.1` Dashboard używa teraz jednego endpointu `get_dashboard_data` dla statystyk, top projektów, listy projektów do wykresu i timeline, więc ciężka agregacja nie leci już 4× przy jednym ładowaniu widoku.
 - [x] `8.1` Nieużywana zależność `sysinfo` usunięta z demona.
+- [ ] `2.1` Częściowo: wspólny polling statusów tła przeniesiony do store + `BackgroundServices`; lokalny interwał usunięty z `Sidebar`, a `DaemonControl` używa już centralnego statusu zamiast własnego pollingu statusowego. `DataHistory` nie ma już minutowego `setInterval` i odświeża się po realnych mutacjach danych oraz po powrocie do okna. `AI.tsx` nie ma już lokalnego pollingu `30s`; status modelu idzie ze wspólnego store, a metryki odświeżają się zdarzeniowo. Pozostały interwały specyficzne dla poszczególnych ekranów.
 
 ---
 

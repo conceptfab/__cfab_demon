@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useUIStore } from '@/store/ui-store';
+import { useBackgroundStatusStore } from '@/store/background-status-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { tryStartWindowDrag } from '@/lib/window-drag';
@@ -33,19 +34,9 @@ import {
   runOnlineSyncOnce,
   type OnlineSyncIndicatorSnapshot,
 } from '@/lib/online-sync';
-import {
-  getDaemonStatus,
-  getSessionCount,
-  getAssignmentModelStatus,
-  getDatabaseSettings,
-} from '@/lib/tauri';
-import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
 import type {
-  DaemonStatus,
   AssignmentModelStatus,
-  DatabaseSettings,
 } from '@/lib/db-types';
-import { loadSessionSettings } from '@/lib/user-settings';
 
 interface StatusIndicatorProps {
   icon: React.ComponentType<{ className?: string }>;
@@ -124,11 +115,13 @@ export function Sidebar() {
   const { t, i18n } = useTranslation();
   const { currentPage, setCurrentPage, helpTab, setHelpTab, firstRun } =
     useUIStore();
-  const [status, setStatus] = useState<DaemonStatus | null>(null);
-  const [aiStatus, setAiStatus] = useState<AssignmentModelStatus | null>(null);
-  const [dbSettings, setDbSettings] = useState<DatabaseSettings | null>(null);
-  const [todayUnassigned, setTodayUnassigned] = useState<number>(0);
-  const [allUnassigned, setAllUnassigned] = useState<number>(0);
+  const status = useBackgroundStatusStore((s) => s.daemonStatus);
+  const aiStatus = useBackgroundStatusStore(
+    (s) => s.aiStatus as AssignmentModelStatus | null,
+  );
+  const dbSettings = useBackgroundStatusStore((s) => s.dbSettings);
+  const todayUnassigned = useBackgroundStatusStore((s) => s.todayUnassigned);
+  const allUnassigned = useBackgroundStatusStore((s) => s.allUnassigned);
   const [syncIndicator, setSyncIndicator] =
     useState<OnlineSyncIndicatorSnapshot>(() =>
       getOnlineSyncIndicatorSnapshot(),
@@ -141,99 +134,6 @@ export function Sidebar() {
     setHelpTab(targetTab);
     setCurrentPage('help');
   }, [currentPage, helpTab, setCurrentPage, setHelpTab]);
-
-  useEffect(() => {
-    let disposed = false;
-    let inFlight = false;
-    let inFlightSettings = false;
-
-    const isVisible = () =>
-      typeof document === 'undefined' || document.visibilityState === 'visible';
-
-    const checkStatus = async () => {
-      if (disposed || inFlight || !isVisible()) return;
-      inFlight = true;
-      try {
-        const now = new Date();
-        const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const minDuration =
-          loadSessionSettings().minSessionDurationSeconds || undefined;
-        const results = await Promise.allSettled([
-          getDaemonStatus(minDuration),
-          getAssignmentModelStatus(),
-          getSessionCount({
-            dateRange: { start: localDate, end: localDate },
-            unassigned: true,
-            minDuration,
-          }),
-          getSessionCount({
-            unassigned: true,
-            minDuration,
-          }),
-        ]);
-        if (disposed) return;
-        const [daemonRes, aiRes, todayCountRes, allCountRes] = results;
-        if (daemonRes.status === 'fulfilled') setStatus(daemonRes.value);
-        if (aiRes.status === 'fulfilled') setAiStatus(aiRes.value);
-        if (todayCountRes.status === 'fulfilled') {
-          setTodayUnassigned(Math.max(0, todayCountRes.value));
-        }
-        if (allCountRes.status === 'fulfilled') {
-          setAllUnassigned(Math.max(0, allCountRes.value));
-        }
-      } finally {
-        inFlight = false;
-      }
-    };
-
-    const loadSettings = async () => {
-      if (disposed || inFlightSettings || !isVisible()) return;
-      inFlightSettings = true;
-      try {
-        const settings = await getDatabaseSettings();
-        if (!disposed) setDbSettings(settings);
-      } catch (error) {
-        if (!disposed) {
-          console.error('Failed to load database settings:', error);
-        }
-      } finally {
-        inFlightSettings = false;
-      }
-    };
-
-    const runChecks = () => {
-      void checkStatus();
-    };
-
-    const refreshSettings = () => {
-      void loadSettings();
-    };
-
-    const onVisibilityChange = () => {
-      if (!disposed && isVisible()) {
-        runChecks();
-        refreshSettings();
-      }
-    };
-
-    runChecks();
-    refreshSettings();
-    const interval = window.setInterval(runChecks, 10_000);
-
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', onVisibilityChange);
-    }
-    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, refreshSettings);
-
-    return () => {
-      disposed = true;
-      window.clearInterval(interval);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onVisibilityChange);
-      }
-      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, refreshSettings);
-    };
-  }, []);
 
   useEffect(() => {
     return subscribeOnlineSyncIndicator(setSyncIndicator);

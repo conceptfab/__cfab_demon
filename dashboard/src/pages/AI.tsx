@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast-notification';
 import { useDataStore } from '@/store/data-store';
+import { useBackgroundStatusStore } from '@/store/background-status-store';
 import {
-  getAssignmentModelStatus,
   getAssignmentModelMetrics,
   resetAssignmentModelKnowledge,
   rollbackLastAutoSafeRun,
@@ -41,6 +41,7 @@ import {
   type AiSettingsFormValues,
 } from '@/components/ai/AiSettingsForm';
 import { AiMetricsCharts } from '@/components/ai/AiMetricsCharts';
+import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -161,14 +162,15 @@ function areMetricsEqual(
 export function AIPage() {
   const { t: tr } = useTranslation();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+  const status = useBackgroundStatusStore((s) => s.aiStatus);
+  const refreshAiStatus = useBackgroundStatusStore((s) => s.refreshAiStatus);
+  const setAiStatus = useBackgroundStatusStore((s) => s.setAiStatus);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
 
-  const isFetchingRef = useRef(false);
   const isFetchingMetricsRef = useRef(false);
   const showErrorRef = useRef(showError);
   const translateRef = useRef(tr);
-  const [status, setStatus] = useState<AssignmentModelStatus | null>(null);
   const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
@@ -193,9 +195,8 @@ export function AIPage() {
     loadIndicatorSettings(),
   );
 
-  const syncFromStatus = useCallback(
+  const syncFormWithStatus = useCallback(
     (nextStatus: AssignmentModelStatus, force = false) => {
-      setStatus(nextStatus);
       if (force || !dirtyRef.current) {
         setMode(nextStatus.mode);
         setSuggestConf(nextStatus.min_confidence_suggest);
@@ -258,28 +259,23 @@ export function AIPage() {
     ],
   );
 
-  const fetchStatus = useCallback(
-    async () => {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      try {
-        const [nextStatus, fw] = await Promise.all([
-          getAssignmentModelStatus(),
-          getFeedbackWeight(),
-        ]);
-        syncFromStatus(nextStatus);
-        if (!dirtyRef.current) setFeedbackWeight(fw);
-      } catch (e) {
-        console.error(e);
-        showErrorRef.current(
-          `${translateRef.current('ai_page.errors.status_load_failed')} ${String(e)}`,
-        );
-      } finally {
-        isFetchingRef.current = false;
-      }
-    },
-    [syncFromStatus],
-  );
+  useEffect(() => {
+    if (!status) return;
+    syncFormWithStatus(status);
+  }, [status, syncFormWithStatus]);
+
+  const fetchStatus = useCallback(async () => {
+    try {
+      const results = await Promise.all([refreshAiStatus(), getFeedbackWeight()]);
+      const fw = results[1];
+      if (!dirtyRef.current) setFeedbackWeight(fw);
+    } catch (e) {
+      console.error(e);
+      showErrorRef.current(
+        `${translateRef.current('ai_page.errors.status_load_failed')} ${String(e)}`,
+      );
+    }
+  }, [refreshAiStatus]);
 
   const fetchMetrics = useCallback(
     async (silent = false) => {
@@ -313,10 +309,31 @@ export function AIPage() {
 
   useEffect(() => {
     void refreshModelData();
-    const interval = setInterval(() => {
+  }, [refreshModelData]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
       void refreshModelData(true);
-    }, 30_000);
-    return () => clearInterval(interval);
+    };
+    const handleWindowFocus = () => {
+      void refreshModelData(true);
+    };
+    const handleLocalDataChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
+      void refreshModelData(true);
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
+      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
+    };
   }, [refreshModelData]);
 
   const handleRefreshStatus = async () => {
@@ -343,8 +360,11 @@ export function AIPage() {
         normalizedAuto,
         normalizedEvidence,
       );
-      const freshStatus = await getAssignmentModelStatus();
-      syncFromStatus(freshStatus, true);
+      await refreshAiStatus();
+      const freshStatus = useBackgroundStatusStore.getState().aiStatus;
+      if (freshStatus) {
+        syncFormWithStatus(freshStatus, true);
+      }
       const freshFw = await getFeedbackWeight();
       setFeedbackWeight(freshFw);
       await fetchMetrics(true);
@@ -362,7 +382,8 @@ export function AIPage() {
     setTraining(true);
     try {
       const nextStatus = await trainAssignmentModel(true);
-      syncFromStatus(nextStatus);
+      setAiStatus(nextStatus);
+      syncFormWithStatus(nextStatus);
       await fetchMetrics(true);
       showInfo(tr('ai_page.text.model_training_completed'));
     } catch (e) {
@@ -387,7 +408,8 @@ export function AIPage() {
     try {
       const nextStatus = await resetAssignmentModelKnowledge();
       dirtyRef.current = false;
-      syncFromStatus(nextStatus, true);
+      setAiStatus(nextStatus);
+      syncFormWithStatus(nextStatus, true);
       await fetchMetrics(true);
       triggerRefresh('ai_knowledge_reset');
       showInfo(tr('ai_page.info.knowledge_reset'));
@@ -465,7 +487,8 @@ export function AIPage() {
       const nextStatus = await setAssignmentModelCooldown(
         REMINDER_SNOOZE_HOURS,
       );
-      syncFromStatus(nextStatus);
+      setAiStatus(nextStatus);
+      syncFormWithStatus(nextStatus);
       showInfo(
         tr('ai_page.text.reminder_snoozed_for_h', { hours: REMINDER_SNOOZE_HOURS }),
       );

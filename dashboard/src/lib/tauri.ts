@@ -557,7 +557,7 @@ export const updateDatabaseSettings = (settings: DatabaseSettings) =>
   });
 
 export const performManualBackup = () =>
-  invoke<string>('perform_manual_backup');
+  invokeMutation<string>('perform_manual_backup');
 
 export const openDbFolder = () => invoke<void>('open_db_folder');
 

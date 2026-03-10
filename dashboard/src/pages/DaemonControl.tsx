@@ -11,16 +11,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppTooltip } from "@/components/ui/app-tooltip";
+import { useBackgroundStatusStore } from "@/store/background-status-store";
 import {
   getDaemonStatus,
   getDaemonLogs,
-  getSessionCount,
   setAutostartEnabled,
   startDaemon,
   stopDaemon,
   restartDaemon,
 } from "@/lib/tauri";
-import { loadSessionSettings } from "@/lib/user-settings";
 import { useCancellableAsync } from "@/lib/async-utils";
 import { useTranslation } from "react-i18next";
 import { formatPathForDisplay, cn } from "@/lib/utils";
@@ -28,8 +27,11 @@ import type { DaemonStatus } from "@/lib/db-types";
 
 export function DaemonControl() {
   const { t } = useTranslation();
-  const [status, setStatus] = useState<DaemonStatus | null>(null);
-  const [filteredUnassigned, setFilteredUnassigned] = useState<number>(0);
+  const status = useBackgroundStatusStore((s) => s.daemonStatus);
+  const filteredUnassigned = useBackgroundStatusStore((s) => s.allUnassigned);
+  const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
+  const setDaemonStatus = useBackgroundStatusStore((s) => s.setDaemonStatus);
+  const setDaemonAutostart = useBackgroundStatusStore((s) => s.setDaemonAutostart);
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -37,62 +39,53 @@ export function DaemonControl() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const logsContainerRef = useRef<HTMLDivElement>(null);
 
-  const fetchStatusSnapshot = useCallback(async () => {
-    const minDuration = loadSessionSettings().minSessionDurationSeconds || undefined;
-    const [nextStatus, unassignedCount] = await Promise.all([
-      getDaemonStatus(),
-      getSessionCount({ unassigned: true, minDuration }),
-    ]);
-    return {
-      status: nextStatus,
-      filteredUnassigned: Math.max(0, unassignedCount),
-    };
-  }, []);
-
-  const refresh = useCallback(
-    ({ includeLogs = true }: { includeLogs?: boolean } = {}) => {
-      void refreshAsync(
-        async () => {
-          const [statusResult, logsResult] = await Promise.allSettled([
-            fetchStatusSnapshot(),
-            includeLogs ? getDaemonLogs(200) : Promise.resolve<string | null>(null),
-          ]);
-          return { includeLogs, statusResult, logsResult };
+  const refreshLogs = useCallback(() => {
+    void refreshAsync(
+      async () => getDaemonLogs(200),
+      {
+        onSuccess: (nextLogs) => {
+          setLogs(nextLogs);
         },
+        onError: (error) => {
+          console.error("Failed to refresh daemon logs:", error);
+        },
+      },
+    );
+  }, [refreshAsync]);
+
+  const refreshAll = useCallback(
+    ({ includeLogs = true }: { includeLogs?: boolean } = {}) => {
+      void refreshDiagnostics();
+      if (!includeLogs) return;
+      void refreshAsync(
+        async () => getDaemonLogs(200),
         {
-          onSuccess: ({ includeLogs, statusResult, logsResult }) => {
-            if (statusResult.status === "fulfilled") {
-              setStatus(statusResult.value.status);
-              setFilteredUnassigned(statusResult.value.filteredUnassigned);
-            } else {
-              console.error("Failed to refresh daemon status:", statusResult.reason);
-            }
-
-            if (!includeLogs) return;
-
-            if (logsResult.status === "fulfilled" && typeof logsResult.value === "string") {
-              setLogs(logsResult.value);
-            } else if (logsResult.status === "rejected") {
-              console.error("Failed to refresh daemon logs:", logsResult.reason);
-            }
+          onSuccess: (nextLogs) => {
+            setLogs(nextLogs);
+          },
+          onError: (error) => {
+            console.error("Failed to refresh daemon logs:", error);
           },
         },
       );
     },
-    [fetchStatusSnapshot, refreshAsync],
+    [refreshAsync, refreshDiagnostics],
   );
 
   // Initial load
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (status === null) {
+      void refreshDiagnostics();
+    }
+    refreshLogs();
+  }, [refreshDiagnostics, refreshLogs, status]);
 
   // Auto-refresh every 5s when enabled
   useEffect(() => {
     if (!autoRefresh) return;
-    const interval = setInterval(refresh, 5000);
+    const interval = setInterval(refreshLogs, 5000);
     return () => clearInterval(interval);
-  }, [refresh, autoRefresh]);
+  }, [refreshLogs, autoRefresh]);
 
   // Scroll logs to bottom on update
   useEffect(() => {
@@ -130,7 +123,7 @@ export function DaemonControl() {
       while (Date.now() < deadline) {
         try {
           const next = await getDaemonStatus();
-          setStatus(next);
+          setDaemonStatus(next);
           if (predicate(next)) return;
         } catch (error) {
           console.warn('Failed to poll daemon status:', error);
@@ -139,7 +132,7 @@ export function DaemonControl() {
         await new Promise((resolve) => setTimeout(resolve, intervalMs));
       }
     },
-    [],
+    [setDaemonStatus],
   );
 
   const withLoading = async (
@@ -151,7 +144,7 @@ export function DaemonControl() {
     try {
       await fn();
       await pollDaemonStatus(settlePredicate);
-      refresh();
+      refreshAll();
     } catch (e) {
       console.error(e);
     } finally {
@@ -171,7 +164,7 @@ export function DaemonControl() {
     const newVal = !status.autostart;
     try {
       await setAutostartEnabled(newVal);
-      setStatus({ ...status, autostart: newVal });
+      setDaemonAutostart(newVal);
     } catch (e) {
       console.error(e);
     }
@@ -191,7 +184,7 @@ export function DaemonControl() {
                 variant="ghost"
                 size="sm"
                 className="ml-auto h-7 w-7 p-0"
-                onClick={() => refresh({ includeLogs: false })}
+                onClick={() => refreshAll({ includeLogs: false })}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
@@ -357,7 +350,7 @@ export function DaemonControl() {
                 variant="ghost"
                 size="sm"
                 className="h-7 w-7 p-0"
-                onClick={() => refresh()}
+                onClick={() => refreshAll()}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>

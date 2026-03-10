@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from 'react-i18next';
 import { History, Trash2, FileJson, Archive, Database, Clock, File } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,6 +7,19 @@ import { deleteArchiveFile, getArchiveFiles, getImportedFiles, getBackupFiles } 
 import type { ArchivedFile, ImportedFile, BackupFile } from "@/lib/db-types";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { formatBytes } from "@/lib/utils";
+import {
+  LOCAL_DATA_CHANGED_EVENT,
+  type LocalDataChangedDetail,
+} from "@/lib/sync-events";
+
+const DATA_HISTORY_REFRESH_REASONS = new Set([
+  "import_json_files",
+  "delete_archive_file",
+  "perform_manual_backup",
+  "restore_database_from_file",
+  "cleanup_data_folder",
+  "update_database_settings",
+]);
 
 export function DataHistory() {
   const { t } = useTranslation();
@@ -14,19 +27,61 @@ export function DataHistory() {
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [backups, setBackups] = useState<BackupFile[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const isLoadingRef = useRef(false);
 
-  const loadData = () => {
-    getImportedFiles().then(setImported).catch(console.error);
-    getArchiveFiles().then(setArchive).catch(console.error);
-    getBackupFiles().then(setBackups).catch(console.error);
-  };
+  const loadData = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    try {
+      const [nextImported, nextArchive, nextBackups] = await Promise.all([
+        getImportedFiles(),
+        getArchiveFiles(),
+        getBackupFiles(),
+      ]);
+      setImported(nextImported);
+      setArchive(nextArchive);
+      setBackups(nextBackups);
+    } catch (error) {
+      console.error("Failed to load data history:", error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, []);
 
   useEffect(() => {
-    loadData();
-    // Refresh every minute to show updated backup list if things happen in background
-    const interval = setInterval(loadData, 60000);
-    return () => clearInterval(interval);
-  }, []);
+    void loadData();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadData();
+    };
+    const handleWindowFocus = () => {
+      void loadData();
+    };
+    const handleLocalDataChange = (
+      event: Event,
+    ) => {
+      const detail = (event as CustomEvent<LocalDataChangedDetail>).detail;
+      if (!detail || !DATA_HISTORY_REFRESH_REASONS.has(detail.reason)) return;
+      void loadData();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+    window.addEventListener(
+      LOCAL_DATA_CHANGED_EVENT,
+      handleLocalDataChange as EventListener,
+    );
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+      window.removeEventListener(
+        LOCAL_DATA_CHANGED_EVENT,
+        handleLocalDataChange as EventListener,
+      );
+    };
+  }, [loadData]);
 
   const handleDeleteArchive = async (fileName: string) => {
     if (
@@ -42,7 +97,7 @@ export function DataHistory() {
     setDeleting(fileName);
     try {
       await deleteArchiveFile(fileName);
-      loadData();
+      await loadData();
     } catch (e: unknown) {
       console.error(e);
     } finally {

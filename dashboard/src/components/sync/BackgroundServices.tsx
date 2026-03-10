@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useDataStore } from '@/store/data-store';
+import { useBackgroundStatusStore } from '@/store/background-status-store';
 import {
   autoCreateProjectsFromDetection,
   autoImportFromDataDir,
@@ -272,8 +273,13 @@ function useAutoSplitSessions() {
 // Replaces multiple setTimeouts/setIntervals scattered across components with a single event loop
 function useJobPool() {
   const { autoImportDone, triggerRefresh } = useDataStore();
+  const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
+  const refreshDatabaseSettings = useBackgroundStatusStore(
+    (s) => s.refreshDatabaseSettings,
+  );
   const loopRef = useRef<number | null>(null);
 
+  const nextDiagnosticsRef = useRef(0);
   const nextRefreshRef = useRef(0);
   const nextSigCheckRef = useRef(0);
   const nextSyncIntervalRef = useRef(0);
@@ -359,11 +365,13 @@ function useJobPool() {
   );
 
   useEffect(() => {
-    if (!autoImportDone) return;
     let disposed = false;
 
+    void refreshDiagnostics();
+    void refreshDatabaseSettings();
+
     // Bootstrap initial data
-    if (isDocumentVisible()) {
+    if (autoImportDone && isDocumentVisible()) {
       void runRefresh().then(() => {
         if (disposed) return;
         getTodayFileSignature()
@@ -378,6 +386,11 @@ function useJobPool() {
     loopRef.current = window.setInterval(() => {
       if (!isDocumentVisible()) return;
       const now = Date.now();
+
+      if (now >= nextDiagnosticsRef.current) {
+        nextDiagnosticsRef.current = now + 10_000;
+        void refreshDiagnostics();
+      }
 
       if (autoImportDone && now >= nextRefreshRef.current) {
         nextRefreshRef.current = now + 60_000;
@@ -412,6 +425,8 @@ function useJobPool() {
   }, [
     autoImportDone,
     checkFileChange,
+    refreshDatabaseSettings,
+    refreshDiagnostics,
     runRefresh,
     runSync,
     refreshSyncSettingsCache,
@@ -424,7 +439,11 @@ function useJobPool() {
 
     const handleVisibilityChange = () => {
       refreshSyncSettingsCache();
-      if (!autoImportDone || !isDocumentVisible()) return;
+      if (!isDocumentVisible()) return;
+      nextDiagnosticsRef.current = 0;
+      void refreshDiagnostics();
+      void refreshDatabaseSettings();
+      if (!autoImportDone) return;
       nextRefreshRef.current = 0;
       nextSigCheckRef.current = 0;
       nextSyncIntervalRef.current = 0;
@@ -434,6 +453,7 @@ function useJobPool() {
 
     const handleLocalDataChange = () => {
       if (!isDocumentVisible()) return;
+      void refreshDatabaseSettings();
       if (localChangeRefreshTimer.current)
         window.clearTimeout(localChangeRefreshTimer.current);
       localChangeRefreshTimer.current = window.setTimeout(
@@ -474,7 +494,15 @@ function useJobPool() {
       if (localChangeSyncTimer.current)
         window.clearTimeout(localChangeSyncTimer.current);
     };
-  }, [autoImportDone, runRefresh, runSync, triggerRefresh, refreshSyncSettingsCache]);
+  }, [
+    autoImportDone,
+    refreshDatabaseSettings,
+    refreshDiagnostics,
+    runRefresh,
+    runSync,
+    triggerRefresh,
+    refreshSyncSettingsCache,
+  ]);
 
   useEffect(() => {
     if (!autoImportDone) return;
