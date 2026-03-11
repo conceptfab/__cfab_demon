@@ -27,13 +27,20 @@ import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
+import {
+  APP_REFRESH_EVENT,
+  LOCAL_DATA_CHANGED_EVENT,
+  type AppRefreshDetail,
+  type LocalDataChangedDetail,
+} from '@/lib/sync-events';
+import { shouldRefreshApplicationsPage } from '@/lib/page-refresh-reasons';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
 const APP_ROWS_PAGE_SIZE = 100;
 
 export function Applications() {
   const { i18n, t } = useTranslation();
-  const { triggerRefresh, refreshKey } = useDataStore();
+  const { triggerRefresh } = useDataStore();
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [apps, setApps] = useState<AppWithStats[]>([]);
@@ -51,9 +58,47 @@ export function Applications() {
   const [newDisplay, setNewDisplay] = useState('');
   const [monitoredError, setMonitoredError] = useState('');
   const [syncingMonitored, setSyncingMonitored] = useState(false);
+  const [dataReloadVersion, setDataReloadVersion] = useState(0);
 
   const loadMonitored = useCallback(() => {
     daemonApi.getMonitoredApps().then(setMonitored).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const handleLocalDataChange = (event: Event) => {
+      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
+      const reason = customEvent.detail?.reason;
+      if (!reason || !shouldRefreshApplicationsPage(reason)) {
+        return;
+      }
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    const handleAppRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<AppRefreshDetail>;
+      const reasons = customEvent.detail?.reasons ?? [];
+      if (!reasons.some((reason) => shouldRefreshApplicationsPage(reason))) {
+        return;
+      }
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    window.addEventListener(
+      LOCAL_DATA_CHANGED_EVENT,
+      handleLocalDataChange as EventListener,
+    );
+    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        LOCAL_DATA_CHANGED_EVENT,
+        handleLocalDataChange as EventListener,
+      );
+      window.removeEventListener(
+        APP_REFRESH_EVENT,
+        handleAppRefresh as EventListener,
+      );
+    };
   }, []);
 
   useEffect(() => {
@@ -86,7 +131,7 @@ export function Applications() {
         });
       },
     );
-  }, [refreshKey, t]);
+  }, [dataReloadVersion, t]);
 
   const monitoredSet = useMemo(
     () => new Set(monitored.map((m) => m.exe_name)),

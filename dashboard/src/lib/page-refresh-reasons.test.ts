@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  shouldRefreshApplicationsPage,
   shouldRefreshDashboardPage,
+  shouldRefreshEstimatesPage,
+  shouldRefreshProjectPage,
   shouldRefreshProjectsCacheFromAppReason,
   shouldRefreshProjectsPageAllTime,
   shouldRefreshProjectsPageFolders,
+  shouldRefreshSessionsPage,
 } from '@/lib/page-refresh-reasons';
 
 describe('page refresh reason helpers', () => {
@@ -30,5 +34,33 @@ describe('page refresh reason helpers', () => {
     expect(shouldRefreshDashboardPage('update_session_comment')).toBe(true);
     expect(shouldRefreshDashboardPage('settings_saved')).toBe(true);
     expect(shouldRefreshDashboardPage('applications_changed')).toBe(false);
+  });
+
+  it('refreshes sessions only for session-related reasons and settings changes', () => {
+    expect(shouldRefreshSessionsPage('update_session_comment')).toBe(true);
+    expect(shouldRefreshSessionsPage('refresh_today')).toBe(true);
+    expect(shouldRefreshSessionsPage('settings_saved')).toBe(true);
+    expect(shouldRefreshSessionsPage('applications_changed')).toBe(false);
+  });
+
+  it('refreshes applications for app mutations and imported activity changes', () => {
+    expect(shouldRefreshApplicationsPage('applications_changed')).toBe(true);
+    expect(shouldRefreshApplicationsPage('rename_application')).toBe(true);
+    expect(shouldRefreshApplicationsPage('background_sync_interval')).toBe(true);
+    expect(shouldRefreshApplicationsPage('estimates_project_rate_updated')).toBe(false);
+  });
+
+  it('refreshes estimates for rate changes and project mutations', () => {
+    expect(shouldRefreshEstimatesPage('update_global_hourly_rate')).toBe(true);
+    expect(shouldRefreshEstimatesPage('update_project')).toBe(true);
+    expect(shouldRefreshEstimatesPage('estimates_project_rate_updated')).toBe(true);
+    expect(shouldRefreshEstimatesPage('applications_changed')).toBe(false);
+  });
+
+  it('refreshes project page for project metadata and session mutations', () => {
+    expect(shouldRefreshProjectPage('update_project')).toBe(true);
+    expect(shouldRefreshProjectPage('update_session_comment')).toBe(true);
+    expect(shouldRefreshProjectPage('project_page_session_mutation')).toBe(true);
+    expect(shouldRefreshProjectPage('applications_changed')).toBe(false);
   });
 });

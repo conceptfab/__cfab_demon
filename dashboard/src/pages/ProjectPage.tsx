@@ -64,6 +64,13 @@ import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import { loadProjectsAllTime } from '@/store/projects-cache-store';
 import { fetchAllSessions } from '@/lib/session-pagination';
+import {
+  APP_REFRESH_EVENT,
+  LOCAL_DATA_CHANGED_EVENT,
+  type AppRefreshDetail,
+  type LocalDataChangedDetail,
+} from '@/lib/sync-events';
+import { shouldRefreshProjectPage } from '@/lib/page-refresh-reasons';
 
 function RateMultiplierPanel({
   description,
@@ -158,7 +165,7 @@ function upsertProjectInList(
 export function ProjectPage() {
   const { t } = useTranslation();
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
-  const { refreshKey, triggerRefresh } = useDataStore();
+  const { triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -170,7 +177,7 @@ export function ProjectPage() {
     deleteSessions,
     deleteManualSessions,
   } = useSessionActions({
-    onAfterMutation: triggerRefresh,
+    onAfterMutation: () => triggerRefresh('project_page_session_mutation'),
     onError: (action, error) => {
       console.error(`Project page session action failed (${action}):`, error);
     },
@@ -294,6 +301,7 @@ export function ProjectPage() {
   const [estimate, setEstimate] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
   const [selectedSessionDetail, setSelectedSessionDetail] =
@@ -307,6 +315,43 @@ export function ProjectPage() {
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleLocalDataChange = (event: Event) => {
+      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
+      const reason = customEvent.detail?.reason;
+      if (!reason || !shouldRefreshProjectPage(reason)) {
+        return;
+      }
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    const handleAppRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<AppRefreshDetail>;
+      const reasons = customEvent.detail?.reasons ?? [];
+      if (!reasons.some((reason) => shouldRefreshProjectPage(reason))) {
+        return;
+      }
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    window.addEventListener(
+      LOCAL_DATA_CHANGED_EVENT,
+      handleLocalDataChange as EventListener,
+    );
+    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        LOCAL_DATA_CHANGED_EVENT,
+        handleLocalDataChange as EventListener,
+      );
+      window.removeEventListener(
+        APP_REFRESH_EVENT,
+        handleAppRefresh as EventListener,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     if (projectPageId === null) {
@@ -385,7 +430,7 @@ export function ProjectPage() {
     return () => {
       cancelled = true;
     };
-  }, [projectPageId, refreshKey, setCurrentPage, t]);
+  }, [projectPageId, dataReloadVersion, setCurrentPage, t]);
 
   useEffect(() => {
     if (!sessionDialogOpen || projectPageId === null || hasLoadedProjectsList) {
@@ -1486,7 +1531,7 @@ export function ProjectPage() {
           sessionDialogDate ? `${sessionDialogDate}T09:00` : undefined
         }
         editSession={editManualSession || undefined}
-        onSaved={triggerRefresh}
+        onSaved={() => triggerRefresh('project_page_manual_session_saved')}
       />
       <ConfirmDialog />
       {showTemplateSelector && (

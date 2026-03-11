@@ -52,7 +52,17 @@ import {
   buildAnalysisFromBreakdown,
   withTimeout,
 } from '@/lib/session-analysis';
-import { loadProjectsAllTime } from '@/store/projects-cache-store';
+import {
+  loadProjectsAllTime,
+  useProjectsCacheStore,
+} from '@/store/projects-cache-store';
+import {
+  APP_REFRESH_EVENT,
+  LOCAL_DATA_CHANGED_EVENT,
+  type AppRefreshDetail,
+  type LocalDataChangedDetail,
+} from '@/lib/sync-events';
+import { shouldRefreshSessionsPage } from '@/lib/page-refresh-reasons';
 
 interface ContextMenu {
   x: number;
@@ -80,6 +90,7 @@ type RangeMode = 'daily' | 'weekly';
 const UNASSIGNED_GROUP_KEY = '__unassigned__';
 const TOP_PROJECTS_LIMIT = 5;
 const SCORE_BREAKDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
+const SPLIT_ANALYSIS_BATCH_SIZE = 25;
 
 type CachedBreakdownEntry = {
   data: ScoreBreakdown;
@@ -198,7 +209,7 @@ export function Sessions() {
     assignProjectListMode,
     setAssignProjectListMode,
   } = useUIStore();
-  const { refreshKey, triggerRefresh } = useDataStore();
+  const { triggerRefresh } = useDataStore();
   const {
     assignSessions,
     updateSessionRateMultipliers,
@@ -218,6 +229,7 @@ export function Sessions() {
   const [overrideDateRange, setOverrideDateRange] = useState<DateRange | null>(
     null,
   );
+  const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [activeProjectId, setActiveProjectId] = useState<
     number | 'unassigned' | null
   >(sessionsFocusProject);
@@ -228,7 +240,7 @@ export function Sessions() {
   const [hasMore, setHasMore] = useState(false);
   const sessionsRef = useRef<SessionWithApp[]>([]);
   const hasMoreRef = useRef(false);
-  const [projects, setProjects] = useState<ProjectWithStats[]>([]);
+  const projects = useProjectsCacheStore((state) => state.projectsAllTime);
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [projectCtxMenu, setProjectCtxMenu] =
     useState<ProjectHeaderMenu | null>(null);
@@ -248,13 +260,10 @@ export function Sessions() {
   const [splitAnalysisLoadingIds, setSplitAnalysisLoadingIds] = useState<
     Set<number>
   >(new Set());
-  const [indicators] = useState<SessionIndicatorSettings>(() =>
+  const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const splitSettings = useMemo(() => {
-    void refreshKey;
-    return loadSplitSettings();
-  }, [refreshKey]);
+  const [splitSettings, setSplitSettings] = useState(() => loadSplitSettings());
   const [scoreBreakdown, setScoreBreakdown] = useState<{
     sessionId: number;
     data: ScoreBreakdown;
@@ -272,6 +281,8 @@ export function Sessions() {
   const scoreBreakdownCacheRef = useRef<Map<number, CachedBreakdownEntry>>(
     new Map(),
   );
+  const splitEligibilityCacheRef = useRef<Map<number, string>>(new Map());
+  const splitAnalysisBatchTimerRef = useRef<number | null>(null);
   const getCachedBreakdown = useCallback(
     (sessionId: number): ScoreBreakdown | null => {
       const cached = scoreBreakdownCacheRef.current.get(sessionId);
@@ -296,6 +307,19 @@ export function Sessions() {
   const today = format(new Date(), 'yyyy-MM-dd');
   const canShiftForward = anchorDate < today;
   const shiftStepDays = rangeMode === 'weekly' ? 7 : 1;
+  const splitSettingsKey = `${splitSettings.toleranceThreshold}:${splitSettings.maxProjectsPerSession}`;
+
+  const clearSplitCaches = useCallback(() => {
+    splitEligibilityCacheRef.current.clear();
+    setSplitEligibilityBySession(new Map());
+    setSplitAnalysisBySession(new Map());
+    setSplitAnalysisLoadingIds(new Set());
+  }, []);
+
+  const reloadDisplaySettings = useCallback(() => {
+    setSplitSettings(loadSplitSettings());
+    setIndicators(loadIndicatorSettings());
+  }, []);
 
   const activeDateRange = useMemo<DateRange>(() => {
     if (overrideDateRange) return overrideDateRange;
@@ -386,6 +410,52 @@ export function Sessions() {
   );
 
   useEffect(() => {
+    void loadProjectsAllTime().catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    const handleLocalDataChange = (event: Event) => {
+      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
+      const reason = customEvent.detail?.reason;
+      if (!reason || !shouldRefreshSessionsPage(reason)) {
+        return;
+      }
+      clearSplitCaches();
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    const handleAppRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<AppRefreshDetail>;
+      const reasons = customEvent.detail?.reasons ?? [];
+      if (reasons.includes('settings_saved')) {
+        reloadDisplaySettings();
+      }
+      if (!reasons.some((reason) => shouldRefreshSessionsPage(reason))) {
+        return;
+      }
+      clearSplitCaches();
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    window.addEventListener(
+      LOCAL_DATA_CHANGED_EVENT,
+      handleLocalDataChange as EventListener,
+    );
+    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        LOCAL_DATA_CHANGED_EVENT,
+        handleLocalDataChange as EventListener,
+      );
+      window.removeEventListener(
+        APP_REFRESH_EVENT,
+        handleAppRefresh as EventListener,
+      );
+    };
+  }, [clearSplitCaches, reloadDisplaySettings]);
+
+  useEffect(() => {
     sessionsRef.current = sessions;
   }, [sessions]);
 
@@ -425,17 +495,13 @@ export function Sessions() {
     return () => {
       cancelled = true;
     };
-  }, [buildFetchParams, refreshKey, replaceSessionsPage]);
+  }, [buildFetchParams, dataReloadVersion, replaceSessionsPage]);
 
   useEffect(() => {
     queueMicrotask(() => {
       setDismissedSuggestions(new Set());
     });
   }, [activeDateRange.start, activeDateRange.end]);
-
-  useEffect(() => {
-    loadProjectsAllTime().then(setProjects).catch(console.error);
-  }, [refreshKey]);
 
   useEffect(() => {
     if (!multiSplitSession) return;
@@ -518,38 +584,93 @@ export function Sessions() {
   ]);
 
   useEffect(() => {
-    const visibleSessionIds = sessions.map((s) => s.id);
-    if (visibleSessionIds.length === 0) {
+    if (splitAnalysisBatchTimerRef.current !== null) {
+      window.clearTimeout(splitAnalysisBatchTimerRef.current);
+      splitAnalysisBatchTimerRef.current = null;
+    }
+
+    const pendingSessionIds = sessions
+      .filter((session) => !isAlreadySplitSession(session))
+      .map((session) => session.id)
+      .filter(
+        (sessionId) =>
+          splitEligibilityCacheRef.current.get(sessionId) !== splitSettingsKey,
+      );
+
+    if (pendingSessionIds.length === 0) {
       return;
     }
 
     let cancelled = false;
-    sessionsApi.analyzeSessionsSplittable(
-      visibleSessionIds,
-      splitSettings.toleranceThreshold,
-      splitSettings.maxProjectsPerSession,
-    )
-      .then((flags) => {
-        if (cancelled) return;
-        setSplitEligibilityBySession((prev) => {
-          const next = new Map(prev);
-          let changed = false;
-          for (const flag of flags) {
-            if (next.get(flag.session_id) !== flag.is_splittable) {
-              next.set(flag.session_id, flag.is_splittable);
-              changed = true;
-            }
+    const runBatch = (offset: number) => {
+      const batch = pendingSessionIds.slice(
+        offset,
+        offset + SPLIT_ANALYSIS_BATCH_SIZE,
+      );
+      if (batch.length === 0) {
+        splitAnalysisBatchTimerRef.current = null;
+        return;
+      }
+
+      void sessionsApi.analyzeSessionsSplittable(
+        batch,
+        splitSettings.toleranceThreshold,
+        splitSettings.maxProjectsPerSession,
+      )
+        .then((flags) => {
+          if (cancelled) return;
+          const splitFlagsBySession = new Map(
+            flags.map((flag) => [flag.session_id, flag.is_splittable] as const),
+          );
+          batch.forEach((sessionId) => {
+            splitEligibilityCacheRef.current.set(sessionId, splitSettingsKey);
+          });
+          setSplitEligibilityBySession((prev) => {
+            const next = new Map(prev);
+            let changed = false;
+            batch.forEach((sessionId) => {
+              const isSplittable = splitFlagsBySession.get(sessionId) ?? false;
+              if (next.get(sessionId) !== isSplittable) {
+                next.set(sessionId, isSplittable);
+                changed = true;
+              }
+            });
+            return changed ? next : prev;
+          });
+        })
+        .catch((error) => {
+          batch.forEach((sessionId) => {
+            splitEligibilityCacheRef.current.delete(sessionId);
+          });
+          console.error(error);
+        })
+        .finally(() => {
+          if (cancelled) return;
+          const nextOffset = offset + batch.length;
+          if (nextOffset >= pendingSessionIds.length) {
+            splitAnalysisBatchTimerRef.current = null;
+            return;
           }
-          return changed ? next : prev;
+          splitAnalysisBatchTimerRef.current = window.setTimeout(() => {
+            runBatch(nextOffset);
+          }, 0);
         });
-      })
-      .catch(console.error);
+    };
+
+    splitAnalysisBatchTimerRef.current = window.setTimeout(() => {
+      runBatch(0);
+    }, 0);
 
     return () => {
       cancelled = true;
+      if (splitAnalysisBatchTimerRef.current !== null) {
+        window.clearTimeout(splitAnalysisBatchTimerRef.current);
+        splitAnalysisBatchTimerRef.current = null;
+      }
     };
   }, [
     sessions,
+    splitSettingsKey,
     splitSettings.toleranceThreshold,
     splitSettings.maxProjectsPerSession,
   ]);

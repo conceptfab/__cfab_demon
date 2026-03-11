@@ -41,6 +41,26 @@ Zamknięte w tej iteracji:
 - dodano jawne reguły odświeżania per strona oraz testy dla tych reguł
 - Help został dopasowany do nowego, okresowego zachowania skanowania folderów przy starcie
 
+## Status po następnej iteracji
+
+Zamknięte w tej iteracji:
+
+- `Sessions` przestał odpalać hurtową analizę splittability dla całej strony przy każdym odświeżeniu; wyniki są teraz cache'owane per `sessionId + splitSettings`, a brakujące wpisy lecą małymi batchami
+- `Sessions` przestał trzymać własny reload listy projektów pod `refreshKey` i korzysta teraz ze wspólnego cache projektów all-time
+- `Sessions`, `Applications`, `Estimates` i `ProjectPage` przestały zależeć od globalnego `refreshKey`; reagują teraz na precyzyjne powody zmian z eventów `LOCAL_DATA_CHANGED_EVENT` i `APP_REFRESH_EVENT`
+- reguły odświeżania zostały rozszerzone o kolejne ekrany i dostały testy jednostkowe
+
+Pozostały backlog z raportu:
+
+- dalsze porządki `i18n` w `Settings`, `AI`, `ProjectPage` i mniejszych hotspotach
+- ewentualne dalsze odchudzanie danych na cięższych ekranach, jeśli pojawią się realne bottlenecki po tej iteracji
+
+Weryfikacja tej iteracji:
+
+- `dashboard`: `npm run lint` -> OK
+- `dashboard`: `npm run typecheck` -> OK
+- `dashboard`: `npm test` -> OK, 15/15 testów
+
 ## Zakres
 
 Przeanalizowane obszary:
