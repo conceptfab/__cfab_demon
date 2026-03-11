@@ -175,6 +175,7 @@ pub fn run() {
             commands::get_secure_token,
             commands::set_secure_token,
             commands::persist_language_for_daemon,
+            commands::persist_session_settings_for_daemon,
             commands::split_session,
             commands::suggest_session_split,
             commands::analyze_session_projects,

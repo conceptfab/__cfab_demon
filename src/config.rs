@@ -59,8 +59,12 @@ pub struct Config {
 pub fn ensure_app_dirs() -> Result<()> {
     let appdata = std::env::var("APPDATA").context("APPDATA environment variable is missing")?;
     let appdata_path = PathBuf::from(&appdata);
-    let base = timeflow_paths::ensure_timeflow_base_dir(&appdata_path)
-        .with_context(|| format!("Failed to prepare application directory: {:?}", appdata_path))?;
+    let base = timeflow_paths::ensure_timeflow_base_dir(&appdata_path).with_context(|| {
+        format!(
+            "Failed to prepare application directory: {:?}",
+            appdata_path
+        )
+    })?;
 
     let data = base.join("data");
     let import = base.join("import");
@@ -85,7 +89,7 @@ fn config_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("monitored_apps.json"))
 }
 
-fn dashboard_db_path() -> Result<PathBuf> {
+pub(crate) fn dashboard_db_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("timeflow_dashboard.db"))
 }
 

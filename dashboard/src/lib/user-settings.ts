@@ -334,35 +334,6 @@ const aiAutoAssignmentManager = createSettingsManager<AiAutoAssignmentSettings>(
 export const loadAiAutoAssignmentSettings = aiAutoAssignmentManager.load;
 export const saveAiAutoAssignmentSettings = aiAutoAssignmentManager.save;
 
-export interface ReportFontSettings {
-  fontFamily: 'system' | 'serif' | 'mono';
-  baseFontSize: number;
-}
-const REPORT_FONT_STORAGE_KEY = 'timeflow.settings.report-font';
-export const DEFAULT_REPORT_FONT_SETTINGS: ReportFontSettings = {
-  fontFamily: 'system',
-  baseFontSize: 13,
-};
-const FONT_FAMILIES = ['system', 'serif', 'mono'] as const;
-const reportFontManager = createSettingsManager<ReportFontSettings>({
-  key: REPORT_FONT_STORAGE_KEY,
-  defaults: DEFAULT_REPORT_FONT_SETTINGS,
-  normalize: (parsed) => ({
-    fontFamily:
-      typeof parsed.fontFamily === 'string' &&
-      (FONT_FAMILIES as readonly string[]).includes(parsed.fontFamily)
-        ? (parsed.fontFamily as ReportFontSettings['fontFamily'])
-        : DEFAULT_REPORT_FONT_SETTINGS.fontFamily,
-    baseFontSize:
-      typeof parsed.baseFontSize === 'number' &&
-      !Number.isNaN(parsed.baseFontSize)
-        ? Math.min(18, Math.max(10, Math.round(parsed.baseFontSize)))
-        : DEFAULT_REPORT_FONT_SETTINGS.baseFontSize,
-  }),
-});
-export const loadReportFontSettings = reportFontManager.load;
-export const saveReportFontSettings = reportFontManager.save;
-
 export interface SplitSettings {
   maxProjectsPerSession: number;
   toleranceThreshold: number;

@@ -1,3 +1,5 @@
+import i18n from '@/i18n';
+
 export interface ReportTemplate {
   id: string;
   name: string;
@@ -19,7 +21,7 @@ function generateId(): string {
 function createDefaultTemplate(): ReportTemplate {
   return {
     id: 'default',
-    name: 'Standard',
+    name: i18n.t('reports_page.template.default_template'),
     sections: [...DEFAULT_SECTIONS],
     showLogo: true,
     createdAt: new Date().toISOString(),
@@ -91,10 +93,13 @@ export function duplicateTemplate(id: string, copyLabel = 'copy'): ReportTemplat
   const all = loadTemplates();
   const source = all.find(t => t.id === id);
   if (!source) return all;
+  const suffix = copyLabel === 'copy'
+    ? i18n.t('reports_page.template.copy_suffix')
+    : copyLabel;
   const copy: ReportTemplate = {
     ...source,
     id: generateId(),
-    name: `${source.name} (${copyLabel})`,
+    name: `${source.name} (${suffix})`,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };

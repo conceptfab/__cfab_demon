@@ -7,12 +7,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use native_windows_gui as nwg;
+use rusqlite::OptionalExtension;
 
 use crate::i18n::{self, Lang, TrayText};
 use crate::process_utils::{collect_process_entries, no_console};
 use crate::APP_NAME;
-const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
+
+#[path = "../shared/session_settings.rs"]
+mod session_settings;
+
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
+const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
 
 /// Zmienia tekst menu item przez WinAPI (NWG nie ma set_text na MenuItem).
 fn set_menu_item_text(item: &nwg::MenuItem, text: &str) {
@@ -37,24 +42,79 @@ pub enum TrayExitAction {
     Restart,
 }
 
-fn load_assignment_attention_count() -> i64 {
-    let path = match crate::config::config_dir() {
-        Ok(dir) => dir.join(ASSIGNMENT_SIGNAL_FILE),
-        Err(_) => return 0,
-    };
-    let raw = match std::fs::read_to_string(path) {
-        Ok(content) => content,
-        Err(_) => return 0,
-    };
-    raw.trim()
-        .parse::<i64>()
-        .ok()
-        .filter(|v| *v > 0)
-        .unwrap_or(0)
+#[derive(Debug, Clone, Copy)]
+struct AttentionState {
+    count: i64,
+    last_refresh: Instant,
 }
 
-fn build_tray_tip(lang: Lang) -> String {
-    let attention = load_assignment_attention_count();
+fn query_unassigned_attention_count() -> Result<i64, String> {
+    let base_dir = crate::config::config_dir().map_err(|e| e.to_string())?;
+    let db_path = crate::config::dashboard_db_path().map_err(|e| e.to_string())?;
+    if !db_path.exists() {
+        return Ok(0);
+    }
+
+    let min_duration_sec =
+        session_settings::read_session_settings(&base_dir).min_session_duration_seconds;
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| format!("Failed to open dashboard DB '{}': {}", db_path.display(), e))?;
+    conn.busy_timeout(Duration::from_millis(2000))
+        .map_err(|e| format!("Failed to configure dashboard DB busy_timeout: {}", e))?;
+
+    let table_exists = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions' LIMIT 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to check sessions table in dashboard DB: {}", e))?
+        .is_some();
+    if !table_exists {
+        return Ok(0);
+    }
+
+    conn.query_row(
+        "SELECT COUNT(*)
+         FROM sessions s
+         WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
+           AND s.project_id IS NULL
+           AND s.duration_seconds >= ?1",
+        [min_duration_sec],
+        |row| row.get::<_, i64>(0),
+    )
+    .map_err(|e| format!("Failed to query unassigned sessions for tray: {}", e))
+}
+
+fn refresh_attention_state(state: &Rc<RefCell<AttentionState>>, force: bool) -> i64 {
+    let now = Instant::now();
+    let should_refresh = {
+        let snapshot = state.borrow();
+        force || now.duration_since(snapshot.last_refresh) >= TRAY_ATTENTION_REFRESH_INTERVAL
+    };
+
+    if !should_refresh {
+        return state.borrow().count;
+    }
+
+    let mut snapshot = state.borrow_mut();
+    snapshot.last_refresh = now;
+    match query_unassigned_attention_count() {
+        Ok(count) => {
+            snapshot.count = count;
+        }
+        Err(error) => {
+            log::warn!("Failed to refresh tray attention count: {}", error);
+        }
+    }
+    snapshot.count
+}
+
+fn build_tray_tip(lang: Lang, attention: i64) -> String {
     if attention > 0 {
         format!(
             "{} * - {} {}",
@@ -93,7 +153,11 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                 .expect("APP_ICON not found in resources")
         });
 
-    let tip = build_tray_tip(initial_lang);
+    let initial_attention = query_unassigned_attention_count().unwrap_or_else(|error| {
+        log::warn!("Failed to load initial tray attention count: {}", error);
+        0
+    });
+    let tip = build_tray_tip(initial_lang, initial_attention);
 
     let mut tray_obj = nwg::TrayNotification::default();
     nwg::TrayNotification::builder()
@@ -102,6 +166,9 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .tip(Some(&tip))
         .build(&mut tray_obj)
         .expect("Failed to create tray icon");
+    if initial_attention > 0 {
+        tray_obj.set_icon(&icon_attention);
+    }
     let tray = Rc::new(RefCell::new(tray_obj));
 
     let mut tip_refresh_timer = nwg::AnimationTimer::default();
@@ -163,6 +230,11 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let menu = Rc::new(menu);
     let menu_clone = menu.clone();
     let tray_clone = tray.clone();
+    let attention_state = Rc::new(RefCell::new(AttentionState {
+        count: initial_attention,
+        last_refresh: Instant::now(),
+    }));
+    let attention_state_clone = attention_state.clone();
 
     let current_lang: Rc<Cell<Lang>> = Rc::new(Cell::new(initial_lang));
     let lang_clone = current_lang.clone();
@@ -187,8 +259,15 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
             nwg::Event::OnContextMenu => {
                 if handle == tray_handle {
                     let lang = lang_clone.get();
-                    let refreshed_tip = build_tray_tip(lang);
-                    tray_clone.borrow_mut().set_tip(&refreshed_tip);
+                    let attention = refresh_attention_state(&attention_state_clone, true);
+                    let refreshed_tip = build_tray_tip(lang, attention);
+                    let tray = tray_clone.borrow_mut();
+                    tray.set_tip(&refreshed_tip);
+                    if attention > 0 {
+                        tray.set_icon(&icon_attention);
+                    } else {
+                        tray.set_icon(&icon);
+                    }
                     let (x, y) = nwg::GlobalCursor::position();
                     menu_clone.popup(x, y);
                 }
@@ -206,7 +285,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                         } else {
                             false
                         };
-                        
+
                         if is_double_click {
                             log::info!("Tray icon double-clicked, launching Dashboard");
                             launch_dashboard(lang_clone.get());
@@ -236,8 +315,8 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                     }
 
                     let lang = lang_clone.get();
-                    let attention = load_assignment_attention_count();
-                    let refreshed_tip = build_tray_tip(lang);
+                    let attention = refresh_attention_state(&attention_state, false);
+                    let refreshed_tip = build_tray_tip(lang, attention);
 
                     let tray = tray_clone.borrow_mut();
                     tray.set_tip(&refreshed_tip);

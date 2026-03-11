@@ -1,7 +1,11 @@
 use std::io::{Read, Seek, SeekFrom};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
+#[path = "../../../../shared/session_settings.rs"]
+mod session_settings;
 #[path = "../../../../shared/version_compat.rs"]
 mod version_compat;
 
@@ -10,7 +14,62 @@ use super::helpers::{
 };
 use super::types::DaemonStatus;
 use crate::db;
-const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
+const DAEMON_VERSION_CACHE_TTL: Duration = Duration::from_secs(300);
+
+#[derive(Clone)]
+struct DaemonVersionCacheEntry {
+    exe_path: std::path::PathBuf,
+    version: String,
+    cached_at: Instant,
+}
+
+fn daemon_version_cache() -> &'static Mutex<Option<DaemonVersionCacheEntry>> {
+    static DAEMON_VERSION_CACHE: OnceLock<Mutex<Option<DaemonVersionCacheEntry>>> = OnceLock::new();
+    DAEMON_VERSION_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn read_cached_daemon_version(exe: &std::path::Path) -> Option<String> {
+    let guard = daemon_version_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entry = guard.as_ref()?;
+    if entry.exe_path != exe || entry.cached_at.elapsed() > DAEMON_VERSION_CACHE_TTL {
+        return None;
+    }
+    Some(entry.version.clone())
+}
+
+fn store_cached_daemon_version(exe: &std::path::Path, version: &str) {
+    let mut guard = daemon_version_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(DaemonVersionCacheEntry {
+        exe_path: exe.to_path_buf(),
+        version: version.to_string(),
+        cached_at: Instant::now(),
+    });
+}
+
+fn load_daemon_version(exe: &std::path::Path) -> Option<String> {
+    if let Some(version) = read_cached_daemon_version(exe) {
+        return Some(version);
+    }
+
+    let mut v_cmd = Command::new(exe);
+    no_console(&mut v_cmd);
+    let output = v_cmd.arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
+        return None;
+    }
+
+    store_cached_daemon_version(exe, &version);
+    Some(version)
+}
 
 fn find_daemon_exe() -> Result<std::path::PathBuf, String> {
     // Look next to the dashboard executable first
@@ -126,23 +185,19 @@ fn query_unassigned_counts(app: &AppHandle, min_duration_sec: i64) -> (i64, i64)
     .unwrap_or((0, 0))
 }
 
-fn write_assignment_signal(unassigned_sessions: i64) {
+fn load_persisted_session_min_duration() -> i64 {
     let base_dir = match timeflow_data_dir() {
         Ok(dir) => dir,
-        Err(e) => {
+        Err(error) => {
             log::warn!(
-                "Failed to resolve TimeFlow dir for assignment signal: {}",
-                e
+                "Failed to resolve TIMEFLOW dir for session settings: {}",
+                error
             );
-            return;
+            return session_settings::DEFAULT_MIN_SESSION_DURATION_SECONDS;
         }
     };
-    if let Err(e) = std::fs::write(
-        base_dir.join(ASSIGNMENT_SIGNAL_FILE),
-        unassigned_sessions.to_string(),
-    ) {
-        log::warn!("Failed to write assignment signal file: {}", e);
-    }
+
+    session_settings::read_session_settings(&base_dir).min_session_duration_seconds
 }
 
 #[tauri::command]
@@ -185,25 +240,12 @@ pub async fn get_daemon_status(
         let autostart = startup_dir()
             .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
             .unwrap_or(false);
-        let min_dur = min_duration.unwrap_or(0);
+        let min_dur = min_duration.unwrap_or_else(load_persisted_session_min_duration);
         let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app, min_dur);
-        if running {
-            write_assignment_signal(unassigned_sessions);
-        } else {
-            write_assignment_signal(0);
-        }
 
-        let mut daemon_version = None;
-        if let Ok(exe) = find_daemon_exe() {
-            let mut v_cmd = Command::new(&exe);
-            no_console(&mut v_cmd);
-            if let Ok(output) = v_cmd.arg("--version").output() {
-                if output.status.success() {
-                    daemon_version =
-                        Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
-                }
-            }
-        }
+        let daemon_version = find_daemon_exe()
+            .ok()
+            .and_then(|exe| load_daemon_version(&exe));
 
         let is_compatible = if let Some(ref dv) = daemon_version {
             version_compat::check_version_compatibility(dv, crate::VERSION.trim())
@@ -327,4 +369,15 @@ pub async fn persist_language_for_daemon(code: String) -> Result<(), String> {
     };
     let content = format!("{{\"code\":\"{}\"}}", normalized);
     std::fs::write(&lang_file, content).map_err(|e| format!("Failed to write language.json: {}", e))
+}
+
+#[tauri::command]
+pub async fn persist_session_settings_for_daemon(
+    min_session_duration_seconds: i64,
+) -> Result<(), String> {
+    let base_dir = timeflow_data_dir()?;
+    let settings = session_settings::SharedSessionSettings {
+        min_session_duration_seconds,
+    };
+    session_settings::write_session_settings(&base_dir, &settings)
 }

@@ -9,6 +9,7 @@ interface SessionsToolbarSummaryProps {
   text: string;
   showUnassignedOnly: boolean;
   unassignedOnlyText: string;
+  unassignedScopeText?: string;
 }
 
 interface SessionsToolbarRangeProps {
@@ -55,6 +56,11 @@ export function SessionsToolbar({
         {summary.showUnassignedOnly && (
           <span className="text-amber-400/80 ml-2 font-bold select-none">
             {summary.unassignedOnlyText}
+          </span>
+        )}
+        {summary.showUnassignedOnly && summary.unassignedScopeText && (
+          <span className="text-[11px] text-amber-300/70 font-semibold select-none">
+            {summary.unassignedScopeText}
           </span>
         )}
       </p>

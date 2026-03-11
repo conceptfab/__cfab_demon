@@ -25,11 +25,18 @@ function writeFirstRunFlag(firstRun: boolean): void {
 
 export type AssignProjectListMode = 'alpha_active' | 'new_top_rest' | 'top_new_rest';
 const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY = 'timeflow-sessions-assign-project-list-mode';
+const LEGACY_ASSIGN_PROJECT_LIST_MODE_STORAGE_KEYS = [
+  'timeflow-dashboard-assign-project-list-mode',
+];
 
 function loadAssignProjectListMode(): AssignProjectListMode {
   if (typeof window === 'undefined') return 'alpha_active';
   try {
-    const raw = window.localStorage.getItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY);
+    const raw =
+      window.localStorage.getItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY) ??
+      LEGACY_ASSIGN_PROJECT_LIST_MODE_STORAGE_KEYS
+        .map((key) => window.localStorage.getItem(key))
+        .find((value) => value !== null);
     if (raw === 'new_top_rest' || raw === 'top_new_rest' || raw === 'alpha_active') {
       return raw;
     }

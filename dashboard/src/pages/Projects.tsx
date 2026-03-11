@@ -49,24 +49,33 @@ import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import {
+  APP_REFRESH_EVENT,
   LOCAL_DATA_CHANGED_EVENT,
   PROJECTS_ALL_TIME_INVALIDATED_EVENT,
+  type AppRefreshDetail,
   type LocalDataChangedDetail,
 } from '@/lib/sync-events';
 import {
   buildEstimateMap,
   shouldInvalidateProjectExtraInfo,
-  shouldRefreshProjectsAllTime,
 } from '@/lib/projects-all-time';
+import {
+  shouldRefreshProjectsPageAllTime,
+  shouldRefreshProjectsPageCore,
+  shouldRefreshProjectsPageFolders,
+} from '@/lib/page-refresh-reasons';
 import type {
-  ProjectWithStats,
   AppWithStats,
   ProjectFolder,
   FolderProjectCandidate,
   DetectedProject,
   ProjectExtraInfo,
+  ProjectWithStats,
 } from '@/lib/db-types';
-import { loadProjectsAllTime } from '@/store/projects-cache-store';
+import {
+  loadProjectsAllTime,
+  useProjectsCacheStore,
+} from '@/store/projects-cache-store';
 
 const PROJECT_RENDER_PAGE_SIZE = 120;
 const PROJECT_FOLDERS_LOAD_ERROR = '__projects_load_folders_failed__';
@@ -181,11 +190,10 @@ function renderDuration(seconds: number) {
 export function Projects() {
   const { t } = useTranslation();
   const { setProjectPageId, setCurrentPage } = useUIStore();
-  const { refreshKey, triggerRefresh } = useDataStore();
+  const { triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
   const { showError } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [projects, setProjects] = useState<ProjectWithStats[]>([]);
   const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>(
     [],
   );
@@ -225,10 +233,13 @@ export function Projects() {
     Record<string, number>
   >({});
   const autoFreezeInitializedRef = useRef(false);
+  const [coreRefreshKey, setCoreRefreshKey] = useState(0);
+  const [foldersRefreshKey, setFoldersRefreshKey] = useState(0);
   const [allTimeRefreshKey, setAllTimeRefreshKey] = useState(0);
   const projectExtraInfoCacheRef = useRef<Record<number, ProjectExtraInfo>>({});
   const [projectExtraInfoCacheVersion, setProjectExtraInfoCacheVersion] =
     useState(0);
+  const projects = useProjectsCacheStore((s) => s.projectsAllTime);
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -304,6 +315,14 @@ export function Projects() {
     setAllTimeRefreshKey((prev) => prev + 1);
   }, []);
 
+  const invalidateCoreData = useCallback(() => {
+    setCoreRefreshKey((prev) => prev + 1);
+  }, []);
+
+  const invalidateFolderData = useCallback(() => {
+    setFoldersRefreshKey((prev) => prev + 1);
+  }, []);
+
   const invalidateProjectExtraInfoCache = useCallback(() => {
     projectExtraInfoCacheRef.current = {};
     setProjectExtraInfoCacheVersion((prev) => prev + 1);
@@ -320,16 +339,40 @@ export function Projects() {
   }, []);
 
   useEffect(() => {
+    void loadProjectsAllTime();
+  }, []);
+
+  useEffect(() => {
     const handleLocalDataChange = (event: Event) => {
       const customEvent = event as CustomEvent<LocalDataChangedDetail>;
       const reason = customEvent.detail?.reason;
       if (!reason) return;
 
-      if (shouldRefreshProjectsAllTime(reason)) {
+      if (shouldRefreshProjectsPageCore(reason)) {
+        invalidateCoreData();
+      }
+      if (shouldRefreshProjectsPageFolders(reason)) {
+        invalidateFolderData();
+      }
+      if (shouldRefreshProjectsPageAllTime(reason)) {
         invalidateAllTimeData();
       }
       if (shouldInvalidateProjectExtraInfo(reason)) {
         invalidateProjectExtraInfoCache();
+      }
+    };
+
+    const handleAppRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<AppRefreshDetail>;
+      const reasons = customEvent.detail?.reasons ?? [];
+      if (reasons.some((reason) => shouldRefreshProjectsPageCore(reason))) {
+        invalidateCoreData();
+      }
+      if (reasons.some((reason) => shouldRefreshProjectsPageFolders(reason))) {
+        invalidateFolderData();
+      }
+      if (reasons.some((reason) => shouldRefreshProjectsPageAllTime(reason))) {
+        invalidateAllTimeData();
       }
     };
 
@@ -338,6 +381,10 @@ export function Projects() {
       invalidateProjectExtraInfoCache();
     };
 
+    window.addEventListener(
+      APP_REFRESH_EVENT,
+      handleAppRefresh as EventListener,
+    );
     window.addEventListener(
       LOCAL_DATA_CHANGED_EVENT,
       handleLocalDataChange as EventListener,
@@ -349,6 +396,10 @@ export function Projects() {
 
     return () => {
       window.removeEventListener(
+        APP_REFRESH_EVENT,
+        handleAppRefresh as EventListener,
+      );
+      window.removeEventListener(
         LOCAL_DATA_CHANGED_EVENT,
         handleLocalDataChange as EventListener,
       );
@@ -357,7 +408,12 @@ export function Projects() {
         handleAllTimeInvalidated,
       );
     };
-  }, [invalidateAllTimeData, invalidateProjectExtraInfoCache]);
+  }, [
+    invalidateAllTimeData,
+    invalidateCoreData,
+    invalidateFolderData,
+    invalidateProjectExtraInfoCache,
+  ]);
 
   const hotProjectIds = useMemo(() => {
     return new Set(
@@ -371,17 +427,11 @@ export function Projects() {
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
-      loadProjectsAllTime(),
       projectsApi.getExcludedProjects(),
       applicationsApi.getApplications(),
       settingsApi.getDemoModeStatus(),
-      projectsApi.getProjectFolders(),
-      projectsApi.getFolderProjectCandidates(),
-    ]).then(([projectsRes, excludedRes, appsRes, demoModeRes, foldersRes, candidatesRes]) => {
+    ]).then(([excludedRes, appsRes, demoModeRes]) => {
       if (cancelled) return;
-
-      if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
-      else logTauriError('load projects', projectsRes.reason);
 
       if (excludedRes.status === 'fulfilled')
         setExcludedProjects(excludedRes.value);
@@ -394,6 +444,19 @@ export function Projects() {
       if (demoModeRes.status === 'fulfilled')
         setIsDemoMode(demoModeRes.value.enabled);
       else logTauriError('load demo mode status', demoModeRes.reason);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [coreRefreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([
+      projectsApi.getProjectFolders(),
+      projectsApi.getFolderProjectCandidates(),
+    ]).then(([foldersRes, candidatesRes]) => {
+      if (cancelled) return;
 
       if (foldersRes.status === 'fulfilled') {
         setProjectFolders(foldersRes.value);
@@ -414,7 +477,7 @@ export function Projects() {
     return () => {
       cancelled = true;
     };
-  }, [refreshKey]);
+  }, [foldersRefreshKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -672,7 +735,16 @@ export function Projects() {
 
   useEffect(() => {
     setProjectRenderLimits({});
-  }, [search, sortBy, viewMode, useFolders, refreshKey]);
+  }, [
+    search,
+    sortBy,
+    viewMode,
+    useFolders,
+    projects.length,
+    excludedProjects.length,
+    detectedProjects.length,
+    folderCandidates.length,
+  ]);
 
   const getRenderLimit = (listKey: string) =>
     projectRenderLimits[listKey] ?? PROJECT_RENDER_PAGE_SIZE;

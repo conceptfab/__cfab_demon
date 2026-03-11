@@ -580,6 +580,12 @@ export const setSecureToken = (token: string) =>
 // Language persistence for daemon (shared file in %APPDATA%/TimeFlow/)
 export const persistLanguageForDaemon = (code: string) =>
   invoke<void>('persist_language_for_daemon', { code });
+export const persistSessionSettingsForDaemon = (
+  minSessionDurationSeconds: number,
+) =>
+  invoke<void>('persist_session_settings_for_daemon', {
+    minSessionDurationSeconds,
+  });
 
 // Session Splitting
 // Multi-project session analysis & split
@@ -730,6 +736,7 @@ export const settingsApi = {
   getSecureToken,
   setSecureToken,
   persistLanguageForDaemon,
+  persistSessionSettingsForDaemon,
 } as const;
 
 export const dataApi = {

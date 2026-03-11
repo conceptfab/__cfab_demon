@@ -11,6 +11,7 @@ import {
 } from 'date-fns';
 import type { AutoImportResult, DateRange } from '@/lib/db-types';
 import { ALL_TIME_START } from '@/lib/date-ranges';
+import { emitAppRefresh } from '@/lib/sync-events';
 
 export type TimePreset = 'today' | 'week' | 'month' | 'all' | 'custom';
 type RefreshReason = string;
@@ -46,11 +47,13 @@ function flushPendingRefresh(increment: () => void) {
     return;
   }
   const now = Date.now();
+  const reasons = Array.from(pendingRefreshReasons);
   lastRefreshAtMs = now;
   pendingRefreshReasons.forEach((reason) => {
     lastRefreshAtByReason.set(reason, now);
   });
   pendingRefreshReasons.clear();
+  emitAppRefresh(reasons, hasPendingAnonymousRefresh);
   hasPendingAnonymousRefresh = false;
   scheduledRefreshTimer = null;
   increment();

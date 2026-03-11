@@ -236,9 +236,39 @@
       "generate": "Generuj"
     }
   },
+  "online_sync_indicator": {
+    "labels": {
+      "disabled": "Sync wył.",
+      "setup": "Konfiguruj sync",
+      "reseed_required": "Wymagany reseed",
+      "ack_pending": "ACK oczekuje",
+      "ready": "Sync gotowy",
+      "disabled_demo": "Sync wył. (Demo)",
+      "error": "Błąd sync",
+      "ok": "Sync OK",
+      "noop": "Brak zmian",
+      "push": "Push zakończony",
+      "pull": "Pull zakończony",
+      "syncing": "Synchronizacja..."
+    },
+    "details": {
+      "no_sync_yet": "Brak wykonanej synchronizacji",
+      "last_sync": "Ostatni sync {{time}} • r{{revision}} • {{hash}}",
+      "disabled": "Synchronizacja online jest wyłączona",
+      "configure": "Uzupełnij URL serwera i ID użytkownika",
+      "reseed_required": "Payload serwera został wyczyszczony i lokalne dane do reseedu są niedostępne",
+      "ack_pending": "ACK oczekuje",
+      "downloaded_waiting_ack": "Pobrano r{{revision}}, oczekiwanie na ACK",
+      "downloaded_waiting_ack_retries": "Pobrano r{{revision}}, oczekiwanie na ACK • ponowienia {{count}}",
+      "waiting_retry": "Oczekiwanie na ponowną próbę ACK ({{reason}})",
+      "disabled_demo": "Synchronizacja online jest wyłączona, gdy aktywny jest tryb demo",
+      "contacting": "Łączenie z {{server}}..."
+    }
+  },
   "sessions": {
     "summary": "{{sessions}} sesji ({{ai}} AI) / {{projects}} projektów",
     "unassigned_only": "TYLKO NIEPRZYPISANE",
+    "unassigned_scope_all_dates": "(wszystkie daty)",
     "range": {
       "today": "Dziś",
       "week": "Tydzień"
@@ -983,6 +1013,7 @@
       "autosave_hint": "Szablon zapisywany automatycznie"
     },
     "template": {
+      "default_template": "Standard",
       "new_template": "Nowy szablon",
       "copy_suffix": "kopia"
     },
@@ -1351,7 +1382,7 @@
     "sidebar_status_indicators_act_as_a_control_center_they_s": "Wskaźniki statusu w sidebarze działają jak centrum sterowania: pokazują stan demona, synchronizacji, AI i backupu, a kliknięcie otwiera odpowiedni ekran diagnostyczny.",
     "refresh_button_synchronizing_data_directly_from_the_runn": "Przycisk odświeżania synchronizujący dane bezpośrednio z pracującego Daemona.",
     "unassigned_sessions_banner_shows_the_count_of_today_s_un": "Banner nieprzypisanych sesji – informuje o liczbie nieprzypisanych sesji z dzisiejszego dnia wraz z liczbą aplikacji i łącznym czasem. Kliknięcie przenosi do widoku Sesje.",
-    "discovered_projects_notification_after_folder_scanning_o": "Powiadomienie o wykrytych projektach – po skanowaniu folderów przy starcie, dashboard wyświetla banner z listą nowo wykrytych projektów. Możesz je odrzucić lub przejść do zarządzania projektami.",
+    "discovered_projects_notification_after_folder_scanning_o": "Powiadomienie o wykrytych projektach – gdy zaplanowane skanowanie folderów przy starcie znajdzie nowe projekty, dashboard wyświetla banner z listą wykrytych pozycji. Możesz go odrzucić albo przejść do zarządzania projektami.",
     "add_manual_session_from_timeline_click_on_the_dashboard": "Dodawanie sesji manualnej z timeline – kliknij na osi czasu na dashboardzie, aby szybko dodać sesję manualną (np. spotkanie, telefon) bez przechodzenia do zakładki Sesje.",
     "all_projects_overview_chart_showing_work_time_distributi": "Przegląd wszystkich projektów (All Projects) – wykres pokazujący rozkład czasu pracy na wszystkie projekty w wybranym okresie.",
     "timeline_states_loading_empty_and_error_messages_help_yo": "Stany timeline – wykresy na dashboardzie pokazują ładowanie, brak danych albo błąd zamiast pustego panelu, gdy wybrany zakres nie ma wyników lub odświeżenie się nie powiedzie.",
@@ -1370,7 +1401,7 @@
     "daily_weekly_range_mode_switch_the_sessions_list_between": "Tryb zakresu Daily/Weekly – przełączaj listę sesji między widokiem dziennym i tygodniowym, aby szybciej przeglądać dłuższe okresy.",
     "sorting_and_filtering_by_application_project_date_and_du": "Sortowanie i filtrowanie po aplikacji, projekcie, dacie oraz czasie trwania.",
     "batch_assign_from_project_header_the_group_context_menu": "Batch assign z nagłówka projektu – menu kontekstowe grupy pozwala przypisać lub odpiąć cały blok sesji danego projektu.",
-    "unassigned_only_filter_quickly_focus_on_sessions_that_st": "Filtr \"Tylko nieprzypisane\" – szybki fokus na sesjach wymagających decyzji przypisania.",
+    "unassigned_only_filter_quickly_focus_on_sessions_that_st": "Filtr \"Tylko nieprzypisane\" – szybki fokus na sesjach wymagających decyzji przypisania. W tym trybie lista pokazuje sesje ze wszystkich dat, niezależnie od aktualnie widocznego zakresu Daily/Weekly.",
     "session_split_settings_tolerance_coefficient_0_2_1_0_max": "Ustawienia podziału sesji – współczynnik tolerancji (0.2–1.0), maks. projektów na sesję (2–5), automatyczny podział. Konfiguracja w Ustawienia > Podział sesji.",
     "project_list_modes_in_the_assignment_menu_active_a_z_new": "Tryby listy projektów w menu przypisania: Aktywne A-Z, Najnowsze -> Top -> Reszta oraz Top -> Najnowsze -> Reszta. Pozwalają szybciej wskazać właściwy projekt przy dużej liczbie pozycji.",
     "scissors_icon_appears_on_sessions_where_ai_detected_file": "Ikona nożyczek – pojawia się przy sesjach, w których AI wykrył aktywność na plikach wielu projektów. Kliknij aby podzielić sesję wg sugestii AI.",
@@ -1391,7 +1422,7 @@
     "freezing_hide_inactive_projects_to_keep_them_from_clutte": "Mrożenie (Freezing) – ukrywaj nieaktywne projekty, by nie przeszkadzały przy przypisywaniu sesji.",
     "auto_freezing_the_system_automatically_freezes_projects": "Automatyczne mrożenie – system sam 'zamraża' projekty nieużywane przez określoną liczbę dni.",
     "unfreezing_use_the_flame_icon_to_restore_a_project_to_th": "Odmrażanie (Unfreeze) – ikona płomienia przywraca projekt do listy aktywnych zadań.",
-    "folder_sync_timeflow_scans_paths_on_every_dashboard_star": "Synchronizacja folderów – TIMEFLOW skanuje ścieżki przy każdym uruchomieniu dashboardu i automatycznie dodaje nowe projekty (w tym repozytoria .git). Na dashboardzie pojawia się powiadomienie o wykrytych projektach.",
+    "folder_sync_timeflow_scans_paths_on_every_dashboard_star": "Synchronizacja folderów – TIMEFLOW okresowo skanuje skonfigurowane ścieżki podczas startu dashboardu i automatycznie dodaje nowe projekty (w tym repozytoria .git). Gdy znajdzie nowe pozycje, na dashboardzie pojawia się powiadomienie o wykrytych projektach.",
     "candidate_detection_the_system_suggests_project_creation": "Detekcja kandydatów – system sugeruje utworzenie projektów na podstawie aktywności w folderach.",
     "root_folders_manage_disk_locations_that_timeflow_should": "Root folders – zarządzaj miejscami na dysku, które TIMEFLOW ma obserwować.",
     "exclude_remove_projects_from_view_without_permanently_de": "Wykluczanie (Exclude) – usuwaj projekty z widoku bez ich permanentnego skasowania z bazy.",

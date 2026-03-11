@@ -1389,6 +1389,10 @@ export function Sessions() {
           text: sessionsSummaryText,
           showUnassignedOnly: activeProjectId === 'unassigned',
           unassignedOnlyText: t('sessions.unassigned_only'),
+          unassignedScopeText:
+            activeProjectId === 'unassigned'
+              ? t('sessions.unassigned_scope_all_dates')
+              : undefined,
         }}
         range={{
           mode: rangeMode,

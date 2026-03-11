@@ -16,6 +16,7 @@ import {
 import { normalizeHexColor } from "@/lib/normalize";
 import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
 import type { PromptConfig } from "@/lib/ui-types";
+import { useUIStore } from "@/store/ui-store";
 
 interface Props {
   sessions: SessionWithApp[];
@@ -73,11 +74,9 @@ interface ClusterDetailsState {
 }
 
 type TimelineSortMode = "time_desc" | "alpha_asc";
-type AssignProjectListMode = "alpha_active" | "new_top_rest" | "top_new_rest";
 
 const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
 const TIMELINE_SAVE_VIEW_STORAGE_KEY = "timeflow-dashboard-activity-timeline-save-view";
-const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY = "timeflow-dashboard-assign-project-list-mode";
 const TOP_PROJECTS_LIMIT = 5;
 const CONTEXT_MENU_EDGE_PADDING = 8;
 const ASSIGN_MENU_FALLBACK_WIDTH = 320;
@@ -147,19 +146,6 @@ function loadTimelineSaveView(): boolean {
     return true;
   } catch {
     return true;
-  }
-}
-
-function loadAssignProjectListMode(): AssignProjectListMode {
-  if (typeof window === "undefined") return "alpha_active";
-  try {
-    const raw = window.localStorage.getItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY);
-    if (raw === "new_top_rest" || raw === "top_new_rest" || raw === "alpha_active") {
-      return raw;
-    }
-    return "alpha_active";
-  } catch {
-    return "alpha_active";
   }
 }
 
@@ -353,9 +339,8 @@ export function ProjectDayTimeline({
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [sortMode, setSortMode] = useState<TimelineSortMode>(() => loadTimelineSortMode());
   const [saveView, setSaveView] = useState<boolean>(() => loadTimelineSaveView());
-  const [assignProjectListMode, setAssignProjectListMode] = useState<AssignProjectListMode>(() =>
-    loadAssignProjectListMode()
-  );
+  const assignProjectListMode = useUIStore((s) => s.assignProjectListMode);
+  const setAssignProjectListMode = useUIStore((s) => s.setAssignProjectListMode);
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<ContextMenuPlacement | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
@@ -366,11 +351,10 @@ export function ProjectDayTimeline({
       if (saveView) {
         window.localStorage.setItem(TIMELINE_SORT_STORAGE_KEY, sortMode);
       }
-      window.localStorage.setItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY, assignProjectListMode);
     } catch {
       // ignore localStorage failures
     }
-  }, [saveView, sortMode, assignProjectListMode]);
+  }, [saveView, sortMode]);
 
   useEffect(() => {
     if (!ctxMenu) return;

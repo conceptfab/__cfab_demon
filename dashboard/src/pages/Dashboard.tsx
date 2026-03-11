@@ -39,12 +39,21 @@ import type {
   DashboardStats,
   ManualSessionWithProject,
   ProjectTimeRow,
-  ProjectWithStats,
   SessionWithApp,
   StackedBarData,
 } from '@/lib/db-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
-import { loadProjectsAllTime } from '@/store/projects-cache-store';
+import {
+  loadProjectsAllTime,
+  useProjectsCacheStore,
+} from '@/store/projects-cache-store';
+import {
+  APP_REFRESH_EVENT,
+  LOCAL_DATA_CHANGED_EVENT,
+  type AppRefreshDetail,
+  type LocalDataChangedDetail,
+} from '@/lib/sync-events';
+import { shouldRefreshDashboardPage } from '@/lib/page-refresh-reasons';
 
 function AutoImportBanner() {
   const { t } = useTranslation();
@@ -168,7 +177,6 @@ export function Dashboard() {
   const { setCurrentPage, setSessionsFocusDate } = useUIStore();
   const {
     dateRange,
-    refreshKey,
     timePreset,
     setTimePreset,
     shiftDateRange,
@@ -185,7 +193,6 @@ export function Dashboard() {
   const [topProjects, setTopProjects] = useState<ProjectTimeRow[]>([]);
   const [allProjects, setAllProjects] = useState<ProjectTimeRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
   const [manualSessions, setManualSessions] = useState<
     ManualSessionWithProject[]
   >([]);
@@ -198,6 +205,8 @@ export function Dashboard() {
   const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
     loadWorkingHoursSettings(),
   );
+  const [dataReloadVersion, setDataReloadVersion] = useState(0);
+  const projectsList = useProjectsCacheStore((s) => s.projectsAllTime);
   const projectCount = projectsList.length;
 
   const projectColorMap = useMemo(
@@ -304,6 +313,47 @@ export function Dashboard() {
   };
 
   useEffect(() => {
+    void loadProjectsAllTime();
+  }, []);
+
+  useEffect(() => {
+    const handleLocalDataChange = (event: Event) => {
+      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
+      const reason = customEvent.detail?.reason;
+      if (!reason || !shouldRefreshDashboardPage(reason)) {
+        return;
+      }
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    const handleAppRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<AppRefreshDetail>;
+      const reasons = customEvent.detail?.reasons ?? [];
+      if (!reasons.some((reason) => shouldRefreshDashboardPage(reason))) {
+        return;
+      }
+      setDataReloadVersion((prev) => prev + 1);
+    };
+
+    window.addEventListener(
+      LOCAL_DATA_CHANGED_EVENT,
+      handleLocalDataChange as EventListener,
+    );
+    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        LOCAL_DATA_CHANGED_EVENT,
+        handleLocalDataChange as EventListener,
+      );
+      window.removeEventListener(
+        APP_REFRESH_EVENT,
+        handleAppRefresh as EventListener,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     const minDuration =
       loadSessionSettings().minSessionDurationSeconds || undefined;
@@ -318,7 +368,6 @@ export function Dashboard() {
         projectTimelineSeriesLimit,
         timelineGranularity,
       ),
-      loadProjectsAllTime(),
       shouldLoadTodayData
         ? sessionsApi.getSessions({
           dateRange,
@@ -335,7 +384,6 @@ export function Dashboard() {
     ]).then(
       ([
         dashboardDataRes,
-        projectsRes,
         todaySessionsRes,
         manualSessionsRes,
       ]) => {
@@ -353,12 +401,6 @@ export function Dashboard() {
           setProjectTimeline([]);
           setProjectTimelineError(dashboardDataRes.reason);
           logTauriError('load dashboard data', dashboardDataRes.reason);
-        }
-
-        if (projectsRes.status === 'fulfilled') {
-          setProjectsList(projectsRes.value);
-        } else {
-          logTauriError('load projects count', projectsRes.reason);
         }
 
         if (!shouldLoadTodayData) {
@@ -396,8 +438,8 @@ export function Dashboard() {
       cancelled = true;
     };
   }, [
+    dataReloadVersion,
     dateRange,
-    refreshKey,
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,

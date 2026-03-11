@@ -320,6 +320,11 @@ export function useSettingsFormState({
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
     const savedLanguage = saveLanguageSettings(languageSettings);
+    void settingsApi
+      .persistSessionSettingsForDaemon(savedSession.minSessionDurationSeconds)
+      .catch((err) => {
+        console.warn('Failed to persist session settings for daemon:', err);
+      });
     void settingsApi.persistLanguageForDaemon(savedLanguage.code).catch(
       (err) => {
         console.warn('Failed to persist language for daemon:', err);

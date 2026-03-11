@@ -6,6 +6,7 @@ import { loadSessionSettings, loadSplitSettings } from '@/lib/user-settings';
 import { isAlreadySplitSession } from '@/lib/session-analysis';
 
 export const JOB_LOOP_TICK_MS = 5000;
+export const DIAGNOSTICS_REFRESH_MS = 30_000;
 export const FILE_SIGNATURE_CHECK_MS = 30_000;
 export const AUTO_SPLIT_INTERVAL_MS = 60_000;
 
@@ -165,7 +166,7 @@ export function runJobPoolTick(options: {
   if (!isDocumentVisible()) return;
 
   if (now >= nextDiagnosticsRef.current) {
-    nextDiagnosticsRef.current = now + 10_000;
+    nextDiagnosticsRef.current = now + DIAGNOSTICS_REFRESH_MS;
     void refreshDiagnostics();
   }
 

@@ -31,6 +31,71 @@ import {
 } from '@/components/sync/job-pool-helpers';
 
 const AI_AND_SPLIT_OPERATION_KEY = 'ai_and_split_pipeline';
+const AUTO_PROJECT_SYNC_STORAGE_KEY = 'timeflow.projects.auto-sync-meta';
+const AUTO_PROJECT_FOLDER_SYNC_TTL_MS = 6 * 60 * 60 * 1000;
+const AUTO_PROJECT_DETECTION_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface AutoProjectSyncMeta {
+  lastFolderSyncAt: number | null;
+  lastDetectionAt: number | null;
+}
+
+function loadAutoProjectSyncMeta(): AutoProjectSyncMeta {
+  if (typeof window === 'undefined') {
+    return {
+      lastFolderSyncAt: null,
+      lastDetectionAt: null,
+    };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AUTO_PROJECT_SYNC_STORAGE_KEY);
+    if (!raw) {
+      return {
+        lastFolderSyncAt: null,
+        lastDetectionAt: null,
+      };
+    }
+    const parsed = JSON.parse(raw) as Partial<AutoProjectSyncMeta>;
+    return {
+      lastFolderSyncAt:
+        typeof parsed.lastFolderSyncAt === 'number'
+          ? parsed.lastFolderSyncAt
+          : null,
+      lastDetectionAt:
+        typeof parsed.lastDetectionAt === 'number'
+          ? parsed.lastDetectionAt
+          : null,
+    };
+  } catch (error) {
+    console.warn('Failed to read auto project sync metadata:', error);
+    return {
+      lastFolderSyncAt: null,
+      lastDetectionAt: null,
+    };
+  }
+}
+
+function saveAutoProjectSyncMeta(next: Partial<AutoProjectSyncMeta>): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const current = loadAutoProjectSyncMeta();
+    window.localStorage.setItem(
+      AUTO_PROJECT_SYNC_STORAGE_KEY,
+      JSON.stringify({
+        ...current,
+        ...next,
+      }),
+    );
+  } catch (error) {
+    console.warn('Failed to persist auto project sync metadata:', error);
+  }
+}
+
+function isExpired(lastRunAt: number | null, ttlMs: number, now: number): boolean {
+  return lastRunAt === null || now - lastRunAt >= ttlMs;
+}
 
 // THREADING: Prevents concurrent heavy operations (rebuild, AI train/assign)
 // from overloading the backend. Simple module-level flag — safe in single-threaded JS.
@@ -115,21 +180,51 @@ function useAutoImporter() {
 }
 
 function useAutoProjectSync() {
+  const { autoImportDone, autoImportResult, setDiscoveredProjects } =
+    useDataStore();
+  const hasProcessedStartupRef = useRef(false);
+
   useEffect(() => {
+    if (!autoImportDone || hasProcessedStartupRef.current) return;
+    hasProcessedStartupRef.current = true;
+
     const run = async () => {
       try {
-        const syncResult = await projectsApi.syncProjectsFromFolders();
-        await projectsApi.autoCreateProjectsFromDetection(ALL_TIME_DATE_RANGE, 2);
-        const allNew = syncResult.created_projects;
-        if (allNew.length > 0) {
-          useDataStore.getState().setDiscoveredProjects(allNew);
+        const importedFiles = autoImportResult?.files_imported ?? 0;
+        const now = Date.now();
+        const meta = loadAutoProjectSyncMeta();
+        const shouldRunFolderSync =
+          importedFiles > 0 ||
+          isExpired(meta.lastFolderSyncAt, AUTO_PROJECT_FOLDER_SYNC_TTL_MS, now);
+        const shouldRunDetection =
+          importedFiles > 0 ||
+          isExpired(meta.lastDetectionAt, AUTO_PROJECT_DETECTION_TTL_MS, now);
+
+        if (!shouldRunFolderSync && !shouldRunDetection) {
+          return;
+        }
+
+        if (shouldRunFolderSync) {
+          const syncResult = await projectsApi.syncProjectsFromFolders();
+          saveAutoProjectSyncMeta({ lastFolderSyncAt: now });
+          if (syncResult.created_projects.length > 0) {
+            setDiscoveredProjects(syncResult.created_projects);
+          }
+        }
+
+        if (shouldRunDetection) {
+          await projectsApi.autoCreateProjectsFromDetection(
+            ALL_TIME_DATE_RANGE,
+            2,
+          );
+          saveAutoProjectSyncMeta({ lastDetectionAt: now });
         }
       } catch (e) {
         console.warn('Auto project sync failed:', e);
       }
     };
     void run();
-  }, []);
+  }, [autoImportDone, autoImportResult, setDiscoveredProjects]);
 }
 
 function useAutoSessionRebuild() {
