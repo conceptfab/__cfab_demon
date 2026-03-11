@@ -13,16 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/toast-notification';
 import { useDataStore } from '@/store/data-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
-import {
-  getAssignmentModelMetrics,
-  resetAssignmentModelKnowledge,
-  rollbackLastAutoSafeRun,
-  runAutoSafeAssignment,
-  setAssignmentModelCooldown,
-  setAssignmentMode,
-  trainAssignmentModel,
-  getFeedbackWeight,
-} from '@/lib/tauri';
+import { aiApi } from '@/lib/tauri';
 import type {
   AssignmentMode,
   AssignmentModelMetrics,
@@ -268,7 +259,10 @@ export function AIPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const results = await Promise.all([refreshAiStatus(), getFeedbackWeight()]);
+      const results = await Promise.all([
+        refreshAiStatus(),
+        aiApi.getFeedbackWeight(),
+      ]);
       const fw = results[1];
       if (!dirtyRef.current) setFeedbackWeight(fw);
     } catch (e) {
@@ -283,7 +277,7 @@ export function AIPage() {
       isFetchingMetricsRef.current = true;
       if (!silent) setLoadingMetrics(true);
       try {
-        const nextMetrics = await getAssignmentModelMetrics(30);
+        const nextMetrics = await aiApi.getAssignmentModelMetrics(30);
         setMetrics((current) =>
           areMetricsEqual(current, nextMetrics) ? current : nextMetrics,
         );
@@ -352,7 +346,7 @@ export function AIPage() {
       const normalizedAuto = clampNumber(autoConf, 0, 1);
       const normalizedEvidence = Math.round(clampNumber(autoEvidence, 1, 50));
 
-      await setAssignmentMode(
+      await aiApi.setAssignmentMode(
         mode,
         normalizedSuggest,
         normalizedAuto,
@@ -363,7 +357,7 @@ export function AIPage() {
       if (freshStatus) {
         syncFormWithStatus(freshStatus, true);
       }
-      const freshFw = await getFeedbackWeight();
+      const freshFw = await aiApi.getFeedbackWeight();
       setFeedbackWeight(freshFw);
       await fetchMetrics(true);
     } catch (e) {
@@ -379,7 +373,7 @@ export function AIPage() {
   const handleTrainNow = async () => {
     setTraining(true);
     try {
-      const nextStatus = await trainAssignmentModel(true);
+      const nextStatus = await aiApi.trainAssignmentModel(true);
       setAiStatus(nextStatus);
       syncFormWithStatus(nextStatus);
       await fetchMetrics(true);
@@ -404,7 +398,7 @@ export function AIPage() {
 
     setResettingKnowledge(true);
     try {
-      const nextStatus = await resetAssignmentModelKnowledge();
+      const nextStatus = await aiApi.resetAssignmentModelKnowledge();
       dirtyRef.current = false;
       setAiStatus(nextStatus);
       syncFormWithStatus(nextStatus, true);
@@ -431,7 +425,7 @@ export function AIPage() {
     try {
       const minDuration =
         loadSessionSettings().minSessionDurationSeconds || undefined;
-      const result = await runAutoSafeAssignment(
+      const result = await aiApi.runAutoSafeAssignment(
         Math.round(clampNumber(autoLimit, 1, 10_000)),
         undefined,
         minDuration,
@@ -462,7 +456,7 @@ export function AIPage() {
 
     setRollingBack(true);
     try {
-      const result = await rollbackLastAutoSafeRun();
+      const result = await aiApi.rollbackLastAutoSafeRun();
       showInfo(
         tr('ai_page.text.rollback_completed_reverted_skipped', { reverted: result.reverted, skipped: result.skipped }),
       );
@@ -482,7 +476,7 @@ export function AIPage() {
   const handleSnoozeReminder = async () => {
     setSnoozingReminder(true);
     try {
-      const nextStatus = await setAssignmentModelCooldown(
+      const nextStatus = await aiApi.setAssignmentModelCooldown(
         REMINDER_SNOOZE_HOURS,
       );
       setAiStatus(nextStatus);

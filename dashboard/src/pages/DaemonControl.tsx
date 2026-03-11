@@ -12,14 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useBackgroundStatusStore } from "@/store/background-status-store";
-import {
-  getDaemonStatus,
-  getDaemonLogs,
-  setAutostartEnabled,
-  startDaemon,
-  stopDaemon,
-  restartDaemon,
-} from "@/lib/tauri";
+import { daemonApi } from "@/lib/tauri";
 import { useCancellableAsync } from "@/lib/async-utils";
 import { useTranslation } from "react-i18next";
 import { formatPathForDisplay, cn, logTauriError } from "@/lib/utils";
@@ -46,7 +39,7 @@ export function DaemonControl() {
 
   const refreshLogs = useCallback(() => {
     void refreshAsync(
-      async () => getDaemonLogs(200),
+      async () => daemonApi.getDaemonLogs(200),
       {
         onSuccess: (nextLogs) => {
           setLogs(nextLogs);
@@ -63,7 +56,7 @@ export function DaemonControl() {
       void refreshDiagnostics();
       if (!includeLogs) return;
       void refreshAsync(
-        async () => getDaemonLogs(200),
+        async () => daemonApi.getDaemonLogs(200),
         {
         onSuccess: (nextLogs) => {
           setLogs(nextLogs);
@@ -149,7 +142,7 @@ export function DaemonControl() {
 
       while (Date.now() < deadline) {
         try {
-          const next = await getDaemonStatus();
+          const next = await daemonApi.getDaemonStatus();
           setDaemonStatus(next);
           if (predicate(next)) return;
         } catch (error) {
@@ -180,17 +173,17 @@ export function DaemonControl() {
   };
 
   const handleStart = () =>
-    withLoading("start", startDaemon, (next) => next.running);
+    withLoading("start", daemonApi.startDaemon, (next) => next.running);
   const handleStop = () =>
-    withLoading("stop", stopDaemon, (next) => !next.running);
+    withLoading("stop", daemonApi.stopDaemon, (next) => !next.running);
   const handleRestart = () =>
-    withLoading("restart", restartDaemon, (next) => next.running);
+    withLoading("restart", daemonApi.restartDaemon, (next) => next.running);
 
   const handleAutostartToggle = async () => {
     if (!status) return;
     const newVal = !status.autostart;
     try {
-      await setAutostartEnabled(newVal);
+      await daemonApi.setAutostartEnabled(newVal);
       setDaemonAutostart(newVal);
     } catch (e) {
       console.error(e);

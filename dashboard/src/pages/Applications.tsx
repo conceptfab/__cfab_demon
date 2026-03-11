@@ -15,16 +15,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  getApplications,
-  getMonitoredApps,
-  addMonitoredApp,
-  removeMonitoredApp,
-  renameMonitoredApp,
-  resetAppTime,
-  updateAppColor,
-  deleteAppAndData,
-  renameApplication,
-  syncMonitoredAppsFromApplications,
+  applicationsApi,
+  daemonApi,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { AppTooltip } from '@/components/ui/app-tooltip';
@@ -61,11 +53,14 @@ export function Applications() {
   const [syncingMonitored, setSyncingMonitored] = useState(false);
 
   const loadMonitored = useCallback(() => {
-    getMonitoredApps().then(setMonitored).catch(console.error);
+    daemonApi.getMonitoredApps().then(setMonitored).catch(console.error);
   }, []);
 
   useEffect(() => {
-    Promise.allSettled([getApplications(), getMonitoredApps()]).then(
+    Promise.allSettled([
+      applicationsApi.getApplications(),
+      daemonApi.getMonitoredApps(),
+    ]).then(
       (results) => {
         const [appsResult, monitoredResult] = results;
 
@@ -101,7 +96,7 @@ export function Applications() {
   const handleAddApp = async () => {
     setMonitoredError('');
     try {
-      await addMonitoredApp(newExe, newDisplay);
+      await daemonApi.addMonitoredApp(newExe, newDisplay);
       setNewExe('');
       setNewDisplay('');
       loadMonitored();
@@ -112,7 +107,7 @@ export function Applications() {
 
   const handleRemoveApp = async (exeName: string) => {
     try {
-      await removeMonitoredApp(exeName);
+      await daemonApi.removeMonitoredApp(exeName);
       loadMonitored();
     } catch (e) {
       console.error(e);
@@ -133,7 +128,7 @@ export function Applications() {
         if (trimmed === current) return;
 
         try {
-          await renameMonitoredApp(app.exe_name, trimmed);
+          await daemonApi.renameMonitoredApp(app.exe_name, trimmed);
           loadMonitored();
         } catch (e) {
           logTauriError('rename monitored app', e);
@@ -150,7 +145,7 @@ export function Applications() {
     setMonitoredError('');
     setSyncingMonitored(true);
     try {
-      const result = await syncMonitoredAppsFromApplications();
+      const result = await daemonApi.syncMonitoredAppsFromApplications();
       loadMonitored();
       if (result.added > 0) {
         showInfo(
@@ -205,7 +200,7 @@ export function Applications() {
 
   const handleResetAppTime = async (appId: number) => {
     try {
-      await resetAppTime(appId);
+      await applicationsApi.resetAppTime(appId);
       triggerRefresh('applications_changed');
     } catch (err) {
       logTauriError('reset app time', err);
@@ -214,7 +209,7 @@ export function Applications() {
 
   const handleUpdateColor = async (appId: number, color: string) => {
     try {
-      await updateAppColor(appId, color);
+      await applicationsApi.updateAppColor(appId, color);
       setEditingColorId(null);
       triggerRefresh('applications_changed');
     } catch (error) {
@@ -240,7 +235,7 @@ export function Applications() {
         if (trimmed === current) return;
 
         try {
-          await renameApplication(app.id, trimmed);
+          await applicationsApi.renameApplication(app.id, trimmed);
           triggerRefresh('applications_changed');
         } catch (e) {
           logTauriError('rename application', e);
@@ -264,7 +259,7 @@ export function Applications() {
     if (!confirmed) return;
 
     try {
-      await deleteAppAndData(app.id);
+      await applicationsApi.deleteAppAndData(app.id);
       triggerRefresh('applications_changed');
     } catch (e) {
       logTauriError('delete app and data', e);

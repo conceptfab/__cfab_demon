@@ -30,17 +30,9 @@ import { ProjectSessionDetailDialog } from '@/components/project/ProjectSessionD
 import { ProjectManualSessionsCard } from '@/components/project/ProjectManualSessionsCard';
 import { ProjectRecentCommentsCard } from '@/components/project/ProjectRecentCommentsCard';
 import {
-  getProject,
-  getProjectExtraInfo,
-  compactProjectData,
-  getProjectEstimates,
-  resetProjectTime,
-  freezeProject,
-  unfreezeProject,
-  excludeProject,
-  getManualSessions,
-  getProjectTimeline,
-  updateProject,
+  dashboardApi,
+  manualSessionsApi,
+  projectsApi,
 } from '@/lib/tauri';
 import {
   formatDuration,
@@ -330,7 +322,7 @@ export function ProjectPage() {
     setTimelineError(null);
     setHasLoadedProjectsList(false);
     Promise.all([
-      getProject(projectPageId)
+      projectsApi.getProject(projectPageId)
         .then((project) => ({
           project,
           missing: false as const,
@@ -344,9 +336,9 @@ export function ProjectPage() {
           }
           throw error;
         }),
-      getProjectExtraInfo(projectPageId, ALL_TIME_DATE_RANGE),
-      getProjectEstimates(ALL_TIME_DATE_RANGE),
-      getProjectTimeline(ALL_TIME_DATE_RANGE, 100, 'day', projectPageId)
+      projectsApi.getProjectExtraInfo(projectPageId, ALL_TIME_DATE_RANGE),
+      dashboardApi.getProjectEstimates(ALL_TIME_DATE_RANGE),
+      dashboardApi.getProjectTimeline(ALL_TIME_DATE_RANGE, 100, 'day', projectPageId)
         .then((data) => ({ data, error: null as string | null }))
         .catch((error) => ({
           data: [] as StackedBarData[],
@@ -360,7 +352,7 @@ export function ProjectPage() {
         dateRange: ALL_TIME_DATE_RANGE,
         includeAiSuggestions: false,
       }),
-      getManualSessions({ projectId: projectPageId }),
+      manualSessionsApi.getManualSessions({ projectId: projectPageId }),
     ])
       .then(
         ([projectResult, info, estimates, timelineResult, sessions, manuals]) => {
@@ -508,7 +500,7 @@ export function ProjectPage() {
     }
     setBusy('compact');
     try {
-      await compactProjectData(project.id);
+      await projectsApi.compactProjectData(project.id);
     } catch (e) {
       console.error(e);
     } finally {
@@ -790,7 +782,7 @@ export function ProjectPage() {
               saveColor: t('project_page.text.save_color'),
             }}
             onSave={async (color) => {
-              await updateProject(project.id, color);
+              await projectsApi.updateProject(project.id, color);
               setProject({ ...project, color });
             }}
           />
@@ -818,7 +810,7 @@ export function ProjectPage() {
                 size="sm"
                 onClick={() =>
                   handleAction(
-                    () => resetProjectTime(project.id),
+                    () => projectsApi.resetProjectTime(project.id),
                     t(
                       'project_page.text.reset_tracked_time_for_this_project_this_cannot_be_undon',
                     ),
@@ -837,8 +829,8 @@ export function ProjectPage() {
                 onClick={() =>
                   handleAction(() =>
                     project.frozen_at
-                      ? unfreezeProject(project.id)
-                      : freezeProject(project.id),
+                      ? projectsApi.unfreezeProject(project.id)
+                      : projectsApi.freezeProject(project.id),
                   )
                 }
                 title={
@@ -855,7 +847,7 @@ export function ProjectPage() {
                 className="text-destructive"
                 onClick={() =>
                   handleAction(
-                    () => excludeProject(project.id),
+                    () => projectsApi.excludeProject(project.id),
                     t('project_page.text.exclude_this_project'),
                   )
                 }

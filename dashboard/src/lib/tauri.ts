@@ -607,3 +607,170 @@ export const analyzeSessionsSplittable = (
 
 export const splitSessionMulti = (sessionId: number, splits: SplitPart[]) =>
   invokeMutation<void>('split_session_multi', { sessionId, splits });
+
+export const runtimeApi = {
+  hasTauriRuntime,
+} as const;
+
+export const projectsApi = {
+  getProjects,
+  getProject,
+  getExcludedProjects,
+  createProject,
+  updateProject,
+  excludeProject,
+  restoreProject,
+  deleteProject,
+  freezeProject,
+  unfreezeProject,
+  autoFreezeProjects,
+  assignAppToProject,
+  assignSessionToProject,
+  assignSessionsToProjectBatch,
+  getProjectExtraInfo,
+  getProjectReportData,
+  compactProjectData,
+  getProjectFolders,
+  addProjectFolder,
+  removeProjectFolder,
+  getFolderProjectCandidates,
+  createProjectFromFolder,
+  syncProjectsFromFolders,
+  autoCreateProjectsFromDetection,
+  getDetectedProjects,
+  resetProjectTime,
+} as const;
+
+export const dashboardApi = {
+  getActivityDateSpan,
+  getDashboardData,
+  getDashboardStats,
+  getTopProjects,
+  getDashboardProjects,
+  getTimeline,
+  getEstimateSettings,
+  updateGlobalHourlyRate,
+  updateProjectHourlyRate,
+  getProjectEstimates,
+  getEstimatesSummary,
+  getProjectTimeline,
+} as const;
+
+export const applicationsApi = {
+  getApplications,
+  updateAppColor,
+  resetAppTime,
+  renameApplication,
+  deleteAppAndData,
+} as const;
+
+export const sessionsApi = {
+  getSessions,
+  getSessionCount,
+  rebuildSessions,
+  deleteSession,
+  deleteSessionsBatch,
+  updateSessionRateMultiplier,
+  updateSessionRateMultipliersBatch,
+  updateSessionComment,
+  updateSessionCommentsBatch,
+  analyzeSessionProjects,
+  analyzeSessionsSplittable,
+  splitSessionMulti,
+  getSessionScoreBreakdown,
+} as const;
+
+export const aiApi = {
+  getAssignmentModelStatus,
+  getAssignmentModelMetrics,
+  setAssignmentMode,
+  setAssignmentModelCooldown,
+  setTrainingHorizonDays,
+  setTrainingBlacklists,
+  resetAssignmentModelKnowledge,
+  trainAssignmentModel,
+  runAutoSafeAssignment,
+  rollbackLastAutoSafeRun,
+  autoRunIfNeeded,
+  applyDeterministicAssignment,
+  getFeedbackWeight,
+  setFeedbackWeight,
+} as const;
+
+export const daemonApi = {
+  getDaemonStatus,
+  getDaemonLogs,
+  getAutostartEnabled,
+  setAutostartEnabled,
+  startDaemon,
+  stopDaemon,
+  restartDaemon,
+  getMonitoredApps,
+  addMonitoredApp,
+  removeMonitoredApp,
+  renameMonitoredApp,
+  syncMonitoredAppsFromApplications,
+  refreshToday,
+  getTodayFileSignature,
+} as const;
+
+export const manualSessionsApi = {
+  createManualSession,
+  getManualSessions,
+  updateManualSession,
+  deleteManualSession,
+  deleteManualSessionsBatch,
+} as const;
+
+export const settingsApi = {
+  clearAllData,
+  getDataDir,
+  getDemoModeStatus,
+  setDemoMode,
+  getSecureToken,
+  setSecureToken,
+  persistLanguageForDaemon,
+} as const;
+
+export const dataApi = {
+  getImportedFiles,
+  getArchiveFiles,
+  deleteArchiveFile,
+  importJsonFiles,
+  autoImportFromDataDir,
+  exportData,
+  exportDataArchive,
+  validateImport,
+  importData,
+  importDataArchive,
+  appendSyncLog,
+  getSyncLog,
+} as const;
+
+export const databaseApi = {
+  getDbInfo,
+  vacuumDatabase,
+  optimizeDatabase,
+  getDatabaseSettings,
+  updateDatabaseSettings,
+  performManualBackup,
+  openDbFolder,
+  restoreDatabaseFromFile,
+  getBackupFiles,
+  getDataFolderStats,
+  cleanupDataFolder,
+} as const;
+
+export const tauriApi = {
+  runtime: runtimeApi,
+  projects: projectsApi,
+  dashboard: dashboardApi,
+  applications: applicationsApi,
+  sessions: sessionsApi,
+  ai: aiApi,
+  daemon: daemonApi,
+  manualSessions: manualSessionsApi,
+  settings: settingsApi,
+  data: dataApi,
+  database: databaseApi,
+} as const;

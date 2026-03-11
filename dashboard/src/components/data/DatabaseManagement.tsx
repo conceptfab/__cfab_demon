@@ -17,16 +17,7 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  getDbInfo,
-  vacuumDatabase,
-  optimizeDatabase,
-  getDatabaseSettings,
-  updateDatabaseSettings,
-  openDbFolder,
-  performManualBackup,
-  restoreDatabaseFromFile,
-  getDataFolderStats,
-  cleanupDataFolder,
+  databaseApi,
 } from "@/lib/tauri";
 import type { DbInfo, DatabaseSettings, DataFolderStats } from "@/lib/db-types";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -48,9 +39,9 @@ export function DatabaseManagement() {
   const loadAll = async () => {
     try {
       const [dbInfo, dbSettings, stats] = await Promise.all([
-        getDbInfo(),
-        getDatabaseSettings(),
-        getDataFolderStats(),
+        databaseApi.getDbInfo(),
+        databaseApi.getDatabaseSettings(),
+        databaseApi.getDataFolderStats(),
       ]);
       setInfo(dbInfo);
       setSettings(dbSettings);
@@ -67,7 +58,7 @@ export function DatabaseManagement() {
   const handleVacuum = async () => {
     setLoading(true);
     try {
-      await vacuumDatabase();
+      await databaseApi.vacuumDatabase();
       showInfo(t('data_page.database_management.database_vacuumed_successfully'));
       loadAll();
     } catch (e) {
@@ -84,7 +75,7 @@ export function DatabaseManagement() {
   const handleOptimize = async () => {
     setLoading(true);
     try {
-      await optimizeDatabase();
+      await databaseApi.optimizeDatabase();
       showInfo(t('data_page.database_management.database_optimized_successfully'));
       loadAll();
     } catch (e) {
@@ -103,7 +94,7 @@ export function DatabaseManagement() {
     }
     setLoading(true);
     try {
-      const path = await performManualBackup();
+      const path = await databaseApi.performManualBackup();
       showInfo(
         t('data_page.database_management.backup_created', {
           path,
@@ -123,7 +114,7 @@ export function DatabaseManagement() {
 
   const handleOpenFolder = async () => {
     try {
-      await openDbFolder();
+      await databaseApi.openDbFolder();
     } catch {
       showError(t('data_page.database_management.failed_to_open_folder'));
     }
@@ -140,7 +131,7 @@ export function DatabaseManagement() {
         const nextSettings = { ...settings, backup_path: selected };
         setSettings(nextSettings);
         try {
-          await updateDatabaseSettings(nextSettings);
+          await databaseApi.updateDatabaseSettings(nextSettings);
           showInfo(t('data_page.database_management.backup_path_updated'));
           loadAll();
         } catch (e: unknown) {
@@ -160,7 +151,7 @@ export function DatabaseManagement() {
     const nextSettings = { ...settings, [key]: !settings[key] };
     setSettings(nextSettings);
     try {
-      await updateDatabaseSettings(nextSettings);
+      await databaseApi.updateDatabaseSettings(nextSettings);
       loadAll();
     } catch {
       showError(t('data_page.database_management.failed_to_update_setting'));
@@ -178,7 +169,7 @@ export function DatabaseManagement() {
     if (!settings) return;
     setSaving(true);
     try {
-      await updateDatabaseSettings(settings);
+      await databaseApi.updateDatabaseSettings(settings);
       showInfo(successMessage);
       loadAll();
     } catch {
@@ -211,7 +202,7 @@ export function DatabaseManagement() {
         if (confirm(t('data_page.database_management.warning_all_current_data_will_be_lost_continue'))) {
           setLoading(true);
           try {
-            await restoreDatabaseFromFile(selected);
+            await databaseApi.restoreDatabaseFromFile(selected);
             showInfo(t('data_page.database_management.database_restored_please_restart_the_app'));
           } catch (e: unknown) {
             showError(
@@ -231,7 +222,7 @@ export function DatabaseManagement() {
     if (!confirm(t('data_page.database_management.cleanup_confirm'))) return;
     setCleaning(true);
     try {
-      const result = await cleanupDataFolder();
+      const result = await databaseApi.cleanupDataFolder();
       showInfo(
         t('data_page.database_management.cleanup_success', {
           count: result.files_deleted,

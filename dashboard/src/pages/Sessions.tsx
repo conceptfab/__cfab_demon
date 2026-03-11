@@ -11,13 +11,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/app-tooltip';
-import {
-  getSessions,
-  getSessionScoreBreakdown,
-  analyzeSessionProjects,
-  analyzeSessionsSplittable,
-  splitSessionMulti as splitSessionMultiInvoke,
-} from '@/lib/tauri';
+import { sessionsApi } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import {
   formatDuration,
@@ -451,13 +445,13 @@ export function Sessions() {
   }, []);
 
   const loadFirstSessionsPage = useCallback(async () => {
-    const data = await getSessions(buildFetchParams(0));
+    const data = await sessionsApi.getSessions(buildFetchParams(0));
     replaceSessionsPage(data);
   }, [buildFetchParams, replaceSessionsPage]);
 
   useEffect(() => {
     let cancelled = false;
-    getSessions(buildFetchParams(0))
+    sessionsApi.getSessions(buildFetchParams(0))
       .then((data) => {
         if (cancelled) return;
         replaceSessionsPage(data);
@@ -495,7 +489,7 @@ export function Sessions() {
     });
 
     void withTimeout(
-      analyzeSessionProjects(
+      sessionsApi.analyzeSessionProjects(
         sessionId,
         splitSettings.toleranceThreshold,
         splitSettings.maxProjectsPerSession,
@@ -565,7 +559,7 @@ export function Sessions() {
     }
 
     let cancelled = false;
-    analyzeSessionsSplittable(
+    sessionsApi.analyzeSessionsSplittable(
       visibleSessionIds,
       splitSettings.toleranceThreshold,
       splitSettings.maxProjectsPerSession,
@@ -1018,7 +1012,7 @@ export function Sessions() {
         return next;
       });
 
-      const request = withTimeout(getSessionScoreBreakdown(sessionId), 10_000)
+      const request = withTimeout(sessionsApi.getSessionScoreBreakdown(sessionId), 10_000)
         .then((data) => {
           scoreBreakdownCacheRef.current.set(sessionId, {
             data,
@@ -1113,7 +1107,7 @@ export function Sessions() {
   );
 
   const loadMore = () => {
-    getSessions(buildFetchParams(sessions.length))
+    sessionsApi.getSessions(buildFetchParams(sessions.length))
       .then((data) => {
         setSessions((prev) => {
           const next = [...prev, ...data];
@@ -1952,7 +1946,7 @@ export function Sessions() {
           isAnalysisLoading={selectedSplitAnalysisLoading}
           maxProjects={splitSettings.maxProjectsPerSession}
           onConfirm={async (splits: SplitPart[]) => {
-            await splitSessionMultiInvoke(multiSplitSession.id, splits);
+            await sessionsApi.splitSessionMulti(multiSplitSession.id, splits);
             setMultiSplitSession(null);
             void triggerRefresh('sessions_multi_split');
           }}

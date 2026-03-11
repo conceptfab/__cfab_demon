@@ -30,30 +30,10 @@ import {
 } from '@/components/ui/dialog';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  getExcludedProjects,
-  createProject,
-  updateProject,
-  excludeProject,
-  restoreProject,
-  deleteProject,
-  freezeProject,
-  unfreezeProject,
-  autoFreezeProjects,
-  getApplications,
-  assignAppToProject,
-  getProjectFolders,
-  addProjectFolder,
-  removeProjectFolder,
-  getFolderProjectCandidates,
-  createProjectFromFolder,
-  syncProjectsFromFolders,
-  getDetectedProjects,
-  autoCreateProjectsFromDetection,
-  resetProjectTime,
-  getDemoModeStatus,
-  getProjectExtraInfo,
-  compactProjectData,
-  getProjectEstimates,
+  applicationsApi,
+  dashboardApi,
+  projectsApi,
+  settingsApi,
 } from '@/lib/tauri';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
@@ -341,7 +321,7 @@ export function Projects() {
     if (autoFreezeInitializedRef.current) return;
     autoFreezeInitializedRef.current = true;
     const { thresholdDays } = loadFreezeSettings();
-    autoFreezeProjects(thresholdDays)
+    projectsApi.autoFreezeProjects(thresholdDays)
       .catch(() => {
         /* ignore: feature not yet compiled */
       });
@@ -400,11 +380,11 @@ export function Projects() {
     let cancelled = false;
     Promise.allSettled([
       loadProjectsAllTime(),
-      getExcludedProjects(),
-      getApplications(),
-      getDemoModeStatus(),
-      getProjectFolders(),
-      getFolderProjectCandidates(),
+      projectsApi.getExcludedProjects(),
+      applicationsApi.getApplications(),
+      settingsApi.getDemoModeStatus(),
+      projectsApi.getProjectFolders(),
+      projectsApi.getFolderProjectCandidates(),
     ]).then(([projectsRes, excludedRes, appsRes, demoModeRes, foldersRes, candidatesRes]) => {
       if (cancelled) return;
 
@@ -446,7 +426,7 @@ export function Projects() {
 
   useEffect(() => {
     let cancelled = false;
-    getDetectedProjects(ALL_TIME_DATE_RANGE)
+    projectsApi.getDetectedProjects(ALL_TIME_DATE_RANGE)
       .then((data) => {
         if (!cancelled) setDetectedProjects(data);
       })
@@ -461,7 +441,7 @@ export function Projects() {
 
   useEffect(() => {
     let cancelled = false;
-    getProjectEstimates(ALL_TIME_DATE_RANGE)
+    dashboardApi.getProjectEstimates(ALL_TIME_DATE_RANGE)
       .then((rows) => {
         if (cancelled) return;
         setEstimates(buildEstimateMap(rows));
@@ -486,7 +466,7 @@ export function Projects() {
       return;
     }
     setLoadingExtra(true);
-    getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
+    projectsApi.getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
       .then((info) => {
         projectExtraInfoCacheRef.current[projectDialogId] = info;
         setExtraInfo(info);
@@ -496,31 +476,31 @@ export function Projects() {
   }, [projectDialogId, projectExtraInfoCacheVersion]);
 
   const handleUpdateProjectColor = async (projectId: number, color: string) => {
-    await updateProject(projectId, color);
+    await projectsApi.updateProject(projectId, color);
     setEditingColorId(null);
   };
 
   const handleCreateProject = async (name: string, color: string, folderPath: string) => {
-    await createProject(name, color, folderPath);
+    await projectsApi.createProject(name, color, folderPath);
   };
 
   const handleExclude = async (id: number) => {
     if (!await confirm(t('projects.confirm.exclude_project'))) {
       return;
     }
-    await excludeProject(id);
+    await projectsApi.excludeProject(id);
   };
 
   const handleRestore = async (id: number) => {
-    await restoreProject(id);
+    await projectsApi.restoreProject(id);
   };
 
   const handleFreeze = async (id: number) => {
-    await freezeProject(id);
+    await projectsApi.freezeProject(id);
   };
 
   const handleUnfreeze = async (id: number) => {
-    await unfreezeProject(id);
+    await projectsApi.unfreezeProject(id);
   };
 
   const handleDeleteProject = async (project: ProjectWithStats) => {
@@ -533,7 +513,7 @@ export function Projects() {
     const busyKey = `delete-project:${project.id}`;
     setBusy(busyKey);
     try {
-      await deleteProject(project.id);
+      await projectsApi.deleteProject(project.id);
       setProjectDialogId((prev) => (prev === project.id ? null : prev));
       setAssignOpen((prev) => (prev === project.id ? null : prev));
       setEditingColorId((prev) => (prev === project.id ? null : prev));
@@ -554,7 +534,7 @@ export function Projects() {
     if (!await confirm(t('projects.confirm.reset_project_time'))) {
       return;
     }
-    await resetProjectTime(id);
+    await projectsApi.resetProjectTime(id);
   };
 
   const handleCompactProject = async (id: number) => {
@@ -563,8 +543,8 @@ export function Projects() {
     }
     setBusy(`compact-project:${id}`);
     try {
-      await compactProjectData(id);
-      const info = await getProjectExtraInfo(id, ALL_TIME_DATE_RANGE);
+      await projectsApi.compactProjectData(id);
+      const info = await projectsApi.getProjectExtraInfo(id, ALL_TIME_DATE_RANGE);
       projectExtraInfoCacheRef.current[id] = info;
       setExtraInfo(info);
     } catch (e) {
@@ -580,7 +560,7 @@ export function Projects() {
   };
 
   const handleAssign = async (appId: number, projectId: number | null) => {
-    await assignAppToProject(appId, projectId);
+    await projectsApi.assignAppToProject(appId, projectId);
   };
 
 
@@ -599,7 +579,7 @@ export function Projects() {
     setFolderError(null);
     setFolderInfo(null);
     try {
-      await addProjectFolder(path);
+      await projectsApi.addProjectFolder(path);
       setNewFolderPath('');
       setFolderInfo(t('projects.messages.folder_saved'));
     } catch (error: unknown) {
@@ -634,7 +614,7 @@ export function Projects() {
     }
     setBusy(`remove-folder:${path}`);
     try {
-      await removeProjectFolder(path);
+      await projectsApi.removeProjectFolder(path);
     } catch (e) {
       console.error(e);
     } finally {
@@ -645,7 +625,7 @@ export function Projects() {
   const handleCreateFromFolder = async (folderPath: string) => {
     setBusy(`create-folder:${folderPath}`);
     try {
-      await createProjectFromFolder(folderPath);
+      await projectsApi.createProjectFromFolder(folderPath);
     } catch (e) {
       console.error(e);
     } finally {
@@ -656,7 +636,7 @@ export function Projects() {
   const handleSyncFolders = async () => {
     setBusy('sync-folders');
     try {
-      await syncProjectsFromFolders();
+      await projectsApi.syncProjectsFromFolders();
     } catch (e) {
       console.error(e);
     } finally {
@@ -667,7 +647,7 @@ export function Projects() {
   const handleAutoCreateDetected = async () => {
     setBusy('auto-detect');
     try {
-      await autoCreateProjectsFromDetection(
+      await projectsApi.autoCreateProjectsFromDetection(
         ALL_TIME_DATE_RANGE,
         2,
       );

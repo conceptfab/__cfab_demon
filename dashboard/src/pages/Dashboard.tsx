@@ -20,10 +20,10 @@ import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import {
-  getDashboardData,
-  getSessions,
-  refreshToday,
-  getManualSessions,
+  dashboardApi,
+  daemonApi,
+  manualSessionsApi,
+  sessionsApi,
 } from '@/lib/tauri';
 import { formatDuration, getErrorMessage, logTauriError } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -294,7 +294,7 @@ export function Dashboard() {
     if (refreshing) return;
     setRefreshing(true);
     try {
-      await refreshToday();
+      await daemonApi.refreshToday();
     } catch (e) {
       console.error('Refresh failed:', e);
     } finally {
@@ -312,7 +312,7 @@ export function Dashboard() {
     setProjectTimelineError(null);
 
     Promise.allSettled([
-      getDashboardData(
+      dashboardApi.getDashboardData(
         dateRange,
         5,
         projectTimelineSeriesLimit,
@@ -320,7 +320,7 @@ export function Dashboard() {
       ),
       loadProjectsAllTime(),
       shouldLoadTodayData
-        ? getSessions({
+        ? sessionsApi.getSessions({
           dateRange,
             limit: 500,
             offset: 0,
@@ -330,7 +330,7 @@ export function Dashboard() {
           })
         : Promise.resolve([] as SessionWithApp[]),
       shouldLoadTodayData
-        ? getManualSessions({ dateRange })
+        ? manualSessionsApi.getManualSessions({ dateRange })
         : Promise.resolve([] as ManualSessionWithProject[]),
     ]).then(
       ([

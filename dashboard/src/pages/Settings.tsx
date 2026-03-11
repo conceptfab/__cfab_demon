@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
-import {
-  clearAllData,
-  getDemoModeStatus,
-  persistLanguageForDaemon,
-  rebuildSessions,
-  setDemoMode,
-} from '@/lib/tauri';
+import { sessionsApi, settingsApi } from '@/lib/tauri';
 import type { DemoModeStatus } from '@/lib/db-types';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -189,7 +183,7 @@ export function Settings() {
       setDemoModeLoading(true);
       setDemoModeError(null);
       try {
-        const status = await getDemoModeStatus();
+        const status = await settingsApi.getDemoModeStatus();
         if (!cancelled) {
           setDemoModeStatus(status);
         }
@@ -259,7 +253,7 @@ export function Settings() {
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
     const savedLanguage = saveLanguageSettings(languageSettings);
-    void persistLanguageForDaemon(savedLanguage.code).catch((err) => {
+    void settingsApi.persistLanguageForDaemon(savedLanguage.code).catch((err) => {
       console.warn('Failed to persist language for daemon:', err);
     });
     const savedAppearance = saveAppearanceSettings(appearanceSettings);
@@ -297,7 +291,7 @@ export function Settings() {
   const handleRebuildSessions = async () => {
     setRebuilding(true);
     try {
-      const merged = await rebuildSessions(sessionSettings.gapFillMinutes);
+      const merged = await sessionsApi.rebuildSessions(sessionSettings.gapFillMinutes);
       showInfo(
         t('settings_page.successfully_merged_close_sessions', { merged }),
       );
@@ -319,7 +313,7 @@ export function Settings() {
     if (!confirmed) return;
     setClearing(true);
     try {
-      await clearAllData();
+      await settingsApi.clearAllData();
       setClearArmed(false);
       showInfo(t('settings_page.all_data_removed'));
     } catch (e) {
@@ -378,7 +372,7 @@ export function Settings() {
     setDemoModeSwitching(true);
     setDemoModeError(null);
     try {
-      const status = await setDemoMode(enabled);
+      const status = await settingsApi.setDemoMode(enabled);
       setDemoModeStatus(status);
       setManualSyncResult(null);
       showInfo(
