@@ -28,6 +28,30 @@ function toSessionIds(input: SessionIdsInput): number[] {
   return Number.isFinite(input) && input > 0 ? [input] : [];
 }
 
+export function requiresCommentForMultiplierBoost(
+  multiplier: number | null | undefined,
+): boolean {
+  return multiplier != null && multiplier > 1.000_001;
+}
+
+export function findSessionIdsMissingComment(
+  sessionIdsInput: SessionIdsInput,
+  getCommentById: (sessionId: number) => string | null | undefined,
+): number[] {
+  return toSessionIds(sessionIdsInput).filter((sessionId) => {
+    const comment = getCommentById(sessionId);
+    return !comment || !comment.trim();
+  });
+}
+
+export function parsePositiveRateMultiplierInput(raw: string): number | null {
+  const parsed = Number(raw.trim().replace(',', '.'));
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
 export function useSessionActions(options: UseSessionActionsOptions = {}) {
   const { onAfterMutation, onError } = options;
 

@@ -145,23 +145,36 @@ fn compute_session_duration_seconds(
         .unwrap_or(fallback_seconds)
 }
 
+struct ActivityContext<'a> {
+    exe_name: &'a str,
+    file_name: &'a str,
+    window_title: &'a str,
+    detected_path: Option<&'a str>,
+    activity_type: Option<&'a str>,
+    elapsed: Duration,
+    session_gap: Duration,
+}
+
 /// Records application activity (adds time, updates sessions and files).
 fn record_app_activity(
-    exe_name: &str,
-    file_name: &str,
-    window_title: &str,
-    detected_path: Option<&str>,
-    activity_type: Option<&str>,
-    poll_interval: Duration,
-    session_gap: Duration,
+    activity: ActivityContext<'_>,
     cfg: &config::Config,
     daily_data: &mut storage::DailyData,
     active_sessions: &mut HashMap<String, Instant>,
     file_index_cache: &mut HashMap<String, HashMap<String, usize>>,
 ) {
+    let ActivityContext {
+        exe_name,
+        file_name,
+        window_title,
+        detected_path,
+        activity_type,
+        elapsed,
+        session_gap,
+    } = activity;
     let now = aligned_local_now();
     let now_str = now.to_rfc3339();
-    let elapsed_seconds = poll_interval.as_secs();
+    let elapsed_seconds = elapsed.as_secs();
     let normalized_detected_path = detected_path
         .map(storage::sanitize_detected_path)
         .filter(|value| !value.is_empty());
@@ -182,7 +195,7 @@ fn record_app_activity(
             files: Vec::new(),
         });
 
-    app_data.total_seconds += poll_interval.as_secs();
+    app_data.total_seconds += elapsed_seconds;
 
     // Manage sessions
     let last_active = active_sessions.get(exe_name).copied();
@@ -200,7 +213,7 @@ fn record_app_activity(
             }
         }
         _ => {
-            let session_start = session_start_time_for_elapsed(now, poll_interval).to_rfc3339();
+            let session_start = session_start_time_for_elapsed(now, elapsed).to_rfc3339();
             app_data.sessions.push(Session {
                 start: session_start,
                 end: now_str.clone(),
@@ -216,7 +229,7 @@ fn record_app_activity(
 
         if let Some(&idx) = app_file_index.get(&normalized_file_name) {
             if let Some(file_entry) = app_data.files.get_mut(idx) {
-                file_entry.total_seconds += poll_interval.as_secs();
+                file_entry.total_seconds += elapsed_seconds;
                 file_entry.last_seen = now_str;
                 // Aktualizuj window_title na najnowszy (bogatszy kontekst dla AI)
                 if !normalized_window_title.is_empty() {
@@ -236,7 +249,7 @@ fn record_app_activity(
             push_title_history(&mut title_history, &normalized_window_title);
             app_data.files.push(FileEntry {
                 name: normalized_file_name.clone(),
-                total_seconds: poll_interval.as_secs(),
+                total_seconds: elapsed_seconds,
                 first_seen: now_str.clone(),
                 last_seen: now_str,
                 window_title: normalized_window_title,
@@ -363,13 +376,15 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             if let Some(ref info) = foreground_exe {
                 let file_name = monitor::extract_file_from_title(&info.window_title);
                 record_app_activity(
-                    &info.exe_name,
-                    &file_name,
-                    &info.window_title,
-                    info.detected_path.as_deref(),
-                    info.activity_type.as_deref(),
-                    actual_elapsed,
-                    session_gap,
+                    ActivityContext {
+                        exe_name: &info.exe_name,
+                        file_name: &file_name,
+                        window_title: &info.window_title,
+                        detected_path: info.detected_path.as_deref(),
+                        activity_type: info.activity_type.as_deref(),
+                        elapsed: actual_elapsed,
+                        session_gap,
+                    },
                     &cfg,
                     &mut daily_data,
                     &mut active_sessions,
@@ -422,13 +437,15 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                     let background_activity_type = monitor::classify_activity_type(exe_name);
                     // Record activity without file name (window title unknown in background)
                     record_app_activity(
-                        exe_name,
-                        "(background)",
-                        "",
-                        None,
-                        background_activity_type.as_deref(),
-                        actual_elapsed,
-                        session_gap,
+                        ActivityContext {
+                            exe_name,
+                            file_name: "(background)",
+                            window_title: "",
+                            detected_path: None,
+                            activity_type: background_activity_type.as_deref(),
+                            elapsed: actual_elapsed,
+                            session_gap,
+                        },
                         &cfg,
                         &mut daily_data,
                         &mut active_sessions,

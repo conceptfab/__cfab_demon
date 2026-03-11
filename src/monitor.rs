@@ -7,10 +7,9 @@ use std::time::{Duration, Instant};
 use winapi::shared::minwindef::{DWORD, FILETIME};
 use winapi::um::handleapi::CloseHandle;
 use winapi::um::processthreadsapi::{GetProcessTimes, OpenProcess};
-use winapi::um::tlhelp32::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
-};
 use winapi::um::winuser::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId};
+
+use crate::process_utils::collect_process_entries;
 
 thread_local! {
     static WMI_CONN_CACHE: std::cell::RefCell<Option<wmi::WMIConnection>> =
@@ -32,6 +31,7 @@ pub struct PidCacheEntry {
 pub type PidCache = HashMap<u32, PidCacheEntry>;
 
 const PID_LIVENESS_REVALIDATION_INTERVAL: Duration = Duration::from_secs(180);
+// Keep WMI IN(...) queries small enough to stay responsive on busy systems.
 const WMI_PATH_LOOKUP_BATCH_LIMIT: usize = 16;
 
 /// Informacja o aktywnym procesie
@@ -656,36 +656,20 @@ pub struct ProcessSnapshot {
 pub fn build_process_snapshot() -> ProcessSnapshot {
     let mut tree: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut exe_pids: HashMap<String, Vec<u32>> = HashMap::new();
-    unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snap == winapi::um::handleapi::INVALID_HANDLE_VALUE {
-            return ProcessSnapshot { tree, exe_pids };
-        }
+    let Some(entries) = collect_process_entries() else {
+        return ProcessSnapshot { tree, exe_pids };
+    };
 
-        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-        if Process32FirstW(snap, &mut entry) != 0 {
-            loop {
-                tree.entry(entry.th32ParentProcessID)
-                    .or_default()
-                    .push(entry.th32ProcessID);
-
-                let name_len = entry
-                    .szExeFile
-                    .iter()
-                    .position(|&c| c == 0)
-                    .unwrap_or(entry.szExeFile.len());
-                let name = String::from_utf16_lossy(&entry.szExeFile[..name_len]).to_lowercase();
-                exe_pids.entry(name).or_default().push(entry.th32ProcessID);
-
-                if Process32NextW(snap, &mut entry) == 0 {
-                    break;
-                }
-            }
-        }
-        CloseHandle(snap);
+    for entry in entries {
+        tree.entry(entry.parent_process_id)
+            .or_default()
+            .push(entry.process_id);
+        exe_pids
+            .entry(entry.exe_name)
+            .or_default()
+            .push(entry.process_id);
     }
+
     ProcessSnapshot { tree, exe_pids }
 }
 

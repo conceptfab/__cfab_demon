@@ -57,26 +57,26 @@ pub struct Config {
 
 /// Tworzy katalogi aplikacji raz przy starcie. Wywołać na początku main().
 pub fn ensure_app_dirs() -> Result<()> {
-    let appdata = std::env::var("APPDATA").context("Brak zmiennej APPDATA")?;
+    let appdata = std::env::var("APPDATA").context("APPDATA environment variable is missing")?;
     let appdata_path = PathBuf::from(&appdata);
     let base = timeflow_paths::ensure_timeflow_base_dir(&appdata_path)
-        .with_context(|| format!("Nie można przygotować katalogu: {:?}", appdata_path))?;
+        .with_context(|| format!("Failed to prepare application directory: {:?}", appdata_path))?;
 
     let data = base.join("data");
     let import = base.join("import");
     let archive = base.join("archive");
     std::fs::create_dir_all(&data)
-        .with_context(|| format!("Nie można utworzyć katalogu danych: {:?}", data))?;
+        .with_context(|| format!("Failed to create data directory: {:?}", data))?;
     std::fs::create_dir_all(&import)
-        .with_context(|| format!("Nie można utworzyć katalogu importu: {:?}", import))?;
+        .with_context(|| format!("Failed to create import directory: {:?}", import))?;
     std::fs::create_dir_all(&archive)
-        .with_context(|| format!("Nie można utworzyć katalogu archiwum: {:?}", archive))?;
+        .with_context(|| format!("Failed to create archive directory: {:?}", archive))?;
     Ok(())
 }
 
 /// Zwraca ścieżkę do katalogu konfiguracji: %APPDATA%/TimeFlow
 pub fn config_dir() -> Result<PathBuf> {
-    let appdata = std::env::var("APPDATA").context("Brak zmiennej APPDATA")?;
+    let appdata = std::env::var("APPDATA").context("APPDATA environment variable is missing")?;
     Ok(PathBuf::from(appdata).join("TimeFlow"))
 }
 
@@ -94,7 +94,7 @@ fn load_legacy_json_config() -> Config {
     let path = match config_path() {
         Ok(p) => p,
         Err(e) => {
-            log::warn!("Nie można ustalić ścieżki konfiguracji: {}", e);
+            log::warn!("Failed to resolve config path: {}", e);
             return Config::default();
         }
     };
@@ -109,7 +109,7 @@ fn load_legacy_json_config() -> Config {
             Config::default()
         }),
         Err(e) => {
-            log::warn!("Nie można odczytać konfiguracji: {}", e);
+            log::warn!("Failed to read config file: {}", e);
             Config::default()
         }
     };
@@ -132,9 +132,9 @@ fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
         &db_path,
         rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
-    .with_context(|| format!("Nie można otworzyć DB dashboardu: {:?}", db_path))?;
+    .with_context(|| format!("Failed to open dashboard DB: {:?}", db_path))?;
     conn.busy_timeout(std::time::Duration::from_millis(2000))
-        .context("Nie można ustawić busy_timeout dla DB dashboardu")?;
+        .context("Failed to set busy_timeout for dashboard DB")?;
 
     let table_exists = conn
         .query_row(
@@ -143,10 +143,10 @@ fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
             |row| row.get::<_, i64>(0),
         )
         .optional()
-        .context("Nie można sprawdzić tabeli monitored_apps")?
+        .context("Failed to check monitored_apps table")?
         .is_some();
     if !table_exists {
-        anyhow::bail!("Tabela monitored_apps nie istnieje jeszcze");
+        anyhow::bail!("monitored_apps table does not exist yet");
     }
 
     let mut stmt = conn
@@ -155,7 +155,7 @@ fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
              FROM monitored_apps
              ORDER BY display_name COLLATE NOCASE, exe_name COLLATE NOCASE",
         )
-        .context("Nie można przygotować zapytania monitored_apps")?;
+        .context("Failed to prepare monitored_apps query")?;
     let rows = stmt
         .query_map([], |row| {
             Ok(MonitoredApp {
@@ -164,11 +164,11 @@ fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
                 added_at: row.get(2)?,
             })
         })
-        .context("Nie można odczytać monitored_apps z DB")?;
+        .context("Failed to read monitored_apps from DB")?;
 
     let mut apps = Vec::new();
     for row in rows {
-        let mut app = row.context("Błąd mapowania monitored_apps row")?;
+        let mut app = row.context("Failed to map monitored_apps row")?;
         app.exe_name = app.exe_name.trim().to_lowercase();
         apps.push(app);
     }
@@ -187,7 +187,7 @@ pub fn load() -> Config {
         Err(e) => {
             // Fallback dla pierwszego uruchomienia / starszych DB.
             log::warn!(
-                "Nie można odczytać monitored_apps z DB dashboardu (fallback do JSON): {}",
+                "Failed to read monitored_apps from dashboard DB (fallback to JSON): {}",
                 e
             );
         }

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { PlayCircle } from 'lucide-react';
@@ -169,8 +175,6 @@ export function AIPage() {
   const { confirm, ConfirmDialog } = useConfirm();
 
   const isFetchingMetricsRef = useRef(false);
-  const showErrorRef = useRef(showError);
-  const translateRef = useRef(tr);
   const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [savingMode, setSavingMode] = useState(false);
@@ -217,14 +221,12 @@ export function AIPage() {
   );
   const highlightTrainAction =
     hasPendingAssignmentModelTrainingData(status);
-
-  useEffect(() => {
-    showErrorRef.current = showError;
-  }, [showError]);
-
-  useEffect(() => {
-    translateRef.current = tr;
-  }, [tr]);
+  const showTranslatedError = useCallback(
+    (messageKey: string, error: unknown) => {
+      showError(`${tr(messageKey)} ${String(error)}`);
+    },
+    [showError, tr],
+  );
 
   const handleSettingsChange = useCallback(
     (patch: Partial<AiSettingsFormValues>) => {
@@ -271,11 +273,9 @@ export function AIPage() {
       if (!dirtyRef.current) setFeedbackWeight(fw);
     } catch (e) {
       console.error(e);
-      showErrorRef.current(
-        `${translateRef.current('ai_page.errors.status_load_failed')} ${String(e)}`,
-      );
+      showTranslatedError('ai_page.errors.status_load_failed', e);
     }
-  }, [refreshAiStatus]);
+  }, [refreshAiStatus, showTranslatedError]);
 
   const fetchMetrics = useCallback(
     async (silent = false) => {
@@ -289,15 +289,13 @@ export function AIPage() {
         );
       } catch (e) {
         console.error(e);
-        showErrorRef.current(
-          `${translateRef.current('ai_page.errors.metrics_load_failed')} ${String(e)}`,
-        );
+        showTranslatedError('ai_page.errors.metrics_load_failed', e);
       } finally {
         if (!silent) setLoadingMetrics(false);
         isFetchingMetricsRef.current = false;
       }
     },
-    [],
+    [showTranslatedError],
   );
 
   const refreshModelData = useCallback(

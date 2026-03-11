@@ -22,7 +22,7 @@ import {
 } from "@/lib/tauri";
 import { useCancellableAsync } from "@/lib/async-utils";
 import { useTranslation } from "react-i18next";
-import { formatPathForDisplay, cn } from "@/lib/utils";
+import { formatPathForDisplay, cn, logTauriError } from "@/lib/utils";
 import type { DaemonStatus } from "@/lib/db-types";
 
 function isDocumentVisible(): boolean {
@@ -52,7 +52,7 @@ export function DaemonControl() {
           setLogs(nextLogs);
         },
         onError: (error) => {
-          console.error("Failed to refresh daemon logs:", error);
+          logTauriError('refresh daemon logs', error);
         },
       },
     );
@@ -65,14 +65,14 @@ export function DaemonControl() {
       void refreshAsync(
         async () => getDaemonLogs(200),
         {
-          onSuccess: (nextLogs) => {
-            setLogs(nextLogs);
-          },
-          onError: (error) => {
-            console.error("Failed to refresh daemon logs:", error);
-          },
+        onSuccess: (nextLogs) => {
+          setLogs(nextLogs);
         },
-      );
+        onError: (error) => {
+          logTauriError('refresh daemon logs', error);
+        },
+      },
+    );
     },
     [refreshAsync, refreshDiagnostics],
   );

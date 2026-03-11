@@ -410,7 +410,24 @@ export function Help() {
                   t18n('help_page.chart_context_menu_right_click_on_a_day_in_the_project_t'),
                   t18n('help_page.project_timeline_states_loading_empty_and_error_messages'),
                 ]}
-              />
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.project_page_detail_title')}
+                  items={[
+                    t18n('help_page.project_page_detail_what_it_does'),
+                    t18n('help_page.project_page_detail_when_to_use'),
+                    t18n('help_page.project_page_detail_limitations'),
+                  ]}
+                />
+                <HelpDetailsBlock
+                  title={t18n('help_page.manual_session_dialog_detail_title')}
+                  items={[
+                    t18n('help_page.manual_session_dialog_detail_what_it_does'),
+                    t18n('help_page.manual_session_dialog_detail_when_to_use'),
+                    t18n('help_page.manual_session_dialog_detail_limitations'),
+                  ]}
+                />
+              </SectionHelp>
             </TabsContent>
 
             <TabsContent
@@ -767,7 +784,25 @@ export function Help() {
                   t18n('help_page.manual_session_rebuild_button_in_the_session_management'),
                   t18n('help_page.unsaved_changes_warning_before_leaving_settings'),
                 ]}
-              />
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.online_sync_setup_title')}
+                  items={[
+                    t18n('help_page.online_sync_setup_what_it_does'),
+                    t18n('help_page.online_sync_setup_how_to_start'),
+                    t18n('help_page.online_sync_setup_when_to_use'),
+                    t18n('help_page.online_sync_setup_limitations'),
+                  ]}
+                />
+                <HelpDetailsBlock
+                  title={t18n('help_page.bughunter_detail_title')}
+                  items={[
+                    t18n('help_page.bughunter_detail_what_it_does'),
+                    t18n('help_page.bughunter_detail_when_to_use'),
+                    t18n('help_page.bughunter_detail_limitations'),
+                  ]}
+                />
+              </SectionHelp>
             </TabsContent>
           </div>
         </Tabs>
@@ -850,5 +885,26 @@ function SectionHelp({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function HelpDetailsBlock({
+  title,
+  items,
+}: {
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div className="text-sm space-y-4 text-foreground/90 leading-relaxed border-t border-border/10 pt-4">
+      <h4 className="font-semibold text-primary/90 text-xs uppercase tracking-wider">
+        {title}
+      </h4>
+      <ul className="list-disc ml-5 space-y-2 text-muted-foreground">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }

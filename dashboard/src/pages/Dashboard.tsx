@@ -25,7 +25,7 @@ import {
   refreshToday,
   getManualSessions,
 } from '@/lib/tauri';
-import { formatDuration, getErrorMessage } from '@/lib/utils';
+import { formatDuration, getErrorMessage, logTauriError } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
@@ -257,7 +257,7 @@ export function Dashboard() {
       try {
         await assignSessions(sessionIds, projectId, 'manual_dashboard_change');
       } catch (err) {
-        console.error('Failed to assign session to project:', err);
+        logTauriError('assign session to project', err);
         throw err;
       }
     },
@@ -269,7 +269,7 @@ export function Dashboard() {
       try {
         await updateSessionRateMultipliers(sessionIds, multiplier);
       } catch (err) {
-        console.error('Failed to update session rate multiplier:', err);
+        logTauriError('update session rate multiplier', err);
         throw err;
       }
     },
@@ -284,7 +284,7 @@ export function Dashboard() {
           prev.map((s) => (s.id === sessionId ? { ...s, comment } : s)),
         );
       } catch (err) {
-        console.error('Failed to update session comment:', err);
+        logTauriError('update session comment', err);
       }
     },
     [updateSessionComment],
@@ -352,13 +352,13 @@ export function Dashboard() {
           setAllProjects([]);
           setProjectTimeline([]);
           setProjectTimelineError(dashboardDataRes.reason);
-          console.error('Failed to load dashboard data:', dashboardDataRes.reason);
+          logTauriError('load dashboard data', dashboardDataRes.reason);
         }
 
         if (projectsRes.status === 'fulfilled') {
           setProjectsList(projectsRes.value);
         } else {
-          console.error('Failed to load projects count:', projectsRes.reason);
+          logTauriError('load projects count', projectsRes.reason);
         }
 
         if (!shouldLoadTodayData) {
@@ -369,8 +369,8 @@ export function Dashboard() {
             setTodaySessions(todaySessionsRes.value);
           } else {
             setTodaySessions([]);
-            console.error(
-              'Failed to load today sessions for timeline:',
+            logTauriError(
+              'load today sessions for timeline',
               todaySessionsRes.reason,
             );
           }
@@ -379,7 +379,7 @@ export function Dashboard() {
             setManualSessions(manualSessionsRes.value);
           } else {
             setManualSessions([]);
-            console.error('Failed to load manual sessions:', manualSessionsRes.reason);
+            logTauriError('load manual sessions', manualSessionsRes.reason);
           }
         }
 

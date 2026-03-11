@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import {
@@ -79,10 +79,6 @@ export function Settings() {
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
   const setPageChangeGuard = useUIStore((s) => s.setPageChangeGuard);
   const [clearing, setClearing] = useState(false);
-  const [showSavedToast, setShowSavedToast] = useState(false);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
-    undefined,
-  );
   const [clearArmed, setClearArmed] = useState(false);
   const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
     loadWorkingHoursSettings(),
@@ -126,10 +122,6 @@ export function Settings() {
         setOnlineSyncSettings((prev) => ({ ...prev, apiToken: token }));
       }
     });
-  }, []);
-
-  useEffect(() => {
-    return () => clearTimeout(toastTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -288,9 +280,7 @@ export function Settings() {
     }
     setWorkingHoursError(null);
     setSavedSettings(true);
-    setShowSavedToast(true);
-    clearTimeout(toastTimerRef.current);
-    toastTimerRef.current = setTimeout(() => setShowSavedToast(false), 3000);
+    showInfo(t('settings_page.saved'));
     triggerRefresh('settings_saved');
   };
 
@@ -766,12 +756,6 @@ export function Settings() {
       </div>
 
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
-        {showSavedToast && (
-          <div className="rounded-full bg-emerald-500/20 px-3 py-1.5 text-[11px] font-bold text-emerald-400 border border-emerald-500/40 shadow-xl animate-in fade-in zoom-in slide-in-from-bottom-2 duration-300">
-            {t('settings_page.saved')}
-          </div>
-        )}
-
         {!savedSettings && (
           <Button
             className="h-8 min-w-[7rem] rounded-full shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300 hover:scale-110 active:scale-95 animate-shine text-white border-none font-black text-[10px] uppercase tracking-wider"

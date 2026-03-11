@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import {
   formatDuration,
+  logTauriError,
   formatSessionDate,
   formatSessionTime,
 } from '@/lib/utils';
@@ -161,7 +162,7 @@ export const SessionRow = memo(function SessionRow({
                   try {
                     await deleteSession(s.id);
                   } catch (error) {
-                    console.error('Failed to delete session:', error);
+                    logTauriError('delete session', error);
                   }
                 }}
               >
@@ -302,7 +303,7 @@ export const SessionRow = memo(function SessionRow({
                 try {
                   await deleteSession(s.id);
                 } catch (error) {
-                  console.error('Failed to delete session:', error);
+                  logTauriError('delete session', error);
                 }
               }}
             >

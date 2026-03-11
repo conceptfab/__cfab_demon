@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Database, Clock, Briefcase, Layout } from "lucide-react";
 import { getActivityDateSpan, getDashboardStats } from "@/lib/tauri";
 import { Card, CardContent } from "@/components/ui/card";
-import { formatDurationSlim } from "@/lib/utils";
+import { formatDurationSlim, logTauriError } from "@/lib/utils";
 import { loadProjectsAllTime } from "@/store/projects-cache-store";
 
 export function DataStats() {
@@ -46,7 +46,7 @@ export function DataStats() {
           totalTime: dStats.total_seconds
         });
       } catch (e) {
-        console.error("Failed to load data stats:", e);
+        logTauriError('load data stats', e);
       }
     };
     load();

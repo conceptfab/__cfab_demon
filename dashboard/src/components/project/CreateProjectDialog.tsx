@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { PROJECT_COLORS } from '@/lib/project-colors';
-import { getErrorMessage } from '@/lib/utils';
+import { getErrorMessage, logTauriError } from '@/lib/utils';
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -54,7 +54,7 @@ export function CreateProjectDialog({
         setError(null);
       }
     } catch (e) {
-      console.error('Failed to open folder dialog:', e);
+      logTauriError('open folder dialog', e);
     }
   };
 

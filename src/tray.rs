@@ -1,19 +1,15 @@
 // System tray module - tray icon with context menu
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use native_windows_gui as nwg;
-use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
-use winapi::um::tlhelp32::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
-};
 
 use crate::i18n::{self, Lang, TrayText};
-use crate::process_utils::no_console;
+use crate::process_utils::{collect_process_entries, no_console};
 use crate::APP_NAME;
 const ASSIGNMENT_SIGNAL_FILE: &str = "assignment_attention.txt";
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
@@ -168,7 +164,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let menu_clone = menu.clone();
     let tray_clone = tray.clone();
 
-    let current_lang: Rc<std::cell::Cell<Lang>> = Rc::new(std::cell::Cell::new(initial_lang));
+    let current_lang: Rc<Cell<Lang>> = Rc::new(Cell::new(initial_lang));
     let lang_clone = current_lang.clone();
 
     let menu_exit = Rc::new(RefCell::new(menu_exit));
@@ -179,7 +175,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let menu_dashboard_clone = menu_dashboard.clone();
 
     let stop_clone = stop_signal.clone();
-    let action = Arc::new(Mutex::new(TrayExitAction::Exit));
+    let action = Rc::new(Cell::new(TrayExitAction::Exit));
     let action_clone = action.clone();
 
     // To track double clicks on tray icon
@@ -261,9 +257,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                     nwg::stop_thread_dispatch();
                 } else if handle == restart_handle {
                     log::info!("Restarting daemon from tray menu");
-                    if let Ok(mut a) = action_clone.lock() {
-                        *a = TrayExitAction::Restart;
-                    }
+                    action_clone.set(TrayExitAction::Restart);
                     stop_clone.store(true, Ordering::SeqCst);
                     nwg::stop_thread_dispatch();
                 } else if handle == dashboard_handle {
@@ -286,47 +280,21 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     log::info!("Daemon stopped");
 
     // Return the requested exit action (Exit / Restart).
-    action.lock().map(|a| *a).unwrap_or(TrayExitAction::Exit)
+    action.get()
 }
 
 fn is_dashboard_running() -> bool {
-    unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot == INVALID_HANDLE_VALUE {
-            log::warn!("Failed to create process snapshot for dashboard detection");
-            return false;
-        }
+    let Some(entries) = collect_process_entries() else {
+        log::warn!("Failed to create process snapshot for dashboard detection");
+        return false;
+    };
 
-        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
-        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-        let mut found = false;
-        if Process32FirstW(snapshot, &mut entry) != 0 {
-            loop {
-                let name_len = entry
-                    .szExeFile
-                    .iter()
-                    .position(|&c| c == 0)
-                    .unwrap_or(entry.szExeFile.len());
-                let exe_name =
-                    String::from_utf16_lossy(&entry.szExeFile[..name_len]).to_lowercase();
-                if matches!(
-                    exe_name.as_str(),
-                    "timeflow-dashboard.exe" | "timeflow.exe" | "timeflow_dashboard.exe"
-                ) {
-                    found = true;
-                    break;
-                }
-
-                if Process32NextW(snapshot, &mut entry) == 0 {
-                    break;
-                }
-            }
-        }
-
-        CloseHandle(snapshot);
-        found
-    }
+    entries.into_iter().any(|entry| {
+        matches!(
+            entry.exe_name.as_str(),
+            "timeflow-dashboard.exe" | "timeflow.exe" | "timeflow_dashboard.exe"
+        )
+    })
 }
 
 fn launch_dashboard(lang: Lang) {

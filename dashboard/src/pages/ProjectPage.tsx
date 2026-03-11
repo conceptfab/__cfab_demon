@@ -47,6 +47,7 @@ import {
   formatMoney,
   formatMultiplierLabel,
   getErrorMessage,
+  logTauriError,
   cn,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
@@ -62,6 +63,11 @@ import type {
 } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import {
+  findSessionIdsMissingComment,
+  parsePositiveRateMultiplierInput,
+  requiresCommentForMultiplierBoost,
+} from '@/hooks/useSessionActions';
 import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import { loadProjectsAllTime } from '@/store/projects-cache-store';
@@ -403,7 +409,7 @@ export function ProjectPage() {
       })
       .catch((error) => {
         if (cancelled) return;
-        console.error('Failed to load projects list for manual sessions:', error);
+        logTauriError('load projects list for manual sessions', error);
       });
 
     return () => {
@@ -538,10 +544,10 @@ export function ProjectPage() {
     );
     if (autoSessionIds.length === 0) return true;
 
-    const missingIds = autoSessionIds.filter((id) => {
-      const comment = autoSessionsById.get(id)?.comment;
-      return !comment || !comment.trim();
-    });
+    const missingIds = findSessionIdsMissingComment(
+      autoSessionIds,
+      (id) => autoSessionsById.get(id)?.comment,
+    );
     if (missingIds.length === 0) return true;
 
     const label =
@@ -572,7 +578,7 @@ export function ProjectPage() {
       );
       return true;
     } catch (err) {
-      console.error('Failed to save required boost comment:', err);
+      logTauriError('save required boost comment', err);
       showError(
         `${t('project_page.text.failed_to_save_comment_required_for_boost')} ${String(err)}`,
       );
@@ -589,7 +595,7 @@ export function ProjectPage() {
     );
     if (autoSessionIds.length === 0) return;
     try {
-      if (multiplier != null && multiplier > 1.000_001) {
+      if (requiresCommentForMultiplierBoost(multiplier)) {
         const ok = await ensureCommentForBoost(autoSessionIds);
         if (!ok) return;
       }
@@ -731,8 +737,8 @@ export function ProjectPage() {
           : t('project_page.text.multiplier_must_be_0_use_1_to_reset'),
       initialValue: String(currentMultiplier > 1 ? currentMultiplier : 2),
       onConfirm: async (raw) => {
-        const parsed = Number(raw.trim().replace(',', '.'));
-        if (!Number.isFinite(parsed) || parsed <= 0) return;
+        const parsed = parsePositiveRateMultiplierInput(raw);
+        if (parsed == null) return;
         await handleSetRateMultiplier(parsed, ids);
       },
     });

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles, getBackupFiles } from "@/lib/tauri";
 import type { ArchivedFile, ImportedFile, BackupFile } from "@/lib/db-types";
 import { AppTooltip } from "@/components/ui/app-tooltip";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, logTauriError } from "@/lib/utils";
 import {
   LOCAL_DATA_CHANGED_EVENT,
   type LocalDataChangedDetail,
@@ -42,7 +42,7 @@ export function DataHistory() {
       setArchive(nextArchive);
       setBackups(nextBackups);
     } catch (error) {
-      console.error("Failed to load data history:", error);
+      logTauriError('load data history', error);
     } finally {
       isLoadingRef.current = false;
     }

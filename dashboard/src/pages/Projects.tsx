@@ -61,9 +61,11 @@ import { CollapsibleSection } from '@/components/project/CollapsibleSection';
 import { CreateProjectDialog } from '@/components/project/CreateProjectDialog';
 import {
   formatDuration,
+  getDurationParts,
   formatPathForDisplay,
   formatMoney,
   getErrorMessage,
+  logTauriError,
   cn,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
@@ -165,34 +167,32 @@ function filterProjectList(
 }
 
 function renderDuration(seconds: number) {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
+  const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
   const unitClass = 'text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline';
 
-  if (h > 0) {
+  if (hours > 0) {
     return (
       <span className="flex items-baseline gap-x-1">
         <span>
-          {h}
+          {hours}
           <span className={unitClass}>h</span>
         </span>
         <span>
-          {m}
+          {minutes}
           <span className={unitClass}>m</span>
         </span>
       </span>
     );
   }
-  if (m > 0) {
+  if (minutes > 0) {
     return (
       <span className="flex items-baseline gap-x-1">
         <span>
-          {m}
+          {minutes}
           <span className={unitClass}>m</span>
         </span>
         <span>
-          {s}
+          {remainingSeconds}
           <span className={unitClass}>s</span>
         </span>
       </span>
@@ -200,7 +200,7 @@ function renderDuration(seconds: number) {
   }
   return (
     <span className="flex items-baseline">
-      {s}
+      {remainingSeconds}
       <span className={unitClass}>s</span>
     </span>
   );
@@ -409,25 +409,25 @@ export function Projects() {
       if (cancelled) return;
 
       if (projectsRes.status === 'fulfilled') setProjects(projectsRes.value);
-      else console.error('Failed to load projects:', projectsRes.reason);
+      else logTauriError('load projects', projectsRes.reason);
 
       if (excludedRes.status === 'fulfilled')
         setExcludedProjects(excludedRes.value);
       else
-        console.error('Failed to load excluded projects:', excludedRes.reason);
+        logTauriError('load excluded projects', excludedRes.reason);
 
       if (appsRes.status === 'fulfilled') setApps(appsRes.value);
-      else console.error('Failed to load applications:', appsRes.reason);
+      else logTauriError('load applications', appsRes.reason);
 
       if (demoModeRes.status === 'fulfilled')
         setIsDemoMode(demoModeRes.value.enabled);
-      else console.error('Failed to load demo mode status:', demoModeRes.reason);
+      else logTauriError('load demo mode status', demoModeRes.reason);
 
       if (foldersRes.status === 'fulfilled') {
         setProjectFolders(foldersRes.value);
         setFolderError(null);
       } else {
-        console.error('Failed to load project folders:', foldersRes.reason);
+        logTauriError('load project folders', foldersRes.reason);
         setFolderError(PROJECT_FOLDERS_LOAD_ERROR);
       }
 
@@ -452,7 +452,7 @@ export function Projects() {
       })
       .catch((reason) => {
         if (!cancelled)
-          console.error('Failed to load detected projects:', reason);
+          logTauriError('load detected projects', reason);
       });
     return () => {
       cancelled = true;
@@ -467,7 +467,7 @@ export function Projects() {
         setEstimates(buildEstimateMap(rows));
       })
       .catch((reason) => {
-        if (!cancelled) console.error('Failed to load estimates:', reason);
+        if (!cancelled) logTauriError('load estimates', reason);
       });
     return () => {
       cancelled = true;
@@ -538,7 +538,7 @@ export function Projects() {
       setAssignOpen((prev) => (prev === project.id ? null : prev));
       setEditingColorId((prev) => (prev === project.id ? null : prev));
     } catch (e) {
-      console.error('Failed to delete project:', e);
+      logTauriError('delete project', e);
       showError(
         t('projects.errors.delete_project_failed', {
           projectLabel,
@@ -568,7 +568,7 @@ export function Projects() {
       projectExtraInfoCacheRef.current[id] = info;
       setExtraInfo(info);
     } catch (e) {
-      console.error('Failed to compact project data:', e);
+      logTauriError('compact project data', e);
       showError(
         t('projects.errors.compact_project_failed', {
           error: getErrorMessage(e, t('ui.common.unknown_error')),
@@ -624,7 +624,7 @@ export function Projects() {
         setFolderError(null);
       }
     } catch (e) {
-      console.error('Failed to open folder dialog:', e);
+      logTauriError('open folder dialog', e);
     }
   };
 

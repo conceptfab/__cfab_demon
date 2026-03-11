@@ -7,7 +7,7 @@ import { AppTooltip } from "@/components/ui/app-tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PromptModal } from "@/components/ui/prompt-modal";
 import { useToast } from "@/components/ui/toast-notification";
-import { formatDuration, formatMultiplierLabel } from "@/lib/utils";
+import { formatDuration, formatMultiplierLabel, logTauriError } from "@/lib/utils";
 import {
   loadFreezeSettings,
   timeToMinutes,
@@ -482,7 +482,7 @@ export function ProjectDayTimeline({
         if (sessionIds.length === 0) return;
         await onAssignSession(sessionIds, projectId);
       } catch (err) {
-        console.error("Failed to assign session(s) to project:", err);
+        logTauriError('assign session(s) to project', err);
         showError(t('sessions.errors.assign_failed', { error: String(err) }));
       } finally {
         setCtxMenu(null);
@@ -532,7 +532,7 @@ export function ProjectDayTimeline({
         );
         return true;
       } catch (err) {
-        console.error("Failed to save required boost comment:", err);
+        logTauriError('save required boost comment', err);
         showError(
           t('sessions.prompts.boost_comment_save_failed', {
             error: String(err),
@@ -557,7 +557,7 @@ export function ProjectDayTimeline({
         await onUpdateSessionRateMultiplier(sessionIds, multiplier);
         setCtxMenu(null);
       } catch (err) {
-        console.error("Failed to update session rate multiplier:", err);
+        logTauriError('update session rate multiplier', err);
         showError(
           t('sessions.errors.update_multiplier', { error: String(err) }),
         );
@@ -609,7 +609,7 @@ export function ProjectDayTimeline({
         try {
           await onUpdateSessionComment(sessionId, trimmed || null);
         } catch (err) {
-          console.error("Failed to update session comment:", err);
+          logTauriError('update session comment', err);
         }
       }
     });

@@ -28,7 +28,7 @@ import {
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { AppTooltip } from '@/components/ui/app-tooltip';
-import { formatDuration } from '@/lib/utils';
+import { formatDuration, logTauriError } from '@/lib/utils';
 import { handleSettledResult } from '@/lib/async-utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
@@ -75,7 +75,7 @@ export function Applications() {
             setVisibleRows(APP_ROWS_PAGE_SIZE);
           },
           onRejected: (reason) => {
-            console.error('Failed to load applications:', reason);
+            logTauriError('load applications', reason);
           },
         });
 
@@ -85,7 +85,7 @@ export function Applications() {
             setMonitoredError('');
           },
           onRejected: (reason) => {
-            console.error('Failed to load monitored apps:', reason);
+            logTauriError('load monitored apps', reason);
             setMonitoredError(t('applications_page.errors.load_monitored'));
           },
         });
@@ -136,7 +136,7 @@ export function Applications() {
           await renameMonitoredApp(app.exe_name, trimmed);
           loadMonitored();
         } catch (e) {
-          console.error('Failed to rename monitored app:', e);
+          logTauriError('rename monitored app', e);
           showError(
             t('applications_page.errors.rename_monitored_prefix') +
               ` ${String(e)}`,
@@ -163,7 +163,7 @@ export function Applications() {
         showInfo(t('applications_page.messages.sync_monitored_noop'));
       }
     } catch (error) {
-      console.error('Failed to sync monitored apps from applications:', error);
+      logTauriError('sync monitored apps from applications', error);
       const message =
         `${t('applications_page.errors.sync_monitored_prefix')} ${String(error)}`;
       setMonitoredError(message);
@@ -208,7 +208,7 @@ export function Applications() {
       await resetAppTime(appId);
       triggerRefresh('applications_changed');
     } catch (err) {
-      console.error('Failed to reset app time:', err);
+      logTauriError('reset app time', err);
     }
   };
 
@@ -218,7 +218,7 @@ export function Applications() {
       setEditingColorId(null);
       triggerRefresh('applications_changed');
     } catch (error) {
-      console.error('Failed to update app color:', error);
+      logTauriError('update app color', error);
       showError(
         `${t('applications_page.errors.save_color_prefix')} ${String(error)}`,
       );
@@ -243,7 +243,7 @@ export function Applications() {
           await renameApplication(app.id, trimmed);
           triggerRefresh('applications_changed');
         } catch (e) {
-          console.error('Failed to rename application:', e);
+          logTauriError('rename application', e);
           showError(
             t('applications_page.errors.rename_app_prefix') +
               ` ${String(e)}`,
@@ -267,7 +267,7 @@ export function Applications() {
       await deleteAppAndData(app.id);
       triggerRefresh('applications_changed');
     } catch (e) {
-      console.error('Failed to delete app and data:', e);
+      logTauriError('delete app and data', e);
       showError(
         t('applications_page.errors.delete_app_prefix') +
           ` ${String(e)}`,

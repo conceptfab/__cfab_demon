@@ -9,9 +9,9 @@
 
 ## Spis treści
 
-1. [Problemy krytyczne](#1-problemy-krytyczne)
-2. [Wydajność i optymalizacje](#2-wydajność-i-optymalizacje)
-3. [Poprawność logiki](#3-poprawność-logiki)
+1. `4.3` jako najwiekszy otwarty duplikat po stronie Rust.
+2. `4.6` i `4.7` jako kolejne porzadki w dashboardzie bez zmiany architektury.
+3. `5.2` oraz punkty z sekcji 7 jako dalsze ujednolicanie jakosci i utrzymania kodu.
 4. [Nadmiarowy i zduplikowany kod](#4-nadmiarowy-i-zduplikowany-kod)
 5. [Brakujące tłumaczenia](#5-brakujące-tłumaczenia)
 6. [Pokrycie Help.tsx](#6-pokrycie-helptsx)
@@ -46,8 +46,19 @@
 - [x] `4.2` Usunięta duplikacja `isSessionAlreadySplit` na rzecz współdzielonego helpera.
 - [x] `4.4` `Dashboard` nie trzyma już osobnego stanu `projectCount`; licznik jest pochodną `projectsList.length`.
 - [x] `4.5` Miejsca wcześniej wołające bezpośrednio `getProjects()` korzystają teraz ze współdzielonego loadera/cache `loadProjectsAllTime()`.
+- [x] `4.1` `renderDuration()` i `formatDuration()` korzystają teraz ze wspólnego helpera `getDurationParts()`, więc logika rozbicia sekund nie jest już utrzymywana w dwóch miejscach.
+- [x] `4.3` Snapshot procesów dla `tray.rs` i `monitor.rs` korzysta teraz ze wspólnego helpera `collect_process_entries()` w `process_utils.rs`, więc iteracja po `CreateToolhelp32Snapshot` nie jest już zdublowana.
+- [x] `4.6` Powtarzalne logi `console.error('Failed to ...')` w dashboardzie korzystają teraz ze wspólnego helpera `logTauriError(action, error)`, więc format i kontekst logów są spójne.
+- [x] `5.2` Logi daemonu w `config.rs` i `storage.rs` są już po angielsku, więc warstwa Rust nie miesza polskich i angielskich komunikatów diagnostycznych.
+- [x] `4.7` Walidacja boost comment i dodatniego rate multiplier korzysta teraz ze współdzielonych helperów przy `useSessionActions`, więc `Sessions` i `ProjectPage` nie utrzymują tej samej logiki osobno.
+- [x] `4.8` `Settings` pokazuje zapis przez globalny system `useToast`, bez lokalnego stanu i `setTimeout`.
+- [x] `6` Help uzupełniony o praktyczny opis `ProjectPage`, `ManualSessionDialog`, `BugHunter` i pierwszej konfiguracji `Online Sync`.
 - [x] `5.1` Hardkodowane błędy widoczne w UI w `Projects`, `Settings` i `CreateProjectDialog` zostały przepięte na tłumaczenia.
 - [x] `8.1` Nieużywana zależność `sysinfo` usunięta z demona.
+- [x] `7.1` `record_app_activity` przyjmuje teraz `ActivityContext`, więc powiązane dane wejściowe nie są już przekazywane jako długa lista luźnych parametrów.
+- [x] `7.9` Stan `action` w tray korzysta teraz z `Rc<Cell<TrayExitAction>>`, więc nie trzyma już `Arc<Mutex<...>>` w single-threaded pętli NWG.
+- [x] `7.8` `WMI_PATH_LOOKUP_BATCH_LIMIT` ma teraz opis celu limitu, więc ta liczba nie jest już anonimowym magic number bez kontekstu.
+- [x] `7.6` `AI.tsx` używa teraz wspólnego callbacku do komunikatów błędów, więc nie trzyma już `showError` i tłumaczeń w refach synchronizowanych przez `useEffect`.
 - [x] Weryfikacja techniczna ostatnich iteracji: `cargo test`, `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 
 ---
@@ -169,7 +180,7 @@
 
 ## 4. Nadmiarowy i zduplikowany kod
 
-### 4.1 Zduplikowana `renderDuration()` vs `formatDuration()`
+### [x] 4.1 Zduplikowana `renderDuration()` vs `formatDuration()`
 - **Pliki:** `Projects.tsx:166` vs `lib/utils.ts:10`
 - **Opis:** Identyczna logika obliczenia `Math.floor(seconds / 3600)` i `Math.floor((seconds % 3600) / 60)`. Różnica: JSX vs string.
 - **Rozwiązanie:** Wydzielić wspólną logikę obliczeniową.
@@ -179,7 +190,7 @@
 - **Opis:** Identyczna funkcja w dwóch miejscach.
 - **Rozwiązanie:** `BackgroundServices.tsx` powinno importować z `session-analysis.ts`.
 
-### 4.3 Duplikacja process snapshot (Rust)
+### [x] 4.3 Duplikacja process snapshot (Rust)
 - **Pliki:** `tray.rs:289-327` vs `monitor.rs:653-687`
 - **Opis:** Niemal identyczny kod iterowania procesów przez `CreateToolhelp32Snapshot`.
 - **Rozwiązanie:** Wydzielić do `process_utils.rs`.
@@ -193,10 +204,10 @@
 - **Opis:** Każde miejsce: `getProjects().then(set).catch(console.error)`.
 - **Rozwiązanie:** Scentralizować w Zustand store lub shared hook.
 
-### 4.6 40+ powtórzonych `console.error('Failed to ...')`
+### [x] 4.6 40+ powtórzonych `console.error('Failed to ...')`
 - **Rozwiązanie:** Scentralizować w helperze `logTauriError(context, error)`.
 
-### 4.7 Powtórzona walidacja boost/multiplier
+### [x] 4.7 Powtórzona walidacja boost/multiplier
 - **Pliki:** `Sessions.tsx:820,892` vs `ProjectPage.tsx:561`
 - **Opis:** Logika walidacji boost comment i rate multiplier niemal identyczna.
 - **Rozwiązanie:** Przenieść do `useSessionActions` hook.
@@ -225,7 +236,7 @@
 
 Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i widoczne w UI. Powinny używać `t('klucz')`.
 
-### 5.2 Niespójność języka w logach Rust daemon
+### [x] 5.2 Niespójność języka w logach Rust daemon
 - `config.rs` — komunikaty po polsku: `"Brak zmiennej APPDATA"`, `"Nie mozna otworzyc DB dashboardu"`
 - `tracker.rs`, `monitor.rs` — komunikaty po angielsku
 - Logi nie są widoczne dla użytkownika, ale niespójność utrudnia debugging.
@@ -269,7 +280,7 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 
 ## 7. Jakość kodu — code smells
 
-### 7.1 Parameter sprawl: `record_app_activity` — 12 parametrów
+### [x] 7.1 Parameter sprawl: `record_app_activity` — 12 parametrów
 - **Plik:** `src/tracker.rs`, linia 110-122
 - **Rozwiązanie:** Struct `ActivityContext` grupujący powiązane parametry.
 
@@ -290,7 +301,7 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 ### 7.5 `tauri.ts` — 80+ flat exports
 - **Rozwiązanie:** Pogrupować w moduły/obiekty (projects, sessions, daemon, data, ai).
 
-### 7.6 `AI.tsx` — `showErrorRef` i `translateRef`
+### [x] 7.6 `AI.tsx` — `showErrorRef` i `translateRef`
 - **Plik:** `AI.tsx`, linie 169-170, 220-226
 - **Opis:** `useRef` do przechowywania `showError` i `tr` z synchronizacją przez `useEffect` — nieelegancki wzorzec.
 
@@ -298,10 +309,10 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - **Plik:** `BackgroundServices.tsx`, linia 277-487
 - **Opis:** Zarządza wieloma timers/refs/intervals. Logika sync, refresh, file-signature-check powinna być rozdzielona.
 
-### 7.8 Magic numbers
+### [x] 7.8 Magic numbers
 - `monitor.rs:34` — `WMI_PATH_LOOKUP_BATCH_LIMIT = 16` bez uzasadnienia
 
-### 7.9 Mutex dla `action` w tray (single-threaded context)
+### [x] 7.9 Mutex dla `action` w tray (single-threaded context)
 - **Plik:** `src/tray.rs`, linie 181, 261, 286
 - **Opis:** `Arc<Mutex<TrayExitAction>>` mimo single-threaded NWG event loop.
 - **Rozwiązanie:** `Rc<Cell<TrayExitAction>>` byłoby prostsze.
@@ -337,20 +348,12 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 ### Otwarte priorytety
 | Priorytet | Punkt | Problem | Wpływ |
 |---|---|---|---|
-| Wysoki | `4.3` | Duplikacja process snapshot w `tray.rs` i `monitor.rs` | Maintainability + ryzyko dalszego rozjazdu logiki |
-| Wysoki | `6 / ProjectPage` | `ProjectPage` bez dedykowanej sekcji Help | Dokumentacja nie nadąża za złożonością widoku |
-| Średni | `4.1` | Duplikacja `renderDuration()` vs `formatDuration()` | Drobna duplikacja logiki formatowania |
-| Średni | `4.6` | 40+ powtórzonych `console.error('Failed to ...')` | Rozproszony handling błędów |
-| Średni | `4.7` | Powtórzona walidacja boost/multiplier | Duplikacja logiki biznesowej |
-| Średni | `4.8` | Własny toast w `Settings` zamiast `useToast` | Niespójność UX i kodu |
-| Średni | `5.2` | Niespójność języka logów Rust | Utrudniony debugging |
-| Średni | `6 / Help gaps` | Luki w Help dla BugHunter / ManualSessionDialog / Online Sync | Dokumentacja użytkowa |
-| Średni | `7.1`, `7.3–7.9` | Code smells i zbyt duże moduły | Czytelność i koszt utrzymania |
+| Średni | `7.3–7.5`, `7.7` | Code smells i zbyt duże moduły | Czytelność i koszt utrzymania |
 | Niski | `7.2` | Stringly-typed activity types | Type safety |
 | Niski | `8.2` | Weryfikacja sensowności `lettre` w dashboard Cargo | Potencjalne uproszczenie zależności |
 | Niski | `8.3` | Ocena `opt-level = "s"` dla dashboardu | Potencjalny zysk runtime |
 
-### Najbliższe sensowne kroki
-1. `4.1` i `4.8` jako szybkie, mało ryzykowne porządki w dashboardzie.
-2. `4.3` jako największy otwarty duplikat po stronie Rust.
-3. Sekcja Help dla `ProjectPage`, `BugHunter`, `ManualSessionDialog` i `Online Sync`, żeby dokumentacja dogoniła aktualny produkt.
+### Najblizsze sensowne kroki
+1. `7.3–7.5` oraz `7.7` jako dalsze ujednolicanie jakosci i utrzymania kodu.
+2. `8.2` i `8.3` dopiero po zamknieciu istotniejszych problemow utrzymaniowych.
+3. Wieksze rozbicie duzych komponentow (`Sessions`, `Projects`, `ProjectPage`) po zamknieciu prostszych porzadkow.

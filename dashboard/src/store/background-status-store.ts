@@ -11,6 +11,7 @@ import type {
   DaemonStatus,
   DatabaseSettings,
 } from '@/lib/db-types';
+import { logTauriError } from '@/lib/utils';
 
 let diagnosticsInFlight = false;
 let aiStatusInFlight = false;
@@ -81,20 +82,20 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
         }));
 
         if (daemonRes.status === 'rejected') {
-          console.error('Failed to refresh daemon status:', daemonRes.reason);
+          logTauriError('refresh daemon status', daemonRes.reason);
         }
         if (aiRes.status === 'rejected') {
-          console.error('Failed to refresh AI status:', aiRes.reason);
+          logTauriError('refresh AI status', aiRes.reason);
         }
         if (todayCountRes.status === 'rejected') {
-          console.error(
-            'Failed to refresh today unassigned sessions:',
+          logTauriError(
+            'refresh today unassigned sessions',
             todayCountRes.reason,
           );
         }
         if (allCountRes.status === 'rejected') {
-          console.error(
-            'Failed to refresh unassigned sessions count:',
+          logTauriError(
+            'refresh unassigned sessions count',
             allCountRes.reason,
           );
         }
@@ -109,7 +110,7 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
         const aiStatus = await getAssignmentModelStatus();
         set({ aiStatus });
       } catch (error) {
-        console.error('Failed to refresh AI status:', error);
+        logTauriError('refresh AI status', error);
         throw error;
       } finally {
         aiStatusInFlight = false;
@@ -122,7 +123,7 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
         const dbSettings = await getDatabaseSettings();
         set({ dbSettings });
       } catch (error) {
-        console.error('Failed to refresh database settings:', error);
+        logTauriError('refresh database settings', error);
       } finally {
         databaseSettingsInFlight = false;
       }

@@ -19,7 +19,11 @@ import {
   splitSessionMulti as splitSessionMultiInvoke,
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
-import { formatDuration, formatMultiplierLabel } from '@/lib/utils';
+import {
+  formatDuration,
+  formatMultiplierLabel,
+  logTauriError,
+} from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { addDays, format, parseISO, subDays } from 'date-fns';
@@ -47,6 +51,11 @@ import {
 import { useToast } from '@/components/ui/toast-notification';
 import { resolveDateFnsLocale } from '@/lib/date-locale';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import {
+  findSessionIdsMissingComment,
+  parsePositiveRateMultiplierInput,
+  requiresCommentForMultiplierBoost,
+} from '@/hooks/useSessionActions';
 import {
   EMPTY_SCORE_BREAKDOWN,
   isAlreadySplitSession,
@@ -779,7 +788,7 @@ export function Sessions() {
       try {
         await assignSessions(ctxMenu.session.id, projectId, source);
       } catch (err) {
-        console.error('Failed to assign session to project:', err);
+        logTauriError('assign session to project', err);
       }
       setCtxMenu(null);
     },
@@ -791,10 +800,10 @@ export function Sessions() {
       if (sessionIds.length === 0) return true;
 
       const commentById = new Map(sessions.map((s) => [s.id, s.comment]));
-      const missingIds = sessionIds.filter((id) => {
-        const comment = commentById.get(id);
-        return !comment || !comment.trim();
-      });
+      const missingIds = findSessionIdsMissingComment(
+        sessionIds,
+        (id) => commentById.get(id) ?? null,
+      );
 
       if (missingIds.length === 0) return true;
 
@@ -831,7 +840,7 @@ export function Sessions() {
         });
         return true;
       } catch (err) {
-        console.error('Failed to save required boost comment:', err);
+        logTauriError('save required boost comment', err);
         showError(
           t('sessions.prompts.boost_comment_save_failed', {
             error: String(err),
@@ -848,14 +857,14 @@ export function Sessions() {
       if (!ctxMenu) return;
       const sessionId = ctxMenu.session.id;
       try {
-        if (multiplier != null && multiplier > 1.000_001) {
+        if (requiresCommentForMultiplierBoost(multiplier)) {
           const ok = await ensureCommentForBoost([sessionId]);
           if (!ok) return;
         }
         await updateSessionRateMultipliers(sessionId, multiplier);
         setCtxMenu(null);
       } catch (err) {
-        console.error('Failed to update session rate multiplier:', err);
+        logTauriError('update session rate multiplier', err);
         showError(
           t('sessions.errors.update_multiplier', { error: String(err) }),
         );
@@ -884,9 +893,8 @@ export function Sessions() {
       description: t('sessions.prompts.multiplier_desc'),
       initialValue: String(suggested),
       onConfirm: async (raw) => {
-        const normalizedRaw = raw.trim().replace(',', '.');
-        const parsed = Number(normalizedRaw);
-        if (!Number.isFinite(parsed) || parsed <= 0) {
+        const parsed = parsePositiveRateMultiplierInput(raw);
+        if (parsed == null) {
           showError(t('sessions.prompts.multiplier_positive'));
           return;
         }
@@ -924,7 +932,7 @@ export function Sessions() {
             return next;
           });
         } catch (err) {
-          console.error('Failed to update session comment:', err);
+          logTauriError('update session comment', err);
         }
       },
     });
@@ -946,7 +954,7 @@ export function Sessions() {
           return next;
         });
       } catch (err) {
-        console.error('Failed to accept AI suggestion:', err);
+        logTauriError('accept AI suggestion', err);
       }
     },
     [assignSessions],
@@ -977,7 +985,7 @@ export function Sessions() {
           return next;
         });
       } catch (err) {
-        console.error('Failed to reject AI suggestion:', err);
+        logTauriError('reject AI suggestion', err);
       }
     },
     [assignSessions],
@@ -1026,7 +1034,7 @@ export function Sessions() {
           return data;
         })
         .catch((err) => {
-          console.error('Failed to load score breakdown:', err);
+          logTauriError('load score breakdown', err);
           return EMPTY_SCORE_BREAKDOWN;
         })
         .finally(() => {

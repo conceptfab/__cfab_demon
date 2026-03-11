@@ -7,22 +7,33 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function getDurationParts(totalSeconds: number) {
+  const safeSeconds =
+    Number.isFinite(totalSeconds) && totalSeconds > 0
+      ? Math.floor(totalSeconds)
+      : 0;
+
+  return {
+    hours: Math.floor(safeSeconds / 3600),
+    minutes: Math.floor((safeSeconds % 3600) / 60),
+    seconds: safeSeconds % 60,
+  };
+}
+
 export function formatDuration(seconds: number): string {
-  if (seconds <= 0) return '0s';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
+  const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
+
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${remainingSeconds}s`;
+  return `${remainingSeconds}s`;
 }
 
 export function formatDurationSlim(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  if (h > 0) return `${h}h`;
-  const m = Math.floor(seconds / 60);
-  if (m > 0) return `${m}m`;
-  return `${seconds}s`;
+  const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
+
+  if (hours > 0) return `${hours}h`;
+  if (minutes > 0) return `${minutes}m`;
+  return `${remainingSeconds}s`;
 }
 
 
@@ -57,6 +68,10 @@ export function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === 'string' && error.trim()) return error;
   return fallback;
+}
+
+export function logTauriError(action: string, error: unknown): void {
+  console.error(`[TIMEFLOW] Failed to ${action}:`, error);
 }
 
 export function formatMoney(value: number, currencyCode: string): string {

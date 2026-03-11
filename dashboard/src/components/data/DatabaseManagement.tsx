@@ -32,7 +32,7 @@ import type { DbInfo, DatabaseSettings, DataFolderStats } from "@/lib/db-types";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useToast } from "@/components/ui/toast-notification";
 import { AppTooltip } from "@/components/ui/app-tooltip";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, logTauriError } from "@/lib/utils";
 
 export function DatabaseManagement() {
   const { t } = useTranslation();
@@ -56,7 +56,7 @@ export function DatabaseManagement() {
       setSettings(dbSettings);
       setFolderStats(stats);
     } catch (e) {
-      console.error("Failed to load database management data:", e);
+      logTauriError('load database management data', e);
     }
   };
 

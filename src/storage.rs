@@ -305,7 +305,7 @@ pub fn load_daily(date: NaiveDate) -> DailyData {
                 return data;
             }
             Err(e) => {
-                log::warn!("Nie można odczytać pliku dziennego z data/: {}", e);
+                log::warn!("Failed to read daily file from data/: {}", e);
             }
         }
     }
@@ -344,7 +344,7 @@ fn load_from_archive_or_empty(date: NaiveDate) -> DailyData {
             data
         }
         Err(e) => {
-            log::warn!("Nie można odczytać pliku dziennego z archive/: {}", e);
+            log::warn!("Failed to read daily file from archive/: {}", e);
             empty_daily(date)
         }
     }
