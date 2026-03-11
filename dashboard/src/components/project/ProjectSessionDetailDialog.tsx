@@ -1,4 +1,5 @@
 import { format, parseISO } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -8,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { ManualSessionWithProject, SessionWithApp } from '@/lib/db-types';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 
 type AutoSessionRowLike = SessionWithApp & { isManual: false };
 type ManualSessionRowLike = SessionWithApp &
@@ -53,6 +55,9 @@ export function ProjectSessionDetailDialog({
   onEditManualSession,
   onEditComment,
 }: ProjectSessionDetailDialogProps) {
+  const { i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl bg-[#1a1b26] border-white/10 text-white">
@@ -94,7 +99,7 @@ export function ProjectSessionDetailDialog({
                   {format(parseISO(session.end_time), 'HH:mm')}
                 </p>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {format(parseISO(session.start_time), 'MMM do, yyyy')}
+                  {format(parseISO(session.start_time), 'PPP', { locale })}
                 </p>
               </div>
               <div className="rounded-md border border-white/5 bg-white/5 p-3">

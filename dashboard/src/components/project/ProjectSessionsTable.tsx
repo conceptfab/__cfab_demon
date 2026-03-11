@@ -15,6 +15,7 @@ import type {
   SessionWithApp,
 } from '@/lib/db-types';
 import { formatDuration } from '@/lib/utils';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 
 type AutoSessionTableRow = SessionWithApp & { isManual: false };
 type ManualSessionTableRow = SessionWithApp &
@@ -44,7 +45,8 @@ export function ProjectSessionsTable({
   onEditManualSession,
   onEditComment,
 }: ProjectSessionsTableProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
 
   return (
     <Card>
@@ -85,7 +87,7 @@ export function ProjectSessionsTable({
                             ? t('project_page.text.today')
                             : isYesterday(parseISO(date))
                               ? t('project_page.text.yesterday')
-                              : format(parseISO(date), 'EEEE, do MMMM yyyy')}
+                              : format(parseISO(date), 'PPPP', { locale })}
                         </span>
                         <div className="h-[1px] flex-1 bg-border/5" />
                         <span className="font-mono text-[9px] font-medium italic text-muted-foreground/20">

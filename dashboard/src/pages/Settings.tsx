@@ -209,10 +209,7 @@ export function Settings() {
           mergeGapAriaLabel={t('settings_page.merge_gap_in_minutes')}
           minutesLabel={t('settings_page.min')}
           sliderValue={sliderValue}
-          skipShortSessionsTitle={t(
-            'settings.session.skipShortTitle',
-            'Skip short sessions',
-          )}
+          skipShortSessionsTitle={t('settings.session.skipShortTitle')}
           skipShortSessionsDescription={t('settings_page.sessions_shorter_than_or_equal_to_this_duration_will_be')}
           minDurationAriaLabel={t('settings_page.minimum_session_duration_in_seconds')}
           minDurationSeconds={sessionSettings.minSessionDurationSeconds}
@@ -249,24 +246,15 @@ export function Settings() {
         />
 
         <SessionSplitCard
-          title={t('settings.splitTitle', 'Session Split')}
-          maxProjectsTitle={t(
-            'settings.splitMaxProjects',
-            'Max projects per session',
-          )}
-          maxProjectsDescription={t(
-            'settings.splitMaxProjectsDesc',
-            'Do ilu maksymalnie projektów można podzielić jedną sesję.',
-          )}
-          toleranceTitle={t('settings.splitTolerance', 'Tolerance coefficient')}
-          toleranceLowLabel={t('settings.splitToleranceLow', 'loose')}
-          toleranceHighLabel={t('settings.splitToleranceHigh', 'strict')}
+          title={t('settings.splitTitle')}
+          maxProjectsTitle={t('settings.splitMaxProjects')}
+          maxProjectsDescription={t('settings.splitMaxProjectsDesc')}
+          toleranceTitle={t('settings.splitTolerance')}
+          toleranceLowLabel={t('settings.splitToleranceLow')}
+          toleranceHighLabel={t('settings.splitToleranceHigh')}
           toleranceDescription={splitToleranceDescription}
-          autoSplitTitle={t('settings.splitAuto', 'Automatic split')}
-          autoSplitDescription={t(
-            'settings.splitAutoDesc',
-            'Sessions meeting split conditions will be split automatically.',
-          )}
+          autoSplitTitle={t('settings.splitAuto')}
+          autoSplitDescription={t('settings.splitAutoDesc')}
           splitSettings={splitSettings}
           onMaxProjectsChange={(maxProjects) => {
             updateSplitSetting('maxProjectsPerSession', maxProjects);
@@ -290,28 +278,19 @@ export function Settings() {
           showToken={showOnlineSyncToken}
           title={t('settings_page.online_sync')}
           description={t('settings_page.startup_synchronization_with_remote_server_using_snapsho')}
-          enableSyncTitle={t(
-            'settings.online_sync.enableTitle',
-            'Enable online sync',
-          )}
+          enableSyncTitle={t('settings.online_sync.enableTitle')}
           enableSyncDescription={t('settings_page.allows_the_dashboard_to_exchange_data_snapshots_with_the')}
           syncOnStartupTitle={t('settings_page.sync_on_startup')}
           syncOnStartupDescription={t('settings_page.runs_status_pull_push_after_local_auto_import_finishes')}
           autoSyncIntervalTitle={t('settings_page.auto_sync_interval')}
           autoSyncIntervalDescription={t('settings_page.periodic_sync_after_app_startup_default_is_every_30_minu')}
           minutesLabel={t('settings_page.min')}
-          enableLoggingTitle={t(
-            'settings.online_sync.loggingTitle',
-            'Enable sync logging',
-          )}
+          enableLoggingTitle={t('settings.online_sync.loggingTitle')}
           enableLoggingDescription={t('settings_page.save_detailed_sync_operations_to_log_file_for_debugging')}
           serverUrlLabel={t('settings_page.server_url')}
-          useDefaultServerLabel={t(
-            'settings.online_sync.useRailwayDefault',
-            'Use Railway Default',
-          )}
+          useDefaultServerLabel={t('settings.online_sync.useRailwayDefault')}
           userIdLabel={t('settings_page.user_id')}
-          userIdPlaceholder="e.g. demo-user / email / UUID"
+          userIdPlaceholder={t('settings_page.user_id_placeholder')}
           apiTokenLabel={t('settings_page.api_token_bearer')}
           apiTokenPlaceholder={t('settings_page.paste_the_raw_token_without_bearer_prefix_and_without_qu')}
           showTokenLabel={t('settings_page.show_token')}
@@ -330,11 +309,9 @@ export function Settings() {
           retriesLabel={t('settings_page.retries')}
           reseedWarning={t('settings_page.server_payload_was_cleaned_up_after_acks_local_reseed_ex')}
           syncingLabel={t('settings_page.syncing')}
-          syncDisabledInDemoLabel={t(
-            'settings.online_sync.syncDisabledInDemo',
-            'Sync disabled in demo',
-          )}
+          syncDisabledInDemoLabel={t('settings.online_sync.syncDisabledInDemo')}
           syncNowLabel={t('settings_page.sync_now')}
+          notAvailableLabel={t('ui.common.not_available')}
           defaultServerUrl={DEFAULT_ONLINE_SYNC_SERVER_URL}
           labelClassName={labelClassName}
           lastSyncLabel={lastSyncLabel}

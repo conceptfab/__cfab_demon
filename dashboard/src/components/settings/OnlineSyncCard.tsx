@@ -52,6 +52,7 @@ interface OnlineSyncCardProps {
   syncingLabel: string;
   syncDisabledInDemoLabel: string;
   syncNowLabel: string;
+  notAvailableLabel: string;
   defaultServerUrl: string;
   labelClassName: string;
   lastSyncLabel: string;
@@ -114,6 +115,7 @@ export function OnlineSyncCard({
   syncingLabel,
   syncDisabledInDemoLabel,
   syncNowLabel,
+  notAvailableLabel,
   defaultServerUrl,
   labelClassName,
   lastSyncLabel,
@@ -326,7 +328,7 @@ export function OnlineSyncCard({
                 <div>
                   {localRevisionHashLabel}{' '}
                   <span className="font-mono text-foreground">
-                    {state.localRevision ?? 'n/a'} / {localHashShort}
+                    {state.localRevision ?? notAvailableLabel} / {localHashShort}
                   </span>
                 </div>
                 {state.pendingAck && (

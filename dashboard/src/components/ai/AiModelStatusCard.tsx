@@ -34,6 +34,14 @@ export function AiModelStatusCard({
   const { t: tr } = useTranslation();
   const trainActionHighlighted =
     highlightTrainAction && !training && !status?.is_training;
+  const modeLabel =
+    status?.mode === 'off'
+      ? tr('ai_page.text.off_manual')
+      : status?.mode === 'suggest'
+        ? tr('ai_page.text.ai_suggestions')
+        : status?.mode === 'auto_safe'
+          ? tr('ai_page.text.auto_safe')
+          : tr('ui.common.not_available');
 
   return (
     <Card>
@@ -49,7 +57,7 @@ export function AiModelStatusCard({
             <p className="text-xs text-muted-foreground">
               {tr('ai_page.text.mode')}
             </p>
-            <p className="mt-1 font-medium">{status?.mode ?? '-'}</p>
+            <p className="mt-1 font-medium">{modeLabel}</p>
           </div>
           <div className="rounded-md border border-border/70 bg-background/35 p-3">
             <p className="text-xs text-muted-foreground">
@@ -81,7 +89,10 @@ export function AiModelStatusCard({
             </p>
             <p className="mt-1 font-medium">
               {(status?.last_train_samples ?? 0) > 0
-                ? `${status?.last_train_samples} samples / ${status?.last_train_duration_ms ?? 0} ms`
+                ? tr('ai_page.text.training_metrics_summary', {
+                    sampleCount: status?.last_train_samples ?? 0,
+                    durationMs: status?.last_train_duration_ms ?? 0,
+                  })
                 : tr('ai_page.text.no_data')}
             </p>
           </div>
@@ -91,7 +102,10 @@ export function AiModelStatusCard({
             </p>
             <p className="mt-1 font-medium">
               {status?.last_auto_run_at
-                ? `${formatDateTime(status.last_auto_run_at)} (${status.last_auto_assigned_count} assigned)`
+                ? tr('ai_page.text.last_auto_safe_run_summary', {
+                    date: formatDateTime(status.last_auto_run_at),
+                    assigned: status.last_auto_assigned_count,
+                  })
                 : tr('ai_page.text.never')}
             </p>
           </div>

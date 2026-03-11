@@ -61,6 +61,27 @@ Weryfikacja tej iteracji:
 - `dashboard`: `npm run typecheck` -> OK
 - `dashboard`: `npm test` -> OK, 15/15 testów
 
+## Status po iteracji i18n
+
+Zamknięte w tej iteracji:
+
+- `Settings` przestał opierać się na fallbackach z twardymi stringami dla podziału sesji, online sync i filtrowania krótkich sesji
+- placeholder `ID użytkownika` w online sync został przeniesiony do locale PL/EN
+- `AI` przestało pokazywać surowe wartości trybu modelu oraz angielskie sklejki typu `samples / ms` i `assigned`; status używa teraz pełnych tłumaczeń
+- `ProjectPage` przestał mieć twardą etykietę `Rate multiplier`, a daty w szczegółach sesji i tabeli są formatowane z locale zależnym od języka interfejsu
+- `OnlineSyncCard` przestał pokazywać twarde `n/a` i używa wspólnej etykiety `ui.common.not_available`
+
+Pozostały backlog z raportu:
+
+- dalsze porządki `i18n` w innych ekranach i komponentach poza zakresem tej iteracji
+- opcjonalne dalsze domykanie lokalizacji dat/liczb w mniej uczęszczanych widokach, jeśli pojawią się kolejne niespójności
+
+Weryfikacja tej iteracji:
+
+- `dashboard`: `npm run lint` -> OK
+- `dashboard`: `npm run typecheck` -> OK
+- `dashboard`: `npm test` -> OK, 15/15 testów
+
 ## Zakres
 
 Przeanalizowane obszary:

@@ -74,6 +74,7 @@ import { shouldRefreshProjectPage } from '@/lib/page-refresh-reasons';
 
 function RateMultiplierPanel({
   description,
+  currentMultiplierLabel,
   currentMultiplier,
   boostLabel,
   customLabel,
@@ -81,6 +82,7 @@ function RateMultiplierPanel({
   onCustom,
 }: {
   description: string;
+  currentMultiplierLabel: string;
   currentMultiplier: number | null | undefined;
   boostLabel: string;
   customLabel: string;
@@ -93,7 +95,7 @@ function RateMultiplierPanel({
         {description}
       </p>
       <p className="text-[10px] text-muted-foreground/80 font-medium">
-        Rate multiplier{' '}
+        {currentMultiplierLabel}{' '}
         <span className="text-emerald-400 font-mono">
           {formatMultiplierLabel(currentMultiplier ?? undefined)}
         </span>
@@ -163,7 +165,7 @@ function upsertProjectInList(
 }
 
 export function ProjectPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
   const { triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
@@ -1199,6 +1201,9 @@ export function ProjectPage() {
                   'project_page.text.applies_to_all_sessions_in_this_visual_chunk',
                   { count: ctxMenu.sessions.length },
                 )}
+                currentMultiplierLabel={t(
+                  'project_page.text.rate_multiplier_default_x2',
+                )}
                 currentMultiplier={ctxMenu.sessions[0]?.rate_multiplier}
                 boostLabel={t('project_page.text.boost_x2')}
                 customLabel={t('project_page.text.custom')}
@@ -1324,10 +1329,13 @@ export function ProjectPage() {
               <div className="px-2 py-2 text-[11px] font-semibold text-muted-foreground/50 border-b border-white/5 mb-1 flex items-center justify-between">
                 <span>{t('project_page.text.zone_actions')}</span>
                 <span className="bg-white/5 px-1.5 py-0.5 rounded text-[10px]">
-                  {new Date(ctxMenu.date).toLocaleDateString([], {
+                  {new Date(ctxMenu.date).toLocaleDateString(
+                    i18n.resolvedLanguage || undefined,
+                    {
                     month: 'short',
                     day: 'numeric',
-                  })}
+                    },
+                  )}
                 </span>
               </div>
               <button
@@ -1395,6 +1403,9 @@ export function ProjectPage() {
               <RateMultiplierPanel
                 description={t(
                   'project_page.text.applies_to_this_session_record',
+                )}
+                currentMultiplierLabel={t(
+                  'project_page.text.rate_multiplier_default_x2',
                 )}
                 currentMultiplier={ctxMenu.session.rate_multiplier}
                 boostLabel={t('project_page.text.boost_x2')}
