@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import {
   ChevronLeft,
   TimerReset,
@@ -29,6 +28,7 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ProjectSessionDetailDialog } from '@/components/project/ProjectSessionDetailDialog';
 import { ProjectManualSessionsCard } from '@/components/project/ProjectManualSessionsCard';
 import { ProjectRecentCommentsCard } from '@/components/project/ProjectRecentCommentsCard';
+import { ProjectSessionsTable } from '@/components/project/ProjectSessionsTable';
 import {
   dashboardApi,
   manualSessionsApi,
@@ -1091,163 +1091,16 @@ export function ProjectPage() {
           />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4" />
-                {t('project_page.text.detailed_session_list')}
-              </div>
-              <span className="text-xs font-normal lowercase text-muted-foreground">
-                {t('project_page.text.right_click_to_edit_sessions')}
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0 pb-4">
-            <div className="overflow-x-auto text-muted-foreground">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider font-bold">
-                  <tr>
-                    <th className="px-4 py-3">{t('project_page.text.date')}</th>
-                    <th className="px-4 py-3">
-                      {t('project_page.text.duration')}
-                    </th>
-                    <th className="px-4 py-3">
-                      {t('project_page.text.application')}
-                    </th>
-                    <th className="px-4 py-3">
-                      {t('project_page.text.details_comment')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {groupedSessions.map(({ date, sessions }) => (
-                    <React.Fragment key={date}>
-                      <tr className="bg-secondary/5 border-y border-border/5">
-                        <td colSpan={4} className="px-4 py-2">
-                          <div className="flex items-center gap-3">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/30 select-none">
-                              {isToday(parseISO(date))
-                                ? t('project_page.text.today')
-                                : isYesterday(parseISO(date))
-                                  ? t('project_page.text.yesterday')
-                                  : format(
-                                      parseISO(date),
-                                      'EEEE, do MMMM yyyy',
-                                    )}
-                            </span>
-                            <div className="h-[1px] flex-1 bg-border/5" />
-                            <span className="text-[9px] font-medium text-muted-foreground/20 font-mono italic">
-                              {sessionCountLabel(sessions.length)}
-                            </span>
-                          </div>
-                        </td>
-                      </tr>
-                      {sessions.map((s) => {
-                        const isManual = s.isManual;
-                        return (
-                          <tr
-                            key={`${isManual ? 'm' : 's'}-${s.id}`}
-                            className="hover:bg-accent/10 transition-colors cursor-context-menu"
-                            onContextMenu={(e) => handleContextMenu(e, s)}
-                          >
-                            <td className="px-4 py-3 whitespace-nowrap min-w-[120px]">
-                              <div className="flex items-center gap-2">
-                                {isManual && (
-                                  <PenLine className="h-3 w-3 text-emerald-400" />
-                                )}
-                                {format(parseISO(s.start_time), 'HH:mm')}
-                                <span className="mx-1.5 opacity-30 select-none text-muted-foreground">
-                                  -
-                                </span>
-                                {format(parseISO(s.end_time), 'HH:mm')}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 font-mono text-emerald-400">
-                              <div className="flex items-center gap-2">
-                                {formatDuration(s.duration_seconds)}
-                                {(s.rate_multiplier ?? 1) > 1.000_001 && (
-                                  <CircleDollarSign className="h-3 w-3 text-emerald-400" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="h-2 w-2 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      s.project_color || '#64748b',
-                                  }}
-                                />
-                                {isManual ? (
-                                  <span className="text-emerald-400 font-medium">
-                                    {t('project_page.text.manual_session')}
-                                  </span>
-                                ) : (
-                                  s.app_name
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 group/comment">
-                              <div
-                                className="flex items-center gap-2 text-sky-200 italic truncate max-w-xs cursor-pointer hover:text-sky-100 transition-colors"
-                                onClick={() => {
-                                  if (isManual) {
-                                    setEditManualSession(s);
-                                    setSessionDialogOpen(true);
-                                  } else {
-                                    handleEditCommentForSession(s);
-                                  }
-                                }}
-                                title={
-                                  s.comment
-                                    ? t('project_page.text.click_to_edit')
-                                    : t(
-                                        'project_page.text.click_to_add_comment',
-                                      )
-                                }
-                              >
-                                {s.comment ? (
-                                  <>
-                                    <MessageSquare className="h-3 w-3 shrink-0" />
-                                    {s.comment}
-                                    {isManual && (
-                                      <PenLine className="h-2 w-2 text-muted-foreground ml-1" />
-                                    )}
-                                  </>
-                                ) : (
-                                  <>
-                                    <MessageSquare className="h-3 w-3 shrink-0 opacity-0 group-hover/comment:opacity-100 transition-opacity" />
-                                    <span className="text-muted-foreground/20 group-hover/comment:text-muted-foreground/50 transition-colors">
-                                      -
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
-                  {groupedSessions.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={4}
-                        className="px-4 py-8 text-center text-muted-foreground italic"
-                      >
-                        {t(
-                          'project_page.text.no_sessions_found_for_this_project',
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        <ProjectSessionsTable
+          groupedSessions={groupedSessions}
+          sessionCountLabel={sessionCountLabel}
+          onSessionContextMenu={handleContextMenu}
+          onEditManualSession={(session) => {
+            setEditManualSession(session);
+            setSessionDialogOpen(true);
+          }}
+          onEditComment={handleEditCommentForSession}
+        />
       </div>
 
       {ctxMenu && ctxMenu.type === 'chart' && (

@@ -9,6 +9,7 @@ use winapi::um::handleapi::CloseHandle;
 use winapi::um::processthreadsapi::{GetProcessTimes, OpenProcess};
 use winapi::um::winuser::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId};
 
+use crate::activity::ActivityType;
 use crate::process_utils::collect_process_entries;
 
 thread_local! {
@@ -24,7 +25,7 @@ pub struct PidCacheEntry {
     pub cached_at: Instant,
     pub last_alive_check: Instant,
     pub detected_path: Option<String>,
-    pub activity_type: Option<&'static str>,
+    pub activity_type: Option<ActivityType>,
     pub path_detection_attempted: bool,
 }
 
@@ -41,7 +42,7 @@ pub struct ProcessInfo {
     pub pid: u32,
     pub window_title: String,
     pub detected_path: Option<String>,
-    pub activity_type: Option<&'static str>,
+    pub activity_type: Option<ActivityType>,
 }
 
 /// Gets the creation time of a process as u64. Returns None if unable to fetch.
@@ -228,8 +229,11 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
     }
 }
 
-fn should_detect_path_for_activity(activity_type: Option<&str>) -> bool {
-    matches!(activity_type, Some("coding") | Some("design"))
+fn should_detect_path_for_activity(activity_type: Option<ActivityType>) -> bool {
+    matches!(
+        activity_type,
+        Some(ActivityType::Coding) | Some(ActivityType::Design)
+    )
 }
 
 fn collect_pending_detected_path_pids(pid_cache: &PidCache) -> Vec<u32> {
@@ -238,7 +242,7 @@ fn collect_pending_detected_path_pids(pid_cache: &PidCache) -> Vec<u32> {
         .filter_map(|(&pid, entry)| {
             if entry.detected_path.is_none()
                 && !entry.path_detection_attempted
-                && should_detect_path_for_activity(entry.activity_type.as_deref())
+                && should_detect_path_for_activity(entry.activity_type)
             {
                 Some(pid)
             } else {
@@ -504,7 +508,7 @@ fn extract_path_from_command_line(command_line: &str) -> Option<String> {
 }
 
 /// Lightweight app category used by the tracker to tag file activities.
-pub fn classify_activity_type(exe_name: &str) -> Option<&'static str> {
+pub fn classify_activity_type(exe_name: &str) -> Option<ActivityType> {
     let exe = exe_name.to_lowercase();
 
     if matches!(
@@ -522,7 +526,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<&'static str> {
             | "vim.exe"
             | "nvim.exe"
     ) {
-        return Some("coding");
+        return Some(ActivityType::Coding);
     }
 
     if matches!(
@@ -536,7 +540,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<&'static str> {
             | "vivaldi.exe"
             | "arc.exe"
     ) {
-        return Some("browsing");
+        return Some(ActivityType::Browsing);
     }
 
     if matches!(
@@ -549,7 +553,7 @@ pub fn classify_activity_type(exe_name: &str) -> Option<&'static str> {
             | "inkscape.exe"
             | "adobexd.exe"
     ) {
-        return Some("design");
+        return Some(ActivityType::Design);
     }
 
     None
@@ -777,10 +781,11 @@ mod tests {
         collect_pending_detected_path_pids, decode_window_title, extract_file_from_title,
         extract_path_from_command_line, PidCache, PidCacheEntry,
     };
+    use crate::activity::ActivityType;
     use std::time::Instant;
 
     fn sample_pid_cache_entry(
-        activity_type: Option<&'static str>,
+        activity_type: Option<ActivityType>,
         detected_path: Option<&str>,
         path_detection_attempted: bool,
     ) -> PidCacheEntry {
@@ -868,14 +873,30 @@ mod tests {
     #[test]
     fn collects_only_pending_detected_path_pids_for_relevant_apps() {
         let mut pid_cache: PidCache = PidCache::new();
-        pid_cache.insert(11, sample_pid_cache_entry(Some("coding"), None, false));
-        pid_cache.insert(12, sample_pid_cache_entry(Some("design"), None, false));
+        pid_cache.insert(
+            11,
+            sample_pid_cache_entry(Some(ActivityType::Coding), None, false),
+        );
+        pid_cache.insert(
+            12,
+            sample_pid_cache_entry(Some(ActivityType::Design), None, false),
+        );
         pid_cache.insert(
             13,
-            sample_pid_cache_entry(Some("coding"), Some(r"C:\work\done.rs"), true),
+            sample_pid_cache_entry(
+                Some(ActivityType::Coding),
+                Some(r"C:\work\done.rs"),
+                true,
+            ),
         );
-        pid_cache.insert(14, sample_pid_cache_entry(Some("browsing"), None, false));
-        pid_cache.insert(15, sample_pid_cache_entry(Some("coding"), None, true));
+        pid_cache.insert(
+            14,
+            sample_pid_cache_entry(Some(ActivityType::Browsing), None, false),
+        );
+        pid_cache.insert(
+            15,
+            sample_pid_cache_entry(Some(ActivityType::Coding), None, true),
+        );
 
         let pending = collect_pending_detected_path_pids(&pid_cache);
         assert_eq!(pending, vec![11, 12]);
@@ -885,15 +906,15 @@ mod tests {
     fn classify_activity_type_for_known_apps() {
         assert_eq!(
             classify_activity_type("code.exe"),
-            Some("coding")
+            Some(ActivityType::Coding)
         );
         assert_eq!(
             classify_activity_type("chrome.exe"),
-            Some("browsing")
+            Some(ActivityType::Browsing)
         );
         assert_eq!(
             classify_activity_type("blender.exe"),
-            Some("design")
+            Some(ActivityType::Design)
         );
         assert_eq!(classify_activity_type("unknown.exe"), None);
     }

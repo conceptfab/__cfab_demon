@@ -3,29 +3,24 @@ import { useTranslation } from 'react-i18next';
 import {
   Sparkles,
   MessageSquare,
-  CircleDollarSign,
   Type,
   Flame,
 } from 'lucide-react';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { sessionsApi } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import {
-  formatDuration,
   formatMultiplierLabel,
   logTauriError,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { addDays, format, parseISO, subDays } from 'date-fns';
-import { Virtuoso } from 'react-virtuoso';
-import { SessionRow } from '@/components/sessions/SessionRow';
 import { MultiSplitSessionModal } from '@/components/sessions/MultiSplitSessionModal';
 import { SessionsToolbar } from '@/components/sessions/SessionsToolbar';
 import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjectContextMenu';
+import { SessionsVirtualList } from '@/components/sessions/SessionsVirtualList';
 import type {
   DateRange,
   MultiProjectAnalysis,
@@ -1391,6 +1386,12 @@ export function Sessions() {
       projectId == null ? t('sessions.menu.unassigned') : name,
     [t],
   );
+  const getScoreBreakdownData = useCallback(
+    (sessionId: number) =>
+      aiBreakdowns.get(sessionId) ??
+      (scoreBreakdown?.sessionId === sessionId ? scoreBreakdown.data : null),
+    [aiBreakdowns, scoreBreakdown],
+  );
 
   const ctxMenuSplitSuggested = ctxMenu
     ? isSessionSplittable(ctxMenu.session)
@@ -1445,240 +1446,35 @@ export function Sessions() {
         }}
       />
 
-      {unassignedGroup &&
-        (activeProjectId === null || activeProjectId === 'unassigned') && (
-          <div className="mx-1 p-2 rounded bg-amber-500/10 border border-amber-500/20 flex items-center gap-3">
-            <div className="h-5 w-5 rounded-full bg-amber-500/20 flex items-center justify-center border border-amber-500/30">
-              <span className="text-[10px] font-bold text-amber-500">!</span>
-            </div>
-            <p className="text-[11px] text-amber-200/80 font-medium">
-              <span className="text-amber-400 font-bold">
-                {t('sessions.banner.unassigned_sessions', {
-                  count: unassignedGroup.sessions.length,
-                })}
-              </span>
-              . {t('sessions.banner.hint')}
-            </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-auto h-6 text-[10px] text-amber-400 hover:bg-amber-500/10"
-              onClick={() => setActiveProjectId('unassigned')}
-            >
-              {t('sessions.banner.filter')}
-            </Button>
-          </div>
-        )}
-
-      {flattenedItems.length > 0 ? (
-        <Virtuoso
-          customScrollParent={customScrollParent}
-          data={flattenedItems}
-          itemContent={(_index: number, item: FlatItem) => {
-            if (item.type === 'header') {
-              const { group, isCompact } = item;
-              const projectMenuId = resolveGroupProjectId(group);
-
-              if (isCompact) {
-                return (
-                  <div className="space-y-1 mt-4 first:mt-0">
-                    <div
-                      data-project-id={projectMenuId ?? undefined}
-                      data-project-name={
-                        projectMenuId != null ? group.projectName : undefined
-                      }
-                      className="flex items-center justify-between gap-4 px-2 py-1 leading-none group/hdr cursor-pointer"
-                      onClick={() =>
-                        setActiveProjectId(
-                          projectMenuId == null ? 'unassigned' : projectMenuId,
-                        )
-                      }
-                      onContextMenu={(e) =>
-                        handleProjectContextMenu(
-                          e,
-                          projectMenuId,
-                          group.projectName,
-                        )
-                      }
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div
-                          className="h-2.5 w-2.5 rounded-full shrink-0 shadow-[0_0_8px_rgba(0,0,0,0.3)]"
-                          style={{ backgroundColor: group.projectColor }}
-                        />
-                        <span className="font-bold text-[13px] text-foreground/90 tracking-tight">
-                          {displayProjectName(group.projectName, projectMenuId)}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] h-4 px-1.5 bg-secondary/40 text-muted-foreground/80 border-none font-medium"
-                        >
-                          {t('sessions.group.sessions_count', {
-                            count: group.sessions.length,
-                          })}
-                        </Badge>
-                        {group.boostedCount > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-400/80 border border-emerald-500/20 font-medium">
-                            <CircleDollarSign className="h-3 w-3" />
-                            {t('sessions.group.boosted_count', {
-                              count: group.boostedCount,
-                            })}
-                          </span>
-                        )}
-                      </div>
-                      <span className="font-mono text-[13px] font-bold text-foreground/40 group-hover/hdr:text-foreground/70 transition-colors">
-                        {formatDuration(group.totalSeconds)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="mt-4 first:mt-0 relative z-10 px-3 pt-3 border-x border-t border-border/30 rounded-t-xl bg-background/50 backdrop-blur-sm">
-                  <div
-                    data-project-id={projectMenuId ?? undefined}
-                    data-project-name={
-                      projectMenuId != null ? group.projectName : undefined
-                    }
-                    className="flex items-center justify-between gap-2 border-b border-border/5 pb-2"
-                    onContextMenu={(e) =>
-                      handleProjectContextMenu(
-                        e,
-                        projectMenuId,
-                        group.projectName,
-                      )
-                    }
-                  >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-3 w-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.4)]"
-                        style={{ backgroundColor: group.projectColor }}
-                      />
-                      <span className="font-bold text-lg tracking-tight select-none">
-                        {displayProjectName(group.projectName, projectMenuId)}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] h-4 px-1.5 border-border/40 text-muted-foreground/60"
-                      >
-                        {t('sessions.group.sessions_count', {
-                          count: group.sessions.length,
-                        })}
-                      </Badge>
-                    </div>
-                    <span className="font-mono text-base font-bold text-foreground/70">
-                      {formatDuration(group.totalSeconds)}
-                    </span>
-                  </div>
-                </div>
-              );
-            }
-
-            const {
-              session: s,
-              isCompact,
-              isLastInGroup,
-              isFirstInGroup,
-              isSplittable,
-            } = item;
-            const rowViewMode = isCompact
-              ? 'compact'
-              : viewMode === 'ai_detailed'
-                ? 'ai_detailed'
-                : 'detailed';
-
-            if (isCompact) {
-              return (
-                <div className="px-0.5">
-                  <SessionRow
-                    session={s}
-                    dismissedSuggestions={dismissedSuggestions}
-                    handleToggleScoreBreakdown={handleToggleScoreBreakdown}
-                    scoreBreakdownSessionId={scoreBreakdown?.sessionId ?? null}
-                    scoreBreakdownData={
-                      scoreBreakdown?.sessionId === s.id && scoreBreakdown
-                        ? scoreBreakdown.data
-                        : (aiBreakdowns.get(s.id) ?? null)
-                    }
-                    deleteSession={deleteSessions}
-                    handleContextMenu={handleContextMenu}
-                    isCompact={true}
-                    indicators={indicators}
-                    forceShowScoreBreakdown={false}
-                    isLoadingScoreBreakdown={loadingBreakdownIds.has(s.id)}
-                    onAcceptSuggestion={handleAcceptSuggestion}
-                    onRejectSuggestion={handleRejectSuggestion}
-                    isSplittable={isSplittable}
-                    onSplitClick={openMultiSplitModal}
-                    className="!mb-0"
-                  />
-                  {isLastInGroup && <div className="h-4" />}
-                </div>
-              );
-            }
-
-            return (
-              <div
-                className={`px-3 bg-background/50 backdrop-blur-sm border-x border-border/30 ${
-                  isFirstInGroup ? 'pt-3' : 'pt-0'
-                } ${isLastInGroup ? 'rounded-b-xl border-b pb-3 mb-4' : ''}`}
-              >
-                <div className="h-full">
-                  <SessionRow
-                    session={s}
-                    dismissedSuggestions={dismissedSuggestions}
-                    handleToggleScoreBreakdown={handleToggleScoreBreakdown}
-                    scoreBreakdownSessionId={scoreBreakdown?.sessionId ?? null}
-                    scoreBreakdownData={
-                      scoreBreakdown?.sessionId === s.id && scoreBreakdown
-                        ? scoreBreakdown.data
-                        : (aiBreakdowns.get(s.id) ?? null)
-                    }
-                    deleteSession={deleteSessions}
-                    handleContextMenu={handleContextMenu}
-                    indicators={indicators}
-                    forceShowScoreBreakdown={rowViewMode === 'ai_detailed'}
-                    isLoadingScoreBreakdown={
-                      rowViewMode === 'ai_detailed' &&
-                      loadingBreakdownIds.has(s.id)
-                    }
-                    onAcceptSuggestion={handleAcceptSuggestion}
-                    onRejectSuggestion={handleRejectSuggestion}
-                    isSplittable={isSplittable}
-                    onSplitClick={openMultiSplitModal}
-                    className="!mb-0"
-                  />
-                </div>
-              </div>
-            );
-          }}
-          components={{
-            Footer: () => <div className="h-[300px]" />,
-          }}
-        />
-      ) : null}
-
-      {sessions.length === 0 && (
-        <div className="py-24 text-center">
-          <p className="text-sm text-muted-foreground/30 font-medium italic">
-            {t('sessions.empty.no_activity')}
-          </p>
-        </div>
-      )}
-
-      {hasMore && (
-        <div className="flex justify-center pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 text-[11px] font-bold text-muted-foreground/50 hover:text-foreground"
-            onClick={loadMore}
-          >
-            {t('sessions.actions.load_older')}
-          </Button>
-        </div>
-      )}
+      <SessionsVirtualList
+        customScrollParent={customScrollParent}
+        flattenedItems={flattenedItems}
+        showUnassignedBanner={
+          !!unassignedGroup &&
+          (activeProjectId === null || activeProjectId === 'unassigned')
+        }
+        unassignedSessionCount={unassignedGroup?.sessions.length ?? 0}
+        onFilterUnassigned={() => setActiveProjectId('unassigned')}
+        onSelectProjectFilter={(projectId) => setActiveProjectId(projectId)}
+        resolveGroupProjectId={resolveGroupProjectId}
+        displayProjectName={displayProjectName}
+        onProjectContextMenu={handleProjectContextMenu}
+        dismissedSuggestions={dismissedSuggestions}
+        onToggleScoreBreakdown={handleToggleScoreBreakdown}
+        scoreBreakdownSessionId={scoreBreakdown?.sessionId ?? null}
+        getScoreBreakdownData={getScoreBreakdownData}
+        deleteSession={deleteSessions}
+        onSessionContextMenu={handleContextMenu}
+        indicators={indicators}
+        viewMode={viewMode}
+        loadingBreakdownIds={loadingBreakdownIds}
+        onAcceptSuggestion={handleAcceptSuggestion}
+        onRejectSuggestion={handleRejectSuggestion}
+        onSplitClick={openMultiSplitModal}
+        isEmpty={sessions.length === 0}
+        hasMore={hasMore}
+        onLoadMore={loadMore}
+      />
 
       {/* Context menu for assigning session to a project */}
       {ctxMenu && (

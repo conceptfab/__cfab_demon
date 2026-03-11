@@ -9,6 +9,7 @@ use std::sync::Arc;
 mod config;
 #[path = "../shared/daily_store.rs"]
 mod daily_store;
+mod activity;
 mod i18n;
 mod monitor;
 mod process_utils;

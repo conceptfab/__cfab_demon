@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Timelike};
 
+use crate::activity::ActivityType;
 use crate::config;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
@@ -150,7 +151,7 @@ struct ActivityContext<'a> {
     file_name: &'a str,
     window_title: &'a str,
     detected_path: Option<&'a str>,
-    activity_type: Option<&'a str>,
+    activity_type: Option<ActivityType>,
     elapsed: Duration,
     session_gap: Duration,
 }
@@ -178,9 +179,7 @@ fn record_app_activity(
     let normalized_detected_path = detected_path
         .map(storage::sanitize_detected_path)
         .filter(|value| !value.is_empty());
-    let normalized_activity_type = activity_type
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
+    let normalized_activity_type = activity_type.map(ActivityType::as_str);
     let normalized_window_title = storage::sanitize_window_title(window_title);
     let normalized_file_name = storage::sanitize_file_entry_name(file_name);
 
@@ -255,7 +254,7 @@ fn record_app_activity(
                 window_title: normalized_window_title,
                 detected_path: normalized_detected_path,
                 title_history,
-                activity_type: normalized_activity_type.map(|value| value.to_string()),
+                activity_type: normalized_activity_type.map(str::to_string),
             });
             app_file_index.insert(normalized_file_name, new_idx);
         }
@@ -381,7 +380,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                         file_name: &file_name,
                         window_title: &info.window_title,
                         detected_path: info.detected_path.as_deref(),
-                        activity_type: info.activity_type.as_deref(),
+                        activity_type: info.activity_type,
                         elapsed: actual_elapsed,
                         session_gap,
                     },
@@ -442,7 +441,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                             file_name: "(background)",
                             window_title: "",
                             detected_path: None,
-                            activity_type: background_activity_type.as_deref(),
+                            activity_type: background_activity_type,
                             elapsed: actual_elapsed,
                             session_gap,
                         },

@@ -36,7 +36,7 @@
 - [x] `2.8` Pełny `build_process_snapshot()` dla background apps jest cache'owany i odświeżany co `30s`, zamiast przy każdym ticku `poll_interval`; foreground tracking dalej działa niezależnie od tego snapshotu.
 - [x] `2.9` `ensure_schema()` nie jest już wywoływane przy każdym `load_day_snapshot()`, `load_range_snapshots()`, `get_day_signature()` i `replace_day_snapshot()`; inicjalizacja schematu zostaje przy `open_store()`.
 - [x] `2.10` Zbędny indeks `idx_daily_snapshots_date` na kolumnie `date` (PRIMARY KEY) został usunięty z `ensure_schema()`, a istniejące bazy czyszczą go przez `DROP INDEX IF EXISTS`.
-- [x] `2.11` `classify_activity_type()` zwraca teraz `Option<&'static str>`; monitor nie alokuje `String` przy klasyfikacji procesów, a konwersja do `String` zostaje dopiero przy zapisie do storage.
+- [x] `2.11` `classify_activity_type()` nie alokuje już `String`; klasyfikacja pracuje na typowanym `ActivityType`, a konwersja do `String` zostaje dopiero przy zapisie do storage.
 - [x] `3.1` Granice czasowe sesji są teraz spójne: nowa sesja startuje od `now - actual_elapsed`, a przy kontynuacji `duration_seconds` jest liczone z tych samych `start/end`, które trafiają do danych.
 - [x] `3.2` Foreground tracking nie odrzuca już monitorowanej aplikacji tylko dlatego, że aktywne okno ma pusty tytuł; w takim przypadku TIMEFLOW zapisuje czas aplikacji bez nazwy dokumentu.
 - [x] `3.5` Settings ostrzegają teraz o niezapisanych zmianach przed zmianą ekranu i przy zamknięciu/odświeżeniu okna, więc wyjście bez zapisu nie gubi już zmian bez potwierdzenia.
@@ -62,6 +62,7 @@
 - [x] `7.5` `tauri.ts` ma teraz pogrupowane API (`projectsApi`, `sessionsApi`, `daemonApi`, `dataApi`, `aiApi` itd.), a główne ekrany korzystają z tych obiektów zamiast długich list pojedynczych importów.
 - [x] `7.7` `useJobPool` został rozbity na helpery bootstrap/tick/handlers w osobnym module, więc sam hook nie trzyma już całej logiki pętli i eventów w jednym bloku.
 - [x] `7.4` `Settings.tsx` przenosi teraz grupy stanu i akcji do osobnych hooków (`useSettingsFormState`, `useSettingsDemoMode`), więc ekran nie trzyma już wszystkich sekcji ustawień w jednym komponencie.
+- [x] `7.2` `monitor.rs` i `tracker.rs` używają teraz typowanego enumu `ActivityType`, a konwersja do stringa zostaje dopiero przy zapisie do storage.
 - [x] Weryfikacja techniczna ostatnich iteracji: `cargo test`, `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 
 ---
@@ -147,8 +148,8 @@
 
 ### [x] 2.11 [NISKI] `classify_activity_type` alokuje String
 - **Plik:** `monitor.rs`, linie 504-553
-- **Opis:** Zwraca `Option<String>` zamiast `Option<&'static str>`.
-- **Rozwiązanie:** Zmienić na `&'static str` — eliminacja alokacji.
+- **Opis:** Zwracał `Option<String>` zamiast lekkiej reprezentacji bez alokacji.
+- **Rozwiązanie:** Klasyfikacja korzysta teraz z typowanego `ActivityType`, a string powstaje dopiero przy zapisie do storage.
 
 ---
 
@@ -287,16 +288,16 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - **Plik:** `src/tracker.rs`, linia 110-122
 - **Rozwiązanie:** Struct `ActivityContext` grupujący powiązane parametry.
 
-### 7.2 Stringly-typed activity types
+### [x] 7.2 Stringly-typed activity types
 - **Plik:** `src/monitor.rs`, linia 504-553
 - **Opis:** Po poprawce `2.11` nie ma już alokacji `String`, ale logika nadal opiera się na literalach `"coding"`, `"browsing"` i `"design"` przekazywanych między funkcjami zamiast na typowanym enumie.
 - **Rozwiązanie:** Enum `ActivityType`.
 
-### 7.3 Zbyt duże komponenty
+### [x] 7.3 Zbyt duże komponenty
 - `Sessions.tsx` — ~2000+ linii
 - `Projects.tsx` — ~2000+ linii
 - `ProjectPage.tsx` — ~1800+ linii
-- **Rozwiązanie:** Podzielić na mniejsze podkomponenty.
+- **Rozwiązanie:** Podzielono duże bloki renderowania na mniejsze podkomponenty (`ProjectCard`, `SessionsVirtualList`, `ProjectSessionsTable`).
 
 ### [x] 7.4 Settings — >20 stanów w jednym komponencie
 - **Rozwiązanie:** Wydzielić grupy ustawień (working hours, session, freeze, currency, language, appearance, split, online sync, demo mode) do oddzielnych hooków/komponentów.
@@ -346,17 +347,15 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - `3.1–3.6` poprawki poprawności logiki i UX
 - `4.2`, `4.4`, `4.5` wybrane duplikacje i nadmiarowy stan
 - `5.1` brakujące tłumaczenia widoczne w UI
+- `7.1–7.9` porządki utrzymaniowe i rozbicie dużych komponentów
 - `8.1` usunięcie nieużywanej zależności `sysinfo`
 
 ### Otwarte priorytety
 | Priorytet | Punkt | Problem | Wpływ |
 |---|---|---|---|
-| Średni | `7.3` | Code smells i zbyt duże moduły | Czytelność i koszt utrzymania |
-| Niski | `7.2` | Stringly-typed activity types | Type safety |
 | Niski | `8.2` | Weryfikacja sensowności `lettre` w dashboard Cargo | Potencjalne uproszczenie zależności |
 | Niski | `8.3` | Ocena `opt-level = "s"` dla dashboardu | Potencjalny zysk runtime |
 
 ### Najblizsze sensowne kroki
-1. `7.3` jako dalsze ujednolicanie jakosci i utrzymania kodu.
-2. `8.2` i `8.3` dopiero po zamknieciu istotniejszych problemow utrzymaniowych.
-3. Wieksze rozbicie duzych komponentow (`Sessions`, `Projects`, `ProjectPage`) po zamknieciu prostszych porzadkow.
+1. `8.2` sprawdzić, czy `lettre` w dashboardowym Cargo nadal jest uzasadnione.
+2. `8.3` ocenić trade-off między `opt-level = "s"` a szybszym runtime dashboardu.

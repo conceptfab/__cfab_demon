@@ -2,25 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
-  Trash2,
   RefreshCw,
-  CalendarPlus,
-  MessageSquare,
   CircleOff,
-  TimerReset,
   Wand2,
   Snowflake,
-  LayoutDashboard,
   CircleDollarSign,
   Type,
   Clock,
   Trophy,
   Folders,
   Save,
-  MousePointerClick,
   Search,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -38,12 +31,12 @@ import {
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { CollapsibleSection } from '@/components/project/CollapsibleSection';
+import { ProjectCard } from '@/components/project/ProjectCard';
 import { CreateProjectDialog } from '@/components/project/CreateProjectDialog';
 import {
   formatDuration,
   getDurationParts,
   formatPathForDisplay,
-  formatMoney,
   getErrorMessage,
   logTauriError,
   cn,
@@ -73,7 +66,6 @@ import type {
   DetectedProject,
   ProjectExtraInfo,
 } from '@/lib/db-types';
-import { PROJECT_COLORS } from '@/lib/project-colors';
 import { loadProjectsAllTime } from '@/store/projects-cache-store';
 
 const PROJECT_RENDER_PAGE_SIZE = 120;
@@ -1038,375 +1030,72 @@ export function Projects() {
   ) => {
     const isDeleting = busy === `delete-project:${p.id}`;
     return (
-      <Card
+      <ProjectCard
         key={p.id}
-        data-project-id={p.id}
-        data-project-name={p.name}
-        className={isNewProject(p, newProjectMaxAgeMs) ? 'border-yellow-400/70' : undefined}
-      >
-        <CardHeader
-          className={`flex flex-row items-center justify-between pb-2 ${options?.inDialog ? 'pr-10' : ''}`}
-        >
-          <div className="flex items-center gap-2">
-            <div className="relative group">
-              <AppTooltip content={t('projects.labels.change_color')}>
-                <div
-                  className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
-                  style={{ backgroundColor: pendingColor && editingColorId === p.id ? pendingColor : p.color }}
-                  onClick={() => {
-                    if (editingColorId === p.id) {
-                      setEditingColorId(null);
-                      setPendingColor(null);
-                    } else {
-                      setEditingColorId(p.id);
-                      setPendingColor(null);
-                    }
-                  }}
-                />
-              </AppTooltip>
-              {editingColorId === p.id && (
-                <div className="absolute top-full left-0 z-50 mt-1 p-2 rounded border bg-popover shadow-md">
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="color"
-                      defaultValue={p.color}
-                      className="w-16 h-8 border border-border rounded cursor-pointer"
-                      onChange={(e) => setPendingColor(e.target.value)}
-                      title={t('projects.labels.choose_color')}
-                    />
-                    {pendingColor && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-green-500 hover:text-green-400"
-                        onClick={() => {
-                          handleUpdateProjectColor(p.id, pendingColor);
-                          setPendingColor(null);
-                        }}
-                        title={t('projects.labels.save')}
-                      >
-                        <Save className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-2 flex gap-1">
-                    {PROJECT_COLORS.map((c) => (
-                      <AppTooltip key={c} content={c}>
-                        <button
-                          className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
-                          style={{ backgroundColor: c }}
-                          onClick={() => {
-                            handleUpdateProjectColor(p.id, c);
-                            setPendingColor(null);
-                          }}
-                        />
-                      </AppTooltip>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            <CardTitle
-              className={cn(
-                'flex items-center gap-2',
-                p.name.length > 50
-                  ? 'text-xs leading-tight'
-                  : p.name.length > 30
-                    ? 'text-sm'
-                    : 'text-base',
-              )}
-            >
-              {p.name}
-
-              {renderDuplicateMarker(p)}
-              {p.is_imported === 1 && (
-                <Badge
-                  variant="secondary"
-                  className="bg-orange-500/10 text-orange-500 border-orange-500/20 px-1 py-0 h-4 text-[10px]"
-                >
-                  {t('projects.labels.imported')}
-                </Badge>
-              )}
-            </CardTitle>
-          </div>
-          <div className={`flex gap-1 ${options?.inDialog ? 'mr-8' : ''}`}>
-            <AppTooltip content={t('projects.labels.reset_time')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => handleResetProjectTime(p.id)}
-                disabled={isDeleting}
-              >
-                <TimerReset className="h-3.5 w-3.5" />
-              </Button>
-            </AppTooltip>
-            <AppTooltip content={
-              p.frozen_at
-                ? t('projects.labels.frozen_since_click_unfreeze', {
-                    date: p.frozen_at.slice(0, 10),
-                  })
-                : t('projects.labels.freeze_project')
-            }>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`h-7 w-7 ${p.frozen_at ? 'text-blue-400 bg-blue-500/10' : 'text-muted-foreground'}`}
-                onClick={() =>
-                  p.frozen_at ? handleUnfreeze(p.id) : handleFreeze(p.id)
-                }
-                disabled={isDeleting}
-              >
-                <Snowflake className="h-3.5 w-3.5" />
-              </Button>
-            </AppTooltip>
-            <AppTooltip content={t('projects.labels.exclude_project')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-destructive"
-                onClick={() => handleExclude(p.id)}
-                disabled={isDeleting}
-              >
-                <CircleOff className="h-3.5 w-3.5" />
-              </Button>
-            </AppTooltip>
-            <AppTooltip content={t('projects.labels.delete_project_permanently')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-destructive"
-                onClick={() => void handleDeleteProject(p)}
-                disabled={isDeleting}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </AppTooltip>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-end justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                {t('projects.labels.total_time_value')}
-              </p>
-              <p className="text-xl font-[200] text-emerald-400 leading-none flex items-baseline gap-x-1">
-                {renderDuration(p.total_seconds)}
-                <span className="text-[1.0em] font-[600] opacity-30">/</span>
-                <span className="text-[0.8em] font-[200] opacity-90">
-                  {formatMoney(estimates[p.id] || 0, currencyCode)}
-                </span>
-
-                <span className="ml-1 flex items-center gap-2">
-                  {hotProjectIds.has(p.id) && (
-                    <AppTooltip content={t('projects.labels.hot_project')}>
-                      <span>
-                        <Trophy className="h-4 w-4 text-amber-500 fill-amber-500/10" />
-                      </span>
-                    </AppTooltip>
-                  )}
-                  {extraInfo && extraInfo.db_stats.manual_session_count > 0 && (
-                    <AppTooltip content={t('layout.tooltips.manual_sessions', { count: extraInfo.db_stats.manual_session_count })}>
-                      <span>
-                        <MousePointerClick className="h-4 w-4 text-sky-400 fill-sky-400/10" />
-                      </span>
-                    </AppTooltip>
-                  )}
-                  {extraInfo && extraInfo.db_stats.comment_count > 0 && (
-                    <AppTooltip content={`${t('projects.labels.comments')} ${extraInfo.db_stats.comment_count}`}>
-                      <span>
-                        <MessageSquare className="h-4 w-4 text-blue-400 fill-blue-400/20" />
-                      </span>
-                    </AppTooltip>
-                  )}
-                </span>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <AppTooltip content={t('projects.labels.add_manual_session')}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSessionDialogProjectId(p.id);
-                    setSessionDialogOpen(true);
-                  }}
-                  className="shrink-0 h-9 w-9"
-                  disabled={isDeleting}
-                >
-                  <CalendarPlus className="h-4 w-4" />
-                </Button>
-              </AppTooltip>
-
-              <AppTooltip content={t('projects.labels.project_card')}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setProjectPageId(p.id);
-                    setCurrentPage('project-card');
-                  }}
-                  className="shrink-0 h-9 w-9"
-                  disabled={isDeleting}
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                </Button>
-              </AppTooltip>
-            </div>
-          </div>
-
-          {options?.inDialog && (
-            <div className="mt-4 space-y-4 border-t pt-4 animate-in fade-in duration-500 text-sm">
-              <div className="space-y-3">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold">
-                  Top 3 Applications
-                </p>
-                {loadingExtra ? (
-                  <p className="text-xs text-muted-foreground italic">
-                    {t('ui.app.loading')}
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {extraInfo?.top_apps.map((app, i) => (
-                      <div key={i} className="flex items-center gap-2 text-xs">
-                        <div
-                          className="h-2 w-2 rounded-full shrink-0"
-                          style={{ backgroundColor: app.color || '#64748b' }}
-                        />
-                        <span className="truncate flex-1">{app.name}</span>
-                        <span className="font-mono text-emerald-400 shrink-0">
-                          {formatDuration(app.seconds)}
-                        </span>
-                      </div>
-                    ))}
-                    {extraInfo?.top_apps.length === 0 && (
-                      <p className="text-xs text-muted-foreground italic">
-                        {t('projects_page.no_data')}
-                      </p>
-                    )}
-
-                    <div className="pt-2 mt-2 border-t border-dashed border-muted-foreground/20 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-tight whitespace-nowrap">
-                          {t('projects_page.apps_linked')}
-                        </span>
-                        <span className="text-xs font-bold text-emerald-400">
-                          {p.app_count}
-                        </span>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-1/2 text-[11px] h-7"
-                        onClick={() =>
-                          setAssignOpen(assignOpen === p.id ? null : p.id)
-                        }
-                        disabled={isDeleting}
-                      >
-                        {t('projects_page.manage_apps')}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg bg-secondary/30 p-3 space-y-2">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold flex items-center justify-between">
-                  {t('projects_page.database_statistics')}
-                  {extraInfo && (
-                    <span className="text-[10px] lowercase font-normal opacity-70">
-                      ~
-                      {(extraInfo.db_stats.estimated_size_bytes / 1024).toFixed(
-                        1,
-                      )}{' '}
-                      KB
-                    </span>
-                  )}
-                </p>
-                {loadingExtra ? (
-                  <p className="text-center py-2 text-xs text-muted-foreground">
-                    {t('projects_page.loading_statistics')}
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('projects_page.sessions')}</span>
-                      <span className="font-medium">
-                        {extraInfo?.db_stats.session_count || 0}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('projects_page.unique_files')}</span>
-                      <span className="font-medium">
-                        {extraInfo?.db_stats.file_activity_count || 0}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('projects_page.manual')}</span>
-                      <span className="font-medium">
-                        {extraInfo?.db_stats.manual_session_count || 0}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">{t('projects.labels.comments')}</span>
-                      <span className="font-medium">
-                        {extraInfo?.db_stats.comment_count || 0}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="pt-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="w-full text-[10px] h-7 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
-                    onClick={() => handleCompactProject(p.id)}
-                    disabled={
-                      loadingExtra ||
-                      !extraInfo ||
-                      extraInfo.db_stats.file_activity_count === 0 ||
-                      !!busy
-                    }
-                  >
-                    {busy === `compact-project:${p.id}`
-                      ? t('projects.labels.compacting')
-                      : t('projects.labels.compact_project_data')}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {assignOpen === p.id && (
-            <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
-              {apps.map((app) => (
-                <label
-                  key={app.id}
-                  className="flex items-center gap-2 rounded p-1 text-sm hover:bg-accent"
-                >
-                  <input
-                    type="checkbox"
-                    checked={app.project_id === p.id}
-                    onChange={() =>
-                      handleAssign(
-                        app.id,
-                        app.project_id === p.id ? null : p.id,
-                      )
-                    }
-                    className="accent-primary"
-                    disabled={isDeleting}
-                  />
-                  <span className="truncate">{app.display_name}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        project={p}
+        currencyCode={currencyCode}
+        estimateValue={estimates[p.id] || 0}
+        isNew={isNewProject(p, newProjectMaxAgeMs)}
+        isDeleting={isDeleting}
+        isHotProject={hotProjectIds.has(p.id)}
+        inDialog={options?.inDialog}
+        duplicateMarker={renderDuplicateMarker(p)}
+        extraInfo={extraInfo}
+        loadingExtra={loadingExtra}
+        apps={apps}
+        assignOpen={assignOpen === p.id}
+        isColorEditorOpen={editingColorId === p.id}
+        pendingColor={pendingColor}
+        renderDuration={renderDuration}
+        onToggleColorEditor={() => {
+          if (editingColorId === p.id) {
+            setEditingColorId(null);
+            setPendingColor(null);
+            return;
+          }
+          setEditingColorId(p.id);
+          setPendingColor(null);
+        }}
+        onPendingColorChange={setPendingColor}
+        onSavePendingColor={() => {
+          if (!pendingColor) return;
+          void handleUpdateProjectColor(p.id, pendingColor);
+          setPendingColor(null);
+        }}
+        onSelectPresetColor={(color) => {
+          void handleUpdateProjectColor(p.id, color);
+          setPendingColor(null);
+        }}
+        onResetProjectTime={() => {
+          void handleResetProjectTime(p.id);
+        }}
+        onToggleFreeze={() => {
+          if (p.frozen_at) {
+            void handleUnfreeze(p.id);
+            return;
+          }
+          void handleFreeze(p.id);
+        }}
+        onExclude={() => {
+          void handleExclude(p.id);
+        }}
+        onDelete={() => handleDeleteProject(p)}
+        onOpenManualSession={() => {
+          setSessionDialogProjectId(p.id);
+          setSessionDialogOpen(true);
+        }}
+        onOpenProjectPage={() => {
+          setProjectPageId(p.id);
+          setCurrentPage('project-card');
+        }}
+        onToggleAssignOpen={() =>
+          setAssignOpen(assignOpen === p.id ? null : p.id)
+        }
+        onAssignApp={(appId, projectId) => handleAssign(appId, projectId)}
+        onCompactProject={() => {
+          void handleCompactProject(p.id);
+        }}
+      />
     );
   };
 
