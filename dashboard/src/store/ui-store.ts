@@ -23,6 +23,31 @@ function writeFirstRunFlag(firstRun: boolean): void {
   }
 }
 
+export type AssignProjectListMode = 'alpha_active' | 'new_top_rest' | 'top_new_rest';
+const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY = 'timeflow-sessions-assign-project-list-mode';
+
+function loadAssignProjectListMode(): AssignProjectListMode {
+  if (typeof window === 'undefined') return 'alpha_active';
+  try {
+    const raw = window.localStorage.getItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY);
+    if (raw === 'new_top_rest' || raw === 'top_new_rest' || raw === 'alpha_active') {
+      return raw;
+    }
+    return 'alpha_active';
+  } catch {
+    return 'alpha_active';
+  }
+}
+
+function persistAssignProjectListMode(mode: AssignProjectListMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY, mode);
+  } catch (error) {
+    console.warn('Failed to persist assign project list mode', error);
+  }
+}
+
 interface UIState {
   currentPage: string;
   setCurrentPage: (page: string) => void;
@@ -43,6 +68,8 @@ interface UIState {
   setReportTemplateId: (id: string | null) => void;
   firstRun: boolean;
   setFirstRun: (firstRun: boolean) => void;
+  assignProjectListMode: AssignProjectListMode;
+  setAssignProjectListMode: (mode: AssignProjectListMode) => void;
 }
 
 export const useUIStore = create<UIState>((set, get) => ({
@@ -82,5 +109,10 @@ export const useUIStore = create<UIState>((set, get) => ({
   setFirstRun: (firstRun) => {
     writeFirstRunFlag(firstRun);
     set({ firstRun });
+  },
+  assignProjectListMode: loadAssignProjectListMode(),
+  setAssignProjectListMode: (mode) => {
+    persistAssignProjectListMode(mode);
+    set({ assignProjectListMode: mode });
   },
 }));

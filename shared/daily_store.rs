@@ -704,6 +704,7 @@ pub fn get_day_signature(conn: &Connection, date: &str) -> Result<Option<DaySign
     Ok(signature)
 }
 
+#[allow(dead_code)]
 pub fn load_legacy_json_file(path: &Path) -> Result<StoredDailyData, String> {
     let content = fs::read_to_string(path).map_err(|e| {
         format!(
@@ -721,6 +722,8 @@ pub fn load_legacy_json_file(path: &Path) -> Result<StoredDailyData, String> {
     })
 }
 
+// Used by the dashboard Tauri crate via the shared module include.
+#[allow(dead_code)]
 pub fn migrate_legacy_json_files(base_dir: &Path) -> Result<usize, String> {
     let mut conn = open_store(base_dir)?;
     let mut migrated = 0usize;

@@ -77,10 +77,7 @@ interface GroupedProject {
 }
 
 type RangeMode = 'daily' | 'weekly';
-type AssignProjectListMode = 'alpha_active' | 'new_top_rest' | 'top_new_rest';
 const UNASSIGNED_GROUP_KEY = '__unassigned__';
-const ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY =
-  'timeflow-sessions-assign-project-list-mode';
 const TOP_PROJECTS_LIMIT = 5;
 const SCORE_BREAKDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -89,33 +86,6 @@ type CachedBreakdownEntry = {
   fetchedAtMs: number;
 };
 
-function loadAssignProjectListMode(): AssignProjectListMode {
-  if (typeof window === 'undefined') return 'alpha_active';
-  try {
-    const raw = window.localStorage.getItem(
-      ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY,
-    );
-    if (
-      raw === 'new_top_rest' ||
-      raw === 'top_new_rest' ||
-      raw === 'alpha_active'
-    ) {
-      return raw;
-    }
-    return 'alpha_active';
-  } catch {
-    return 'alpha_active';
-  }
-}
-
-function persistAssignProjectListMode(mode: AssignProjectListMode): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(ASSIGN_PROJECT_LIST_MODE_STORAGE_KEY, mode);
-  } catch (error) {
-    console.warn('Failed to persist assign project list mode', error);
-  }
-}
 
 function compareProjectsByName(
   a: ProjectWithStats,
@@ -225,6 +195,8 @@ export function Sessions() {
     setSessionsFocusProject,
     setProjectPageId,
     setCurrentPage,
+    assignProjectListMode,
+    setAssignProjectListMode,
   } = useUIStore();
   const { refreshKey, triggerRefresh } = useDataStore();
   const {
@@ -264,8 +236,6 @@ export function Sessions() {
     'detailed' | 'compact' | 'ai_detailed'
   >('detailed');
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
-  const [assignProjectListMode, setAssignProjectListMode] =
-    useState<AssignProjectListMode>(() => loadAssignProjectListMode());
   const [multiSplitSession, setMultiSplitSession] =
     useState<SessionWithApp | null>(null);
   const [splitEligibilityBySession, setSplitEligibilityBySession] = useState<
@@ -1604,7 +1574,6 @@ export function Sessions() {
                   }`}
                   onClick={() => {
                     setAssignProjectListMode('alpha_active');
-                    persistAssignProjectListMode('alpha_active');
                   }}
                 >
                   <Type className="h-3.5 w-3.5" />
@@ -1625,7 +1594,6 @@ export function Sessions() {
                   }`}
                   onClick={() => {
                     setAssignProjectListMode('new_top_rest');
-                    persistAssignProjectListMode('new_top_rest');
                   }}
                 >
                   <Sparkles className="h-3.5 w-3.5" />
@@ -1646,7 +1614,6 @@ export function Sessions() {
                   }`}
                   onClick={() => {
                     setAssignProjectListMode('top_new_rest');
-                    persistAssignProjectListMode('top_new_rest');
                   }}
                 >
                   <Flame className="h-3.5 w-3.5" />

@@ -70,6 +70,21 @@ Przyklady:
     DIST = ROOT / "dist"
     DIST.mkdir(parents=True, exist_ok=True)
 
+    print("\n" + "=" * 60)
+    print("  [0/2] WERYFIKACJA TŁUMACZEŃ (i18n)")
+    print("=" * 60)
+    compare_script = ROOT / "compare_locales.py"
+    if compare_script.exists():
+        result = subprocess.run([sys.executable, str(compare_script)], cwd=ROOT, capture_output=True, text=True)
+        # Tłumaczenia traktujemy jako ostrzeżenie, nie przerywamy builda ale wyświetlamy
+        if "(Keys present" in result.stdout or "Empty values" in result.stdout:
+            print("\nOSTRZEŻENIE: Wykryto braki/rozbieżności w tłumaczeniach (PL/EN):")
+            print(result.stdout)
+        else:
+            print("OK.")
+    else:
+        print("Pominięto - brak skryptu compare_locales.py")
+
     if build_demon:
         print("\n" + "=" * 60)
         print("  [1/2] KOMPILACJA DEMONA")

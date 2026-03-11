@@ -5,7 +5,6 @@ use anyhow::Result;
 use chrono::{Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
 
 use crate::config;
 
@@ -243,30 +242,11 @@ fn from_stored_daily(data: crate::daily_store::StoredDailyData) -> DailyData {
     daily
 }
 
-pub fn migrate_legacy_json_files_to_store() -> Result<usize> {
-    let base_dir = config::config_dir()?;
-    crate::daily_store::migrate_legacy_json_files(&base_dir).map_err(anyhow::Error::msg)
-}
 
-/// Katalog danych: %APPDATA%/TimeFlow/data (zakłada że ensure_app_dirs() wywołano przy starcie)
-pub fn data_dir() -> Result<PathBuf> {
-    Ok(config::config_dir()?.join("data"))
-}
 
-/// Ścieżka do pliku dziennego w data/
-fn daily_path(date: NaiveDate) -> Result<PathBuf> {
-    Ok(data_dir()?.join(format!("{}.json", date.format("%Y-%m-%d"))))
-}
 
-/// Ścieżka do pliku dziennego w archive/
-fn archive_path(date: NaiveDate) -> Result<PathBuf> {
-    Ok(config::config_dir()?
-        .join("archive")
-        .join(format!("{}.json", date.format("%Y-%m-%d"))))
-}
 
 /// Ładuje dane dzienne (lub tworzy pustą strukturę)
-/// Sprawdza najpierw data/, potem archive/, na końcu tworzy pustą strukturę
 pub fn load_daily(date: NaiveDate) -> DailyData {
     let date_str = date.format("%Y-%m-%d").to_string();
 
@@ -279,75 +259,11 @@ pub fn load_daily(date: NaiveDate) -> DailyData {
             }
         },
         Err(e) => {
-            log::warn!("Cannot open SQLite daily store, falling back to legacy JSON: {}", e);
+            log::warn!("Cannot open SQLite daily store: {}", e);
         }
     }
 
-    // Najpierw próbuj data/
-    let path = match daily_path(date) {
-        Ok(p) => p,
-        Err(_) => {
-            // Jeśli nie można ustalić ścieżki, sprawdź archive
-            return load_from_archive_or_empty(date);
-        }
-    };
-
-    if path.exists() {
-        match std::fs::read_to_string(&path) {
-            Ok(contents) => {
-                let mut data: DailyData = serde_json::from_str(&contents).unwrap_or_else(|e| {
-                    log::warn!("Error parsing daily file from data/: {}", e);
-                    load_from_archive_or_empty(date)
-                });
-                if let Err(e) = save_daily(&mut data) {
-                    log::warn!("Failed to migrate legacy data/ JSON into SQLite store: {}", e);
-                }
-                return data;
-            }
-            Err(e) => {
-                log::warn!("Failed to read daily file from data/: {}", e);
-            }
-        }
-    }
-
-    // Jeśli nie ma w data/, sprawdź archive/
-    load_from_archive_or_empty(date)
-}
-
-/// Ładuje dane z archive/ lub zwraca pustą strukturę
-fn load_from_archive_or_empty(date: NaiveDate) -> DailyData {
-    let archive_path = match archive_path(date) {
-        Ok(p) => p,
-        Err(_) => return empty_daily(date),
-    };
-
-    if !archive_path.exists() {
-        return empty_daily(date);
-    }
-
-    match std::fs::read_to_string(&archive_path) {
-        Ok(contents) => {
-            let mut data: DailyData = serde_json::from_str(&contents).unwrap_or_else(|e| {
-                log::warn!("Error parsing daily file from archive/: {}", e);
-                empty_daily(date)
-            });
-
-            // Jeśli udało się załadować z legacy archive, przenieś dane do SQLite store.
-            log::info!(
-                "Migrating legacy archive data into SQLite store for date {}",
-                date.format("%Y-%m-%d")
-            );
-            if let Err(e) = save_daily(&mut data) {
-                log::warn!("Failed to migrate data from archive/ into SQLite store: {}", e);
-            }
-
-            data
-        }
-        Err(e) => {
-            log::warn!("Failed to read daily file from archive/: {}", e);
-            empty_daily(date)
-        }
-    }
+    empty_daily(date)
 }
 
 /// Ładuje dane na dzisiaj

@@ -707,7 +707,6 @@ export function Help() {
                   t18n('help_page.template_system_create_duplicate_and_manage_multiple_rep'),
                   t18n('help_page.report_template_editor_choose_report_sections_and_their'),
                   t18n('help_page.timeflow_logo_and_version_the_report_header_includes_the'),
-                  t18n('help_page.font_selection_and_scaling_change_font_family_sans_serif'),
                   t18n('help_page.report_generation_button_in_the_top_toolbar_of_the_proje'),
                   t18n('help_page.reportview_full_screen_report_preview_without_the_side_p'),
                   t18n('help_page.report_view_toolbar_focuses_on_preview_print_and_pdf_'),

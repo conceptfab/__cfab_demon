@@ -7,6 +7,9 @@ Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona 
 
 ---
 
+
+
+
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem:
 
 - poprawności logiki szczególnie zwróć uwagę na AI
