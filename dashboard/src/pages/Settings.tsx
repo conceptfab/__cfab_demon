@@ -1,51 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
-import { sessionsApi, settingsApi } from '@/lib/tauri';
-import type { DemoModeStatus } from '@/lib/db-types';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { useUIStore } from '@/store/ui-store';
-import {
-  type AppLanguageCode,
-  type LanguageSettings,
-  loadWorkingHoursSettings,
-  saveWorkingHoursSettings,
-  timeToMinutes,
-  type WorkingHoursSettings,
-  loadSessionSettings,
-  saveSessionSettings,
-  type SessionSettings,
-  loadFreezeSettings,
-  saveFreezeSettings,
-  type FreezeSettings,
-  loadCurrencySettings,
-  saveCurrencySettings,
-  type CurrencySettings,
-  loadLanguageSettings,
-  saveLanguageSettings,
-  loadAppearanceSettings,
-  saveAppearanceSettings,
-  type AppearanceSettings,
-  loadSplitSettings,
-  saveSplitSettings,
-  type SplitSettings,
-} from '@/lib/user-settings';
-import { normalizeHexColor } from '@/lib/normalize';
-import { splitTime } from '@/lib/form-validation';
-import {
-  DEFAULT_ONLINE_SYNC_SERVER_URL,
-  loadOnlineSyncState,
-  loadOnlineSyncSettings,
-  loadSecureApiToken,
-  runOnlineSyncOnce,
-  saveOnlineSyncSettings,
-  type OnlineSyncSettings,
-  type OnlineSyncRunResult,
-  type OnlineSyncState,
-} from '@/lib/online-sync';
-import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
-import { getErrorMessage } from '@/lib/utils';
+import { type AppLanguageCode } from '@/lib/user-settings';
+import { DEFAULT_ONLINE_SYNC_SERVER_URL } from '@/lib/online-sync';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ProjectFreezeCard } from '@/components/settings/ProjectFreezeCard';
@@ -58,6 +18,8 @@ import { AppearanceCard } from '@/components/settings/AppearanceCard';
 import { SessionManagementCard } from '@/components/settings/SessionManagementCard';
 import { SessionSplitCard } from '@/components/settings/SessionSplitCard';
 import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
+import { useSettingsFormState } from '@/hooks/useSettingsFormState';
+import { useSettingsDemoMode } from '@/hooks/useSettingsDemoMode';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, i) =>
@@ -72,370 +34,99 @@ export function Settings() {
   const setCurrencyCode = useSettingsStore((s) => s.setCurrencyCode);
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
   const setPageChangeGuard = useUIStore((s) => s.setPageChangeGuard);
-  const [clearing, setClearing] = useState(false);
-  const [clearArmed, setClearArmed] = useState(false);
-  const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
-    loadWorkingHoursSettings(),
-  );
-  const [sessionSettings, setSessionSettings] = useState<SessionSettings>(() =>
-    loadSessionSettings(),
-  );
-  const [onlineSyncSettings, setOnlineSyncSettings] =
-    useState<OnlineSyncSettings>(() => loadOnlineSyncSettings());
-  const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() =>
-    loadFreezeSettings(),
-  );
-  const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(
-    () => loadCurrencySettings(),
-  );
-  const [languageSettings, setLanguageSettings] = useState<LanguageSettings>(
-    () => loadLanguageSettings(),
-  );
-  const [appearanceSettings, setAppearanceSettings] =
-    useState<AppearanceSettings>(() => loadAppearanceSettings());
-  const [splitSettings, setSplitSettings] = useState<SplitSettings>(() =>
-    loadSplitSettings(),
-  );
-  const [workingHoursError, setWorkingHoursError] = useState<string | null>(
-    null,
-  );
-  const [savedSettings, setSavedSettings] = useState(true);
-  const [rebuilding, setRebuilding] = useState(false);
-  const [manualSyncing, setManualSyncing] = useState(false);
-  const [manualSyncResult, setManualSyncResult] =
-    useState<OnlineSyncRunResult | null>(null);
-  const [onlineSyncState, setOnlineSyncState] = useState<OnlineSyncState>(() =>
-    loadOnlineSyncState(),
-  );
-  const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
 
-  // Load API token from Rust secure storage on mount
-  useEffect(() => {
-    loadSecureApiToken().then((token) => {
-      if (token) {
-        setOnlineSyncSettings((prev) => ({ ...prev, apiToken: token }));
-      }
-    });
-  }, []);
+  const {
+    clearing,
+    clearArmed,
+    sessionSettings,
+    onlineSyncSettings,
+    freezeSettings,
+    currencySettings,
+    languageSettings,
+    appearanceSettings,
+    splitSettings,
+    workingHoursError,
+    savedSettings,
+    rebuilding,
+    manualSyncing,
+    manualSyncResult,
+    manualSyncResultText,
+    manualSyncResultSuccess,
+    onlineSyncState,
+    showOnlineSyncToken,
+    startHour,
+    startMinute,
+    endHour,
+    endMinute,
+    sliderValue,
+    normalizedColor,
+    lastSyncLabel,
+    shortHash,
+    localHashShort,
+    pendingAckHashShort,
+    splitToleranceDescription,
+    setClearArmed,
+    setShowOnlineSyncToken,
+    updateTimePart,
+    updateWorkingHours,
+    updateSessionSettings,
+    updateOnlineSyncSettings,
+    updateFreezeSettings,
+    updateCurrencySettings,
+    updateLanguageSettings,
+    updateAppearanceSettings,
+    updateSplitSetting,
+    handleSaveSettings,
+    handleRebuildSessions,
+    handleClearData,
+    handleSyncNow,
+    resetManualSyncResult,
+  } = useSettingsFormState({
+    confirm,
+    i18n,
+    t,
+    showInfo,
+    showError,
+    triggerRefresh,
+    setCurrencyCode,
+    setChartAnimations,
+    setPageChangeGuard,
+  });
 
-  useEffect(() => {
-    if (savedSettings) {
-      setPageChangeGuard(null);
-      return;
-    }
-
-    const pageChangeGuard = async (nextPage: string, currentPage: string) => {
-      if (currentPage !== 'settings' || nextPage === 'settings') return true;
-      return confirm(t('settings_page.unsaved_changes_confirm'));
-    };
-
-    setPageChangeGuard(pageChangeGuard);
-    return () => setPageChangeGuard(null);
-  }, [confirm, savedSettings, setPageChangeGuard, t]);
-
-  useEffect(() => {
-    if (savedSettings) return;
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [savedSettings]);
-
-  const [demoModeStatus, setDemoModeStatus] = useState<DemoModeStatus | null>(
-    null,
-  );
-  const [demoModeLoading, setDemoModeLoading] = useState(true);
-  const [demoModeSwitching, setDemoModeSwitching] = useState(false);
-  const [demoModeError, setDemoModeError] = useState<string | null>(null);
+  const {
+    demoModeStatus,
+    demoModeLoading,
+    demoModeSwitching,
+    demoModeError,
+    handleToggleDemoMode,
+  } = useSettingsDemoMode({
+    t,
+    showInfo,
+    showError,
+    onEnabledChange: () => {
+      resetManualSyncResult();
+    },
+  });
 
   const labelClassName = 'text-sm font-medium text-muted-foreground';
   const compactSelectClassName =
     'h-8 w-[3.75rem] rounded-md border border-input bg-background px-1.5 font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40';
-  const sliderValue = Math.min(30, Math.max(0, sessionSettings.gapFillMinutes));
+
   const languageOptions: Array<{ code: AppLanguageCode; label: string }> = [
     { code: 'pl', label: t('settings.language.option.pl') },
     { code: 'en', label: t('settings.language.option.en') },
   ];
-  const currencyOptions = [
-    { code: 'PLN', symbol: 'zł' },
-    { code: 'USD', symbol: '$' },
-    { code: 'EUR', symbol: '€' },
-  ];
 
-  const [startHour, startMinute] = useMemo(
-    () => splitTime(workingHours.start),
-    [workingHours.start],
+  const currencyOptions = useMemo(
+    () => [
+      { code: 'PLN', symbol: 'zł' },
+      { code: 'USD', symbol: '$' },
+      { code: 'EUR', symbol: '€' },
+    ],
+    [],
   );
-  const [endHour, endMinute] = useMemo(
-    () => splitTime(workingHours.end),
-    [workingHours.end],
-  );
-  const normalizedColor = normalizeHexColor(workingHours.color);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadDemoStatus = async () => {
-      setDemoModeLoading(true);
-      setDemoModeError(null);
-      try {
-        const status = await settingsApi.getDemoModeStatus();
-        if (!cancelled) {
-          setDemoModeStatus(status);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setDemoModeError(
-            getErrorMessage(
-              e,
-              t('settings_page.demo_mode_status_unavailable'),
-            ),
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setDemoModeLoading(false);
-        }
-      }
-    };
-
-    void loadDemoStatus();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
-
-  const updateTimePart = (
-    field: 'start' | 'end',
-    part: 'hour' | 'minute',
-    value: string,
-  ) => {
-    setWorkingHours((prev) => {
-      const [hour, minute] = splitTime(prev[field]);
-      const nextHour = part === 'hour' ? value : hour;
-      const nextMinute = part === 'minute' ? value : minute;
-      return { ...prev, [field]: `${nextHour}:${nextMinute}` };
-    });
-    setWorkingHoursError(null);
-    setSavedSettings(false);
-  };
-
-  const handleSaveSettings = () => {
-    const startMinutes = timeToMinutes(workingHours.start);
-    const endMinutes = timeToMinutes(workingHours.end);
-
-    if (startMinutes === null || endMinutes === null) {
-      setWorkingHoursError(
-        t('settings_page.please_use_a_valid_hh_mm_time'),
-      );
-      setSavedSettings(false);
-      return;
-    }
-    if (endMinutes <= startMinutes) {
-      setWorkingHoursError(
-        t('settings_page.to_time_must_be_later_than_from_time'),
-      );
-      setSavedSettings(false);
-      return;
-    }
-
-    const savedWorking = saveWorkingHoursSettings({
-      ...workingHours,
-      color: normalizedColor,
-    });
-    const savedSession = saveSessionSettings(sessionSettings);
-    const uiApiToken = onlineSyncSettings.apiToken; // preserve token for UI display
-    const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
-    const savedFreeze = saveFreezeSettings(freezeSettings);
-    const savedCurrency = saveCurrencySettings(currencySettings);
-    const savedLanguage = saveLanguageSettings(languageSettings);
-    void settingsApi.persistLanguageForDaemon(savedLanguage.code).catch((err) => {
-      console.warn('Failed to persist language for daemon:', err);
-    });
-    const savedAppearance = saveAppearanceSettings(appearanceSettings);
-
-    setWorkingHours(savedWorking);
-    setSessionSettings(savedSession);
-    setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiApiToken });
-    setFreezeSettings(savedFreeze);
-    setCurrencySettings(savedCurrency);
-    setLanguageSettings(savedLanguage);
-    setAppearanceSettings(savedAppearance);
-    setCurrencyCode(savedCurrency.code);
-    setChartAnimations(savedAppearance.chartAnimations);
-    if (i18n.resolvedLanguage !== savedLanguage.code) {
-      void i18n.changeLanguage(savedLanguage.code).catch((error) => {
-        console.warn('Failed to apply language change:', error);
-      });
-    }
-    setWorkingHoursError(null);
-    setSavedSettings(true);
-    showInfo(t('settings_page.saved'));
-    triggerRefresh('settings_saved');
-  };
-
-  const handleSplitChange = <K extends keyof SplitSettings>(
-    key: K,
-    value: SplitSettings[K],
-  ) => {
-    setSplitSettings((prev) => {
-      const next = saveSplitSettings({ ...prev, [key]: value });
-      return next;
-    });
-  };
-
-  const handleRebuildSessions = async () => {
-    setRebuilding(true);
-    try {
-      const merged = await sessionsApi.rebuildSessions(sessionSettings.gapFillMinutes);
-      showInfo(
-        t('settings_page.successfully_merged_close_sessions', { merged }),
-      );
-    } catch (e) {
-      console.error(e);
-      showError(
-        t('settings_page.error_linking_sessions') +
-          getErrorMessage(e, t('ui.common.unknown_error')),
-      );
-    } finally {
-      setRebuilding(false);
-    }
-  };
-
-  const handleClearData = async () => {
-    const confirmed = await confirm(
-      t('settings_page.are_you_sure_you_want_to_delete_all_data_this_cannot_be'),
-    );
-    if (!confirmed) return;
-    setClearing(true);
-    try {
-      await settingsApi.clearAllData();
-      setClearArmed(false);
-      showInfo(t('settings_page.all_data_removed'));
-    } catch (e) {
-      console.error(e);
-      showError(
-        t('settings_page.failed_to_clear_data') +
-          getErrorMessage(e, t('ui.common.unknown_error')),
-      );
-    } finally {
-      setClearing(false);
-    }
-  };
-
-  const handleSyncNow = async () => {
-    if (demoModeStatus?.enabled) {
-      setManualSyncResult({
-        ok: true,
-        skipped: true,
-        action: 'none',
-        reason: 'demo_mode',
-        serverRevision: onlineSyncState.serverRevision,
-      });
-      return;
-    }
-
-    setManualSyncing(true);
-    setManualSyncResult(null);
-    try {
-      // Persist only online sync settings before running manual sync.
-      const uiToken = onlineSyncSettings.apiToken;
-      const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
-      setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
-
-      const result = await runOnlineSyncOnce({ ignoreStartupToggle: true });
-      setManualSyncResult(result);
-      setOnlineSyncState(loadOnlineSyncState());
-
-      if (result.ok && result.action === 'pull') {
-        emitProjectsAllTimeInvalidated('online_sync_pull');
-        triggerRefresh('settings_manual_sync_pull');
-      }
-    } catch (e) {
-      setManualSyncResult({
-        ok: false,
-        action: 'none',
-        reason: 'sync_failed',
-        serverRevision: onlineSyncState.serverRevision,
-        error: getErrorMessage(e, t('ui.common.unknown_error')),
-      });
-    } finally {
-      setManualSyncing(false);
-    }
-  };
-
-  const handleToggleDemoMode = async (enabled: boolean) => {
-    setDemoModeSwitching(true);
-    setDemoModeError(null);
-    try {
-      const status = await settingsApi.setDemoMode(enabled);
-      setDemoModeStatus(status);
-      setManualSyncResult(null);
-      showInfo(
-        status.enabled
-          ? t('settings_page.demo_mode_enabled_dashboard_now_uses_the_demo_database')
-          : t('settings_page.demo_mode_disabled_dashboard_now_uses_the_primary_databa'),
-      );
-    } catch (e) {
-      console.error(e);
-      const errorMessage = getErrorMessage(e, t('ui.common.unknown_error'));
-      setDemoModeError(errorMessage);
-      showError(t('settings_page.failed_to_switch_demo_mode') + errorMessage);
-    } finally {
-      setDemoModeSwitching(false);
-    }
-  };
-
-  const lastSyncLabel = onlineSyncState.lastSyncAt
-    ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
-    : t('settings_page.never');
-  const shortHash = onlineSyncState.serverHash
-    ? `${onlineSyncState.serverHash.slice(0, 12)}...`
-    : 'n/a';
-  const localHashShort = onlineSyncState.localHash
-    ? `${onlineSyncState.localHash.slice(0, 12)}...`
-    : 'n/a';
-  const pendingAckHashShort = onlineSyncState.pendingAck?.payloadSha256
-    ? `${onlineSyncState.pendingAck.payloadSha256.slice(0, 12)}...`
-    : 'n/a';
   const demoModeSyncDisabled = demoModeStatus?.enabled === true;
-  const splitToleranceDescription =
-    splitSettings.toleranceThreshold >= 0.9
-      ? t(
-          'settings.splitToleranceDesc1',
-          'Split only when projects have nearly identical scores.',
-        )
-      : splitSettings.toleranceThreshold >= 0.6
-        ? t(
-            'settings.splitToleranceDesc2',
-            `Split when second project has ≥${Math.round(splitSettings.toleranceThreshold * 100)}% of leader's score.`,
-          )
-        : t(
-            'settings.splitToleranceDesc3',
-            'Split even with large score disparity.',
-          );
-  const manualSyncResultText = manualSyncResult
-    ? manualSyncResult.ok
-      ? manualSyncResult.skipped && manualSyncResult.reason === 'demo_mode'
-        ? t('settings_page.last_manual_sync_skipped_disabled_in_demo_mode')
-        : manualSyncResult.ackPending
-          ? t('settings_page.last_manual_sync_pull_applied_ack_pending', {
-                detail:
-                  manualSyncResult.ackReason ?? manualSyncResult.reason,
-              })
-          : t('settings_page.last_manual_sync', {
-                action: manualSyncResult.action,
-                reason: manualSyncResult.reason,
-              })
-      : t('settings_page.last_manual_sync_failed', {
-            error: manualSyncResult.error ?? manualSyncResult.reason,
-          })
-    : null;
-  const manualSyncResultSuccess = manualSyncResult?.ok ?? false;
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 pb-20">
@@ -443,6 +134,7 @@ export function Settings() {
         <h2 className="text-xl font-bold tracking-tight px-1">
           {t('settings_page.general_settings')}
         </h2>
+
         <WorkingHoursCard
           title={t('settings_page.working_hours')}
           description={t('settings_page.used_to_highlight_expected_work_window_on_timeline')}
@@ -461,11 +153,10 @@ export function Settings() {
           errorText={workingHoursError}
           onTimePartChange={updateTimePart}
           onColorChange={(color) => {
-            setWorkingHours((prev) => ({ ...prev, color }));
-            setWorkingHoursError(null);
-            setSavedSettings(false);
+            updateWorkingHours((prev) => ({ ...prev, color }));
           }}
         />
+
         <CurrencyCard
           title={t('settings_page.currency')}
           description={t('settings_page.select_preferred_currency_for_project_values')}
@@ -474,10 +165,10 @@ export function Settings() {
           currencies={currencyOptions}
           selectedCode={currencySettings.code}
           onSelectCurrency={(code) => {
-            setCurrencySettings({ code });
-            setSavedSettings(false);
+            updateCurrencySettings({ code });
           }}
         />
+
         <LanguageCard
           title={t('settings.language.title')}
           description={t('settings.language.description')}
@@ -487,10 +178,10 @@ export function Settings() {
           options={languageOptions}
           selectedCode={languageSettings.code}
           onSelectLanguage={(code) => {
-            setLanguageSettings({ code: code as AppLanguageCode });
-            setSavedSettings(false);
+            updateLanguageSettings({ code: code as AppLanguageCode });
           }}
         />
+
         <AppearanceCard
           title={t('settings_page.appearance_performance')}
           description={t('settings_page.adjust_visual_effects_and_performance_options')}
@@ -498,8 +189,10 @@ export function Settings() {
           animationsDescription={t('settings_page.turn_off_to_improve_ui_responsiveness_on_slower_devices')}
           checked={appearanceSettings.chartAnimations}
           onToggle={(enabled) => {
-            setAppearanceSettings((prev) => ({ ...prev, chartAnimations: enabled }));
-            setSavedSettings(false);
+            updateAppearanceSettings((prev) => ({
+              ...prev,
+              chartAnimations: enabled,
+            }));
           }}
         />
       </div>
@@ -533,19 +226,22 @@ export function Settings() {
           rebuildLabel={t('settings_page.rebuild')}
           rebuilding={rebuilding}
           onGapFillChange={(minutes) => {
-            setSessionSettings((prev) => ({ ...prev, gapFillMinutes: minutes }));
-            setSavedSettings(false);
+            updateSessionSettings((prev) => ({
+              ...prev,
+              gapFillMinutes: minutes,
+            }));
           }}
           onMinDurationChange={(seconds) => {
-            setSessionSettings((prev) => ({
+            updateSessionSettings((prev) => ({
               ...prev,
               minSessionDurationSeconds: seconds,
             }));
-            setSavedSettings(false);
           }}
           onRebuildOnStartupChange={(enabled) => {
-            setSessionSettings((prev) => ({ ...prev, rebuildOnStartup: enabled }));
-            setSavedSettings(false);
+            updateSessionSettings((prev) => ({
+              ...prev,
+              rebuildOnStartup: enabled,
+            }));
           }}
           onRebuild={() => {
             void handleRebuildSessions();
@@ -573,13 +269,13 @@ export function Settings() {
           )}
           splitSettings={splitSettings}
           onMaxProjectsChange={(maxProjects) => {
-            handleSplitChange('maxProjectsPerSession', maxProjects);
+            updateSplitSetting('maxProjectsPerSession', maxProjects);
           }}
           onToleranceThresholdChange={(threshold) => {
-            handleSplitChange('toleranceThreshold', threshold);
+            updateSplitSetting('toleranceThreshold', threshold);
           }}
           onAutoSplitEnabledChange={(enabled) => {
-            handleSplitChange('autoSplitEnabled', enabled);
+            updateSplitSetting('autoSplitEnabled', enabled);
           }}
         />
 
@@ -646,51 +342,47 @@ export function Settings() {
           localHashShort={localHashShort}
           pendingAckHashShort={pendingAckHashShort}
           onEnabledChange={(enabled) => {
-            setOnlineSyncSettings((prev) => ({ ...prev, enabled }));
-            setSavedSettings(false);
+            updateOnlineSyncSettings((prev) => ({ ...prev, enabled }));
           }}
           onAutoSyncOnStartupChange={(enabled) => {
-            setOnlineSyncSettings((prev) => ({
+            updateOnlineSyncSettings((prev) => ({
               ...prev,
               autoSyncOnStartup: enabled,
             }));
-            setSavedSettings(false);
           }}
           onAutoSyncIntervalChange={(minutes) => {
-            setOnlineSyncSettings((prev) => ({
+            updateOnlineSyncSettings((prev) => ({
               ...prev,
               autoSyncIntervalMinutes: minutes,
             }));
-            setSavedSettings(false);
           }}
           onEnableLoggingChange={(enabled) => {
-            setOnlineSyncSettings((prev) => ({ ...prev, enableLogging: enabled }));
-            setSavedSettings(false);
+            updateOnlineSyncSettings((prev) => ({
+              ...prev,
+              enableLogging: enabled,
+            }));
           }}
           onServerUrlChange={(serverUrl) => {
-            setOnlineSyncSettings((prev) => ({ ...prev, serverUrl }));
-            setSavedSettings(false);
+            updateOnlineSyncSettings((prev) => ({ ...prev, serverUrl }));
           }}
           onResetServerUrl={() => {
-            setOnlineSyncSettings((prev) => ({
+            updateOnlineSyncSettings((prev) => ({
               ...prev,
               serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
             }));
-            setSavedSettings(false);
           }}
           onUserIdChange={(userId) => {
-            setOnlineSyncSettings((prev) => ({ ...prev, userId }));
-            setSavedSettings(false);
+            updateOnlineSyncSettings((prev) => ({ ...prev, userId }));
           }}
           onApiTokenChange={(apiToken) => {
-            setOnlineSyncSettings((prev) => ({ ...prev, apiToken }));
-            setSavedSettings(false);
+            updateOnlineSyncSettings((prev) => ({ ...prev, apiToken }));
           }}
           onShowTokenChange={setShowOnlineSyncToken}
           onSyncNow={() => {
-            void handleSyncNow();
+            void handleSyncNow(demoModeSyncDisabled);
           }}
         />
+
         <ProjectFreezeCard
           thresholdDays={freezeSettings.thresholdDays}
           title={t('settings_page.project_freezing')}
@@ -700,13 +392,13 @@ export function Settings() {
           thresholdAriaLabel={t('settings_page.freeze_threshold_in_days')}
           daysLabel={t('settings_page.days')}
           onThresholdChange={(val) => {
-            setFreezeSettings((prev) => ({
+            updateFreezeSettings((prev) => ({
               ...prev,
               thresholdDays: val,
             }));
-            setSavedSettings(false);
           }}
         />
+
         <DemoModeCard
           demoModeStatus={demoModeStatus}
           demoModeLoading={demoModeLoading}
@@ -730,6 +422,7 @@ export function Settings() {
             void handleToggleDemoMode(enabled);
           }}
         />
+
         <DangerZoneCard
           clearArmed={clearArmed}
           clearing={clearing}
@@ -759,6 +452,7 @@ export function Settings() {
           </Button>
         )}
       </div>
+
       <ConfirmDialog />
     </div>
   );

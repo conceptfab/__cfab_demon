@@ -61,6 +61,7 @@
 - [x] `7.6` `AI.tsx` używa teraz wspólnego callbacku do komunikatów błędów, więc nie trzyma już `showError` i tłumaczeń w refach synchronizowanych przez `useEffect`.
 - [x] `7.5` `tauri.ts` ma teraz pogrupowane API (`projectsApi`, `sessionsApi`, `daemonApi`, `dataApi`, `aiApi` itd.), a główne ekrany korzystają z tych obiektów zamiast długich list pojedynczych importów.
 - [x] `7.7` `useJobPool` został rozbity na helpery bootstrap/tick/handlers w osobnym module, więc sam hook nie trzyma już całej logiki pętli i eventów w jednym bloku.
+- [x] `7.4` `Settings.tsx` przenosi teraz grupy stanu i akcji do osobnych hooków (`useSettingsFormState`, `useSettingsDemoMode`), więc ekran nie trzyma już wszystkich sekcji ustawień w jednym komponencie.
 - [x] Weryfikacja techniczna ostatnich iteracji: `cargo test`, `cargo check`, `cargo check --manifest-path dashboard/src-tauri/Cargo.toml`, `dashboard/npm run lint`, `dashboard/npm run typecheck`, `dashboard/npm run test`.
 
 ---
@@ -297,7 +298,7 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - `ProjectPage.tsx` — ~1800+ linii
 - **Rozwiązanie:** Podzielić na mniejsze podkomponenty.
 
-### 7.4 Settings — >20 stanów w jednym komponencie
+### [x] 7.4 Settings — >20 stanów w jednym komponencie
 - **Rozwiązanie:** Wydzielić grupy ustawień (working hours, session, freeze, currency, language, appearance, split, online sync, demo mode) do oddzielnych hooków/komponentów.
 
 ### [x] 7.5 `tauri.ts` — 80+ flat exports
@@ -350,12 +351,12 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 ### Otwarte priorytety
 | Priorytet | Punkt | Problem | Wpływ |
 |---|---|---|---|
-| Średni | `7.3–7.4` | Code smells i zbyt duże moduły | Czytelność i koszt utrzymania |
+| Średni | `7.3` | Code smells i zbyt duże moduły | Czytelność i koszt utrzymania |
 | Niski | `7.2` | Stringly-typed activity types | Type safety |
 | Niski | `8.2` | Weryfikacja sensowności `lettre` w dashboard Cargo | Potencjalne uproszczenie zależności |
 | Niski | `8.3` | Ocena `opt-level = "s"` dla dashboardu | Potencjalny zysk runtime |
 
 ### Najblizsze sensowne kroki
-1. `7.3–7.4` jako dalsze ujednolicanie jakosci i utrzymania kodu.
+1. `7.3` jako dalsze ujednolicanie jakosci i utrzymania kodu.
 2. `8.2` i `8.3` dopiero po zamknieciu istotniejszych problemow utrzymaniowych.
 3. Wieksze rozbicie duzych komponentow (`Sessions`, `Projects`, `ProjectPage`) po zamknieciu prostszych porzadkow.
