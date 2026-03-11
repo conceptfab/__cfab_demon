@@ -330,11 +330,11 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - **Opis:** `sysinfo = "0.13"` — grep `use sysinfo` w `src/` zwraca 0 wyników. Cała detekcja procesów oparta na WinAPI. Ciężka zależność (długa kompilacja).
 - **Rozwiązanie:** Usunąć.
 
-### 8.2 [NISKI] `lettre` w dashboard Cargo.toml
+### [x] 8.2 [NISKI] `lettre` w dashboard Cargo.toml
 - **Plik:** `dashboard/src-tauri/Cargo.toml`, linia 31
 - **Opis:** Email client (SMTP) — sprawdzić czy nie można użyć prostszego HTTP endpointu.
 
-### 8.3 [NISKI] `opt-level = "s"` w dashboard
+### [x] 8.3 [NISKI] `opt-level = "s"` w dashboard
 - **Opis:** Dla dashboardu (nie dystrybuowanego jako mały plik) można rozważyć `opt-level = 2` dla lepszej wydajności runtime.
 
 ---
@@ -349,13 +349,13 @@ Wszystkie te stringi są przekazywane do `showError()` / `setFolderError()` i wi
 - `5.1` brakujące tłumaczenia widoczne w UI
 - `7.1–7.9` porządki utrzymaniowe i rozbicie dużych komponentów
 - `8.1` usunięcie nieużywanej zależności `sysinfo`
+- `8.2`, `8.3` przegląd dashboardowego Cargo i strojenie profilu release
 
 ### Otwarte priorytety
 | Priorytet | Punkt | Problem | Wpływ |
 |---|---|---|---|
-| Niski | `8.2` | Weryfikacja sensowności `lettre` w dashboard Cargo | Potencjalne uproszczenie zależności |
-| Niski | `8.3` | Ocena `opt-level = "s"` dla dashboardu | Potencjalny zysk runtime |
+| Brak | - | Wszystkie punkty z raportu zostały zamknięte | - |
 
 ### Najblizsze sensowne kroki
-1. `8.2` sprawdzić, czy `lettre` w dashboardowym Cargo nadal jest uzasadnione.
-2. `8.3` ocenić trade-off między `opt-level = "s"` a szybszym runtime dashboardu.
+1. Manualnie sprawdzić `BugHunter`, czy wysyłka SMTP i załączniki dalej działają w buildzie dashboardu.
+2. Przy najbliższym release porównać czas startu i rozmiar artefaktu po zmianie `opt-level = 2`.
