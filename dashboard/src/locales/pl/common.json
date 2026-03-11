@@ -52,8 +52,10 @@
       "stopped": "Zatrzymany",
       "training": "Trening",
       "new_data": "Nowe dane",
-      "safe": "Bezpiecznie",
-      "off": "wył."
+      "safe": "Aktywna",
+      "off": "wył.",
+      "suggestions": "Sugestie",
+      "auto_safe": "Auto-safe"
     },
     "tooltips": {
       "unassigned_today": "{{count}} nieprzypisanych sesji dzisiaj",
@@ -238,24 +240,24 @@
   },
   "online_sync_indicator": {
     "labels": {
-      "disabled": "Sync wył.",
-      "setup": "Konfiguruj sync",
+      "disabled": "Wył.",
+      "setup": "Konfiguracja",
       "reseed_required": "Wymagany reseed",
       "ack_pending": "ACK oczekuje",
-      "ready": "Sync gotowy",
-      "disabled_demo": "Sync wył. (Demo)",
-      "error": "Błąd sync",
-      "ok": "Sync OK",
-      "noop": "Brak zmian",
-      "push": "Push zakończony",
-      "pull": "Pull zakończony",
-      "syncing": "Synchronizacja..."
+      "ready": "Gotowa",
+      "disabled_demo": "Wył. (demo)",
+      "error": "Błąd",
+      "ok": "OK",
+      "noop": "Bez zmian",
+      "push": "Wysłano",
+      "pull": "Pobrano",
+      "syncing": "Trwa..."
     },
     "details": {
       "no_sync_yet": "Brak wykonanej synchronizacji",
-      "last_sync": "Ostatni sync {{time}} • r{{revision}} • {{hash}}",
+      "last_sync": "Ostatnia synchronizacja {{time}} • r{{revision}} • {{hash}}",
       "disabled": "Synchronizacja online jest wyłączona",
-      "configure": "Uzupełnij URL serwera i ID użytkownika",
+      "configure": "Uzupełnij adres serwera i ID użytkownika",
       "reseed_required": "Payload serwera został wyczyszczony i lokalne dane do reseedu są niedostępne",
       "ack_pending": "ACK oczekuje",
       "downloaded_waiting_ack": "Pobrano r{{revision}}, oczekiwanie na ACK",
@@ -413,7 +415,6 @@
       "score_breakdown_button": "Przycisk rozbicia punktacji",
       "show_the_score_details_button_barchart3_on_each": "Pokaż przycisk szczegółów punktacji (BarChart3) na każdej sesji",
       "when_to_train_the_model": "Kiedy trenować model",
-      "train_after_a_larger_series_of_manual_correction": "Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.",
       "train_after_a_larger_series_of_manual_corrections": "Trenuj po większej serii ręcznych korekt, po imporcie nowych danych lub gdy przypomnienie wskazuje potrzebę odświeżenia modelu.",
       "the_reminder_appears_automatically_when_you_have": "Przypomnienie pojawia się automatycznie, gdy masz co najmniej {{feedbackTrigger}} nowych korekt lub minęło ponad {{retrainHours}}h od ostatniego treningu i są nowe korekty.",
       "what_parameters_mean": "Znaczenie parametrów",

@@ -1,5 +1,8 @@
+import { format, parseISO } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 
 interface RecentCommentItemLike {
   key: string;
@@ -25,6 +28,9 @@ export function ProjectRecentCommentsCard({
   labels,
   formatDuration,
 }: ProjectRecentCommentsCardProps) {
+  const { i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+
   return (
     <Card>
       <CardHeader>
@@ -42,7 +48,7 @@ export function ProjectRecentCommentsCard({
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground">
-                  {new Date(item.start_time).toLocaleDateString()}
+                  {format(parseISO(item.start_time), 'PP', { locale })}
                 </span>
                 <span className="text-[10px] font-mono text-emerald-400/70">
                   {formatDuration(item.duration_seconds)}

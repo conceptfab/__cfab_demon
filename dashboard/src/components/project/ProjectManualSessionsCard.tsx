@@ -1,7 +1,10 @@
+import { format, parseISO } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 import { MousePointerClick } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { ManualSessionWithProject } from '@/lib/db-types';
+import { resolveDateFnsLocale } from '@/lib/date-locale';
 
 interface ProjectManualSessionsCardLabels {
   title: string;
@@ -25,6 +28,9 @@ export function ProjectManualSessionsCard({
   onAddManual,
   onEditManual,
 }: ProjectManualSessionsCardProps) {
+  const { i18n } = useTranslation();
+  const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+
   return (
     <Card>
       <CardHeader>
@@ -54,7 +60,7 @@ export function ProjectManualSessionsCard({
               <div className="space-y-1">
                 <p className="text-sm font-medium">{session.title}</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                  {new Date(session.start_time).toLocaleDateString()}
+                  {format(parseISO(session.start_time), 'PP', { locale })}
                 </p>
               </div>
               <div className="text-right">

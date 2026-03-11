@@ -52,8 +52,10 @@
       "stopped": "Stopped",
       "training": "Training",
       "new_data": "New Data",
-      "safe": "Safe",
-      "off": "off"
+      "safe": "Active",
+      "off": "off",
+      "suggestions": "Suggestions",
+      "auto_safe": "Auto-safe"
     },
     "tooltips": {
       "unassigned_today": "{{count}} unassigned sessions today",

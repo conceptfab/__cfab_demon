@@ -82,6 +82,67 @@ Weryfikacja tej iteracji:
 - `dashboard`: `npm run typecheck` -> OK
 - `dashboard`: `npm test` -> OK, 15/15 testów
 
+## Status po domknięciu locale
+
+Zamknięte w tej iteracji:
+
+- usunięto osierocony wariant klucza `ai_page.text.train_after_a_larger_series_of_manual_correction` z polskiego locale, zostawiając tylko używany wariant zgodny z EN
+- `ProjectManualSessionsCard` i `ProjectRecentCommentsCard` przestały używać domyślnego `toLocaleDateString()` bez kontroli języka i formatują daty przez locale powiązane z aktywnym językiem interfejsu
+
+Weryfikacja tej iteracji:
+
+- `dashboard`: `npm run lint` -> OK
+- `dashboard`: `npm run typecheck` -> OK
+- `dashboard`: `npm test` -> OK, 15/15 testów
+
+## Status po walidacji locale
+
+Zamknięte w tej iteracji:
+
+- do `dashboard` dodano automatyczną walidację locale wykrywającą brakujące pliki, brakujące klucze, osierocone klucze i puste wartości względem bazowego `en`
+- walidacja została wpięta bezpośrednio do `npm run lint`, więc rozjazdy locale nie będą już przechodziły bokiem mimo zielonego `eslint`
+- bieżący stan locale `en/pl` jest czysty: brak brakujących kluczy, brak osieroconych kluczy i brak pustych wartości
+
+Weryfikacja tej iteracji:
+
+- `dashboard`: `npm run lint` -> OK
+- `dashboard`: `npm run typecheck` -> OK
+- `dashboard`: `npm test` -> OK, 15/15 testów
+
+## Status po domknięciu baseline i18n
+
+Zamknięte w tej iteracji:
+
+- zsynchronizowano `dashboard/scripts/check-hardcoded-i18n-baseline.json` z rzeczywistym stanem repo zamiast historycznego baseline
+- `Applications` i `Estimates` nie mają już aktywnych wpisów baseline; wcześniejsze pozycje były już tylko śladem po poprawionym kodzie
+- baseline twardych polskich stringów poza locale spadł z `118` wpisów do `1` świadomego wyjątku danych walutowych w `Settings`
+- backlog z tego raportu jest domknięty w zakresie wdrożonych zmian; dalsze prace optymalizacyjne i produktowe są już poza tym pakietem i siedzą głównie w `TODO.md`
+
+Pozostały wyjątek:
+
+- `src/pages/Settings.tsx` trzyma literal `zł` jako symbol waluty w danych konfiguracyjnych, a nie jako opis UI; zostaje to jako pojedynczy wpis baseline
+
+Weryfikacja tej iteracji:
+
+- `dashboard`: `npm run lint` -> OK
+- `dashboard`: `npm run typecheck` -> OK
+- `dashboard`: `npm test` -> OK, 15/15 testów
+
+## Status po korekcie sidebaru
+
+Zamknięte w tej iteracji:
+
+- sidebar przestał pokazywać surowe wartości trybu AI typu `suggest`; status używa teraz krótkich tłumaczeń zależnych od języka interfejsu
+- status synchronizacji w sidebarze przestał mieszać polski z angielskim; etykiety typu `Pull zakończony` i `Sync gotowy` zostały zastąpione spójnymi polskimi odpowiednikami
+- status kopii w sidebarze został doprecyzowany z nienaturalnego `Bezpiecznie` do czytelnego stanu `Aktywna`
+- szczegóły synchronizacji w tooltipie używają już sformułowania `Ostatnia synchronizacja` zamiast mieszanego `Ostatni sync`
+
+Weryfikacja tej iteracji:
+
+- `dashboard`: `npm run lint` -> OK
+- `dashboard`: `npm run typecheck` -> OK
+- `dashboard`: `npm test` -> OK, 15/15 testów
+
 ## Zakres
 
 Przeanalizowane obszary:

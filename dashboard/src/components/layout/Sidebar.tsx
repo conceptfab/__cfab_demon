@@ -154,6 +154,14 @@ export function Sidebar() {
     todayUnassigned > 0 ? todayUnassigned : allUnassigned;
   const hasPendingAiTrainingData =
     hasPendingAssignmentModelTrainingData(aiStatus);
+  const aiModeStatusText =
+    aiStatus?.mode === 'off'
+      ? t('layout.status.off')
+      : aiStatus?.mode === 'suggest'
+        ? t('layout.status.suggestions')
+        : aiStatus?.mode === 'auto_safe'
+          ? t('layout.status.auto_safe')
+          : t('ui.common.not_available');
   const sessionsBadge =
     unassignedSessions > 99 ? '99+' : String(unassignedSessions);
   const sessionsAttentionTitle =
@@ -257,9 +265,7 @@ export function Sidebar() {
           <StatusIndicator
             icon={Brain}
             label={t('layout.status.ai_mode')}
-            statusText={
-              aiStatus?.mode?.replace('_', ' ') ?? t('layout.status.off')
-            }
+            statusText={aiModeStatusText}
             colorClass={
               aiStatus?.mode !== 'off'
                 ? 'text-purple-400'
