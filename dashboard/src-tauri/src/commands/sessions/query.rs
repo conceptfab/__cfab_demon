@@ -104,6 +104,29 @@ fn apply_session_filters(
     }
 }
 
+fn apply_limit_offset(
+    sql: &mut String,
+    params: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    idx: &mut usize,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) {
+    if let Some(limit) = limit {
+        sql.push_str(&format!(" LIMIT ?{}", *idx));
+        params.push(Box::new(limit));
+        *idx += 1;
+    } else if offset.is_some() {
+        // SQLite requires LIMIT when OFFSET is present.
+        sql.push_str(" LIMIT -1");
+    }
+
+    if let Some(offset) = offset {
+        sql.push_str(&format!(" OFFSET ?{}", *idx));
+        params.push(Box::new(offset));
+        *idx += 1;
+    }
+}
+
 pub async fn get_sessions(
     app: AppHandle,
     filters: SessionFilters,
@@ -181,15 +204,7 @@ pub async fn get_sessions(
         apply_session_filters(&filters, &mut sql, &mut params, &mut idx);
         sql.push_str(" ORDER BY s.start_time DESC");
 
-        if let Some(limit) = filters.limit {
-            sql.push_str(&format!(" LIMIT ?{}", idx));
-            params.push(Box::new(limit));
-            idx += 1;
-        }
-        if let Some(offset) = filters.offset {
-            sql.push_str(&format!(" OFFSET ?{}", idx));
-            params.push(Box::new(offset));
-        }
+        apply_limit_offset(&mut sql, &mut params, &mut idx, filters.limit, filters.offset);
 
         let params_ref: Vec<&dyn rusqlite::types::ToSql> =
             params.iter().map(|p| p.as_ref()).collect();
@@ -513,7 +528,8 @@ pub async fn get_sessions(
 #[cfg(test)]
 mod tests {
     use super::{
-        collect_session_file_activities, compute_overlap_ms, parse_rfc3339_millis,
+        apply_limit_offset, collect_session_file_activities, compute_overlap_ms,
+        parse_rfc3339_millis,
         IndexedFileActivity,
     };
     use crate::commands::types::FileActivity;
@@ -588,6 +604,32 @@ mod tests {
 
         let file_ids: Vec<i64> = files.iter().map(|file| file.activity.id).collect();
         assert_eq!(file_ids, vec![1, 4]);
+    }
+
+    #[test]
+    fn apply_limit_offset_adds_limit_minus_one_when_only_offset_is_provided() {
+        let mut sql = String::from("SELECT * FROM sessions");
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut idx = 3;
+
+        apply_limit_offset(&mut sql, &mut params, &mut idx, None, Some(0));
+
+        assert_eq!(sql, "SELECT * FROM sessions LIMIT -1 OFFSET ?3");
+        assert_eq!(params.len(), 1);
+        assert_eq!(idx, 4);
+    }
+
+    #[test]
+    fn apply_limit_offset_keeps_standard_limit_and_offset_order() {
+        let mut sql = String::from("SELECT * FROM sessions");
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut idx = 1;
+
+        apply_limit_offset(&mut sql, &mut params, &mut idx, Some(100), Some(50));
+
+        assert_eq!(sql, "SELECT * FROM sessions LIMIT ?1 OFFSET ?2");
+        assert_eq!(params.len(), 2);
+        assert_eq!(idx, 3);
     }
 }
 
