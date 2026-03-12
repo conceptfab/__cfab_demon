@@ -26,10 +26,36 @@ fn rebuild_file_index_cache(
     for (exe_name, app_data) in &daily_data.apps {
         let file_map = cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
         for (idx, file_entry) in app_data.files.iter().enumerate() {
-            file_map.insert(file_entry.name.clone(), idx);
+            if let Some(cache_key) = build_file_cache_key(
+                &file_entry.name,
+                file_entry.detected_path.as_deref(),
+                &file_entry.window_title,
+            ) {
+                file_map.insert(cache_key, idx);
+            }
         }
     }
     cache
+}
+
+fn build_file_cache_key(
+    file_name: &str,
+    detected_path: Option<&str>,
+    window_title: &str,
+) -> Option<String> {
+    if file_name.is_empty() {
+        return None;
+    }
+
+    if let Some(path) = detected_path.filter(|path| !path.is_empty()) {
+        return Some(format!("path:{path}"));
+    }
+
+    if !window_title.is_empty() {
+        return Some(format!("title:{file_name}\n{window_title}"));
+    }
+
+    Some(format!("name:{file_name}"))
 }
 
 fn write_heartbeat() {
@@ -87,10 +113,7 @@ fn check_dashboard_compatibility() {
     }
 }
 
-fn should_refresh_background_process_snapshot(
-    last_refresh: Option<Instant>,
-    now: Instant,
-) -> bool {
+fn should_refresh_background_process_snapshot(last_refresh: Option<Instant>, now: Instant) -> bool {
     match last_refresh {
         None => true,
         Some(last_refresh) => {
@@ -225,8 +248,15 @@ fn record_app_activity(
     // Update files
     if !normalized_file_name.is_empty() {
         let app_file_index = file_index_cache.entry(exe_name.to_string()).or_default();
+        let Some(file_cache_key) = build_file_cache_key(
+            &normalized_file_name,
+            normalized_detected_path.as_deref(),
+            &normalized_window_title,
+        ) else {
+            return;
+        };
 
-        if let Some(&idx) = app_file_index.get(&normalized_file_name) {
+        if let Some(&idx) = app_file_index.get(&file_cache_key) {
             if let Some(file_entry) = app_data.files.get_mut(idx) {
                 file_entry.total_seconds += elapsed_seconds;
                 file_entry.last_seen = now_str;
@@ -240,6 +270,16 @@ fn record_app_activity(
                 }
                 if let Some(kind) = normalized_activity_type {
                     file_entry.activity_type = Some(kind.to_string());
+                }
+                if let Some(updated_cache_key) = build_file_cache_key(
+                    &file_entry.name,
+                    file_entry.detected_path.as_deref(),
+                    &file_entry.window_title,
+                ) {
+                    if updated_cache_key != file_cache_key {
+                        app_file_index.remove(&file_cache_key);
+                    }
+                    app_file_index.insert(updated_cache_key, idx);
                 }
             }
         } else {
@@ -256,7 +296,7 @@ fn record_app_activity(
                 title_history,
                 activity_type: normalized_activity_type.map(str::to_string),
             });
-            app_file_index.insert(normalized_file_name, new_idx);
+            app_file_index.insert(file_cache_key, new_idx);
         }
     }
 }
@@ -501,10 +541,15 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_session_duration_seconds, session_start_time_for_elapsed,
-        should_refresh_background_process_snapshot, BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
+        compute_session_duration_seconds, record_app_activity, session_start_time_for_elapsed,
+        should_refresh_background_process_snapshot, ActivityContext,
+        BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
     };
+    use crate::activity::ActivityType;
+    use crate::config::{Config, MonitoredApp};
+    use crate::storage::{DailyData, DailySummary};
     use chrono::{Local, TimeZone, Timelike};
+    use std::collections::HashMap;
     use std::time::{Duration, Instant};
 
     #[test]
@@ -546,11 +591,82 @@ mod tests {
             .expect("valid datetime")
             .with_nanosecond(0)
             .expect("zero nanos");
-        let duration = compute_session_duration_seconds(
-            "2026-03-11T12:00:15+01:00",
-            end,
-            0,
-        );
+        let duration = compute_session_duration_seconds("2026-03-11T12:00:15+01:00", end, 0);
         assert_eq!(duration, 285);
+    }
+
+    #[test]
+    fn same_named_files_with_different_paths_are_tracked_separately() {
+        let cfg = Config {
+            apps: vec![MonitoredApp {
+                exe_name: "code.exe".to_string(),
+                display_name: "Code".to_string(),
+                added_at: "2026-03-12T00:00:00Z".to_string(),
+            }],
+            intervals: Default::default(),
+        };
+        let mut daily_data = DailyData {
+            date: "2026-03-12".to_string(),
+            generated_at: "2026-03-12T00:00:00Z".to_string(),
+            apps: HashMap::new(),
+            summary: DailySummary {
+                total_app_seconds: 0,
+                total_app_formatted: String::new(),
+                apps_active_count: 0,
+            },
+        };
+        let mut active_sessions = HashMap::new();
+        let mut file_index_cache = HashMap::new();
+
+        record_app_activity(
+            ActivityContext {
+                exe_name: "code.exe",
+                file_name: "index.ts",
+                window_title: "repo-a - index.ts",
+                detected_path: Some("C:\\repo-a\\src\\index.ts"),
+                activity_type: Some(ActivityType::Coding),
+                elapsed: Duration::from_secs(10),
+                session_gap: Duration::from_secs(120),
+            },
+            &cfg,
+            &mut daily_data,
+            &mut active_sessions,
+            &mut file_index_cache,
+        );
+        record_app_activity(
+            ActivityContext {
+                exe_name: "code.exe",
+                file_name: "index.ts",
+                window_title: "repo-b - index.ts",
+                detected_path: Some("C:\\repo-b\\src\\index.ts"),
+                activity_type: Some(ActivityType::Coding),
+                elapsed: Duration::from_secs(15),
+                session_gap: Duration::from_secs(120),
+            },
+            &cfg,
+            &mut daily_data,
+            &mut active_sessions,
+            &mut file_index_cache,
+        );
+
+        let files = &daily_data.apps.get("code.exe").expect("app tracked").files;
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].name, "index.ts");
+        assert_eq!(files[1].name, "index.ts");
+        assert_eq!(
+            files[0].detected_path.as_deref(),
+            Some("C:\\repo-a\\src\\index.ts")
+        );
+        assert_eq!(
+            files[1].detected_path.as_deref(),
+            Some("C:\\repo-b\\src\\index.ts")
+        );
+        assert_eq!(
+            files
+                .iter()
+                .map(|file| file.total_seconds)
+                .collect::<Vec<_>>(),
+            vec![10, 15]
+        );
     }
 }

@@ -24,9 +24,26 @@ Najważniejsze ryzyka:
 - są jeszcze user-facing stringi poza i18n mimo zielonych lintów locale
 - Help nie jest w pełni zgodny z aktualnym zachowaniem aplikacji
 
+## Status wdrożeń
+
+Wdrożone w tej iteracji 2026-03-12:
+
+- [x] Sessions pokazuje już tylko `file_activities` nachodzące na realne okno sesji; dodany test regresyjny w `dashboard/src-tauri/src/commands/sessions/query.rs`
+- [x] demon rozdziela pliki o tej samej nazwie po `detected_path`, a bez ścieżki preferuje fallback `file_name + window_title`; sama nazwa zostaje tylko jako ostatni fallback gdy oba pola są puste; dodany test regresyjny w `src/tracker.rs`
+- [x] prefetch score breakdown w `Sessions` działa już tylko w trybie `ai_detailed`
+
+Nadal do wdrożenia:
+
+- [ ] agregacje projektowe po `project_id` zamiast po nazwie
+- [ ] usunięcie albo zastąpienie limitu `500` w dziennym dashboardzie
+- [ ] domknięcie i18n wyciekającego z backendu i etykiet danych
+- [ ] aktualizacja `Help.tsx` i treści pomocy do faktycznego zachowania aplikacji
+
 ## Najważniejsze ustalenia
 
 ### 1. Wysokie: widok Sessions pokazuje pliki z całego dnia aplikacji, nie z zakresu konkretnej sesji
+
+Status: wdrożone 2026-03-12.
 
 Dowody:
 
@@ -47,6 +64,8 @@ Rekomendacja:
 - dopisać test, który udowadnia, że sesja nie dostaje plików spoza własnego okna czasowego
 
 ### 2. Wysokie: demon scala aktywność różnych plików po samej nazwie pliku
+
+Status: wdrożone 2026-03-12.
 
 Dowody:
 
@@ -110,6 +129,8 @@ Rekomendacja:
 - jeśli limit ma zostać, UI powinno jasno sygnalizować `partial data`
 
 ### 5. Średnie: Sessions prefetchuje score breakdown dla wszystkich widocznych sesji, także poza trybem AI
+
+Status: wdrożone 2026-03-12.
 
 Dowody:
 

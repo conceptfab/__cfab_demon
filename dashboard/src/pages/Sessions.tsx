@@ -1144,6 +1144,8 @@ export function Sessions() {
   // Prefetch breakdowns only when the visible session ID set changes,
   // which avoids rerunning the effect after each individual breakdown arrives.
   useEffect(() => {
+    if (viewMode !== 'ai_detailed') return;
+
     const sessionIds = breakdownPrefetchIdsKey
       ? breakdownPrefetchIdsKey
           .split(',')
@@ -1161,7 +1163,7 @@ export function Sessions() {
     if (missingIds.length === 0) return;
 
     let cancelled = false;
-    const batchSize = viewMode === 'ai_detailed' ? 8 : missingIds.length;
+    const batchSize = 8;
 
     const prefetch = async () => {
       for (let index = 0; index < missingIds.length; index += batchSize) {

@@ -5,6 +5,72 @@ use super::super::helpers::run_db_blocking;
 use super::super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
 use super::super::types::{FileActivity, SessionFilters, SessionWithApp};
 
+#[derive(Clone)]
+struct IndexedFileActivity {
+    activity: FileActivity,
+    first_seen_ms: Option<i64>,
+    last_seen_ms: Option<i64>,
+}
+
+impl IndexedFileActivity {
+    fn new(activity: FileActivity) -> Self {
+        Self {
+            first_seen_ms: parse_rfc3339_millis(&activity.first_seen),
+            last_seen_ms: parse_rfc3339_millis(&activity.last_seen),
+            activity,
+        }
+    }
+
+    fn overlap_ms(&self, session_start_ms: i64, session_end_ms: i64) -> Option<i64> {
+        compute_overlap_ms(
+            session_start_ms,
+            session_end_ms,
+            self.first_seen_ms?,
+            self.last_seen_ms?,
+        )
+    }
+}
+
+fn parse_rfc3339_millis(value: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|dt| dt.timestamp_millis())
+}
+
+fn compute_overlap_ms(
+    range_start_ms: i64,
+    range_end_ms: i64,
+    other_start_ms: i64,
+    other_end_ms: i64,
+) -> Option<i64> {
+    if range_end_ms <= range_start_ms || other_end_ms <= other_start_ms {
+        return None;
+    }
+
+    let overlap_ms =
+        std::cmp::min(range_end_ms, other_end_ms) - std::cmp::max(range_start_ms, other_start_ms);
+    if overlap_ms > 0 {
+        Some(overlap_ms)
+    } else {
+        None
+    }
+}
+
+fn collect_session_file_activities<'a>(
+    files_by_key: &'a HashMap<(i64, String), Vec<IndexedFileActivity>>,
+    app_id: i64,
+    session_date: &str,
+    session_start_ms: i64,
+    session_end_ms: i64,
+) -> Vec<&'a IndexedFileActivity> {
+    files_by_key
+        .get(&(app_id, session_date.to_string()))
+        .into_iter()
+        .flat_map(|files| files.iter())
+        .filter(|file| file.overlap_ms(session_start_ms, session_end_ms).is_some())
+        .collect()
+}
+
 fn apply_session_filters(
     filters: &SessionFilters,
     sql: &mut String,
@@ -189,7 +255,7 @@ pub async fn get_sessions(
             }
         }
 
-        let mut files_by_key: HashMap<(i64, String), Vec<FileActivity>> = HashMap::new();
+        let mut files_by_key: HashMap<(i64, String), Vec<IndexedFileActivity>> = HashMap::new();
         if include_files && !keys.is_empty() {
             conn.execute_batch(
                 "CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)",
@@ -244,7 +310,7 @@ pub async fn get_sessions(
                 files_by_key
                     .entry((app_id, date))
                     .or_default()
-                    .push(activity);
+                    .push(IndexedFileActivity::new(activity));
             }
         }
 
@@ -260,13 +326,13 @@ pub async fn get_sessions(
                 continue;
             }
 
-            let session_start = match chrono::DateTime::parse_from_rfc3339(&session.start_time) {
-                Ok(dt) => dt.timestamp_millis(),
-                Err(_) => continue,
+            let session_start = match parse_rfc3339_millis(&session.start_time) {
+                Some(dt) => dt,
+                None => continue,
             };
-            let session_end = match chrono::DateTime::parse_from_rfc3339(&session.end_time) {
-                Ok(dt) => dt.timestamp_millis(),
-                Err(_) => continue,
+            let session_end = match parse_rfc3339_millis(&session.end_time) {
+                Some(dt) => dt,
+                None => continue,
             };
             if session_end <= session_start {
                 continue;
@@ -278,34 +344,29 @@ pub async fn get_sessions(
                 .next()
                 .unwrap_or("")
                 .to_string();
-            session.files = files_by_key
-                .get(&(session.app_id, session_date))
-                .cloned()
-                .unwrap_or_default();
+            let matching_files = collect_session_file_activities(
+                &files_by_key,
+                session.app_id,
+                &session_date,
+                session_start,
+                session_end,
+            );
+            session.files = matching_files
+                .iter()
+                .map(|file| file.activity.clone())
+                .collect();
 
             if explicit_pids.get(&session.id).copied().flatten().is_some() {
                 continue;
             }
 
             let mut overlap_by_project: HashMap<i64, (i64, String, String)> = HashMap::new();
-            for f in &session.files {
+            for indexed_file in matching_files {
+                let f = &indexed_file.activity;
                 let Some(pid) = f.project_id else { continue };
-                let file_start = match chrono::DateTime::parse_from_rfc3339(&f.first_seen) {
-                    Ok(dt) => dt.timestamp_millis(),
-                    Err(_) => continue,
-                };
-                let file_end = match chrono::DateTime::parse_from_rfc3339(&f.last_seen) {
-                    Ok(dt) => dt.timestamp_millis(),
-                    Err(_) => continue,
-                };
-                if file_end <= file_start {
+                let Some(overlap_ms) = indexed_file.overlap_ms(session_start, session_end) else {
                     continue;
-                }
-                let overlap_ms =
-                    std::cmp::min(session_end, file_end) - std::cmp::max(session_start, file_start);
-                if overlap_ms <= 0 {
-                    continue;
-                }
+                };
                 let name = f
                     .project_name
                     .clone()
@@ -449,6 +510,87 @@ pub async fn get_sessions(
     }
 
     Ok(sessions)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        collect_session_file_activities, compute_overlap_ms, parse_rfc3339_millis,
+        IndexedFileActivity,
+    };
+    use crate::commands::types::FileActivity;
+    use std::collections::HashMap;
+
+    fn activity(
+        id: i64,
+        first_seen: &str,
+        last_seen: &str,
+        file_name: &str,
+    ) -> IndexedFileActivity {
+        IndexedFileActivity::new(FileActivity {
+            id,
+            app_id: 1,
+            file_name: file_name.to_string(),
+            total_seconds: 300,
+            first_seen: first_seen.to_string(),
+            last_seen: last_seen.to_string(),
+            project_id: None,
+            project_name: None,
+            project_color: None,
+        })
+    }
+
+    #[test]
+    fn overlap_ms_only_counts_real_intersection() {
+        assert_eq!(compute_overlap_ms(1_000, 5_000, 4_000, 8_000), Some(1_000));
+        assert_eq!(compute_overlap_ms(1_000, 5_000, 5_000, 8_000), None);
+        assert_eq!(compute_overlap_ms(1_000, 5_000, 7_000, 8_000), None);
+    }
+
+    #[test]
+    fn collect_session_file_activities_keeps_only_overlapping_files() {
+        let mut files_by_key: HashMap<(i64, String), Vec<IndexedFileActivity>> = HashMap::new();
+        files_by_key.insert(
+            (1, "2026-01-01".to_string()),
+            vec![
+                activity(
+                    1,
+                    "2026-01-01T10:05:00Z",
+                    "2026-01-01T10:20:00Z",
+                    "inside.rs",
+                ),
+                activity(
+                    2,
+                    "2026-01-01T09:00:00Z",
+                    "2026-01-01T09:30:00Z",
+                    "before.rs",
+                ),
+                activity(
+                    3,
+                    "2026-01-01T11:00:00Z",
+                    "2026-01-01T11:30:00Z",
+                    "touching-end.rs",
+                ),
+                activity(
+                    4,
+                    "2026-01-01T10:50:00Z",
+                    "2026-01-01T11:10:00Z",
+                    "partial.rs",
+                ),
+            ],
+        );
+
+        let files = collect_session_file_activities(
+            &files_by_key,
+            1,
+            "2026-01-01",
+            parse_rfc3339_millis("2026-01-01T10:00:00Z").expect("valid session start"),
+            parse_rfc3339_millis("2026-01-01T11:00:00Z").expect("valid session end"),
+        );
+
+        let file_ids: Vec<i64> = files.iter().map(|file| file.activity.id).collect();
+        assert_eq!(file_ids, vec![1, 4]);
+    }
 }
 
 pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, String> {
