@@ -1,5 +1,11 @@
 import { TOKYO_NIGHT_CHART_PALETTE } from "@/lib/chart-styles";
 import type { StackedBarData } from "@/lib/db-types";
+import {
+  buildStackedSeriesMetaMap,
+  getStackedSeriesColor,
+  getStackedSeriesEntries,
+  getStackedSeriesLabel,
+} from "@/lib/stacked-bar-series";
 
 export const PALETTE = TOKYO_NIGHT_CHART_PALETTE;
 
@@ -16,25 +22,30 @@ export type WeekDaySlot = {
 export type CalendarDay = { date: string; seconds: number; inMonth: boolean; projects: ProjectSlot[] };
 export type CalendarWeek = { label: string; subLabel: string; days: CalendarDay[] };
 
-const NON_PROJECT_ROW_KEYS = new Set(["date", "has_boost", "has_manual", "comments"]);
-
 /** Parse StackedBarData[] into a date->hour->projects lookup */
 export function parseHourlyProjects(
   rows: StackedBarData[],
   projectColors: Map<string, string>,
 ) {
+  const seriesMetaByKey = buildStackedSeriesMetaMap(rows);
   const projectSet = new Set<string>();
   for (const row of rows) {
-    for (const [key, val] of Object.entries(row)) {
-      if (!NON_PROJECT_ROW_KEYS.has(key) && typeof val === "number" && Number.isFinite(val) && val > 0) {
-        projectSet.add(key);
-      }
+    for (const [key] of getStackedSeriesEntries(row)) {
+      projectSet.add(getStackedSeriesLabel(seriesMetaByKey, key));
     }
   }
   const allProjects = Array.from(projectSet);
   const colorMap = new Map<string, string>();
   allProjects.forEach((name, i) => {
-    colorMap.set(name, projectColors.get(name) || PALETTE[i % PALETTE.length]);
+    const matchingKey = Array.from(seriesMetaByKey.entries()).find(
+      ([, series]) => getStackedSeriesLabel(seriesMetaByKey, series.key) === name,
+    )?.[0];
+    colorMap.set(
+      name,
+      (matchingKey ? getStackedSeriesColor(seriesMetaByKey, matchingKey) : undefined) ||
+        projectColors.get(name) ||
+        PALETTE[i % PALETTE.length],
+    );
   });
 
   const byDateHour = new Map<string, Map<number, ProjectSlot[]>>();
@@ -50,9 +61,9 @@ export function parseHourlyProjects(
 
     if (!byDateHour.has(datePart)) byDateHour.set(datePart, new Map());
     const projects: ProjectSlot[] = [];
-    for (const [key, val] of Object.entries(row)) {
-      if (NON_PROJECT_ROW_KEYS.has(key) || typeof val !== "number" || !Number.isFinite(val) || val <= 0) continue;
-      projects.push({ name: key, seconds: val, color: colorMap.get(key) || PALETTE[0] });
+    for (const [key, val] of getStackedSeriesEntries(row)) {
+      const label = getStackedSeriesLabel(seriesMetaByKey, key);
+      projects.push({ name: label, seconds: val, color: colorMap.get(label) || PALETTE[0] });
     }
     projects.sort((a, b) => b.seconds - a.seconds);
     byDateHour.get(datePart)!.set(hour, projects);

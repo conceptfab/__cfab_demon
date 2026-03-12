@@ -11,6 +11,11 @@ import { resolveDateFnsLocale } from "@/lib/date-locale";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 import { loadProjectsAllTime } from "@/store/projects-cache-store";
+import {
+  buildStackedSeriesMetaMap,
+  getStackedSeriesEntries,
+  getStackedSeriesLabel,
+} from "@/lib/stacked-bar-series";
 
 export type RangeMode = "daily" | "weekly" | "monthly";
 
@@ -31,6 +36,10 @@ export function useTimeAnalysisData() {
     projectColors: Map<string, string>;
   }>({ timeline: [], hourlyProjects: [], projectColors: new Map() });
   const { timeline, hourlyProjects, projectColors } = data;
+  const hourlySeriesMetaByKey = useMemo(
+    () => buildStackedSeriesMetaMap(hourlyProjects),
+    [hourlyProjects],
+  );
 
   const [today, setToday] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
   useEffect(() => {
@@ -115,19 +124,9 @@ export function useTimeAnalysisData() {
     const totals = new Map<string, number>();
 
     for (const row of hourlyProjects) {
-      for (const [key, val] of Object.entries(row)) {
-        if (
-          key === "date" ||
-          key === "has_boost" ||
-          key === "has_manual" ||
-          key === "comments" ||
-          typeof val !== "number" ||
-          !Number.isFinite(val) ||
-          val <= 0
-        ) {
-          continue;
-        }
-        totals.set(key, (totals.get(key) || 0) + val);
+      for (const [key, val] of getStackedSeriesEntries(row)) {
+        const label = getStackedSeriesLabel(hourlySeriesMetaByKey, key);
+        totals.set(label, (totals.get(label) || 0) + val);
       }
     }
 
@@ -138,7 +137,7 @@ export function useTimeAnalysisData() {
         value: Math.round(seconds),
         fill: projectColors.get(name) || PALETTE[i % PALETTE.length],
       }));
-  }, [hourlyProjects, projectColors]);
+  }, [hourlyProjects, hourlySeriesMetaByKey, projectColors]);
 
   const totalRangeSeconds = useMemo(
     () => timeline.reduce((sum, point) => sum + point.seconds, 0),
@@ -196,16 +195,10 @@ export function useTimeAnalysisData() {
       const datePart = row.date.split("T")[0] || row.date;
       if (!perDay.has(datePart)) perDay.set(datePart, {});
       const bucket = perDay.get(datePart)!;
-      for (const [key, val] of Object.entries(row)) {
-        if (
-          key === "date" ||
-          key === "has_boost" ||
-          key === "has_manual" ||
-          key === "comments" ||
-          typeof val !== "number"
-        ) continue;
-        bucket[key] = (bucket[key] || 0) + val / 3600;
-        projectSet.add(key);
+      for (const [key, val] of getStackedSeriesEntries(row)) {
+        const label = getStackedSeriesLabel(hourlySeriesMetaByKey, key);
+        bucket[label] = (bucket[label] || 0) + val / 3600;
+        projectSet.add(label);
       }
     }
     // Build rows sorted by date
@@ -219,7 +212,7 @@ export function useTimeAnalysisData() {
       return row;
     });
     return { data, projectNames: Array.from(projectSet) };
-  }, [rangeMode, hourlyProjects]);
+  }, [hourlyProjects, hourlySeriesMetaByKey, rangeMode]);
 
   // Daily hourly bar data: stacked by project per hour
   const dailyBarData = useMemo(() => {
@@ -262,10 +255,22 @@ export function useTimeAnalysisData() {
         : monthlyBarData.projectNames;
     const map = new Map<string, string>();
     names.forEach((name, i) => {
-      map.set(name, projectColors.get(name) || PALETTE[i % PALETTE.length]);
+      map.set(
+        name,
+        parsed.colorMap.get(name) ||
+          projectColors.get(name) ||
+          PALETTE[i % PALETTE.length],
+      );
     });
     return map;
-  }, [rangeMode, dailyBarData.projectNames, weeklyBarData.projectNames, monthlyBarData.projectNames, projectColors]);
+  }, [
+    dailyBarData.projectNames,
+    monthlyBarData.projectNames,
+    parsed.colorMap,
+    projectColors,
+    rangeMode,
+    weeklyBarData.projectNames,
+  ]);
 
   // Daily total hours
   const dailyTotalHours = useMemo(() => {
@@ -293,21 +298,13 @@ export function useTimeAnalysisData() {
     for (const row of hourlyProjects) {
       const datePart = row.date.split("T")[0] || row.date;
       const projects: ProjectSlot[] = [];
-      Object.entries(row).forEach(([name, val]) => {
-        if (
-          name !== "date" &&
-          name !== "has_boost" &&
-          name !== "has_manual" &&
-          name !== "comments" &&
-          typeof val === "number" &&
-          val > 0
-        ) {
-          projects.push({
-            name,
-            seconds: val,
-            color: projectColors.get(name) || PALETTE[0],
-          });
-        }
+      getStackedSeriesEntries(row).forEach(([key, val]) => {
+        const label = getStackedSeriesLabel(hourlySeriesMetaByKey, key);
+        projects.push({
+          name: label,
+          seconds: val,
+          color: parsed.colorMap.get(label) || projectColors.get(label) || PALETTE[0],
+        });
       });
       projects.sort((a, b) => b.seconds - a.seconds);
       projectPerRow.set(datePart, projects);
@@ -333,7 +330,16 @@ export function useTimeAnalysisData() {
       return { label: `W${weekNum}`, subLabel: format(ws, "MMM d", { locale }), days };
     });
     return { weeks, maxVal };
-  }, [rangeMode, activeDateRange, timeline, hourlyProjects, projectColors, locale]);
+  }, [
+    activeDateRange,
+    hourlyProjects,
+    hourlySeriesMetaByKey,
+    locale,
+    parsed.colorMap,
+    projectColors,
+    rangeMode,
+    timeline,
+  ]);
 
   // Monthly total
   const monthTotalHours = useMemo(() => {

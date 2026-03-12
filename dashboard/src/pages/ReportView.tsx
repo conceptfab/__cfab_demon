@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { ChevronLeft, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { getProjectReportData, getDaemonStatus } from '@/lib/tauri';
+import { getProjectReportData, getDaemonRuntimeStatus } from '@/lib/tauri';
 import logoSrc from '@/assets/logo.png';
 import { formatDuration, formatMoney } from '@/lib/utils';
 import { useCancellableAsync } from '@/lib/async-utils';
@@ -51,7 +51,7 @@ export function ReportView() {
   }, [projectPageId, runReportRequest]);
 
   useEffect(() => {
-    void runDaemonRequest(() => getDaemonStatus(), {
+    void runDaemonRequest(() => getDaemonRuntimeStatus(), {
       onSuccess: (status) => {
         setAppVersion(status.dashboard_version ?? '');
       },

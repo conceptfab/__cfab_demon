@@ -168,6 +168,14 @@ pub struct TopProject {
     pub color: String,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct StackedSeriesMeta {
+    pub key: String,
+    pub label: String,
+    pub color: String,
+    pub project_id: Option<i64>,
+}
+
 #[derive(Serialize)]
 pub struct ProjectDbStats {
     pub session_count: i64,
@@ -197,6 +205,7 @@ pub struct ProjectReportData {
 
 #[derive(Serialize)]
 pub struct ProjectTimeRow {
+    pub project_id: Option<i64>,
     pub name: String,
     pub seconds: i64,
     pub color: String,
@@ -259,6 +268,8 @@ pub struct StackedBarData {
     pub has_boost: bool,
     pub has_manual: bool,
     pub comments: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub series_meta: Vec<StackedSeriesMeta>,
     #[serde(flatten)]
     pub data: HashMap<String, i64>,
 }

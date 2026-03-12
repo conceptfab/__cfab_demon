@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ScoreBreakdown, SessionWithApp } from '@/lib/db-types';
+import { localizeProjectLabel } from '@/lib/project-labels';
 
 interface SessionScoreBadgeProps {
   session: SessionWithApp;
@@ -20,11 +21,23 @@ function computeConfidence(
     firstCandidate != null &&
     secondCandidate != null &&
     firstCandidate.total_score === secondCandidate.total_score;
-  const targetName = isTied
-    ? `${firstCandidate!.project_name} / ${secondCandidate!.project_name}`
+  const rawTargetName = isTied
+    ? `${localizeProjectLabel(firstCandidate!.project_name, { projectId: firstCandidate!.project_id })} / ${localizeProjectLabel(secondCandidate!.project_name, { projectId: secondCandidate!.project_id })}`
     : (session.suggested_project_name ??
       firstCandidate?.project_name ??
       (session.ai_assigned ? session.project_name : null));
+  const targetProjectId =
+    session.suggested_project_id ??
+    firstCandidate?.project_id ??
+    (session.ai_assigned ? session.project_id : null);
+  const targetName = rawTargetName
+    ? localizeProjectLabel(
+        rawTargetName,
+        {
+          projectId: targetProjectId,
+        },
+      )
+    : null;
   const confidence =
     session.suggested_confidence ??
     scoreBreakdownData?.final_suggestion?.confidence ??

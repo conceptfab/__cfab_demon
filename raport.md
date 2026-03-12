@@ -18,11 +18,8 @@ Repo jest aktualnie technicznie stabilne, ale ma kilka istotnych rozjazdów mię
 
 Najważniejsze ryzyka:
 
-- część danych sesji jest prezentowana nieprecyzyjnie
-- demon gubi rozróżnienie plików przy identycznych nazwach
-- agregacje projektowe opierają się na nazwach zamiast na `project_id`
-- są jeszcze user-facing stringi poza i18n mimo zielonych lintów locale
-- Help nie jest w pełni zgodny z aktualnym zachowaniem aplikacji
+- opisane w tym raporcie ryzyka zostały wdrożeniowo zamknięte
+- dalsze prace to już głównie porządki utrzymaniowe i redukcja powtarzalnego kodu
 
 ## Status wdrożeń
 
@@ -30,14 +27,18 @@ Wdrożone w tej iteracji 2026-03-12:
 
 - [x] Sessions pokazuje już tylko `file_activities` nachodzące na realne okno sesji; dodany test regresyjny w `dashboard/src-tauri/src/commands/sessions/query.rs`
 - [x] demon rozdziela pliki o tej samej nazwie po `detected_path`, a bez ścieżki preferuje fallback `file_name + window_title`; sama nazwa zostaje tylko jako ostatni fallback gdy oba pola są puste; dodany test regresyjny w `src/tracker.rs`
+- [x] agregacje projektowe w dashboardzie, timeline, estimates i statystykach projektów liczą już po `project_id`; timeline dostał stabilne klucze serii i metadane, a duplikaty nazw są rozdzielane w UI; dodany test regresyjny w `dashboard/src-tauri/src/commands/dashboard.rs`
+- [x] dashboard dzienny przestał ucinać sesje do limitu `500`
 - [x] prefetch score breakdown w `Sessions` działa już tylko w trybie `ai_detailed`
+- [x] monitorowane aplikacje zwracają już stabilne kody błędów z backendu, a dashboard mapuje je do tłumaczeń; message box o drugiej instancji demona jest lokalizowany i używa brandingu TIMEFLOW
+- [x] `Applications` formatuje `last_used` zgodnie z językiem UI, a `Projects` przestał wypuszczać literalne `View settings saved as default` i `opens -`
+- [x] `Help.tsx` i locale zostały zaktualizowane o znacznik duplikatów projektów, akcję `Sync from apps` oraz prawidłowe zachowanie przy pustej liście monitorowanych procesów
+- [x] backendowe etykiety `Unassigned` / `Other` zostały zastąpione technicznymi sentinelami, a UI tłumaczy je centralnie; dodany test regresyjny w `dashboard/src-tauri/src/commands/analysis.rs`
+- [x] globalny polling statusu demona został odchudzony: sidebar, Help i ReportView używają lekkiego `get_daemon_runtime_status`, a pełne `get_daemon_status` zostało dla ekranu Daemon i jawnych operacji sterujących
 
-Nadal do wdrożenia:
+Otwarte punkty:
 
-- [ ] agregacje projektowe po `project_id` zamiast po nazwie
-- [ ] usunięcie albo zastąpienie limitu `500` w dziennym dashboardzie
-- [ ] domknięcie i18n wyciekającego z backendu i etykiet danych
-- [ ] aktualizacja `Help.tsx` i treści pomocy do faktycznego zachowania aplikacji
+- brak
 
 ## Najważniejsze ustalenia
 
@@ -89,6 +90,8 @@ Rekomendacja:
 
 ### 3. Wysokie: agregacje projektowe bazują na nazwie projektu zamiast na `project_id`
 
+Status: wdrożone 2026-03-12.
+
 Dowody:
 
 - `dashboard/src-tauri/src/commands/analysis.rs:37` definiuje `ProjectTotals = HashMap<String, f64>`
@@ -110,6 +113,8 @@ Rekomendacja:
 - dopisać test z dwoma projektami o zbliżonych nazwach i różnym `id`
 
 ### 4. Średnie: dashboard dzienny ucina sesje do pierwszych 500 rekordów
+
+Status: wdrożone 2026-03-12.
 
 Dowody:
 
@@ -152,6 +157,8 @@ Rekomendacja:
 
 ### 6. Średnie: odświeżanie statusu demona nadal jest globalnym pollingiem z kosztownym backendem
 
+Status: wdrożone 2026-03-12.
+
 Dowody:
 
 - `dashboard/src/components/sync/job-pool-helpers.ts:9` ustawia diagnostykę na cykl 30 s
@@ -175,16 +182,12 @@ Rekomendacja:
 
 Stan locale jako plików jest dobry, ale to nie oznacza pełnej lokalizacji produktu.
 
+Status: wdrożone 2026-03-12. Zamknięte zostały błędy monitorowanych aplikacji, message box drugiej instancji demona, literalne teksty w `Projects`, formatowanie daty `last_used` w `Applications` oraz backendowe etykiety `Unassigned` / `Other`.
+
 ### Usterki i18n / locale
 
-- `dashboard/src/pages/Projects.tsx:787` używa literalnego `View settings saved as default`, mimo że istnieje klucz `projects.messages.view_settings_saved` w `dashboard/src/locales/pl/common.json:522` i `dashboard/src/locales/en/common.json:522`
-- `dashboard/src/pages/Projects.tsx:1581` pokazuje `opens -` bez tłumaczenia
-- `dashboard/src/components/dashboard/TopProjectsList.tsx:46-57` rozpoznaje nieprzypisane po literalnym `Unassigned`
-- `dashboard/src/components/dashboard/TimelineChart.tsx:138` oraz `dashboard/src-tauri/src/commands/dashboard.rs:209` i `dashboard/src-tauri/src/commands/analysis.rs:520` używają etykiety `Other` poza i18n
-- `dashboard/src-tauri/src/commands/analysis.rs:135`, `dashboard/src-tauri/src/commands/dashboard.rs:333` i `dashboard/src-tauri/src/commands/sessions/query.rs:312` wypuszczają surowe `Unassigned`
-- `dashboard/src-tauri/src/commands/monitored.rs:154-217` zwraca user-facing błędy po angielsku: `already monitored`, `Monitored app not found`, `exe_name cannot be empty`, `display_name cannot be empty`
-- `src/single_instance.rs:50` pokazuje message box `Another instance of TimeFlow Demon is already running.` bez lokalizacji i bez spójnego brandingu TIMEFLOW
-- `dashboard/src/pages/Applications.tsx:593` formatuje datę przez gołe `toLocaleDateString()`, więc wynik zależy od systemu, a nie od języka UI
+- zamknięte: serie projektowe i fallbacki backendowe przestały wypuszczać user-facing `Unassigned` / `Other`
+- zamknięte: UI tłumaczy teraz etykiety specjalne centralnie, zamiast polegać na angielskich labelach z Tauri
 
 ### Wniosek
 
@@ -205,6 +208,8 @@ Stan locale jako plików jest dobry, ale to nie oznacza pełnej lokalizacji prod
 
 ### 1. Błąd merytoryczny w Help: opisany fallback `monitor-all`, którego kod już nie robi
 
+Status: wdrożone 2026-03-12.
+
 Dowody:
 
 - `dashboard/src/pages/Help.tsx:738` opisuje `monitor_all_fallback_if_the_monitored_process_list_is_em`
@@ -222,6 +227,8 @@ Rekomendacja:
 - jeśli produktowo ma wrócić `monitor-all`, trzeba to wdrożyć w trackerze, a nie tylko w opisie
 
 ### 2. Funkcje obecne w UI, ale nieopisane w Help
+
+Status: wdrożone 2026-03-12.
 
 Braki po porównaniu widoków z `Help.tsx`:
 
@@ -256,11 +263,8 @@ Rekomendowana kolejność prac:
 
 1. Naprawić zakres plików w Sessions.
 2. Zmienić kluczowanie plików w demonie z `file_name` na ścieżkę lub klucz złożony.
-3. Przenieść agregacje projektowe z nazwy na `project_id`.
-4. Usunąć limit `500` z dziennego dashboardu albo zastąpić go endpointem agregacyjnym.
-5. Ograniczyć eager prefetch breakdownów AI.
-6. Uporządkować i18n wyciekające z backendu i danych wykresów.
-7. Zaktualizować `Help.tsx` i teksty locale sekcji Daemon/Projects/Applications.
+3. Uporządkować i18n wyciekające z backendu i danych wykresów.
+4. Zaktualizować `Help.tsx` i teksty locale sekcji Daemon/Projects/Applications.
 
 ## Luki w testach
 
@@ -268,7 +272,6 @@ Brakuje testów, które złapałyby opisane problemy:
 
 - testu na pliki przypisane do konkretnego okna sesji
 - testu na dwa pliki o tej samej nazwie i różnych ścieżkach po stronie demona/importu
-- testu na dwa projekty o podobnej nazwie, ale różnych `project_id`, w agregacjach dashboardowych
 - testu zgodności Help z funkcjami oznaczonymi jako user-facing
 
 ## Weryfikacja lokalna
@@ -278,8 +281,8 @@ Wykonane komendy:
 - `dashboard`: `npm run lint` -> OK
 - `dashboard`: `npm run typecheck` -> OK
 - `dashboard`: `npm test` -> OK, 15/15 testów
-- `repo root / demon`: `cargo test` -> OK, 23/23 testy
-- `dashboard/src-tauri`: `cargo test` -> OK, 22/22 testy
+- `repo root / demon`: `cargo test` -> OK, 24/24 testy
+- `dashboard/src-tauri`: `cargo test` -> OK, 26/26 testów
 
 ## Podsumowanie
 
@@ -291,4 +294,4 @@ Najpilniejsze są:
 - zachowanie tożsamości pliku po ścieżce
 - przejście z agregacji po nazwie projektu na agregację po `project_id`
 
-Po tych trzech punktach warto domknąć i18n oraz Help, bo dziś dokumentacja i część etykiet nie odzwierciedlają już faktycznego zachowania aplikacji.
+Opisane w raporcie poprawki zostały wdrożone; kolejne kroki są już optymalizacyjne, nie naprawcze.

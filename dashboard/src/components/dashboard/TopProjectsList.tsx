@@ -1,6 +1,7 @@
 import { FolderOpen, Flame, MousePointerClick } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatDuration } from '@/lib/utils';
+import { localizeProjectLabel } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
 import type {
   ProjectTimeRow,
@@ -16,6 +17,8 @@ interface TopProjectsListProps {
   boostedByProject?: Map<string, number>;
   manualCountsByProject?: Map<string, number>;
 }
+
+const UNASSIGNED_PROJECT_KEY = 'unassigned';
 
 export function TopProjectsList({
   projects,
@@ -42,34 +45,41 @@ export function TopProjectsList({
   return (
     <div className="space-y-0.5">
       {projects.map((p, i) => {
+        const projectKey =
+          p.project_id == null ? UNASSIGNED_PROJECT_KEY : String(p.project_id);
+        const projectLabel = localizeProjectLabel(p.name, {
+          projectId: p.project_id ?? null,
+        });
         const linkedProject =
-          p.name === 'Unassigned'
+          p.project_id == null
             ? null
-            : (allProjectsList.find((x) => x.name === p.name) ?? null);
+            : (allProjectsList.find((x) => x.id === p.project_id) ?? null);
         return (
           <div
-            key={`${p.name}-${i}`}
+            key={`${projectKey}-${i}`}
             data-project-id={linkedProject?.id}
             data-project-name={linkedProject?.name}
             className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
             onClick={() => {
               setSessionsFocusDate(dateRange.end);
-              if (p.name === 'Unassigned') {
+              if (p.project_id == null) {
                 setSessionsFocusProject('unassigned');
-              } else if (linkedProject) {
-                setSessionsFocusProject(linkedProject.id);
+              } else if (p.project_id != null) {
+                setSessionsFocusProject(p.project_id);
               } else {
                 setSessionsFocusProject(null);
               }
               setCurrentPage('sessions');
             }}
-            title={t('components.top_projects.click_to_view', { name: p.name })}
+            title={t('components.top_projects.click_to_view', {
+              name: projectLabel,
+            })}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  <span className="truncate text-xs font-medium">{p.name}</span>
+                  <span className="truncate text-xs font-medium">{projectLabel}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 ml-5.5">
                   <span className="text-[10px] text-muted-foreground">
@@ -84,9 +94,9 @@ export function TopProjectsList({
                   </span>
                   {(() => {
                     const boosted =
-                      boostedByProject?.get(p.name.toLowerCase()) ?? 0;
+                      boostedByProject?.get(projectKey) ?? 0;
                     const manual =
-                      manualCountsByProject?.get(p.name.toLowerCase()) ?? 0;
+                      manualCountsByProject?.get(projectKey) ?? 0;
                     return (
                       <div className="flex items-center gap-1.5 ml-auto">
                         {manual > 0 && (

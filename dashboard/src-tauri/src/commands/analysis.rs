@@ -7,7 +7,12 @@ use tauri::AppHandle;
 
 use super::helpers::run_db_blocking;
 use super::sql_fragments::SESSION_PROJECT_CTE;
-use super::types::{DateRange, HeatmapCell, StackedBarData};
+use super::types::{DateRange, HeatmapCell, StackedBarData, StackedSeriesMeta};
+
+pub(crate) const OTHER_PROJECT_SERIES_KEY: &str = "__other__";
+pub(crate) const UNASSIGNED_PROJECT_SERIES_KEY: &str = "__unassigned__";
+const DEFAULT_UNASSIGNED_PROJECT_COLOR: &str = "#64748b";
+const DEFAULT_OTHER_PROJECT_COLOR: &str = "#6b7280";
 
 #[derive(Clone, Copy)]
 enum BucketKind {
@@ -18,7 +23,7 @@ enum BucketKind {
 struct IntervalRow {
     start: DateTime<Local>,
     end: DateTime<Local>,
-    project_name: String,
+    project_key: String,
     multiplier: f64,
     is_manual: bool,
     comment: Option<String>,
@@ -27,7 +32,7 @@ struct IntervalRow {
 struct BucketPiece {
     start_ms: i64,
     end_ms: i64,
-    project_name: String,
+    project_key: String,
     multiplier: f64,
     is_manual: bool,
     comment: Option<String>,
@@ -35,9 +40,113 @@ struct BucketPiece {
 
 type BucketDurations = BTreeMap<String, HashMap<String, f64>>;
 type ProjectTotals = HashMap<String, f64>;
+type ProjectSeriesMetaMap = HashMap<String, StackedSeriesMeta>;
 type BucketFlags = HashMap<String, (bool, bool)>;
 type BucketComments = HashMap<String, Vec<String>>;
-type ProjectActivityUniqueResult = (BucketDurations, ProjectTotals, BucketFlags, BucketComments);
+type ProjectActivityUniqueResult = (
+    BucketDurations,
+    ProjectTotals,
+    ProjectSeriesMetaMap,
+    BucketFlags,
+    BucketComments,
+);
+
+pub(crate) fn project_series_key(project_id: Option<i64>) -> String {
+    match project_id {
+        Some(project_id) => format!("project:{project_id}"),
+        None => UNASSIGNED_PROJECT_SERIES_KEY.to_string(),
+    }
+}
+
+fn project_display_label(project_id: Option<i64>, project_name: Option<String>) -> String {
+    match project_id {
+        None => UNASSIGNED_PROJECT_SERIES_KEY.to_string(),
+        Some(project_id) => match project_name {
+            Some(project_name) if !project_name.trim().is_empty() => project_name,
+            _ => format!("#{project_id}"),
+        },
+    }
+}
+
+fn project_display_color(project_id: Option<i64>, project_color: Option<String>) -> String {
+    if project_id.is_none() {
+        return DEFAULT_UNASSIGNED_PROJECT_COLOR.to_string();
+    }
+
+    match project_color {
+        Some(project_color) if !project_color.trim().is_empty() => project_color,
+        _ => DEFAULT_UNASSIGNED_PROJECT_COLOR.to_string(),
+    }
+}
+
+fn build_project_series_meta(
+    project_id: Option<i64>,
+    project_name: Option<String>,
+    project_color: Option<String>,
+) -> StackedSeriesMeta {
+    StackedSeriesMeta {
+        key: project_series_key(project_id),
+        label: project_display_label(project_id, project_name),
+        color: project_display_color(project_id, project_color),
+        project_id,
+    }
+}
+
+fn finalize_project_series_labels(series_meta_by_key: &mut ProjectSeriesMetaMap) {
+    let mut duplicate_counts: HashMap<String, usize> = HashMap::new();
+    for series in series_meta_by_key.values() {
+        if series.project_id.is_none() {
+            continue;
+        }
+        *duplicate_counts
+            .entry(series.label.to_lowercase())
+            .or_insert(0) += 1;
+    }
+
+    for series in series_meta_by_key.values_mut() {
+        let Some(project_id) = series.project_id else {
+            continue;
+        };
+        if duplicate_counts
+            .get(&series.label.to_lowercase())
+            .copied()
+            .unwrap_or(0)
+            > 1
+        {
+            series.label = format!("{} · #{}", series.label, project_id);
+        }
+    }
+}
+
+pub(crate) fn other_project_series_meta() -> StackedSeriesMeta {
+    StackedSeriesMeta {
+        key: OTHER_PROJECT_SERIES_KEY.to_string(),
+        label: OTHER_PROJECT_SERIES_KEY.to_string(),
+        color: DEFAULT_OTHER_PROJECT_COLOR.to_string(),
+        project_id: None,
+    }
+}
+
+pub(crate) fn series_meta_for_row(
+    data: &HashMap<String, i64>,
+    series_meta_by_key: &ProjectSeriesMetaMap,
+) -> Vec<StackedSeriesMeta> {
+    let mut meta = Vec::new();
+    let mut keys: Vec<&String> = data.keys().collect();
+    keys.sort();
+
+    for key in keys {
+        if key == OTHER_PROJECT_SERIES_KEY {
+            meta.push(other_project_series_meta());
+            continue;
+        }
+        if let Some(series) = series_meta_by_key.get(key) {
+            meta.push(series.clone());
+        }
+    }
+
+    meta
+}
 
 fn local_from_naive(naive: NaiveDateTime) -> Option<DateTime<Local>> {
     match Local.from_local_datetime(&naive) {
@@ -132,10 +241,11 @@ pub(crate) fn compute_project_activity_unique(
         "{SESSION_PROJECT_CTE}
          SELECT sp.start_time,
                 sp.end_time,
-                COALESCE(p.name, 'Unassigned') as project_name,
+                sp.project_id,
+                p.name as project_name,
+                p.color as project_color,
                 sp.multiplier,
                 0 as is_manual,
-                sp.project_id,
                 sp.comment
          FROM session_projects sp
          LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
@@ -143,10 +253,11 @@ pub(crate) fn compute_project_activity_unique(
          UNION ALL
          SELECT ms.start_time,
                 ms.end_time,
+                ms.project_id,
                 p.name as project_name,
+                p.color as project_color,
                 1.0 as multiplier,
                 1 as is_manual,
-                ms.project_id,
                 ms.title as comment
          FROM manual_sessions ms
          JOIN projects p ON p.id = ms.project_id
@@ -167,7 +278,9 @@ pub(crate) fn compute_project_activity_unique(
                 Ok((
                     row.get::<_, String>("start_time")?,
                     row.get::<_, String>("end_time")?,
-                    row.get::<_, String>("project_name")?,
+                    row.get::<_, Option<i64>>("project_id")?,
+                    row.get::<_, Option<String>>("project_name")?,
+                    row.get::<_, Option<String>>("project_color")?,
                     row.get::<_, f64>("multiplier")?,
                     row.get::<_, i32>("is_manual")?,
                     row.get::<_, Option<String>>("comment")?,
@@ -177,6 +290,7 @@ pub(crate) fn compute_project_activity_unique(
         .map_err(|e| e.to_string())?;
 
     let mut intervals: Vec<IntervalRow> = Vec::new();
+    let mut series_meta_by_key: ProjectSeriesMetaMap = HashMap::new();
     for row in rows {
         let row = row.map_err(|e| format!("Failed to read project activity row: {}", e))?;
         let Some(start) = parse_local_timestamp(&row.0) else {
@@ -188,24 +302,25 @@ pub(crate) fn compute_project_activity_unique(
         if end <= start {
             continue;
         }
-        let project_name = if row.2.trim().is_empty() {
-            "Unassigned".to_string()
-        } else {
-            row.2
-        };
+        let series = build_project_series_meta(row.2, row.3, row.4);
+        series_meta_by_key
+            .entry(series.key.clone())
+            .or_insert(series.clone());
         intervals.push(IntervalRow {
             start,
             end,
-            project_name,
-            multiplier: row.3,
-            is_manual: row.4 != 0,
-            comment: row.5,
+            project_key: series.key,
+            multiplier: row.5,
+            is_manual: row.6 != 0,
+            comment: row.7,
         });
     }
+    finalize_project_series_labels(&mut series_meta_by_key);
 
     if intervals.is_empty() {
         return Ok((
             BTreeMap::new(),
+            HashMap::new(),
             HashMap::new(),
             HashMap::new(),
             HashMap::new(),
@@ -247,7 +362,7 @@ pub(crate) fn compute_project_activity_unique(
                 .push(BucketPiece {
                     start_ms: piece_start.timestamp_millis(),
                     end_ms: piece_end.timestamp_millis(),
-                    project_name: interval.project_name.clone(),
+                    project_key: interval.project_key.clone(),
                     multiplier: interval.multiplier,
                     is_manual: interval.is_manual,
                     comment: interval.comment.clone(),
@@ -297,10 +412,10 @@ pub(crate) fn compute_project_activity_unique(
             events.push((
                 slice.start_ms,
                 1,
-                slice.project_name.clone(),
+                slice.project_key.clone(),
                 slice.multiplier,
             ));
-            events.push((slice.end_ms, -1, slice.project_name, slice.multiplier));
+            events.push((slice.end_ms, -1, slice.project_key, slice.multiplier));
         }
         if events.is_empty() {
             continue;
@@ -360,6 +475,7 @@ pub(crate) fn compute_project_activity_unique(
     Ok((
         bucket_project_seconds,
         total_by_project,
+        series_meta_by_key,
         bucket_flags,
         bucket_comments,
     ))
@@ -461,6 +577,7 @@ pub async fn get_stacked_timeline(
                 has_boost: false,
                 has_manual: false,
                 comments: Vec::new(),
+                series_meta: Vec::new(),
             })
             .collect())
     })
@@ -478,7 +595,13 @@ pub async fn get_project_timeline(
     run_db_blocking(app, move |conn| {
         let limit = limit.unwrap_or(8).clamp(1, 200) as usize;
         let hourly = matches!(granularity.as_deref(), Some("hour"));
-        let (bucket_project_seconds, total_by_project, bucket_flags, bucket_comments) =
+        let (
+            bucket_project_seconds,
+            total_by_project,
+            series_meta_by_key,
+            bucket_flags,
+            bucket_comments,
+        ) =
             compute_project_activity_unique(conn, &date_range, hourly, true, id)?;
 
         if bucket_project_seconds.is_empty() {
@@ -486,29 +609,41 @@ pub async fn get_project_timeline(
         }
 
         let mut ranked_projects: Vec<(String, f64)> = total_by_project.into_iter().collect();
-        ranked_projects.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        let selected_projects: Vec<String> = ranked_projects
+        ranked_projects.sort_by(|a, b| {
+            b.1.total_cmp(&a.1).then_with(|| {
+                let label_a = series_meta_by_key
+                    .get(&a.0)
+                    .map(|series| series.label.as_str())
+                    .unwrap_or(a.0.as_str());
+                let label_b = series_meta_by_key
+                    .get(&b.0)
+                    .map(|series| series.label.as_str())
+                    .unwrap_or(b.0.as_str());
+                label_a.cmp(label_b)
+            })
+        });
+        let selected_keys: Vec<String> = ranked_projects
             .into_iter()
             .take(limit)
-            .map(|(name, _)| name)
+            .map(|(key, _)| key)
             .collect();
         let selected_set: std::collections::HashSet<&str> =
-            selected_projects.iter().map(|s| s.as_str()).collect();
+            selected_keys.iter().map(|key| key.as_str()).collect();
 
         let mut output = Vec::with_capacity(bucket_project_seconds.len());
         for (bucket, sec_map) in bucket_project_seconds {
             let mut data: HashMap<String, i64> = HashMap::new();
             let mut other_seconds = 0i64;
-            for project_name in &selected_projects {
-                if let Some(seconds) = sec_map.get(project_name) {
+            for series_key in &selected_keys {
+                if let Some(seconds) = sec_map.get(series_key) {
                     let rounded = seconds.round() as i64;
                     if rounded > 0 {
-                        data.insert(project_name.clone(), rounded);
+                        data.insert(series_key.clone(), rounded);
                     }
                 }
             }
-            for (project_name, seconds) in &sec_map {
-                if selected_set.contains(project_name.as_str()) {
+            for (series_key, seconds) in &sec_map {
+                if selected_set.contains(series_key.as_str()) {
                     continue;
                 }
                 let rounded = seconds.round() as i64;
@@ -517,17 +652,19 @@ pub async fn get_project_timeline(
                 }
             }
             if other_seconds > 0 {
-                data.insert("Other".to_string(), other_seconds);
+                data.insert(OTHER_PROJECT_SERIES_KEY.to_string(), other_seconds);
             }
             let (has_boost, has_manual) =
                 bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
             let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
+            let series_meta = series_meta_for_row(&data, &series_meta_by_key);
             output.push(StackedBarData {
                 date: bucket,
                 data,
                 has_boost,
                 has_manual,
                 comments,
+                series_meta,
             });
         }
 
@@ -538,7 +675,10 @@ pub async fn get_project_timeline(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_local_timestamp;
+    use super::{
+        other_project_series_meta, parse_local_timestamp, project_series_key,
+        UNASSIGNED_PROJECT_SERIES_KEY,
+    };
 
     #[test]
     fn parse_local_timestamp_accepts_legacy_and_fractional_formats() {
@@ -547,5 +687,13 @@ mod tests {
         assert!(parse_local_timestamp("2026-02-28 10:15:30.123456").is_some());
         assert!(parse_local_timestamp("2026-02-28T10:15:30.123456789+01:00").is_some());
         assert!(parse_local_timestamp("2026-02-28T10:15").is_some());
+    }
+
+    #[test]
+    fn special_series_meta_uses_technical_sentinels() {
+        assert_eq!(project_series_key(None), UNASSIGNED_PROJECT_SERIES_KEY);
+        let other = other_project_series_meta();
+        assert_eq!(other.key, "__other__");
+        assert_eq!(other.label, "__other__");
     }
 }

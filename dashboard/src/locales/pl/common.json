@@ -2,7 +2,9 @@
   "ui": {
     "common": {
       "not_available": "—",
-      "unknown_error": "Nieznany błąd"
+      "unknown_error": "Nieznany błąd",
+      "unassigned": "Nieprzypisane",
+      "other": "Inne"
     },
     "buttons": {
       "ok": "OK",
@@ -891,6 +893,10 @@
     "errors": {
       "load_monitored": "Nie udało się wczytać monitorowanych aplikacji",
       "app_name_empty": "Nazwa aplikacji nie może być pusta.",
+      "monitored_exe_required": "Podaj nazwę pliku exe monitorowanej aplikacji.",
+      "monitored_display_name_required": "Nazwa wyświetlana monitorowanej aplikacji nie może być pusta.",
+      "monitored_already_added": "Aplikacja {{exeName}} jest już monitorowana.",
+      "monitored_not_found": "Nie znaleziono monitorowanej aplikacji.",
       "rename_monitored_prefix": "Nie udało się zmienić nazwy monitorowanej aplikacji:",
       "save_color_prefix": "Nie udało się zapisać koloru aplikacji:",
       "rename_app_prefix": "Nie udało się zmienić nazwy aplikacji:",
@@ -1428,6 +1434,7 @@
     "unfreezing_use_the_flame_icon_to_restore_a_project_to_th": "Odmrażanie (Unfreeze) – ikona płomienia przywraca projekt do listy aktywnych zadań.",
     "folder_sync_timeflow_scans_paths_on_every_dashboard_star": "Synchronizacja folderów – TIMEFLOW okresowo skanuje skonfigurowane ścieżki podczas startu dashboardu i automatycznie dodaje nowe projekty (w tym repozytoria .git). Gdy znajdzie nowe pozycje, na dashboardzie pojawia się powiadomienie o wykrytych projektach.",
     "candidate_detection_the_system_suggests_project_creation": "Detekcja kandydatów – system sugeruje utworzenie projektów na podstawie aktywności w folderach.",
+    "duplicate_name_marker_projects_with_similar_names_are_marked": "Znacznik duplikatu nazw – projekty o bardzo podobnych nazwach są oznaczane badge'em `D`, a lista pokazuje liczbę potencjalnych kolizji w bieżącej zakładce.",
     "root_folders_manage_disk_locations_that_timeflow_should": "Root folders – zarządzaj miejscami na dysku, które TIMEFLOW ma obserwować.",
     "exclude_remove_projects_from_view_without_permanently_de": "Wykluczanie (Exclude) – usuwaj projekty z widoku bez ich permanentnego skasowania z bazy.",
     "search_filter_projects_by_name_or_folder_path_in_real_ti": "Wyszukiwanie – filtruj projekty po nazwie lub ścieżce folderu w czasie rzeczywistym.",
@@ -1460,6 +1467,7 @@
     "app_data_archiving_reset_tracking_time_without_deleting": "Archiwizacja danych aplikacji – możliwość zresetowania czasu bez usuwania definicji.",
     "directly_assign_an_entire_application_to_a_specific_proj": "Bezpośrednie przypisanie całej aplikacji do konkretnego projektu.",
     "monitored_applications_section_for_managing_processes_ac": "Monitorowane aplikacje – sekcja zarządzania procesami, które Daemon aktywnie śledzi. Dodawaj nowe procesy (exe_name + nazwa wyświetlana), usuwaj zbędne, zmieniaj nazwy. Liczba monitorowanych aplikacji widoczna jako badge.",
+    "sync_from_apps_button_copies_detected_apps_into_the_monitored_list": "Przycisk `Synchronizuj z aplikacji` kopiuje wykryte pozycje z listy Applications do listy monitorowanej, bez ręcznego przepisywania nazw exe.",
     "app_colors_inline_picker_with_preset_palette_and_custom": "Kolorystyka aplikacji – inline picker z paletą presetów i dowolnym kolorem. Kliknij kolor obok nazwy aplikacji, aby go zmienić.",
     "imported_badge_label_on_applications_that_came_from_impo": "Oznaczenie \"Imported\" – badge przy aplikacjach, które pojawiły się z importowanych danych, a nie z bieżącego monitoringu.",
     "list_pagination_for_large_app_lists_a_load_more_control": "Paginacja listy – dla dużej liczby aplikacji dostępna jest funkcja \"Załaduj więcej\", aby nie obciążać widoku.",
@@ -1563,7 +1571,7 @@
     "real_time_logs_preview_of_the_event_log_to_identify_issu": "Real-time Logs – podgląd dziennika zdarzeń w celu identyfikacji problemów.",
     "version_insight_information_on_the_compatibility_of_daem": "Wgląd w wersję – informacja o kompatybilności wersji Daemona i Dashboardu.",
     "localization_the_daemon_tray_menu_automatically_switches": "Lokalizacja – menu tray Daemona automatycznie przełącza się między PL/EN na podstawie ustawień języka w Dashboardzie (Ustawienia > Język).",
-    "monitor_all_fallback_if_the_monitored_process_list_is_em": "Fallback monitor-all – jeśli lista monitorowanych procesów jest pusta, daemon zaczyna śledzić wszystkie aplikacje, więc warto skonfigurować zakładkę Applications przed uruchomieniem pracy produkcyjnej.",
+    "monitor_all_fallback_if_the_monitored_process_list_is_em": "Pusta lista monitorowanych procesów zatrzymuje tracking. TIMEFLOW nie przechodzi wtedy w tryb monitor-all, więc przed pracą produkcyjną skonfiguruj zakładkę Applications.",
     "monitored_apps_with_empty_window_titles_are_still_counted": "Monitorowane aplikacje z pustym tytułem okna nadal naliczają czas pracy. W takim przypadku TIMEFLOW może nie mieć nazwy dokumentu/pliku, ale sama sesja aplikacji nie znika z trackingu.",
     "unassigned_sessions_indicator_badge_with_the_count_of_se": "Wskaźnik nieprzypisanych sesji – badge z liczbą sesji wymagających przypisania, widoczny bezpośrednio na ekranie Daemona.",
     "log_auto_refresh_button_to_enable_automatic_real_time_lo": "Auto-refresh logów – przycisk włączający automatyczne odświeżanie podglądu logów w czasie rzeczywistym.",
@@ -1643,6 +1651,7 @@
     "folder_project_candidates": "Kandydaci projektów z folderów",
     "hidden_already_registered_folders": "Ukryte już zarejestrowane foldery:",
     "detected_projects_opened_2_times": "Wykryte projekty (otwarte >= 2 razy)",
+    "detected_project_opens_duration": "Otwarcia: {{count}} · {{duration}}",
     "no_detected_projects": "Brak wykrytych projektów",
     "no_candidate_projects_detected_items_already_match_exist": "Brak projektów kandydujących (wykryte elementy pasują już do istniejących/wykluczonych projektów).",
     "from": "z:",

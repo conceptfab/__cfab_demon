@@ -31,6 +31,13 @@ import { eachDayOfInterval, format, parseISO } from "date-fns";
 import { formatDuration } from "@/lib/utils";
 import type { DateRange, StackedBarData } from "@/lib/db-types";
 import { resolveDateFnsLocale } from "@/lib/date-locale";
+import {
+  buildStackedSeriesMetaMap,
+  getStackedSeriesColor,
+  getStackedSeriesKeys,
+  getStackedSeriesLabel,
+  OTHER_STACKED_SERIES_KEY,
+} from "@/lib/stacked-bar-series";
 
 interface TimelineChartPresentationProps {
   projectColors?: Record<string, string>;
@@ -119,14 +126,12 @@ export function TimelineChart({
   } = state ?? {};
   const effectiveTitle = title ?? t("components.timeline_chart.default_title");
   const hoveredDateRef = useRef<string | null>(null);
+  const seriesMetaByKey = useMemo(() => buildStackedSeriesMetaMap(data), [data]);
   const seriesKeys = useMemo(() => {
     const keys = new Set<string>();
     const totals = new Map<string, number>();
     for (const row of data) {
-      for (const key of Object.keys(row)) {
-        if (key === "date" || key === "comments" || key === "has_boost" || key === "has_manual") {
-          continue;
-        }
+      for (const key of getStackedSeriesKeys(row)) {
         keys.add(key);
         const value = row[key];
         if (typeof value === "number" && Number.isFinite(value)) {
@@ -135,13 +140,17 @@ export function TimelineChart({
       }
     }
     return Array.from(keys).sort((a, b) => {
-      if (a === "Other") return 1;
-      if (b === "Other") return -1;
+      if (a === OTHER_STACKED_SERIES_KEY) return 1;
+      if (b === OTHER_STACKED_SERIES_KEY) return -1;
       const diff = (totals.get(b) ?? 0) - (totals.get(a) ?? 0);
       if (Math.abs(diff) > 0.001) return diff;
-      return a.localeCompare(b, undefined, { sensitivity: "base" });
+      return getStackedSeriesLabel(seriesMetaByKey, a).localeCompare(
+        getStackedSeriesLabel(seriesMetaByKey, b),
+        undefined,
+        { sensitivity: "base" },
+      );
     });
-  }, [data]);
+  }, [data, seriesMetaByKey]);
 
   const chartData = useMemo(() => {
     if (granularity === "day" && dateRange?.start && dateRange?.end) {
@@ -171,7 +180,7 @@ export function TimelineChart({
         return days.map((day) => {
           const dateKey = format(day, "yyyy-MM-dd");
           const row = byDate.get(dateKey);
-          const out: Record<string, string | number | string[] | boolean | undefined> = { date: dateKey };
+          const out: StackedBarData = { date: dateKey };
           for (const key of seriesKeys) {
             const val = row?.[key];
             out[key] = typeof val === "number" ? val : 0;
@@ -179,13 +188,14 @@ export function TimelineChart({
           out.comments = row?.comments;
           out.has_boost = row?.has_boost;
           out.has_manual = row?.has_manual;
+          out.series_meta = row?.series_meta;
           return out;
         });
       }
     }
 
     return data.map((row) => {
-      const out: Record<string, string | number | string[] | boolean | undefined> = { date: row.date };
+      const out: StackedBarData = { date: row.date };
       for (const key of seriesKeys) {
         const val = row[key];
         out[key] = typeof val === "number" ? val : 0;
@@ -193,6 +203,7 @@ export function TimelineChart({
       out.comments = row.comments;
       out.has_boost = row.has_boost;
       out.has_manual = row.has_manual;
+      out.series_meta = row.series_meta;
       return out;
     });
   }, [data, seriesKeys, granularity, dateRange, trimLeadingToFirstData]);
@@ -276,7 +287,10 @@ export function TimelineChart({
 
     const items = payload
       .map((entry) => ({
-        name: String(entry.name ?? ""),
+        name: getStackedSeriesLabel(
+          seriesMetaByKey,
+          String(entry.name ?? ""),
+        ),
         color: entry.color ?? CHART_MUTED_SERIES_COLOR,
         value: Number(entry.value ?? 0),
       }))
@@ -340,7 +354,7 @@ export function TimelineChart({
         )}
       </div>
     );
-  }, [t, xLabelFormatter]);
+  }, [seriesMetaByKey, t, xLabelFormatter]);
 
   const renderCustomAxisTick = useCallback((props: unknown) => {
     const { x = 0, y = 0, payload } = (props ?? {}) as AxisTickProps;
@@ -478,15 +492,21 @@ export function TimelineChart({
                     cursor={false}
                   />
                   {seriesKeys.map((key, idx) => {
+                    const label = getStackedSeriesLabel(seriesMetaByKey, key);
                     const color =
-                      key === "Other"
+                      key === OTHER_STACKED_SERIES_KEY
                         ? CHART_MUTED_SERIES_COLOR
-                        : (projectColors[key] ?? PALETTE[idx % PALETTE.length]);
+                        : (
+                          getStackedSeriesColor(seriesMetaByKey, key) ??
+                          projectColors[label] ??
+                          projectColors[key] ??
+                          PALETTE[idx % PALETTE.length]
+                        );
                     return (
                       <Bar
                         key={key}
                         dataKey={key}
-                        name={key}
+                        name={label}
                         stackId="projects"
                         fill={color}
                         radius={isHourly ? [2, 2, 0, 0] : [4, 4, 0, 0]}

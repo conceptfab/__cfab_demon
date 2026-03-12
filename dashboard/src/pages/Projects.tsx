@@ -784,7 +784,7 @@ export function Projects() {
     localStorage.setItem(SORT_STORAGE_KEY, sortBy);
     localStorage.setItem(FOLDERS_STORAGE_KEY, String(useFolders));
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
-    setFolderInfo('View settings saved as default');
+    setFolderInfo(t('projects.messages.view_settings_saved'));
     setTimeout(() => setFolderInfo(null), 3000);
   };
 
@@ -1578,8 +1578,10 @@ export function Projects() {
                           {d.inferredProjectName}
                         </p>
                         <p className="truncate text-muted-foreground">
-                          {d.occurrence_count} opens -{' '}
-                          {formatDuration(d.total_seconds)}
+                          {t('projects_page.detected_project_opens_duration', {
+                            count: d.occurrence_count,
+                            duration: formatDuration(d.total_seconds),
+                          })}
                         </p>
                         {d.inferredProjectName !== d.file_name && (
                           <p

@@ -14,6 +14,7 @@ import {
   formatMultiplierLabel,
   logTauriError,
 } from '@/lib/utils';
+import { localizeProjectLabel } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { addDays, format, parseISO, subDays } from 'date-fns';
@@ -1598,7 +1599,13 @@ export function Sessions() {
                   <span className="text-[11px] text-sky-200">
                     {t('sessions.menu.ai_suggests')}{' '}
                     <span className="font-medium">
-                      {ctxMenu.session.suggested_project_name}
+                      {localizeProjectLabel(
+                        ctxMenu.session.suggested_project_name,
+                        {
+                          projectId:
+                            ctxMenu.session.suggested_project_id ?? null,
+                        },
+                      )}
                     </span>
                     {ctxMenu.session.suggested_confidence !== undefined && (
                       <span className="ml-1 opacity-75">

@@ -38,6 +38,13 @@ impl Lang {
 
             (Lang::Pl, TrayText::DemonErrorTitle) => "TIMEFLOW - Demon",
             (Lang::En, TrayText::DemonErrorTitle) => "TIMEFLOW - Daemon",
+
+            (Lang::Pl, TrayText::AlreadyRunning) => {
+                "Inna instancja TIMEFLOW Demon jest już uruchomiona."
+            }
+            (Lang::En, TrayText::AlreadyRunning) => {
+                "Another TIMEFLOW Demon instance is already running."
+            }
         }
     }
 }
@@ -53,6 +60,7 @@ pub enum TrayText {
     VersionMismatchTemplate,
     VersionErrorTitle,
     DemonErrorTitle,
+    AlreadyRunning,
 }
 
 fn language_file_path() -> Option<PathBuf> {

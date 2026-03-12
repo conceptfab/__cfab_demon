@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use rusqlite::OptionalExtension;
 use tauri::AppHandle;
 
-use super::analysis::compute_project_activity_unique;
+use super::analysis::{compute_project_activity_unique, project_series_key};
 use super::helpers::run_db_blocking;
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{DateRange, EstimateProjectRow, EstimateSettings, EstimateSummary};
@@ -11,7 +11,7 @@ use super::types::{DateRange, EstimateProjectRow, EstimateSettings, EstimateSumm
 const DEFAULT_GLOBAL_HOURLY_RATE: f64 = 100.0;
 const MAX_HOURLY_RATE: f64 = 100000.0;
 type ProjectMetaRow = (i64, String, String, Option<f64>);
-type ProjectMetaByName = HashMap<String, ProjectMetaRow>;
+type ProjectMetaById = HashMap<i64, ProjectMetaRow>;
 
 fn sanitize_rate(rate: f64) -> Option<f64> {
     if rate.is_finite() && (0.0..=MAX_HOURLY_RATE).contains(&rate) {
@@ -53,7 +53,7 @@ fn get_global_hourly_rate(conn: &rusqlite::Connection) -> Result<f64, String> {
     Ok(parsed)
 }
 
-fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaByName, String> {
+fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaById, String> {
     let mut stmt = conn
         .prepare_cached("SELECT id, name, color, hourly_rate FROM projects")
         .map_err(|e| e.to_string())?;
@@ -72,7 +72,7 @@ fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaByName, 
     let mut out = HashMap::new();
     for row in rows {
         let row = row.map_err(|e| format!("Failed to read project metadata row: {}", e))?;
-        out.insert(row.1.to_lowercase(), row);
+        out.insert(row.0, row);
     }
     Ok(out)
 }
@@ -84,30 +84,31 @@ fn query_project_session_counts(
     let sql = format!(
         "{SESSION_PROJECT_CTE},
          combined AS (
-             SELECT COALESCE(p.name, 'Unassigned') as project_name, 1 as session_count
+             SELECT sp.project_id as project_id, 1 as session_count
              FROM session_projects sp
              LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
+             WHERE sp.project_id IS NULL OR p.id IS NOT NULL
              UNION ALL
-             SELECT p.name as project_name, 1 as session_count
+             SELECT ms.project_id as project_id, 1 as session_count
              FROM manual_sessions ms
              JOIN projects p ON p.id = ms.project_id
              WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
          )
-         SELECT project_name, SUM(session_count) as session_count
+         SELECT project_id, SUM(session_count) as session_count
          FROM combined
-         GROUP BY project_name"
+         GROUP BY project_id"
     );
     let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, i64>(1)?))
         })
         .map_err(|e| e.to_string())?;
 
     let mut out = HashMap::new();
     for row in rows {
         let row = row.map_err(|e| format!("Failed to read project session count row: {}", e))?;
-        out.insert(row.0.to_lowercase(), row.1);
+        out.insert(project_series_key(row.0), row.1);
     }
     Ok(out)
 }
@@ -124,30 +125,31 @@ fn query_project_multiplier_extra_seconds(
     let sql = format!(
         "{SESSION_PROJECT_CTE},
          combined AS (
-             SELECT COALESCE(p.name, 'Unassigned') as project_name,
+             SELECT sp.project_id as project_id,
                     CASE
                         WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
                         ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
                     END as extra_seconds
              FROM session_projects sp
              LEFT JOIN projects p ON p.id = sp.project_id AND p.excluded_at IS NULL
+             WHERE sp.project_id IS NULL OR p.id IS NOT NULL
              UNION ALL
-             SELECT p.name as project_name, 0.0 as extra_seconds
+             SELECT ms.project_id as project_id, 0.0 as extra_seconds
              FROM manual_sessions ms
              JOIN projects p ON p.id = ms.project_id
              WHERE ms.date >= ?1 AND ms.date <= ?2 AND p.excluded_at IS NULL
          )
-         SELECT project_name,
+         SELECT project_id,
                 SUM(extra_seconds) as extra_seconds,
                 SUM(CASE WHEN extra_seconds > 0.0 THEN 1 ELSE 0 END) as multiplied_count
          FROM combined
-         GROUP BY project_name"
+         GROUP BY project_id"
     );
     let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
             Ok((
-                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(0)?,
                 row.get::<_, f64>(1)?,
                 row.get::<_, i64>(2)?,
             ))
@@ -158,7 +160,7 @@ fn query_project_multiplier_extra_seconds(
     for row in rows {
         let row = row.map_err(|e| format!("Failed to read multiplier aggregate row: {}", e))?;
         out.insert(
-            row.0.to_lowercase(),
+            project_series_key(row.0),
             MultiplierInfo {
                 extra_seconds: row.1,
                 session_count: row.2,
@@ -173,7 +175,8 @@ fn build_estimate_rows(
     date_range: &DateRange,
 ) -> Result<Vec<EstimateProjectRow>, String> {
     let global_hourly_rate = get_global_hourly_rate(conn)?;
-    let (_, totals, _, _) = compute_project_activity_unique(conn, date_range, false, true, None)?;
+    let (_, totals, series_meta_by_key, _, _) =
+        compute_project_activity_unique(conn, date_range, false, true, None)?;
     if totals.is_empty() {
         return Ok(Vec::new());
     }
@@ -184,18 +187,20 @@ fn build_estimate_rows(
         query_project_multiplier_extra_seconds(conn, date_range)?;
 
     let mut rows: Vec<EstimateProjectRow> = Vec::new();
-    for (project_name, seconds_f64) in totals {
-        if project_name.trim().eq_ignore_ascii_case("unassigned") {
+    for (series_key, seconds_f64) in totals {
+        let Some(project_id) = series_meta_by_key
+            .get(&series_key)
+            .and_then(|series| series.project_id)
+        else {
             continue;
-        }
+        };
 
-        let key = project_name.to_lowercase();
         let Some((project_id, mapped_name, project_color, project_hourly_rate)) =
-            project_meta.get(&key)
+            project_meta.get(&project_id)
         else {
             log::warn!(
-                "Could not resolve project metadata for '{}' while building estimates",
-                project_name
+                "Could not resolve project metadata for project_id={} while building estimates",
+                project_id
             );
             continue;
         };
@@ -203,11 +208,11 @@ fn build_estimate_rows(
         let seconds = seconds_f64.round() as i64;
         let hours = seconds_f64 / 3600.0;
         let effective_hourly_rate = project_hourly_rate.unwrap_or(global_hourly_rate);
-        let mult_info = multiplier_extra_seconds_by_project.get(&key);
+        let mult_info = multiplier_extra_seconds_by_project.get(&series_key);
         let extra_secs = mult_info.map(|m| m.extra_seconds).unwrap_or(0.0);
         let weighted_hours = hours + (extra_secs / 3600.0);
         let estimated_value = weighted_hours * effective_hourly_rate;
-        let session_count = session_counts.get(&key).copied().unwrap_or(0);
+        let session_count = session_counts.get(&series_key).copied().unwrap_or(0);
         let multiplied_session_count = mult_info.map(|m| m.session_count).unwrap_or(0);
 
         rows.push(EstimateProjectRow {

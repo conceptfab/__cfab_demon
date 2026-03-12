@@ -20,7 +20,7 @@ import {
 } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { AppTooltip } from '@/components/ui/app-tooltip';
-import { formatDuration, logTauriError } from '@/lib/utils';
+import { formatDuration, getErrorMessage, logTauriError } from '@/lib/utils';
 import { handleSettledResult } from '@/lib/async-utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
@@ -60,9 +60,57 @@ export function Applications() {
   const [syncingMonitored, setSyncingMonitored] = useState(false);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
 
-  const loadMonitored = useCallback(() => {
-    daemonApi.getMonitoredApps().then(setMonitored).catch(console.error);
-  }, []);
+  const monitoredDateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language),
+    [i18n.language, i18n.resolvedLanguage],
+  );
+
+  const formatLastUsedDate = useCallback(
+    (value: string | null) => {
+      if (!value) {
+        return t('ui.common.not_available');
+      }
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return value;
+      }
+      return monitoredDateFormatter.format(parsed);
+    },
+    [monitoredDateFormatter, t],
+  );
+
+  const getMonitoredErrorMessage = useCallback(
+    (error: unknown) => {
+      const message = getErrorMessage(error, t('ui.common.unknown_error'));
+      if (message === 'monitored.exe_name_empty') {
+        return t('applications_page.errors.monitored_exe_required');
+      }
+      if (message === 'monitored.display_name_empty') {
+        return t('applications_page.errors.monitored_display_name_required');
+      }
+      if (message === 'monitored.not_found') {
+        return t('applications_page.errors.monitored_not_found');
+      }
+      if (message.startsWith('monitored.already_monitored:')) {
+        return t('applications_page.errors.monitored_already_added', {
+          exeName: message.slice('monitored.already_monitored:'.length),
+        });
+      }
+      return message;
+    },
+    [t],
+  );
+
+  const loadMonitored = useCallback(async () => {
+    try {
+      const value = await daemonApi.getMonitoredApps();
+      setMonitored(value);
+      setMonitoredError('');
+    } catch (error) {
+      logTauriError('load monitored apps', error);
+      setMonitoredError(t('applications_page.errors.load_monitored'));
+    }
+  }, [t]);
 
   useEffect(() => {
     const handleLocalDataChange = (event: Event) => {
@@ -144,18 +192,21 @@ export function Applications() {
       await daemonApi.addMonitoredApp(newExe, newDisplay);
       setNewExe('');
       setNewDisplay('');
-      loadMonitored();
+      await loadMonitored();
     } catch (e) {
-      setMonitoredError(String(e));
+      setMonitoredError(getMonitoredErrorMessage(e));
     }
   };
 
   const handleRemoveApp = async (exeName: string) => {
     try {
       await daemonApi.removeMonitoredApp(exeName);
-      loadMonitored();
+      await loadMonitored();
     } catch (e) {
-      console.error(e);
+      logTauriError('remove monitored app', e);
+      const message = getMonitoredErrorMessage(e);
+      setMonitoredError(message);
+      showError(message);
     }
   };
 
@@ -167,20 +218,19 @@ export function Applications() {
       onConfirm: async (next) => {
         const trimmed = next.trim();
         if (!trimmed) {
-          showError(t('applications_page.errors.app_name_empty'));
+          showError(t('applications_page.errors.monitored_display_name_required'));
           return;
         }
         if (trimmed === current) return;
 
         try {
           await daemonApi.renameMonitoredApp(app.exe_name, trimmed);
-          loadMonitored();
+          await loadMonitored();
         } catch (e) {
           logTauriError('rename monitored app', e);
-          showError(
-            t('applications_page.errors.rename_monitored_prefix') +
-              ` ${String(e)}`,
-          );
+          const message = getMonitoredErrorMessage(e);
+          setMonitoredError(message);
+          showError(message);
         }
       },
     });
@@ -191,7 +241,7 @@ export function Applications() {
     setSyncingMonitored(true);
     try {
       const result = await daemonApi.syncMonitoredAppsFromApplications();
-      loadMonitored();
+      await loadMonitored();
       if (result.added > 0) {
         showInfo(
           t('applications_page.messages.sync_monitored_added', {
@@ -205,7 +255,7 @@ export function Applications() {
     } catch (error) {
       logTauriError('sync monitored apps from applications', error);
       const message =
-        `${t('applications_page.errors.sync_monitored_prefix')} ${String(error)}`;
+        `${t('applications_page.errors.sync_monitored_prefix')} ${getErrorMessage(error, t('ui.common.unknown_error'))}`;
       setMonitoredError(message);
       showError(message);
     } finally {
@@ -589,9 +639,7 @@ export function Applications() {
                   </td>
                   <td className="px-4 py-3 font-mono">{app.session_count}</td>
                   <td className="px-4 py-3 text-muted-foreground">
-                    {app.last_used
-                      ? new Date(app.last_used).toLocaleDateString()
-                      : i18n.t('ui.common.not_available')}
+                    {formatLastUsedDate(app.last_used)}
                   </td>
                   <td className="px-4 py-3">
                     {app.project_name ? (

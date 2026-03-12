@@ -15,6 +15,7 @@ use super::helpers::{
 use super::types::DaemonStatus;
 use crate::db;
 const DAEMON_VERSION_CACHE_TTL: Duration = Duration::from_secs(300);
+const DAEMON_PROCESS_CACHE_TTL: Duration = Duration::from_secs(45);
 
 #[derive(Clone)]
 struct DaemonVersionCacheEntry {
@@ -23,9 +24,21 @@ struct DaemonVersionCacheEntry {
     cached_at: Instant,
 }
 
+#[derive(Clone, Copy)]
+struct DaemonProcessCacheEntry {
+    running: bool,
+    pid: Option<u32>,
+    cached_at: Instant,
+}
+
 fn daemon_version_cache() -> &'static Mutex<Option<DaemonVersionCacheEntry>> {
     static DAEMON_VERSION_CACHE: OnceLock<Mutex<Option<DaemonVersionCacheEntry>>> = OnceLock::new();
     DAEMON_VERSION_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn daemon_process_cache() -> &'static Mutex<Option<DaemonProcessCacheEntry>> {
+    static DAEMON_PROCESS_CACHE: OnceLock<Mutex<Option<DaemonProcessCacheEntry>>> = OnceLock::new();
+    DAEMON_PROCESS_CACHE.get_or_init(|| Mutex::new(None))
 }
 
 fn read_cached_daemon_version(exe: &std::path::Path) -> Option<String> {
@@ -48,6 +61,35 @@ fn store_cached_daemon_version(exe: &std::path::Path, version: &str) {
         version: version.to_string(),
         cached_at: Instant::now(),
     });
+}
+
+fn read_cached_daemon_process_status() -> Option<(bool, Option<u32>)> {
+    let guard = daemon_process_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entry = guard.as_ref()?;
+    if entry.cached_at.elapsed() > DAEMON_PROCESS_CACHE_TTL {
+        return None;
+    }
+    Some((entry.running, entry.pid))
+}
+
+fn store_cached_daemon_process_status(running: bool, pid: Option<u32>) {
+    let mut guard = daemon_process_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(DaemonProcessCacheEntry {
+        running,
+        pid,
+        cached_at: Instant::now(),
+    });
+}
+
+fn clear_cached_daemon_process_status() {
+    let mut guard = daemon_process_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = None;
 }
 
 fn load_daemon_version(exe: &std::path::Path) -> Option<String> {
@@ -185,6 +227,95 @@ fn query_unassigned_counts(app: &AppHandle, min_duration_sec: i64) -> (i64, i64)
     .unwrap_or((0, 0))
 }
 
+fn query_daemon_process_status() -> Result<(bool, Option<u32>), String> {
+    let mut cmd = Command::new("tasklist");
+    no_console(&mut cmd);
+    let output = cmd
+        .args([
+            "/FI",
+            &format!("IMAGENAME eq {}", DAEMON_EXE_NAME),
+            "/FO",
+            "CSV",
+            "/NH",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut running = false;
+    let mut pid = None;
+
+    for line in stdout.lines() {
+        if line.contains(DAEMON_EXE_NAME) {
+            running = true;
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 2 {
+                pid = parts[1].trim_matches('"').parse::<u32>().ok();
+            }
+            break;
+        }
+    }
+
+    Ok((running, pid))
+}
+
+fn load_daemon_process_status(use_cache: bool) -> Result<(bool, Option<u32>), String> {
+    if use_cache {
+        if let Some(status) = read_cached_daemon_process_status() {
+            return Ok(status);
+        }
+    }
+
+    let status = query_daemon_process_status()?;
+    store_cached_daemon_process_status(status.0, status.1);
+    Ok(status)
+}
+
+fn build_daemon_status(
+    app: &AppHandle,
+    min_duration: Option<i64>,
+    use_cached_process: bool,
+    include_assignment_counts: bool,
+) -> Result<DaemonStatus, String> {
+    let (running, pid) = load_daemon_process_status(use_cached_process)?;
+    let exe_path = find_daemon_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().to_string());
+    let autostart = startup_dir()
+        .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
+        .unwrap_or(false);
+
+    let (unassigned_sessions, unassigned_apps) = if include_assignment_counts {
+        let min_dur = min_duration.unwrap_or_else(load_persisted_session_min_duration);
+        query_unassigned_counts(app, min_dur)
+    } else {
+        (0, 0)
+    };
+
+    let daemon_version = find_daemon_exe()
+        .ok()
+        .and_then(|exe| load_daemon_version(&exe));
+
+    let is_compatible = if let Some(ref dv) = daemon_version {
+        version_compat::check_version_compatibility(dv, crate::VERSION.trim())
+    } else {
+        true
+    };
+
+    Ok(DaemonStatus {
+        running,
+        pid,
+        exe_path,
+        autostart,
+        needs_assignment: unassigned_sessions > 0,
+        unassigned_sessions,
+        unassigned_apps,
+        version: daemon_version,
+        dashboard_version: crate::VERSION.trim().to_string(),
+        is_compatible,
+    })
+}
+
 fn load_persisted_session_min_duration() -> i64 {
     let base_dir = match timeflow_data_dir() {
         Ok(dir) => dir,
@@ -205,67 +336,13 @@ pub async fn get_daemon_status(
     app: AppHandle,
     min_duration: Option<i64>,
 ) -> Result<DaemonStatus, String> {
-    run_app_blocking(app, move |app| {
-        let mut cmd = Command::new("tasklist");
-        no_console(&mut cmd);
-        let output = cmd
-            .args([
-                "/FI",
-                &format!("IMAGENAME eq {}", DAEMON_EXE_NAME),
-                "/FO",
-                "CSV",
-                "/NH",
-            ])
-            .output()
-            .map_err(|e| e.to_string())?;
+    run_app_blocking(app, move |app| build_daemon_status(&app, min_duration, false, true))
+    .await
+}
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut running = false;
-        let mut pid = None;
-
-        for line in stdout.lines() {
-            if line.contains(DAEMON_EXE_NAME) {
-                running = true;
-                let parts: Vec<&str> = line.split(',').collect();
-                if parts.len() >= 2 {
-                    pid = parts[1].trim_matches('"').parse::<u32>().ok();
-                }
-                break;
-            }
-        }
-
-        let exe_path = find_daemon_exe()
-            .ok()
-            .map(|p| p.to_string_lossy().to_string());
-        let autostart = startup_dir()
-            .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
-            .unwrap_or(false);
-        let min_dur = min_duration.unwrap_or_else(load_persisted_session_min_duration);
-        let (unassigned_sessions, unassigned_apps) = query_unassigned_counts(&app, min_dur);
-
-        let daemon_version = find_daemon_exe()
-            .ok()
-            .and_then(|exe| load_daemon_version(&exe));
-
-        let is_compatible = if let Some(ref dv) = daemon_version {
-            version_compat::check_version_compatibility(dv, crate::VERSION.trim())
-        } else {
-            true
-        };
-
-        Ok(DaemonStatus {
-            running,
-            pid,
-            exe_path,
-            autostart,
-            needs_assignment: unassigned_sessions > 0,
-            unassigned_sessions,
-            unassigned_apps,
-            version: daemon_version,
-            dashboard_version: crate::VERSION.trim().to_string(),
-            is_compatible,
-        })
-    })
+#[tauri::command]
+pub async fn get_daemon_runtime_status(app: AppHandle) -> Result<DaemonStatus, String> {
+    run_app_blocking(app, move |app| build_daemon_status(&app, None, true, false))
     .await
 }
 
@@ -323,6 +400,7 @@ pub async fn start_daemon() -> Result<(), String> {
     no_console(&mut cmd);
     cmd.spawn()
         .map_err(|e| format!("Failed to start daemon: {}", e))?;
+    clear_cached_daemon_process_status();
     Ok(())
 }
 
@@ -340,6 +418,7 @@ pub async fn stop_daemon() -> Result<(), String> {
             return Err(format!("Failed to stop daemon: {}", stderr));
         }
     }
+    clear_cached_daemon_process_status();
     Ok(())
 }
 
@@ -348,6 +427,7 @@ pub async fn restart_daemon() -> Result<(), String> {
     let mut kill_cmd = Command::new("taskkill");
     no_console(&mut kill_cmd);
     let _ = kill_cmd.args(["/F", "/T", "/IM", DAEMON_EXE_NAME]).output();
+    clear_cached_daemon_process_status();
     tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
     let exe = find_daemon_exe()?;
     let mut start_cmd = Command::new(&exe);
@@ -355,6 +435,7 @@ pub async fn restart_daemon() -> Result<(), String> {
     start_cmd
         .spawn()
         .map_err(|e| format!("Failed to start daemon: {}", e))?;
+    clear_cached_daemon_process_status();
     Ok(())
 }
 

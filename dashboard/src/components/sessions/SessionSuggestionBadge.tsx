@@ -2,6 +2,7 @@ import type { MouseEvent } from 'react';
 import { Check, Sparkles, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SessionWithApp } from '@/lib/db-types';
+import { localizeProjectLabel } from '@/lib/project-labels';
 
 interface SessionSuggestionBadgeProps {
   session: SessionWithApp;
@@ -20,10 +21,13 @@ export function SessionSuggestionBadge({
 }: SessionSuggestionBadgeProps) {
   const { t } = useTranslation();
 
-  const projectName = session.suggested_project_name;
-  if (!projectName) {
+  const rawProjectName = session.suggested_project_name?.trim() ?? '';
+  if (!rawProjectName) {
     return null;
   }
+  const projectName = localizeProjectLabel(rawProjectName, {
+    projectId: session.suggested_project_id ?? null,
+  });
 
   const actions = (
     <div className="flex items-center gap-0.5 ml-1 border-l border-sky-500/20 pl-1.5">

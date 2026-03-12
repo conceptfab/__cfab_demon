@@ -12,6 +12,14 @@ CREATE TABLE IF NOT EXISTS monitored_apps (
     added_at TEXT NOT NULL
 )
 "#;
+const MONITORED_ERR_EXE_NAME_EMPTY: &str = "monitored.exe_name_empty";
+const MONITORED_ERR_DISPLAY_NAME_EMPTY: &str = "monitored.display_name_empty";
+const MONITORED_ERR_NOT_FOUND: &str = "monitored.not_found";
+const MONITORED_ERR_ALREADY_MONITORED_PREFIX: &str = "monitored.already_monitored:";
+
+fn monitored_already_monitored_error(exe_name: &str) -> String {
+    format!("{MONITORED_ERR_ALREADY_MONITORED_PREFIX}{exe_name}")
+}
 
 fn monitored_apps_path() -> Result<std::path::PathBuf, String> {
     let dir = timeflow_data_dir()?;
@@ -151,7 +159,7 @@ pub async fn add_monitored_app(
         ensure_monitored_apps_ready(conn)?;
         let exe = exe_name.trim().to_lowercase();
         if exe.is_empty() {
-            return Err("exe_name cannot be empty".to_string());
+            return Err(MONITORED_ERR_EXE_NAME_EMPTY.to_string());
         }
         let display = if display_name.trim().is_empty() {
             exe.clone()
@@ -166,10 +174,7 @@ pub async fn add_monitored_app(
             )
             .map_err(|e| e.to_string())?;
         if inserted == 0 {
-            return Err(format!(
-                "{} is already monitored",
-                exe_name.trim().to_lowercase()
-            ));
+            return Err(monitored_already_monitored_error(&exe));
         }
         Ok(())
     })
@@ -182,7 +187,7 @@ pub async fn remove_monitored_app(app: AppHandle, exe_name: String) -> Result<()
         ensure_monitored_apps_ready(conn)?;
         let exe = exe_name.trim().to_lowercase();
         if exe.is_empty() {
-            return Err("exe_name cannot be empty".to_string());
+            return Err(MONITORED_ERR_EXE_NAME_EMPTY.to_string());
         }
         conn.execute("DELETE FROM monitored_apps WHERE exe_name = ?1", [exe])
             .map_err(|e| e.to_string())?;
@@ -202,10 +207,10 @@ pub async fn rename_monitored_app(
         let exe = exe_name.trim().to_lowercase();
         let new_name = display_name.trim();
         if exe.is_empty() {
-            return Err("exe_name cannot be empty".to_string());
+            return Err(MONITORED_ERR_EXE_NAME_EMPTY.to_string());
         }
         if new_name.is_empty() {
-            return Err("display_name cannot be empty".to_string());
+            return Err(MONITORED_ERR_DISPLAY_NAME_EMPTY.to_string());
         }
         let updated = conn
             .execute(
@@ -214,7 +219,7 @@ pub async fn rename_monitored_app(
             )
             .map_err(|e| e.to_string())?;
         if updated == 0 {
-            return Err("Monitored app not found".to_string());
+            return Err(MONITORED_ERR_NOT_FOUND.to_string());
         }
         Ok(())
     })

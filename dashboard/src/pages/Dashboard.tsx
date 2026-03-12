@@ -55,6 +55,8 @@ import {
 } from '@/lib/sync-events';
 import { shouldRefreshDashboardPage } from '@/lib/page-refresh-reasons';
 
+const UNASSIGNED_PROJECT_KEY = 'unassigned';
+
 function AutoImportBanner() {
   const { t } = useTranslation();
   const result = useDataStore((s) => s.autoImportResult);
@@ -224,7 +226,8 @@ export function Dashboard() {
     const map = new Map<string, number>();
     for (const s of todaySessions) {
       if ((s.rate_multiplier ?? 1) > 1.000_001) {
-        const key = (s.project_name ?? 'unassigned').toLowerCase();
+        const key =
+          s.project_id == null ? UNASSIGNED_PROJECT_KEY : String(s.project_id);
         map.set(key, (map.get(key) ?? 0) + 1);
       }
     }
@@ -234,7 +237,8 @@ export function Dashboard() {
   const manualCountsByProject = useMemo(() => {
     const map = new Map<string, number>();
     for (const ms of manualSessions) {
-      const key = (ms.project_name ?? 'unassigned').toLowerCase();
+      const key =
+        ms.project_id == null ? UNASSIGNED_PROJECT_KEY : String(ms.project_id);
       map.set(key, (map.get(key) ?? 0) + 1);
     }
     return map;
@@ -370,8 +374,7 @@ export function Dashboard() {
       ),
       shouldLoadTodayData
         ? sessionsApi.getSessions({
-          dateRange,
-            limit: 500,
+            dateRange,
             offset: 0,
             minDuration,
             includeFiles: false,

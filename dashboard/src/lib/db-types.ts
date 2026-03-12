@@ -213,6 +213,7 @@ export interface DashboardData {
 }
 
 export interface ProjectTimeRow {
+  project_id?: number | null;
   name: string;
   seconds: number;
   color: string;
@@ -324,7 +325,21 @@ export interface StackedBarData {
   has_boost?: boolean;
   has_manual?: boolean;
   comments?: string[];
-  [appName: string]: string | number | string[] | boolean | undefined;
+  series_meta?: StackedSeriesMeta[];
+  [appName: string]:
+    | string
+    | number
+    | string[]
+    | boolean
+    | StackedSeriesMeta[]
+    | undefined;
+}
+
+export interface StackedSeriesMeta {
+  key: string;
+  label: string;
+  color: string;
+  project_id?: number | null;
 }
 
 export interface FolderSyncResult {

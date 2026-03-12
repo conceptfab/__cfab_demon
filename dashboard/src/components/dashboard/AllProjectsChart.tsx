@@ -12,6 +12,7 @@ import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDuration } from "@/lib/utils";
+import { localizeProjectLabel } from "@/lib/project-labels";
 import type { ProjectTimeRow } from "@/lib/db-types";
 
 interface Props {
@@ -97,7 +98,9 @@ export function AllProjectsChart({ projects }: Props) {
                   labelStyle={{ color: CHART_TOOLTIP_TITLE_COLOR, fontWeight: 600, marginBottom: 4 }}
                   itemStyle={{ color: CHART_TOOLTIP_TEXT_COLOR }}
                   formatter={(value) => [formatDuration(Number(value)), t("components.all_projects.tooltip_time")]}
-                  labelFormatter={(label) => String(label)}
+                  labelFormatter={(label) =>
+                    localizeProjectLabel(String(label), { projectId: null })
+                  }
                 />
                 <Bar
                   dataKey="seconds"

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import {
   getAssignmentModelStatus,
-  getDaemonStatus,
+  getDaemonRuntimeStatus,
   getDatabaseSettings,
   getSessionCount,
 } from '@/lib/tauri';
@@ -52,7 +52,7 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
         const today = buildTodayDate();
         const [daemonRes, aiRes, todayCountRes, allCountRes] =
           await Promise.allSettled([
-            getDaemonStatus(minDuration),
+            getDaemonRuntimeStatus(),
             getAssignmentModelStatus(),
             getSessionCount({
               dateRange: { start: today, end: today },

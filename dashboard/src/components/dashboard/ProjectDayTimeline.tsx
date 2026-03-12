@@ -14,6 +14,7 @@ import {
   type WorkingHoursSettings,
 } from "@/lib/user-settings";
 import { normalizeHexColor } from "@/lib/normalize";
+import { localizeProjectLabel } from "@/lib/project-labels";
 import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
 import type { PromptConfig } from "@/lib/ui-types";
 import { useUIStore } from "@/store/ui-store";
@@ -754,11 +755,15 @@ export function ProjectDayTimeline({
         projectById.has(resolvedSuggestedProjectId)
       );
       const suggestedName =
-        normalizedSuggestedName
-        ?? (resolvedSuggestedProjectId != null
-          ? projectById.get(resolvedSuggestedProjectId)?.name
-          : undefined)
-        ?? "Unknown";
+        localizeProjectLabel(
+          normalizedSuggestedName ??
+            (resolvedSuggestedProjectId != null
+              ? projectById.get(resolvedSuggestedProjectId)?.name
+              : undefined),
+          {
+            projectId: resolvedSuggestedProjectId ?? null,
+          },
+        ) || "Unknown";
 
       row.segments.push({
         sessionId: item.s.id,

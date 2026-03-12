@@ -386,27 +386,36 @@ fn query_projects_with_stats(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut all_time_totals: std::collections::HashMap<String, i64> =
+    let mut all_time_totals: std::collections::HashMap<i64, i64> =
         std::collections::HashMap::new();
-    let mut period_totals: std::collections::HashMap<String, i64> =
+    let mut period_totals: std::collections::HashMap<i64, i64> =
         std::collections::HashMap::new();
 
     // 1. Always compute All-Time totals
     if let (Some(start), Some(end)) = (min_date.clone(), max_date.clone()) {
-        let (_, totals, _, _) =
+        let (_, totals, series_meta_by_key, _, _) =
             compute_project_activity_unique(conn, &DateRange { start, end }, false, false, None)?;
         all_time_totals = totals
             .into_iter()
-            .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
+            .filter_map(|(series_key, seconds)| {
+                series_meta_by_key
+                    .get(&series_key)
+                    .and_then(|series| series.project_id.map(|project_id| (project_id, seconds.round() as i64)))
+            })
             .collect();
     }
 
     // 2. Compute Period totals if date_range is provided
     if let Some(range) = date_range {
-        let (_, totals, _, _) = compute_project_activity_unique(conn, range, false, false, None)?;
+        let (_, totals, series_meta_by_key, _, _) =
+            compute_project_activity_unique(conn, range, false, false, None)?;
         period_totals = totals
             .into_iter()
-            .map(|(name, seconds)| (name.to_lowercase(), seconds.round() as i64))
+            .filter_map(|(series_key, seconds)| {
+                series_meta_by_key
+                    .get(&series_key)
+                    .and_then(|series| series.project_id.map(|project_id| (project_id, seconds.round() as i64)))
+            })
             .collect();
     }
 
@@ -433,7 +442,7 @@ fn query_projects_with_stats(
     let rows = stmt
         .query_map([], |row| {
             let name: String = row.get(1)?;
-            let key = name.to_lowercase();
+            let project_id: i64 = row.get(0)?;
             let last_session: Option<String> = row.get(6)?;
             let last_manual: Option<String> = row.get(7)?;
             let last_activity = match (last_session, last_manual) {
@@ -443,14 +452,14 @@ fn query_projects_with_stats(
                 (None, None) => None,
             };
             Ok(ProjectWithStats {
-                id: row.get(0)?,
+                id: project_id,
                 name,
                 color: row.get(2)?,
                 created_at: row.get::<_, String>(3).unwrap_or_default(),
                 excluded_at: row.get(4)?,
-                total_seconds: *all_time_totals.get(&key).unwrap_or(&0),
+                total_seconds: *all_time_totals.get(&project_id).unwrap_or(&0),
                 period_seconds: if date_range.is_some() {
-                    Some(*period_totals.get(&key).unwrap_or(&0))
+                    Some(*period_totals.get(&project_id).unwrap_or(&0))
                 } else {
                     None
                 },
@@ -1264,7 +1273,7 @@ pub async fn get_project_extra_info(
     date_range: DateRange,
 ) -> Result<ProjectExtraInfo, String> {
     run_db_blocking(app, move |conn| {
-        let (name, hourly_rate): (String, Option<f64>) = conn
+        let (_name, hourly_rate): (String, Option<f64>) = conn
             .query_row(
                 "SELECT name, hourly_rate FROM projects WHERE id = ?1",
                 [id],
@@ -1323,7 +1332,7 @@ pub async fn get_project_extra_info(
 
         let mut current_value = 0.0;
         if let Some((start, end)) = all_time_bounds {
-            let (_, totals_raw, _, _) = compute_project_activity_unique(
+            let (_, totals_raw, series_meta_by_key, _, _) = compute_project_activity_unique(
                 conn,
                 &DateRange {
                     start: start.to_string(),
@@ -1333,24 +1342,32 @@ pub async fn get_project_extra_info(
                 false,
                 None,
             )?;
-            let totals: HashMap<String, f64> = totals_raw
+            let totals: HashMap<i64, f64> = totals_raw
                 .into_iter()
-                .map(|(k, v)| (k.to_lowercase(), v))
+                .filter_map(|(series_key, seconds)| {
+                    series_meta_by_key
+                        .get(&series_key)
+                        .and_then(|series| series.project_id.map(|project_id| (project_id, seconds)))
+                })
                 .collect();
-            let clock_seconds = totals.get(&name.to_lowercase()).cloned().unwrap_or(0.0);
+            let clock_seconds = totals.get(&id).copied().unwrap_or(0.0);
             let extra_seconds = get_extra_secs(conn, start, end, id)?;
             current_value = ((clock_seconds + extra_seconds) / 3600.0) * effective_rate;
         }
 
-        let (_, period_totals_raw, _, _) =
+        let (_, period_totals_raw, period_series_meta_by_key, _, _) =
             compute_project_activity_unique(conn, &date_range, false, false, None)?;
-        let period_totals: HashMap<String, f64> = period_totals_raw
+        let period_totals: HashMap<i64, f64> = period_totals_raw
             .into_iter()
-            .map(|(k, v)| (k.to_lowercase(), v))
+            .filter_map(|(series_key, seconds)| {
+                period_series_meta_by_key
+                    .get(&series_key)
+                    .and_then(|series| series.project_id.map(|project_id| (project_id, seconds)))
+            })
             .collect();
         let period_clock_seconds = period_totals
-            .get(&name.to_lowercase())
-            .cloned()
+            .get(&id)
+            .copied()
             .unwrap_or(0.0);
         let period_extra_seconds = get_extra_secs(conn, &date_range.start, &date_range.end, id)?;
         let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;

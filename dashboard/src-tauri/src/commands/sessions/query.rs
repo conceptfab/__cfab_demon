@@ -360,17 +360,15 @@ pub async fn get_sessions(
                 continue;
             }
 
-            let mut overlap_by_project: HashMap<i64, (i64, String, String)> = HashMap::new();
+            let mut overlap_by_project: HashMap<i64, (i64, Option<String>, String)> =
+                HashMap::new();
             for indexed_file in matching_files {
                 let f = &indexed_file.activity;
                 let Some(pid) = f.project_id else { continue };
                 let Some(overlap_ms) = indexed_file.overlap_ms(session_start, session_end) else {
                     continue;
                 };
-                let name = f
-                    .project_name
-                    .clone()
-                    .unwrap_or_else(|| "Unassigned".to_string());
+                let name = f.project_name.clone().filter(|value| !value.trim().is_empty());
                 let color = f
                     .project_color
                     .clone()
@@ -386,7 +384,7 @@ pub async fn get_sessions(
                 let span_ms = session_end - session_start;
                 if overlap_ms * 2 >= span_ms {
                     inferred_project_by_session.insert(session.id, Some(pid));
-                    session.suggested_project_name = Some(name);
+                    session.suggested_project_name = name;
                     session.suggested_project_id = Some(pid);
                     session.suggested_confidence = Some(1.0);
                 }

@@ -30,7 +30,7 @@ import {
   type HelpTabId,
 } from '@/lib/help-navigation';
 import { useTranslation } from 'react-i18next';
-import { getDaemonStatus } from '@/lib/tauri';
+import { getDaemonRuntimeStatus } from '@/lib/tauri';
 
 export function Help() {
   const { t: t18n } = useTranslation();
@@ -42,7 +42,9 @@ export function Help() {
 
   const [version, setVersion] = useState<string>('');
   useEffect(() => {
-    getDaemonStatus().then((s) => setVersion(s.dashboard_version ?? '')).catch(() => {});
+    getDaemonRuntimeStatus()
+      .then((s) => setVersion(s.dashboard_version ?? ''))
+      .catch(() => {});
   }, []);
 
   const activeTabValue = normalizeHelpTab(activeTab, 'dashboard');
@@ -397,6 +399,7 @@ export function Help() {
                   t18n('help_page.unfreezing_use_the_flame_icon_to_restore_a_project_to_th'),
                   t18n('help_page.folder_sync_timeflow_scans_paths_on_every_dashboard_star'),
                   t18n('help_page.candidate_detection_the_system_suggests_project_creation'),
+                  t18n('help_page.duplicate_name_marker_projects_with_similar_names_are_marked'),
                   t18n('help_page.root_folders_manage_disk_locations_that_timeflow_should'),
                   t18n('help_page.exclude_remove_projects_from_view_without_permanently_de'),
                   t18n('help_page.search_filter_projects_by_name_or_folder_path_in_real_ti'),
@@ -470,6 +473,7 @@ export function Help() {
                   t18n('help_page.app_data_archiving_reset_tracking_time_without_deleting'),
                   t18n('help_page.directly_assign_an_entire_application_to_a_specific_proj'),
                   t18n('help_page.monitored_applications_section_for_managing_processes_ac'),
+                  t18n('help_page.sync_from_apps_button_copies_detected_apps_into_the_monitored_list'),
                   t18n('help_page.app_colors_inline_picker_with_preset_palette_and_custom'),
                   t18n('help_page.imported_badge_label_on_applications_that_came_from_impo'),
                   t18n('help_page.list_pagination_for_large_app_lists_a_load_more_control'),
