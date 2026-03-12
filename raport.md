@@ -1,543 +1,273 @@
 # Raport analizy dashboardu i demona TIMEFLOW
 
-Data analizy: 2026-03-11
-
-## Etapy realizacji
-
-- [x] Ujednolicono tryb listy projektów do przypisywania między `Sessions` i timeline dashboardu.
-- [x] Doprecyzowano w UI i Help, że filtr `Tylko nieprzypisane` pokazuje sesje ze wszystkich dat.
-- [x] Przeniesiono statusy i opisy online sync do tłumaczeń `i18n`.
-- [x] Ograniczono koszt diagnostyki daemona przez rzadsze odświeżanie i cache wersji EXE.
-- [x] Zlokalizowano domyślne nazwy szablonów raportów zapisujące się do `localStorage`.
-- [x] Architekturalnie odpięto tray demona od dashboardowego `get_daemon_status()`.
-- [x] Usunięto martwe ustawienia fontu raportów.
-
-## Status po tej iteracji
-
-Zamknięte w tej iteracji:
-
-- wspólny stan trybu listy projektów dla `Sessions` i dashboardowego timeline
-- doprecyzowanie zakresu filtra `Tylko nieprzypisane` w UI i Help
-- pełna lokalizacja etykiet i opisów online sync używanych w sidebarze
-- lokalizacja domyślnej nazwy szablonu raportu i suffixu kopii
-- częściowa optymalizacja diagnostyki daemona: rzadsze odświeżanie i cache wersji EXE
-- wspólny zapis progu `minSessionDurationSeconds` do pliku współdzielonego z demonem
-- tray demona liczy uwagę samodzielnie z DB i nie zależy już od odpytywania dashboardu
-- `get_daemon_status()` przestało mieć efekt uboczny w postaci zapisu pliku sygnałowego
-- usunięcie martwego kontraktu `report-font` z `user-settings`
-
-Status etapu:
-
-- wszystkie etapy z sekcji realizacyjnej zostały zamknięte
-- w raporcie pozostają dalsze rekomendacje optymalizacyjne i porządkujące, ale nie są już oznaczone jako otwarte punkty tej paczki
-
-## Status po kolejnej iteracji
-
-Zamknięte w tej iteracji:
-
-- startupowe auto-skanowanie projektów dostało prosty cache czasu i nie odpala już pełnego skanu bezwarunkowo przy każdym starcie dashboardu
-- `Dashboard` przestał dociągać pełną listę projektów all-time przy każdym refreshu widoku i korzysta teraz ze wspólnego cache projektów
-- `Projects` przestał używać jednego szerokiego reloadu pod globalny `refreshKey`; dane rdzeniowe, folderowe i all-time odświeżają się teraz osobnymi ścieżkami
-- dodano jawne reguły odświeżania per strona oraz testy dla tych reguł
-- Help został dopasowany do nowego, okresowego zachowania skanowania folderów przy starcie
-
-## Status po następnej iteracji
-
-Zamknięte w tej iteracji:
-
-- `Sessions` przestał odpalać hurtową analizę splittability dla całej strony przy każdym odświeżeniu; wyniki są teraz cache'owane per `sessionId + splitSettings`, a brakujące wpisy lecą małymi batchami
-- `Sessions` przestał trzymać własny reload listy projektów pod `refreshKey` i korzysta teraz ze wspólnego cache projektów all-time
-- `Sessions`, `Applications`, `Estimates` i `ProjectPage` przestały zależeć od globalnego `refreshKey`; reagują teraz na precyzyjne powody zmian z eventów `LOCAL_DATA_CHANGED_EVENT` i `APP_REFRESH_EVENT`
-- reguły odświeżania zostały rozszerzone o kolejne ekrany i dostały testy jednostkowe
-
-Pozostały backlog z raportu:
-
-- dalsze porządki `i18n` w `Settings`, `AI`, `ProjectPage` i mniejszych hotspotach
-- ewentualne dalsze odchudzanie danych na cięższych ekranach, jeśli pojawią się realne bottlenecki po tej iteracji
-
-Weryfikacja tej iteracji:
-
-- `dashboard`: `npm run lint` -> OK
-- `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 15/15 testów
-
-## Status po iteracji i18n
-
-Zamknięte w tej iteracji:
-
-- `Settings` przestał opierać się na fallbackach z twardymi stringami dla podziału sesji, online sync i filtrowania krótkich sesji
-- placeholder `ID użytkownika` w online sync został przeniesiony do locale PL/EN
-- `AI` przestało pokazywać surowe wartości trybu modelu oraz angielskie sklejki typu `samples / ms` i `assigned`; status używa teraz pełnych tłumaczeń
-- `ProjectPage` przestał mieć twardą etykietę `Rate multiplier`, a daty w szczegółach sesji i tabeli są formatowane z locale zależnym od języka interfejsu
-- `OnlineSyncCard` przestał pokazywać twarde `n/a` i używa wspólnej etykiety `ui.common.not_available`
-
-Pozostały backlog z raportu:
-
-- dalsze porządki `i18n` w innych ekranach i komponentach poza zakresem tej iteracji
-- opcjonalne dalsze domykanie lokalizacji dat/liczb w mniej uczęszczanych widokach, jeśli pojawią się kolejne niespójności
-
-Weryfikacja tej iteracji:
-
-- `dashboard`: `npm run lint` -> OK
-- `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 15/15 testów
-
-## Status po domknięciu locale
-
-Zamknięte w tej iteracji:
-
-- usunięto osierocony wariant klucza `ai_page.text.train_after_a_larger_series_of_manual_correction` z polskiego locale, zostawiając tylko używany wariant zgodny z EN
-- `ProjectManualSessionsCard` i `ProjectRecentCommentsCard` przestały używać domyślnego `toLocaleDateString()` bez kontroli języka i formatują daty przez locale powiązane z aktywnym językiem interfejsu
-
-Weryfikacja tej iteracji:
-
-- `dashboard`: `npm run lint` -> OK
-- `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 15/15 testów
-
-## Status po walidacji locale
-
-Zamknięte w tej iteracji:
-
-- do `dashboard` dodano automatyczną walidację locale wykrywającą brakujące pliki, brakujące klucze, osierocone klucze i puste wartości względem bazowego `en`
-- walidacja została wpięta bezpośrednio do `npm run lint`, więc rozjazdy locale nie będą już przechodziły bokiem mimo zielonego `eslint`
-- bieżący stan locale `en/pl` jest czysty: brak brakujących kluczy, brak osieroconych kluczy i brak pustych wartości
-
-Weryfikacja tej iteracji:
-
-- `dashboard`: `npm run lint` -> OK
-- `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 15/15 testów
-
-## Status po domknięciu baseline i18n
-
-Zamknięte w tej iteracji:
-
-- zsynchronizowano `dashboard/scripts/check-hardcoded-i18n-baseline.json` z rzeczywistym stanem repo zamiast historycznego baseline
-- `Applications` i `Estimates` nie mają już aktywnych wpisów baseline; wcześniejsze pozycje były już tylko śladem po poprawionym kodzie
-- baseline twardych polskich stringów poza locale spadł z `118` wpisów do `1` świadomego wyjątku danych walutowych w `Settings`
-- backlog z tego raportu jest domknięty w zakresie wdrożonych zmian; dalsze prace optymalizacyjne i produktowe są już poza tym pakietem i siedzą głównie w `TODO.md`
-
-Pozostały wyjątek:
-
-- `src/pages/Settings.tsx` trzyma literal `zł` jako symbol waluty w danych konfiguracyjnych, a nie jako opis UI; zostaje to jako pojedynczy wpis baseline
-
-Weryfikacja tej iteracji:
-
-- `dashboard`: `npm run lint` -> OK
-- `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 15/15 testów
-
-## Status po korekcie sidebaru
-
-Zamknięte w tej iteracji:
-
-- sidebar przestał pokazywać surowe wartości trybu AI typu `suggest`; status używa teraz krótkich tłumaczeń zależnych od języka interfejsu
-- status synchronizacji w sidebarze przestał mieszać polski z angielskim; etykiety typu `Pull zakończony` i `Sync gotowy` zostały zastąpione spójnymi polskimi odpowiednikami
-- status kopii w sidebarze został doprecyzowany z nienaturalnego `Bezpiecznie` do czytelnego stanu `Aktywna`
-- szczegóły synchronizacji w tooltipie używają już sformułowania `Ostatnia synchronizacja` zamiast mieszanego `Ostatni sync`
-
-Weryfikacja tej iteracji:
-
-- `dashboard`: `npm run lint` -> OK
-- `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 15/15 testów
+Data analizy: 2026-03-12
 
 ## Zakres
 
-Przeanalizowane obszary:
+Przejrzane obszary:
 
 - demon Rust w `src/`
-- dashboard React/Tauri w `dashboard/src` i `dashboard/src-tauri`
-- tłumaczenia w `dashboard/src/locales`
-- opis funkcji w `dashboard/src/pages/Help.tsx`
+- frontend dashboardu w `dashboard/src/`
+- backend Tauri w `dashboard/src-tauri/src/`
+- tłumaczenia w `dashboard/src/locales/`
+- panel pomocy w `dashboard/src/pages/Help.tsx`
 
-Weryfikacja wykonana lokalnie:
+## Stan ogólny
+
+Repo jest aktualnie technicznie stabilne, ale ma kilka istotnych rozjazdów między tym, co pokazuje UI, tym co faktycznie liczy backend, a tym co opisuje Help.
+
+Najważniejsze ryzyka:
+
+- część danych sesji jest prezentowana nieprecyzyjnie
+- demon gubi rozróżnienie plików przy identycznych nazwach
+- agregacje projektowe opierają się na nazwach zamiast na `project_id`
+- są jeszcze user-facing stringi poza i18n mimo zielonych lintów locale
+- Help nie jest w pełni zgodny z aktualnym zachowaniem aplikacji
+
+## Najważniejsze ustalenia
+
+### 1. Wysokie: widok Sessions pokazuje pliki z całego dnia aplikacji, nie z zakresu konkretnej sesji
+
+Dowody:
+
+- `dashboard/src-tauri/src/commands/sessions/query.rs:218` pobiera `file_activities` tylko po `(app_id, date)`
+- `dashboard/src-tauri/src/commands/sessions/query.rs:281` przypisuje ten sam zestaw plików do każdej sesji z danego dnia
+- `dashboard/src/components/sessions/SessionRow.tsx:121` i `dashboard/src/components/sessions/SessionRow.tsx:332` renderują `s.files` bez dodatkowego filtrowania po czasie sesji
+
+Skutek:
+
+- użytkownik w szczegółach sesji może zobaczyć pliki z wcześniejszych albo późniejszych bloków dnia
+- opis `detailed / full file logs` staje się mylący, bo to nie jest rzeczywisty log tej jednej sesji
+- AI split / ręczna analiza sesji jest w UI prezentowana na szerszym zbiorze niż sama sesja
+
+Rekomendacja:
+
+- filtrować `file_activities` do przedziału `[session.start_time, session.end_time]`
+- jeśli pełne filtrowanie SQL byłoby za ciężkie, dodać osobny endpoint do ładowania plików per sesja tylko po rozwinięciu wiersza
+- dopisać test, który udowadnia, że sesja nie dostaje plików spoza własnego okna czasowego
+
+### 2. Wysokie: demon scala aktywność różnych plików po samej nazwie pliku
+
+Dowody:
+
+- `src/tracker.rs:22-29` buduje cache indeksów plików tylko po `file_entry.name`
+- `src/tracker.rs:226-259` aktualizuje lub tworzy wpisy też wyłącznie po `normalized_file_name`
+- `src/tracker.rs:239` nadpisuje `detected_path` najnowszą wartością dla już istniejącego wpisu
+- `dashboard/src-tauri/src/commands/import.rs:300-308` później traktuje `detected_path` albo `file.name` jako bazę `file_path`
+- `dashboard/src-tauri/src/commands/import.rs:224` zakłada unikalność po `file_path`
+
+Skutek:
+
+- dwa różne pliki typu `index.ts`, `main.rs`, `README.md` w różnych repo mogą zostać zlane w jeden rekord
+- przy kolejnych aktualizacjach demon nadpisuje ostatnio wykrytą ścieżkę i traci poprzedni kontekst
+- projekt detection, split i AI dostają zanieczyszczone dane wejściowe
+
+Rekomendacja:
+
+- kluczować wpisy najpierw po `detected_path`, a dopiero fallbackowo po nazwie
+- jeśli `detected_path` nie istnieje, rozważyć klucz złożony z `file_name + sanitized_window_title`
+- dopisać test dla dwóch plików o tej samej nazwie i różnych ścieżkach
+
+### 3. Wysokie: agregacje projektowe bazują na nazwie projektu zamiast na `project_id`
+
+Dowody:
+
+- `dashboard/src-tauri/src/commands/analysis.rs:37` definiuje `ProjectTotals = HashMap<String, f64>`
+- `dashboard/src-tauri/src/commands/analysis.rs:135` i `dashboard/src-tauri/src/commands/dashboard.rs:333` pobierają `project_name`
+- `dashboard/src-tauri/src/commands/analysis.rs:335` akumuluje czas do `total_by_project.entry(name)`
+- `dashboard/src-tauri/src/commands/analysis.rs:346` ma komentarz `last mult wins` dla nakładających się wpisów tego samego projektu
+- `dashboard/src/pages/Projects.tsx:906-991` ma osobny mechanizm wykrywania możliwych duplikatów nazw, więc sam produkt już sygnalizuje że takie przypadki są realne
+
+Skutek:
+
+- dwa projekty o tej samej albo prawie tej samej nazwie mogą być wizualnie odrębne, ale w agregacjach czasowych zostać zlane
+- dotyczy to Dashboardu, Time Analysis i części zestawień projektowych korzystających z `compute_project_activity_unique`
+- przy nakładaniu kilku bloków tego samego projektu, ale z różnym mnożnikiem, wynik może być liczony z ostatnim mnożnikiem zamiast z poprawnym rozkładem
+
+Rekomendacja:
+
+- przenieść agregację na `project_id` i dopiero przy wyjściu mapować do etykiety/koloru
+- `Unassigned` trzymać jako jawny sentinel techniczny, nie jako zwykły string projektu
+- dopisać test z dwoma projektami o zbliżonych nazwach i różnym `id`
+
+### 4. Średnie: dashboard dzienny ucina sesje do pierwszych 500 rekordów
+
+Dowody:
+
+- `dashboard/src/pages/Dashboard.tsx:217-218` liczy banner nieprzypisanych z `todaySessions`
+- `dashboard/src/pages/Dashboard.tsx:374` pobiera dzienne sesje z limitem `500`
+- `dashboard/src/pages/Dashboard.tsx:474-536` na tej samej próbce buduje banner oraz `ProjectDayTimeline`
+
+Skutek:
+
+- przy bardziej rozdrobnionych dniach roboczych banner nieprzypisanych i timeline mogą zaniżać dane
+- problem będzie częstszy po auto-split i przy krótkich sesjach
+- użytkownik nie dostaje żadnego sygnału, że widzi obcięty obraz dnia
+
+Rekomendacja:
+
+- dla dashboardu dziennego pobierać wszystkie sesje albo osobny endpoint agregacyjny bez twardego limitu
+- jeśli limit ma zostać, UI powinno jasno sygnalizować `partial data`
+
+### 5. Średnie: Sessions prefetchuje score breakdown dla wszystkich widocznych sesji, także poza trybem AI
+
+Dowody:
+
+- `dashboard/src/pages/Sessions.tsx:1135-1180` buduje prefetch dla całego zestawu widocznych sesji
+- `dashboard/src/pages/Sessions.tsx:1164` ustawia `batchSize = missingIds.length` poza `ai_detailed`
+- `dashboard/src/pages/Sessions.tsx:1170-1171` odpala cały batch przez `Promise.allSettled`
+
+Skutek:
+
+- wejście na ekran Sessions może wygenerować falę kosztownych zapytań AI nawet wtedy, gdy użytkownik nie ogląda jeszcze danych AI
+- rośnie koszt CPU/IO w backendzie i koszt serializacji przez Tauri
+- użytkownik płaci wydajnością za dane, których jeszcze nie potrzebuje
+
+Rekomendacja:
+
+- prefetch uruchamiać tylko w `ai_detailed` albo tylko dla wierszy widocznych w viewport
+- w innych trybach ładować breakdown on-demand po kliknięciu
+- rozważyć wspólny batch endpoint zamiast wielu wywołań `get_session_score_breakdown`
+
+### 6. Średnie: odświeżanie statusu demona nadal jest globalnym pollingiem z kosztownym backendem
+
+Dowody:
+
+- `dashboard/src/components/sync/job-pool-helpers.ts:9` ustawia diagnostykę na cykl 30 s
+- `dashboard/src/store/background-status-store.ts:46-62` za każdym razem woła równolegle `getDaemonStatus()` i dwa liczniki sesji
+- `dashboard/src-tauri/src/commands/daemon.rs:204-244` w `get_daemon_status()` odpala m.in. `tasklist`
+- `dashboard/src-tauri/src/commands/daemon.rs:209` używa zewnętrznego procesu `tasklist`
+
+Skutek:
+
+- sidebar stale odpyta backend nawet poza ekranem Daemon
+- status procesu jest zbierany ciężej niż trzeba, mimo że to informacja o małej dynamice
+- przy wolniejszych systemach i większej bazie to będzie generowało zbędne obciążenie w tle
+
+Rekomendacja:
+
+- rozdzielić lekki status sidebaru od pełnej diagnostyki ekranu Daemon
+- cache'ować wynik detekcji procesu krótkoterminowo albo sprawdzać proces bez `tasklist`
+- liczniki nieprzypisanych odświeżać tylko gdy są realne zmiany danych albo gdy ekran Daemon/Sidebar jest widoczny
+
+## i18n i lokalizacja
+
+Stan locale jako plików jest dobry, ale to nie oznacza pełnej lokalizacji produktu.
+
+### Usterki i18n / locale
+
+- `dashboard/src/pages/Projects.tsx:787` używa literalnego `View settings saved as default`, mimo że istnieje klucz `projects.messages.view_settings_saved` w `dashboard/src/locales/pl/common.json:522` i `dashboard/src/locales/en/common.json:522`
+- `dashboard/src/pages/Projects.tsx:1581` pokazuje `opens -` bez tłumaczenia
+- `dashboard/src/components/dashboard/TopProjectsList.tsx:46-57` rozpoznaje nieprzypisane po literalnym `Unassigned`
+- `dashboard/src/components/dashboard/TimelineChart.tsx:138` oraz `dashboard/src-tauri/src/commands/dashboard.rs:209` i `dashboard/src-tauri/src/commands/analysis.rs:520` używają etykiety `Other` poza i18n
+- `dashboard/src-tauri/src/commands/analysis.rs:135`, `dashboard/src-tauri/src/commands/dashboard.rs:333` i `dashboard/src-tauri/src/commands/sessions/query.rs:312` wypuszczają surowe `Unassigned`
+- `dashboard/src-tauri/src/commands/monitored.rs:154-217` zwraca user-facing błędy po angielsku: `already monitored`, `Monitored app not found`, `exe_name cannot be empty`, `display_name cannot be empty`
+- `src/single_instance.rs:50` pokazuje message box `Another instance of TimeFlow Demon is already running.` bez lokalizacji i bez spójnego brandingu TIMEFLOW
+- `dashboard/src/pages/Applications.tsx:593` formatuje datę przez gołe `toLocaleDateString()`, więc wynik zależy od systemu, a nie od języka UI
+
+### Wniosek
+
+`npm run lint` jest zielony, bo pilnuje głównie plików locale i hardcoded stringów we frontendzie objętym baseline. Nie łapie:
+
+- tekstów budowanych po stronie Rust
+- etykiet danych zwracanych z backendu
+- części stringów przepuszczanych jako wynik błędu
+- niespójności formatowania dat/liczb
+
+### Rekomendacja
+
+- wszystkie etykiety typu `Unassigned` i `Other` wystawiać jako neutralne wartości techniczne i tłumaczyć dopiero w UI
+- backendowe komunikaty użytkownika opakować w kody błędów albo w enum mapowany w UI
+- dodać osobny check dla user-facing stringów w Rust/Tauri
+
+## Help / zgodność dokumentacji
+
+### 1. Błąd merytoryczny w Help: opisany fallback `monitor-all`, którego kod już nie robi
+
+Dowody:
+
+- `dashboard/src/pages/Help.tsx:738` opisuje `monitor_all_fallback_if_the_monitored_process_list_is_em`
+- `dashboard/src/locales/pl/common.json:1566` i `dashboard/src/locales/en/common.json:1566` mówią, że pusty monitoring przełącza się na śledzenie wszystkich aplikacji
+- `src/tracker.rs:270` loguje `No monitored applications configured - tracking paused`
+
+Skutek:
+
+- użytkownik może celowo zostawić pustą listę monitorowanych aplikacji i oczekiwać śledzenia wszystkiego
+- realne zachowanie jest odwrotne: demon nic nie śledzi
+
+Rekomendacja:
+
+- poprawić Help i locale sekcji Daemon
+- jeśli produktowo ma wrócić `monitor-all`, trzeba to wdrożyć w trackerze, a nie tylko w opisie
+
+### 2. Funkcje obecne w UI, ale nieopisane w Help
+
+Braki po porównaniu widoków z `Help.tsx`:
+
+- marker możliwego duplikatu projektu `D` i zbiorczy komunikat o duplikatach na ekranie Projects
+  - implementacja: `dashboard/src/pages/Projects.tsx:906-991` oraz `dashboard/src/pages/Projects.tsx:1184-1192`
+  - sekcja Help Projects (`dashboard/src/pages/Help.tsx:391-411`) tego nie opisuje
+- akcja `Sync from apps` w sekcji monitorowanych aplikacji
+  - implementacja: `dashboard/src/pages/Applications.tsx:189-197` oraz `dashboard/src/pages/Applications.tsx:342-353`
+  - sekcja Help Applications (`dashboard/src/pages/Help.tsx:463-475`) opisuje zarządzanie monitorowanymi aplikacjami ogólnie, ale nie tę konkretną funkcję i jej konsekwencje
+
+Rekomendacja:
+
+- dopisać te funkcje do `Help.tsx` w odpowiednich sekcjach
+- przy opisie `Sync from apps` dopisać, że akcja dodaje brakujące procesy do listy monitorowanej, ale nie usuwa już istniejących
+
+## Nadmiarowy / powtarzalny kod
+
+To nie są błędy krytyczne, ale zwiększają koszt utrzymania:
+
+- Dashboard, Sessions, Projects i Applications mają powtarzalne nasłuchiwanie `LOCAL_DATA_CHANGED_EVENT` i `APP_REFRESH_EVENT` oraz własne liczniki reloadów
+- kilka ekranów ręcznie miesza `console.error`, `logTauriError`, lokalne `showError` i ciche `catch(() => {})`
+- logika stanu odświeżania strony jest już częściowo zunifikowana w `page-refresh-reasons`, ale sam wiring w komponentach nadal jest wielokrotnie kopiowany
+
+Sugestia:
+
+- wydzielić wspólny hook typu `usePageRefreshSignals({ shouldRefresh, onRefresh, onSettingsRefresh })`
+- ujednolicić strategię obsługi błędów async
+
+## Priorytet napraw
+
+Rekomendowana kolejność prac:
+
+1. Naprawić zakres plików w Sessions.
+2. Zmienić kluczowanie plików w demonie z `file_name` na ścieżkę lub klucz złożony.
+3. Przenieść agregacje projektowe z nazwy na `project_id`.
+4. Usunąć limit `500` z dziennego dashboardu albo zastąpić go endpointem agregacyjnym.
+5. Ograniczyć eager prefetch breakdownów AI.
+6. Uporządkować i18n wyciekające z backendu i danych wykresów.
+7. Zaktualizować `Help.tsx` i teksty locale sekcji Daemon/Projects/Applications.
+
+## Luki w testach
+
+Brakuje testów, które złapałyby opisane problemy:
+
+- testu na pliki przypisane do konkretnego okna sesji
+- testu na dwa pliki o tej samej nazwie i różnych ścieżkach po stronie demona/importu
+- testu na dwa projekty o podobnej nazwie, ale różnych `project_id`, w agregacjach dashboardowych
+- testu zgodności Help z funkcjami oznaczonymi jako user-facing
+
+## Weryfikacja lokalna
+
+Wykonane komendy:
 
 - `dashboard`: `npm run lint` -> OK
 - `dashboard`: `npm run typecheck` -> OK
-- `dashboard`: `npm test` -> OK, 7/7 testów
-- `demon`: `cargo test` -> OK, 23/23 testy
+- `dashboard`: `npm test` -> OK, 15/15 testów
+- `repo root / demon`: `cargo test` -> OK, 23/23 testy
 - `dashboard/src-tauri`: `cargo test` -> OK, 22/22 testy
 
 ## Podsumowanie
 
-Poniższe ustalenia opisują stan zastany z momentu analizy. Bieżący status wdrożeń jest utrzymywany wyżej w sekcjach `Etapy realizacji` i `Status po tej iteracji`.
+Największy problem obecnego stanu nie leży w tym, że TIMEFLOW się wywraca, tylko w tym, że kilka miejsc wygląda wiarygodnie, a zwraca dane uproszczone albo częściowo błędne.
 
-Kod jest ogólnie spójny i aplikacja wygląda na funkcjonalnie rozwiniętą, ale znalazłem kilka realnych problemów architektonicznych i logicznych:
+Najpilniejsze są:
 
-- tray demona pokazuje licznik nieprzypisanych sesji tylko wtedy, gdy dashboard cyklicznie odpyta backend
-- diagnostyka daemona jest odświeżana bardzo często i robi kosztowne subprocessy z efektem ubocznym zapisu pliku sygnałowego
-- ta sama funkcja wyboru trybu listy projektów do przypisywania działa w dwóch widokach, ale ma dwa niezależne stany i dwa różne klucze `localStorage`
-- część ekranów odświeża duże porcje danych przy każdej zmianie `refreshKey`, nawet gdy zmiana dotyczy innego fragmentu systemu
-- i18n jest formalnie "zielone", ale repo nadal ma duży baseline twardych stringów oraz kilka ścieżek user-facing poza i18n
+- zawężenie plików do realnej sesji
+- zachowanie tożsamości pliku po ścieżce
+- przejście z agregacji po nazwie projektu na agregację po `project_id`
 
-## Najważniejsze ustalenia
-
-### 1. Tray demona jest zależny od dashboardu przy liczniku nieprzypisanych sesji
-
-Dowody:
-
-- `src/tray.rs:35-60` odczytuje licznik z pliku `assignment_attention.txt`
-- `dashboard/src-tauri/src/commands/daemon.rs:129-193` zapisuje ten plik tylko w `get_daemon_status()`
-- `dashboard/src/components/sync/job-pool-helpers.ts:167-169` wymusza `refreshDiagnostics()` co 10 s
-- `dashboard/src/store/background-status-store.ts:55` w `refreshDiagnostics()` woła `getDaemonStatus()`
-
-Skutek:
-
-- jeśli dashboard nie działa albo jest długo nieotwierany, tray może pokazywać stary licznik albo `0`
-- demon nie liczy swojego stanu samodzielnie; tylko konsumuje sygnał wyprodukowany przez dashboard
-- licznik w trayu jest więc semantycznie "cache dashboardu", a nie stanem demona
-
-Ocena:
-
-- to jest błąd logiki/odpowiedzialności modułów, nie tylko kwestia optymalizacji
-
-Rekomendacja:
-
-- przenieść wyliczanie licznika do demona albo do współdzielonego modułu wywoływanego bez udziału dashboardu
-- alternatywnie: demon powinien sam okresowo odczytywać DB i sam aktualizować plik sygnałowy
-- `get_daemon_status()` nie powinno mieć efektu ubocznego w postaci zapisu pliku, bo to zaciera odpowiedzialność komendy diagnostycznej
-
-### 2. Diagnostyka daemona jest zbyt kosztowna jak na odświeżanie co 10 sekund
-
-Dowody:
-
-- `dashboard/src/components/sync/job-pool-helpers.ts:167-169` odświeża diagnostykę co 10 s
-- `dashboard/src-tauri/src/commands/daemon.rs:154-176` wykrywa proces przez `tasklist`
-- `dashboard/src-tauri/src/commands/daemon.rs:196-204` uruchamia `timeflow-demon.exe --version`
-
-Skutek:
-
-- UI w tle stale generuje koszt systemowy niezależnie od tego, czy użytkownik jest na ekranie demona
-- każde odświeżenie robi subprocessy Windows zamiast korzystać z lżejszego cache albo prostszego sprawdzenia PID/ścieżki
-- do tego dochodzi zapis `assignment_attention.txt`, więc "odczyt statusu" jest też "zapytaniem z mutacją"
-
-Rekomendacja:
-
-- rozdzielić lekką diagnostykę sidebaru od pełnej diagnostyki ekranu demona
-- wersję demona pobierać raz na sesję lub cache'ować po ścieżce EXE
-- status procesu trzymać w krótkotrwałym cache, np. 30-60 s
-- odświeżanie logów i pełnego statusu zostawić ekranowi `DaemonControl`
-
-### 3. Tryb listy projektów do przypisywania jest niespójny między widokami
-
-Dowody:
-
-- `dashboard/src/store/ui-store.ts:27-45` używa klucza `timeflow-sessions-assign-project-list-mode`
-- `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:80,153-162,356-373` używa osobnego klucza `timeflow-dashboard-assign-project-list-mode`
-- `dashboard/src/pages/Sessions.tsx:1571-1616` steruje trybem z poziomu store
-- `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:1281-1313` steruje podobnym trybem lokalnie
-
-Skutek:
-
-- użytkownik może ustawić jeden tryb na ekranie `Sessions` i inny na dashboardzie
-- Help opisuje funkcję jako jedną koncepcję, ale implementacja utrzymuje dwa niezależne źródła prawdy
-- logika sortowania i grupowania jest skopiowana, więc łatwo o drift przy dalszym rozwoju
-
-Rekomendacja:
-
-- wydzielić wspólny model tej preferencji do jednego store/utila
-- używać jednego klucza storage i jednego typu helperów
-- jeśli różne tryby mają być świadomie niezależne, trzeba to jasno nazwać w UI i Help
-
-### 4. Filtr "nieprzypisane" w sesjach ignoruje zakres dat i nie jest to jasno opisane
-
-Dowody:
-
-- `dashboard/src/pages/Sessions.tsx:368-380`
-- komentarz w kodzie explicite mówi, że dla `unassigned` `dateRange` jest pomijany
-
-Skutek:
-
-- użytkownik może wejść w widok dzienny/tygodniowy, a mimo to zobaczyć nieprzypisane sesje ze wszystkich dat
-- to może wyglądać jak błąd filtrowania, choć jest świadomą decyzją implementacyjną
-
-Ocena:
-
-- zachowanie może być sensowne operacyjnie, ale jest zaskakujące i powinno być wyraźnie pokazane w UI i Help
-
-Rekomendacja:
-
-- dodać wyraźny badge/tekst typu "wszystkie daty"
-- albo dodać przełącznik: `bieżący zakres` / `wszystkie daty`
-- uzupełnić Help o dokładny opis tej różnicy
-
-## Wydajność i optymalizacje
-
-### 5. Startup dashboardu uruchamia szerokie automatyczne skany
-
-Dowody:
-
-- `dashboard/src/components/sync/BackgroundServices.tsx:117-123`
-- `syncProjectsFromFolders()`
-- `autoCreateProjectsFromDetection(ALL_TIME_DATE_RANGE, 2)`
-
-Skutek:
-
-- każdy start dashboardu może skanować foldery i analizować cały zakres danych
-- przy większej bazie będzie to rosło liniowo z historią użytkownika
-
-Rekomendacja:
-
-- ograniczyć autowykrywanie projektów do zmian od ostatniego importu albo do ostatnich N dni
-- rozdzielić "scan folders" od "analyze all detected file names" i dać im osobne harmonogramy
-- dodać prosty cache znaku czasu ostatniego sukcesu
-
-### 6. `Projects` odświeża zbyt szeroki zestaw danych przy zmianach nie tylko projektowych
-
-Dowody:
-
-- `dashboard/src/pages/Projects.tsx:373-379` ładuje równolegle:
-  - `loadProjectsAllTime()`
-  - `getExcludedProjects()`
-  - `getApplications()`
-  - `getProjectFolders()`
-  - `getFolderProjectCandidates()`
-- efekt jest podpięty pod `refreshKey`
-- dodatkowo `dashboard/src/pages/Projects.tsx:421` i `:436` osobno dociąga wykryte projekty i estymacje
-
-Skutek:
-
-- zwykła mutacja sesji może odpalać ciężkie odświeżenie całego ekranu projektów
-- dużo zapytań wraca nawet wtedy, gdy użytkownik nie odwiedza tej strony
-
-Rekomendacja:
-
-- rozdzielić dane "always fresh" od danych "stale-tolerant"
-- oprzeć odświeżenie o powody zmian (`reason`) zamiast globalny `refreshKey`
-- folder candidates i detected projects odświeżać tylko po import/sync/pracy na folderach
-
-### 7. `Dashboard` dociąga pełną listę projektów all-time przy każdym odświeżeniu widoku
-
-Dowody:
-
-- `dashboard/src/pages/Dashboard.tsx:314-321`
-
-Skutek:
-
-- nawet dla widoku dziennego pobierana jest lista all-time tylko po to, by policzyć projekty i zasilić timeline/manual session dialog
-- to zwiększa koszt każdej zmiany zakresu i każdego manual refresh
-
-Rekomendacja:
-
-- rozdzielić:
-  - lekki endpoint z liczbą projektów / minimalną listą
-  - cięższy endpoint pełnych projektów tylko dla komponentów, które tego potrzebują
-
-### 8. `Sessions` analizuje splittability hurtowo dla widocznej strony po każdej zmianie listy
-
-Dowody:
-
-- `dashboard/src/pages/Sessions.tsx:527`
-- `PAGE_SIZE = 100`
-
-Skutek:
-
-- dla każdej strony sesji wykonywana jest dodatkowa analiza backendowa
-- przy częstych zmianach filtrów i odświeżeń to może być jeden z droższych elementów UI
-
-Rekomendacja:
-
-- robić analizę leniwie tylko dla rozwiniętych wierszy / elementów w viewport
-- cache'ować wynik po `sessionId + splitSettings`
-- odświeżać tylko sesje, których dane faktycznie się zmieniły
-
-## Nadmiarowy lub martwy kod
-
-### 9. Ustawienia fontu raportów są zdefiniowane, ale nigdzie nieużywane
-
-Dowody:
-
-- `dashboard/src/lib/user-settings.ts:337-364`
-- `rg` po `loadReportFontSettings` i `saveReportFontSettings` nie zwraca użyć poza definicją
-
-Skutek:
-
-- utrzymywany jest martwy kontrakt konfiguracyjny
-- łatwo uznać tę funkcję za gotową, choć nie ma UI, integracji z `ReportView` ani opisu w Help
-
-Rekomendacja:
-
-- albo usunąć tę ścieżkę do czasu realnego wdrożenia
-- albo dokończyć feature end-to-end: UI + użycie w `ReportView` + Help
-
-### 10. W raportach są user-facing defaulty poza i18n
-
-Dowody:
-
-- `dashboard/src/lib/report-templates.ts:22` -> domyślna nazwa `Standard`
-- `dashboard/src/lib/report-templates.ts:90` -> domyślny suffix `copy`
-
-Skutek:
-
-- część UI raportów nie będzie pełni lokalizowalna
-- problem pojawi się szczególnie przy migracji/pierwszym uruchomieniu, bo nazwy zapisują się bezpośrednio do `localStorage`
-
-Rekomendacja:
-
-- generować default template dopiero w warstwie UI z użyciem `t(...)`
-- albo wprowadzić słowniki/migrację nazw na poziomie warstwy storage
-
-## Tłumaczenia
-
-### 11. Online sync ma user-facing etykiety i opisy na sztywno po angielsku
-
-Dowody:
-
-- `dashboard/src/lib/online-sync.ts:293-350`
-- `dashboard/src/lib/online-sync.ts:376-413`
-- `dashboard/src/lib/online-sync.ts:1195`
-
-Przykłady:
-
-- `No sync yet`
-- `Last sync ...`
-- `Sync Off`
-- `Sync Ready`
-- `ACK Pending`
-- `Syncing...`
-
-Skutek:
-
-- sidebar i status synchronizacji mogą być częściowo po angielsku nawet przy polskim UI
-- te stringi omijają standardowe słowniki `i18next`
-
-Rekomendacja:
-
-- zwracać z modułu status jako enum + parametry, a label/detail składać dopiero w warstwie UI
-- ewentualnie wstrzyknąć translator, ale lepszy będzie model "dane + tłumaczenie w komponencie"
-
-### 12. Słowniki nie są idealnie zsynchronizowane
-
-Dowody:
-
-- `python compare_locales.py`
-
-Wynik:
-
-- brak kluczy PL względem EN: brak
-- brak kluczy EN względem PL:
-  - `ai_page.text.train_after_a_larger_series_of_manual_correction`
-
-Ocena:
-
-- to mały drift, ale pokazuje, że w słownikach zaczynają pojawiać się duplikaty i stare warianty nazw
-
-Rekomendacja:
-
-- usunąć nieużywany wariant klucza z PL albo dodać spójny odpowiednik do EN
-- do CI dorzucić walidację "missing + orphan keys"
-
-### 13. Repo ma duży baseline twardych stringów poza i18n
-
-Dowody:
-
-- `dashboard/scripts/check-hardcoded-i18n-baseline.json`
-- `npm run lint` przechodzi, ale tylko dlatego, że nowe naruszenia nie przekraczają istniejącego baseline
-
-Największe hotspoty:
-
-- `src/pages/Settings.tsx` -> 39 wpisów
-- `src/pages/AI.tsx` -> 30 wpisów
-- `src/pages/ProjectPage.tsx` -> 18 wpisów
-- `src/pages/Applications.tsx` -> 4 wpisy
-- `src/pages/Estimates.tsx` -> 4 wpisy
-
-Ocena:
-
-- lint nie chroni jeszcze przed starym długiem lokalizacyjnym
-- największa część braków siedzi w ekranach, które użytkownik odwiedza często
-
-Rekomendacja:
-
-- spłacać baseline modułami, zaczynając od `Settings`, `AI`, `ProjectPage`
-- nie odkładać tego na później, bo każdy nowy opis Help i każda nowa funkcja zwiększa koszt migracji
-
-## Help / Pomoc
-
-### Co jest dobrze
-
-`Help.tsx` jest zaskakująco kompletne i obejmuje większość realnych funkcji:
-
-- raporty
-- daemon control
-- online sync
-- backup/restore
-- bughunter
-- split sesji
-- manual sessions
-- projekty, foldery i wykrywanie
-
-### Luki i rozjazdy
-
-#### 14. Nieopisane dokładnie zachowanie filtra `unassigned`
-
-Dowody:
-
-- implementacja: `dashboard/src/pages/Sessions.tsx:368-380`
-- Help opisuje filtr ogólnie w `dashboard/src/pages/Help.tsx:323-339`, ale nie doprecyzowuje, że filtr może ignorować bieżący zakres dat
-
-Skutek:
-
-- użytkownik może odebrać to jako błąd, a nie intencjonalny tryb roboczy
-
-Rekomendacja:
-
-- dopisać do Help: "widok nieprzypisanych może pokazywać wszystkie daty"
-
-#### 15. Help nie odzwierciedla rozdzielonych preferencji listy przypisań między dashboardem i sessions
-
-Dowody:
-
-- `dashboard/src/pages/Sessions.tsx:1571-1616`
-- `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:1281-1313`
-
-Skutek:
-
-- z perspektywy użytkownika to wygląda jak jedna funkcja, ale zachowuje się jak dwie różne preferencje
-
-Rekomendacja:
-
-- po ujednoliceniu implementacji zaktualizować Help jednym, spójnym opisem
-- jeśli preferencje mają pozostać oddzielne, trzeba to nazwać explicite
-
-## Propozycje priorytetów
-
-### Priorytet 1
-
-- odpiąć tray od dashboardowego `get_daemon_status()`
-- usunąć efekt uboczny `write_assignment_signal()` z komendy statusowej
-- zmniejszyć koszt diagnostyki daemona w sidebarze
-
-### Priorytet 2
-
-- ujednolicić `assignProjectListMode` między `Sessions` i `ProjectDayTimeline`
-- doprecyzować zachowanie filtra `unassigned`
-- przenieść online sync labels/details do i18n
-
-### Priorytet 3
-
-- ograniczyć pełne reloady na `Projects` i `Dashboard`
-- zoptymalizować hurtową analizę splittability w `Sessions`
-- zdecydować: wdrażamy ustawienia fontu raportu czy usuwamy martwy kod
-
-### Priorytet 4
-
-- zacząć redukcję `i18n` baseline od `Settings` i `AI`
-- usunąć osierocone klucze locale
-- dopiąć Help dla niuansów, nie tylko dla ekranów
-
-## Sugerowany plan naprawczy
-
-1. Wydzielić "lekki status demona" bez subprocessów i bez efektów ubocznych.
-2. Przenieść licznik tray attention do demona lub do współdzielonej usługi bez udziału dashboardu.
-3. Zunifikować preferencje przypisywania projektów w jednym store i jednym kluczu storage.
-4. Rozbić globalne `refreshKey` na odświeżenia per domena albo mocniej oprzeć się na `reason`.
-5. Zmienić online sync na model `enum status + dane`, a nie gotowe napisy.
-6. Usunąć lub dokończyć martwe feature flags/ustawienia raportów.
-7. Spłacać baseline i18n modułami, nie hurtowo.
-
-## Wniosek końcowy
-
-Największy problem nie leży dziś w "czy działa", tylko w tym, że kilka ważnych funkcji działa dzięki pośrednim zależnościom między modułami. Najbardziej ryzykowny przykład to tray demona zależny od dashboardowego odpytywania statusu. Jeśli te zależności nie zostaną uproszczone, kolejne funkcje będą działały poprawnie tylko w części scenariuszy, a koszt utrzymania wzrośnie szybciej niż sam zakres produktu.
+Po tych trzech punktach warto domknąć i18n oraz Help, bo dziś dokumentacja i część etykiet nie odzwierciedlają już faktycznego zachowania aplikacji.
