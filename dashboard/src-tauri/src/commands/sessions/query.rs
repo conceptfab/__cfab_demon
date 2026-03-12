@@ -529,8 +529,7 @@ pub async fn get_sessions(
 mod tests {
     use super::{
         apply_limit_offset, collect_session_file_activities, compute_overlap_ms,
-        parse_rfc3339_millis,
-        IndexedFileActivity,
+        parse_rfc3339_millis, IndexedFileActivity,
     };
     use crate::commands::types::FileActivity;
     use std::collections::HashMap;
