@@ -11,10 +11,9 @@ Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona 
 
 
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem:
-
-- poprawności logiki szczególnie zwróć uwagę na AI
+- identyfikacji wszystkich procesów, porawności ich logiki, identyfikacji dublujących się funkcji lub  błedów logicznych
 - wydajności i możliwych optymalizacji, poprawy wielowątkowości
-- nadmiarowego kodu, refaktoryzacji
+- nadmiarowego kodu, refaktoryzacji, przygotowania do dynamicznego rozwoju - podziału na moduły
 - braków i błędów w tłumaczeniu, braków w w zakładce help/pomoc
 - sugestii dotyczących poprawy funkcjonalności
 Priorytetem jest zachowanie dotychczasowych danych. Swoje uwagi zapisz w dokumencie refactor.md Rozpisz plan prac sugerując zmiany w kodzie. Szczegółowe poprawki mają powstać w kolejnym kroku i przeprowadzi je inny model, zostaw mu wskazówki by mógł sporządzić szczegółowy plan_implementacji.md
@@ -25,11 +24,11 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-- [x] dwuklik w demo uruchamia dashboard
-- czy refresh w Dashbordzie jest potrzebny?
+
+<!-- - czy refresh w Dashbordzie jest potrzebny?
 - podział sesji
 - refactor duży plików
-- znaczek na NEW
+- znaczek na NEW -->
 
 <!-- - czy faktycznie dziala dzielenie sesji - do sprawdzenia -->
 - licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik
