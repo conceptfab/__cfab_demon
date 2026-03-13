@@ -1,7 +1,11 @@
+#[path = "../../../shared/timeflow_paths.rs"]
+mod timeflow_paths;
+
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 
 const SCHEMA: &str = include_str!("../resources/sql/schema.sql");
@@ -13,6 +17,11 @@ const LEGACY_PRIMARY_DB_FILE_NAME: &str = "cfab_dashboard.db";
 const LEGACY_DEMO_DB_FILE_NAME: &str = "cfab_dashboard_demo.db";
 const LEGACY_DB_MODE_FILE_NAME: &str = "cfab_dashboard_mode.json";
 const DB_POOL_MAX_IDLE_CONNECTIONS: usize = 4;
+
+fn initialized_db_paths() -> &'static Mutex<HashSet<String>> {
+    static INITIALIZED_DB_PATHS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    INITIALIZED_DB_PATHS.get_or_init(|| Mutex::new(HashSet::new()))
+}
 
 #[derive(Serialize, Deserialize, Default)]
 struct StoredDbModeConfig {
@@ -172,36 +181,19 @@ fn copy_first_existing_file_if_missing(
 fn app_storage_dir(app: &AppHandle) -> PathBuf {
     let app_dir = if let Ok(appdata) = std::env::var("APPDATA") {
         let appdata_path = PathBuf::from(&appdata);
-        let preferred = appdata_path.join("TimeFlow");
-
-        if !preferred.exists() {
-            for legacy_name in ["conceptfab", "CfabDemon", "TimeFlowDemon"] {
-                let legacy_dir = appdata_path.join(legacy_name);
-                if !legacy_dir.exists() {
-                    continue;
-                }
-                match std::fs::rename(&legacy_dir, &preferred) {
-                    Ok(_) => {
-                        log::info!(
-                            "Migrated app storage dir '{}' -> '{}'",
-                            legacy_dir.display(),
-                            preferred.display()
-                        );
-                        break;
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "Failed to migrate app storage dir '{}' -> '{}': {}",
-                            legacy_dir.display(),
-                            preferred.display(),
-                            e
-                        );
-                    }
-                }
+        match timeflow_paths::ensure_timeflow_base_dir(&appdata_path) {
+            Ok(path) => path,
+            Err(error) => {
+                let fallback = appdata_path.join("TimeFlow");
+                log::warn!(
+                    "Failed to resolve TIMEFLOW storage dir via shared helper, falling back to '{}': {}",
+                    fallback.display(),
+                    error
+                );
+                std::fs::create_dir_all(&fallback).ok();
+                fallback
             }
         }
-
-        preferred
     } else {
         app.path()
             .app_data_dir()
@@ -293,7 +285,7 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
         if demo_mode { "demo" } else { "primary" }
     );
 
-    initialize_database_file(&path_str)?;
+    initialize_database_file_once(&path_str)?;
 
     // Perform vacuum on startup if enabled
     {
@@ -491,6 +483,19 @@ fn initialize_database_file(path_str: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn initialize_database_file_once(path_str: &str) -> Result<(), String> {
+    let mut initialized_paths = initialized_db_paths()
+        .lock()
+        .map_err(|_| "Initialized DB paths mutex poisoned".to_string())?;
+    if initialized_paths.contains(path_str) {
+        return Ok(());
+    }
+
+    initialize_database_file(path_str)?;
+    initialized_paths.insert(path_str.to_string());
+    Ok(())
+}
+
 fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     crate::db_migrations::run_migrations(db)
 }
@@ -533,7 +538,7 @@ pub fn get_connection(app: &AppHandle) -> Result<PooledConnection, String> {
 pub fn get_primary_connection(app: &AppHandle) -> Result<PooledConnection, String> {
     let path = db_path(app);
     let path_str = path.to_string_lossy().to_string();
-    initialize_database_file(&path_str)?;
+    initialize_database_file_once(&path_str)?;
     let pool = app
         .try_state::<PrimaryDbPool>()
         .ok_or_else(|| "PrimaryDbPool state unavailable (database not initialized)".to_string())?;
@@ -579,7 +584,7 @@ pub fn set_demo_mode(app: &AppHandle, enabled: bool) -> Result<DemoModeStatus, S
     let target_path = active_db_path_for_mode(app, enabled);
     let target_path_str = target_path.to_string_lossy().to_string();
 
-    initialize_database_file(&target_path_str)?;
+    initialize_database_file_once(&target_path_str)?;
     write_persisted_demo_mode(app, enabled)?;
 
     let db_path_state = app

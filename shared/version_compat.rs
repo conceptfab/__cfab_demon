@@ -16,7 +16,7 @@ pub fn check_version_compatibility(v1: &str, v2: &str) -> bool {
             if maj1 != maj2 || min1 != min2 {
                 return false;
             }
-            (rel1 - rel2).abs() <= 3
+            rel1.abs_diff(rel2) <= 3
         }
         // Be permissive when a version string cannot be parsed (missing/corrupted file).
         // A strict "false" here blocks startup with a mismatch warning even without real incompatibility.

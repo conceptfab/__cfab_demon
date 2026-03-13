@@ -530,7 +530,7 @@ export const importData = (archivePath: string) =>
   });
 
 export const importDataArchive = (archive: ExportArchive) =>
-  invoke<ImportSummary>('import_data_archive', { archive });
+  invokeMutation<ImportSummary>('import_data_archive', { archive });
 
 // Sync log
 export const appendSyncLog = (lines: string[]) =>

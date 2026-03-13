@@ -1182,10 +1182,10 @@
       },
       "adding_applications": {
         "title": "Adding Applications",
-        "description": "In the <b>Applications</b> tab, add process names (e.g. name.exe) you want to track. Give them friendly names. Do not leave the list empty, because the daemon will then fall back to monitor-all and start tracking every application."
+        "description": "In the <b>Applications</b> tab, add process names (e.g. name.exe) you want to track. Give them friendly names. Do not leave the list empty, because an empty list pauses tracking instead of switching TIMEFLOW to monitor-all."
       },
       "starting_daemon": {
-        "title": "Starting the Demon",
+        "title": "Starting the Daemon",
         "description": "In the <b>Daemon</b> tab, start it and enable 'Autostart ON'. The system will start working in the background."
       },
       "assigning_sessions": {
@@ -1376,7 +1376,7 @@
     "key_functionalities": "Key Functionalities",
     "step_by_step_guidance_from_exe_preparation_to_launching": "Step by step guidance from .exe preparation to launching the Daemon.",
     "configuration_of_project_folders_and_app_processes_to_be": "Configuration of project folders and app processes to be tracked.",
-    "your_monitored_applications_list_should_not_stay_empty_i": "Your monitored applications list should not stay empty. If you add no processes, the daemon falls back to monitor-all and starts tracking all applications.",
+    "your_monitored_applications_list_should_not_stay_empty_i": "Your monitored applications list should not stay empty. If you add no processes, TIMEFLOW pauses tracking instead of falling back to monitor-all.",
     "first_session_assignment_and_local_ai_onboarding_instruc": "First-session assignment and local AI onboarding instructions.",
     "accessible_from_the_sidebar_rocket_icon_and_from_the_hel": "Accessible from the sidebar rocket icon and from the Help screen.",
     "automatically_clears_the_first_run_hint_after_finishing": "Automatically clears the first-run hint after finishing the tutorial.",

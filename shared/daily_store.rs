@@ -55,6 +55,18 @@ pub struct DaySignature {
     pub revision: u64,
 }
 
+fn dedupe_files_preserving_last(files: &[StoredFileEntry]) -> Vec<&StoredFileEntry> {
+    let mut seen = BTreeSet::new();
+    let mut deduped = Vec::with_capacity(files.len());
+    for file in files.iter().rev() {
+        if seen.insert(file.name.clone()) {
+            deduped.push(file);
+        }
+    }
+    deduped.reverse();
+    deduped
+}
+
 pub fn store_db_path(base_dir: &Path) -> PathBuf {
     base_dir.join(STORE_FILE_NAME)
 }
@@ -246,19 +258,35 @@ pub fn replace_day_snapshot(
                  activity_type = excluded.activity_type",
         )
         .map_err(|e| format!("Failed to prepare daily file insert: {}", e))?;
-    let mut existing_files_stmt = tx
-        .prepare_cached(
-            "SELECT file_name
-             FROM daily_files
-             WHERE date = ?1 AND exe_name = ?2",
-        )
-        .map_err(|e| format!("Failed to prepare daily file cleanup select: {}", e))?;
     let mut delete_file_stmt = tx
         .prepare_cached(
             "DELETE FROM daily_files
              WHERE date = ?1 AND exe_name = ?2 AND file_name = ?3",
         )
         .map_err(|e| format!("Failed to prepare daily file delete: {}", e))?;
+    let mut existing_files_by_app = BTreeMap::<String, BTreeSet<String>>::new();
+    {
+        let mut existing_files_stmt = tx
+            .prepare_cached(
+                "SELECT exe_name, file_name
+                 FROM daily_files
+                 WHERE date = ?1",
+            )
+            .map_err(|e| format!("Failed to prepare daily file cleanup select: {}", e))?;
+        let existing_file_rows = existing_files_stmt
+            .query_map([snapshot.date.as_str()], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Failed to query existing daily files for cleanup: {}", e))?;
+        for row in existing_file_rows {
+            let (exe_name, file_name) =
+                row.map_err(|e| format!("Failed to map existing daily file row: {}", e))?;
+            existing_files_by_app
+                .entry(exe_name)
+                .or_default()
+                .insert(file_name);
+        }
+    }
 
     for (exe_name, app) in &snapshot.apps {
         app_stmt
@@ -302,26 +330,12 @@ pub fn replace_day_snapshot(
                 )
             })?;
 
-        let existing_file_rows = existing_files_stmt
-            .query_map(params![snapshot.date, exe_name], |row| row.get::<_, String>(0))
-            .map_err(|e| {
-                format!(
-                    "Failed to query existing files for app '{}' on {}: {}",
-                    exe_name, snapshot.date, e
-                )
-            })?;
-        let mut removed_file_names = BTreeSet::new();
-        for row in existing_file_rows {
-            let file_name = row.map_err(|e| {
-                format!(
-                    "Failed to map existing file row for app '{}' on {}: {}",
-                    exe_name, snapshot.date, e
-                )
-            })?;
-            removed_file_names.insert(file_name);
-        }
+        let mut removed_file_names = existing_files_by_app.remove(exe_name).unwrap_or_default();
 
-        for (ordinal, file) in app.files.iter().enumerate() {
+        for (ordinal, file) in dedupe_files_preserving_last(&app.files)
+            .into_iter()
+            .enumerate()
+        {
             let title_history_json = serde_json::to_string(&file.title_history).map_err(|e| {
                 format!(
                     "Failed to serialize title history for '{}' on {}: {}",
@@ -364,7 +378,6 @@ pub fn replace_day_snapshot(
     }
 
     drop(delete_file_stmt);
-    drop(existing_files_stmt);
     drop(file_stmt);
     drop(delete_extra_sessions_stmt);
     drop(session_stmt);
@@ -899,11 +912,7 @@ mod tests {
         };
 
         for snapshot in [day_one.clone(), day_two.clone()] {
-            replace_day_snapshot(
-                &mut conn,
-                &snapshot,
-            )
-            .expect("save");
+            replace_day_snapshot(&mut conn, &snapshot).expect("save");
         }
 
         let snapshots =
@@ -1052,6 +1061,70 @@ mod tests {
 
         assert_eq!(app_count, 1);
         assert_eq!(session_count, 1);
+        assert_eq!(file_count, 1);
+    }
+
+    #[test]
+    fn replace_day_snapshot_keeps_only_last_duplicate_file_entry() {
+        let mut conn = Connection::open_in_memory().expect("in-memory sqlite");
+        ensure_schema(&conn).expect("schema");
+
+        let snapshot = StoredDailyData {
+            date: "2026-03-10".to_string(),
+            generated_at: "2026-03-10T12:00:00+00:00".to_string(),
+            apps: BTreeMap::from([(
+                "code.exe".to_string(),
+                StoredAppDailyData {
+                    display_name: "VS Code".to_string(),
+                    total_seconds: 300,
+                    sessions: vec![],
+                    files: vec![
+                        StoredFileEntry {
+                            name: "client".to_string(),
+                            total_seconds: 120,
+                            first_seen: "2026-03-10T10:00:00+00:00".to_string(),
+                            last_seen: "2026-03-10T10:02:00+00:00".to_string(),
+                            window_title: "Client old".to_string(),
+                            detected_path: Some("C:/repo/client-old".to_string()),
+                            title_history: vec!["Client old".to_string()],
+                            activity_type: Some("coding".to_string()),
+                        },
+                        StoredFileEntry {
+                            name: "client".to_string(),
+                            total_seconds: 180,
+                            first_seen: "2026-03-10T10:03:00+00:00".to_string(),
+                            last_seen: "2026-03-10T10:06:00+00:00".to_string(),
+                            window_title: "Client new".to_string(),
+                            detected_path: Some("C:/repo/client-new".to_string()),
+                            title_history: vec!["Client new".to_string()],
+                            activity_type: Some("coding".to_string()),
+                        },
+                    ],
+                },
+            )]),
+        };
+
+        replace_day_snapshot(&mut conn, &snapshot).expect("save");
+
+        let loaded = load_day_snapshot(&conn, "2026-03-10")
+            .expect("load")
+            .expect("snapshot should exist");
+        let files = &loaded.apps.get("code.exe").expect("app should exist").files;
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].name, "client");
+        assert_eq!(files[0].window_title, "Client new");
+        assert_eq!(
+            files[0].detected_path.as_deref(),
+            Some("C:/repo/client-new")
+        );
+
+        let file_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM daily_files WHERE date = '2026-03-10' AND exe_name = 'code.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("file count");
         assert_eq!(file_count, 1);
     }
 }

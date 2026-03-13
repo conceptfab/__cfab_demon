@@ -6,6 +6,20 @@
 
 ---
 
+## Status realizacji
+
+### 2026-03-13
+
+- `ZROBIONE`: C-R1, C-R2, C-R3
+- `ZROBIONE`: C-F1, C-F2, C-F3
+- `ZROBIONE`: C-I1, C-I2
+- `ZROBIONE`: H-R1, H-R3, H-R5, H-F5, H-I1, H-I2, H-I3
+- `ZROBIONE`: M-R2, M-R4
+- `PENDING`: pozostałe pozycje z raportu
+- `WERYFIKACJA OK`: `cargo test`, `cargo check` (`dashboard/src-tauri`), `npm run typecheck`, `npm run test`, `npm run lint`
+
+---
+
 ## Spis treści
 
 1. [KRYTYCZNE — Rust Backend](#1-krytyczne--rust-backend)

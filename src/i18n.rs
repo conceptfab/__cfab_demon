@@ -31,7 +31,7 @@ impl Lang {
             (Lang::En, TrayText::DashboardNotFound) => "TIMEFLOW Dashboard (timeflow-dashboard.exe) not found.\nMake sure it is in the same folder as timeflow-demon.exe.",
 
             (Lang::Pl, TrayText::VersionMismatchTemplate) => "Niezgodność wersji TIMEFLOW!\nDemon: {}\nDashboard: {}\n\nTo połączenie może działać nieprawidłowo.",
-            (Lang::En, TrayText::VersionMismatchTemplate) => "TIMEFLOW Version mismatch!\nDemon: {}\nDashboard: {}\n\nThis connection may not work properly.",
+            (Lang::En, TrayText::VersionMismatchTemplate) => "TIMEFLOW Version mismatch!\nDaemon: {}\nDashboard: {}\n\nThis connection may not work properly.",
 
             (Lang::Pl, TrayText::VersionErrorTitle) => "TIMEFLOW - Błąd wersji",
             (Lang::En, TrayText::VersionErrorTitle) => "TIMEFLOW - Version Error",
@@ -43,7 +43,7 @@ impl Lang {
                 "Inna instancja TIMEFLOW Demon jest już uruchomiona."
             }
             (Lang::En, TrayText::AlreadyRunning) => {
-                "Another TIMEFLOW Demon instance is already running."
+                "Another TIMEFLOW Daemon instance is already running."
             }
         }
     }

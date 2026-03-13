@@ -7,7 +7,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
-import { getRechartsAnimationConfig } from "@/lib/chart-animation";
+import { useRechartsAnimationConfig } from "@/lib/chart-animation";
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +41,7 @@ export function AllProjectsChart({ projects }: Props) {
     }
     return out;
   }, [visibleProjects, sortMode]);
-  const barAnimation = getRechartsAnimationConfig({
+  const barAnimation = useRechartsAnimationConfig({
     complexity: sorted.length,
     maxComplexity: 45,
     minDuration: 170,

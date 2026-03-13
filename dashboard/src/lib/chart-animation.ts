@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useSettingsStore } from '@/store/settings-store';
 
 type AnimationEasing = 'ease-out';
@@ -27,14 +28,16 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function getRechartsAnimationConfig({
-  complexity,
-  maxComplexity,
-  minDuration = 170,
-  maxDuration = 340,
-}: RechartsAnimationOptions): RechartsAnimationConfig {
-  const chartAnimationsActive = useSettingsStore.getState().chartAnimations;
-  if (!chartAnimationsActive) {
+function buildRechartsAnimationConfig(
+  {
+    complexity,
+    maxComplexity,
+    minDuration = 170,
+    maxDuration = 340,
+  }: RechartsAnimationOptions,
+  enabled: boolean,
+): RechartsAnimationConfig {
+  if (!enabled) {
     return DISABLED_ANIMATION_CONFIG;
   }
 
@@ -58,4 +61,27 @@ export function getRechartsAnimationConfig({
     animationDuration: duration,
     animationEasing: 'ease-out',
   };
+}
+
+export function getRechartsAnimationConfig(
+  options: RechartsAnimationOptions & { enabled?: boolean },
+): RechartsAnimationConfig {
+  return buildRechartsAnimationConfig(options, options.enabled ?? true);
+}
+
+export function useRechartsAnimationConfig({
+  complexity,
+  maxComplexity,
+  minDuration = 170,
+  maxDuration = 340,
+}: RechartsAnimationOptions): RechartsAnimationConfig {
+  const chartAnimationsActive = useSettingsStore((s) => s.chartAnimations);
+  return useMemo(
+    () =>
+      buildRechartsAnimationConfig(
+        { complexity, maxComplexity, minDuration, maxDuration },
+        chartAnimationsActive,
+      ),
+    [chartAnimationsActive, complexity, maxComplexity, minDuration, maxDuration],
+  );
 }

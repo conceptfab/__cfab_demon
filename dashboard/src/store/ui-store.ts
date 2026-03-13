@@ -57,6 +57,7 @@ function persistAssignProjectListMode(mode: AssignProjectListMode): void {
 
 interface UIState {
   currentPage: string;
+  pageChangeRequestId: number;
   setCurrentPage: (page: string) => void;
   pageChangeGuard: PageChangeGuard | null;
   setPageChangeGuard: (guard: PageChangeGuard | null) => void;
@@ -81,20 +82,25 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set, get) => ({
   currentPage: 'dashboard',
+  pageChangeRequestId: 0,
   pageChangeGuard: null,
   setCurrentPage: (page) => {
-    void (async () => {
-      const currentPage = get().currentPage;
-      if (page === currentPage) return;
+    const currentPage = get().currentPage;
+    if (page === currentPage) return;
 
+    const requestId = get().pageChangeRequestId + 1;
+    set({ pageChangeRequestId: requestId });
+
+    void (async () => {
       const guard = get().pageChangeGuard;
       if (guard) {
         const allowed = await guard(page, currentPage);
         if (!allowed) return;
       }
 
-      if (get().currentPage !== currentPage) return;
-      set({ currentPage: page });
+      set((state) =>
+        state.pageChangeRequestId === requestId ? { currentPage: page } : {},
+      );
     })();
   },
   setPageChangeGuard: (guard) => set({ pageChangeGuard: guard }),

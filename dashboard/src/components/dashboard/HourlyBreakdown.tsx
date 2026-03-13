@@ -7,7 +7,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
-import { getRechartsAnimationConfig } from "@/lib/chart-animation";
+import { useRechartsAnimationConfig } from "@/lib/chart-animation";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { HourlyData } from "@/lib/db-types";
@@ -30,7 +30,7 @@ export function HourlyBreakdown({ data }: Props) {
     }
     return full;
   }, [data]);
-  const barAnimation = getRechartsAnimationConfig({
+  const barAnimation = useRechartsAnimationConfig({
     complexity: chartData.length,
     maxComplexity: 36,
     minDuration: 150,

@@ -206,7 +206,7 @@ pub fn monitored_exe_names(config: &Config) -> HashSet<String> {
     config
         .apps
         .iter()
-        .map(|a| a.exe_name.trim().to_string())
+        .map(|a| a.exe_name.trim().to_lowercase())
         .collect()
 }
 

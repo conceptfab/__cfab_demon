@@ -16,7 +16,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from "@/lib/chart-styles";
-import { getRechartsAnimationConfig } from "@/lib/chart-animation";
+import { useRechartsAnimationConfig } from "@/lib/chart-animation";
 import {
   BarChart,
   Bar,
@@ -219,16 +219,12 @@ export function TimelineChart({
   const chartHeightClassName = heightClassName ?? (isHourly ? "h-64" : "h-56");
   const chartComplexity = chartData.length * Math.max(seriesKeys.length, 1);
   const useSimpleRendering = chartComplexity > 180;
-  const barAnimation = useMemo(
-    () =>
-      getRechartsAnimationConfig({
-        complexity: chartComplexity,
-        maxComplexity: isHourly ? 240 : 300,
-        minDuration: isHourly ? 150 : 170,
-        maxDuration: isHourly ? 250 : 320,
-      }),
-    [chartComplexity, isHourly]
-  );
+  const barAnimation = useRechartsAnimationConfig({
+    complexity: chartComplexity,
+    maxComplexity: isHourly ? 240 : 300,
+    minDuration: isHourly ? 150 : 170,
+    maxDuration: isHourly ? 250 : 320,
+  });
   const effectiveBarAnimation = useSimpleRendering
     ? {
         isAnimationActive: false,

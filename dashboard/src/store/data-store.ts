@@ -35,62 +35,6 @@ interface DataState {
 
 const REFRESH_THROTTLE_MS = 250;
 const REASON_REFRESH_DEDUPE_MS = 1_000;
-let lastRefreshAtMs = 0;
-let scheduledRefreshTimer: ReturnType<typeof setTimeout> | null = null;
-const pendingRefreshReasons = new Set<RefreshReason>();
-const lastRefreshAtByReason = new Map<RefreshReason, number>();
-let hasPendingAnonymousRefresh = false;
-
-function flushPendingRefresh(increment: () => void) {
-  if (!hasPendingAnonymousRefresh && pendingRefreshReasons.size === 0) {
-    scheduledRefreshTimer = null;
-    return;
-  }
-  const now = Date.now();
-  const reasons = Array.from(pendingRefreshReasons);
-  lastRefreshAtMs = now;
-  pendingRefreshReasons.forEach((reason) => {
-    lastRefreshAtByReason.set(reason, now);
-  });
-  pendingRefreshReasons.clear();
-  emitAppRefresh(reasons, hasPendingAnonymousRefresh);
-  hasPendingAnonymousRefresh = false;
-  scheduledRefreshTimer = null;
-  increment();
-}
-
-function scheduleThrottledRefresh(
-  reason: RefreshReason | undefined,
-  increment: () => void,
-) {
-  const now = Date.now();
-  if (reason) {
-    const lastReasonRefreshAt = lastRefreshAtByReason.get(reason);
-    if (
-      lastReasonRefreshAt !== undefined &&
-      now - lastReasonRefreshAt < REASON_REFRESH_DEDUPE_MS
-    ) {
-      return;
-    }
-    pendingRefreshReasons.add(reason);
-  } else {
-    hasPendingAnonymousRefresh = true;
-  }
-
-  const elapsed = now - lastRefreshAtMs;
-  if (elapsed >= REFRESH_THROTTLE_MS) {
-    flushPendingRefresh(increment);
-    return;
-  }
-
-  const delay = REFRESH_THROTTLE_MS - elapsed;
-  if (scheduledRefreshTimer !== null) {
-    return;
-  }
-  scheduledRefreshTimer = setTimeout(() => {
-    flushPendingRefresh(increment);
-  }, delay);
-}
 
 function presetToRange(preset: TimePreset): DateRange {
   const now = new Date();
@@ -128,79 +72,138 @@ function inferPreset(range: DateRange): TimePreset {
   return 'custom';
 }
 
-export const useDataStore = create<DataState>((set, get) => ({
-  dateRange: presetToRange('today'),
-  timePreset: 'today',
-  setDateRange: (range) =>
-    set({ dateRange: range, timePreset: inferPreset(range) }),
-  setTimePreset: (preset) =>
-    set({ timePreset: preset, dateRange: presetToRange(preset) }),
+export const useDataStore = create<DataState>((set, get) => {
+  let lastRefreshAtMs = 0;
+  let scheduledRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingRefreshReasons = new Set<RefreshReason>();
+  const lastRefreshAtByReason = new Map<RefreshReason, number>();
+  let hasPendingAnonymousRefresh = false;
 
-  shiftDateRange: (direction) =>
-    set((s) => {
-      const { dateRange, timePreset } = s;
-      if (timePreset === 'all') return {};
-      const today = new Date();
-      const start = parseISO(dateRange.start);
-      const end = parseISO(dateRange.end);
+  const flushPendingRefresh = (increment: () => void) => {
+    if (!hasPendingAnonymousRefresh && pendingRefreshReasons.size === 0) {
+      scheduledRefreshTimer = null;
+      return;
+    }
+    const now = Date.now();
+    const reasons = Array.from(pendingRefreshReasons);
+    lastRefreshAtMs = now;
+    pendingRefreshReasons.forEach((reason) => {
+      lastRefreshAtByReason.set(reason, now);
+    });
+    pendingRefreshReasons.clear();
+    emitAppRefresh(reasons, hasPendingAnonymousRefresh);
+    hasPendingAnonymousRefresh = false;
+    scheduledRefreshTimer = null;
+    increment();
+  };
 
-      let newStart: Date;
-      let newEnd: Date;
-
-      switch (timePreset) {
-        case 'today': {
-          newStart = addDays(start, direction);
-          newEnd = addDays(end, direction);
-          break;
-        }
-        case 'week': {
-          newStart = addDays(start, direction * 7);
-          newEnd = addDays(end, direction * 7);
-          break;
-        }
-        case 'month': {
-          newStart = startOfMonth(addMonths(start, direction));
-          newEnd = endOfMonth(newStart);
-          break;
-        }
-        case 'custom':
-        default:
-          return {};
+  const scheduleThrottledRefresh = (
+    reason: RefreshReason | undefined,
+    increment: () => void,
+  ) => {
+    const now = Date.now();
+    if (reason) {
+      const lastReasonRefreshAt = lastRefreshAtByReason.get(reason);
+      if (
+        lastReasonRefreshAt !== undefined &&
+        now - lastReasonRefreshAt < REASON_REFRESH_DEDUPE_MS
+      ) {
+        return;
       }
+      pendingRefreshReasons.add(reason);
+    } else {
+      hasPendingAnonymousRefresh = true;
+    }
 
-      const cappedEnd = minDate([newEnd, today]);
-      if (newStart > today) return {};
+    const elapsed = now - lastRefreshAtMs;
+    if (elapsed >= REFRESH_THROTTLE_MS) {
+      flushPendingRefresh(increment);
+      return;
+    }
 
-      return {
-        dateRange: {
-          start: format(newStart, 'yyyy-MM-dd'),
-          end: format(cappedEnd, 'yyyy-MM-dd'),
-        },
-      };
-    }),
+    const delay = REFRESH_THROTTLE_MS - elapsed;
+    if (scheduledRefreshTimer !== null) {
+      return;
+    }
+    scheduledRefreshTimer = setTimeout(() => {
+      flushPendingRefresh(increment);
+    }, delay);
+  };
 
-  canShiftForward: (): boolean => {
-    if (get().timePreset === 'custom') return false;
-    const todayStr = format(new Date(), 'yyyy-MM-dd');
-    return get().dateRange.end < todayStr;
-  },
+  return {
+    dateRange: presetToRange('today'),
+    timePreset: 'today',
+    setDateRange: (range) =>
+      set({ dateRange: range, timePreset: inferPreset(range) }),
+    setTimePreset: (preset) =>
+      set({ timePreset: preset, dateRange: presetToRange(preset) }),
 
-  refreshKey: 0,
-  triggerRefresh: (reason) =>
-    scheduleThrottledRefresh(reason, () =>
-      set((s) => ({ refreshKey: s.refreshKey + 1 })),
-    ),
+    shiftDateRange: (direction) =>
+      set((s) => {
+        const { dateRange, timePreset } = s;
+        if (timePreset === 'all') return {};
+        const today = new Date();
+        const start = parseISO(dateRange.start);
+        const end = parseISO(dateRange.end);
 
-  autoImportDone: false,
-  autoImportResult: null,
-  setAutoImportDone: (done, result) =>
-    set({ autoImportDone: done, autoImportResult: result ?? null }),
+        let newStart: Date;
+        let newEnd: Date;
 
-  discoveredProjects: { projects: [], dismissed: false },
-  setDiscoveredProjects: (names) =>
-    set({ discoveredProjects: { projects: names, dismissed: false } }),
-  dismissDiscoveredProjects: () =>
-    set((s) => ({
-      discoveredProjects: { ...s.discoveredProjects, dismissed: true },
-    })),
-}));
+        switch (timePreset) {
+          case 'today': {
+            newStart = addDays(start, direction);
+            newEnd = addDays(end, direction);
+            break;
+          }
+          case 'week': {
+            newStart = addDays(start, direction * 7);
+            newEnd = addDays(end, direction * 7);
+            break;
+          }
+          case 'month': {
+            newStart = startOfMonth(addMonths(start, direction));
+            newEnd = endOfMonth(newStart);
+            break;
+          }
+          case 'custom':
+          default:
+            return {};
+        }
+
+        const cappedEnd = minDate([newEnd, today]);
+        if (newStart > today) return {};
+
+        return {
+          dateRange: {
+            start: format(newStart, 'yyyy-MM-dd'),
+            end: format(cappedEnd, 'yyyy-MM-dd'),
+          },
+        };
+      }),
+
+    canShiftForward: (): boolean => {
+      if (get().timePreset === 'custom') return false;
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      return get().dateRange.end < todayStr;
+    },
+
+    refreshKey: 0,
+    triggerRefresh: (reason) =>
+      scheduleThrottledRefresh(reason, () =>
+        set((s) => ({ refreshKey: s.refreshKey + 1 })),
+      ),
+
+    autoImportDone: false,
+    autoImportResult: null,
+    setAutoImportDone: (done, result) =>
+      set({ autoImportDone: done, autoImportResult: result ?? null }),
+
+    discoveredProjects: { projects: [], dismissed: false },
+    setDiscoveredProjects: (names) =>
+      set({ discoveredProjects: { projects: names, dismissed: false } }),
+    dismissDiscoveredProjects: () =>
+      set((s) => ({
+        discoveredProjects: { ...s.discoveredProjects, dismissed: true },
+      })),
+  };
+});

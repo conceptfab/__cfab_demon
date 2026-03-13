@@ -447,9 +447,9 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
                 process_snapshot_cache = Some(monitor::build_process_snapshot());
                 last_process_snapshot_refresh = Some(snapshot_now);
             }
-            let Some(proc_snap) = process_snapshot_cache.as_ref() else {
-                continue;
-            };
+            let proc_snap = process_snapshot_cache
+                .as_ref()
+                .expect("process snapshot cache should be populated before background tracking");
 
             for exe_name in &monitored {
                 if recorded_this_tick.contains(exe_name) {

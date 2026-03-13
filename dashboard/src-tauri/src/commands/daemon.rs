@@ -278,9 +278,8 @@ fn build_daemon_status(
     include_assignment_counts: bool,
 ) -> Result<DaemonStatus, String> {
     let (running, pid) = load_daemon_process_status(use_cached_process)?;
-    let exe_path = find_daemon_exe()
-        .ok()
-        .map(|p| p.to_string_lossy().to_string());
+    let daemon_exe = find_daemon_exe().ok();
+    let exe_path = daemon_exe.as_ref().map(|p| p.to_string_lossy().to_string());
     let autostart = startup_dir()
         .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
         .unwrap_or(false);
@@ -292,9 +291,7 @@ fn build_daemon_status(
         (0, 0)
     };
 
-    let daemon_version = find_daemon_exe()
-        .ok()
-        .and_then(|exe| load_daemon_version(&exe));
+    let daemon_version = daemon_exe.as_ref().and_then(|exe| load_daemon_version(exe));
 
     let is_compatible = if let Some(ref dv) = daemon_version {
         version_compat::check_version_compatibility(dv, crate::VERSION.trim())
@@ -336,14 +333,15 @@ pub async fn get_daemon_status(
     app: AppHandle,
     min_duration: Option<i64>,
 ) -> Result<DaemonStatus, String> {
-    run_app_blocking(app, move |app| build_daemon_status(&app, min_duration, false, true))
+    run_app_blocking(app, move |app| {
+        build_daemon_status(&app, min_duration, false, true)
+    })
     .await
 }
 
 #[tauri::command]
 pub async fn get_daemon_runtime_status(app: AppHandle) -> Result<DaemonStatus, String> {
-    run_app_blocking(app, move |app| build_daemon_status(&app, None, true, false))
-    .await
+    run_app_blocking(app, move |app| build_daemon_status(&app, None, true, false)).await
 }
 
 #[tauri::command]
