@@ -13,7 +13,7 @@ import {
   CHART_TOOLTIP_TEXT_COLOR,
   CHART_TOOLTIP_TITLE_COLOR,
 } from '@/lib/chart-styles';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import { useSettingsStore } from '@/store/settings-store';
 import { formatDuration } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
@@ -179,3 +179,4 @@ export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyHeatmapProps) {
     </div>
   );
 }
+

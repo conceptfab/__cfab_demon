@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -23,10 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  applicationsApi,
-  dashboardApi,
   projectsApi,
-  settingsApi,
 } from '@/lib/tauri';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
@@ -48,35 +45,14 @@ import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
-import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
-import {
-  PROJECTS_ALL_TIME_INVALIDATED_EVENT,
-} from '@/lib/sync-events';
-import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
-import {
-  buildEstimateMap,
-  shouldInvalidateProjectExtraInfo,
-} from '@/lib/projects-all-time';
-import {
-  shouldRefreshProjectsPageAllTime,
-  shouldRefreshProjectsPageCore,
-  shouldRefreshProjectsPageFolders,
-} from '@/lib/page-refresh-reasons';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
+import { useProjectsData, PROJECT_FOLDERS_LOAD_ERROR } from '@/hooks/useProjectsData';
 import type {
-  AppWithStats,
-  ProjectFolder,
-  FolderProjectCandidate,
   DetectedProject,
-  ProjectExtraInfo,
   ProjectWithStats,
 } from '@/lib/db-types';
-import {
-  loadProjectsAllTime,
-  useProjectsCacheStore,
-} from '@/store/projects-cache-store';
 
 const PROJECT_RENDER_PAGE_SIZE = 120;
-const PROJECT_FOLDERS_LOAD_ERROR = '__projects_load_folders_failed__';
 
 const VIEW_MODE_STORAGE_KEY = 'timeflow-dashboard-projects-view-mode';
 const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
@@ -183,26 +159,13 @@ export function Projects() {
   const { currencyCode } = useSettingsStore();
   const { showError } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
-  const [excludedProjects, setExcludedProjects] = useState<ProjectWithStats[]>(
-    [],
-  );
-  const [apps, setApps] = useState<AppWithStats[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [projectDialogId, setProjectDialogId] = useState<number | null>(null);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
   const [pendingColor, setPendingColor] = useState<string | null>(null);
   const [assignOpen, setAssignOpen] = useState<number | null>(null);
-  const [projectFolders, setProjectFolders] = useState<ProjectFolder[]>([]);
-  const [folderCandidates, setFolderCandidates] = useState<
-    FolderProjectCandidate[]
-  >([]);
-  const [detectedProjects, setDetectedProjects] = useState<DetectedProject[]>(
-    [],
-  );
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [newFolderPath, setNewFolderPath] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
-  const [folderError, setFolderError] = useState<string | null>(null);
   const [folderInfo, setFolderInfo] = useState<string | null>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogProjectId, setSessionDialogProjectId] = useState<
@@ -214,24 +177,26 @@ export function Projects() {
       'compact'
     );
   });
-  const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
-  const [loadingExtra, setLoadingExtra] = useState(false);
-  const [estimates, setEstimates] = useState<Record<number, number>>({});
   const [search, setSearch] = useState('');
   const [projectRenderLimits, setProjectRenderLimits] = useState<
     Record<string, number>
   >({});
-  const autoFreezeInitializedRef = useRef(false);
-  const [coreRefreshKey, setCoreRefreshKey] = useState(0);
-  const [foldersRefreshKey, setFoldersRefreshKey] = useState(0);
-  const [allTimeRefreshKey, setAllTimeRefreshKey] = useState(0);
-  const projectExtraInfoCacheRef = useRef<Record<number, ProjectExtraInfo>>({});
-  const [projectExtraInfoCacheVersion, setProjectExtraInfoCacheVersion] =
-    useState(0);
-  const projects = useProjectsCacheStore((s) => s.projectsAllTime);
-  const projectsAllTimeLoading = useProjectsCacheStore(
-    (s) => s.projectsAllTimeLoading,
-  );
+  const {
+    apps,
+    cacheProjectExtraInfo,
+    detectedProjects,
+    estimates,
+    excludedProjects,
+    extraInfo,
+    folderCandidates,
+    folderError,
+    isDemoMode,
+    loadingExtra,
+    projectFolders,
+    projects,
+    projectsAllTimeLoading,
+    setFolderError,
+  } = useProjectsData(projectDialogId);
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -303,74 +268,6 @@ export function Projects() {
     persistSectionOpen(next);
   };
 
-  const invalidateAllTimeData = useCallback(() => {
-    setAllTimeRefreshKey((prev) => prev + 1);
-  }, []);
-
-  const invalidateCoreData = useCallback(() => {
-    setCoreRefreshKey((prev) => prev + 1);
-  }, []);
-
-  const invalidateFolderData = useCallback(() => {
-    setFoldersRefreshKey((prev) => prev + 1);
-  }, []);
-
-  const invalidateProjectExtraInfoCache = useCallback(() => {
-    projectExtraInfoCacheRef.current = {};
-    setProjectExtraInfoCacheVersion((prev) => prev + 1);
-  }, []);
-
-  useEffect(() => {
-    if (autoFreezeInitializedRef.current) return;
-    autoFreezeInitializedRef.current = true;
-    const { thresholdDays } = loadFreezeSettings();
-    projectsApi.autoFreezeProjects(thresholdDays)
-      .catch(() => {
-        /* ignore: feature not yet compiled */
-      });
-  }, []);
-
-  useEffect(() => {
-    void loadProjectsAllTime();
-  }, []);
-
-  usePageRefreshListener((reasons, source) => {
-    if (reasons.some((reason) => shouldRefreshProjectsPageCore(reason))) {
-      invalidateCoreData();
-    }
-    if (reasons.some((reason) => shouldRefreshProjectsPageFolders(reason))) {
-      invalidateFolderData();
-    }
-    if (reasons.some((reason) => shouldRefreshProjectsPageAllTime(reason))) {
-      invalidateAllTimeData();
-    }
-    if (
-      source === 'local' &&
-      reasons.some((reason) => shouldInvalidateProjectExtraInfo(reason))
-    ) {
-      invalidateProjectExtraInfoCache();
-    }
-  });
-
-  useEffect(() => {
-    const handleAllTimeInvalidated = () => {
-      invalidateAllTimeData();
-      invalidateProjectExtraInfoCache();
-    };
-
-    window.addEventListener(
-      PROJECTS_ALL_TIME_INVALIDATED_EVENT,
-      handleAllTimeInvalidated,
-    );
-
-    return () => {
-      window.removeEventListener(
-        PROJECTS_ALL_TIME_INVALIDATED_EVENT,
-        handleAllTimeInvalidated,
-      );
-    };
-  }, [invalidateAllTimeData, invalidateProjectExtraInfoCache]);
-
   const hotProjectIds = useMemo(() => {
     return new Set(
       [...projects]
@@ -379,112 +276,6 @@ export function Projects() {
         .map((p) => p.id),
     );
   }, [projects]);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled([
-      projectsApi.getExcludedProjects(),
-      applicationsApi.getApplications(),
-      settingsApi.getDemoModeStatus(),
-    ]).then(([excludedRes, appsRes, demoModeRes]) => {
-      if (cancelled) return;
-
-      if (excludedRes.status === 'fulfilled')
-        setExcludedProjects(excludedRes.value);
-      else
-        logTauriError('load excluded projects', excludedRes.reason);
-
-      if (appsRes.status === 'fulfilled') setApps(appsRes.value);
-      else logTauriError('load applications', appsRes.reason);
-
-      if (demoModeRes.status === 'fulfilled')
-        setIsDemoMode(demoModeRes.value.enabled);
-      else logTauriError('load demo mode status', demoModeRes.reason);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [coreRefreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.allSettled([
-      projectsApi.getProjectFolders(),
-      projectsApi.getFolderProjectCandidates(),
-    ]).then(([foldersRes, candidatesRes]) => {
-      if (cancelled) return;
-
-      if (foldersRes.status === 'fulfilled') {
-        setProjectFolders(foldersRes.value);
-        setFolderError(null);
-      } else {
-        logTauriError('load project folders', foldersRes.reason);
-        setFolderError(PROJECT_FOLDERS_LOAD_ERROR);
-      }
-
-      if (candidatesRes.status === 'fulfilled')
-        setFolderCandidates(candidatesRes.value);
-      else
-        console.error(
-          'Failed to load folder candidates:',
-          candidatesRes.reason,
-        );
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [foldersRefreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    projectsApi.getDetectedProjects(ALL_TIME_DATE_RANGE)
-      .then((data) => {
-        if (!cancelled) setDetectedProjects(data);
-      })
-      .catch((reason) => {
-        if (!cancelled)
-          logTauriError('load detected projects', reason);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [allTimeRefreshKey, isDemoMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    dashboardApi.getProjectEstimates(ALL_TIME_DATE_RANGE)
-      .then((rows) => {
-        if (cancelled) return;
-        setEstimates(buildEstimateMap(rows));
-      })
-      .catch((reason) => {
-        if (!cancelled) logTauriError('load estimates', reason);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [allTimeRefreshKey, isDemoMode]);
-
-  useEffect(() => {
-    if (projectDialogId === null) {
-      setExtraInfo(null);
-      return;
-    }
-    const cachedInfo = projectExtraInfoCacheRef.current[projectDialogId];
-    if (cachedInfo) {
-      setExtraInfo(cachedInfo);
-      setLoadingExtra(false);
-      return;
-    }
-    setLoadingExtra(true);
-    projectsApi.getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
-      .then((info) => {
-        projectExtraInfoCacheRef.current[projectDialogId] = info;
-        setExtraInfo(info);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingExtra(false));
-  }, [projectDialogId, projectExtraInfoCacheVersion]);
 
   const handleUpdateProjectColor = async (projectId: number, color: string) => {
     await projectsApi.updateProject(projectId, color);
@@ -556,8 +347,7 @@ export function Projects() {
     try {
       await projectsApi.compactProjectData(id);
       const info = await projectsApi.getProjectExtraInfo(id, ALL_TIME_DATE_RANGE);
-      projectExtraInfoCacheRef.current[id] = info;
-      setExtraInfo(info);
+      cacheProjectExtraInfo(id, info);
     } catch (e) {
       logTauriError('compact project data', e);
       showError(

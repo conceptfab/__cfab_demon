@@ -4,7 +4,7 @@ import { MousePointerClick } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { ManualSessionWithProject } from '@/lib/db-types';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 
 interface ProjectManualSessionsCardLabels {
   title: string;
@@ -83,3 +83,4 @@ export function ProjectManualSessionsCard({
     </Card>
   );
 }
+

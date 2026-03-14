@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -27,13 +26,12 @@ import {
 } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
-import { addDays, format, parseISO, subDays } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { MultiSplitSessionModal } from '@/components/sessions/MultiSplitSessionModal';
 import { SessionsToolbar } from '@/components/sessions/SessionsToolbar';
 import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjectContextMenu';
 import { SessionsVirtualList } from '@/components/sessions/SessionsVirtualList';
 import type {
-  DateRange,
   SessionWithApp,
   SplitPart,
 } from '@/lib/db-types';
@@ -45,20 +43,19 @@ import {
   loadFreezeSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
-import { buildTodayDate } from '@/lib/date-utils';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import {
   compareProjectsByName,
   isRecentProject,
 } from '@/lib/project-utils';
 import {
-  areSessionListsEqual,
   findSessionIdsMissingComment,
   requiresCommentForMultiplierBoost,
-  SESSION_PAGE_SIZE,
 } from '@/lib/session-utils';
 import { useToast } from '@/components/ui/toast-notification';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import { useSessionsData } from '@/hooks/useSessionsData';
+import { useSessionsFilters } from '@/hooks/useSessionsFilters';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
 import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
@@ -92,7 +89,6 @@ interface GroupedProject {
   sessions: SessionWithApp[];
 }
 
-type RangeMode = 'daily' | 'weekly';
 const TOP_PROJECTS_LIMIT = 5;
 
 export function Sessions() {
@@ -100,12 +96,6 @@ export function Sessions() {
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
   const { showError } = useToast();
   const {
-    sessionsFocusDate,
-    clearSessionsFocusDate,
-    sessionsFocusRange,
-    setSessionsFocusRange,
-    sessionsFocusProject,
-    setSessionsFocusProject,
     setProjectPageId,
     setCurrentPage,
     assignProjectListMode,
@@ -124,24 +114,6 @@ export function Sessions() {
       console.error(`Session action failed (${action}):`, error);
     },
   });
-  const [rangeMode, setRangeMode] = useState<RangeMode>('daily');
-  const [anchorDate, setAnchorDate] = useState<string>(
-    () => sessionsFocusDate ?? format(new Date(), 'yyyy-MM-dd'),
-  );
-  const [overrideDateRange, setOverrideDateRange] = useState<DateRange | null>(
-    null,
-  );
-  const [dataReloadVersion, setDataReloadVersion] = useState(0);
-  const [activeProjectId, setActiveProjectId] = useState<
-    number | 'unassigned' | null
-  >(sessionsFocusProject);
-  const [sessions, setSessions] = useState<SessionWithApp[]>([]);
-  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<number>>(
-    new Set(),
-  );
-  const [hasMore, setHasMore] = useState(false);
-  const sessionsRef = useRef<SessionWithApp[]>([]);
-  const hasMoreRef = useRef(false);
   const projects = useProjectsCacheStore((state) => state.projectsAllTime);
   const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
   const [projectCtxMenu, setProjectCtxMenu] =
@@ -152,6 +124,7 @@ export function Sessions() {
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [multiSplitSession, setMultiSplitSession] =
     useState<SessionWithApp | null>(null);
+  const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
@@ -161,16 +134,18 @@ export function Sessions() {
   const [customScrollParent, setCustomScrollParent] = useState<
     HTMLElement | undefined
   >(undefined);
-  const [minDuration, setMinDuration] = useState<number | undefined>(() => {
-    const settings = loadSessionSettings();
-    return settings.minSessionDurationSeconds > 0
-      ? settings.minSessionDurationSeconds
-      : undefined;
-  });
-  const today = buildTodayDate();
-  const canShiftForward = anchorDate < today;
-  const shiftStepDays = rangeMode === 'weekly' ? 7 : 1;
-
+  const {
+    activeDateRange,
+    activeProjectId,
+    buildFetchParams,
+    canShiftForward,
+    rangeMode,
+    setActiveProjectId,
+    setMinDuration,
+    setOverrideDateRange,
+    setRangeMode,
+    shiftDateRange,
+  } = useSessionsFilters(viewMode);
   const reloadDisplaySettings = useCallback(() => {
     const sessionSettings = loadSessionSettings();
     setSplitSettings(loadSplitSettings());
@@ -180,8 +155,21 @@ export function Sessions() {
         ? sessionSettings.minSessionDurationSeconds
         : undefined,
     );
-  }, []);
+  }, [setMinDuration]);
 
+  const {
+    dismissedSuggestions,
+    hasMore,
+    loadMore,
+    sessions,
+    sessionsRef,
+    setDismissedSuggestions,
+    setSessions,
+  } = useSessionsData({
+    activeDateRange,
+    buildFetchParams,
+    reloadVersion: dataReloadVersion,
+  });
   const {
     aiBreakdowns,
     getScoreBreakdownData,
@@ -203,6 +191,16 @@ export function Sessions() {
     multiSplitSession,
     sessions,
     splitSettings,
+  });
+  usePageRefreshListener((reasons, source) => {
+    if (source === 'app' && reasons.includes('settings_saved')) {
+      reloadDisplaySettings();
+    }
+    if (!reasons.some((reason) => shouldRefreshSessionsPage(reason))) {
+      return;
+    }
+    clearSplitCaches();
+    setDataReloadVersion((prev) => prev + 1);
   });
 
   useEffect(() => {
@@ -226,172 +224,8 @@ export function Sessions() {
     };
   }, []);
 
-  const activeDateRange = useMemo<DateRange>(() => {
-    if (overrideDateRange) return overrideDateRange;
-    const selectedDay = anchorDate || today;
-    const selectedDateObj = parseISO(selectedDay);
-
-    switch (rangeMode) {
-      case 'daily':
-        return { start: selectedDay, end: selectedDay };
-      case 'weekly':
-        return {
-          start: format(subDays(selectedDateObj, 6), 'yyyy-MM-dd'),
-          end: selectedDay,
-        };
-    }
-  }, [rangeMode, anchorDate, today, overrideDateRange]);
-
-  const shiftDateRange = (direction: -1 | 1) => {
-    setOverrideDateRange(null);
-    const current = parseISO(anchorDate);
-    const next = format(
-      addDays(current, direction * shiftStepDays),
-      'yyyy-MM-dd',
-    );
-    if (next > today) return;
-    setAnchorDate(next);
-  };
-
-  useEffect(() => {
-    if (
-      !sessionsFocusDate &&
-      !sessionsFocusRange &&
-      sessionsFocusProject === null
-    )
-      return;
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      if (sessionsFocusDate) {
-        setOverrideDateRange(null);
-        setRangeMode('daily');
-        setAnchorDate(sessionsFocusDate);
-        clearSessionsFocusDate();
-      } else if (sessionsFocusRange) {
-        setOverrideDateRange(sessionsFocusRange);
-        // We set anchorDate to end of range just so navigation buttons are somewhat sane
-        setAnchorDate(sessionsFocusRange.end);
-        setSessionsFocusRange(null);
-      }
-
-      if (sessionsFocusProject !== null) {
-        setActiveProjectId(sessionsFocusProject);
-        setSessionsFocusProject(null);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    sessionsFocusDate,
-    clearSessionsFocusDate,
-    sessionsFocusRange,
-    setSessionsFocusRange,
-    sessionsFocusProject,
-    setSessionsFocusProject,
-  ]);
-
-  // When filtering to "unassigned", skip dateRange so ALL unassigned sessions
-  // are visible (the daemon badge counts across all dates, not just today/week).
-  const effectiveDateRange =
-    activeProjectId === 'unassigned' ? undefined : activeDateRange;
-
-  const buildFetchParams = useCallback(
-    (offset: number) => ({
-      dateRange: effectiveDateRange,
-      limit: SESSION_PAGE_SIZE,
-      offset,
-      projectId:
-        activeProjectId === 'unassigned'
-          ? undefined
-          : (activeProjectId ?? undefined),
-      unassigned: activeProjectId === 'unassigned' ? true : undefined,
-      minDuration,
-      includeFiles: viewMode === 'detailed',
-      includeAiSuggestions: true,
-    }),
-    [effectiveDateRange, activeProjectId, minDuration, viewMode],
-  );
-
   useEffect(() => {
     void loadProjectsAllTime().catch(console.error);
-  }, []);
-
-  usePageRefreshListener((reasons, source) => {
-    if (source === 'app' && reasons.includes('settings_saved')) {
-      reloadDisplaySettings();
-    }
-    if (!reasons.some((reason) => shouldRefreshSessionsPage(reason))) {
-      return;
-    }
-    clearSplitCaches();
-    setDataReloadVersion((prev) => prev + 1);
-  });
-
-  useEffect(() => {
-    sessionsRef.current = sessions;
-  }, [sessions]);
-
-  useEffect(() => {
-    hasMoreRef.current = hasMore;
-  }, [hasMore]);
-
-  const replaceSessionsPage = useCallback((data: SessionWithApp[]) => {
-    const nextHasMore = data.length >= SESSION_PAGE_SIZE;
-    if (!areSessionListsEqual(sessionsRef.current, data)) {
-      sessionsRef.current = data;
-      setSessions(data);
-    }
-    if (hasMoreRef.current !== nextHasMore) {
-      hasMoreRef.current = nextHasMore;
-      setHasMore(nextHasMore);
-    }
-  }, []);
-
-  const loadFirstSessionsPage = useCallback(async () => {
-    const data = await sessionsApi.getSessions(buildFetchParams(0));
-    replaceSessionsPage(data);
-  }, [buildFetchParams, replaceSessionsPage]);
-
-  const handleVisibleSessionsRefresh = useEffectEvent(() => {
-    void loadFirstSessionsPage().catch(console.error);
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    sessionsApi.getSessions(buildFetchParams(0))
-      .then((data) => {
-        if (cancelled) return;
-        replaceSessionsPage(data);
-      })
-      .catch(console.error);
-    return () => {
-      cancelled = true;
-    };
-  }, [buildFetchParams, dataReloadVersion, replaceSessionsPage]);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      setDismissedSuggestions(new Set());
-    });
-  }, [activeDateRange.start, activeDateRange.end]);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') return;
-      handleVisibleSessionsRefresh();
-    };
-    const handleWindowFocus = () => {
-      handleVisibleSessionsRefresh();
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
-    };
   }, []);
 
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{
@@ -583,7 +417,7 @@ export function Sessions() {
         return false;
       }
     },
-    [sessions, showError, t, updateSessionComments, setPromptConfig],
+    [sessions, sessionsRef, setPromptConfig, setSessions, showError, t, updateSessionComments],
   );
 
   const handleSetRateMultiplier = useCallback(
@@ -671,7 +505,7 @@ export function Sessions() {
       },
     });
     setCtxMenu(null);
-  }, [ctxMenu, t, updateOneSessionComment, setPromptConfig, setCtxMenu]);
+  }, [ctxMenu, sessionsRef, setCtxMenu, setPromptConfig, setSessions, t, updateOneSessionComment]);
 
   const handleAcceptSuggestion = useCallback(
     async (session: SessionWithApp, e: React.MouseEvent) => {
@@ -691,7 +525,7 @@ export function Sessions() {
         logTauriError('accept AI suggestion', err);
       }
     },
-    [assignSessions],
+    [assignSessions, setDismissedSuggestions],
   );
 
   const handleRejectSuggestion = useCallback(
@@ -722,23 +556,8 @@ export function Sessions() {
         logTauriError('reject AI suggestion', err);
       }
     },
-    [assignSessions],
+    [assignSessions, sessionsRef, setDismissedSuggestions, setSessions],
   );
-
-  const loadMore = () => {
-    sessionsApi.getSessions(buildFetchParams(sessions.length))
-      .then((data) => {
-        setSessions((prev) => {
-          const next = [...prev, ...data];
-          sessionsRef.current = next;
-          return next;
-        });
-        const nextHasMore = data.length >= SESSION_PAGE_SIZE;
-        hasMoreRef.current = nextHasMore;
-        setHasMore(nextHasMore);
-      })
-      .catch(console.error);
-  };
 
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();

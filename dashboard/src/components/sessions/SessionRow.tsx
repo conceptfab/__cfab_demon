@@ -18,7 +18,7 @@ import {
 } from '@/lib/utils';
 import type { SessionWithApp, ScoreBreakdown } from '@/lib/db-types';
 import type { SessionIndicatorSettings } from '@/lib/user-settings';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import { SessionScoreBadge } from '@/components/sessions/SessionScoreBadge';
 import { SessionSuggestionBadge } from '@/components/sessions/SessionSuggestionBadge';
 
@@ -477,3 +477,4 @@ export const SessionRow = memo(function SessionRow({
     </div>
   );
 });
+

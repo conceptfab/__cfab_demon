@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import type { DateRange } from '@/lib/db-types';
 import type { TimePreset } from '@/store/data-store';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 
 interface DateRangeToolbarProps {
   dateRange: DateRange;
@@ -82,3 +82,4 @@ export function DateRangeToolbar({
     </div>
   );
 }
+

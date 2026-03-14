@@ -77,6 +77,11 @@ pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
     timeflow_paths::ensure_timeflow_base_dir(&appdata_root).map_err(|e| e.to_string())
 }
 
+/// Runs a blocking SQLite task against the currently active dashboard database.
+///
+/// This follows the app's active mode switch, so in demo mode it uses the demo
+/// DB and otherwise the primary DB. Use this for regular TIMEFLOW data that the
+/// UI should read/write inside the selected mode.
 pub(crate) async fn run_db_blocking<T, F>(app: AppHandle, operation: F) -> Result<T, String>
 where
     T: Send + 'static,
@@ -101,6 +106,11 @@ where
         .map_err(|e| format!("Blocking app task join error: {}", e))?
 }
 
+/// Runs a blocking SQLite task against the primary dashboard database only.
+///
+/// This bypasses demo mode and is reserved for data that must stay shared
+/// across modes, for example monitored app configuration persisted in the real
+/// primary store.
 pub(crate) async fn run_db_primary_blocking<T, F>(app: AppHandle, operation: F) -> Result<T, String>
 where
     T: Send + 'static,

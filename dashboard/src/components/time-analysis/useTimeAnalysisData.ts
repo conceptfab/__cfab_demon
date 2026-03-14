@@ -7,7 +7,7 @@ import {
   isBefore, isAfter, getWeek,
 } from "date-fns";
 import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
-import { resolveDateFnsLocale } from "@/lib/date-locale";
+import { resolveDateFnsLocale } from "@/lib/date-helpers";
 import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
 import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
 import { loadProjectsAllTime } from "@/store/projects-cache-store";
@@ -423,3 +423,4 @@ export function useTimeAnalysisData() {
     stackedBarColorMap,
   };
 }
+

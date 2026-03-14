@@ -10,7 +10,7 @@ import { useCancellableAsync } from '@/lib/async-utils';
 import { useUIStore } from '@/store/ui-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { getTemplate } from '@/lib/report-templates';
-import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import type {
   ProjectReportData,
 } from '@/lib/db-types';
@@ -507,3 +507,4 @@ export function ReportView() {
     </div>
   );
 }
+

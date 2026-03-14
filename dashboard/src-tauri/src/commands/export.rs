@@ -309,6 +309,7 @@ fn build_export_archive(
                             date,
                             DailyData {
                                 date: daily.date,
+                                generated_at: daily.generated_at,
                                 apps: filtered_apps,
                             },
                         ))

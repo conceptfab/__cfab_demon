@@ -62,7 +62,7 @@ import {
 } from '@/lib/session-utils';
 import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
-import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import { loadProjectsAllTime } from '@/store/projects-cache-store';
 import { fetchAllSessions } from '@/lib/session-pagination';
 import { shouldRefreshProjectPage } from '@/lib/page-refresh-reasons';
@@ -1528,3 +1528,4 @@ export function ProjectPage() {
     </div>
   );
 }
+

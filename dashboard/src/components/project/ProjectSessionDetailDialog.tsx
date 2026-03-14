@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import type { ManualSessionWithProject, SessionWithApp } from '@/lib/db-types';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 
 type AutoSessionRowLike = SessionWithApp & { isManual: false };
 type ManualSessionRowLike = SessionWithApp &
@@ -196,3 +196,4 @@ export function ProjectSessionDetailDialog({
     </Dialog>
   );
 }
+

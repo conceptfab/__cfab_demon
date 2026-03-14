@@ -13,19 +13,25 @@
 - `[2.1]` ZAMKNIĘTE: `compute_score_breakdowns` używa teraz batch-fetch nazw projektów zamiast N+1 query.
 - `[2.2]` ZAMKNIĘTE: hot-path w `assignment_model/scoring.rs` i `assignment_model/context.rs` używa `prepare_cached(...)`.
 - `[2.3]` ZAMKNIĘTE: hydration ścieżek w `src/monitor.rs` uruchamia się tylko dla foreground PID wymagającego pierwszej próby detekcji.
+- `[2.4]` ZAMKNIĘTE: `replace_day_snapshot` czyści stale `daily_files` jednym batchowym `DELETE ... NOT EXISTS` na aplikację, bez wcześniejszego pełnego scanu tabeli.
 - `[2.5]` ZAMKNIĘTE WCZEŚNIEJ: `ProjectDayTimeline.tsx` ma już `model = useMemo(...)`, a `summarizeCluster(...)` jest memoizowane przez `clusterDetailsSummary`.
 - `[2.6]` ZAMKNIĘTE: `BackgroundServices.tsx` używa stabilnych callbacków dla diagnostyki i ustawień DB, więc pętla job-poola nie restartuje się od zmian referencji store actions.
 - `[2.7]` ZAMKNIĘTE: `Sessions.tsx` nie rejestruje już listenerów `visibilitychange`/`focus` przy każdej zmianie filtrów; callback odświeżania jest stabilny.
+- `[2.8]` ZAMKNIĘTE: wątek monitora robi eager warm-up WMI/COM przy starcie (`monitor::warm_path_detection_wmi()` wywołane z `tracker::run_loop`), więc pierwszy lookup nie blokuje już hot path polling loop.
 - `[3.1]` ZAMKNIĘTE: wspólne budowanie danych stacked bar zostało wydzielone do `analysis.rs` i użyte w dwóch call-site.
 - `[3.2]` ZAMKNIĘTE: parsowanie dat zostało scentralizowane w `datetime.rs`; duplikaty w `analysis.rs` i `sessions/query.rs` zostały usunięte.
+- `[3.3]` ZAMKNIĘTE: komendy dashboardu używają już bezpośrednio `Stored*` z `timeflow_shared::daily_store`, a `daily_store_bridge.rs` nie mapuje już ręcznie typów.
 - `[3.4]` ZAMKNIĘTE: wspólny filtr `ACTIVE_SESSION_FILTER` w `sql_fragments.rs` zastąpił literalne warunki `is_hidden` w backendowych zapytaniach.
 - `[3.6]` ZAMKNIĘTE: wspólny hook `usePageRefreshListener` obsługuje już `Sessions.tsx`, `Projects.tsx` i `ProjectPage.tsx`.
 - `[3.7]` ZAMKNIĘTE: pure session helpers zostały przeniesione do `dashboard/src/lib/session-utils.ts`.
 - `[3.5]` ZAMKNIĘTE: wspólna funkcja rozróżniania nazw projektów obsługuje już `analysis.rs` i `dashboard.rs`.
 - `[3.8]` ZAMKNIĘTE: wspólny `name_hash(...)` obsługuje już oba generatory kolorów.
+- `[3.9]` ZAMKNIĘTE WCZEŚNIEJ: `dashboard/src/lib/project-colors.ts` jest aktywnie używany przez UI tworzenia/edycji projektów; raport o martwym pliku był nieaktualny.
 - `[3.10]` ZAMKNIĘTE: `dashboard/src/lib/db-types.ts` ma już `updated_at` w `Project`.
+- `[3.11]` ZAMKNIĘTE: helpery dat frontendu zostały scalone do `dashboard/src/lib/date-helpers.ts`, a stare importy `date-utils` / `date-ranges` / `date-locale` zostały usunięte.
 - `[4.1]` ZAMKNIĘTE: dodano brakujące klucze `sessions.menu.*_az` do PL i EN.
 - `[4.2]` ZAMKNIĘTE: fallback `split_session` w `Sessions.tsx` został zmieniony na EN.
+- `[5.1]` ZAMKNIĘTE: `ProjectDayTimeline.tsx` ma wydzielone `timeline-calculations.ts`; `Sessions.tsx` używa `useSessionsFilters.ts` i `useSessionsData.ts`; `Projects.tsx` używa `useProjectsData.ts`; `online-sync.ts` ma wydzielone moduły `lib/sync/sync-storage.ts` i `lib/sync/sync-http.ts`; `shared/daily_store.rs` oraz `src/monitor.rs` zostały rozbite na podmoduły.
 
 ---
 
@@ -95,6 +101,8 @@
 
 ### 2.4 ŚREDNI: `replace_day_snapshot` — pełny scan + per-row DELETE co 5 minut
 
+- **Status 2026-03-14:** zamknięte. `replace_day_snapshot` nie skanuje już całego `daily_files` dla dnia; używa tymczasowej tabeli kluczy i jednego `DELETE ... NOT EXISTS` per aplikacja. Dodano też test dla przypadku przejścia na pustą listę plików.
+
 - **Plik:** `shared/daily_store.rs:267-289`
 - **Problem:** `SELECT` wszystkich plików + indywidualne `DELETE` per usunięty plik. Przy 500 wierszy na dzień to dużo operacji.
 - **Naprawa:** Jeden `DELETE WHERE file_name NOT IN (...)` zamiast pętli DELETE.
@@ -125,6 +133,8 @@
 
 ### 2.8 ŚREDNI: WMI COM lazy-init blokuje polling loop na 30-60 ms
 
+- **Status 2026-03-14:** zamknięte. `tracker::run_loop(...)` wywołuje teraz `monitor::warm_path_detection_wmi()` przed wejściem w pętlę, więc inicjalizacja COM/WMI dzieje się eager na właściwym wątku monitora.
+
 - **Plik:** `src/monitor.rs:325-330`
 - **Problem:** `COMLibrary::new()` odpalany przy pierwszym PID wymagającym WMI.
 - **Naprawa:** Eager init przy starcie wątku monitora.
@@ -150,6 +160,8 @@
 - **Naprawa:** Centralizacja w `datetime.rs`, usunięcie duplikatów.
 
 ### 3.3 WYSOKI: Trzy zestawy typów daily data + ręczny mapping
+
+- **Status 2026-03-14:** zamknięte. `commands/types.rs` aliasuje teraz `StoredDailyData`/`StoredAppDailyData`/`StoredSession`/`StoredFileEntry`, a `daily_store_bridge.rs` został uproszczony do pracy bez pośredniego mapowania.
 
 - **Pliki:** `src/storage.rs:19-63`, `shared/daily_store.rs:10-50`, `commands/types.rs:7-48`
 - **Problem:** 3 strukturalnie identyczne zestawy typów (`DailyData`/`StoredDailyData`/`JsonDailyData`) z boilerplate mappingiem.
@@ -194,6 +206,8 @@
 
 ### 3.9 NISKI: `project-colors.ts` — potencjalnie martwy plik
 
+- **Status 2026-03-14:** zamknięte wcześniej w aktualnym kodzie. Plik jest używany przez `CreateProjectDialog.tsx`, `ProjectCard.tsx` i `ProjectColorPicker.tsx`, więc nie jest martwy.
+
 - **Plik:** `dashboard/src/lib/project-colors.ts`
 - **Problem:** 8-elementowa paleta niezsynchronizowana z 12-elementową w Rust. Sprawdzić importy — jeśli nieużywany, usunąć.
 
@@ -205,6 +219,8 @@
 - **Naprawa:** Dodać `updated_at: string` do interface Project w db-types.ts.
 
 ### 3.11 NISKI: Rozdrobnienie plików date helpers (3 pliki po 5-14 linii)
+
+- **Status 2026-03-14:** zamknięte. Wspólny plik `dashboard/src/lib/date-helpers.ts` eksportuje teraz `buildTodayDate`, `resolveDateFnsLocale`, `ALL_TIME_*` i `allTimeRangeTo`, a stare pliki zostały usunięte.
 
 - **Pliki:** `lib/date-utils.ts`, `lib/date-ranges.ts`, `lib/date-locale.ts`
 - **Naprawa:** Scalić do jednego `lib/date-helpers.ts` (niski priorytet).
@@ -249,13 +265,13 @@ Wszystkie 12 sekcji Help pokrywają wszystkie strony i funkcje aplikacji:
 
 | Plik | Linie | Sugerowany podział |
 |------|-------|--------------------|
-| `Projects.tsx` | 1694 | Wydzielić logikę do hooks: `useProjectsList`, `useProjectFilters`, `useProjectActions` |
-| `online-sync.ts` | 1633 | Podzielić na: `sync-engine.ts` (core), `sync-queue.ts` (kolejkowanie), `sync-status.ts` (status/listeners) |
+| `Projects.tsx` | 1694 | ZAMKNIĘTE 2026-03-14: logika danych wydzielona do `useProjectsData.ts` |
+| `online-sync.ts` | 1633 | ZAMKNIĘTE 2026-03-14: storage/normalizacja i warstwa HTTP/logging wydzielone do `lib/sync/` |
 | `ProjectPage.tsx` | 1565 | Wydzielić podkomponenty do folderu `components/project-page/` |
-| `ProjectDayTimeline.tsx` | 1502 | Wydzielić: `timeline-calculations.ts` (merge/cluster), `TimelineRow.tsx`, `TimelineSegment.tsx` |
-| `Sessions.tsx` | 1375 | Częściowo już zrefaktoryzowana (SessionRow, SessionsToolbar). Wydzielić: `useSessionsData.ts`, `useSessionsFilters.ts` |
-| `daily_store.rs` | 1118 | Podzielić na: `daily_store/schema.rs`, `daily_store/read.rs`, `daily_store/write.rs`, `daily_store/types.rs` |
-| `monitor.rs` | 934 | Wydzielić: `wmi_detection.rs`, `pid_cache.rs` |
+| `ProjectDayTimeline.tsx` | 1502 | ZAMKNIĘTE 2026-03-14: obliczenia i typy wydzielone do `project-day-timeline/timeline-calculations.ts` |
+| `Sessions.tsx` | 1375 | ZAMKNIĘTE 2026-03-14: wydzielono `useSessionsData.ts` i `useSessionsFilters.ts` |
+| `daily_store.rs` | 1118 | ZAMKNIĘTE 2026-03-14: podział na `daily_store/{schema,read,write,types,legacy}.rs` |
+| `monitor.rs` | 934 | ZAMKNIĘTE 2026-03-14: wydzielono `monitor/wmi_detection.rs` i `monitor/pid_cache.rs` |
 
 ### 5.2 Proponowana struktura modułów (dashboard/src/)
 
@@ -297,15 +313,21 @@ commands/
 
 ### 6.1 `run_db_blocking` vs `run_db_primary_blocking` — brak dokumentacji
 
+- **Status 2026-03-14:** zamknięte. `commands/helpers.rs` ma już komentarze doc wyjaśniające, że `run_db_blocking` respektuje aktywny tryb DB (primary/demo), a `run_db_primary_blocking` zawsze omija demo mode i służy do danych współdzielonych między trybami.
+
 - **Plik:** `commands/helpers.rs:45-81`
 - **Sugestia:** Dodać komentarz doc wyjaśniający semantykę (kiedy primary, kiedy pool). Rozważyć lint/clippy custom rule.
 
 ### 6.2 `onlineSyncStatusListeners` — brak ochrony przed wyciekiem
 
+- **Status 2026-03-14:** zamknięte. Zweryfikowano jedyny call-site (`Sidebar.tsx`) z cleanupem na unmount. Dodatkowo źródło statusu suppressuje duplikatowe emisje snapshotów i zwraca idempotentny unsubscribe, więc nie ma już narastania zbędnych notyfikacji przy ponownych subskrypcjach/HMR.
+
 - **Plik:** `lib/online-sync.ts:88`
 - **Sugestia:** Zweryfikować, że wszystkie call-site usuwają listener na unmount. Dodać weak reference pattern lub auto-cleanup.
 
 ### 6.3 Brak change-detection guard w polling loops
+
+- **Status 2026-03-14:** zamknięte. `refresh_today` już wcześniej emitował zmiany tylko przy `sessions_upserted > 0`; dodatkowo `BackgroundServices.tsx` odświeża strony tylko po realnym `pull`, a `background-status-store` pomija aktualizacje Zustand przy niezmienionych diagnostykach i ustawieniach DB.
 
 - **Sugestia:** W `BackgroundServices.tsx` — interwał 1s odpala joby bezwarunkowo. Dodać guard "skip if nothing changed" dla refresh/diagnostics.
 
@@ -322,36 +344,36 @@ commands/
 4. **[2.1]** N+1 fix w scoring.rs (batch fetch projects) — ZAMKNIĘTE 2026-03-14
 5. **[2.2]** `prepare_cached` na hot-path w scoring + context — ZAMKNIĘTE 2026-03-14
 6. **[2.3]** Guard na hydration w monitor.rs — ZAMKNIĘTE 2026-03-14
-7. **[2.5]** useMemo w ProjectDayTimeline.tsx — ZAMKNIĘTE WCZEŚNIEJ
+7. **[2.4]** Optymalizacja `replace_day_snapshot` (batch DELETE) — ZAMKNIĘTE 2026-03-14
+8. **[2.5]** useMemo w ProjectDayTimeline.tsx — ZAMKNIĘTE WCZEŚNIEJ
 
 ### Faza 3: Refaktoryzacja Rust (duplikacje)
-8. **[3.2]** Centralizacja parserów dat w datetime.rs — ZAMKNIĘTE 2026-03-14
-9. **[3.1]** Wydzielenie `build_stacked_bar_output` — ZAMKNIĘTE 2026-03-14
-10. **[3.4]** Stała `ACTIVE_SESSION_FILTER` w sql_fragments.rs — ZAMKNIĘTE 2026-03-14
-11. **[3.5]** Wydzielenie `disambiguate_project_names` — ZAMKNIĘTE 2026-03-14
-12. **[3.8]** Wydzielenie `name_hash` — ZAMKNIĘTE 2026-03-14
+9. **[3.2]** Centralizacja parserów dat w datetime.rs — ZAMKNIĘTE 2026-03-14
+10. **[3.1]** Wydzielenie `build_stacked_bar_output` — ZAMKNIĘTE 2026-03-14
+11. **[3.4]** Stała `ACTIVE_SESSION_FILTER` w sql_fragments.rs — ZAMKNIĘTE 2026-03-14
+12. **[3.5]** Wydzielenie `disambiguate_project_names` — ZAMKNIĘTE 2026-03-14
+13. **[3.8]** Wydzielenie `name_hash` — ZAMKNIĘTE 2026-03-14
 
 ### Faza 4: Refaktoryzacja Frontend (duplikacje + modularyzacja)
-13. **[3.6]** Hook `usePageRefreshListener` — ZAMKNIĘTE 2026-03-14
-14. **[3.7]** Przeniesienie pure functions z hooka do lib — ZAMKNIĘTE 2026-03-14
-15. **[2.6]** Stabilizacja deps w BackgroundServices.tsx — ZAMKNIĘTE 2026-03-14
-16. **[2.7]** Stabilizacja listenerów w `Sessions.tsx` — ZAMKNIĘTE 2026-03-14
-17. **[3.10]** Dodanie `updated_at` do db-types.ts — ZAMKNIĘTE 2026-03-14
+14. **[3.6]** Hook `usePageRefreshListener` — ZAMKNIĘTE 2026-03-14
+15. **[3.7]** Przeniesienie pure functions z hooka do lib — ZAMKNIĘTE 2026-03-14
+16. **[2.6]** Stabilizacja deps w BackgroundServices.tsx — ZAMKNIĘTE 2026-03-14
+17. **[2.7]** Stabilizacja listenerów w `Sessions.tsx` — ZAMKNIĘTE 2026-03-14
+18. **[3.10]** Dodanie `updated_at` do db-types.ts — ZAMKNIĘTE 2026-03-14
 
 ### Faza 5: Architektura (duże pliki, modularyzacja)
-18. **[5.1]** Podział `ProjectDayTimeline.tsx` (obliczenia → osobny plik)
-19. **[5.1]** Podział `online-sync.ts` na moduły
-20. **[5.1]** Wydzielenie hooks z `Sessions.tsx` i `Projects.tsx`
-21. **[5.1]** Podział `daily_store.rs` na moduły
-22. **[5.1]** Podział `monitor.rs` (wmi_detection + pid_cache)
+19. **[5.1]** Podział `ProjectDayTimeline.tsx` (obliczenia → osobny plik) — ZAMKNIĘTE 2026-03-14
+20. **[5.1]** Podział `online-sync.ts` na moduły — ZAMKNIĘTE 2026-03-14
+21. **[5.1]** Wydzielenie hooks z `Sessions.tsx` i `Projects.tsx` — ZAMKNIĘTE 2026-03-14
+22. **[5.1]** Podział `daily_store.rs` na moduły — ZAMKNIĘTE 2026-03-14
+23. **[5.1]** Podział `monitor.rs` (wmi_detection + pid_cache) — ZAMKNIĘTE 2026-03-14
 
 ### Faza 6: Cleanup (niski priorytet)
-23. **[3.3]** Unifikacja typów daily data (Stored → bezpośrednio w dashboard)
-24. **[3.9]** Sprawdzenie/usunięcie `project-colors.ts`
-25. **[3.11]** Scalenie plików date helpers
-26. **[4.2]** Fix polskiego fallbacku w t() call — ZAMKNIĘTE 2026-03-14
-27. **[2.4]** Optymalizacja `replace_day_snapshot` (batch DELETE)
-28. **[2.8]** Eager WMI init
+24. **[3.3]** Unifikacja typów daily data (Stored → bezpośrednio w dashboard) — ZAMKNIĘTE 2026-03-14
+25. **[3.9]** Sprawdzenie/usunięcie `project-colors.ts` — ZAMKNIĘTE WCZEŚNIEJ
+26. **[3.11]** Scalenie plików date helpers — ZAMKNIĘTE 2026-03-14
+27. **[4.2]** Fix polskiego fallbacku w t() call — ZAMKNIĘTE 2026-03-14
+28. **[2.8]** Eager WMI init — ZAMKNIĘTE 2026-03-14
 
 ---
 

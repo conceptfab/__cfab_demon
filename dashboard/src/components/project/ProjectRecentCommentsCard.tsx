@@ -2,7 +2,7 @@ import { format, parseISO } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { MessageSquare } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 
 interface RecentCommentItemLike {
   key: string;
@@ -70,3 +70,4 @@ export function ProjectRecentCommentsCard({
     </Card>
   );
 }
+

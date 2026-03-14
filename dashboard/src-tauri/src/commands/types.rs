@@ -3,49 +3,10 @@ use std::collections::{BTreeMap, HashMap};
 
 // ==================== JSON Import Types ====================
 
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct DailyData {
-    #[allow(dead_code)]
-    pub date: String,
-    pub apps: BTreeMap<String, AppDailyData>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct AppDailyData {
-    pub display_name: String,
-    #[allow(dead_code)]
-    pub total_seconds: u64,
-    pub sessions: Vec<JsonSession>,
-    #[serde(default)]
-    pub files: Vec<JsonFileEntry>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct JsonSession {
-    pub start: String,
-    pub end: String,
-    pub duration_seconds: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub(crate) struct JsonFileEntry {
-    pub name: String,
-    pub total_seconds: u64,
-    pub first_seen: String,
-    pub last_seen: String,
-    /// Pełny tytuł okna z demona — bogatszy kontekst dla tokenizacji AI.
-    #[serde(default)]
-    pub window_title: String,
-    /// Ścieżka wykryta z argumentów procesu (WMI CommandLine).
-    #[serde(default)]
-    pub detected_path: Option<String>,
-    /// Historia unikalnych tytułów okien dla wpisu.
-    #[serde(default)]
-    pub title_history: Vec<String>,
-    /// Kategoria aktywności (np. coding/browsing/design).
-    #[serde(default)]
-    pub activity_type: Option<String>,
-}
+pub(crate) use crate::commands::daily_store::{
+    StoredAppDailyData as AppDailyData,
+    StoredDailyData as DailyData,
+};
 
 // ==================== Response Types ====================
 

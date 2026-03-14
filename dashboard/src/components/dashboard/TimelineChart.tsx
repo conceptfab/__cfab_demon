@@ -30,7 +30,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { eachDayOfInterval, format, parseISO } from "date-fns";
 import { formatDuration } from "@/lib/utils";
 import type { DateRange, StackedBarData } from "@/lib/db-types";
-import { resolveDateFnsLocale } from "@/lib/date-locale";
+import { resolveDateFnsLocale } from "@/lib/date-helpers";
 import {
   buildStackedSeriesMetaMap,
   getStackedSeriesColor,
@@ -565,4 +565,5 @@ export function TimelineChart({
     </Card>
   );
 }
+
 

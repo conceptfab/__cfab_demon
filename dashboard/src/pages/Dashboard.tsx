@@ -29,7 +29,7 @@ import { formatDuration, getErrorMessage, logTauriError } from '@/lib/utils';
 import { format, parseISO } from 'date-fns';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import {
   loadWorkingHoursSettings,
   loadSessionSettings,
@@ -621,3 +621,4 @@ export function Dashboard() {
     </div>
   );
 }
+

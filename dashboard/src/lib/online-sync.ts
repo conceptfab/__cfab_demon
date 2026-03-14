@@ -1,9 +1,5 @@
-import type { ExportArchive } from '@/lib/db-types';
 import i18n from '@/i18n';
 import {
-  appendSyncLog,
-  exportDataArchive,
-  getDemoModeStatus,
   getSecureToken,
   importDataArchive,
   setSecureToken,
@@ -18,13 +14,44 @@ import type {
   SyncStatusResponse,
   SyncPushResponse,
   SyncPullResponse,
-  SyncAckResponse,
-  OnlineSyncStateEnvelope,
   LocalDatasetState,
   FlushPendingAckResult,
-  SyncHttpErrorKind,
   OnlineSyncStatusListener,
 } from '@/lib/online-sync-types';
+export {
+  DEFAULT_ONLINE_SYNC_SERVER_URL,
+  ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
+} from '@/lib/sync/sync-storage';
+import {
+  DEFAULT_ONLINE_SYNC_SETTINGS,
+  emitOnlineSyncSettingsChanged,
+  generateDeviceId,
+  getOnlineSyncStateScopeKey,
+  hasWindow,
+  LEGACY_ONLINE_SYNC_SETTINGS_KEY,
+  LEGACY_ONLINE_SYNC_STATE_KEY,
+  normalizeApiToken,
+  normalizeAutoSyncIntervalMinutes,
+  normalizeOnlineSyncState,
+  normalizeServerUrl,
+  ONLINE_SYNC_SETTINGS_KEY,
+  ONLINE_SYNC_STATE_KEY,
+  ONLINE_SYNC_STATE_STORAGE_VERSION,
+  readJsonStorage,
+  readJsonStorageWithFallback,
+  readOnlineSyncStateEnvelope,
+  readOnlineSyncStateStorageRaw,
+  writeJsonStorage,
+} from '@/lib/sync/sync-storage';
+import {
+  getLocalDatasetState,
+  isDemoModeSyncDisabled,
+  logSyncDiagnostic,
+  postAckWithRetries,
+  postJson,
+  SyncFileLogger,
+  SyncHttpError,
+} from '@/lib/sync/sync-http';
 
 export type {
   OnlineSyncSettings,
@@ -36,55 +63,6 @@ export type {
   OnlineSyncIndicatorSnapshot,
 } from '@/lib/online-sync-types';
 
-const ONLINE_SYNC_SETTINGS_KEY = 'timeflow.settings.online-sync';
-const ONLINE_SYNC_STATE_KEY = 'timeflow.sync.state';
-const ONLINE_SYNC_STATE_STORAGE_VERSION = 2;
-export const ONLINE_SYNC_SETTINGS_CHANGED_EVENT =
-  'timeflow:online-sync-settings-changed';
-const LEGACY_ONLINE_SYNC_SETTINGS_KEY = 'cfab.settings.online-sync';
-const LEGACY_ONLINE_SYNC_STATE_KEY = 'cfab.sync.state';
-export const DEFAULT_ONLINE_SYNC_SERVER_URL =
-  normalizeServerUrl(import.meta.env.VITE_TIMEFLOW_SYNC_SERVER_URL) ||
-  'https://cfabserver-production.up.railway.app';
-
-class SyncHttpError extends Error {
-  readonly kind: SyncHttpErrorKind;
-  readonly status: number | null;
-
-  constructor(
-    message: string,
-    kind: SyncHttpErrorKind,
-    status: number | null = null,
-  ) {
-    super(message);
-    this.name = 'SyncHttpError';
-    this.kind = kind;
-    this.status = status;
-  }
-}
-
-const DEFAULT_ONLINE_SYNC_SETTINGS: OnlineSyncSettings = {
-  enabled: false,
-  autoSyncOnStartup: true,
-  autoSyncIntervalMinutes: 30,
-  serverUrl: DEFAULT_ONLINE_SYNC_SERVER_URL,
-  userId: '',
-  apiToken: '',
-  deviceId: '',
-  requestTimeoutMs: 15_000,
-  enableLogging: false,
-};
-
-const DEFAULT_ONLINE_SYNC_STATE: OnlineSyncState = {
-  serverRevision: 0,
-  serverHash: null,
-  localRevision: null,
-  localHash: null,
-  pendingAck: null,
-  lastSyncAt: null,
-  needsReseed: false,
-};
-
 const onlineSyncStatusListeners = new Set<OnlineSyncStatusListener>();
 let onlineSyncIndicatorSnapshotCache: OnlineSyncIndicatorSnapshot | null = null;
 
@@ -95,189 +73,8 @@ function syncIndicatorT(
   return i18n.t(key, interpolation);
 }
 
-function hasWindow(): boolean {
-  return typeof window !== 'undefined';
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function normalizeServerUrl(input: unknown): string {
-  if (typeof input !== 'string') return '';
-  return input.trim().replace(/\/+$/, '');
-}
-
-function normalizeApiToken(input: unknown): string {
-  if (typeof input !== 'string') return '';
-  let value = input.trim();
-
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    value = value.slice(1, -1).trim();
-  }
-
-  if (/^bearer\s+/i.test(value)) {
-    value = value.replace(/^bearer\s+/i, '').trim();
-  }
-
-  return value;
-}
-
-function normalizeAutoSyncIntervalMinutes(input: unknown): number {
-  if (typeof input !== 'number' || !Number.isFinite(input)) {
-    return DEFAULT_ONLINE_SYNC_SETTINGS.autoSyncIntervalMinutes;
-  }
-  return Math.min(1440, Math.max(1, Math.round(input)));
-}
-
-function normalizeNullableNumber(input: unknown): number | null {
-  if (typeof input !== 'number' || !Number.isFinite(input)) return null;
-  return Math.floor(input);
-}
-
-function normalizeNonNegativeInteger(input: unknown): number {
-  if (typeof input !== 'number' || !Number.isFinite(input)) return 0;
-  return Math.max(0, Math.floor(input));
-}
-
-function normalizeNullableString(input: unknown): string | null {
-  return typeof input === 'string' ? input : null;
-}
-
-function normalizeNonEmptyString(input: unknown): string | null {
-  return typeof input === 'string' && input.trim().length > 0 ? input : null;
-}
-
-function generateDeviceId(): string {
-  if (
-    typeof crypto !== 'undefined' &&
-    typeof crypto.randomUUID === 'function'
-  ) {
-    return crypto.randomUUID();
-  }
-  return `device-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function readJsonStorage<T>(key: string): Partial<T> | null {
-  if (!hasWindow()) return null;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return null;
-    return JSON.parse(raw) as Partial<T>;
-  } catch {
-    return null;
-  }
-}
-
-function readJsonStorageWithFallback<T>(
-  primaryKey: string,
-  legacyKey: string,
-): Partial<T> | null {
-  return readJsonStorage<T>(primaryKey) ?? readJsonStorage<T>(legacyKey);
-}
-
-function writeJsonStorage<T>(key: string, value: T): void {
-  if (!hasWindow()) return;
-  window.localStorage.setItem(key, JSON.stringify(value));
-}
-
-function emitOnlineSyncSettingsChanged(): void {
-  if (!hasWindow()) return;
-  window.dispatchEvent(new CustomEvent(ONLINE_SYNC_SETTINGS_CHANGED_EVENT));
-}
-
 function shortHash(hash: string | null): string {
   return hash ? `${hash.slice(0, 8)}...` : 'n/a';
-}
-
-function normalizePendingAck(input: unknown): OnlineSyncPendingAck | null {
-  if (!isRecord(input)) return null;
-  const revision = normalizeNullableNumber(input.revision);
-  const payloadSha256 = normalizeNonEmptyString(input.payloadSha256);
-  const createdAt = normalizeNonEmptyString(input.createdAt);
-  if (revision === null || payloadSha256 === null || createdAt === null) {
-    return null;
-  }
-
-  const normalized: OnlineSyncPendingAck = {
-    revision: Math.max(0, revision),
-    payloadSha256,
-    createdAt,
-    retries: normalizeNonNegativeInteger(input.retries),
-  };
-
-  const lastError = normalizeNonEmptyString(input.lastError);
-  if (lastError) {
-    normalized.lastError = lastError;
-  }
-
-  return normalized;
-}
-
-function normalizeOnlineSyncState(input: unknown): OnlineSyncState {
-  const parsed = isRecord(input) ? input : { ...DEFAULT_ONLINE_SYNC_STATE };
-
-  const serverRevisionRaw = normalizeNullableNumber(parsed.serverRevision);
-  const serverRevision =
-    serverRevisionRaw === null
-      ? DEFAULT_ONLINE_SYNC_STATE.serverRevision
-      : Math.max(0, serverRevisionRaw);
-  const serverHash = normalizeNullableString(parsed.serverHash);
-
-  let localRevision = normalizeNullableNumber(parsed.localRevision);
-  let localHash = normalizeNullableString(parsed.localHash);
-
-  if (localRevision === null && (serverRevision > 0 || serverHash !== null)) {
-    localRevision = serverRevision;
-  }
-  if (localHash === null && serverHash !== null) {
-    localHash = serverHash;
-  }
-
-  return {
-    serverRevision,
-    serverHash,
-    localRevision,
-    localHash,
-    pendingAck: normalizePendingAck(parsed.pendingAck),
-    lastSyncAt: normalizeNullableString(parsed.lastSyncAt),
-    needsReseed: parsed.needsReseed === true,
-  };
-}
-
-function getOnlineSyncStateScopeKey(settings: OnlineSyncSettings): string {
-  const userPart = settings.userId.trim() || '__no_user__';
-  const devicePart = settings.deviceId.trim() || '__no_device__';
-  return `${userPart}::${devicePart}`;
-}
-
-function readOnlineSyncStateStorageRaw(): unknown {
-  return readJsonStorageWithFallback<Record<string, unknown>>(
-    ONLINE_SYNC_STATE_KEY,
-    LEGACY_ONLINE_SYNC_STATE_KEY,
-  ) as unknown;
-}
-
-function readOnlineSyncStateEnvelope(): OnlineSyncStateEnvelope | null {
-  const raw = readOnlineSyncStateStorageRaw();
-  if (!isRecord(raw)) return null;
-  if (raw.version !== ONLINE_SYNC_STATE_STORAGE_VERSION) return null;
-  if (!isRecord(raw.scopes)) return null;
-
-  const scopes: Record<string, Partial<OnlineSyncState>> = {};
-  for (const [key, value] of Object.entries(raw.scopes)) {
-    if (isRecord(value)) {
-      scopes[key] = value as Partial<OnlineSyncState>;
-    }
-  }
-
-  return {
-    version: ONLINE_SYNC_STATE_STORAGE_VERSION,
-    scopes,
-  };
 }
 
 function buildSnapshot(
@@ -296,6 +93,41 @@ function buildSnapshot(
     needsReseed: state.needsReseed,
     ...overrides,
   };
+}
+
+function arePendingAcksEqual(
+  left: OnlineSyncPendingAck | null,
+  right: OnlineSyncPendingAck | null,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.revision === right.revision &&
+    left.payloadSha256 === right.payloadSha256 &&
+    left.createdAt === right.createdAt &&
+    left.retries === right.retries &&
+    (left.lastError ?? null) === (right.lastError ?? null)
+  );
+}
+
+function areIndicatorSnapshotsEqual(
+  left: OnlineSyncIndicatorSnapshot | null,
+  right: OnlineSyncIndicatorSnapshot,
+): boolean {
+  if (!left) return false;
+  return (
+    left.status === right.status &&
+    left.label === right.label &&
+    left.detail === right.detail &&
+    left.serverRevision === right.serverRevision &&
+    left.serverHash === right.serverHash &&
+    left.lastSyncAt === right.lastSyncAt &&
+    left.lastAction === right.lastAction &&
+    left.lastReason === right.lastReason &&
+    left.error === right.error &&
+    left.needsReseed === right.needsReseed &&
+    arePendingAcksEqual(left.pendingAck, right.pendingAck)
+  );
 }
 
 function formatLastSyncDetail(state: OnlineSyncState): string {
@@ -384,6 +216,9 @@ function buildIndicatorSnapshotFromStorage(): OnlineSyncIndicatorSnapshot {
 function emitOnlineSyncIndicatorSnapshot(
   snapshot: OnlineSyncIndicatorSnapshot,
 ): void {
+  if (areIndicatorSnapshotsEqual(onlineSyncIndicatorSnapshotCache, snapshot)) {
+    return;
+  }
   onlineSyncIndicatorSnapshotCache = snapshot;
   for (const listener of onlineSyncStatusListeners) {
     listener(snapshot);
@@ -480,7 +315,10 @@ export function subscribeOnlineSyncIndicator(
 ): () => void {
   onlineSyncStatusListeners.add(listener);
   listener(getOnlineSyncIndicatorSnapshot());
+  let subscribed = true;
   return () => {
+    if (!subscribed) return;
+    subscribed = false;
     onlineSyncStatusListeners.delete(listener);
   };
 }
@@ -650,304 +488,6 @@ export function saveOnlineSyncState(
   }
   refreshIndicatorFromStorage();
   return normalized;
-}
-
-function extractErrorMessageFromJson(
-  json: unknown,
-  fallbackStatus: number,
-): string {
-  if (
-    typeof json === 'object' &&
-    json !== null &&
-    'error' in json &&
-    typeof (json as { error?: unknown }).error === 'string'
-  ) {
-    return (json as { error: string }).error;
-  }
-  return `HTTP ${fallbackStatus}`;
-}
-
-function normalizeRequestError(error: unknown): SyncHttpError {
-  if (error instanceof SyncHttpError) {
-    return error;
-  }
-  if (error instanceof Error && error.name === 'AbortError') {
-    return new SyncHttpError('Request timeout', 'timeout');
-  }
-  if (error instanceof TypeError) {
-    return new SyncHttpError(error.message || 'Network error', 'network');
-  }
-  return new SyncHttpError(
-    error instanceof Error ? error.message : String(error),
-    'unknown',
-  );
-}
-
-async function postJson<T>(
-  baseUrl: string,
-  path: string,
-  body: Record<string, unknown>,
-  timeoutMs: number,
-  apiToken?: string,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (apiToken && apiToken.trim()) {
-      headers.Authorization = `Bearer ${apiToken.trim()}`;
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      throw normalizeRequestError(error);
-    }
-
-    const rawText = await response.text();
-    let json: unknown = null;
-
-    if (rawText.length > 0) {
-      try {
-        json = JSON.parse(rawText) as unknown;
-      } catch {
-        if (!response.ok) {
-          throw new SyncHttpError(
-            `HTTP ${response.status}`,
-            'http',
-            response.status,
-          );
-        }
-        throw new SyncHttpError(
-          'Invalid JSON response',
-          'invalid_json',
-          response.status,
-        );
-      }
-    }
-
-    if (!response.ok) {
-      throw new SyncHttpError(
-        extractErrorMessageFromJson(json, response.status),
-        'http',
-        response.status,
-      );
-    }
-
-    return json as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function isRetryableAckError(error: unknown): boolean {
-  const normalized = normalizeRequestError(error);
-  if (normalized.kind === 'timeout' || normalized.kind === 'network') {
-    return true;
-  }
-  return (
-    normalized.kind === 'http' &&
-    normalized.status !== null &&
-    normalized.status >= 500
-  );
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-function getAckTimeoutMs(requestTimeoutMs: number): number {
-  return Math.min(10_000, Math.max(5_000, requestTimeoutMs));
-}
-
-async function postAckWithRetries(
-  settings: OnlineSyncSettings,
-  body: {
-    userId: string;
-    deviceId: string;
-    revision: number;
-    payloadSha256: string;
-  },
-  apiToken: string,
-  log?: SyncFileLogger | null,
-): Promise<SyncAckResponse> {
-  const maxAttempts = 3;
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return await postJson<SyncAckResponse>(
-        settings.serverUrl,
-        '/api/sync/ack',
-        body,
-        getAckTimeoutMs(settings.requestTimeoutMs),
-        apiToken,
-      );
-    } catch (error) {
-      if (attempt >= maxAttempts || !isRetryableAckError(error)) {
-        throw error;
-      }
-
-      const msg = error instanceof Error ? error.message : String(error);
-      console.warn(
-        `[online-sync] ACK transient failure (attempt ${attempt}/${maxAttempts}), retrying`,
-        msg,
-      );
-      log?.warn(`ACK transient failure, retrying`, {
-        attempt,
-        maxAttempts,
-        error: msg,
-        delayMs: 250 * attempt,
-      });
-      await delay(250 * attempt);
-    }
-  }
-
-  throw new Error('ACK retry loop failed unexpectedly');
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  if (typeof crypto === 'undefined' || !crypto.subtle) {
-    throw new Error('Web Crypto API unavailable for sync hash');
-  }
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(input),
-  );
-  return Array.from(new Uint8Array(digest))
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function archiveHasReseedData(archive: ExportArchive): boolean {
-  const sessions = Array.isArray(archive.data?.sessions)
-    ? archive.data.sessions.length
-    : 0;
-  const manualSessions = Array.isArray(archive.data?.manual_sessions)
-    ? archive.data.manual_sessions.length
-    : 0;
-  const projects = Array.isArray(archive.data?.projects)
-    ? archive.data.projects.length
-    : 0;
-  const apps = Array.isArray(archive.data?.applications)
-    ? archive.data.applications.length
-    : 0;
-  const dailyFiles =
-    archive.data?.daily_files && typeof archive.data.daily_files === 'object'
-      ? Object.keys(archive.data.daily_files).length
-      : 0;
-
-  return (
-    sessions > 0 ||
-    manualSessions > 0 ||
-    projects > 0 ||
-    apps > 0 ||
-    dailyFiles > 0
-  );
-}
-
-async function getLocalDatasetState(
-  state: OnlineSyncState,
-): Promise<LocalDatasetState> {
-  try {
-    const archive = await exportDataArchive();
-    const payloadSha256 = await sha256Hex(JSON.stringify(archive));
-    return {
-      exportOk: true,
-      hasReseedData: archiveHasReseedData(archive),
-      revision: state.localRevision,
-      payloadSha256,
-      archive,
-    };
-  } catch (error) {
-    return {
-      exportOk: false,
-      hasReseedData: false,
-      revision: state.localRevision,
-      payloadSha256: state.localHash,
-      archive: null,
-      exportError: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
-function logSyncDiagnostic(
-  stage: 'status' | 'pull' | 'ack',
-  details: Record<string, unknown>,
-): void {
-  console.info(`[online-sync] ${stage}`, details);
-}
-
-// ---------------------------------------------------------------------------
-// File-based sync logger
-// ---------------------------------------------------------------------------
-
-class SyncFileLogger {
-  private buffer: string[] = [];
-
-  log(
-    level: 'INFO' | 'WARN' | 'ERROR',
-    message: string,
-    details?: Record<string, unknown>,
-  ): void {
-    const ts = new Date().toISOString();
-    let line = `[${ts}] [${level}] ${message}`;
-    if (details && Object.keys(details).length > 0) {
-      line += ` | ${JSON.stringify(details)}`;
-    }
-    this.buffer.push(line);
-    // Also keep console logging for dev tools
-    if (level === 'ERROR') {
-      console.error(`[sync-log] ${message}`, details ?? '');
-    } else if (level === 'WARN') {
-      console.warn(`[sync-log] ${message}`, details ?? '');
-    } else {
-      console.info(`[sync-log] ${message}`, details ?? '');
-    }
-  }
-
-  info(message: string, details?: Record<string, unknown>): void {
-    this.log('INFO', message, details);
-  }
-
-  warn(message: string, details?: Record<string, unknown>): void {
-    this.log('WARN', message, details);
-  }
-
-  error(message: string, details?: Record<string, unknown>): void {
-    this.log('ERROR', message, details);
-  }
-
-  async flush(): Promise<void> {
-    if (this.buffer.length === 0) return;
-    const lines = [...this.buffer];
-    this.buffer = [];
-    try {
-      await appendSyncLog(lines);
-    } catch {
-      // If file logging fails, don't break the sync flow.
-      console.warn('[sync-log] Failed to flush sync log to file');
-    }
-  }
-}
-
-async function isDemoModeSyncDisabled(): Promise<boolean> {
-  try {
-    const status = await getDemoModeStatus();
-    return status.enabled === true;
-  } catch {
-    // When not running inside Tauri (e.g. plain web preview), fall back to normal behavior.
-    return false;
-  }
 }
 
 async function flushPendingAck(

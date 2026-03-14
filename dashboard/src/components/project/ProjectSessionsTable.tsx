@@ -15,7 +15,7 @@ import type {
   SessionWithApp,
 } from '@/lib/db-types';
 import { formatDuration } from '@/lib/utils';
-import { resolveDateFnsLocale } from '@/lib/date-locale';
+import { resolveDateFnsLocale } from '@/lib/date-helpers';
 
 type AutoSessionTableRow = SessionWithApp & { isManual: false };
 type ManualSessionTableRow = SessionWithApp &
@@ -194,3 +194,4 @@ export function ProjectSessionsTable({
     </Card>
   );
 }
+

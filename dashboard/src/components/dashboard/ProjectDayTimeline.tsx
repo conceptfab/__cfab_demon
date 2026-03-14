@@ -10,18 +10,29 @@ import { useToast } from "@/components/ui/toast-notification";
 import { formatDuration, formatMultiplierLabel, logTauriError } from "@/lib/utils";
 import {
   loadFreezeSettings,
-  timeToMinutes,
   type WorkingHoursSettings,
 } from "@/lib/user-settings";
-import { normalizeHexColor } from "@/lib/normalize";
-import { localizeProjectLabel } from "@/lib/project-labels";
-import {
-  compareProjectsByName,
-  isRecentProject,
-} from "@/lib/project-utils";
 import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
 import type { PromptConfig } from "@/lib/ui-types";
 import { useUIStore } from "@/store/ui-store";
+import {
+  buildAssignProjectSections,
+  buildProjectTimelineModel,
+  fmtHourMinute,
+  getSegmentSessionIds,
+  HATCH_STYLE,
+  hexToRgba,
+  loadTimelineSaveView,
+  loadTimelineSortMode,
+  normalizeProjectName,
+  resolveContextMenuPlacement,
+  summarizeCluster,
+  type ClusterDetailsState,
+  type ContextMenuPlacement,
+  type CtxMenu,
+  type SegmentData,
+  type TimelineSortMode,
+} from "@/components/dashboard/project-day-timeline/timeline-calculations";
 
 interface Props {
   sessions: SessionWithApp[];
@@ -37,281 +48,8 @@ interface Props {
   onEditManualSession?: (session: ManualSessionWithProject) => void;
 }
 
-interface SegmentData {
-  sessionId: number;
-  sessionIds?: number[];
-  fragmentCount?: number;
-  fragments?: SegmentData[];
-  startMs: number;
-  endMs: number;
-  appName: string;
-  appNames?: string[];
-  appId: number;
-  rateMultiplier?: number;
-  mixedRateMultiplier?: boolean;
-  isManual?: boolean;
-  manualTitle?: string;
-  manualSession?: ManualSessionWithProject;
-  comment?: string | null;
-  hasSuggestion?: boolean;
-  suggestedProjectName?: string;
-  suggestedProjectId?: number;
-  suggestedConfidence?: number;
-}
-
-interface TimelineRow {
-  name: string;
-  color: string;
-  totalSeconds: number;
-  isUnassigned: boolean;
-  boostedCount: number;
-  segments: SegmentData[];
-}
-
-type CtxMenu =
-  | { type: "assign"; x: number; y: number; segment: SegmentData; rowName: string; rowColor: string }
-  | { type: "timeline"; x: number; y: number; timeMs: number; editSession?: ManualSessionWithProject };
-
-interface ClusterDetailsState {
-  rowName: string;
-  rowColor: string;
-  segment: SegmentData;
-}
-
-type TimelineSortMode = "time_desc" | "alpha_asc";
-
 const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
 const TIMELINE_SAVE_VIEW_STORAGE_KEY = "timeflow-dashboard-activity-timeline-save-view";
-const TOP_PROJECTS_LIMIT = 5;
-const CONTEXT_MENU_EDGE_PADDING = 8;
-const ASSIGN_MENU_FALLBACK_WIDTH = 320;
-const ASSIGN_MENU_FALLBACK_HEIGHT = 520;
-const TIMELINE_MENU_FALLBACK_WIDTH = 200;
-const TIMELINE_MENU_FALLBACK_HEIGHT = 64;
-
-interface ContextMenuPlacement {
-  left: number;
-  top: number;
-  maxHeight: number;
-}
-
-function normalizeProjectName(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function resolveContextMenuPlacement(
-  menu: CtxMenu,
-  viewportWidth: number,
-  viewportHeight: number,
-  menuSize?: { width: number; height: number } | null
-): ContextMenuPlacement {
-  const fallbackWidth =
-    menu.type === "assign" ? ASSIGN_MENU_FALLBACK_WIDTH : TIMELINE_MENU_FALLBACK_WIDTH;
-  const fallbackHeight =
-    menu.type === "assign" ? ASSIGN_MENU_FALLBACK_HEIGHT : TIMELINE_MENU_FALLBACK_HEIGHT;
-
-  const width = Math.max(fallbackWidth, menuSize?.width ?? 0);
-  const maxHeight = Math.max(180, viewportHeight - CONTEXT_MENU_EDGE_PADDING * 2);
-  const height = Math.min(Math.max(fallbackHeight, menuSize?.height ?? 0), maxHeight);
-
-  const maxLeft = Math.max(
-    CONTEXT_MENU_EDGE_PADDING,
-    viewportWidth - width - CONTEXT_MENU_EDGE_PADDING
-  );
-  const left = Math.min(Math.max(menu.x, CONTEXT_MENU_EDGE_PADDING), maxLeft);
-
-  const overflowsDown = menu.y + height > viewportHeight - CONTEXT_MENU_EDGE_PADDING;
-  const canFlipUp = menu.y - height >= CONTEXT_MENU_EDGE_PADDING;
-  const maxTop = Math.max(
-    CONTEXT_MENU_EDGE_PADDING,
-    viewportHeight - height - CONTEXT_MENU_EDGE_PADDING
-  );
-  const top = overflowsDown && canFlipUp
-    ? menu.y - height
-    : Math.min(Math.max(menu.y, CONTEXT_MENU_EDGE_PADDING), maxTop);
-
-  return { left, top, maxHeight };
-}
-
-function loadTimelineSortMode(): TimelineSortMode {
-  if (typeof window === "undefined") return "time_desc";
-  try {
-    const raw = window.localStorage.getItem(TIMELINE_SORT_STORAGE_KEY);
-    return raw === "alpha_asc" ? "alpha_asc" : "time_desc";
-  } catch {
-    return "time_desc";
-  }
-}
-
-function loadTimelineSaveView(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    const raw = window.localStorage.getItem(TIMELINE_SAVE_VIEW_STORAGE_KEY);
-    if (raw === "false") return false;
-    return true;
-  } catch {
-    return true;
-  }
-}
-
-const HATCH_STYLE: React.CSSProperties = {
-  background: `repeating-linear-gradient(
-    30deg,
-    transparent,
-    transparent 3px,
-    rgba(0,0,0,0.15) 3px,
-    rgba(0,0,0,0.15) 4px
-  )`,
-  pointerEvents: "none",
-};
-const SESSION_FRAGMENT_CLUSTER_GAP_MS = 60_000;
-
-function getSegmentSessionIds(segment: SegmentData): number[] {
-  if (segment.isManual) return [];
-  if (segment.sessionIds && segment.sessionIds.length > 0) return segment.sessionIds;
-  return [segment.sessionId];
-}
-
-function getSegmentFragments(segment: SegmentData): SegmentData[] {
-  if (segment.fragments && segment.fragments.length > 0) return segment.fragments;
-  return [segment];
-}
-
-function summarizeCluster(segment: SegmentData) {
-  const fragments = getSegmentFragments(segment)
-    .filter((f) => !f.isManual)
-    .slice()
-    .sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
-  const sessionIds = Array.from(new Set(fragments.flatMap((f) => getSegmentSessionIds(f))));
-  const appNames = Array.from(new Set(fragments.map((f) => f.appName))).sort((a, b) => a.localeCompare(b));
-  const spanMs = Math.max(0, segment.endMs - segment.startMs);
-  const sumMs = fragments.reduce((acc, f) => acc + Math.max(0, f.endMs - f.startMs), 0);
-
-  let unionMs = 0;
-  let cursorStart = -1;
-  let cursorEnd = -1;
-  for (const f of fragments) {
-    if (cursorStart < 0) {
-      cursorStart = f.startMs;
-      cursorEnd = f.endMs;
-      continue;
-    }
-    if (f.startMs <= cursorEnd) {
-      cursorEnd = Math.max(cursorEnd, f.endMs);
-      continue;
-    }
-    unionMs += Math.max(0, cursorEnd - cursorStart);
-    cursorStart = f.startMs;
-    cursorEnd = f.endMs;
-  }
-  if (cursorStart >= 0) {
-    unionMs += Math.max(0, cursorEnd - cursorStart);
-  }
-
-  const overlapMs = Math.max(0, sumMs - unionMs);
-  const boostedCount = fragments.filter((f) => (f.rateMultiplier ?? 1) > 1.000_001).length;
-  return { fragments, sessionIds, appNames, spanMs, sumMs, unionMs, overlapMs, boostedCount };
-}
-
-function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
-  if (segments.length <= 1) return segments;
-
-  const sorted = [...segments].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
-  const out: SegmentData[] = [];
-
-  for (const segment of sorted) {
-    const prev = out[out.length - 1];
-    const canMerge =
-      prev &&
-      !prev.isManual &&
-      !segment.isManual &&
-      segment.startMs <= prev.endMs + SESSION_FRAGMENT_CLUSTER_GAP_MS;
-
-    if (!canMerge) {
-      const fragments = segment.isManual ? undefined : [segment];
-      const appNames = segment.isManual ? undefined : [segment.appName];
-      out.push({
-        ...segment,
-        sessionIds: segment.isManual ? undefined : getSegmentSessionIds(segment),
-        fragmentCount: segment.isManual ? undefined : 1,
-        fragments,
-        appNames,
-        mixedRateMultiplier: segment.isManual ? undefined : false,
-      });
-      continue;
-    }
-
-    const prevIds = getSegmentSessionIds(prev);
-    const nextIds = getSegmentSessionIds(segment);
-    const prevRate = typeof prev.rateMultiplier === "number" ? prev.rateMultiplier : 1;
-    const nextRate = typeof segment.rateMultiplier === "number" ? segment.rateMultiplier : 1;
-    const mergedRate = Math.max(prevRate, nextRate);
-    const mixedRateMultiplier =
-      Boolean(prev.mixedRateMultiplier) ||
-      Boolean(segment.mixedRateMultiplier) ||
-      Math.abs(prevRate - nextRate) > 0.000_001;
-
-    const prevFragments = getSegmentFragments(prev);
-    const nextFragments = getSegmentFragments(segment);
-    const mergedFragments = [...prevFragments, ...nextFragments].sort(
-      (a, b) => a.startMs - b.startMs || a.endMs - b.endMs
-    );
-    const appNames = Array.from(new Set(mergedFragments.map((f) => f.appName)));
-    const appLabel =
-      appNames.length <= 1
-        ? (appNames[0] ?? prev.appName)
-        : `${appNames.length} apps`;
-
-    out[out.length - 1] = {
-      ...prev,
-      sessionIds: [...prevIds, ...nextIds],
-      sessionId: prevIds[0] ?? prev.sessionId,
-      fragmentCount: (prev.fragmentCount ?? 1) + (segment.fragmentCount ?? 1),
-      fragments: mergedFragments,
-      appNames,
-      appName: appLabel,
-      startMs: Math.min(prev.startMs, segment.startMs),
-      endMs: Math.max(prev.endMs, segment.endMs),
-      rateMultiplier: mergedRate,
-      mixedRateMultiplier,
-      hasSuggestion: Boolean(prev.hasSuggestion) || Boolean(segment.hasSuggestion),
-      suggestedProjectName: (prev.suggestedConfidence ?? 0) >= (segment.suggestedConfidence ?? 0) ? (prev.suggestedProjectName || segment.suggestedProjectName) : (segment.suggestedProjectName || prev.suggestedProjectName),
-      suggestedProjectId: (prev.suggestedConfidence ?? 0) >= (segment.suggestedConfidence ?? 0) ? (prev.suggestedProjectId ?? segment.suggestedProjectId) : (segment.suggestedProjectId ?? prev.suggestedProjectId),
-      suggestedConfidence: Math.max(prev.suggestedConfidence ?? 0, segment.suggestedConfidence ?? 0),
-    };
-  }
-
-  return out;
-}
-
-function fmtHourMinute(ms: number): string {
-  const d = new Date(ms);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
-function chooseTickMinutes(spanMinutes: number): number {
-  if (spanMinutes <= 120) return 15;
-  if (spanMinutes <= 360) return 30;
-  if (spanMinutes <= 720) return 60;
-  return 120;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const color = normalizeHexColor(hex).replace("#", "");
-  const expanded =
-    color.length === 3
-      ? color
-        .split("")
-        .map((ch) => `${ch}${ch}`)
-        .join("")
-      : color;
-  const r = Number.parseInt(expanded.slice(0, 2), 16);
-  const g = Number.parseInt(expanded.slice(2, 4), 16);
-  const b = Number.parseInt(expanded.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
 
 export function ProjectDayTimeline({
   sessions,
@@ -619,209 +357,18 @@ export function ProjectDayTimeline({
     setCtxMenu(null);
   }, [ctxMenu, onAddManualSession, onEditManualSession]);
 
-  const model = useMemo(() => {
-    const valid = sessions
-      .map((s) => {
-        const startMs = new Date(s.start_time).getTime();
-        const endMs = new Date(s.end_time).getTime();
-        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
-        return { s, startMs, endMs };
-      })
-      .filter((v): v is NonNullable<typeof v> => Boolean(v))
-      .sort((a, b) => a.startMs - b.startMs);
-
-    // Parse manual sessions
-    const validManual = manualSessions
-      .map((ms) => {
-        const startMs = new Date(ms.start_time).getTime();
-        const endMs = new Date(ms.end_time).getTime();
-        if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
-        return { ms, startMs, endMs };
-      })
-      .filter((v): v is NonNullable<typeof v> => Boolean(v));
-
-    if (valid.length === 0 && validManual.length === 0) {
-      return null;
-    }
-
-    const allStarts = [...valid.map((v) => v.startMs), ...validManual.map((v) => v.startMs)];
-    const allEnds = [...valid.map((v) => v.endMs), ...validManual.map((v) => v.endMs)];
-    const rawStart = Math.min(...allStarts);
-    const rawEnd = Math.max(...allEnds);
-    const workingColor = normalizeHexColor(workingHours?.color ?? "");
-
-    const workingStartMinutes = timeToMinutes(workingHours?.start ?? "");
-    const workingEndMinutes = timeToMinutes(workingHours?.end ?? "");
-
-    const workingRangeRaw =
-      workingStartMinutes !== null &&
-        workingEndMinutes !== null &&
-        workingEndMinutes > workingStartMinutes
-        ? (() => {
-          const base = new Date(rawStart);
-          const dayStart = new Date(
-            base.getFullYear(),
-            base.getMonth(),
-            base.getDate(),
-            0,
-            0,
-            0,
-            0
-          ).getTime();
-          return {
-            startMs: dayStart + workingStartMinutes * 60_000,
-            endMs: dayStart + workingEndMinutes * 60_000,
-            label: `${workingHours?.start ?? "09:00"} - ${workingHours?.end ?? "17:00"}`,
-          };
-        })()
-        : null;
-
-    const alignedStart = workingRangeRaw
-      ? Math.min(rawStart, workingRangeRaw.startMs)
-      : rawStart;
-    const alignedEnd = workingRangeRaw ? Math.max(rawEnd, workingRangeRaw.endMs) : rawEnd;
-
-    const spanMinutes = Math.max(1, Math.ceil((alignedEnd - alignedStart) / 60000));
-    const tickMinutes = chooseTickMinutes(spanMinutes);
-    const tickMs = tickMinutes * 60_000;
-
-    const rangeStart = Math.floor(alignedStart / tickMs) * tickMs;
-    const rangeEnd = Math.ceil(alignedEnd / tickMs) * tickMs;
-    const rangeSpan = Math.max(60_000, rangeEnd - rangeStart);
-
-    const workingRange = workingRangeRaw
-      ? (() => {
-        const left = ((workingRangeRaw.startMs - rangeStart) / rangeSpan) * 100;
-        const right = ((workingRangeRaw.endMs - rangeStart) / rangeSpan) * 100;
-        const leftClamped = Math.max(0, Math.min(100, left));
-        const rightClamped = Math.max(0, Math.min(100, right));
-        if (rightClamped <= leftClamped) return null;
-        return {
-          leftPct: leftClamped,
-          widthPct: rightClamped - leftClamped,
-          label: workingRangeRaw.label,
-          color: workingColor,
-        };
-      })()
-      : null;
-
-    const byProject = new Map<string, TimelineRow>();
-    const projectById = new Map<number, ProjectWithStats>();
-    const projectIdByNormalizedName = new Map<string, number>();
-    for (const project of projects ?? []) {
-      projectById.set(project.id, project);
-      projectIdByNormalizedName.set(normalizeProjectName(project.name), project.id);
-    }
-
-    for (const item of valid) {
-      const projectName = item.s.project_name ?? t('project_day_timeline.text.unassigned');
-      const projectColor = item.s.project_color ?? "#64748b";
-      const isUnassigned = item.s.project_name === null;
-
-      const key = projectName.toLowerCase();
-      if (!byProject.has(key)) {
-        byProject.set(key, {
-          name: projectName,
-          color: projectColor,
-          totalSeconds: 0,
-          isUnassigned,
-          boostedCount: 0,
-          segments: [],
-        });
-      }
-      const row = byProject.get(key)!;
-      row.totalSeconds += item.s.duration_seconds;
-      if ((item.s.rate_multiplier ?? 1) > 1.000_001) row.boostedCount++;
-
-      const rawSuggestedName = (item.s.suggested_project_name ?? "").trim();
-      const normalizedSuggestedName =
-        rawSuggestedName.length > 0 && rawSuggestedName !== "?"
-          ? rawSuggestedName
-          : undefined;
-      const suggestedIdFromName = normalizedSuggestedName
-        ? projectIdByNormalizedName.get(normalizeProjectName(normalizedSuggestedName))
-        : undefined;
-      const resolvedSuggestedProjectId =
-        suggestedIdFromName ?? item.s.suggested_project_id ?? undefined;
-      const hasValidSuggestion = Boolean(
-        resolvedSuggestedProjectId != null &&
-        projectById.has(resolvedSuggestedProjectId)
-      );
-      const suggestedName =
-        localizeProjectLabel(
-          normalizedSuggestedName ??
-            (resolvedSuggestedProjectId != null
-              ? projectById.get(resolvedSuggestedProjectId)?.name
-              : undefined),
-          {
-            projectId: resolvedSuggestedProjectId ?? null,
-          },
-        ) || "Unknown";
-
-      row.segments.push({
-        sessionId: item.s.id,
-        startMs: item.startMs,
-        endMs: item.endMs,
-        appName: item.s.app_name,
-        appId: item.s.app_id,
-        rateMultiplier: item.s.rate_multiplier ?? 1,
-        comment: item.s.comment,
-        hasSuggestion: hasValidSuggestion,
-        suggestedProjectName: suggestedName,
-        suggestedProjectId: hasValidSuggestion ? resolvedSuggestedProjectId : undefined,
-        suggestedConfidence: item.s.suggested_confidence,
-      });
-    }
-
-    // Add manual sessions to their project rows
-    for (const item of validManual) {
-      const projectName = item.ms.project_name;
-      const key = projectName.toLowerCase();
-      if (!byProject.has(key)) {
-        byProject.set(key, {
-          name: projectName,
-          color: item.ms.project_color,
-          totalSeconds: 0,
-          isUnassigned: false,
-          boostedCount: 0,
-          segments: [],
-        });
-      }
-      const row = byProject.get(key)!;
-      row.totalSeconds += item.ms.duration_seconds;
-      row.segments.push({
-        sessionId: item.ms.id,
-        startMs: item.startMs,
-        endMs: item.endMs,
-        appName: item.ms.title,
-        appId: -1,
-        isManual: true,
-        manualTitle: item.ms.title,
-        manualSession: item.ms,
-      });
-    }
-
-    const rows = Array.from(byProject.values())
-      .map((row) => ({
-        ...row,
-        segments: mergeSessionFragments(row.segments),
-      }))
-      .sort((a, b) => {
-        if (sortMode === "alpha_asc") {
-          return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-        }
-        const byTime = b.totalSeconds - a.totalSeconds;
-        if (byTime !== 0) return byTime;
-        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-      });
-    const ticks: number[] = [];
-    for (let t = rangeStart; t <= rangeEnd; t += tickMs) {
-      ticks.push(t);
-    }
-
-    const totalSeconds = rows.reduce((acc, row) => acc + row.totalSeconds, 0);
-    return { rows, ticks, rangeStart, rangeSpan, totalSeconds, workingRange };
-  }, [sessions, manualSessions, workingHours, projects, sortMode, t]);
+  const model = useMemo(
+    () =>
+      buildProjectTimelineModel({
+        sessions,
+        manualSessions,
+        workingHours,
+        projects,
+        sortMode,
+        unassignedLabel: t('project_day_timeline.text.unassigned'),
+      }),
+    [sessions, manualSessions, workingHours, projects, sortMode, t],
+  );
 
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
@@ -832,87 +379,16 @@ export function ProjectDayTimeline({
   }, [projects]);
 
   const assignProjectSections = useMemo(() => {
-    const activeProjects = (projects ?? []).filter((p) => !p.frozen_at);
-    const activeAlpha = [...activeProjects].sort(compareProjectsByName);
     const { thresholdDays } = loadFreezeSettings();
-    const newProjectMaxAgeMs = Math.max(1, thresholdDays) * 24 * 60 * 60 * 1000;
-
-    if (assignProjectListMode === "alpha_active") {
-      return [
-        {
-          key: "all",
-          label: t('project_day_timeline.text.active_projects_a_z'),
-          projects: activeAlpha,
-        },
-      ];
-    }
-
-    const topProjectIds = new Set(
-      [...activeProjects]
-        .sort((a, b) => {
-          const byTime = b.total_seconds - a.total_seconds;
-          if (byTime !== 0) return byTime;
-          return compareProjectsByName(a, b);
-        })
-        .slice(0, TOP_PROJECTS_LIMIT)
-        .map((p) => p.id)
-    );
-    const newestAlpha = activeAlpha.filter((p) =>
-      isRecentProject(p, newProjectMaxAgeMs)
-    );
-    const topAlpha = activeAlpha.filter((p) => topProjectIds.has(p.id));
-
-    if (assignProjectListMode === "new_top_rest") {
-      const used = new Set<number>();
-      const newest = newestAlpha;
-      newest.forEach((p) => used.add(p.id));
-      const top = topAlpha.filter((p) => !used.has(p.id));
-      top.forEach((p) => used.add(p.id));
-      const rest = activeAlpha.filter((p) => !used.has(p.id));
-
-      return [
-        {
-          key: "new",
-          label: t('project_day_timeline.text.newest_projects_a_z'),
-          projects: newest,
-        },
-        {
-          key: "top",
-          label: t('project_day_timeline.text.top_projects_a_z'),
-          projects: top,
-        },
-        {
-          key: "rest",
-          label: t('project_day_timeline.text.remaining_active_a_z'),
-          projects: rest,
-        },
-      ];
-    }
-
-    const used = new Set<number>();
-    const top = topAlpha;
-    top.forEach((p) => used.add(p.id));
-    const newest = newestAlpha.filter((p) => !used.has(p.id));
-    newest.forEach((p) => used.add(p.id));
-    const rest = activeAlpha.filter((p) => !used.has(p.id));
-
-    return [
-      {
-        key: "top",
-        label: t('project_day_timeline.text.top_projects_a_z'),
-        projects: top,
-      },
-      {
-        key: "new",
-        label: t('project_day_timeline.text.newest_projects_a_z'),
-        projects: newest,
-      },
-      {
-        key: "rest",
-        label: t('project_day_timeline.text.remaining_active_a_z'),
-        projects: rest,
-      },
-    ];
+    return buildAssignProjectSections({
+      assignProjectListMode,
+      projects,
+      activeProjectsLabel: t('project_day_timeline.text.active_projects_a_z'),
+      newestProjectsLabel: t('project_day_timeline.text.newest_projects_a_z'),
+      topProjectsLabel: t('project_day_timeline.text.top_projects_a_z'),
+      remainingProjectsLabel: t('project_day_timeline.text.remaining_active_a_z'),
+      newProjectMaxAgeMs: Math.max(1, thresholdDays) * 24 * 60 * 60 * 1000,
+    });
   }, [assignProjectListMode, projects, t]);
 
   const assignProjectsCount = useMemo(

@@ -301,6 +301,7 @@ fn record_app_activity(
 
 fn run_loop(stop_signal: Arc<AtomicBool>) {
     let mut pid_cache: PidCache = HashMap::new();
+    monitor::warm_path_detection_wmi();
     let mut cfg = config::load();
     let mut monitored: HashSet<String> = config::monitored_exe_names(&cfg);
     let mut tracking_enabled = !monitored.is_empty();

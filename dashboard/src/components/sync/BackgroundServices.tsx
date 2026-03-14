@@ -12,13 +12,14 @@ import {
   ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
   loadOnlineSyncSettings,
   runOnlineSyncOnce,
+  type OnlineSyncRunResult,
 } from '@/lib/online-sync';
 import {
   LOCAL_DATA_CHANGED_EVENT,
   emitProjectsAllTimeInvalidated,
 } from '@/lib/sync-events';
 import { loadSessionSettings } from '@/lib/user-settings';
-import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
+import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import {
   AUTO_SPLIT_INTERVAL_MS,
   JOB_LOOP_TICK_MS,
@@ -142,6 +143,10 @@ async function runAutoAiAssignmentCycle(): Promise<boolean> {
   );
 
   return result ?? false;
+}
+
+function shouldRefreshAfterOnlineSync(result: OnlineSyncRunResult): boolean {
+  return result.action === 'pull';
 }
 
 // === BACKGROUND HOOKS ===
@@ -359,7 +364,9 @@ function useJobPool() {
         if (result.action === 'pull') {
           emitProjectsAllTimeInvalidated('online_sync_pull');
         }
-        triggerRefresh(`background_sync_${reason}`);
+        if (shouldRefreshAfterOnlineSync(result)) {
+          triggerRefresh(`background_sync_${reason}`);
+        }
         syncFailCountRef.current = 0; // Reset na sukces
       } catch (e) {
         console.warn('Sync failed:', e);
@@ -521,3 +528,4 @@ export function BackgroundServices() {
 
   return null;
 }
+
