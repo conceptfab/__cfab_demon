@@ -1,472 +1,292 @@
-# TIMEFLOW — Raport refaktoryzacji i plan prac
+# TIMEFLOW — Analiza kodu i plan refaktoryzacji
 
-> Wygenerowano: 2026-03-14
-> Projekt: ~51 000 linii kodu (Rust daemon + Tauri backend + React/TS frontend)
-> Priorytet: zachowanie dotychczasowych danych
-
----
-
-## Status weryfikacji 2026-03-14
-
-- `[1.1]` ZAMKNIĘTE: `daily_files` używa już klucza `(date, exe_name, file_name, detected_path)`, a `dedupe_files_preserving_last` rozróżnia pliki po `name + detected_path`.
-- `[1.2]` ZAMKNIĘTE WCZEŚNIEJ: timeline projektów już przenosi `has_boost`, `has_manual` i `comments`; raport w tej części był nieaktualny.
-- `[2.1]` ZAMKNIĘTE: `compute_score_breakdowns` używa teraz batch-fetch nazw projektów zamiast N+1 query.
-- `[2.2]` ZAMKNIĘTE: hot-path w `assignment_model/scoring.rs` i `assignment_model/context.rs` używa `prepare_cached(...)`.
-- `[2.3]` ZAMKNIĘTE: hydration ścieżek w `src/monitor.rs` uruchamia się tylko dla foreground PID wymagającego pierwszej próby detekcji.
-- `[2.4]` ZAMKNIĘTE: `replace_day_snapshot` czyści stale `daily_files` jednym batchowym `DELETE ... NOT EXISTS` na aplikację, bez wcześniejszego pełnego scanu tabeli.
-- `[2.5]` ZAMKNIĘTE WCZEŚNIEJ: `ProjectDayTimeline.tsx` ma już `model = useMemo(...)`, a `summarizeCluster(...)` jest memoizowane przez `clusterDetailsSummary`.
-- `[2.6]` ZAMKNIĘTE: `BackgroundServices.tsx` używa stabilnych callbacków dla diagnostyki i ustawień DB, więc pętla job-poola nie restartuje się od zmian referencji store actions.
-- `[2.7]` ZAMKNIĘTE: `Sessions.tsx` nie rejestruje już listenerów `visibilitychange`/`focus` przy każdej zmianie filtrów; callback odświeżania jest stabilny.
-- `[2.8]` ZAMKNIĘTE: wątek monitora robi eager warm-up WMI/COM przy starcie (`monitor::warm_path_detection_wmi()` wywołane z `tracker::run_loop`), więc pierwszy lookup nie blokuje już hot path polling loop.
-- `[3.1]` ZAMKNIĘTE: wspólne budowanie danych stacked bar zostało wydzielone do `analysis.rs` i użyte w dwóch call-site.
-- `[3.2]` ZAMKNIĘTE: parsowanie dat zostało scentralizowane w `datetime.rs`; duplikaty w `analysis.rs` i `sessions/query.rs` zostały usunięte.
-- `[3.3]` ZAMKNIĘTE: komendy dashboardu używają już bezpośrednio `Stored*` z `timeflow_shared::daily_store`, a `daily_store_bridge.rs` nie mapuje już ręcznie typów.
-- `[3.4]` ZAMKNIĘTE: wspólny filtr `ACTIVE_SESSION_FILTER` w `sql_fragments.rs` zastąpił literalne warunki `is_hidden` w backendowych zapytaniach.
-- `[3.6]` ZAMKNIĘTE: wspólny hook `usePageRefreshListener` obsługuje już `Sessions.tsx`, `Projects.tsx` i `ProjectPage.tsx`.
-- `[3.7]` ZAMKNIĘTE: pure session helpers zostały przeniesione do `dashboard/src/lib/session-utils.ts`.
-- `[3.5]` ZAMKNIĘTE: wspólna funkcja rozróżniania nazw projektów obsługuje już `analysis.rs` i `dashboard.rs`.
-- `[3.8]` ZAMKNIĘTE: wspólny `name_hash(...)` obsługuje już oba generatory kolorów.
-- `[3.9]` ZAMKNIĘTE WCZEŚNIEJ: `dashboard/src/lib/project-colors.ts` jest aktywnie używany przez UI tworzenia/edycji projektów; raport o martwym pliku był nieaktualny.
-- `[3.10]` ZAMKNIĘTE: `dashboard/src/lib/db-types.ts` ma już `updated_at` w `Project`.
-- `[3.11]` ZAMKNIĘTE: helpery dat frontendu zostały scalone do `dashboard/src/lib/date-helpers.ts`, a stare importy `date-utils` / `date-ranges` / `date-locale` zostały usunięte.
-- `[4.1]` ZAMKNIĘTE: dodano brakujące klucze `sessions.menu.*_az` do PL i EN.
-- `[4.2]` ZAMKNIĘTE: fallback `split_session` w `Sessions.tsx` został zmieniony na EN.
-- `[5.1]` ZAMKNIĘTE: `ProjectDayTimeline.tsx` ma wydzielone `timeline-calculations.ts`; `Sessions.tsx` używa `useSessionsFilters.ts` i `useSessionsData.ts`; `Projects.tsx` używa `useProjectsData.ts`; `online-sync.ts` ma wydzielone moduły `lib/sync/sync-storage.ts` i `lib/sync/sync-http.ts`; `shared/daily_store.rs` oraz `src/monitor.rs` zostały rozbite na podmoduły.
+> Data analizy: 2026-03-14
+> Priorytet: zachowanie dotychczasowych danych i kompatybilności wstecz.
+> Cel: identyfikacja problemów, plan prac, wskazówki do `plan_implementacji.md`.
 
 ---
 
-## Spis treści
+## 1. Mapa procesów / podsystemów
 
-1. [Krytyczne błędy (utrata danych / błędy logiczne)](#1-krytyczne-bledy)
-2. [Wydajność i wielowątkowość](#2-wydajnosc)
-3. [Duplikacje kodu i refaktoryzacja](#3-duplikacje)
-4. [Tłumaczenia i Help](#4-tlumaczenia)
-5. [Architektura i modularyzacja](#5-architektura)
-6. [Sugestie funkcjonalne](#6-sugestie)
-7. [Plan prac (kolejność implementacji)](#7-plan-prac)
-8. [Wskazówki dla modelu implementującego](#8-wskazowki)
-
----
-
-## 1. Krytyczne błędy (utrata danych / błędy logiczne) {#1-krytyczne-bledy}
-
-### 1.1 KRYTYCZNY: `dedupe_files_preserving_last` ignoruje `detected_path` — ciche łączenie różnych plików
-
-- **Status 2026-03-14:** zamknięte. Deduplikacja uwzględnia już `detected_path`, store migruje stary schemat `daily_files`, a testy pokrywają zarówno migrację, jak i dwa pliki o tej samej nazwie z różnych ścieżek.
-
-- **Plik:** `shared/daily_store.rs:58-67`
-- **Problem:** Deduplikacja plików używa tylko `file.name` jako klucza. Dwa pliki o tej samej nazwie ale z różnych repozytoriów (`index.ts` z repo A i `index.ts` z repo B) są traktowane jako duplikaty — jeden jest usuwany. Dane tracone permanentnie przy zapisie do DB.
-- **Dodatkowy problem:** Schemat `daily_files` ma `PRIMARY KEY (date, exe_name, file_name)` — nie może reprezentować dwóch plików o tej samej nazwie z różnych ścieżek.
-- **Naprawa:**
-  1. Zmienić klucz deduplikacji na `format!("{}|{}", file.name, file.detected_path.as_deref().unwrap_or(""))`
-  2. Zmienić PRIMARY KEY na `(date, exe_name, file_name, detected_path)` — wymaga migracji DB
-  3. **UWAGA:** Migracja musi zachować istniejące dane — dodać kolumnę `detected_path` do klucza, nie usuwać tabeli
-- **Ryzyko:** WYSOKIE — utrata danych produkcyjnych
-
-### 1.2 KRYTYCZNY: Bug — dashboard timeline traci informację `has_boost`/`has_manual`
-
-- **Status 2026-03-14:** zamknięte wcześniej w aktualnym kodzie. `dashboard.rs` i `analysis.rs` już przekazują `bucket_flags` oraz `bucket_comments`.
-
-- **Plik:** `dashboard/src-tauri/src/commands/dashboard.rs:180-256`
-- **Problem:** `build_project_timeline_rows` jest duplikatem logiki z `analysis.rs:595-673`, ale NIE obsługuje `bucket_flags` i `bucket_comments`. Efekt: dashboard timeline nie pokazuje informacji o boost/manual w sesji.
-- **Naprawa:** Wydzielić wspólną funkcję (patrz sekcja 3.1) i upewnić się, że oba wywołania przekazują flagi.
+| # | Podsystem | Pliki kluczowe | Opis |
+|---|-----------|----------------|------|
+| 1 | Daemon monitoring | `src/monitor.rs`, `src/tracker.rs` | Co 10s polling aktywnego okna (WinAPI), śledzenie CPU, idle detection, PID cache |
+| 2 | Daemon storage | `src/storage.rs`, `shared/daily_store/` | Zapis dziennych snapshotów do SQLite; legacy JSON fallback |
+| 3 | WMI path detection | `src/monitor/wmi_detection.rs`, `src/monitor/pid_cache.rs` | Async wykrywanie ścieżki procesu via WMI |
+| 4 | Daily store (shared) | `shared/daily_store/{read,write,types,schema}.rs` | Wspólna biblioteka Rust (daemon + dashboard-tauri) |
+| 5 | Session rebuild/import | `commands/sessions/rebuild.rs`, `commands/import.rs`, `commands/import_data.rs` | Scalanie sesji, import z JSON |
+| 6 | Session query + AI | `commands/sessions/query.rs` | Pobieranie sesji z filtrowaniem, file overlap, sugestie ML |
+| 7 | Assignment model (AI) | `commands/assignment_model/{config,training,scoring,context,auto_safe}.rs` | Lokalny model ML: trening, sugestie, auto_safe, rollback |
+| 8 | Analysis / Dashboard | `commands/analysis.rs`, `commands/dashboard.rs` | Sweepline bucketing, statystyki, eksport danych do wykresów |
+| 9 | Online sync | `lib/sync/`, `components/sync/BackgroundServices.tsx` | Push/pull snapshotów do zewnętrznego serwera |
+| 10 | Project management | `commands/projects.rs`, `pages/Projects.tsx` | CRUD projektów, foldery, kandydaci, freeze/exclude |
+| 11 | Estimates | `commands/estimates.rs`, `pages/Estimates.tsx` | Stawki godzinowe, wyceny projektów |
+| 12 | Reports | `commands/report.rs`, `pages/ReportView.tsx` | Generowanie raportów per projekt |
+| 13 | Settings | `commands/settings.rs`, `commands/sessions/split.rs` | Ustawienia sesji, podział sesji |
+| 14 | Background services | `components/sync/BackgroundServices.tsx` | Job pool, auto-import, AI assignment, diagnostics |
 
 ---
 
-## 2. Wydajność i wielowątkowość {#2-wydajnosc}
+## 2. Duplikaty funkcji i kodu
 
-### 2.1 WYSOKI: N+1 query w `compute_score_breakdowns`
+### 2.1 `local_from_naive` — zduplikowana funkcja Rust
+- `dashboard/src-tauri/src/commands/datetime.rs:3`
+- `dashboard/src-tauri/src/commands/analysis.rs:142`
+- **Naprawa**: Eksportować z `datetime.rs` jako `pub(crate)`, usunąć kopię z `analysis.rs`.
 
-- **Status 2026-03-14:** zamknięte. Nazwy projektów są pobierane batchowo do `HashMap<i64, String>` przed budową kandydatów.
+### 2.2 Paleta kolorów — brak wspólnego źródła
+- Rust: `dashboard.rs:418-422` — 12-kolorowa paleta dla aplikacji
+- TS: `lib/project-colors.ts` — 8-kolorowa paleta dla projektów
+- **Naprawa**: Wydzielić wspólną paletę (const w Rust + export w TS), aby obie strony korzystały z tego samego źródła.
 
-- **Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs:213-219`
-- **Problem:** Osobne `SELECT name FROM projects WHERE id = ?1` dla KAŻDEGO kandydującego projektu. Przy wielu projektach = N+1 pattern blokujący Tauri async runtime.
-- **Naprawa:** Batch-fetch: `SELECT id, name FROM projects WHERE id IN (...)` → `HashMap<i64, String>` przed pętlą.
+### 2.3 `total_time_formatted` — martwe pole
+- `src/storage.rs:32` — `AppDailyData.total_time_formatted` wypełniane przez `update_summary`
+- Pole nigdy nie trafia do SQLite ani dashboardu (TS formatuje czas sam przez `utils.ts:formatDuration`)
+- **Naprawa**: Usunąć pole z `AppDailyData` i logikę `format_duration` w `storage.rs`.
 
-### 2.2 WYSOKI: `prepare()` zamiast `prepare_cached()` na hot-path
+### 2.4 Event listening — powielony wzorzec na stronach
+- `Dashboard.tsx`, `Estimates.tsx`, `Applications.tsx`, `ProjectPage.tsx` — ręczne `window.addEventListener` zamiast hooka
+- Hook `usePageRefreshListener` istnieje i jest używany w `Sessions.tsx`
+- **Naprawa**: Ujednolicić wszystkie strony przez `usePageRefreshListener`.
 
-- **Status 2026-03-14:** zamknięte dla wskazanych miejsc w `scoring.rs` i `context.rs`.
+### 2.5 Funkcje deep-equality — rozrzucone po plikach
+- `background-status-store.ts`: `areStringArraysEqual`, `areDaemonStatusesEqual`, `areAssignmentStatusesEqual`
+- `AI.tsx:111-157`: `areMetricsEqual`
+- **Naprawa**: Wydzielić do `lib/equality-utils.ts` lub użyć generycznej `shallowEqual` / `JSON.stringify`.
 
-- **Pliki:** `scoring.rs:121,139` + `context.rs:92,154`
-- **Problem:** W pętli po sesjach (batch AI scoring), `conn.prepare(...)` re-parsuje SQL przy KAŻDYM wywołaniu. 50 sesji = 100+ kompilacji SQL.
-- **Naprawa:** Zamienić `conn.prepare(` na `conn.prepare_cached(` w scoring i context.
+### 2.6 `resolveContextMenuPlacement` — duplikat
+- `Sessions.tsx:238-263`
+- Komentarz wskazuje na identyczną logikę w `ProjectDayTimeline`
+- **Naprawa**: Wynieść do `lib/context-menu-utils.ts`.
 
-### 2.3 WYSOKI: `hydrate_detected_paths_for_pending_pids` wywoływana co 10 s bezwarunkowo
-
-- **Status 2026-03-14:** zamknięte. Wywołanie jest teraz guardowane stanem foreground PID.
-
-- **Plik:** `src/monitor.rs:164`
-- **Problem:** `get_foreground_info` bezwarunkowo wywołuje hydration, która skanuje cały `pid_cache` + sortuje + potencjalnie odpala WMI, nawet gdy nie ma nowych PID.
-- **Naprawa:** Guard: wywoływać hydration tylko gdy foreground PID ma `path_detection_attempted = false`.
-
-### 2.4 ŚREDNI: `replace_day_snapshot` — pełny scan + per-row DELETE co 5 minut
-
-- **Status 2026-03-14:** zamknięte. `replace_day_snapshot` nie skanuje już całego `daily_files` dla dnia; używa tymczasowej tabeli kluczy i jednego `DELETE ... NOT EXISTS` per aplikacja. Dodano też test dla przypadku przejścia na pustą listę plików.
-
-- **Plik:** `shared/daily_store.rs:267-289`
-- **Problem:** `SELECT` wszystkich plików + indywidualne `DELETE` per usunięty plik. Przy 500 wierszy na dzień to dużo operacji.
-- **Naprawa:** Jeden `DELETE WHERE file_name NOT IN (...)` zamiast pętli DELETE.
-
-### 2.5 ŚREDNI: `ProjectDayTimeline.tsx` — brak memoizacji kosztownych obliczeń
-
-- **Status 2026-03-14:** zamknięte wcześniej w aktualnym kodzie. `mergeSessionFragments(...)` działa wewnątrz `model = useMemo(...)`, a `summarizeCluster(...)` jest liczone przez osobne `useMemo`.
-
-- **Plik:** `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:180-285`
-- **Problem:** `mergeSessionFragments` i `summarizeCluster` obliczane przy każdym renderze (sortowanie + iteracja segmentów). Komponent 1502 linii.
-- **Naprawa:** Opakować w `useMemo` z odpowiednimi deps.
-
-### 2.6 ŚREDNI: `BackgroundServices.tsx` — niestabilne deps mogą restartować interwał
-
-- **Status 2026-03-14:** zamknięte. Pętla job-poola korzysta ze stabilnych `useEffectEvent` wrapperów dla `refreshDiagnostics` i `refreshDatabaseSettings`, więc interwał nie jest restartowany przy zmianie referencji callbacków ze store.
-
-- **Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:427-468`
-- **Problem:** `useEffect` z `setInterval` zależy od callbacków, które mogą tracić stabilność referencji (np. `refreshDiagnostics`, `refreshDatabaseSettings`).
-- **Naprawa:** Użyć stabilnych wrapperów (`useEffectEvent`) dla callbacków store i nie podpinać ich bezpośrednio do deps interwału.
-
-### 2.7 ŚREDNI: `Sessions.tsx` — event listener re-registration na zmianę filtrów
-
-- **Status 2026-03-14:** zamknięte. Listener rejestruje się raz, a `loadFirstSessionsPage` jest wywoływane przez stabilny `useEffectEvent`, więc zmiana filtrów nie powoduje już re-attach listenerów.
-
-- **Plik:** `dashboard/src/pages/Sessions.tsx:407-422`
-- **Problem:** `visibilitychange` i `focus` listenery re-rejestrowane przy każdej zmianie filtrów, bo `loadFirstSessionsPage` jest dep.
-- **Naprawa:** `useEffectEvent` do trzymania aktualnego callbacka odświeżania, a sama rejestracja listenerów z `[]` deps.
-
-### 2.8 ŚREDNI: WMI COM lazy-init blokuje polling loop na 30-60 ms
-
-- **Status 2026-03-14:** zamknięte. `tracker::run_loop(...)` wywołuje teraz `monitor::warm_path_detection_wmi()` przed wejściem w pętlę, więc inicjalizacja COM/WMI dzieje się eager na właściwym wątku monitora.
-
-- **Plik:** `src/monitor.rs:325-330`
-- **Problem:** `COMLibrary::new()` odpalany przy pierwszym PID wymagającym WMI.
-- **Naprawa:** Eager init przy starcie wątku monitora.
+### 2.7 In-flight guard — dwa różne wzorce
+- `background-status-store.ts`: boolean flags (`diagnosticsInFlight = false`)
+- `projects-cache-store.ts`: `Promise | null` (lepsza wersja)
+- **Naprawa**: Stworzyć `createSingleFlight<T>()` w `lib/async-utils.ts`, ujednolicić.
 
 ---
 
-## 3. Duplikacje kodu i refaktoryzacja {#3-duplikacje}
+## 3. Błędy logiczne i edge case'y
 
-### 3.1 WYSOKI: Zduplikowana logika stacked bar (80 linii × 2)
+### 3.1 `FileActivity.file_path` — ghost field
+- `db-types.ts:38` deklaruje `file_path?: string`
+- Rust struct `types.rs:88` tego pola nie ma — backend nigdy go nie zwraca
+- `session-utils.ts:38` porównuje `file_path` które jest zawsze `undefined`
+- **Naprawa**: Usunąć `file_path` z `FileActivity` w TS lub zaimplementować w Rust.
 
-- **Status 2026-03-14:** zamknięte. Wspólny builder został wydzielony do `analysis.rs` i użyty z `dashboard.rs`.
+### 3.2 Sweepline multiplier "last wins"
+- `analysis.rs:509` — przy nakładających się sesjach tego samego projektu, multiplier ostatniej zastępuje poprzedni
+- W normalnych warunkach sesje się nie nakładają, ale po import/rebuild może to wystąpić
+- **Naprawa**: Dokumentować jako known limitation lub uśredniać multiplier.
 
-- **Pliki:** `dashboard.rs:180-256` vs `analysis.rs:595-673`
-- **Problem:** Identyczna sekwencja: sort ranked_projects → take(limit) → build HashMap → sum other → insert OTHER_KEY.
-- **Naprawa:** Wydzielić `build_stacked_bar_output(...)` do `analysis.rs`, oba miejsca wywołują wspólną funkcję.
+### 3.3 WMI detection — brak retry po przejściowym błędzie
+- `src/monitor/wmi_detection.rs` — po timeout/błędzie WMI, `path_detection_attempted = true` i PID nigdy nie będzie miał wykrytej ścieżki
+- **Naprawa**: Odróżniać "permanent failure" od "transient timeout", pozwalać retry po cooldown.
 
-### 3.2 WYSOKI: Trzy oddzielne parsery dat
+### 3.4 Idle threshold hardcoded
+- `src/tracker.rs:341` — `IDLE_THRESHOLD_MS = 120_000` (2 min) nie jest konfigurowalne
+- **Sugestia**: Dodać do ustawień użytkownika (niski priorytet).
 
-- **Status 2026-03-14:** zamknięte. `datetime.rs` udostępnia teraz wspólne parsery dla `FixedOffset`, `Local` i opcjonalnych milisekund.
+### 3.5 `classify_activity_type` — zbędny `to_lowercase()`
+- `src/monitor.rs:158` — `exe_name` jest już lowercase (z `get_exe_name_and_creation_time`)
+- Ponowne `to_lowercase()` to zbędna alokacja w gorącej ścieżce
+- **Naprawa**: Usunąć dodatkowe `to_lowercase()`.
 
-- **Pliki:** `datetime.rs:1-33`, `analysis.rs:159-178`, `sessions/query.rs:44-48`
-- **Problem:** 3 funkcje parsujące te same formaty RFC3339 z wariantami. `parse_rfc3339_millis` to dokładnie `parse_datetime_ms`.
-- **Naprawa:** Centralizacja w `datetime.rs`, usunięcie duplikatów.
-
-### 3.3 WYSOKI: Trzy zestawy typów daily data + ręczny mapping
-
-- **Status 2026-03-14:** zamknięte. `commands/types.rs` aliasuje teraz `StoredDailyData`/`StoredAppDailyData`/`StoredSession`/`StoredFileEntry`, a `daily_store_bridge.rs` został uproszczony do pracy bez pośredniego mapowania.
-
-- **Pliki:** `src/storage.rs:19-63`, `shared/daily_store.rs:10-50`, `commands/types.rs:7-48`
-- **Problem:** 3 strukturalnie identyczne zestawy typów (`DailyData`/`StoredDailyData`/`JsonDailyData`) z boilerplate mappingiem.
-- **Naprawa:** Dashboard powinien używać `timeflow_shared::daily_store::StoredXxx` bezpośrednio, eliminując `JsonXxx` z types.rs. Wymaga dodania `#[derive(Serialize)]` do StoredXxx.
-
-### 3.4 ŚREDNI: `is_hidden` filter jako literal string w 10 miejscach
-
-- **Status 2026-03-14:** zamknięte. `commands/sql_fragments.rs` udostępnia wspólne `ACTIVE_SESSION_FILTER` i `ACTIVE_SESSION_FILTER_S`, a call-site przestały duplikować warunek `is_hidden`.
-
-- **Pliki:** `analysis.rs` (×2), `dashboard.rs` (×5), `sessions/split.rs`, `sessions/rebuild.rs`, `assignment_model/auto_safe.rs`
-- **Naprawa:** Stała `ACTIVE_SESSION_FILTER` w `sql_fragments.rs`.
-
-### 3.5 ŚREDNI: Zduplikowana logika disambiguation nazw projektów
-
-- **Status 2026-03-14:** zamknięte. `analysis.rs` i `dashboard.rs` używają wspólnych helperów z `commands/helpers.rs`.
-
-- **Pliki:** `analysis.rs:95-119` vs `dashboard.rs:147-175`
-- **Naprawa:** Wydzielić `disambiguate_project_names(...)`.
-
-### 3.6 ŚREDNI: Triplowany refresh listener pattern w 3 stronach
-
-- **Status 2026-03-14:** zamknięte. `Sessions.tsx`, `Projects.tsx` i `ProjectPage.tsx` używają wspólnego hooka `dashboard/src/hooks/usePageRefreshListener.ts`.
-
-- **Pliki:** `Sessions.tsx`, `Projects.tsx`, `ProjectPage.tsx`
-- **Problem:** 40-60 linii identycznego boilerplate (addEventListener → shouldRefreshPage → reload).
-- **Naprawa:** Hook `usePageRefreshListener(onRefresh)` normalizujący eventy `APP_REFRESH_EVENT` i `LOCAL_DATA_CHANGED_EVENT`.
-
-### 3.7 NISKI: Pure functions wyeksportowane z pliku hooka
-
-- **Status 2026-03-14:** zamknięte. `normalizeSessionIds`, `findSessionIdsMissingComment` i `requiresCommentForMultiplierBoost` znajdują się już w `dashboard/src/lib/session-utils.ts`, a call-site przestały importować je z hooka.
-
-- **Plik:** `hooks/useSessionActions.ts:32-46`
-- **Problem:** `findSessionIdsMissingComment`, `requiresCommentForMultiplierBoost` to pure functions importowane przez strony — powinny być w `lib/`.
-- **Naprawa:** Przenieść do `lib/session-utils.ts`.
-
-### 3.8 NISKI: Zduplikowany hash kernel w generatorach kolorów
-
-- **Status 2026-03-14:** zamknięte. Wspólny hash został wydzielony do `commands/helpers.rs`.
-
-- **Pliki:** `dashboard.rs:506-517` vs `projects.rs:100-132`
-- **Naprawa:** Wydzielić `fn name_hash(name: &str) -> u32` do `helpers.rs`.
-
-### 3.9 NISKI: `project-colors.ts` — potencjalnie martwy plik
-
-- **Status 2026-03-14:** zamknięte wcześniej w aktualnym kodzie. Plik jest używany przez `CreateProjectDialog.tsx`, `ProjectCard.tsx` i `ProjectColorPicker.tsx`, więc nie jest martwy.
-
-- **Plik:** `dashboard/src/lib/project-colors.ts`
-- **Problem:** 8-elementowa paleta niezsynchronizowana z 12-elementową w Rust. Sprawdzić importy — jeśli nieużywany, usunąć.
-
-### 3.10 NISKI: Brak `updated_at` w `db-types.ts` Project
-
-- **Status 2026-03-14:** zamknięte.
-
-- **Pliki:** `commands/types.rs:71` (ma pole) vs `lib/db-types.ts:1-11` (brak pola)
-- **Naprawa:** Dodać `updated_at: string` do interface Project w db-types.ts.
-
-### 3.11 NISKI: Rozdrobnienie plików date helpers (3 pliki po 5-14 linii)
-
-- **Status 2026-03-14:** zamknięte. Wspólny plik `dashboard/src/lib/date-helpers.ts` eksportuje teraz `buildTodayDate`, `resolveDateFnsLocale`, `ALL_TIME_*` i `allTimeRangeTo`, a stare pliki zostały usunięte.
-
-- **Pliki:** `lib/date-utils.ts`, `lib/date-ranges.ts`, `lib/date-locale.ts`
-- **Naprawa:** Scalić do jednego `lib/date-helpers.ts` (niski priorytet).
+### 3.6 `inferred_project_by_session` — myląca nazwa
+- `sessions/query.rs:338-413` — zmienna sugeruje twarde przypisanie, ale faktycznie to sugestia
+- **Naprawa**: Zmienić nazwę na `suggested_project_by_session`.
 
 ---
 
-## 4. Tłumaczenia i Help {#4-tlumaczenia}
+## 4. Wydajność i optymalizacje
 
-### 4.1 BUG: 3 brakujące klucze tłumaczeń — EN widzi polskie etykiety
+### 4.1 [WYSOKI] Daemon: `save_daily` otwiera nowe połączenie SQLite przy każdym zapisie
+- `src/storage.rs:272-277` — `open_daily_store()` co 5 min
+- **Naprawa**: Przechowywać jedno trwałe połączenie w `run_loop` i przekazywać do `save_daily`.
 
-- **Status 2026-03-14:** zamknięte.
+### 4.2 [WYSOKI] Backend: VACUUM/backup przy starcie blokuje UI
+- `dashboard/src-tauri/src/db.rs:174-269` — sekwencyjne VACUUM + backup + optimize przed inicjalizacją UI
+- **Naprawa**: Przenieść do `spawn_blocking` po inicjalizacji lub opóźnić do pierwszego tiku BackgroundServices.
 
-- **Plik:** `dashboard/src/pages/Sessions.tsx` linie 827, 834, 840, 858, 864, 872
-- **Brakujące klucze:** `sessions.menu.top_projects_az`, `sessions.menu.newest_projects_az`, `sessions.menu.remaining_active_az`
-- **Efekt:** W EN menu assign pokazuje polskie fallbacki ("Top projekty (A-Z)" itp.)
-- **Naprawa:** Dodać klucze do obu plików common.json:
-  - PL: `"top_projects_az": "Top projekty (A-Z)"` itd.
-  - EN: `"top_projects_az": "Top projects (A-Z)"` itd.
+### 4.3 [WYSOKI] Brakujący indeks `sessions(date)`
+- `db_migrations.rs:758` — istniejący indeks `idx_sessions_app_date(app_id, date, start_time)` nie pomaga przy zapytaniach `WHERE date >= ? AND date <= ?` bez `app_id`
+- `SESSION_PROJECT_CTE_ALL_TIME` w `sql_fragments.rs:87-91` — `MIN(date)` i `MAX(date)` bez indeksu to full scan
+- **Naprawa**: `CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)` + analogicznie dla `assignment_suggestions(session_id)`.
 
-### 4.2 NISKI: Polski fallback w `t()` call
+### 4.4 [ŚREDNI] SESSION_PROJECT_CTE — kosztowny inline CTE
+- `sql_fragments.rs:1-93` — materializowany ponownie przy każdym zapytaniu (dashboard, sessions, timeline, top_projects)
+- **Rozważyć**: Cache/materializację wyniku CTE w temp table przy starcie dnia.
 
-- **Status 2026-03-14:** zamknięte.
+### 4.5 [ŚREDNI] Dashboard: wielokrotne wywołania `compute_project_activity_unique`
+- `dashboard.rs` — ta sama funkcja analityczna wywoływana 3-4 razy przez różne komendy
+- **Naprawa**: Cache wyników per date range w backend (invalidacja przy zmianach danych).
 
-- **Plik:** `Sessions.tsx:1206` — `t('sessions.menu.split_session', 'Podziel sesję')`
-- **Naprawa:** Zmienić fallback na `'Split session'`.
+### 4.6 [ŚREDNI] WMI detection blokuje główną pętlę
+- `src/monitor/wmi_detection.rs` — WMI query synchronicznie w głównym wątku, może blokować 100-500ms
+- **Naprawa**: Przenieść do dedykowanego wątku z `mpsc::channel`.
 
-### 4.3 Help.tsx — KOMPLETNE pokrycie
+### 4.7 [NISKI] DbPath lock per query
+- `db.rs:439-448` — `Mutex<String>` lockowany przy każdym `get_connection`
+- **Naprawa**: Cache w `Arc<str>` lub `OnceLock` po inicjalizacji.
 
-Wszystkie 12 sekcji Help pokrywają wszystkie strony i funkcje aplikacji:
-- QuickStart, Dashboard, Sessions, Projects, Estimates, Applications, Time Analysis, AI, Data, Reports, Daemon, Settings
-- Podstrony (ProjectPage, ReportView, ImportPage) opisane w odpowiednich sekcjach
+### 4.8 [NISKI] React: brak `memo`/`useCallback` w SessionsVirtualList
+- `SessionsVirtualList.tsx:124` — `itemContent` jako inline function, re-created per render
+- **Naprawa**: `useCallback` na `itemContent`.
 
-### 4.4 Rust i18n — kompletne
-
-`src/i18n.rs` zawiera 10 komunikatów tray w PL i EN. Brak braków.
-
----
-
-## 5. Architektura i modularyzacja {#5-architektura}
-
-### 5.1 Duże pliki wymagające podziału
-
-| Plik | Linie | Sugerowany podział |
-|------|-------|--------------------|
-| `Projects.tsx` | 1694 | ZAMKNIĘTE 2026-03-14: logika danych wydzielona do `useProjectsData.ts` |
-| `online-sync.ts` | 1633 | ZAMKNIĘTE 2026-03-14: storage/normalizacja i warstwa HTTP/logging wydzielone do `lib/sync/` |
-| `ProjectPage.tsx` | 1565 | Wydzielić podkomponenty do folderu `components/project-page/` |
-| `ProjectDayTimeline.tsx` | 1502 | ZAMKNIĘTE 2026-03-14: obliczenia i typy wydzielone do `project-day-timeline/timeline-calculations.ts` |
-| `Sessions.tsx` | 1375 | ZAMKNIĘTE 2026-03-14: wydzielono `useSessionsData.ts` i `useSessionsFilters.ts` |
-| `daily_store.rs` | 1118 | ZAMKNIĘTE 2026-03-14: podział na `daily_store/{schema,read,write,types,legacy}.rs` |
-| `monitor.rs` | 934 | ZAMKNIĘTE 2026-03-14: wydzielono `monitor/wmi_detection.rs` i `monitor/pid_cache.rs` |
-
-### 5.2 Proponowana struktura modułów (dashboard/src/)
-
-```
-lib/
-  date-helpers.ts          (scalony z date-utils + date-ranges + date-locale)
-  session-helpers.ts       (pure functions z useSessionActions + istniejące session-utils)
-  sync/
-    sync-engine.ts
-    sync-queue.ts
-    sync-status.ts
-    sync-types.ts          (istniejące online-sync-types.ts)
-hooks/
-  usePageRefreshListener.ts  (nowy — wspólny pattern z 3 stron)
-  useSessionsData.ts         (wydzielony z Sessions.tsx)
-  useProjectsData.ts         (wydzielony z Projects.tsx)
-```
-
-### 5.3 Tauri commands — potencjalny podział `commands/`
-
-```
-commands/
-  sessions/        (istniejący — dobrze podzielony)
-  assignment_model/ (istniejący — dobrze podzielony)
-  daemon/           (istniejący — dobrze podzielony)
-  analysis/
-    mod.rs
-    stacked_bar.rs   (wydzielony z analysis.rs + dashboard.rs)
-    timeline.rs
-  dashboard/
-    mod.rs
-    project_rows.rs
-    color_utils.rs   (wydzielony z dashboard.rs + projects.rs)
-```
+### 4.9 [NISKI] Dashboard.tsx — zbyt szerokie subskrypcje store
+- `projectsList = useProjectsCacheStore((s) => s.projectsAllTime)` — cały array, choć potrzebne `.length`
+- **Naprawa**: `useProjectsCacheStore((s) => s.projectsAllTime.length)`.
 
 ---
 
-## 6. Sugestie funkcjonalne {#6-sugestie}
+## 5. Architektura i modularyzacja
 
-### 6.1 `run_db_blocking` vs `run_db_primary_blocking` — brak dokumentacji
+### 5.1 [WYSOKI] Sessions.tsx (1167 linii) — wymaga podziału
+**Wydzielić:**
+- `SessionContextMenu.tsx` (~400 linii inline context menu)
+- `useAssignProjectSections` hook (logika grupowania projektów)
+- `useGroupedSessions` hook (logika flattenedItems)
+- `lib/context-menu-utils.ts` (resolveContextMenuPlacement)
 
-- **Status 2026-03-14:** zamknięte. `commands/helpers.rs` ma już komentarze doc wyjaśniające, że `run_db_blocking` respektuje aktywny tryb DB (primary/demo), a `run_db_primary_blocking` zawsze omija demo mode i służy do danych współdzielonych między trybami.
+### 5.2 [ŚREDNI] `ui-store.ts` — za szeroki zakres
+9 różnych odpowiedzialności. Rozważyć podział:
+- `navigation-store` (page, guards, helpTab)
+- `sessions-focus-store` (focusDate/Range/Project)
+- `preferences-store` (assignProjectListMode, firstRun)
 
-- **Plik:** `commands/helpers.rs:45-81`
-- **Sugestia:** Dodać komentarz doc wyjaśniający semantykę (kiedy primary, kiedy pool). Rozważyć lint/clippy custom rule.
+### 5.3 [ŚREDNI] Event bus vs Store — niespójna propagacja danych
+Aplikacja używa zarówno Zustand stores jak i `CustomEvent` przez `window`. Ujednolicić:
+- Albo przenieść eventy do store (pub/sub wewnątrz Zustand)
+- Albo konsekwentnie izolować za `usePageRefreshListener`
 
-### 6.2 `onlineSyncStatusListeners` — brak ochrony przed wyciekiem
+### 5.4 [ŚREDNI] `useSettingsFormState.ts` — liniowy wzrost
+Każda karta Settings dodaje stan + handler. Rozważyć wzorzec registry lub per-card hooki.
 
-- **Status 2026-03-14:** zamknięte. Zweryfikowano jedyny call-site (`Sidebar.tsx`) z cleanupem na unmount. Dodatkowo źródło statusu suppressuje duplikatowe emisje snapshotów i zwraca idempotentny unsubscribe, więc nie ma już narastania zbędnych notyfikacji przy ponownych subskrypcjach/HMR.
-
-- **Plik:** `lib/online-sync.ts:88`
-- **Sugestia:** Zweryfikować, że wszystkie call-site usuwają listener na unmount. Dodać weak reference pattern lub auto-cleanup.
-
-### 6.3 Brak change-detection guard w polling loops
-
-- **Status 2026-03-14:** zamknięte. `refresh_today` już wcześniej emitował zmiany tylko przy `sessions_upserted > 0`; dodatkowo `BackgroundServices.tsx` odświeża strony tylko po realnym `pull`, a `background-status-store` pomija aktualizacje Zustand przy niezmienionych diagnostykach i ustawieniach DB.
-
-- **Sugestia:** W `BackgroundServices.tsx` — interwał 1s odpala joby bezwarunkowo. Dodać guard "skip if nothing changed" dla refresh/diagnostics.
-
----
-
-## 7. Plan prac (kolejność implementacji) {#7-plan-prac}
-
-### Faza 1: Krytyczne (zachowanie danych + bug-fixy)
-1. **[1.1]** Naprawa `dedupe_files` + migracja DB schema `daily_files` — PRIORYTET ABSOLUTNY — ZAMKNIĘTE 2026-03-14
-2. **[4.1]** Dodanie 3 brakujących kluczy tłumaczeń (5 min fix) — ZAMKNIĘTE 2026-03-14
-3. **[1.2]** Fix dashboard timeline — `has_boost`/`has_manual` flags — ZAMKNIĘTE WCZEŚNIEJ
-
-### Faza 2: Wydajność (bez zmian w API/strukturze danych)
-4. **[2.1]** N+1 fix w scoring.rs (batch fetch projects) — ZAMKNIĘTE 2026-03-14
-5. **[2.2]** `prepare_cached` na hot-path w scoring + context — ZAMKNIĘTE 2026-03-14
-6. **[2.3]** Guard na hydration w monitor.rs — ZAMKNIĘTE 2026-03-14
-7. **[2.4]** Optymalizacja `replace_day_snapshot` (batch DELETE) — ZAMKNIĘTE 2026-03-14
-8. **[2.5]** useMemo w ProjectDayTimeline.tsx — ZAMKNIĘTE WCZEŚNIEJ
-
-### Faza 3: Refaktoryzacja Rust (duplikacje)
-9. **[3.2]** Centralizacja parserów dat w datetime.rs — ZAMKNIĘTE 2026-03-14
-10. **[3.1]** Wydzielenie `build_stacked_bar_output` — ZAMKNIĘTE 2026-03-14
-11. **[3.4]** Stała `ACTIVE_SESSION_FILTER` w sql_fragments.rs — ZAMKNIĘTE 2026-03-14
-12. **[3.5]** Wydzielenie `disambiguate_project_names` — ZAMKNIĘTE 2026-03-14
-13. **[3.8]** Wydzielenie `name_hash` — ZAMKNIĘTE 2026-03-14
-
-### Faza 4: Refaktoryzacja Frontend (duplikacje + modularyzacja)
-14. **[3.6]** Hook `usePageRefreshListener` — ZAMKNIĘTE 2026-03-14
-15. **[3.7]** Przeniesienie pure functions z hooka do lib — ZAMKNIĘTE 2026-03-14
-16. **[2.6]** Stabilizacja deps w BackgroundServices.tsx — ZAMKNIĘTE 2026-03-14
-17. **[2.7]** Stabilizacja listenerów w `Sessions.tsx` — ZAMKNIĘTE 2026-03-14
-18. **[3.10]** Dodanie `updated_at` do db-types.ts — ZAMKNIĘTE 2026-03-14
-
-### Faza 5: Architektura (duże pliki, modularyzacja)
-19. **[5.1]** Podział `ProjectDayTimeline.tsx` (obliczenia → osobny plik) — ZAMKNIĘTE 2026-03-14
-20. **[5.1]** Podział `online-sync.ts` na moduły — ZAMKNIĘTE 2026-03-14
-21. **[5.1]** Wydzielenie hooks z `Sessions.tsx` i `Projects.tsx` — ZAMKNIĘTE 2026-03-14
-22. **[5.1]** Podział `daily_store.rs` na moduły — ZAMKNIĘTE 2026-03-14
-23. **[5.1]** Podział `monitor.rs` (wmi_detection + pid_cache) — ZAMKNIĘTE 2026-03-14
-
-### Faza 6: Cleanup (niski priorytet)
-24. **[3.3]** Unifikacja typów daily data (Stored → bezpośrednio w dashboard) — ZAMKNIĘTE 2026-03-14
-25. **[3.9]** Sprawdzenie/usunięcie `project-colors.ts` — ZAMKNIĘTE WCZEŚNIEJ
-26. **[3.11]** Scalenie plików date helpers — ZAMKNIĘTE 2026-03-14
-27. **[4.2]** Fix polskiego fallbacku w t() call — ZAMKNIĘTE 2026-03-14
-28. **[2.8]** Eager WMI init — ZAMKNIĘTE 2026-03-14
+### 5.5 [NISKI] `background-status-store.ts` — 3 niezależne serwisy w jednym pliku
+Wydzielić: `diagnostics-service.ts`, `ai-status-service.ts`, `db-settings-service.ts`.
 
 ---
 
-## 8. Wskazówki dla modelu implementującego {#8-wskazowki}
+## 6. Tłumaczenia — luki i problemy
 
-### Ogólne zasady
+### 6.1 Struktura kluczy PL/EN — kompletna
+Oba pliki `common.json` mają identyczne ścieżki kluczy. Brak brakujących kluczy.
 
-1. **BEZWZGLĘDNIE zachowuj dane użytkownika** — każda zmiana DB schema wymaga migracji, nie DROP+CREATE.
-2. **Testuj każdą zmianę Rust:** `cargo build` w katalogu głównym (daemon) i `cd dashboard/src-tauri && cargo build` (Tauri backend).
-3. **Testuj TypeScript:** `cd dashboard && npx tsc --noEmit`.
-4. **Nie zmieniaj API komend Tauri** bez aktualizacji odpowiadających wywołań w `lib/tauri.ts` i typów w `db-types.ts`.
-5. **Kolejność prac:** Faza 1 → 2 → 3 → 4 → 5 → 6. Nie przeskakuj.
+### 6.2 Niespójności stylistyczne
+- `layout.tooltips.boosted_sessions`: PL format z dwukropkiem (`Sesje z mnożnikiem: {{count}}`), EN zmienną na początku (`{{count}} boosted session(s)`)
+- `online_sync_indicator.labels.disabled`: PL `"Wył."` vs EN `"Sync Off"` (różny poziom szczegółowości)
 
-### Wskazówki do poszczególnych zmian
-
-**[1.1] daily_files migration:**
-- Plik migracji: `dashboard/src-tauri/src/db_migrations.rs` — dodaj nową migrację
-- Schemat: zmień PRIMARY KEY z `(date, exe_name, file_name)` na `(date, exe_name, file_name, detected_path)` — wymaga `CREATE TABLE new ... INSERT INTO new SELECT ... DROP TABLE old ... ALTER TABLE new RENAME`
-- `detected_path` powinno mieć DEFAULT '' dla istniejących wierszy
-- Po migracji: zmień `dedupe_files_preserving_last` w `shared/daily_store.rs` by uwzględniać `detected_path` w kluczu
-
-**[3.1] build_stacked_bar_output:**
-- Sygnatura: `fn build_stacked_bar_output(bucket_project_seconds: &[HashMap<String, i64>], total_by_project: &HashMap<String, i64>, series_meta: &HashMap<String, SeriesMeta>, bucket_flags: Option<&[BucketFlags]>, bucket_comments: Option<&[Vec<String>]>, limit: usize) -> Vec<StackedBarData>`
-- Umieść w `analysis.rs` lub nowym `stacked_bar.rs`
-- Dashboard.rs i analysis.rs wywołują tę samą funkcję — dashboard przekazuje `None` dla flags/comments jeśli ich nie obsługuje (lub lepiej: zacznij je obsługiwać)
-
-**[3.2] Centralizacja parserów:**
-- Zachowaj `parse_datetime_fixed` i `parse_datetime_ms` w `datetime.rs`
-- Dodaj `parse_datetime_local` (konwersja na `DateTime<Local>`)
-- W `analysis.rs`: zastąp `parse_local_timestamp` wywołaniem `parse_datetime_local`
-- W `sessions/query.rs`: zastąp `parse_rfc3339_millis` wywołaniem `parse_datetime_ms`
-- Grep po `parse_local_timestamp` i `parse_rfc3339_millis` by znaleźć wszystkie call-sites
-
-**[3.6] usePageRefreshListener:**
-```typescript
-// hooks/usePageRefreshListener.ts
-export function usePageRefreshListener(
-  onRefresh: (reasons: string[], source: 'app' | 'local') => void
-) {
-  const handleRefresh = useEffectEvent(onRefresh);
-
-  useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason) return;
-      handleRefresh([reason], 'local');
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (reasons.length === 0) return;
-      handleRefresh(reasons, 'app');
-    };
-
-    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
-    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh);
-
-    return () => {
-      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
-      window.removeEventListener(APP_REFRESH_EVENT, handleAppRefresh);
-    };
-  }, []);
-}
-```
-
-**[4.1] Brakujące klucze tłumaczeń:**
-- `dashboard/src/locales/pl/common.json` → sekcja `sessions.menu` → dodaj:
-  ```json
-  "top_projects_az": "Top projekty (A-Z)",
-  "newest_projects_az": "Najnowsze projekty (A-Z)",
-  "remaining_active_az": "Pozostałe aktywne (A-Z)"
-  ```
-- `dashboard/src/locales/en/common.json` → sekcja `sessions.menu` → dodaj:
-  ```json
-  "top_projects_az": "Top projects (A-Z)",
-  "newest_projects_az": "Newest projects (A-Z)",
-  "remaining_active_az": "Remaining active (A-Z)"
-  ```
-
-### Jak sporządzić plan_implementacji.md
-
-Dla każdej pozycji z sekcji 7 stwórz wpis zawierający:
-1. **ID i opis** — np. "[1.1] Naprawa deduplikacji plików + migracja DB"
-2. **Pliki do zmiany** — pełne ścieżki
-3. **Dokładne linie kodu** — co usunąć / co dodać (diff-like)
-4. **Test manualny** — jak zweryfikować, że zmiana działa
-5. **Ryzyko regresji** — co może się zepsuć
-6. **Zależności** — które inne pozycje muszą być zrobione wcześniej
-
-Kolejność w plan_implementacji.md powinna odpowiadać kolejności z sekcji 7 tego dokumentu.
+### 6.3 Klucze z obciętymi nazwami
+Klucze w `help_page` mają nazwy obcięte do ~60 znaków. Trudne do utrzymania i podatne na kolizje. Rozważyć krótsze, semantyczne klucze.
 
 ---
 
-*Dokument wygenerowany automatycznie. Przed implementacją zweryfikuj aktualność wskazanych linii kodu.*
+## 7. Help.tsx — luki w dokumentacji
+
+### 7.1 [WYSOKI] Brak opisu ReportView
+`Reports.tsx` opisuje edytor szablonów, ale `ReportView.tsx` (pełnoekranowy podgląd, druk, PDF) nie jest udokumentowany. Brak info jak otworzyć (z karty projektu).
+
+### 7.2 [WYSOKI] Brak opisu ikon trybów listy projektów
+Ikony Type/Sparkles/Flame w Sessions — brak wyjaśnienia w Help co oznaczają (alpha/new_top_rest/top_new_rest).
+
+### 7.3 [ŚREDNI] Relacja Demo Mode ↔ Sync
+Brak jasnego wyjaśnienia że sync jest wyłączony w demo mode i dlaczego "Sync Now" jest zablokowany.
+
+### 7.4 [ŚREDNI] Applications: "Sync from apps" / "monitored list"
+Klucz istnieje, ale różnica "detected" vs "monitored" nie jest wyjaśniona przystępnie.
+
+### 7.5 [ŚREDNI] QuickStart — minimalna dokumentacja
+Help ma tylko przycisk prowadzący do QuickStart. Brak opisu kroków ani info że można wrócić w dowolnym momencie.
+
+### 7.6 [NISKI] BugHunter
+Udokumentowany tylko w sekcji Settings, ale ikona jest w sidebarze — warto dodać wzmiankę.
+
+### 7.7 [NISKI] Daily/weekly range mode w Sessions
+Wspomniany hasłowo, ale brak wyjaśnienia jak wpływa na filtrowanie.
+
+### 7.8 [NISKI] Discovered Projects Banner
+Klucz istnieje, brak info gdzie się pojawia i jak go zamknąć.
+
+---
+
+## 8. Sugestie funkcjonalne
+
+| # | Sugestia | Opis | Priorytet |
+|---|----------|------|-----------|
+| 1 | Batch assign z toolbar | Przycisk "Assign selected (N)" gdy multiselect aktywny | Średni |
+| 2 | Export filtrowanego widoku | Export sesji z aktualnego zakresu dat + projekt | Średni |
+| 3 | Keyboard shortcuts | Nawigacja stronami, assign sesji, ESC menu | Niski |
+| 4 | Quick assign z Dashboard | Przypisanie 1-2 sesji bez opuszczania Dashboard | Niski |
+| 5 | AI confidence trend | Wykres % sesji z confidence >threshold w czasie | Niski |
+| 6 | Raport zbiorczy | ReportView dla wszystkich projektów w zakresie dat | Niski |
+| 7 | Session filter persistence | Zapamiętywanie filtrów Sessions między wizytami | Niski |
+
+---
+
+## 9. Plan prac — priorytety
+
+### Faza 1: Krytyczne (bezpieczeństwo danych, wydajność)
+1. Dodać indeks `idx_sessions_date ON sessions(date)` + `idx_assignment_suggestions_session ON assignment_suggestions(session_id)`
+2. Przenieść VACUUM/backup do `spawn_blocking` (db.rs)
+3. Persistent SQLite connection w daemon `run_loop`
+4. Usunąć ghost field `file_path` z `FileActivity` (TS)
+
+### Faza 2: Duplikaty i czystość kodu
+5. Eksportować `local_from_naive` z `datetime.rs`, usunąć kopię z `analysis.rs`
+6. Usunąć martwe pole `total_time_formatted`
+7. Ujednolicić event-listening przez `usePageRefreshListener` na wszystkich stronach
+8. Wynieść `areMetricsEqual` i inne equality helpers do `lib/equality-utils.ts`
+9. Wynieść `resolveContextMenuPlacement` do `lib/context-menu-utils.ts`
+10. Usunąć zbędny `to_lowercase()` w `classify_activity_type`
+
+### Faza 3: Modularyzacja
+11. Wydzielić `SessionContextMenu` z `Sessions.tsx`
+12. Stworzyć hooki `useAssignProjectSections`, `useGroupedSessions`
+13. Stworzyć `createSingleFlight<T>()` w `lib/async-utils.ts`
+14. WMI detection — przenieść do osobnego wątku
+
+### Faza 4: Help i tłumaczenia
+15. Uzupełnić Help.tsx: ReportView, ikony trybów, demo/sync, QuickStart
+16. Poprawić niespójności stylistyczne w tłumaczeniach
+17. Rozważyć krótsze klucze w `help_page`
+
+### Faza 5: Architektura (opcjonalne)
+18. Rozważyć podział `ui-store` na mniejsze store
+19. Ujednolicić event bus vs store
+20. Cache `compute_project_activity_unique` per date range
+21. Wydzielić serwisy z `background-status-store.ts`
+
+---
+
+## 10. Wskazówki dla modelu implementującego (`plan_implementacji.md`)
+
+### Zasady ogólne
+- **Priorytet #1**: Zachowanie danych. Żadna zmiana nie może powodować utraty danych użytkownika. Migracje SQLite muszą być addytywne (ALTER TABLE ADD, CREATE INDEX IF NOT EXISTS).
+- **Testowanie**: Przed każdą zmianą w Rust uruchom `cargo build` i `cargo clippy`. Przed zmianą TS: `npx tsc --noEmit` z `dashboard/`.
+- **Atomowość**: Każda pozycja z planu to osobny commit. Nie łącz niezwiązanych zmian.
+- **Kompatybilność**: Nie zmieniaj sygnatur komend Tauri (`#[tauri::command]`) bez aktualizacji wywołań TS.
+
+### Pliki kluczowe do przeczytania przed rozpoczęciem
+1. `dashboard/src-tauri/src/db_migrations.rs` — zrozumieć wzorzec migracji (pragma_table_info check)
+2. `dashboard/src-tauri/src/commands/helpers.rs` — `run_db_blocking`, `run_db_primary_blocking`
+3. `dashboard/src-tauri/src/commands/sql_fragments.rs` — SESSION_PROJECT_CTE (najcięższy SQL)
+4. `dashboard/src/lib/sync-events.ts` — event bus
+5. `dashboard/src/hooks/usePageRefreshListener.ts` — wzorzec do naśladowania
+6. `dashboard/src/pages/Sessions.tsx` — największy plik, cel refaktoryzacji
+7. `dashboard/src/pages/Help.tsx` — cel uzupełnień
+
+### Szczegóły per pozycja
+
+**Poz. 1 (indeksy)**: Dodaj migrację w `ensure_indexes()` w `db_migrations.rs`. Wzorzec: `conn.execute_batch("CREATE INDEX IF NOT EXISTS ...")`. Nie usuwaj istniejących indeksów.
+
+**Poz. 2 (VACUUM)**: W `db.rs:initialize()`, zamiast sekwencyjnych `vacuum_if_needed`/`backup_if_needed`/`auto_optimize`, opakuj w `tokio::task::spawn_blocking` i pozwól Tauri kontynuować setup. Upewnij się że pool jest gotowy PRZED vacuum (vacuum nie musi blokować startu).
+
+**Poz. 3 (persistent conn)**: W `src/tracker.rs:run_loop`, otwórz połączenie raz: `let mut conn = storage::open_daily_store()?;` i przekaż `&mut conn` do `save_daily`. Zmień sygnaturę `save_daily` na `fn save_daily(data: &mut DailyData, conn: &mut Connection)`.
+
+**Poz. 4 (ghost field)**: Usuń `file_path?: string` z `db-types.ts:FileActivity`. Usuń porównanie w `session-utils.ts:areFileActivitiesEqual`.
+
+**Poz. 11 (SessionContextMenu)**: Wydziel z `Sessions.tsx` linie odpowiedzialne za context menu do `components/sessions/SessionContextMenu.tsx`. Props: `sessions, projects, position, onClose, onAction`. Zachowaj identyczną logikę — to pure extraction, nie refaktor.
+
+**Poz. 14 (WMI thread)**: Stwórz `std::thread::spawn` z `mpsc::channel<Vec<u32>>` (sender: main loop, receiver: WMI thread). WMI thread odpowiada `HashMap<u32, String>` (pid → path). Main loop sprawdza `try_recv()` co tick.
+
+**Poz. 15 (Help)**: Używaj wzorca `SectionHelp` z `icon, title, description, features[], footer`. Każdy tekst musi mieć parę PL+EN: `t('tekst PL', 'text EN')`. Sprawdź istniejące sekcje w Help.tsx dla formatu.
