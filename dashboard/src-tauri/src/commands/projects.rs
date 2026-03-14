@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
-use super::helpers::{run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
+use super::helpers::{name_hash, run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
 use super::sql_fragments::{SESSION_PROJECT_CTE, SESSION_PROJECT_CTE_ALL_TIME};
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
@@ -122,9 +122,7 @@ fn hsl_to_hex(h: f64, s: f64, l: f64) -> String {
 }
 
 pub(crate) fn project_color_for_name(name: &str) -> String {
-    let hash = name
-        .bytes()
-        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32));
+    let hash = name_hash(name);
     let hue = (hash % 360) as f64;
     let sat = 0.62 + ((hash >> 9) % 18) as f64 / 100.0; // 0.62..0.79
     let light = 0.52 + ((hash >> 17) % 14) as f64 / 100.0; // 0.52..0.65

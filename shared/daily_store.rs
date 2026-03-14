@@ -59,12 +59,27 @@ fn dedupe_files_preserving_last(files: &[StoredFileEntry]) -> Vec<&StoredFileEnt
     let mut seen = BTreeSet::new();
     let mut deduped = Vec::with_capacity(files.len());
     for file in files.iter().rev() {
-        if seen.insert(file.name.clone()) {
+        if seen.insert((
+            file.name.clone(),
+            detected_path_key(file.detected_path.as_deref()).to_string(),
+        )) {
             deduped.push(file);
         }
     }
     deduped.reverse();
     deduped
+}
+
+fn detected_path_key(value: Option<&str>) -> &str {
+    value.unwrap_or("")
+}
+
+fn decode_detected_path(value: String) -> Option<String> {
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
 }
 
 pub fn store_db_path(base_dir: &Path) -> PathBuf {
@@ -130,10 +145,10 @@ pub fn ensure_schema(conn: &Connection) -> Result<(), String> {
              first_seen TEXT NOT NULL,
              last_seen TEXT NOT NULL,
              window_title TEXT NOT NULL DEFAULT '',
-             detected_path TEXT,
+             detected_path TEXT NOT NULL DEFAULT '',
              title_history_json TEXT NOT NULL DEFAULT '[]',
              activity_type TEXT,
-             PRIMARY KEY (date, exe_name, file_name),
+             PRIMARY KEY (date, exe_name, file_name, detected_path),
              FOREIGN KEY (date, exe_name) REFERENCES daily_apps(date, exe_name) ON DELETE CASCADE
          );
          DROP INDEX IF EXISTS idx_daily_snapshots_date;
@@ -142,7 +157,125 @@ pub fn ensure_schema(conn: &Connection) -> Result<(), String> {
          CREATE INDEX IF NOT EXISTS idx_daily_files_date_exe
              ON daily_files(date, exe_name, ordinal);",
     )
-    .map_err(|e| format!("Failed to initialize daily store schema: {}", e))
+    .map_err(|e| format!("Failed to initialize daily store schema: {}", e))?;
+    migrate_daily_files_schema(conn)
+}
+
+fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
+    let table_exists = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'daily_files'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|count| count > 0)
+        .map_err(|e| format!("Failed to inspect daily_files presence: {}", e))?;
+    if !table_exists {
+        return Ok(());
+    }
+
+    let mut table_info_stmt = conn
+        .prepare_cached(
+            "SELECT name, pk, [notnull], COALESCE(dflt_value, '')
+             FROM pragma_table_info('daily_files')",
+        )
+        .map_err(|e| format!("Failed to inspect daily_files schema: {}", e))?;
+    let table_info_rows = table_info_stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)? != 0,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(|e| format!("Failed to query daily_files schema info: {}", e))?;
+
+    let mut columns = BTreeMap::<String, (i64, bool, String)>::new();
+    for row in table_info_rows {
+        let (name, pk, not_null, default_value) =
+            row.map_err(|e| format!("Failed to map daily_files schema row: {}", e))?;
+        columns.insert(name, (pk, not_null, default_value));
+    }
+
+    let detected_path_pk = columns
+        .get("detected_path")
+        .map(|(pk, _, _)| *pk)
+        .unwrap_or(0);
+    let detected_path_not_null = columns
+        .get("detected_path")
+        .map(|(_, not_null, _)| *not_null)
+        .unwrap_or(false);
+    let detected_path_default = columns
+        .get("detected_path")
+        .map(|(_, _, default_value)| default_value.as_str())
+        .unwrap_or("");
+    let needs_migration =
+        detected_path_pk != 4 || !detected_path_not_null || detected_path_default != "''";
+    if !needs_migration {
+        return Ok(());
+    }
+
+    let select_window_title = if columns.contains_key("window_title") {
+        "COALESCE(window_title, '')"
+    } else {
+        "''"
+    };
+    let select_detected_path = if columns.contains_key("detected_path") {
+        "COALESCE(detected_path, '')"
+    } else {
+        "''"
+    };
+    let select_title_history = if columns.contains_key("title_history_json") {
+        "COALESCE(title_history_json, '[]')"
+    } else {
+        "'[]'"
+    };
+    let select_activity_type = if columns.contains_key("activity_type") {
+        "activity_type"
+    } else {
+        "NULL"
+    };
+    let migration_sql = format!(
+        "CREATE TABLE daily_files_new (
+             date TEXT NOT NULL,
+             exe_name TEXT NOT NULL,
+             file_name TEXT NOT NULL,
+             ordinal INTEGER NOT NULL,
+             total_seconds INTEGER NOT NULL DEFAULT 0,
+             first_seen TEXT NOT NULL,
+             last_seen TEXT NOT NULL,
+             window_title TEXT NOT NULL DEFAULT '',
+             detected_path TEXT NOT NULL DEFAULT '',
+             title_history_json TEXT NOT NULL DEFAULT '[]',
+             activity_type TEXT,
+             PRIMARY KEY (date, exe_name, file_name, detected_path),
+             FOREIGN KEY (date, exe_name) REFERENCES daily_apps(date, exe_name) ON DELETE CASCADE
+         );
+         INSERT INTO daily_files_new (
+             date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
+             window_title, detected_path, title_history_json, activity_type
+         )
+         SELECT
+             date,
+             exe_name,
+             file_name,
+             ordinal,
+             total_seconds,
+             first_seen,
+             last_seen,
+             {select_window_title},
+             {select_detected_path},
+             {select_title_history},
+             {select_activity_type}
+         FROM daily_files;
+         DROP TABLE daily_files;
+         ALTER TABLE daily_files_new RENAME TO daily_files;
+         CREATE INDEX IF NOT EXISTS idx_daily_files_date_exe
+             ON daily_files(date, exe_name, ordinal);"
+    );
+    conn.execute_batch(&migration_sql)
+        .map_err(|e| format!("Failed to migrate daily_files schema: {}", e))
 }
 
 pub fn replace_day_snapshot(
@@ -247,7 +380,7 @@ pub fn replace_day_snapshot(
                  date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
                  window_title, detected_path, title_history_json, activity_type
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-             ON CONFLICT(date, exe_name, file_name) DO UPDATE SET
+             ON CONFLICT(date, exe_name, file_name, detected_path) DO UPDATE SET
                  ordinal = excluded.ordinal,
                  total_seconds = excluded.total_seconds,
                  first_seen = excluded.first_seen,
@@ -261,30 +394,34 @@ pub fn replace_day_snapshot(
     let mut delete_file_stmt = tx
         .prepare_cached(
             "DELETE FROM daily_files
-             WHERE date = ?1 AND exe_name = ?2 AND file_name = ?3",
+             WHERE date = ?1 AND exe_name = ?2 AND file_name = ?3 AND detected_path = ?4",
         )
         .map_err(|e| format!("Failed to prepare daily file delete: {}", e))?;
-    let mut existing_files_by_app = BTreeMap::<String, BTreeSet<String>>::new();
+    let mut existing_files_by_app = BTreeMap::<String, BTreeSet<(String, String)>>::new();
     {
         let mut existing_files_stmt = tx
             .prepare_cached(
-                "SELECT exe_name, file_name
+                "SELECT exe_name, file_name, detected_path
                  FROM daily_files
                  WHERE date = ?1",
             )
             .map_err(|e| format!("Failed to prepare daily file cleanup select: {}", e))?;
         let existing_file_rows = existing_files_stmt
             .query_map([snapshot.date.as_str()], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| format!("Failed to query existing daily files for cleanup: {}", e))?;
         for row in existing_file_rows {
-            let (exe_name, file_name) =
+            let (exe_name, file_name, detected_path) =
                 row.map_err(|e| format!("Failed to map existing daily file row: {}", e))?;
             existing_files_by_app
                 .entry(exe_name)
                 .or_default()
-                .insert(file_name);
+                .insert((file_name, detected_path));
         }
     }
 
@@ -336,6 +473,7 @@ pub fn replace_day_snapshot(
             .into_iter()
             .enumerate()
         {
+            let detected_path = detected_path_key(file.detected_path.as_deref()).to_string();
             let title_history_json = serde_json::to_string(&file.title_history).map_err(|e| {
                 format!(
                     "Failed to serialize title history for '{}' on {}: {}",
@@ -352,7 +490,7 @@ pub fn replace_day_snapshot(
                     file.first_seen,
                     file.last_seen,
                     file.window_title,
-                    file.detected_path,
+                    detected_path.as_str(),
                     title_history_json,
                     file.activity_type
                 ])
@@ -362,12 +500,12 @@ pub fn replace_day_snapshot(
                         file.name, exe_name, snapshot.date, e
                     )
                 })?;
-            removed_file_names.remove(&file.name);
+            removed_file_names.remove(&(file.name.clone(), detected_path));
         }
 
-        for file_name in removed_file_names {
+        for (file_name, detected_path) in removed_file_names {
             delete_file_stmt
-                .execute(params![snapshot.date, exe_name, file_name])
+                .execute(params![snapshot.date, exe_name, file_name, detected_path])
                 .map_err(|e| {
                     format!(
                         "Failed to delete removed file for app '{}' on {}: {}",
@@ -490,7 +628,7 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
                 row.get::<_, String>(3)?,
                 row.get::<_, String>(4)?,
                 row.get::<_, String>(5)?,
-                row.get::<_, Option<String>>(6)?,
+                row.get::<_, String>(6)?,
                 row.get::<_, String>(7)?,
                 row.get::<_, Option<String>>(8)?,
             ))
@@ -516,7 +654,7 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
                 first_seen,
                 last_seen,
                 window_title,
-                detected_path,
+                detected_path: decode_detected_path(detected_path),
                 title_history,
                 activity_type,
             });
@@ -644,7 +782,7 @@ pub fn load_range_snapshots(
                 row.get::<_, String>(4)?,
                 row.get::<_, String>(5)?,
                 row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
+                row.get::<_, String>(7)?,
                 row.get::<_, String>(8)?,
                 row.get::<_, Option<String>>(9)?,
             ))
@@ -671,7 +809,7 @@ pub fn load_range_snapshots(
                     first_seen,
                     last_seen,
                     window_title,
-                    detected_path,
+                    detected_path: decode_detected_path(detected_path),
                     title_history: parse_title_history_json(&title_history_json),
                     activity_type,
                 });
@@ -1073,7 +1211,7 @@ mod tests {
                             first_seen: "2026-03-10T10:00:00+00:00".to_string(),
                             last_seen: "2026-03-10T10:02:00+00:00".to_string(),
                             window_title: "Client old".to_string(),
-                            detected_path: Some("C:/repo/client-old".to_string()),
+                            detected_path: Some("C:/repo/client".to_string()),
                             title_history: vec!["Client old".to_string()],
                             activity_type: Some("coding".to_string()),
                         },
@@ -1083,7 +1221,7 @@ mod tests {
                             first_seen: "2026-03-10T10:03:00+00:00".to_string(),
                             last_seen: "2026-03-10T10:06:00+00:00".to_string(),
                             window_title: "Client new".to_string(),
-                            detected_path: Some("C:/repo/client-new".to_string()),
+                            detected_path: Some("C:/repo/client".to_string()),
                             title_history: vec!["Client new".to_string()],
                             activity_type: Some("coding".to_string()),
                         },
@@ -1101,10 +1239,7 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].name, "client");
         assert_eq!(files[0].window_title, "Client new");
-        assert_eq!(
-            files[0].detected_path.as_deref(),
-            Some("C:/repo/client-new")
-        );
+        assert_eq!(files[0].detected_path.as_deref(), Some("C:/repo/client"));
 
         let file_count: i64 = conn
             .query_row(
@@ -1114,5 +1249,170 @@ mod tests {
             )
             .expect("file count");
         assert_eq!(file_count, 1);
+    }
+
+    #[test]
+    fn replace_day_snapshot_keeps_same_name_files_with_different_detected_paths() {
+        let mut conn = Connection::open_in_memory().expect("in-memory sqlite");
+        ensure_schema(&conn).expect("schema");
+
+        let snapshot = StoredDailyData {
+            date: "2026-03-11".to_string(),
+            generated_at: "2026-03-11T12:00:00+00:00".to_string(),
+            apps: BTreeMap::from([(
+                "code.exe".to_string(),
+                StoredAppDailyData {
+                    display_name: "VS Code".to_string(),
+                    total_seconds: 300,
+                    sessions: vec![],
+                    files: vec![
+                        StoredFileEntry {
+                            name: "index.ts".to_string(),
+                            total_seconds: 120,
+                            first_seen: "2026-03-11T10:00:00+00:00".to_string(),
+                            last_seen: "2026-03-11T10:02:00+00:00".to_string(),
+                            window_title: "Repo A".to_string(),
+                            detected_path: Some("C:/repo-a/src/index.ts".to_string()),
+                            title_history: vec!["Repo A".to_string()],
+                            activity_type: Some("coding".to_string()),
+                        },
+                        StoredFileEntry {
+                            name: "index.ts".to_string(),
+                            total_seconds: 180,
+                            first_seen: "2026-03-11T10:03:00+00:00".to_string(),
+                            last_seen: "2026-03-11T10:06:00+00:00".to_string(),
+                            window_title: "Repo B".to_string(),
+                            detected_path: Some("C:/repo-b/src/index.ts".to_string()),
+                            title_history: vec!["Repo B".to_string()],
+                            activity_type: Some("coding".to_string()),
+                        },
+                    ],
+                },
+            )]),
+        };
+
+        replace_day_snapshot(&mut conn, &snapshot).expect("save");
+
+        let loaded = load_day_snapshot(&conn, "2026-03-11")
+            .expect("load")
+            .expect("snapshot should exist");
+        let files = &loaded.apps.get("code.exe").expect("app should exist").files;
+        assert_eq!(files.len(), 2);
+        assert_eq!(
+            files
+                .iter()
+                .filter_map(|file| file.detected_path.as_deref())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["C:/repo-a/src/index.ts", "C:/repo-b/src/index.ts"])
+        );
+
+        let file_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM daily_files WHERE date = '2026-03-11' AND exe_name = 'code.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("file count");
+        assert_eq!(file_count, 2);
+    }
+
+    #[test]
+    fn ensure_schema_migrates_legacy_daily_files_primary_key_to_detected_path() {
+        let conn = Connection::open_in_memory().expect("in-memory sqlite");
+        conn.execute_batch(
+            "CREATE TABLE daily_snapshots (
+                 date TEXT PRIMARY KEY,
+                 generated_at TEXT NOT NULL DEFAULT '',
+                 updated_unix_ms INTEGER NOT NULL DEFAULT 0,
+                 revision INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE TABLE daily_apps (
+                 date TEXT NOT NULL,
+                 exe_name TEXT NOT NULL,
+                 display_name TEXT NOT NULL,
+                 total_seconds INTEGER NOT NULL DEFAULT 0,
+                 PRIMARY KEY (date, exe_name),
+                 FOREIGN KEY (date) REFERENCES daily_snapshots(date) ON DELETE CASCADE
+             );
+             CREATE TABLE daily_files (
+                 date TEXT NOT NULL,
+                 exe_name TEXT NOT NULL,
+                 file_name TEXT NOT NULL,
+                 ordinal INTEGER NOT NULL,
+                 total_seconds INTEGER NOT NULL DEFAULT 0,
+                 first_seen TEXT NOT NULL,
+                 last_seen TEXT NOT NULL,
+                 window_title TEXT NOT NULL DEFAULT '',
+                 detected_path TEXT,
+                 title_history_json TEXT NOT NULL DEFAULT '[]',
+                 activity_type TEXT,
+                 PRIMARY KEY (date, exe_name, file_name),
+                 FOREIGN KEY (date, exe_name) REFERENCES daily_apps(date, exe_name) ON DELETE CASCADE
+             );",
+        )
+        .expect("legacy schema");
+        conn.execute(
+            "INSERT INTO daily_snapshots (date, generated_at, updated_unix_ms, revision)
+             VALUES (?1, ?2, ?3, ?4)",
+            params!["2026-03-12", "2026-03-12T12:00:00+00:00", 1u64, 1u64],
+        )
+        .expect("snapshot row");
+        conn.execute(
+            "INSERT INTO daily_apps (date, exe_name, display_name, total_seconds)
+             VALUES (?1, ?2, ?3, ?4)",
+            params!["2026-03-12", "code.exe", "VS Code", 60u64],
+        )
+        .expect("app row");
+        conn.execute(
+            "INSERT INTO daily_files (
+                 date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
+                 window_title, detected_path, title_history_json, activity_type
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, ?9, ?10)",
+            params![
+                "2026-03-12",
+                "code.exe",
+                "index.ts",
+                0i64,
+                60u64,
+                "2026-03-12T10:00:00+00:00",
+                "2026-03-12T10:01:00+00:00",
+                "Client",
+                "[]",
+                "coding"
+            ],
+        )
+        .expect("file row");
+
+        ensure_schema(&conn).expect("migrated schema");
+
+        let detected_path_column: (i64, i64, String) = conn
+            .query_row(
+                "SELECT pk, [notnull], COALESCE(dflt_value, '')
+                 FROM pragma_table_info('daily_files')
+                 WHERE name = 'detected_path'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("detected_path column");
+        assert_eq!(detected_path_column.0, 4);
+        assert_eq!(detected_path_column.1, 1);
+        assert_eq!(detected_path_column.2, "''");
+
+        let stored_path: String = conn
+            .query_row(
+                "SELECT detected_path FROM daily_files
+                 WHERE date = '2026-03-12' AND exe_name = 'code.exe' AND file_name = 'index.ts'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("stored detected_path");
+        assert_eq!(stored_path, "");
+
+        let loaded = load_day_snapshot(&conn, "2026-03-12")
+            .expect("load")
+            .expect("snapshot should exist");
+        let files = &loaded.apps.get("code.exe").expect("app should exist").files;
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].detected_path, None);
     }
 }

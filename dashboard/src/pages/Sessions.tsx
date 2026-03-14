@@ -825,20 +825,20 @@ export function Sessions() {
           key: 'new',
           label: t(
             'sessions.menu.newest_projects_az',
-            'Najnowsze projekty (A-Z)',
+            'Newest projects (A-Z)',
           ),
           projects: newest,
         },
         {
           key: 'top',
-          label: t('sessions.menu.top_projects_az', 'Top projekty (A-Z)'),
+          label: t('sessions.menu.top_projects_az', 'Top projects (A-Z)'),
           projects: top,
         },
         {
           key: 'rest',
           label: t(
             'sessions.menu.remaining_active_az',
-            'Pozostałe aktywne (A-Z)',
+            'Remaining active (A-Z)',
           ),
           projects: rest,
         },
@@ -855,14 +855,14 @@ export function Sessions() {
     return [
       {
         key: 'top',
-        label: t('sessions.menu.top_projects_az', 'Top projekty (A-Z)'),
+        label: t('sessions.menu.top_projects_az', 'Top projects (A-Z)'),
         projects: top,
       },
       {
         key: 'new',
         label: t(
           'sessions.menu.newest_projects_az',
-          'Najnowsze projekty (A-Z)',
+          'Newest projects (A-Z)',
         ),
         projects: newest,
       },
@@ -870,7 +870,7 @@ export function Sessions() {
         key: 'rest',
         label: t(
           'sessions.menu.remaining_active_az',
-          'Pozostałe aktywne (A-Z)',
+          'Remaining active (A-Z)',
         ),
         projects: rest,
       },
@@ -1203,7 +1203,7 @@ export function Sessions() {
               }}
             >
               <span>
-                ✂️ {t('sessions.menu.split_session', 'Podziel sesję')}
+                ✂️ {t('sessions.menu.split_session', 'Split session')}
               </span>
             </button>
           )}

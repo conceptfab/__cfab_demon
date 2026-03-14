@@ -89,7 +89,7 @@ pub fn resolve_blacklisted_app_ids(
     }
 
     let mut stmt = conn
-        .prepare("SELECT id, lower(executable_name) FROM applications")
+        .prepare_cached("SELECT id, lower(executable_name) FROM applications")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
@@ -151,7 +151,7 @@ pub fn build_session_context(
 
     // Filter file_activities to only those overlapping with the session time window
     let mut file_stmt = conn
-        .prepare(
+        .prepare_cached(
             "SELECT file_name, file_path, detected_path, project_id, window_title, title_history
              FROM file_activities
              WHERE app_id = ?1 AND date = ?2

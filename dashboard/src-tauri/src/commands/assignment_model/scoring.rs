@@ -9,6 +9,38 @@ use crate::commands::assignment_model::{
     AUTO_SAFE_MIN_MARGIN,
 };
 
+fn load_project_names(
+    conn: &rusqlite::Connection,
+    project_ids: &[i64],
+) -> Result<HashMap<i64, String>, String> {
+    let mut project_names = HashMap::with_capacity(project_ids.len());
+
+    for chunk in project_ids.chunks(200) {
+        let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, name FROM projects WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+        let params: Vec<&dyn ToSql> = chunk
+            .iter()
+            .map(|project_id| project_id as &dyn ToSql)
+            .collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(params), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+
+        for row in rows {
+            let (project_id, project_name) = row.map_err(|e| e.to_string())?;
+            project_names.insert(project_id, project_name);
+        }
+    }
+
+    Ok(project_names)
+}
+
 /// Check if a session has a manual override that forces it to a specific project.
 /// Returns Some(project_id) if override exists and target project is valid, None otherwise.
 pub fn check_manual_override(conn: &rusqlite::Connection, session_id: i64) -> Option<i64> {
@@ -118,7 +150,7 @@ pub fn compute_score_breakdowns(
 
     // Layer 1: app
     let mut stmt = conn
-        .prepare("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
+        .prepare_cached("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
         .map_err(|e| e.to_string())?;
     let mut rows = stmt
         .query(rusqlite::params![context.app_id])
@@ -136,7 +168,7 @@ pub fn compute_score_breakdowns(
 
     // Layer 2: time
     let mut stmt = conn
-        .prepare(
+        .prepare_cached(
             "SELECT project_id, cnt FROM assignment_model_time WHERE app_id = ?1 AND hour_bucket = ?2 AND weekday = ?3",
         )
         .map_err(|e| e.to_string())?;
@@ -200,6 +232,9 @@ pub fn compute_score_breakdowns(
     all_pids.extend(layer2.keys());
     all_pids.extend(layer3.keys());
 
+    let mut all_pids: Vec<i64> = all_pids.into_iter().collect();
+    all_pids.sort_unstable();
+    let project_names = load_project_names(conn, &all_pids)?;
     let mut candidates: Vec<CandidateScore> = Vec::with_capacity(all_pids.len());
 
     for pid in all_pids {
@@ -210,13 +245,10 @@ pub fn compute_score_breakdowns(
         let total = l0 + l1 + l2 + l3;
         let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
 
-        let project_name: String = conn
-            .query_row(
-                "SELECT name FROM projects WHERE id = ?1",
-                rusqlite::params![pid],
-                |row| row.get(0),
-            )
-            .unwrap_or_else(|_| format!("#{}", pid));
+        let project_name = project_names
+            .get(&pid)
+            .cloned()
+            .unwrap_or_else(|| format!("#{}", pid));
 
         candidates.push(CandidateScore {
             project_id: pid,

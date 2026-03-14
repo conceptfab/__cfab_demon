@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use tauri::AppHandle;
 use timeflow_shared::timeflow_paths;
@@ -34,6 +35,40 @@ pub(crate) fn validate_import_path(path: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+pub(crate) fn name_hash(name: &str) -> u32 {
+    name.bytes().fold(0u32, |acc, byte| {
+        acc.wrapping_mul(31).wrapping_add(byte as u32)
+    })
+}
+
+pub(crate) fn duplicate_name_counts<'a, I>(names: I) -> HashMap<String, usize>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut counts = HashMap::new();
+    for name in names {
+        *counts.entry(name.to_lowercase()).or_insert(0) += 1;
+    }
+    counts
+}
+
+pub(crate) fn disambiguate_name(
+    name: &str,
+    entity_id: i64,
+    duplicate_counts: &HashMap<String, usize>,
+) -> String {
+    if duplicate_counts
+        .get(&name.to_lowercase())
+        .copied()
+        .unwrap_or(0)
+        > 1
+    {
+        format!("{name} · #{entity_id}")
+    } else {
+        name.to_string()
+    }
 }
 
 pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {

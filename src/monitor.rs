@@ -161,7 +161,14 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
         let now = Instant::now();
 
         ensure_pid_cache_entry(pid, pid_cache, now)?;
-        hydrate_detected_paths_for_pending_pids(pid_cache);
+        let should_hydrate_detected_path = pid_cache.get(&pid).is_some_and(|entry| {
+            entry.detected_path.is_none()
+                && !entry.path_detection_attempted
+                && should_detect_path_for_activity(entry.activity_type)
+        });
+        if should_hydrate_detected_path {
+            hydrate_detected_paths_for_pending_pids(pid_cache);
+        }
 
         let entry = pid_cache.get(&pid)?;
         let exe_name = entry.exe_name.clone();

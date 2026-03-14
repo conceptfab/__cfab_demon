@@ -6,6 +6,23 @@
 
 ---
 
+## Status weryfikacji 2026-03-14
+
+- `[1.1]` ZAMKNIĘTE: `daily_files` używa już klucza `(date, exe_name, file_name, detected_path)`, a `dedupe_files_preserving_last` rozróżnia pliki po `name + detected_path`.
+- `[1.2]` ZAMKNIĘTE WCZEŚNIEJ: timeline projektów już przenosi `has_boost`, `has_manual` i `comments`; raport w tej części był nieaktualny.
+- `[2.1]` ZAMKNIĘTE: `compute_score_breakdowns` używa teraz batch-fetch nazw projektów zamiast N+1 query.
+- `[2.2]` ZAMKNIĘTE: hot-path w `assignment_model/scoring.rs` i `assignment_model/context.rs` używa `prepare_cached(...)`.
+- `[2.3]` ZAMKNIĘTE: hydration ścieżek w `src/monitor.rs` uruchamia się tylko dla foreground PID wymagającego pierwszej próby detekcji.
+- `[3.1]` ZAMKNIĘTE: wspólne budowanie danych stacked bar zostało wydzielone do `analysis.rs` i użyte w dwóch call-site.
+- `[3.2]` ZAMKNIĘTE: parsowanie dat zostało scentralizowane w `datetime.rs`; duplikaty w `analysis.rs` i `sessions/query.rs` zostały usunięte.
+- `[3.5]` ZAMKNIĘTE: wspólna funkcja rozróżniania nazw projektów obsługuje już `analysis.rs` i `dashboard.rs`.
+- `[3.8]` ZAMKNIĘTE: wspólny `name_hash(...)` obsługuje już oba generatory kolorów.
+- `[3.10]` ZAMKNIĘTE: `dashboard/src/lib/db-types.ts` ma już `updated_at` w `Project`.
+- `[4.1]` ZAMKNIĘTE: dodano brakujące klucze `sessions.menu.*_az` do PL i EN.
+- `[4.2]` ZAMKNIĘTE: fallback `split_session` w `Sessions.tsx` został zmieniony na EN.
+
+---
+
 ## Spis treści
 
 1. [Krytyczne błędy (utrata danych / błędy logiczne)](#1-krytyczne-bledy)
@@ -23,6 +40,8 @@
 
 ### 1.1 KRYTYCZNY: `dedupe_files_preserving_last` ignoruje `detected_path` — ciche łączenie różnych plików
 
+- **Status 2026-03-14:** zamknięte. Deduplikacja uwzględnia już `detected_path`, store migruje stary schemat `daily_files`, a testy pokrywają zarówno migrację, jak i dwa pliki o tej samej nazwie z różnych ścieżek.
+
 - **Plik:** `shared/daily_store.rs:58-67`
 - **Problem:** Deduplikacja plików używa tylko `file.name` jako klucza. Dwa pliki o tej samej nazwie ale z różnych repozytoriów (`index.ts` z repo A i `index.ts` z repo B) są traktowane jako duplikaty — jeden jest usuwany. Dane tracone permanentnie przy zapisie do DB.
 - **Dodatkowy problem:** Schemat `daily_files` ma `PRIMARY KEY (date, exe_name, file_name)` — nie może reprezentować dwóch plików o tej samej nazwie z różnych ścieżek.
@@ -34,6 +53,8 @@
 
 ### 1.2 KRYTYCZNY: Bug — dashboard timeline traci informację `has_boost`/`has_manual`
 
+- **Status 2026-03-14:** zamknięte wcześniej w aktualnym kodzie. `dashboard.rs` i `analysis.rs` już przekazują `bucket_flags` oraz `bucket_comments`.
+
 - **Plik:** `dashboard/src-tauri/src/commands/dashboard.rs:180-256`
 - **Problem:** `build_project_timeline_rows` jest duplikatem logiki z `analysis.rs:595-673`, ale NIE obsługuje `bucket_flags` i `bucket_comments`. Efekt: dashboard timeline nie pokazuje informacji o boost/manual w sesji.
 - **Naprawa:** Wydzielić wspólną funkcję (patrz sekcja 3.1) i upewnić się, że oba wywołania przekazują flagi.
@@ -44,17 +65,23 @@
 
 ### 2.1 WYSOKI: N+1 query w `compute_score_breakdowns`
 
+- **Status 2026-03-14:** zamknięte. Nazwy projektów są pobierane batchowo do `HashMap<i64, String>` przed budową kandydatów.
+
 - **Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs:213-219`
 - **Problem:** Osobne `SELECT name FROM projects WHERE id = ?1` dla KAŻDEGO kandydującego projektu. Przy wielu projektach = N+1 pattern blokujący Tauri async runtime.
 - **Naprawa:** Batch-fetch: `SELECT id, name FROM projects WHERE id IN (...)` → `HashMap<i64, String>` przed pętlą.
 
 ### 2.2 WYSOKI: `prepare()` zamiast `prepare_cached()` na hot-path
 
+- **Status 2026-03-14:** zamknięte dla wskazanych miejsc w `scoring.rs` i `context.rs`.
+
 - **Pliki:** `scoring.rs:121,139` + `context.rs:92,154`
 - **Problem:** W pętli po sesjach (batch AI scoring), `conn.prepare(...)` re-parsuje SQL przy KAŻDYM wywołaniu. 50 sesji = 100+ kompilacji SQL.
 - **Naprawa:** Zamienić `conn.prepare(` na `conn.prepare_cached(` w scoring i context.
 
 ### 2.3 WYSOKI: `hydrate_detected_paths_for_pending_pids` wywoływana co 10 s bezwarunkowo
+
+- **Status 2026-03-14:** zamknięte. Wywołanie jest teraz guardowane stanem foreground PID.
 
 - **Plik:** `src/monitor.rs:164`
 - **Problem:** `get_foreground_info` bezwarunkowo wywołuje hydration, która skanuje cały `pid_cache` + sortuje + potencjalnie odpala WMI, nawet gdy nie ma nowych PID.
@@ -96,11 +123,15 @@
 
 ### 3.1 WYSOKI: Zduplikowana logika stacked bar (80 linii × 2)
 
+- **Status 2026-03-14:** zamknięte. Wspólny builder został wydzielony do `analysis.rs` i użyty z `dashboard.rs`.
+
 - **Pliki:** `dashboard.rs:180-256` vs `analysis.rs:595-673`
 - **Problem:** Identyczna sekwencja: sort ranked_projects → take(limit) → build HashMap → sum other → insert OTHER_KEY.
 - **Naprawa:** Wydzielić `build_stacked_bar_output(...)` do `analysis.rs`, oba miejsca wywołują wspólną funkcję.
 
 ### 3.2 WYSOKI: Trzy oddzielne parsery dat
+
+- **Status 2026-03-14:** zamknięte. `datetime.rs` udostępnia teraz wspólne parsery dla `FixedOffset`, `Local` i opcjonalnych milisekund.
 
 - **Pliki:** `datetime.rs:1-33`, `analysis.rs:159-178`, `sessions/query.rs:44-48`
 - **Problem:** 3 funkcje parsujące te same formaty RFC3339 z wariantami. `parse_rfc3339_millis` to dokładnie `parse_datetime_ms`.
@@ -119,6 +150,8 @@
 
 ### 3.5 ŚREDNI: Zduplikowana logika disambiguation nazw projektów
 
+- **Status 2026-03-14:** zamknięte. `analysis.rs` i `dashboard.rs` używają wspólnych helperów z `commands/helpers.rs`.
+
 - **Pliki:** `analysis.rs:95-119` vs `dashboard.rs:147-175`
 - **Naprawa:** Wydzielić `disambiguate_project_names(...)`.
 
@@ -136,6 +169,8 @@
 
 ### 3.8 NISKI: Zduplikowany hash kernel w generatorach kolorów
 
+- **Status 2026-03-14:** zamknięte. Wspólny hash został wydzielony do `commands/helpers.rs`.
+
 - **Pliki:** `dashboard.rs:506-517` vs `projects.rs:100-132`
 - **Naprawa:** Wydzielić `fn name_hash(name: &str) -> u32` do `helpers.rs`.
 
@@ -145,6 +180,8 @@
 - **Problem:** 8-elementowa paleta niezsynchronizowana z 12-elementową w Rust. Sprawdzić importy — jeśli nieużywany, usunąć.
 
 ### 3.10 NISKI: Brak `updated_at` w `db-types.ts` Project
+
+- **Status 2026-03-14:** zamknięte.
 
 - **Pliki:** `commands/types.rs:71` (ma pole) vs `lib/db-types.ts:1-11` (brak pola)
 - **Naprawa:** Dodać `updated_at: string` do interface Project w db-types.ts.
@@ -160,6 +197,8 @@
 
 ### 4.1 BUG: 3 brakujące klucze tłumaczeń — EN widzi polskie etykiety
 
+- **Status 2026-03-14:** zamknięte.
+
 - **Plik:** `dashboard/src/pages/Sessions.tsx` linie 827, 834, 840, 858, 864, 872
 - **Brakujące klucze:** `sessions.menu.top_projects_az`, `sessions.menu.newest_projects_az`, `sessions.menu.remaining_active_az`
 - **Efekt:** W EN menu assign pokazuje polskie fallbacki ("Top projekty (A-Z)" itp.)
@@ -168,6 +207,8 @@
   - EN: `"top_projects_az": "Top projects (A-Z)"` itd.
 
 ### 4.2 NISKI: Polski fallback w `t()` call
+
+- **Status 2026-03-14:** zamknięte.
 
 - **Plik:** `Sessions.tsx:1206` — `t('sessions.menu.split_session', 'Podziel sesję')`
 - **Naprawa:** Zmienić fallback na `'Split session'`.
@@ -255,29 +296,29 @@ commands/
 ## 7. Plan prac (kolejność implementacji) {#7-plan-prac}
 
 ### Faza 1: Krytyczne (zachowanie danych + bug-fixy)
-1. **[1.1]** Naprawa `dedupe_files` + migracja DB schema `daily_files` — PRIORYTET ABSOLUTNY
-2. **[4.1]** Dodanie 3 brakujących kluczy tłumaczeń (5 min fix)
-3. **[1.2]** Fix dashboard timeline — `has_boost`/`has_manual` flags
+1. **[1.1]** Naprawa `dedupe_files` + migracja DB schema `daily_files` — PRIORYTET ABSOLUTNY — ZAMKNIĘTE 2026-03-14
+2. **[4.1]** Dodanie 3 brakujących kluczy tłumaczeń (5 min fix) — ZAMKNIĘTE 2026-03-14
+3. **[1.2]** Fix dashboard timeline — `has_boost`/`has_manual` flags — ZAMKNIĘTE WCZEŚNIEJ
 
 ### Faza 2: Wydajność (bez zmian w API/strukturze danych)
-4. **[2.1]** N+1 fix w scoring.rs (batch fetch projects)
-5. **[2.2]** `prepare_cached` na hot-path w scoring + context
-6. **[2.3]** Guard na hydration w monitor.rs
+4. **[2.1]** N+1 fix w scoring.rs (batch fetch projects) — ZAMKNIĘTE 2026-03-14
+5. **[2.2]** `prepare_cached` na hot-path w scoring + context — ZAMKNIĘTE 2026-03-14
+6. **[2.3]** Guard na hydration w monitor.rs — ZAMKNIĘTE 2026-03-14
 7. **[2.5]** useMemo w ProjectDayTimeline.tsx
 
 ### Faza 3: Refaktoryzacja Rust (duplikacje)
-8. **[3.2]** Centralizacja parserów dat w datetime.rs
-9. **[3.1]** Wydzielenie `build_stacked_bar_output`
+8. **[3.2]** Centralizacja parserów dat w datetime.rs — ZAMKNIĘTE 2026-03-14
+9. **[3.1]** Wydzielenie `build_stacked_bar_output` — ZAMKNIĘTE 2026-03-14
 10. **[3.4]** Stała `ACTIVE_SESSION_FILTER` w sql_fragments.rs
-11. **[3.5]** Wydzielenie `disambiguate_project_names`
-12. **[3.8]** Wydzielenie `name_hash`
+11. **[3.5]** Wydzielenie `disambiguate_project_names` — ZAMKNIĘTE 2026-03-14
+12. **[3.8]** Wydzielenie `name_hash` — ZAMKNIĘTE 2026-03-14
 
 ### Faza 4: Refaktoryzacja Frontend (duplikacje + modularyzacja)
 13. **[3.6]** Hook `usePageRefreshListener`
 14. **[3.7]** Przeniesienie pure functions z hooka do lib
 15. **[2.6]** Stabilizacja deps w BackgroundServices.tsx
 16. **[2.7]** useRef pattern w Sessions.tsx listeners
-17. **[3.10]** Dodanie `updated_at` do db-types.ts
+17. **[3.10]** Dodanie `updated_at` do db-types.ts — ZAMKNIĘTE 2026-03-14
 
 ### Faza 5: Architektura (duże pliki, modularyzacja)
 18. **[5.1]** Podział `ProjectDayTimeline.tsx` (obliczenia → osobny plik)
@@ -290,7 +331,7 @@ commands/
 23. **[3.3]** Unifikacja typów daily data (Stored → bezpośrednio w dashboard)
 24. **[3.9]** Sprawdzenie/usunięcie `project-colors.ts`
 25. **[3.11]** Scalenie plików date helpers
-26. **[4.2]** Fix polskiego fallbacku w t() call
+26. **[4.2]** Fix polskiego fallbacku w t() call — ZAMKNIĘTE 2026-03-14
 27. **[2.4]** Optymalizacja `replace_day_snapshot` (batch DELETE)
 28. **[2.8]** Eager WMI init
 

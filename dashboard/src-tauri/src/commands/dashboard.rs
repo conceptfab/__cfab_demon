@@ -2,14 +2,13 @@ use std::collections::HashMap;
 use tauri::AppHandle;
 
 use super::analysis::{
-    compute_project_activity_unique, project_series_key, series_meta_for_row,
-    OTHER_PROJECT_SERIES_KEY,
+    build_stacked_bar_output, compute_project_activity_unique, project_series_key,
 };
-use super::helpers::run_db_blocking;
+use super::helpers::{disambiguate_name, duplicate_name_counts, name_hash, run_db_blocking};
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
     AppWithStats, DashboardData, DashboardStats, DateRange, HourlyData, ProjectTimeRow,
-    StackedBarData, StackedSeriesMeta, TimelinePoint, TopApp, TopProject,
+    StackedSeriesMeta, TimelinePoint, TopApp, TopProject,
 };
 
 fn build_dashboard_stats(
@@ -144,26 +143,15 @@ fn build_dashboard_project_rows(
         project_rows.push(row.map_err(|e| format!("Failed to read dashboard project row: {}", e))?);
     }
 
-    let mut duplicate_counts: HashMap<String, usize> = HashMap::new();
-    for (_, name, _) in &project_rows {
-        *duplicate_counts.entry(name.to_lowercase()).or_insert(0) += 1;
-    }
+    let duplicate_counts =
+        duplicate_name_counts(project_rows.iter().map(|(_, name, _)| name.as_str()));
 
     let mut out = Vec::with_capacity(project_rows.len());
     for (project_id, name, color) in project_rows {
         let key = project_series_key(Some(project_id));
         let (session_count, app_count) = counts.get(&key).copied().unwrap_or((0, 0));
         let seconds = project_totals.get(&key).copied().unwrap_or(0.0).round() as i64;
-        let display_name = if duplicate_counts
-            .get(&name.to_lowercase())
-            .copied()
-            .unwrap_or(0)
-            > 1
-        {
-            format!("{name} · #{project_id}")
-        } else {
-            name
-        };
+        let display_name = disambiguate_name(&name, project_id, &duplicate_counts);
         out.push(ProjectTimeRow {
             project_id: Some(project_id),
             name: display_name,
@@ -175,84 +163,6 @@ fn build_dashboard_project_rows(
     }
 
     Ok(out)
-}
-
-fn build_project_timeline_rows(
-    bucket_project_seconds: std::collections::BTreeMap<String, HashMap<String, f64>>,
-    total_by_project: &HashMap<String, f64>,
-    series_meta_by_key: &HashMap<String, StackedSeriesMeta>,
-    bucket_flags: HashMap<String, (bool, bool)>,
-    bucket_comments: HashMap<String, Vec<String>>,
-    limit: usize,
-) -> Vec<StackedBarData> {
-    if bucket_project_seconds.is_empty() {
-        return Vec::new();
-    }
-
-    let mut ranked_projects: Vec<(&String, &f64)> = total_by_project.iter().collect();
-    ranked_projects.sort_by(|a, b| {
-        b.1.total_cmp(a.1).then_with(|| {
-            let label_a = series_meta_by_key
-                .get(a.0)
-                .map(|series| series.label.as_str())
-                .unwrap_or(a.0.as_str());
-            let label_b = series_meta_by_key
-                .get(b.0)
-                .map(|series| series.label.as_str())
-                .unwrap_or(b.0.as_str());
-            label_a.cmp(label_b)
-        })
-    });
-    let selected_projects: Vec<String> = ranked_projects
-        .into_iter()
-        .take(limit)
-        .map(|(series_key, _)| series_key.clone())
-        .collect();
-    let selected_set: std::collections::HashSet<&str> =
-        selected_projects.iter().map(|s| s.as_str()).collect();
-
-    let mut output = Vec::with_capacity(bucket_project_seconds.len());
-    for (bucket, sec_map) in bucket_project_seconds {
-        let mut data: HashMap<String, i64> = HashMap::new();
-        let mut other_seconds = 0i64;
-
-        for series_key in &selected_projects {
-            if let Some(seconds) = sec_map.get(series_key) {
-                let rounded = seconds.round() as i64;
-                if rounded > 0 {
-                    data.insert(series_key.clone(), rounded);
-                }
-            }
-        }
-
-        for (series_key, seconds) in &sec_map {
-            if selected_set.contains(series_key.as_str()) {
-                continue;
-            }
-            let rounded = seconds.round() as i64;
-            if rounded > 0 {
-                other_seconds += rounded;
-            }
-        }
-
-        if other_seconds > 0 {
-            data.insert(OTHER_PROJECT_SERIES_KEY.to_string(), other_seconds);
-        }
-
-        let (has_boost, has_manual) = bucket_flags.get(&bucket).cloned().unwrap_or((false, false));
-        let comments = bucket_comments.get(&bucket).cloned().unwrap_or_default();
-        let series_meta = series_meta_for_row(&data, series_meta_by_key);
-        output.push(StackedBarData {
-            date: bucket,
-            data,
-            has_boost,
-            has_manual,
-            comments,
-            series_meta,
-        });
-    }
-
-    output
 }
 
 #[tauri::command]
@@ -286,12 +196,12 @@ pub async fn get_dashboard_data(
                 top_limit,
             )?,
             all_projects: build_dashboard_project_rows(conn, &project_totals, &counts)?,
-            project_timeline: build_project_timeline_rows(
+            project_timeline: build_stacked_bar_output(
                 bucket_project_seconds,
                 &project_totals,
                 &series_meta_by_key,
-                bucket_flags,
-                bucket_comments,
+                &bucket_flags,
+                &bucket_comments,
                 timeline_limit,
             ),
         })
@@ -508,11 +418,7 @@ pub(crate) fn generate_color_for_app(name: &str) -> String {
         "#38bdf8", "#a78bfa", "#34d399", "#fb923c", "#f87171", "#fbbf24", "#818cf8", "#22d3ee",
         "#f472b6", "#4ade80", "#facc15", "#c084fc",
     ];
-    let idx = name
-        .to_lowercase()
-        .bytes()
-        .fold(0u32, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u32)) as usize
-        % palette.len();
+    let idx = name_hash(&name.to_lowercase()) as usize % palette.len();
     palette[idx].to_string()
 }
 

@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use tauri::AppHandle;
 
+use super::super::datetime::parse_datetime_ms_opt;
 use super::super::helpers::run_db_blocking;
 use super::super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
 use super::super::types::{FileActivity, SessionFilters, SessionWithApp};
@@ -25,8 +26,8 @@ impl Drop for TempFileActivityKeysCleanup<'_> {
 impl IndexedFileActivity {
     fn new(activity: FileActivity) -> Self {
         Self {
-            first_seen_ms: parse_rfc3339_millis(&activity.first_seen),
-            last_seen_ms: parse_rfc3339_millis(&activity.last_seen),
+            first_seen_ms: parse_datetime_ms_opt(&activity.first_seen),
+            last_seen_ms: parse_datetime_ms_opt(&activity.last_seen),
             activity,
         }
     }
@@ -39,12 +40,6 @@ impl IndexedFileActivity {
             self.last_seen_ms?,
         )
     }
-}
-
-fn parse_rfc3339_millis(value: &str) -> Option<i64> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|dt| dt.timestamp_millis())
 }
 
 fn compute_overlap_ms(
@@ -352,11 +347,11 @@ pub async fn get_sessions(
                 continue;
             }
 
-            let session_start = match parse_rfc3339_millis(&session.start_time) {
+            let session_start = match parse_datetime_ms_opt(&session.start_time) {
                 Some(dt) => dt,
                 None => continue,
             };
-            let session_end = match parse_rfc3339_millis(&session.end_time) {
+            let session_end = match parse_datetime_ms_opt(&session.end_time) {
                 Some(dt) => dt,
                 None => continue,
             };
@@ -569,8 +564,9 @@ pub async fn get_sessions(
 mod tests {
     use super::{
         apply_limit_offset, collect_session_file_activities, compute_overlap_ms,
-        parse_rfc3339_millis, IndexedFileActivity,
+        IndexedFileActivity,
     };
+    use crate::commands::datetime::parse_datetime_ms_opt;
     use crate::commands::types::FileActivity;
     use std::collections::HashMap;
 
@@ -637,8 +633,8 @@ mod tests {
             &files_by_key,
             1,
             "2026-01-01",
-            parse_rfc3339_millis("2026-01-01T10:00:00Z").expect("valid session start"),
-            parse_rfc3339_millis("2026-01-01T11:00:00Z").expect("valid session end"),
+            parse_datetime_ms_opt("2026-01-01T10:00:00Z").expect("valid session start"),
+            parse_datetime_ms_opt("2026-01-01T11:00:00Z").expect("valid session end"),
         );
 
         let file_ids: Vec<i64> = files.iter().map(|file| file.activity.id).collect();
