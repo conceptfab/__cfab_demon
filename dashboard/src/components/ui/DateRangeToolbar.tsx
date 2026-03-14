@@ -12,7 +12,7 @@ interface DateRangeToolbarProps {
   timePreset: TimePreset;
   setTimePreset: (preset: TimePreset) => void;
   shiftDateRange: (direction: -1 | 1) => void;
-  canShiftForward: () => boolean;
+  canShiftForward: boolean;
   children?: React.ReactNode;
 }
 
@@ -72,7 +72,7 @@ export function DateRangeToolbar({
               size="icon"
               className="h-8 w-8"
               onClick={() => shiftDateRange(1)}
-              disabled={!canShiftForward()}
+              disabled={!canShiftForward}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

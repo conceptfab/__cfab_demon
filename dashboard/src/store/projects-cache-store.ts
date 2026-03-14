@@ -17,6 +17,7 @@ let projectsCacheListenersInitialized = false;
 interface ProjectsCacheState {
   projectsAllTime: ProjectWithStats[];
   projectsAllTimeLoaded: boolean;
+  projectsAllTimeLoading: boolean;
   loadProjectsAllTime: (force?: boolean) => Promise<ProjectWithStats[]>;
   invalidateProjectsAllTime: () => void;
 }
@@ -24,6 +25,7 @@ interface ProjectsCacheState {
 export const useProjectsCacheStore = create<ProjectsCacheState>((set, get) => ({
   projectsAllTime: [],
   projectsAllTimeLoaded: false,
+  projectsAllTimeLoading: false,
   loadProjectsAllTime: async (force = false) => {
     const state = get();
     if (!force && state.projectsAllTimeLoaded) {
@@ -33,16 +35,19 @@ export const useProjectsCacheStore = create<ProjectsCacheState>((set, get) => ({
       return projectsAllTimeInFlight;
     }
 
+    set({ projectsAllTimeLoading: true });
     projectsAllTimeInFlight = getProjects()
       .then((projects) => {
         set({
           projectsAllTime: projects,
           projectsAllTimeLoaded: true,
+          projectsAllTimeLoading: false,
         });
         return projects;
       })
       .finally(() => {
         projectsAllTimeInFlight = null;
+        set({ projectsAllTimeLoading: false });
       });
 
     return projectsAllTimeInFlight;
@@ -51,6 +56,7 @@ export const useProjectsCacheStore = create<ProjectsCacheState>((set, get) => ({
     set((state) => ({
       projectsAllTime: state.projectsAllTime,
       projectsAllTimeLoaded: false,
+      projectsAllTimeLoading: false,
     })),
 }));
 

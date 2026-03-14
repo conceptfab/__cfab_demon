@@ -11,6 +11,7 @@ import {
 } from 'date-fns';
 import type { AutoImportResult, DateRange } from '@/lib/db-types';
 import { ALL_TIME_START } from '@/lib/date-ranges';
+import { buildTodayDate } from '@/lib/date-utils';
 import { emitAppRefresh } from '@/lib/sync-events';
 
 export type TimePreset = 'today' | 'week' | 'month' | 'all' | 'custom';
@@ -22,7 +23,7 @@ interface DataState {
   setDateRange: (range: DateRange) => void;
   setTimePreset: (preset: TimePreset) => void;
   shiftDateRange: (direction: -1 | 1) => void;
-  canShiftForward: () => boolean;
+  canShiftForward: boolean;
   refreshKey: number;
   triggerRefresh: (reason?: RefreshReason) => void;
   autoImportDone: boolean;
@@ -38,7 +39,7 @@ const REASON_REFRESH_DEDUPE_MS = 1_000;
 
 function presetToRange(preset: TimePreset): DateRange {
   const now = new Date();
-  const today = format(now, 'yyyy-MM-dd');
+  const today = buildTodayDate();
   const end = today;
   switch (preset) {
     case 'today':
@@ -56,7 +57,7 @@ function presetToRange(preset: TimePreset): DateRange {
 
 function inferPreset(range: DateRange): TimePreset {
   const now = new Date();
-  const today = format(now, 'yyyy-MM-dd');
+  const today = buildTodayDate();
   if (range.start === ALL_TIME_START) return 'all';
   if (range.start === today && range.end === today) return 'today';
   if (
@@ -72,7 +73,12 @@ function inferPreset(range: DateRange): TimePreset {
   return 'custom';
 }
 
-export const useDataStore = create<DataState>((set, get) => {
+function computeCanShiftForward(range: DateRange, preset: TimePreset): boolean {
+  if (preset === 'custom' || preset === 'all') return false;
+  return range.end < buildTodayDate();
+}
+
+export const useDataStore = create<DataState>((set) => {
   let lastRefreshAtMs = 0;
   let scheduledRefreshTimer: ReturnType<typeof setTimeout> | null = null;
   const pendingRefreshReasons = new Set<RefreshReason>();
@@ -134,9 +140,24 @@ export const useDataStore = create<DataState>((set, get) => {
     dateRange: presetToRange('today'),
     timePreset: 'today',
     setDateRange: (range) =>
-      set({ dateRange: range, timePreset: inferPreset(range) }),
+      set(() => {
+        const timePreset = inferPreset(range);
+        return {
+          dateRange: range,
+          timePreset,
+          canShiftForward: computeCanShiftForward(range, timePreset),
+        };
+      }),
     setTimePreset: (preset) =>
-      set({ timePreset: preset, dateRange: presetToRange(preset) }),
+      set((state) => {
+        const dateRange =
+          preset === 'custom' ? state.dateRange : presetToRange(preset);
+        return {
+          timePreset: preset,
+          dateRange,
+          canShiftForward: computeCanShiftForward(dateRange, preset),
+        };
+      }),
 
     shiftDateRange: (direction) =>
       set((s) => {
@@ -173,19 +194,17 @@ export const useDataStore = create<DataState>((set, get) => {
         const cappedEnd = minDate([newEnd, today]);
         if (newStart > today) return {};
 
+        const nextDateRange = {
+          start: format(newStart, 'yyyy-MM-dd'),
+          end: format(cappedEnd, 'yyyy-MM-dd'),
+        };
         return {
-          dateRange: {
-            start: format(newStart, 'yyyy-MM-dd'),
-            end: format(cappedEnd, 'yyyy-MM-dd'),
-          },
+          dateRange: nextDateRange,
+          canShiftForward: computeCanShiftForward(nextDateRange, timePreset),
         };
       }),
 
-    canShiftForward: (): boolean => {
-      if (get().timePreset === 'custom') return false;
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      return get().dateRange.end < todayStr;
-    },
+    canShiftForward: false,
 
     refreshKey: 0,
     triggerRefresh: (reason) =>

@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import {
   Sparkles,
@@ -38,6 +39,83 @@ export interface SessionRowProps {
   isSplittable?: boolean;
   onSplitClick?: (s: SessionWithApp) => void;
   className?: string;
+}
+
+function renderScoreBreakdownCandidates(
+  scoreBreakdownData: ScoreBreakdown,
+  variant: 'compact' | 'detailed',
+  t: TFunction,
+): ReactNode {
+  const topScore = scoreBreakdownData.candidates[0]?.total_score;
+
+  if (variant === 'compact') {
+    return scoreBreakdownData.candidates.slice(0, 3).map((candidate) => (
+      <div
+        key={candidate.project_id}
+        className={`flex items-center gap-2 text-[8px] ${
+          candidate.total_score === topScore
+            ? 'text-sky-300/80 font-medium'
+            : 'text-muted-foreground/40'
+        }`}
+      >
+        <span className="truncate max-w-[100px]">{candidate.project_name}</span>
+        <span className="font-mono">{candidate.total_score.toFixed(2)}</span>
+        <span className="text-muted-foreground/20">
+          ({t('sessions.row.evidence_short', { count: candidate.evidence_count })})
+        </span>
+      </div>
+    ));
+  }
+
+  return scoreBreakdownData.candidates
+    .slice(0, 5)
+    .map((candidate, index) => {
+      const isTopTwo = index === 0 || index === 1;
+      return (
+        <div
+          key={candidate.project_id}
+          className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
+            candidate.total_score === topScore
+              ? 'text-sky-300/80 font-medium'
+              : 'text-muted-foreground/40'
+          }`}
+        >
+          <span className="truncate">{candidate.project_name}</span>
+          <span className="text-right font-mono">
+            {candidate.layer0_file_score > 0
+              ? candidate.layer0_file_score.toFixed(2)
+              : '-'}
+          </span>
+          <span className="text-right font-mono">
+            {candidate.layer1_app_score > 0
+              ? candidate.layer1_app_score.toFixed(2)
+              : '-'}
+          </span>
+          <span className="text-right font-mono">
+            {candidate.layer2_time_score > 0
+              ? candidate.layer2_time_score.toFixed(2)
+              : '-'}
+          </span>
+          <span className="text-right font-mono">
+            {candidate.layer3_token_score > 0
+              ? candidate.layer3_token_score.toFixed(2)
+              : '-'}
+          </span>
+          <span
+            className={`text-right font-mono font-bold ${
+              isTopTwo ? 'text-sky-400 bg-sky-900/20 px-1 rounded' : ''
+            }`}
+          >
+            {candidate.total_score.toFixed(3)}
+          </span>
+          <span className="text-right font-mono">
+            {t('sessions.row.evidence_short', {
+              count: candidate.evidence_count,
+            })}
+          </span>
+        </div>
+      );
+    });
 }
 
 export const SessionRow = memo(function SessionRow({
@@ -156,6 +234,7 @@ export const SessionRow = memo(function SessionRow({
                 />
               )}
               <button
+                type="button"
                 className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[2px] text-destructive/30 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
                 onClick={async (e) => {
                   e.stopPropagation();
@@ -196,34 +275,7 @@ export const SessionRow = memo(function SessionRow({
               </p>
             ) : (
               <div className="space-y-0.5">
-                {(() => {
-                  const topScore =
-                    scoreBreakdownData?.candidates?.[0]?.total_score;
-                  return scoreBreakdownData?.candidates.slice(0, 3).map((c) => (
-                    <div
-                      key={c.project_id}
-                      className={`flex items-center gap-2 text-[8px] ${
-                        c.total_score === topScore
-                          ? 'text-sky-300/80 font-medium'
-                          : 'text-muted-foreground/40'
-                      }`}
-                    >
-                      <span className="truncate max-w-[100px]">
-                        {c.project_name}
-                      </span>
-                      <span className="font-mono">
-                        {c.total_score.toFixed(2)}
-                      </span>
-                      <span className="text-muted-foreground/20">
-                        (
-                        {t('sessions.row.evidence_short', {
-                          count: c.evidence_count,
-                        })}
-                        )
-                      </span>
-                    </div>
-                  ));
-                })()}
+                {renderScoreBreakdownCandidates(scoreBreakdownData, 'compact', t)}
               </div>
             )}
           </div>
@@ -297,6 +349,7 @@ export const SessionRow = memo(function SessionRow({
           )}
           <div className="flex items-center">
             <button
+              type="button"
               className="h-5 w-5 shrink-0 flex items-center justify-center rounded-sm text-destructive/40 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
               onClick={async (e) => {
                 e.stopPropagation();
@@ -391,57 +444,7 @@ export const SessionRow = memo(function SessionRow({
             </p>
           ) : (
             <div className="space-y-0.5">
-              {(() => {
-                const topScore =
-                  scoreBreakdownData?.candidates?.[0]?.total_score;
-                return scoreBreakdownData?.candidates
-                  .slice(0, 5)
-                  .map((c, index) => {
-                    const isTopTwo = index === 0 || index === 1;
-                    return (
-                      <div
-                        key={c.project_id}
-                        className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
-                          c.total_score === topScore
-                            ? 'text-sky-300/80 font-medium'
-                            : 'text-muted-foreground/40'
-                        }`}
-                      >
-                        <span className="truncate">{c.project_name}</span>
-                        <span className="text-right font-mono">
-                          {c.layer0_file_score > 0
-                            ? c.layer0_file_score.toFixed(2)
-                            : '-'}
-                        </span>
-                        <span className="text-right font-mono">
-                          {c.layer1_app_score > 0
-                            ? c.layer1_app_score.toFixed(2)
-                            : '-'}
-                        </span>
-                        <span className="text-right font-mono">
-                          {c.layer2_time_score > 0
-                            ? c.layer2_time_score.toFixed(2)
-                            : '-'}
-                        </span>
-                        <span className="text-right font-mono">
-                          {c.layer3_token_score > 0
-                            ? c.layer3_token_score.toFixed(2)
-                            : '-'}
-                        </span>
-                        <span
-                          className={`text-right font-mono font-bold ${isTopTwo ? 'text-sky-400 bg-sky-900/20 px-1 rounded' : ''}`}
-                        >
-                          {c.total_score.toFixed(3)}
-                        </span>
-                        <span className="text-right font-mono">
-                          {t('sessions.row.evidence_short', {
-                            count: c.evidence_count,
-                          })}
-                        </span>
-                      </div>
-                    );
-                  });
-              })()}
+              {renderScoreBreakdownCandidates(scoreBreakdownData, 'detailed', t)}
               {scoreBreakdownData?.final_suggestion && (
                 <div className="flex gap-4 text-[11px] text-muted-foreground/30 mt-1 pt-1 border-t border-border/5">
                   <span>

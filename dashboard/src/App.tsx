@@ -139,7 +139,7 @@ class ErrorBoundary extends Component<
             <p className="text-sm text-slate-400">{this.state.error.message}</p>
             <button
               className="rounded bg-sky-600 px-4 py-2 text-sm hover:bg-sky-500"
-              onClick={() => this.setState({ error: null })}
+              onClick={() => window.location.reload()}
             >
               {i18n.t('ui.app.try_again')}
             </button>

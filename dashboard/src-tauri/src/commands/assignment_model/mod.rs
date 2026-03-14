@@ -577,19 +577,6 @@ pub async fn train_assignment_model(
     get_assignment_model_status(app).await
 }
 
-#[allow(dead_code)]
-#[command]
-pub async fn suggest_project_for_session(
-    app: AppHandle,
-    session_id: i64,
-) -> Result<Option<ProjectSuggestion>, String> {
-    let status = get_assignment_model_status(app.clone()).await?;
-    run_db_blocking(app, move |conn| {
-        suggest_project_for_session_with_status(conn, &status, session_id)
-    })
-    .await
-}
-
 #[command]
 pub async fn run_auto_safe_assignment(
     app: AppHandle,

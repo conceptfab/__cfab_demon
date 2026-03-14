@@ -12,6 +12,16 @@ struct IndexedFileActivity {
     last_seen_ms: Option<i64>,
 }
 
+struct TempFileActivityKeysCleanup<'a> {
+    conn: &'a rusqlite::Connection,
+}
+
+impl Drop for TempFileActivityKeysCleanup<'_> {
+    fn drop(&mut self) {
+        let _ = self.conn.execute_batch("DROP TABLE IF EXISTS _fa_keys");
+    }
+}
+
 impl IndexedFileActivity {
     fn new(activity: FileActivity) -> Self {
         Self {
@@ -276,6 +286,7 @@ pub async fn get_sessions(
                 "CREATE TEMP TABLE IF NOT EXISTS _fa_keys (app_id INTEGER, date TEXT)",
             )
             .map_err(|e| e.to_string())?;
+            let _temp_keys_cleanup = TempFileActivityKeysCleanup { conn };
             conn.execute_batch("DELETE FROM _fa_keys")
                 .map_err(|e| e.to_string())?;
 
@@ -465,12 +476,41 @@ pub async fn get_sessions(
                 }
 
                 if !suggestions.is_empty() {
-                    let mut suggested_project_ids: HashSet<i64> = HashSet::new();
-                    for s in suggestions.values() {
-                        suggested_project_ids.insert(s.project_id);
+                    let mut project_name_by_id: HashMap<i64, String> = HashMap::new();
+                    for session in &sessions {
+                        if let (Some(pid), Some(name)) = (
+                            session.project_id,
+                            session
+                                .project_name
+                                .as_ref()
+                                .map(|value| value.trim())
+                                .filter(|value| !value.is_empty()),
+                        ) {
+                            project_name_by_id
+                                .entry(pid)
+                                .or_insert_with(|| name.to_string());
+                        }
+                        if let (Some(pid), Some(name)) = (
+                            session.suggested_project_id,
+                            session
+                                .suggested_project_name
+                                .as_ref()
+                                .map(|value| value.trim())
+                                .filter(|value| !value.is_empty()),
+                        ) {
+                            project_name_by_id
+                                .entry(pid)
+                                .or_insert_with(|| name.to_string());
+                        }
                     }
 
-                    let mut project_name_by_id: HashMap<i64, String> = HashMap::new();
+                    let mut suggested_project_ids: HashSet<i64> = HashSet::new();
+                    for suggestion in suggestions.values() {
+                        if !project_name_by_id.contains_key(&suggestion.project_id) {
+                            suggested_project_ids.insert(suggestion.project_id);
+                        }
+                    }
+
                     if !suggested_project_ids.is_empty() {
                         let pid_list: Vec<i64> = suggested_project_ids.into_iter().collect();
                         let placeholders =

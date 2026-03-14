@@ -41,6 +41,7 @@ import {
   logTauriError,
   cn,
 } from '@/lib/utils';
+import { isRecentProject } from '@/lib/project-utils';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
@@ -85,15 +86,6 @@ const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
 const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
 const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
 const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
-
-function isNewProject(project: ProjectWithStats, maxAgeMs: number): boolean {
-  const freshnessSource = project.last_activity ?? project.created_at;
-  const sourceMs = new Date(freshnessSource).getTime();
-  if (!Number.isFinite(sourceMs)) return false;
-  const age = Date.now() - sourceMs;
-  return age >= 0 && age < maxAgeMs;
-}
-
 
 function inferDetectedProjectName(fileName: string): string {
   const trimmed = fileName.trim();
@@ -240,6 +232,9 @@ export function Projects() {
   const [projectExtraInfoCacheVersion, setProjectExtraInfoCacheVersion] =
     useState(0);
   const projects = useProjectsCacheStore((s) => s.projectsAllTime);
+  const projectsAllTimeLoading = useProjectsCacheStore(
+    (s) => s.projectsAllTimeLoading,
+  );
   const { thresholdDays: newProjectThresholdDays } = loadFreezeSettings();
   const newProjectMaxAgeMs =
     Math.max(1, newProjectThresholdDays) * 24 * 60 * 60 * 1000;
@@ -1011,7 +1006,9 @@ export function Projects() {
                 data-project-name={p.name}
                 className={cn(
                   'flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors',
-                  isNewProject(p, newProjectMaxAgeMs) && 'border-yellow-400/70',
+                  isRecentProject(p, newProjectMaxAgeMs, {
+                    useLastActivity: true,
+                  }) && 'border-yellow-400/70',
                 )}
                 onClick={() => openEdit(p)}
               >
@@ -1107,7 +1104,9 @@ export function Projects() {
         project={p}
         currencyCode={currencyCode}
         estimateValue={estimates[p.id] || 0}
-        isNew={isNewProject(p, newProjectMaxAgeMs)}
+        isNew={isRecentProject(p, newProjectMaxAgeMs, {
+          useLastActivity: true,
+        })}
         isDeleting={isDeleting}
         isHotProject={hotProjectIds.has(p.id)}
         inDialog={options?.inDialog}
@@ -1181,6 +1180,11 @@ export function Projects() {
               ? ` (${excludedProjects.length} ${t('projects_page.excluded')})`
               : ''}
           </p>
+          {projectsAllTimeLoading && (
+            <p className="text-xs text-muted-foreground">
+              {t('ui.app.loading')}
+            </p>
+          )}
           {duplicateProjectsView.groupCount > 0 && (
             <p className="text-xs text-amber-600/90">
               {t('projects_page.marked_with')}{' '}

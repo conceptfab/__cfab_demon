@@ -7,9 +7,7 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
-
-#[path = "../shared/timeflow_paths.rs"]
-mod timeflow_paths;
+use timeflow_shared::timeflow_paths;
 
 /// Pojedyncza monitorowana aplikacja
 #[derive(Serialize, Deserialize, Clone, Debug)]

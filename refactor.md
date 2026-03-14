@@ -14,9 +14,18 @@
 - `ZROBIONE`: C-F1, C-F2, C-F3
 - `ZROBIONE`: C-I1, C-I2
 - `ZROBIONE`: H-R1, H-R3, H-R5, H-F5, H-I1, H-I2, H-I3
-- `ZROBIONE`: M-R2, M-R4
-- `PENDING`: pozostałe pozycje z raportu
-- `WERYFIKACJA OK`: `cargo test`, `cargo check` (`dashboard/src-tauri`), `npm run typecheck`, `npm run test`, `npm run lint`
+- `ZROBIONE`: H-R2, H-R4, H-R6, H-F1, H-F3, H-F4
+- `ZROBIONE`: M-R1, M-R2, M-R4, M-R6, M-R7
+- `ZROBIONE`: M-F1, M-F2, M-F3, M-F5, M-F6, M-F7, M-F8, M-F9
+- `ZROBIONE`: M-I1, M-I2, M-I3, M-I4
+- `ZROBIONE`: M-R3, M-F4
+- `ZROBIONE`: L-R4, L-R5, L-F1, L-F2, L-F3, L-F4, L-F5, L-I2
+- `ZROBIONE`: L-R2, L-I1
+- `ZROBIONE`: 11.2, 11.5, 11.6
+- `ZROBIONE`: 11.1, 11.3, 11.4
+- `ZWERYFIKOWANE JAKO JUŻ OK`: M-R5, L-R1, L-R3, L-I3
+- `PENDING`: brak
+- `WERYFIKACJA OK`: `cargo test -p timeflow-demon`, `cargo check -p timeflow-dashboard`, `npm run typecheck`, `npm run test`, `npm run lint`
 
 ---
 

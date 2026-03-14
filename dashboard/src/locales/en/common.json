@@ -1148,15 +1148,7 @@
     }
   },
   "help": {
-    "language_hint": "Language is managed in Settings > Language.",
-    "sections": {
-      "dashboard": {
-        "title": "DASHBOARD"
-      },
-      "daemon": {
-        "title": "DAEMON"
-      }
-    }
+    "language_hint": "Language is managed in Settings > Language."
   },
   "quickstart": {
     "language_hint": "Language is managed in Settings > Language.",
@@ -1550,6 +1542,10 @@
     "operation_history_insight_into_when_and_what_data_was_mo": "Operation History – insight into when and what data was modified.",
     "backup_restore_database_manual_backups_restore_from_file": "Backup/Restore database – manual backups, restore from file, and quick access to the SQLite database folder.",
     "data_history_refreshes_after_real_data_changes_and_when_": "Data History refreshes after real data changes and when you return to the app window, so it no longer keeps a constant background polling loop.",
+    "import_page_detail_title": "Import page",
+    "import_page_detail_what_it_does": "What it does: the Import page lets you drop JSON files, inspect the history of processed imports, and clean the archive after processing.",
+    "import_page_detail_when_to_use": "When to use it: open it after a manual daemon export or whenever you want to verify whether a package has already been imported.",
+    "import_page_detail_limitations": "Limitations and consequences: this screen only manages import and archive data, and once an archived file is deleted TIMEFLOW cannot restore it without the original source file.",
     "reports_2": "REPORTS",
     "create_configurable_project_reports_for_print_and_pdf_ex": "Create configurable project reports for print and PDF export.",
     "template_system_create_duplicate_and_manage_multiple_rep": "Template system – create, duplicate, and manage multiple report templates. Choose a template before generating.",

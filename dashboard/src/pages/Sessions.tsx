@@ -14,7 +14,10 @@ import {
   formatMultiplierLabel,
   logTauriError,
 } from '@/lib/utils';
-import { localizeProjectLabel } from '@/lib/project-labels';
+import {
+  localizeProjectLabel,
+  UNASSIGNED_PROJECT_SENTINEL,
+} from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { addDays, format, parseISO, subDays } from 'date-fns';
@@ -24,11 +27,8 @@ import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjec
 import { SessionsVirtualList } from '@/components/sessions/SessionsVirtualList';
 import type {
   DateRange,
-  MultiProjectAnalysis,
   SessionWithApp,
   SplitPart,
-  ProjectWithStats,
-  ScoreBreakdown,
 } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 import {
@@ -38,21 +38,26 @@ import {
   loadFreezeSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
+import { buildTodayDate } from '@/lib/date-utils';
+import {
+  compareProjectsByName,
+  isRecentProject,
+} from '@/lib/project-utils';
+import {
+  areSessionListsEqual,
+  SESSION_PAGE_SIZE,
+} from '@/lib/session-utils';
 import { useToast } from '@/components/ui/toast-notification';
 import { resolveDateFnsLocale } from '@/lib/date-locale';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
+import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
 import {
   findSessionIdsMissingComment,
   parsePositiveRateMultiplierInput,
   requiresCommentForMultiplierBoost,
 } from '@/hooks/useSessionActions';
-import {
-  EMPTY_SCORE_BREAKDOWN,
-  isAlreadySplitSession,
-  isSplittableFromBreakdown,
-  buildAnalysisFromBreakdown,
-  withTimeout,
-} from '@/lib/session-analysis';
+import { buildAnalysisFromBreakdown } from '@/lib/session-analysis';
 import {
   loadProjectsAllTime,
   useProjectsCacheStore,
@@ -88,111 +93,7 @@ interface GroupedProject {
 }
 
 type RangeMode = 'daily' | 'weekly';
-const UNASSIGNED_GROUP_KEY = '__unassigned__';
 const TOP_PROJECTS_LIMIT = 5;
-const SCORE_BREAKDOWN_CACHE_TTL_MS = 5 * 60 * 1000;
-const SPLIT_ANALYSIS_BATCH_SIZE = 25;
-
-type CachedBreakdownEntry = {
-  data: ScoreBreakdown;
-  fetchedAtMs: number;
-};
-
-
-function compareProjectsByName(
-  a: ProjectWithStats,
-  b: ProjectWithStats,
-): number {
-  return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-}
-
-function isNewProjectForAssignList(
-  project: ProjectWithStats,
-  maxAgeMs: number,
-): boolean {
-  const createdAtMs = new Date(project.created_at).getTime();
-  if (!Number.isFinite(createdAtMs)) return false;
-  const ageMs = Date.now() - createdAtMs;
-  return ageMs >= 0 && ageMs < maxAgeMs;
-}
-
-function readMinSessionDuration(): number | undefined {
-  const settings = loadSessionSettings();
-  return settings.minSessionDurationSeconds > 0
-    ? settings.minSessionDurationSeconds
-    : undefined;
-}
-
-function areFileActivitiesEqual(
-  left: SessionWithApp['files'][number],
-  right: SessionWithApp['files'][number],
-): boolean {
-  return (
-    left.id === right.id &&
-    left.app_id === right.app_id &&
-    left.file_name === right.file_name &&
-    (left.file_path ?? null) === (right.file_path ?? null) &&
-    left.total_seconds === right.total_seconds &&
-    left.first_seen === right.first_seen &&
-    left.last_seen === right.last_seen &&
-    (left.project_id ?? null) === (right.project_id ?? null) &&
-    (left.project_name ?? null) === (right.project_name ?? null) &&
-    (left.project_color ?? null) === (right.project_color ?? null)
-  );
-}
-
-function areSessionsEqual(left: SessionWithApp, right: SessionWithApp): boolean {
-  if (
-    left.id !== right.id ||
-    left.app_id !== right.app_id ||
-    left.app_name !== right.app_name ||
-    left.executable_name !== right.executable_name ||
-    (left.project_id ?? null) !== (right.project_id ?? null) ||
-    left.start_time !== right.start_time ||
-    left.end_time !== right.end_time ||
-    left.duration_seconds !== right.duration_seconds ||
-    (left.rate_multiplier ?? null) !== (right.rate_multiplier ?? null) ||
-    (left.comment ?? null) !== (right.comment ?? null) ||
-    (left.is_hidden ?? null) !== (right.is_hidden ?? null) ||
-    (left.split_source_session_id ?? null) !==
-      (right.split_source_session_id ?? null) ||
-    (left.project_name ?? null) !== (right.project_name ?? null) ||
-    (left.project_color ?? null) !== (right.project_color ?? null) ||
-    (left.suggested_project_id ?? null) !==
-      (right.suggested_project_id ?? null) ||
-    (left.suggested_project_name ?? null) !==
-      (right.suggested_project_name ?? null) ||
-    (left.suggested_confidence ?? null) !==
-      (right.suggested_confidence ?? null) ||
-    (left.ai_assigned ?? null) !== (right.ai_assigned ?? null) ||
-    left.files.length !== right.files.length
-  ) {
-    return false;
-  }
-
-  for (let index = 0; index < left.files.length; index += 1) {
-    if (!areFileActivitiesEqual(left.files[index], right.files[index])) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function areSessionListsEqual(
-  left: SessionWithApp[],
-  right: SessionWithApp[],
-): boolean {
-  if (left.length !== right.length) return false;
-
-  for (let index = 0; index < left.length; index += 1) {
-    if (!areSessionsEqual(left[index], right[index])) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 export function Sessions() {
   const { t, i18n } = useTranslation();
@@ -251,75 +152,78 @@ export function Sessions() {
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const [multiSplitSession, setMultiSplitSession] =
     useState<SessionWithApp | null>(null);
-  const [splitEligibilityBySession, setSplitEligibilityBySession] = useState<
-    Map<number, boolean>
-  >(new Map());
-
-  const [splitAnalysisBySession, setSplitAnalysisBySession] = useState<
-    Map<number, MultiProjectAnalysis>
-  >(new Map());
-  const [splitAnalysisLoadingIds, setSplitAnalysisLoadingIds] = useState<
-    Set<number>
-  >(new Set());
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
   const [splitSettings, setSplitSettings] = useState(() => loadSplitSettings());
-  const [scoreBreakdown, setScoreBreakdown] = useState<{
-    sessionId: number;
-    data: ScoreBreakdown;
-  } | null>(null);
-  const [aiBreakdowns, setAiBreakdowns] = useState<Map<number, ScoreBreakdown>>(
-    new Map(),
-  );
-  const aiBreakdownsRef = useRef<Map<number, ScoreBreakdown>>(new Map());
-  const [loadingBreakdownIds, setLoadingBreakdownIds] = useState<Set<number>>(
-    new Set(),
-  );
-  const scoreBreakdownRequestsRef = useRef<
-    Map<number, Promise<ScoreBreakdown>>
-  >(new Map());
-  const scoreBreakdownCacheRef = useRef<Map<number, CachedBreakdownEntry>>(
-    new Map(),
-  );
-  const splitEligibilityCacheRef = useRef<Map<number, string>>(new Map());
-  const splitAnalysisBatchTimerRef = useRef<number | null>(null);
-  const getCachedBreakdown = useCallback(
-    (sessionId: number): ScoreBreakdown | null => {
-      const cached = scoreBreakdownCacheRef.current.get(sessionId);
-      if (!cached) return null;
-      if (Date.now() - cached.fetchedAtMs > SCORE_BREAKDOWN_CACHE_TTL_MS) {
-        scoreBreakdownCacheRef.current.delete(sessionId);
-        return null;
-      }
-      return cached.data;
-    },
-    [],
-  );
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
-  const [customScrollParent] = useState<HTMLElement | undefined>(() => {
-    if (typeof document === 'undefined') return undefined;
-    const el = document.querySelector('main');
-    return el instanceof HTMLElement ? el : undefined;
+  const [customScrollParent, setCustomScrollParent] = useState<
+    HTMLElement | undefined
+  >(undefined);
+  const [minDuration, setMinDuration] = useState<number | undefined>(() => {
+    const settings = loadSessionSettings();
+    return settings.minSessionDurationSeconds > 0
+      ? settings.minSessionDurationSeconds
+      : undefined;
   });
-  const PAGE_SIZE = 100;
-  const minDuration = readMinSessionDuration();
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = buildTodayDate();
   const canShiftForward = anchorDate < today;
   const shiftStepDays = rangeMode === 'weekly' ? 7 : 1;
-  const splitSettingsKey = `${splitSettings.toleranceThreshold}:${splitSettings.maxProjectsPerSession}`;
-
-  const clearSplitCaches = useCallback(() => {
-    splitEligibilityCacheRef.current.clear();
-    setSplitEligibilityBySession(new Map());
-    setSplitAnalysisBySession(new Map());
-    setSplitAnalysisLoadingIds(new Set());
-  }, []);
 
   const reloadDisplaySettings = useCallback(() => {
+    const sessionSettings = loadSessionSettings();
     setSplitSettings(loadSplitSettings());
     setIndicators(loadIndicatorSettings());
+    setMinDuration(
+      sessionSettings.minSessionDurationSeconds > 0
+        ? sessionSettings.minSessionDurationSeconds
+        : undefined,
+    );
+  }, []);
+
+  const {
+    aiBreakdowns,
+    getScoreBreakdownData,
+    handleToggleScoreBreakdown,
+    loadingBreakdownIds,
+    scoreBreakdown,
+  } = useSessionScoreBreakdown({
+    sessions,
+    showScoreBreakdown: indicators.showScoreBreakdown,
+    viewMode,
+  });
+  const {
+    clearSplitCaches,
+    isSessionSplittable,
+    selectedSplitAnalysis,
+    selectedSplitAnalysisLoading,
+  } = useSessionSplitAnalysis({
+    getScoreBreakdownData,
+    multiSplitSession,
+    sessions,
+    splitSettings,
+  });
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    let rafId = 0;
+    const resolveScrollParent = () => {
+      const el = document.querySelector('main');
+      if (el instanceof HTMLElement) {
+        setCustomScrollParent((current) => (current === el ? current : el));
+        return;
+      }
+      rafId = window.requestAnimationFrame(resolveScrollParent);
+    };
+
+    resolveScrollParent();
+    return () => {
+      if (rafId !== 0) {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
   }, []);
 
   const activeDateRange = useMemo<DateRange>(() => {
@@ -396,7 +300,7 @@ export function Sessions() {
   const buildFetchParams = useCallback(
     (offset: number) => ({
       dateRange: effectiveDateRange,
-      limit: PAGE_SIZE,
+      limit: SESSION_PAGE_SIZE,
       offset,
       projectId:
         activeProjectId === 'unassigned'
@@ -464,12 +368,8 @@ export function Sessions() {
     hasMoreRef.current = hasMore;
   }, [hasMore]);
 
-  useEffect(() => {
-    aiBreakdownsRef.current = aiBreakdowns;
-  }, [aiBreakdowns]);
-
   const replaceSessionsPage = useCallback((data: SessionWithApp[]) => {
-    const nextHasMore = data.length >= PAGE_SIZE;
+    const nextHasMore = data.length >= SESSION_PAGE_SIZE;
     if (!areSessionListsEqual(sessionsRef.current, data)) {
       sessionsRef.current = data;
       setSessions(data);
@@ -503,215 +403,6 @@ export function Sessions() {
       setDismissedSuggestions(new Set());
     });
   }, [activeDateRange.start, activeDateRange.end]);
-
-  useEffect(() => {
-    if (!multiSplitSession) return;
-    const sessionId = multiSplitSession.id;
-    if (splitAnalysisBySession.has(sessionId)) return;
-    if (splitAnalysisLoadingIds.has(sessionId)) return;
-
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setSplitAnalysisLoadingIds((prev) => {
-        const next = new Set(prev);
-        next.add(sessionId);
-        return next;
-      });
-    });
-
-    void withTimeout(
-      sessionsApi.analyzeSessionProjects(
-        sessionId,
-        splitSettings.toleranceThreshold,
-        splitSettings.maxProjectsPerSession,
-      ),
-      12_000,
-    )
-      .then((analysis) => {
-        if (cancelled) return;
-        setSplitAnalysisBySession((prev) => {
-          const next = new Map(prev);
-          next.set(sessionId, analysis);
-          return next;
-        });
-      })
-      .catch((error) => {
-        console.warn(
-          `Failed to analyze split candidates for session ${sessionId}:`,
-          error,
-        );
-        if (cancelled) return;
-        setSplitAnalysisBySession((prev) => {
-          if (prev.has(sessionId)) return prev;
-          const fallback = buildAnalysisFromBreakdown(
-            sessionId,
-            aiBreakdowns.get(sessionId) ??
-              (scoreBreakdown?.sessionId === sessionId
-                ? scoreBreakdown.data
-                : null),
-            splitSettings.toleranceThreshold,
-            splitSettings.maxProjectsPerSession,
-          ) ?? {
-            session_id: sessionId,
-            candidates: [],
-            is_splittable: false,
-            leader_project_id: null,
-            leader_score: 0,
-          };
-          const next = new Map(prev);
-          next.set(sessionId, fallback);
-          return next;
-        });
-      })
-      .finally(() => {
-        setSplitAnalysisLoadingIds((prev) => {
-          const next = new Set(prev);
-          next.delete(sessionId);
-          return next;
-        });
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    multiSplitSession,
-    splitAnalysisBySession,
-    splitSettings,
-    splitAnalysisLoadingIds,
-    aiBreakdowns,
-    scoreBreakdown,
-  ]);
-
-  useEffect(() => {
-    if (splitAnalysisBatchTimerRef.current !== null) {
-      window.clearTimeout(splitAnalysisBatchTimerRef.current);
-      splitAnalysisBatchTimerRef.current = null;
-    }
-
-    const pendingSessionIds = sessions
-      .filter((session) => !isAlreadySplitSession(session))
-      .map((session) => session.id)
-      .filter(
-        (sessionId) =>
-          splitEligibilityCacheRef.current.get(sessionId) !== splitSettingsKey,
-      );
-
-    if (pendingSessionIds.length === 0) {
-      return;
-    }
-
-    let cancelled = false;
-    const runBatch = (offset: number) => {
-      const batch = pendingSessionIds.slice(
-        offset,
-        offset + SPLIT_ANALYSIS_BATCH_SIZE,
-      );
-      if (batch.length === 0) {
-        splitAnalysisBatchTimerRef.current = null;
-        return;
-      }
-
-      void sessionsApi.analyzeSessionsSplittable(
-        batch,
-        splitSettings.toleranceThreshold,
-        splitSettings.maxProjectsPerSession,
-      )
-        .then((flags) => {
-          if (cancelled) return;
-          const splitFlagsBySession = new Map(
-            flags.map((flag) => [flag.session_id, flag.is_splittable] as const),
-          );
-          batch.forEach((sessionId) => {
-            splitEligibilityCacheRef.current.set(sessionId, splitSettingsKey);
-          });
-          setSplitEligibilityBySession((prev) => {
-            const next = new Map(prev);
-            let changed = false;
-            batch.forEach((sessionId) => {
-              const isSplittable = splitFlagsBySession.get(sessionId) ?? false;
-              if (next.get(sessionId) !== isSplittable) {
-                next.set(sessionId, isSplittable);
-                changed = true;
-              }
-            });
-            return changed ? next : prev;
-          });
-        })
-        .catch((error) => {
-          batch.forEach((sessionId) => {
-            splitEligibilityCacheRef.current.delete(sessionId);
-          });
-          console.error(error);
-        })
-        .finally(() => {
-          if (cancelled) return;
-          const nextOffset = offset + batch.length;
-          if (nextOffset >= pendingSessionIds.length) {
-            splitAnalysisBatchTimerRef.current = null;
-            return;
-          }
-          splitAnalysisBatchTimerRef.current = window.setTimeout(() => {
-            runBatch(nextOffset);
-          }, 0);
-        });
-    };
-
-    splitAnalysisBatchTimerRef.current = window.setTimeout(() => {
-      runBatch(0);
-    }, 0);
-
-    return () => {
-      cancelled = true;
-      if (splitAnalysisBatchTimerRef.current !== null) {
-        window.clearTimeout(splitAnalysisBatchTimerRef.current);
-        splitAnalysisBatchTimerRef.current = null;
-      }
-    };
-  }, [
-    sessions,
-    splitSettingsKey,
-    splitSettings.toleranceThreshold,
-    splitSettings.maxProjectsPerSession,
-  ]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      if (!indicators.showScoreBreakdown) {
-        setLoadingBreakdownIds(new Set());
-        return;
-      }
-      const visibleSessionIds = new Set(sessions.map((s) => s.id));
-      setAiBreakdowns((prev) => {
-        const next = new Map<number, ScoreBreakdown>();
-        prev.forEach((value, sessionId) => {
-          if (visibleSessionIds.has(sessionId)) {
-            next.set(sessionId, value);
-          }
-        });
-        aiBreakdownsRef.current = next;
-        return next;
-      });
-      setLoadingBreakdownIds((prev) => {
-        const next = new Set<number>();
-        prev.forEach((sessionId) => {
-          if (visibleSessionIds.has(sessionId)) {
-            next.add(sessionId);
-          }
-        });
-        return next;
-      });
-      if (scoreBreakdown && !visibleSessionIds.has(scoreBreakdown.sessionId)) {
-        setScoreBreakdown(null);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [sessions, indicators.showScoreBreakdown, scoreBreakdown]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -830,24 +521,13 @@ export function Sessions() {
   const openMultiSplitModal = (session: SessionWithApp) => {
     const derivedAnalysis = buildAnalysisFromBreakdown(
       session.id,
-      aiBreakdowns.get(session.id) ??
-        (scoreBreakdown?.sessionId === session.id ? scoreBreakdown.data : null),
+      getScoreBreakdownData(session.id),
       splitSettings.toleranceThreshold,
       splitSettings.maxProjectsPerSession,
     );
     const splitSuggested =
-      (splitEligibilityBySession.get(session.id) ?? false) ||
-      (derivedAnalysis?.is_splittable ?? false);
+      isSessionSplittable(session) || (derivedAnalysis?.is_splittable ?? false);
     if (!splitSuggested) return;
-
-    if (derivedAnalysis) {
-      setSplitAnalysisBySession((prev) => {
-        if (prev.has(session.id)) return prev;
-        const next = new Map(prev);
-        next.set(session.id, derivedAnalysis);
-        return next;
-      });
-    }
 
     setCtxMenu(null);
     setMultiSplitSession(session);
@@ -1072,129 +752,6 @@ export function Sessions() {
     [assignSessions],
   );
 
-  const loadScoreBreakdown = useCallback(
-    async (sessionId: number): Promise<ScoreBreakdown> => {
-      const currentBreakdowns = aiBreakdownsRef.current;
-      const cached =
-        currentBreakdowns.get(sessionId) ?? getCachedBreakdown(sessionId);
-      if (cached) {
-        if (!currentBreakdowns.has(sessionId)) {
-          setAiBreakdowns((prev) => {
-            if (prev.has(sessionId)) return prev;
-            const next = new Map(prev);
-            next.set(sessionId, cached);
-            aiBreakdownsRef.current = next;
-            return next;
-          });
-        }
-        return cached;
-      }
-
-      const inFlight = scoreBreakdownRequestsRef.current.get(sessionId);
-      if (inFlight) return inFlight;
-
-      setLoadingBreakdownIds((prev) => {
-        const next = new Set(prev);
-        next.add(sessionId);
-        return next;
-      });
-
-      const request = withTimeout(sessionsApi.getSessionScoreBreakdown(sessionId), 10_000)
-        .then((data) => {
-          scoreBreakdownCacheRef.current.set(sessionId, {
-            data,
-            fetchedAtMs: Date.now(),
-          });
-          setAiBreakdowns((prev) => {
-            if (prev.has(sessionId)) return prev;
-            const next = new Map(prev);
-            next.set(sessionId, data);
-            aiBreakdownsRef.current = next;
-            return next;
-          });
-          return data;
-        })
-        .catch((err) => {
-          logTauriError('load score breakdown', err);
-          return EMPTY_SCORE_BREAKDOWN;
-        })
-        .finally(() => {
-          scoreBreakdownRequestsRef.current.delete(sessionId);
-          setLoadingBreakdownIds((prev) => {
-            const next = new Set(prev);
-            next.delete(sessionId);
-            return next;
-          });
-        });
-
-      scoreBreakdownRequestsRef.current.set(sessionId, request);
-      return request;
-    },
-    [getCachedBreakdown],
-  );
-
-  const breakdownPrefetchIdsKey = useMemo(
-    () =>
-      sessions
-        .filter((session) => !isAlreadySplitSession(session))
-        .map((session) => session.id)
-        .join(','),
-    [sessions],
-  );
-
-  // Prefetch breakdowns only when the visible session ID set changes,
-  // which avoids rerunning the effect after each individual breakdown arrives.
-  useEffect(() => {
-    if (viewMode !== 'ai_detailed') return;
-
-    const sessionIds = breakdownPrefetchIdsKey
-      ? breakdownPrefetchIdsKey
-          .split(',')
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
-      : [];
-    if (sessionIds.length === 0) return;
-
-    const missingIds = sessionIds.filter(
-      (id) =>
-        !aiBreakdownsRef.current.has(id) &&
-        !getCachedBreakdown(id) &&
-        !scoreBreakdownRequestsRef.current.has(id),
-    );
-    if (missingIds.length === 0) return;
-
-    let cancelled = false;
-    const batchSize = 8;
-
-    const prefetch = async () => {
-      for (let index = 0; index < missingIds.length; index += batchSize) {
-        if (cancelled) return;
-        const batch = missingIds.slice(index, index + batchSize);
-        await Promise.allSettled(
-          batch.map((sessionId) => loadScoreBreakdown(sessionId)),
-        );
-      }
-    };
-
-    void prefetch();
-    return () => {
-      cancelled = true;
-    };
-  }, [breakdownPrefetchIdsKey, getCachedBreakdown, loadScoreBreakdown, viewMode]);
-
-  const handleToggleScoreBreakdown = useCallback(
-    async (sessionId: number, e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (scoreBreakdown?.sessionId === sessionId) {
-        setScoreBreakdown(null);
-        return;
-      }
-      const data = await loadScoreBreakdown(sessionId);
-      setScoreBreakdown({ sessionId, data });
-    },
-    [loadScoreBreakdown, scoreBreakdown],
-  );
-
   const loadMore = () => {
     sessionsApi.getSessions(buildFetchParams(sessions.length))
       .then((data) => {
@@ -1203,7 +760,7 @@ export function Sessions() {
           sessionsRef.current = next;
           return next;
         });
-        const nextHasMore = data.length >= PAGE_SIZE;
+        const nextHasMore = data.length >= SESSION_PAGE_SIZE;
         hasMoreRef.current = nextHasMore;
         setHasMore(nextHasMore);
       })
@@ -1251,7 +808,7 @@ export function Sessions() {
         .map((p) => p.id),
     );
     const newestAlpha = activeAlpha.filter((p) =>
-      isNewProjectForAssignList(p, newProjectMaxAgeMs),
+      isRecentProject(p, newProjectMaxAgeMs),
     );
     const topAlpha = activeAlpha.filter((p) => topProjectIds.has(p.id));
 
@@ -1344,7 +901,7 @@ export function Sessions() {
       const projectId = inferredProjectId;
       const projectColor = session.project_color ?? '#64748b';
       const key = isUnassigned
-        ? UNASSIGNED_GROUP_KEY
+        ? UNASSIGNED_PROJECT_SENTINEL
         : typeof projectId === 'number' && projectId > 0
           ? `id:${projectId}`
           : `name:${projectName.trim().toLowerCase()}`;
@@ -1377,31 +934,6 @@ export function Sessions() {
       return b.totalSeconds - a.totalSeconds;
     });
   }, [sessions, t, projectIdByName]);
-  const isSessionSplittable = useCallback(
-    (session: SessionWithApp): boolean => {
-      // Already split sessions must not be split again
-      if (isAlreadySplitSession(session)) return false;
-
-      const breakdown =
-        aiBreakdowns.get(session.id) ??
-        (scoreBreakdown?.sessionId === session.id ? scoreBreakdown.data : null);
-      const breakdownSuggestsSplit = isSplittableFromBreakdown(
-        breakdown,
-        splitSettings.toleranceThreshold,
-      );
-
-      const explicit = splitEligibilityBySession.get(session.id);
-      if (typeof explicit === 'boolean') return explicit || breakdownSuggestsSplit;
-
-      return breakdownSuggestsSplit;
-    },
-    [
-      splitEligibilityBySession,
-      aiBreakdowns,
-      scoreBreakdown,
-      splitSettings.toleranceThreshold,
-    ],
-  );
 
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }
@@ -1480,21 +1012,9 @@ export function Sessions() {
       projectId == null ? t('sessions.menu.unassigned') : name,
     [t],
   );
-  const getScoreBreakdownData = useCallback(
-    (sessionId: number) =>
-      aiBreakdowns.get(sessionId) ??
-      (scoreBreakdown?.sessionId === sessionId ? scoreBreakdown.data : null),
-    [aiBreakdowns, scoreBreakdown],
-  );
 
   const ctxMenuSplitSuggested = ctxMenu
     ? isSessionSplittable(ctxMenu.session)
-    : false;
-  const selectedSplitAnalysis = multiSplitSession
-    ? (splitAnalysisBySession.get(multiSplitSession.id) ?? null)
-    : null;
-  const selectedSplitAnalysisLoading = multiSplitSession
-    ? splitAnalysisLoadingIds.has(multiSplitSession.id)
     : false;
   const sessionsSummaryText = t('sessions.summary', {
     sessions: sessions.length,

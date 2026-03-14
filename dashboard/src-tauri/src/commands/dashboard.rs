@@ -44,14 +44,17 @@ fn build_dashboard_stats(
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map(rusqlite::params![&date_range.start, &date_range.end], |row| {
-            let color: Option<String> = row.get(2)?;
-            Ok(TopApp {
-                name: row.get(0)?,
-                seconds: row.get(1)?,
-                color,
-            })
-        })
+        .query_map(
+            rusqlite::params![&date_range.start, &date_range.end],
+            |row| {
+                let color: Option<String> = row.get(2)?;
+                Ok(TopApp {
+                    name: row.get(0)?,
+                    seconds: row.get(1)?,
+                    color,
+                })
+            },
+        )
         .map_err(|e| e.to_string())?;
     let mut top_apps: Vec<TopApp> = Vec::new();
     for row in rows {
@@ -138,9 +141,7 @@ fn build_dashboard_project_rows(
 
     let mut project_rows = Vec::new();
     for row in rows {
-        project_rows.push(
-            row.map_err(|e| format!("Failed to read dashboard project row: {}", e))?,
-        );
+        project_rows.push(row.map_err(|e| format!("Failed to read dashboard project row: {}", e))?);
     }
 
     let mut duplicate_counts: HashMap<String, usize> = HashMap::new();
@@ -267,13 +268,23 @@ pub async fn get_dashboard_data(
         let timeline_limit = timeline_limit.unwrap_or(8).clamp(1, 200) as usize;
         let hourly = matches!(timeline_granularity.as_deref(), Some("hour"));
 
-        let (bucket_project_seconds, project_totals, series_meta_by_key, bucket_flags, bucket_comments) =
-            compute_project_activity_unique(conn, &date_range, hourly, true, None)?;
+        let (
+            bucket_project_seconds,
+            project_totals,
+            series_meta_by_key,
+            bucket_flags,
+            bucket_comments,
+        ) = compute_project_activity_unique(conn, &date_range, hourly, true, None)?;
         let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
 
         Ok(DashboardData {
             stats: build_dashboard_stats(conn, &date_range, &project_totals, &series_meta_by_key)?,
-            top_projects: build_top_project_rows(&project_totals, &series_meta_by_key, &counts, top_limit)?,
+            top_projects: build_top_project_rows(
+                &project_totals,
+                &series_meta_by_key,
+                &counts,
+                top_limit,
+            )?,
             all_projects: build_dashboard_project_rows(conn, &project_totals, &counts)?,
             project_timeline: build_project_timeline_rows(
                 bucket_project_seconds,

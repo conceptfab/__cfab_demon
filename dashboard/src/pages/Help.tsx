@@ -289,7 +289,7 @@ export function Help() {
             >
               <SectionHelp
                 icon={<LayoutDashboard className="h-6 w-6" />}
-                title={t18n('help.sections.dashboard.title')}
+                title={t18n('help_page.dashboard')}
                 description={t18n('help_page.quick_overview_of_your_current_activity_and_key_performa')}
                 footer={t18n('help_page.key_functionalities')}
                 features={[
@@ -695,7 +695,16 @@ export function Help() {
                   t18n('help_page.backup_restore_database_manual_backups_restore_from_file'),
                   t18n('help_page.data_history_refreshes_after_real_data_changes_and_when_'),
                 ]}
-              />
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.import_page_detail_title')}
+                  items={[
+                    t18n('help_page.import_page_detail_what_it_does'),
+                    t18n('help_page.import_page_detail_when_to_use'),
+                    t18n('help_page.import_page_detail_limitations'),
+                  ]}
+                />
+              </SectionHelp>
             </TabsContent>
 
             <TabsContent
@@ -729,7 +738,7 @@ export function Help() {
             >
               <SectionHelp
                 icon={<Cpu className="h-6 w-6" />}
-                title={t18n('help.sections.daemon.title')}
+                title={t18n('help_page.daemon')}
                 description={t18n('help_page.control_center_for_the_background_process_responsible_fo')}
                 footer={t18n('help_page.key_functionalities')}
                 features={[

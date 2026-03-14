@@ -13,6 +13,8 @@ use crate::activity::ActivityType;
 use crate::process_utils::collect_process_entries;
 
 thread_local! {
+    // WMI/COM objects are apartment-threaded on Windows, so each polling thread
+    // keeps its own connection instead of sharing one across threads.
     static WMI_CONN_CACHE: std::cell::RefCell<Option<wmi::WMIConnection>> =
         std::cell::RefCell::new(None);
 }
@@ -129,10 +131,7 @@ fn decode_window_title(title_buf: &[u16], title_len: i32) -> String {
 
     let s = String::from_utf16_lossy(&title_buf[..title_len as usize]);
     if has_utf16_replacement_char(&s) {
-        log::debug!(
-            "Tytuł okna zawiera nieprawidłowe sekwencje UTF-16: {:?}",
-            s
-        );
+        log::debug!("Tytuł okna zawiera nieprawidłowe sekwencje UTF-16: {:?}", s);
     }
     s
 }
@@ -250,7 +249,19 @@ fn collect_pending_detected_path_pids(pid_cache: &PidCache) -> Vec<u32> {
             }
         })
         .collect();
-    pids.sort_unstable();
+    pids.sort_unstable_by(|left, right| {
+        let left_cached_at = pid_cache
+            .get(left)
+            .map(|entry| entry.cached_at)
+            .unwrap_or_else(Instant::now);
+        let right_cached_at = pid_cache
+            .get(right)
+            .map(|entry| entry.cached_at)
+            .unwrap_or_else(Instant::now);
+        right_cached_at
+            .cmp(&left_cached_at)
+            .then_with(|| left.cmp(right))
+    });
     pids.truncate(WMI_PATH_LOOKUP_BATCH_LIMIT);
     pids
 }
@@ -788,12 +799,13 @@ mod tests {
         activity_type: Option<ActivityType>,
         detected_path: Option<&str>,
         path_detection_attempted: bool,
+        cache_age_secs: u64,
     ) -> PidCacheEntry {
         let now = Instant::now();
         PidCacheEntry {
             exe_name: "code.exe".to_string(),
             creation_time: 123,
-            cached_at: now,
+            cached_at: now - std::time::Duration::from_secs(cache_age_secs),
             last_alive_check: now,
             detected_path: detected_path.map(str::to_string),
             activity_type,
@@ -875,11 +887,11 @@ mod tests {
         let mut pid_cache: PidCache = PidCache::new();
         pid_cache.insert(
             11,
-            sample_pid_cache_entry(Some(ActivityType::Coding), None, false),
+            sample_pid_cache_entry(Some(ActivityType::Coding), None, false, 1),
         );
         pid_cache.insert(
             12,
-            sample_pid_cache_entry(Some(ActivityType::Design), None, false),
+            sample_pid_cache_entry(Some(ActivityType::Design), None, false, 5),
         );
         pid_cache.insert(
             13,
@@ -887,15 +899,16 @@ mod tests {
                 Some(ActivityType::Coding),
                 Some(r"C:\work\done.rs"),
                 true,
+                3,
             ),
         );
         pid_cache.insert(
             14,
-            sample_pid_cache_entry(Some(ActivityType::Browsing), None, false),
+            sample_pid_cache_entry(Some(ActivityType::Browsing), None, false, 2),
         );
         pid_cache.insert(
             15,
-            sample_pid_cache_entry(Some(ActivityType::Coding), None, true),
+            sample_pid_cache_entry(Some(ActivityType::Coding), None, true, 4),
         );
 
         let pending = collect_pending_detected_path_pids(&pid_cache);

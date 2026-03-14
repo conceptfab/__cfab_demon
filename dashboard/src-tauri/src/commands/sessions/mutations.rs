@@ -74,7 +74,7 @@ fn assign_session_to_project_tx(
         return Err("Session not found".to_string());
     };
 
-    let updated_session = tx
+    let _updated_session = tx
         .execute(
             "UPDATE sessions SET project_id = ?1 WHERE id = ?2",
             rusqlite::params![project_id, session_id],
@@ -93,8 +93,8 @@ fn assign_session_to_project_tx(
         )
         .map_err(|e| e.to_string())?;
 
-    if updated == 0 && updated_session == 0 {
-        log::warn!("No overlapping file activity and no session found? Assignment saved nothing.");
+    if updated == 0 {
+        log::debug!("Assignment updated the session row without overlapping file activity.");
     }
 
     upsert_manual_session_override(tx, session_id, project_id).map_err(|e| {

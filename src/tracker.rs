@@ -10,14 +10,12 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, Timelike};
+use timeflow_shared::version_compat;
 
 use crate::activity::ActivityType;
 use crate::config;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
-
-#[path = "../shared/version_compat.rs"]
-mod version_compat;
 
 fn rebuild_file_index_cache(
     daily_data: &storage::DailyData,

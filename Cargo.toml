@@ -5,6 +5,10 @@ edition = "2021"
 description = "Windows tray daemon z monitorem aplikacji"
 autobins = false
 
+[workspace]
+members = [".", "dashboard/src-tauri", "shared"]
+resolver = "2"
+
 [[bin]]
 name = "timeflow-demon"
 path = "src/main.rs"
@@ -33,6 +37,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 
 # Logowanie
 log = { version = "0.4", features = ["std"] }
+timeflow-shared = { path = "shared" }
 
 # WinAPI
 winapi = { version = "0.3", features = [
@@ -55,3 +60,6 @@ lto = "thin"
 codegen-units = 1
 strip = false
 panic = "abort"
+
+[profile.release.package.timeflow-dashboard]
+opt-level = 2

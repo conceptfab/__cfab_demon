@@ -47,11 +47,9 @@ pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
         // so the last error code has not been overwritten.
         if GetLastError() == ERROR_ALREADY_EXISTS {
             CloseHandle(handle);
-            return Err(
-                crate::i18n::load_language()
-                    .t(crate::i18n::TrayText::AlreadyRunning)
-                    .to_string(),
-            );
+            return Err(crate::i18n::load_language()
+                .t(crate::i18n::TrayText::AlreadyRunning)
+                .to_string());
         }
 
         Ok(SingleInstanceGuard { handle })

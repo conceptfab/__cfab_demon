@@ -537,73 +537,61 @@ pub fn load_range_snapshots(
     start: &str,
     end: &str,
 ) -> Result<BTreeMap<String, StoredDailyData>, String> {
-    let mut headers_stmt = conn
+    let mut snapshots_stmt = conn
         .prepare_cached(
-            "SELECT date, generated_at
-             FROM daily_snapshots
-             WHERE date >= ?1 AND date <= ?2
-             ORDER BY date ASC",
+            "SELECT snapshots.date,
+                    snapshots.generated_at,
+                    apps.exe_name,
+                    apps.display_name,
+                    apps.total_seconds
+             FROM daily_snapshots AS snapshots
+             LEFT JOIN daily_apps AS apps
+               ON apps.date = snapshots.date
+             WHERE snapshots.date >= ?1 AND snapshots.date <= ?2
+             ORDER BY snapshots.date ASC, apps.exe_name COLLATE NOCASE",
         )
-        .map_err(|e| format!("Failed to prepare daily snapshot range query: {}", e))?;
-    let header_rows = headers_stmt
-        .query_map(params![start, end], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })
-        .map_err(|e| format!("Failed to query daily snapshot range: {}", e))?;
-
-    let mut snapshots = BTreeMap::new();
-    for row in header_rows {
-        let (date, generated_at) =
-            row.map_err(|e| format!("Failed to map daily snapshot header row: {}", e))?;
-        snapshots.insert(
-            date.clone(),
-            StoredDailyData {
-                date,
-                generated_at,
-                apps: BTreeMap::new(),
-            },
-        );
-    }
-    drop(headers_stmt);
-
-    if snapshots.is_empty() {
-        return Ok(snapshots);
-    }
-
-    let mut app_stmt = conn
-        .prepare_cached(
-            "SELECT date, exe_name, display_name, total_seconds
-             FROM daily_apps
-             WHERE date >= ?1 AND date <= ?2
-             ORDER BY date ASC, exe_name COLLATE NOCASE",
-        )
-        .map_err(|e| format!("Failed to prepare daily app range select: {}", e))?;
-    let app_rows = app_stmt
+        .map_err(|e| format!("Failed to prepare daily snapshot/app range query: {}", e))?;
+    let snapshot_rows = snapshots_stmt
         .query_map(params![start, end], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, u64>(3)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<u64>>(4)?,
             ))
         })
-        .map_err(|e| format!("Failed to query daily app range: {}", e))?;
-    for row in app_rows {
-        let (date, exe_name, display_name, total_seconds) =
-            row.map_err(|e| format!("Failed to map daily app range row: {}", e))?;
-        if let Some(snapshot) = snapshots.get_mut(&date) {
+        .map_err(|e| format!("Failed to query daily snapshot/app range: {}", e))?;
+
+    let mut snapshots = BTreeMap::new();
+    for row in snapshot_rows {
+        let (date, generated_at, exe_name, display_name, total_seconds) =
+            row.map_err(|e| format!("Failed to map daily snapshot/app range row: {}", e))?;
+        let snapshot = snapshots
+            .entry(date.clone())
+            .or_insert_with(|| StoredDailyData {
+                date,
+                generated_at,
+                apps: BTreeMap::new(),
+            });
+        if let Some(exe_name) = exe_name {
             snapshot.apps.insert(
                 exe_name,
                 StoredAppDailyData {
-                    display_name,
-                    total_seconds,
+                    display_name: display_name.unwrap_or_default(),
+                    total_seconds: total_seconds.unwrap_or(0),
                     sessions: Vec::new(),
                     files: Vec::new(),
                 },
             );
         }
     }
-    drop(app_stmt);
+
+    if snapshots.is_empty() {
+        return Ok(snapshots);
+    }
+
+    drop(snapshots_stmt);
 
     let mut session_stmt = conn
         .prepare_cached(

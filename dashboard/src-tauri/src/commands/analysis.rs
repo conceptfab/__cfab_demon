@@ -601,8 +601,7 @@ pub async fn get_project_timeline(
             series_meta_by_key,
             bucket_flags,
             bucket_comments,
-        ) =
-            compute_project_activity_unique(conn, &date_range, hourly, true, id)?;
+        ) = compute_project_activity_unique(conn, &date_range, hourly, true, id)?;
 
         if bucket_project_seconds.is_empty() {
             return Ok(Vec::new());

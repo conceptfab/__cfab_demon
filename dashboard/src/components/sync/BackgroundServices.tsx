@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
 import { useDataStore } from '@/store/data-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
 import {
@@ -24,7 +24,6 @@ import {
   JOB_LOOP_TICK_MS,
   bootstrapJobPool,
   buildTodayFileSignatureKey,
-  createJobPoolEventHandlers,
   isDocumentVisible,
   runAutoSplitCycle,
   runJobPoolTick,
@@ -179,52 +178,36 @@ function useAutoImporter() {
   }, [autoImportDone, setAutoImportDone, triggerRefresh]);
 }
 
-function useAutoProjectSync() {
-  const { autoImportDone, autoImportResult, setDiscoveredProjects } =
-    useDataStore();
-  const hasProcessedStartupRef = useRef(false);
+async function runAutoProjectSyncStartup(
+  autoImportResult: ReturnType<typeof useDataStore.getState>['autoImportResult'],
+  setDiscoveredProjects: ReturnType<typeof useDataStore.getState>['setDiscoveredProjects'],
+): Promise<void> {
+  const importedFiles = autoImportResult?.files_imported ?? 0;
+  const now = Date.now();
+  const meta = loadAutoProjectSyncMeta();
+  const shouldRunFolderSync =
+    importedFiles > 0 ||
+    isExpired(meta.lastFolderSyncAt, AUTO_PROJECT_FOLDER_SYNC_TTL_MS, now);
+  const shouldRunDetection =
+    importedFiles > 0 ||
+    isExpired(meta.lastDetectionAt, AUTO_PROJECT_DETECTION_TTL_MS, now);
 
-  useEffect(() => {
-    if (!autoImportDone || hasProcessedStartupRef.current) return;
-    hasProcessedStartupRef.current = true;
+  if (!shouldRunFolderSync && !shouldRunDetection) {
+    return;
+  }
 
-    const run = async () => {
-      try {
-        const importedFiles = autoImportResult?.files_imported ?? 0;
-        const now = Date.now();
-        const meta = loadAutoProjectSyncMeta();
-        const shouldRunFolderSync =
-          importedFiles > 0 ||
-          isExpired(meta.lastFolderSyncAt, AUTO_PROJECT_FOLDER_SYNC_TTL_MS, now);
-        const shouldRunDetection =
-          importedFiles > 0 ||
-          isExpired(meta.lastDetectionAt, AUTO_PROJECT_DETECTION_TTL_MS, now);
+  if (shouldRunFolderSync) {
+    const syncResult = await projectsApi.syncProjectsFromFolders();
+    saveAutoProjectSyncMeta({ lastFolderSyncAt: now });
+    if (syncResult.created_projects.length > 0) {
+      setDiscoveredProjects(syncResult.created_projects);
+    }
+  }
 
-        if (!shouldRunFolderSync && !shouldRunDetection) {
-          return;
-        }
-
-        if (shouldRunFolderSync) {
-          const syncResult = await projectsApi.syncProjectsFromFolders();
-          saveAutoProjectSyncMeta({ lastFolderSyncAt: now });
-          if (syncResult.created_projects.length > 0) {
-            setDiscoveredProjects(syncResult.created_projects);
-          }
-        }
-
-        if (shouldRunDetection) {
-          await projectsApi.autoCreateProjectsFromDetection(
-            ALL_TIME_DATE_RANGE,
-            2,
-          );
-          saveAutoProjectSyncMeta({ lastDetectionAt: now });
-        }
-      } catch (e) {
-        console.warn('Auto project sync failed:', e);
-      }
-    };
-    void run();
-  }, [autoImportDone, autoImportResult, setDiscoveredProjects]);
+  if (shouldRunDetection) {
+    await projectsApi.autoCreateProjectsFromDetection(ALL_TIME_DATE_RANGE, 2);
+    saveAutoProjectSyncMeta({ lastDetectionAt: now });
+  }
 }
 
 function useAutoSessionRebuild() {
@@ -245,15 +228,40 @@ function useAutoSessionRebuild() {
   }, []);
 }
 
-function useAutoAiAssignment() {
-  const { autoImportDone } = useDataStore();
+function useStartupProjectSyncAndAiAssignment() {
+  const { autoImportDone, autoImportResult, setDiscoveredProjects } =
+    useDataStore();
   const hasProcessedStartupRef = useRef(false);
 
   useEffect(() => {
     if (!autoImportDone || hasProcessedStartupRef.current) return;
     hasProcessedStartupRef.current = true;
-    void runAutoAiAssignmentCycle();
-  }, [autoImportDone]);
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        await runAutoProjectSyncStartup(
+          autoImportResult,
+          setDiscoveredProjects,
+        );
+      } catch (error) {
+        console.warn('Auto project sync failed:', error);
+      }
+
+      if (cancelled) return;
+
+      try {
+        await runAutoAiAssignmentCycle();
+      } catch (error) {
+        console.warn('AI auto-assignment failed:', error);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [autoImportDone, autoImportResult, setDiscoveredProjects]);
 }
 
 // === UNIVERSAL JOB POOL ===
@@ -371,6 +379,51 @@ function useJobPool() {
     [triggerRefresh],
   );
 
+  const handleSyncSettingsChange = useEffectEvent(() => {
+    refreshSyncSettingsCache();
+  });
+
+  const handleVisibilityChange = useEffectEvent(() => {
+    refreshSyncSettingsCache();
+    if (!isDocumentVisible()) return;
+
+    nextDiagnosticsRef.current = 0;
+    void refreshDiagnostics();
+    void refreshDatabaseSettings();
+
+    if (!autoImportDone) return;
+
+    nextRefreshRef.current = 0;
+    nextSigCheckRef.current = 0;
+    nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
+    nextSyncIntervalRef.current = 0;
+    nextSyncPollRef.current = 0;
+    void runRefresh();
+  });
+
+  const handleLocalDataChange = useEffectEvent(() => {
+    if (!isDocumentVisible()) return;
+
+    void refreshDatabaseSettings();
+
+    if (localChangeRefreshTimer.current) {
+      window.clearTimeout(localChangeRefreshTimer.current);
+    }
+    localChangeRefreshTimer.current = window.setTimeout(
+      () => triggerRefresh('background_local_data_changed'),
+      120,
+    );
+
+    if (!autoImportDone) return;
+
+    if (localChangeSyncTimer.current) {
+      window.clearTimeout(localChangeSyncTimer.current);
+    }
+    localChangeSyncTimer.current = window.setTimeout(() => {
+      void runSync('local_change');
+    }, 1_500);
+  });
+
   useEffect(() => {
     void refreshDiagnostics();
     void refreshDatabaseSettings();
@@ -415,59 +468,35 @@ function useJobPool() {
   ]);
 
   useEffect(() => {
-    const {
-      handleSyncSettingsChange,
-      handleVisibilityChange,
-      handleLocalDataChange,
-    } = createJobPoolEventHandlers({
-      autoImportDone,
-      nextDiagnosticsRef,
-      nextRefreshRef,
-      nextSigCheckRef,
-      nextAutoSplitRef,
-      nextSyncIntervalRef,
-      nextSyncPollRef,
-      localChangeRefreshTimer,
-      localChangeSyncTimer,
-      refreshSyncSettingsCache,
-      refreshDiagnostics,
-      refreshDatabaseSettings,
-      runRefresh,
-      runSync,
-      triggerRefresh,
-    });
+    const onSyncSettingsChange = () => {
+      handleSyncSettingsChange();
+    };
+    const onVisibilityChange = () => {
+      handleVisibilityChange();
+    };
+    const onLocalDataChange = () => {
+      handleLocalDataChange();
+    };
 
-    window.addEventListener('focus', handleSyncSettingsChange);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', onSyncSettingsChange);
+    document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener(
       ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
-      handleSyncSettingsChange,
+      onSyncSettingsChange,
     );
-    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, onLocalDataChange);
 
     return () => {
-      window.removeEventListener('focus', handleSyncSettingsChange);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', onSyncSettingsChange);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener(
         ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
-        handleSyncSettingsChange,
+        onSyncSettingsChange,
       );
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange,
-      );
+      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, onLocalDataChange);
       clearLocalChangeTimers();
     };
-  }, [
-    autoImportDone,
-    clearLocalChangeTimers,
-    refreshDatabaseSettings,
-    refreshDiagnostics,
-    runRefresh,
-    runSync,
-    triggerRefresh,
-    refreshSyncSettingsCache,
-  ]);
+  }, [clearLocalChangeTimers]);
 
   useEffect(() => {
     if (!autoImportDone) return;
@@ -481,9 +510,8 @@ function useJobPool() {
 
 export function BackgroundServices() {
   useAutoImporter();
-  useAutoProjectSync();
   useAutoSessionRebuild();
-  useAutoAiAssignment();
+  useStartupProjectSyncAndAiAssignment();
   useJobPool();
 
   return null;

@@ -1,9 +1,6 @@
-use std::process::Command;
 use std::sync::atomic::AtomicU64;
 use tauri::AppHandle;
-
-#[path = "../../../../shared/timeflow_paths.rs"]
-mod timeflow_paths;
+use timeflow_shared::timeflow_paths;
 
 use crate::db;
 
@@ -13,16 +10,7 @@ pub(crate) const PRUNE_CACHE_TTL_SECS: u64 = 300; // 5 minutes
 pub(crate) const DAEMON_EXE_NAME: &str = "timeflow-demon.exe";
 pub(crate) const DAEMON_AUTOSTART_LNK: &str = "TimeFlow Demon.lnk";
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-/// Hides the CMD window when running system processes (tasklist, taskkill, powershell).
-#[cfg(windows)]
-pub(crate) fn no_console(cmd: &mut Command) {
-    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-}
-#[cfg(not(windows))]
-pub(crate) fn no_console(_cmd: &mut Command) {}
+pub(crate) use timeflow_shared::process_utils::no_console;
 
 /// Validates that a file path is safe (no path traversal components).
 /// Returns an error string if the path is unsafe.

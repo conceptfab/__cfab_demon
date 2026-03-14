@@ -1,5 +1,3 @@
-use rusqlite::{OptionalExtension, ToSql};
-use crate::commands::types::DateRange;
 use crate::commands::assignment_model::{
     config::{clamp_i64, increment_feedback_counter},
     context::build_session_context,
@@ -7,6 +5,8 @@ use crate::commands::assignment_model::{
     AssignmentModelStatus, AutoSafeRollbackResult, AutoSafeRunResult, DeterministicResult,
     AUTO_SAFE_MIN_MARGIN,
 };
+use crate::commands::types::DateRange;
+use rusqlite::{OptionalExtension, ToSql};
 
 pub fn fetch_unassigned_session_ids(
     conn: &rusqlite::Connection,

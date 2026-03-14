@@ -6,10 +6,8 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-mod config;
-#[path = "../shared/daily_store.rs"]
-mod daily_store;
 mod activity;
+mod config;
 mod i18n;
 mod monitor;
 mod process_utils;
@@ -18,6 +16,7 @@ mod storage;
 mod tracker;
 mod tray;
 use crate::process_utils::no_console;
+pub use timeflow_shared::daily_store;
 
 /// Application name — single constant used everywhere
 pub const APP_NAME: &str = "TIMEFLOW Demon";

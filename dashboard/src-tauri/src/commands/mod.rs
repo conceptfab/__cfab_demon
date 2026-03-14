@@ -2,8 +2,6 @@ mod analysis;
 mod assignment_model;
 mod bughunter;
 mod daemon;
-#[path = "../../../../shared/daily_store.rs"]
-pub(crate) mod daily_store;
 pub(crate) mod daily_store_bridge;
 mod dashboard;
 mod database;
@@ -23,6 +21,7 @@ mod settings;
 mod sql_fragments;
 mod sync_log;
 mod types;
+pub(crate) use timeflow_shared::daily_store;
 
 // Re-export all public commands (required by tauri::generate_handler![])
 pub use analysis::*;

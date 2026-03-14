@@ -1,5 +1,7 @@
+use regex::Regex;
 use rusqlite::OptionalExtension;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use tauri::AppHandle;
 
 use super::super::assignment_model;
@@ -237,47 +239,16 @@ fn validate_split_parts(splits: &[SplitPart]) -> Result<(), String> {
 
 /// Remove all "Split N/M" markers (including parenthesized and pipe-separated)
 /// from a comment string to prevent nested markers like "Split 1/2 (Split 1/2)".
+static SPLIT_MARKER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?ix)(?:^|\s*\|\s*|\s+)\(?split\s+\d+/\d+\)?").expect("valid split marker regex")
+});
+
 fn strip_split_markers(input: &str) -> String {
-    let mut result = input.to_string();
-    // Remove patterns like "(Split 1/2)", "Split 1/2", "| Split 1/2"
-    loop {
-        let before = result.clone();
-        // Remove parenthesized: (Split N/N)
-        if let Some(start) = result.find("(Split ") {
-            if let Some(end) = result[start..].find(')') {
-                let candidate = &result[start..start + end + 1];
-                if candidate.contains('/') {
-                    result = format!("{}{}", &result[..start], &result[start + end + 1..]);
-                }
-            }
-        }
-        // Remove bare: Split N/N (only if it looks like a split marker)
-        if let Some(start) = result.find("Split ") {
-            let rest = &result[start + 6..];
-            if let Some(slash) = rest.find('/') {
-                let before_slash = &rest[..slash];
-                let after_slash_end = rest[slash + 1..]
-                    .find(|c: char| !c.is_ascii_digit())
-                    .unwrap_or(rest.len() - slash - 1);
-                let after_slash = &rest[slash + 1..slash + 1 + after_slash_end];
-                if before_slash.chars().all(|c| c.is_ascii_digit())
-                    && !before_slash.is_empty()
-                    && after_slash.chars().all(|c| c.is_ascii_digit())
-                    && !after_slash.is_empty()
-                {
-                    let marker_end = start + 6 + slash + 1 + after_slash_end;
-                    result = format!("{}{}", &result[..start], &result[marker_end..]);
-                }
-            }
-        }
-        // Remove leftover separators
-        result = result.replace(" | ", " ").replace("  ", " ");
-        result = result.trim().to_string();
-        if result == before {
-            break;
-        }
-    }
-    result
+    SPLIT_MARKER_RE
+        .replace_all(input, " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub(crate) fn execute_session_split(

@@ -2,6 +2,7 @@ import { format, parseISO } from 'date-fns';
 import type { Locale } from 'date-fns';
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { formatMultiplierLabel } from '@/lib/rate-utils';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -52,17 +53,7 @@ export function formatPathForDisplay(path: string): string {
   return s;
 }
 
-export function formatMultiplierLabel(multiplier?: number): string {
-  const value =
-    typeof multiplier === 'number' &&
-    Number.isFinite(multiplier) &&
-    multiplier > 0
-      ? multiplier
-      : 1;
-  return Number.isInteger(value)
-    ? `x${value.toFixed(0)}`
-    : `x${value.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}`;
-}
+export { formatMultiplierLabel };
 
 export function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;

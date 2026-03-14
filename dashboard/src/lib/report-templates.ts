@@ -18,10 +18,32 @@ function generateId(): string {
   return crypto.randomUUID ? crypto.randomUUID() : `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function getDefaultTemplateName(): string {
+  return i18n.t('reports_page.template.default_template');
+}
+
+function normalizeTemplate(template: ReportTemplate): ReportTemplate {
+  const defaultName = getDefaultTemplateName();
+  const normalizedName =
+    template.id === 'default' &&
+    (!template.name || template.name === 'reports_page.template.default_template')
+      ? defaultName
+      : template.name;
+
+  return {
+    ...template,
+    name: normalizedName,
+    sections:
+      Array.isArray(template.sections) && template.sections.length > 0
+        ? template.sections
+        : [...DEFAULT_SECTIONS],
+  };
+}
+
 function createDefaultTemplate(): ReportTemplate {
   return {
     id: 'default',
-    name: i18n.t('reports_page.template.default_template'),
+    name: getDefaultTemplateName(),
     sections: [...DEFAULT_SECTIONS],
     showLogo: true,
     createdAt: new Date().toISOString(),
@@ -42,7 +64,7 @@ export function loadTemplates(): ReportTemplate[] {
       saveTemplates([defaultTpl]);
       return [defaultTpl];
     }
-    const parsed = JSON.parse(raw) as ReportTemplate[];
+    const parsed = (JSON.parse(raw) as ReportTemplate[]).map(normalizeTemplate);
     return parsed.length > 0 ? parsed : [createDefaultTemplate()];
   } catch {
     return [createDefaultTemplate()];
@@ -50,7 +72,10 @@ export function loadTemplates(): ReportTemplate[] {
 }
 
 export function saveTemplates(templates: ReportTemplate[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify(templates.map(normalizeTemplate)),
+  );
 }
 
 export function getSelectedTemplateId(): string {
@@ -63,7 +88,7 @@ export function setSelectedTemplateId(id: string): void {
 
 export function getTemplate(id: string): ReportTemplate {
   const all = loadTemplates();
-  return all.find(t => t.id === id) || all[0] || createDefaultTemplate();
+  return normalizeTemplate(all.find(t => t.id === id) || all[0] || createDefaultTemplate());
 }
 
 export function saveTemplate(template: ReportTemplate): ReportTemplate[] {
@@ -74,9 +99,9 @@ export function saveTemplate(template: ReportTemplate): ReportTemplate[] {
     updatedAt: new Date().toISOString(),
   };
   if (idx >= 0) {
-    all[idx] = nextTemplate;
+    all[idx] = normalizeTemplate(nextTemplate);
   } else {
-    all.push(nextTemplate);
+    all.push(normalizeTemplate(nextTemplate));
   }
   saveTemplates(all);
   return all;

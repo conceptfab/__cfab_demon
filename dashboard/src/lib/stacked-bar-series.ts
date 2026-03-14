@@ -1,8 +1,12 @@
 import type { StackedBarData, StackedSeriesMeta } from '@/lib/db-types';
-import { localizeProjectLabel } from '@/lib/project-labels';
+import {
+  localizeProjectLabel,
+  OTHER_PROJECT_SENTINEL,
+  UNASSIGNED_PROJECT_SENTINEL,
+} from '@/lib/project-labels';
 
-export const OTHER_STACKED_SERIES_KEY = '__other__';
-export const UNASSIGNED_STACKED_SERIES_KEY = '__unassigned__';
+export const OTHER_STACKED_SERIES_KEY = OTHER_PROJECT_SENTINEL;
+export const UNASSIGNED_STACKED_SERIES_KEY = UNASSIGNED_PROJECT_SENTINEL;
 
 const STACKED_BAR_RESERVED_KEYS = new Set([
   'date',

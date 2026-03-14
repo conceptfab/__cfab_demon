@@ -1,6 +1,6 @@
+use rusqlite::{OptionalExtension, ToSql};
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
-use rusqlite::{OptionalExtension, ToSql};
 
 use crate::commands::assignment_model::{
     config::is_project_active_cached,
@@ -299,7 +299,10 @@ pub fn get_session_score_breakdown_sync(
     })
 }
 
-pub fn meets_suggest_threshold(status: &AssignmentModelStatus, suggestion: &ProjectSuggestion) -> bool {
+pub fn meets_suggest_threshold(
+    status: &AssignmentModelStatus,
+    suggestion: &ProjectSuggestion,
+) -> bool {
     suggestion.confidence >= status.min_confidence_suggest
 }
 

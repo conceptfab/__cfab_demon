@@ -87,11 +87,7 @@ fn truncate_middle(value: &str, max_chars: usize) -> String {
     let head_len = (max_chars - 3) / 2;
     let tail_len = max_chars - 3 - head_len;
     let head: String = chars.iter().take(head_len).copied().collect();
-    let tail: String = chars
-        .iter()
-        .skip(chars.len() - tail_len)
-        .copied()
-        .collect();
+    let tail: String = chars.iter().skip(chars.len() - tail_len).copied().collect();
     format!("{}...{}", head, tail)
 }
 
@@ -129,7 +125,8 @@ pub(crate) fn prepare_daily_for_storage(data: &mut DailyData) {
             let mut normalized_history = Vec::new();
             for title in &file_entry.title_history {
                 let sanitized = sanitize_title_history_entry(title);
-                if sanitized.is_empty() || normalized_history.iter().any(|entry| entry == &sanitized)
+                if sanitized.is_empty()
+                    || normalized_history.iter().any(|entry| entry == &sanitized)
                 {
                     continue;
                 }
@@ -241,10 +238,6 @@ fn from_stored_daily(data: crate::daily_store::StoredDailyData) -> DailyData {
     update_summary(&mut daily);
     daily
 }
-
-
-
-
 
 /// Ładuje dane dzienne (lub tworzy pustą strukturę)
 pub fn load_daily(date: NaiveDate) -> DailyData {
@@ -395,11 +388,9 @@ mod tests {
         );
         assert_eq!(file_entry.title_history.len(), MAX_TITLE_HISTORY_LEN);
         assert_eq!(file_entry.title_history[0], "same");
-        assert!(
-            file_entry
-                .title_history
-                .iter()
-                .all(|entry| entry.chars().count() <= MAX_TITLE_HISTORY_ENTRY_CHARS)
-        );
+        assert!(file_entry
+            .title_history
+            .iter()
+            .all(|entry| entry.chars().count() <= MAX_TITLE_HISTORY_ENTRY_CHARS));
     }
 }

@@ -11,6 +11,7 @@ import {
   updateSessionRateMultiplier,
   updateSessionRateMultipliersBatch,
 } from '@/lib/tauri';
+export { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 
 type SessionIdsInput = number | number[];
 
@@ -42,14 +43,6 @@ export function findSessionIdsMissingComment(
     const comment = getCommentById(sessionId);
     return !comment || !comment.trim();
   });
-}
-
-export function parsePositiveRateMultiplierInput(raw: string): number | null {
-  const parsed = Number(raw.trim().replace(',', '.'));
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return parsed;
 }
 
 export function useSessionActions(options: UseSessionActionsOptions = {}) {

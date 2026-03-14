@@ -75,7 +75,7 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
                         < 0.000_001
                     && (sessions[i].start_ms - curr_end) <= gap_ms
                 {
-                    let gap_duration = (sessions[i].start_ms - curr_end) / 1000;
+                    let gap_duration = ((sessions[i].start_ms - curr_end) / 1000).max(0);
                     let new_end = std::cmp::max(curr_end, sessions[i].end_ms);
                     sessions[c_idx].end_ms = new_end;
                     sessions[c_idx].duration_seconds += sessions[i].duration_seconds + gap_duration;

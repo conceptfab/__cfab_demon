@@ -386,10 +386,8 @@ fn query_projects_with_stats(
         )
         .map_err(|e| e.to_string())?;
 
-    let mut all_time_totals: std::collections::HashMap<i64, i64> =
-        std::collections::HashMap::new();
-    let mut period_totals: std::collections::HashMap<i64, i64> =
-        std::collections::HashMap::new();
+    let mut all_time_totals: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    let mut period_totals: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
 
     // 1. Always compute All-Time totals
     if let (Some(start), Some(end)) = (min_date.clone(), max_date.clone()) {
@@ -398,9 +396,11 @@ fn query_projects_with_stats(
         all_time_totals = totals
             .into_iter()
             .filter_map(|(series_key, seconds)| {
-                series_meta_by_key
-                    .get(&series_key)
-                    .and_then(|series| series.project_id.map(|project_id| (project_id, seconds.round() as i64)))
+                series_meta_by_key.get(&series_key).and_then(|series| {
+                    series
+                        .project_id
+                        .map(|project_id| (project_id, seconds.round() as i64))
+                })
             })
             .collect();
     }
@@ -412,9 +412,11 @@ fn query_projects_with_stats(
         period_totals = totals
             .into_iter()
             .filter_map(|(series_key, seconds)| {
-                series_meta_by_key
-                    .get(&series_key)
-                    .and_then(|series| series.project_id.map(|project_id| (project_id, seconds.round() as i64)))
+                series_meta_by_key.get(&series_key).and_then(|series| {
+                    series
+                        .project_id
+                        .map(|project_id| (project_id, seconds.round() as i64))
+                })
             })
             .collect();
     }

@@ -11,16 +11,12 @@ import type {
   DaemonStatus,
   DatabaseSettings,
 } from '@/lib/db-types';
+import { buildTodayDate } from '@/lib/date-utils';
 import { logTauriError } from '@/lib/utils';
 
 let diagnosticsInFlight = false;
 let aiStatusInFlight = false;
 let databaseSettingsInFlight = false;
-
-function buildTodayDate(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
 
 interface BackgroundStatusState {
   daemonStatus: DaemonStatus | null;

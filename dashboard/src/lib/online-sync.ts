@@ -44,6 +44,7 @@ export const ONLINE_SYNC_SETTINGS_CHANGED_EVENT =
 const LEGACY_ONLINE_SYNC_SETTINGS_KEY = 'cfab.settings.online-sync';
 const LEGACY_ONLINE_SYNC_STATE_KEY = 'cfab.sync.state';
 export const DEFAULT_ONLINE_SYNC_SERVER_URL =
+  normalizeServerUrl(import.meta.env.VITE_TIMEFLOW_SYNC_SERVER_URL) ||
   'https://cfabserver-production.up.railway.app';
 
 class SyncHttpError extends Error {

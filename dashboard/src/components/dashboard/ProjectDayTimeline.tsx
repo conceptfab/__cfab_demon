@@ -15,6 +15,10 @@ import {
 } from "@/lib/user-settings";
 import { normalizeHexColor } from "@/lib/normalize";
 import { localizeProjectLabel } from "@/lib/project-labels";
+import {
+  compareProjectsByName,
+  isRecentProject,
+} from "@/lib/project-utils";
 import type { SessionWithApp, ProjectWithStats, ManualSessionWithProject } from "@/lib/db-types";
 import type { PromptConfig } from "@/lib/ui-types";
 import { useUIStore } from "@/store/ui-store";
@@ -148,17 +152,6 @@ function loadTimelineSaveView(): boolean {
   } catch {
     return true;
   }
-}
-
-function compareProjectsByName(a: ProjectWithStats, b: ProjectWithStats): number {
-  return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-}
-
-function isNewProjectForAssignList(project: ProjectWithStats, maxAgeMs: number): boolean {
-  const createdAtMs = new Date(project.created_at).getTime();
-  if (!Number.isFinite(createdAtMs)) return false;
-  const ageMs = Date.now() - createdAtMs;
-  return ageMs >= 0 && ageMs < maxAgeMs;
 }
 
 const HATCH_STYLE: React.CSSProperties = {
@@ -865,7 +858,7 @@ export function ProjectDayTimeline({
         .map((p) => p.id)
     );
     const newestAlpha = activeAlpha.filter((p) =>
-      isNewProjectForAssignList(p, newProjectMaxAgeMs)
+      isRecentProject(p, newProjectMaxAgeMs)
     );
     const topAlpha = activeAlpha.filter((p) => topProjectIds.has(p.id));
 

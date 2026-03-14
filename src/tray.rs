@@ -8,13 +8,11 @@ use std::time::{Duration, Instant};
 
 use native_windows_gui as nwg;
 use rusqlite::OptionalExtension;
+use timeflow_shared::session_settings;
 
 use crate::i18n::{self, Lang, TrayText};
 use crate::process_utils::{collect_process_entries, no_console};
 use crate::APP_NAME;
-
-#[path = "../shared/session_settings.rs"]
-mod session_settings;
 
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
