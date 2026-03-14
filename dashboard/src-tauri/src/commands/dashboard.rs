@@ -5,7 +5,7 @@ use super::analysis::{
     build_stacked_bar_output, compute_project_activity_unique, project_series_key,
 };
 use super::helpers::{disambiguate_name, duplicate_name_counts, name_hash, run_db_blocking};
-use super::sql_fragments::SESSION_PROJECT_CTE;
+use super::sql_fragments::{ACTIVE_SESSION_FILTER, ACTIVE_SESSION_FILTER_S, SESSION_PROJECT_CTE};
 use super::types::{
     AppWithStats, DashboardData, DashboardStats, DateRange, HourlyData, ProjectTimeRow,
     StackedSeriesMeta, TimelinePoint, TopApp, TopProject,
@@ -28,18 +28,19 @@ fn build_dashboard_stats(
         total_seconds / day_count
     };
 
+    let sql = format!(
+        "SELECT a.display_name, SUM(s.duration_seconds) as total, 
+                COALESCE(a.color, p.color) as color
+         FROM sessions s
+         JOIN applications a ON a.id = s.app_id
+         LEFT JOIN projects p ON p.id = a.project_id
+         WHERE s.date >= ?1 AND s.date <= ?2 AND {ACTIVE_SESSION_FILTER_S}
+         GROUP BY s.app_id
+         ORDER BY total DESC
+         LIMIT 5",
+    );
     let mut stmt = conn
-        .prepare_cached(
-            "SELECT a.display_name, SUM(s.duration_seconds) as total, 
-                    COALESCE(a.color, p.color) as color
-             FROM sessions s
-             JOIN applications a ON a.id = s.app_id
-             LEFT JOIN projects p ON p.id = a.project_id
-             WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-             GROUP BY s.app_id
-             ORDER BY total DESC
-             LIMIT 5",
-        )
+        .prepare_cached(&sql)
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
@@ -227,31 +228,32 @@ fn query_dashboard_counters(
     start: &str,
     end: &str,
 ) -> Result<(i64, i64, i64), String> {
+    let sql = format!(
+        "SELECT
+            (SELECT COUNT(DISTINCT app_id)
+             FROM sessions
+             WHERE date >= ?1 AND date <= ?2 AND {ACTIVE_SESSION_FILTER}),
+            (SELECT COUNT(*)
+             FROM sessions
+             WHERE date >= ?1 AND date <= ?2 AND {ACTIVE_SESSION_FILTER}) +
+            (SELECT COUNT(*)
+             FROM manual_sessions
+             WHERE date >= ?1 AND date <= ?2),
+            (SELECT
+                CASE
+                    WHEN COUNT(DISTINCT date) = 0 THEN 1
+                    ELSE COUNT(DISTINCT date)
+                END
+             FROM (
+                 SELECT date FROM sessions WHERE date >= ?1 AND date <= ?2 AND {ACTIVE_SESSION_FILTER}
+                 UNION
+                 SELECT date FROM manual_sessions WHERE date >= ?1 AND date <= ?2
+             ))",
+    );
     let (app_count, session_count, day_count): (i64, i64, i64) = conn
-        .query_row(
-            "SELECT
-                (SELECT COUNT(DISTINCT app_id)
-                 FROM sessions
-                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)),
-                (SELECT COUNT(*)
-                 FROM sessions
-                 WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)) +
-                (SELECT COUNT(*)
-                 FROM manual_sessions
-                 WHERE date >= ?1 AND date <= ?2),
-                (SELECT
-                    CASE
-                        WHEN COUNT(DISTINCT date) = 0 THEN 1
-                        ELSE COUNT(DISTINCT date)
-                    END
-                 FROM (
-                     SELECT date FROM sessions WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
-                     UNION
-                     SELECT date FROM manual_sessions WHERE date >= ?1 AND date <= ?2
-                 ))",
-            rusqlite::params![start, end],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
+        .query_row(&sql, rusqlite::params![start, end], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })
         .map_err(|e| e.to_string())?;
 
     Ok((app_count, session_count, day_count))
@@ -308,20 +310,19 @@ fn query_project_counts(
 #[tauri::command]
 pub async fn get_activity_date_span(app: AppHandle) -> Result<Option<DateRange>, String> {
     run_db_blocking(app, move |conn| {
+        let sql = format!(
+            "SELECT MIN(d), MAX(d)
+             FROM (
+                 SELECT date as d
+                 FROM sessions
+                 WHERE {ACTIVE_SESSION_FILTER}
+                 UNION ALL
+                 SELECT date as d
+                 FROM manual_sessions
+             )",
+        );
         let (start, end): (Option<String>, Option<String>) = conn
-            .query_row(
-                "SELECT MIN(d), MAX(d)
-                 FROM (
-                     SELECT date as d
-                     FROM sessions
-                     WHERE (is_hidden IS NULL OR is_hidden = 0)
-                     UNION ALL
-                     SELECT date as d
-                     FROM manual_sessions
-                 )",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
+            .query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?)))
             .map_err(|e| e.to_string())?;
 
         match (start, end) {
@@ -431,40 +432,42 @@ pub async fn get_applications(
         let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
             if let Some(dr) = date_range {
                 (
-                    "SELECT a.id, a.executable_name, a.display_name, a.project_id,
-                            COALESCE(SUM(s.duration_seconds), 0) as total_seconds,
-                            COUNT(s.id) as session_count,
-                            MAX(s.end_time) as last_used,
-                            p.name as project_name,
-                            p.color as project_color,
-                            a.color as app_color
-                     FROM applications a
-                     LEFT JOIN sessions s
-                       ON s.app_id = a.id
-                      AND s.date >= ?1
-                      AND s.date <= ?2
-                      AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                     LEFT JOIN projects p ON p.id = a.project_id
-                     GROUP BY a.id
-                     ORDER BY total_seconds DESC"
-                        .to_string(),
+                    format!(
+                        "SELECT a.id, a.executable_name, a.display_name, a.project_id,
+                                COALESCE(SUM(s.duration_seconds), 0) as total_seconds,
+                                COUNT(s.id) as session_count,
+                                MAX(s.end_time) as last_used,
+                                p.name as project_name,
+                                p.color as project_color,
+                                a.color as app_color
+                         FROM applications a
+                         LEFT JOIN sessions s
+                           ON s.app_id = a.id
+                          AND s.date >= ?1
+                          AND s.date <= ?2
+                          AND {ACTIVE_SESSION_FILTER_S}
+                         LEFT JOIN projects p ON p.id = a.project_id
+                         GROUP BY a.id
+                         ORDER BY total_seconds DESC",
+                    ),
                     vec![Box::new(dr.start), Box::new(dr.end)],
                 )
             } else {
                 (
-                    "SELECT a.id, a.executable_name, a.display_name, a.project_id,
-                            COALESCE(SUM(s.duration_seconds), 0) as total_seconds,
-                            COUNT(s.id) as session_count,
-                            MAX(s.end_time) as last_used,
-                            p.name as project_name,
-                            p.color as project_color,
-                            a.color as app_color
-                     FROM applications a
-                     LEFT JOIN sessions s ON s.app_id = a.id AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                     LEFT JOIN projects p ON p.id = a.project_id
-                     GROUP BY a.id
-                     ORDER BY total_seconds DESC"
-                        .to_string(),
+                    format!(
+                        "SELECT a.id, a.executable_name, a.display_name, a.project_id,
+                                COALESCE(SUM(s.duration_seconds), 0) as total_seconds,
+                                COUNT(s.id) as session_count,
+                                MAX(s.end_time) as last_used,
+                                p.name as project_name,
+                                p.color as project_color,
+                                a.color as app_color
+                         FROM applications a
+                         LEFT JOIN sessions s ON s.app_id = a.id AND {ACTIVE_SESSION_FILTER_S}
+                         LEFT JOIN projects p ON p.id = a.project_id
+                         GROUP BY a.id
+                         ORDER BY total_seconds DESC",
+                    ),
                     Vec::new(),
                 )
             };
@@ -553,14 +556,15 @@ pub async fn get_app_timeline(
     date_range: DateRange,
 ) -> Result<Vec<TimelinePoint>, String> {
     run_db_blocking(app, move |conn| {
+        let sql = format!(
+            "SELECT date, SUM(duration_seconds)
+             FROM sessions
+             WHERE app_id = ?1 AND date >= ?2 AND date <= ?3 AND {ACTIVE_SESSION_FILTER}
+             GROUP BY date
+             ORDER BY date",
+        );
         let mut stmt = conn
-            .prepare_cached(
-                "SELECT date, SUM(duration_seconds)
-                 FROM sessions
-                 WHERE app_id = ?1 AND date >= ?2 AND date <= ?3 AND (is_hidden IS NULL OR is_hidden = 0)
-                 GROUP BY date
-                 ORDER BY date",
-            )
+            .prepare_cached(&sql)
             .map_err(|e| e.to_string())?;
 
         let rows = stmt

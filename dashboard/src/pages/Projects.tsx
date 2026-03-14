@@ -50,12 +50,9 @@ import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import {
-  APP_REFRESH_EVENT,
-  LOCAL_DATA_CHANGED_EVENT,
   PROJECTS_ALL_TIME_INVALIDATED_EVENT,
-  type AppRefreshDetail,
-  type LocalDataChangedDetail,
 } from '@/lib/sync-events';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import {
   buildEstimateMap,
   shouldInvalidateProjectExtraInfo,
@@ -337,53 +334,30 @@ export function Projects() {
     void loadProjectsAllTime();
   }, []);
 
+  usePageRefreshListener((reasons, source) => {
+    if (reasons.some((reason) => shouldRefreshProjectsPageCore(reason))) {
+      invalidateCoreData();
+    }
+    if (reasons.some((reason) => shouldRefreshProjectsPageFolders(reason))) {
+      invalidateFolderData();
+    }
+    if (reasons.some((reason) => shouldRefreshProjectsPageAllTime(reason))) {
+      invalidateAllTimeData();
+    }
+    if (
+      source === 'local' &&
+      reasons.some((reason) => shouldInvalidateProjectExtraInfo(reason))
+    ) {
+      invalidateProjectExtraInfoCache();
+    }
+  });
+
   useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason) return;
-
-      if (shouldRefreshProjectsPageCore(reason)) {
-        invalidateCoreData();
-      }
-      if (shouldRefreshProjectsPageFolders(reason)) {
-        invalidateFolderData();
-      }
-      if (shouldRefreshProjectsPageAllTime(reason)) {
-        invalidateAllTimeData();
-      }
-      if (shouldInvalidateProjectExtraInfo(reason)) {
-        invalidateProjectExtraInfoCache();
-      }
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (reasons.some((reason) => shouldRefreshProjectsPageCore(reason))) {
-        invalidateCoreData();
-      }
-      if (reasons.some((reason) => shouldRefreshProjectsPageFolders(reason))) {
-        invalidateFolderData();
-      }
-      if (reasons.some((reason) => shouldRefreshProjectsPageAllTime(reason))) {
-        invalidateAllTimeData();
-      }
-    };
-
     const handleAllTimeInvalidated = () => {
       invalidateAllTimeData();
       invalidateProjectExtraInfoCache();
     };
 
-    window.addEventListener(
-      APP_REFRESH_EVENT,
-      handleAppRefresh as EventListener,
-    );
-    window.addEventListener(
-      LOCAL_DATA_CHANGED_EVENT,
-      handleLocalDataChange as EventListener,
-    );
     window.addEventListener(
       PROJECTS_ALL_TIME_INVALIDATED_EVENT,
       handleAllTimeInvalidated,
@@ -391,24 +365,11 @@ export function Projects() {
 
     return () => {
       window.removeEventListener(
-        APP_REFRESH_EVENT,
-        handleAppRefresh as EventListener,
-      );
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange as EventListener,
-      );
-      window.removeEventListener(
         PROJECTS_ALL_TIME_INVALIDATED_EVENT,
         handleAllTimeInvalidated,
       );
     };
-  }, [
-    invalidateAllTimeData,
-    invalidateCoreData,
-    invalidateFolderData,
-    invalidateProjectExtraInfoCache,
-  ]);
+  }, [invalidateAllTimeData, invalidateProjectExtraInfoCache]);
 
   const hotProjectIds = useMemo(() => {
     return new Set(

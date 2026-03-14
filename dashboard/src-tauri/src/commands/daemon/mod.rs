@@ -7,6 +7,7 @@ use timeflow_shared::{session_settings, version_compat};
 
 use super::helpers::{no_console, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
 use super::types::DaemonStatus;
+use crate::commands::sql_fragments::ACTIVE_SESSION_FILTER_S;
 use crate::db;
 
 mod control;
@@ -215,13 +216,15 @@ fn query_unassigned_counts(app: &AppHandle, min_duration_sec: i64) -> (i64, i64)
     };
 
     conn.query_row(
-        "SELECT
-            COUNT(*) as unassigned_sessions,
-            COUNT(DISTINCT s.app_id) as unassigned_apps
-         FROM sessions s
-         WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
-           AND s.project_id IS NULL
-           AND s.duration_seconds >= ?1",
+        &format!(
+            "SELECT
+                COUNT(*) as unassigned_sessions,
+                COUNT(DISTINCT s.app_id) as unassigned_apps
+             FROM sessions s
+             WHERE {ACTIVE_SESSION_FILTER_S}
+               AND s.project_id IS NULL
+               AND s.duration_seconds >= ?1"
+        ),
         [min_duration_sec],
         |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
     )

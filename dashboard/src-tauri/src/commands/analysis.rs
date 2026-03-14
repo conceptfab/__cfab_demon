@@ -7,7 +7,7 @@ use tauri::AppHandle;
 
 use super::datetime::parse_datetime_local;
 use super::helpers::{disambiguate_name, duplicate_name_counts, run_db_blocking};
-use super::sql_fragments::SESSION_PROJECT_CTE;
+use super::sql_fragments::{ACTIVE_SESSION_FILTER, ACTIVE_SESSION_FILTER_S, SESSION_PROJECT_CTE};
 use super::types::{DateRange, HeatmapCell, StackedBarData, StackedSeriesMeta};
 
 pub(crate) const OTHER_PROJECT_SERIES_KEY: &str = "__other__";
@@ -535,21 +535,22 @@ pub async fn get_heatmap(
     date_range: DateRange,
 ) -> Result<Vec<HeatmapCell>, String> {
     run_db_blocking(app, move |conn| {
+        let sql = format!(
+            "SELECT CAST(strftime('%w', date) AS INTEGER) as day_of_week,
+                    CAST(SUBSTR(start_time, 12, 2) AS INTEGER) as hour,
+                    SUM(val)
+             FROM (
+                 SELECT date, start_time, duration_seconds * COALESCE(rate_multiplier, 1.0) as val FROM sessions
+                 WHERE date >= ?1 AND date <= ?2 AND {ACTIVE_SESSION_FILTER}
+                 UNION ALL
+                 SELECT date, start_time, duration_seconds as val FROM manual_sessions
+                 WHERE date >= ?1 AND date <= ?2
+             )
+             GROUP BY day_of_week, hour
+             ORDER BY day_of_week, hour"
+        );
         let mut stmt = conn
-            .prepare_cached(
-                "SELECT CAST(strftime('%w', date) AS INTEGER) as day_of_week,
-                        CAST(SUBSTR(start_time, 12, 2) AS INTEGER) as hour,
-                        SUM(val)
-                 FROM (
-                     SELECT date, start_time, duration_seconds * COALESCE(rate_multiplier, 1.0) as val FROM sessions
-                     WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
-                     UNION ALL
-                     SELECT date, start_time, duration_seconds as val FROM manual_sessions
-                     WHERE date >= ?1 AND date <= ?2
-                 )
-                 GROUP BY day_of_week, hour
-                 ORDER BY day_of_week, hour",
-            )
+            .prepare_cached(&sql)
             .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -575,22 +576,23 @@ pub async fn get_stacked_timeline(
     limit: i64,
 ) -> Result<Vec<StackedBarData>, String> {
     run_db_blocking(app, move |conn| {
+        let sql = format!(
+            "SELECT s.date, a.display_name, SUM(s.duration_seconds * COALESCE(s.rate_multiplier, 1.0))
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             WHERE s.date >= ?1 AND s.date <= ?2 AND {ACTIVE_SESSION_FILTER_S}
+             AND a.id IN (
+                SELECT app_id FROM sessions
+                WHERE date >= ?1 AND date <= ?2 AND {ACTIVE_SESSION_FILTER}
+                GROUP BY app_id
+                ORDER BY SUM(duration_seconds) DESC
+                LIMIT ?3
+             )
+             GROUP BY s.date, a.display_name
+             ORDER BY s.date"
+        );
         let mut stmt = conn
-            .prepare_cached(
-                "SELECT s.date, a.display_name, SUM(s.duration_seconds * COALESCE(s.rate_multiplier, 1.0))
-                 FROM sessions s
-                 JOIN applications a ON a.id = s.app_id
-                 WHERE s.date >= ?1 AND s.date <= ?2 AND (s.is_hidden IS NULL OR s.is_hidden = 0)
-                 AND a.id IN (
-                    SELECT app_id FROM sessions
-                    WHERE date >= ?1 AND date <= ?2 AND (is_hidden IS NULL OR is_hidden = 0)
-                    GROUP BY app_id
-                    ORDER BY SUM(duration_seconds) DESC
-                    LIMIT ?3
-                 )
-                 GROUP BY s.date, a.display_name
-                 ORDER BY s.date",
-            )
+            .prepare_cached(&sql)
             .map_err(|e| e.to_string())?;
 
         let rows = stmt

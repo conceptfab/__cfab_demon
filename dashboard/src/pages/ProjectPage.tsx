@@ -55,21 +55,16 @@ import type {
 } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import {
   findSessionIdsMissingComment,
-  parsePositiveRateMultiplierInput,
   requiresCommentForMultiplierBoost,
-} from '@/hooks/useSessionActions';
+} from '@/lib/session-utils';
+import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-ranges';
 import { loadProjectsAllTime } from '@/store/projects-cache-store';
 import { fetchAllSessions } from '@/lib/session-pagination';
-import {
-  APP_REFRESH_EVENT,
-  LOCAL_DATA_CHANGED_EVENT,
-  type AppRefreshDetail,
-  type LocalDataChangedDetail,
-} from '@/lib/sync-events';
 import { shouldRefreshProjectPage } from '@/lib/page-refresh-reasons';
 
 function RateMultiplierPanel({
@@ -318,42 +313,12 @@ export function ProjectPage() {
   const [promptConfig, setPromptConfig] = useState<PromptConfig | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason || !shouldRefreshProjectPage(reason)) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (!reasons.some((reason) => shouldRefreshProjectPage(reason))) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    window.addEventListener(
-      LOCAL_DATA_CHANGED_EVENT,
-      handleLocalDataChange as EventListener,
-    );
-    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
-
-    return () => {
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange as EventListener,
-      );
-      window.removeEventListener(
-        APP_REFRESH_EVENT,
-        handleAppRefresh as EventListener,
-      );
-    };
-  }, []);
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some((reason) => shouldRefreshProjectPage(reason))) {
+      return;
+    }
+    setDataReloadVersion((prev) => prev + 1);
+  });
 
   useEffect(() => {
     if (projectPageId === null) {

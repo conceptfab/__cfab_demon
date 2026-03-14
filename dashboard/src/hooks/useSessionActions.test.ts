@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   findSessionIdsMissingComment,
-  parsePositiveRateMultiplierInput,
   requiresCommentForMultiplierBoost,
-} from './useSessionActions';
+} from '@/lib/session-utils';
+import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 
 describe('useSessionActions helpers', () => {
   it('requires comment only for boost multipliers above 1', () => {

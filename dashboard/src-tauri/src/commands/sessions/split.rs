@@ -7,6 +7,7 @@ use tauri::AppHandle;
 use super::super::assignment_model;
 use super::super::datetime::parse_datetime_fixed;
 use super::super::helpers::run_db_blocking;
+use super::super::sql_fragments::ACTIVE_SESSION_FILTER;
 use super::super::types::{
     MultiProjectAnalysis, ProjectCandidate, SessionSplittableFlag, SplitPart,
 };
@@ -184,15 +185,18 @@ pub(crate) fn load_split_source_session(
     only_visible: bool,
 ) -> Result<SplitSourceSession, String> {
     let sql = if only_visible {
-        "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment, split_source_session_id
-         FROM sessions WHERE id = ?1 AND (is_hidden IS NULL OR is_hidden = 0)"
+        format!(
+            "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment, split_source_session_id
+             FROM sessions WHERE id = ?1 AND {ACTIVE_SESSION_FILTER}"
+        )
     } else {
         "SELECT app_id, start_time, end_time, duration_seconds, date, rate_multiplier, project_id, comment, split_source_session_id
          FROM sessions WHERE id = ?1"
+            .to_string()
     };
 
     let (session, split_source) = conn
-        .query_row(sql, [session_id], |row| {
+        .query_row(&sql, [session_id], |row| {
             Ok((
                 SplitSourceSession {
                     app_id: row.get::<_, i64>(0)?,

@@ -2,6 +2,7 @@ use tauri::AppHandle;
 
 use super::super::datetime::{parse_datetime_fixed, parse_datetime_ms};
 use super::super::helpers::run_db_blocking;
+use super::super::sql_fragments::ACTIVE_SESSION_FILTER;
 
 pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i64, String> {
     run_db_blocking(app, move |conn| {
@@ -21,12 +22,13 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
         }
 
         let mut sessions: Vec<SessionRow> = {
-            let mut stmt = tx.prepare(
+            let sql = format!(
                 "SELECT id, app_id, project_id, COALESCE(rate_multiplier, 1.0), start_time, end_time, date, duration_seconds
                  FROM sessions
-                 WHERE (is_hidden IS NULL OR is_hidden = 0)
+                 WHERE {ACTIVE_SESSION_FILTER}
                  ORDER BY app_id, project_id, start_time ASC"
-            ).map_err(|e| e.to_string())?;
+            );
+            let mut stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
 
             let rows = stmt
                 .query_map([], |row| {

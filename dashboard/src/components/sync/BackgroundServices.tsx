@@ -383,13 +383,21 @@ function useJobPool() {
     refreshSyncSettingsCache();
   });
 
+  const handleDiagnosticsRefresh = useEffectEvent(() => {
+    void refreshDiagnostics();
+  });
+
+  const handleDatabaseSettingsRefresh = useEffectEvent(() => {
+    void refreshDatabaseSettings();
+  });
+
   const handleVisibilityChange = useEffectEvent(() => {
     refreshSyncSettingsCache();
     if (!isDocumentVisible()) return;
 
     nextDiagnosticsRef.current = 0;
-    void refreshDiagnostics();
-    void refreshDatabaseSettings();
+    handleDiagnosticsRefresh();
+    handleDatabaseSettingsRefresh();
 
     if (!autoImportDone) return;
 
@@ -404,7 +412,7 @@ function useJobPool() {
   const handleLocalDataChange = useEffectEvent(() => {
     if (!isDocumentVisible()) return;
 
-    void refreshDatabaseSettings();
+    handleDatabaseSettingsRefresh();
 
     if (localChangeRefreshTimer.current) {
       window.clearTimeout(localChangeRefreshTimer.current);
@@ -425,8 +433,8 @@ function useJobPool() {
   });
 
   useEffect(() => {
-    void refreshDiagnostics();
-    void refreshDatabaseSettings();
+    handleDiagnosticsRefresh();
+    handleDatabaseSettingsRefresh();
     void bootstrapJobPool({
       autoImportDone,
       lastSignatureRef,
@@ -445,7 +453,7 @@ function useJobPool() {
         nextSyncIntervalRef,
         nextSyncPollRef,
         syncSettingsRef,
-        refreshDiagnostics,
+        refreshDiagnostics: handleDiagnosticsRefresh,
         runRefresh,
         checkFileChange,
         runAutoSplit,
@@ -459,12 +467,9 @@ function useJobPool() {
   }, [
     autoImportDone,
     checkFileChange,
-    refreshDatabaseSettings,
-    refreshDiagnostics,
     runAutoSplit,
     runRefresh,
     runSync,
-    refreshSyncSettingsCache,
   ]);
 
   useEffect(() => {

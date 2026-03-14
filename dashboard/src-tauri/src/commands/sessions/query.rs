@@ -3,7 +3,7 @@ use tauri::AppHandle;
 
 use super::super::datetime::parse_datetime_ms_opt;
 use super::super::helpers::run_db_blocking;
-use super::super::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
+use super::super::sql_fragments::{ACTIVE_SESSION_FILTER_S, SESSION_PROJECT_CTE_ALL_TIME};
 use super::super::types::{FileActivity, SessionFilters, SessionWithApp};
 
 #[derive(Clone)]
@@ -167,10 +167,10 @@ pub async fn get_sessions(
                   WHERE id IN (SELECT MAX(id) FROM assignment_suggestions GROUP BY session_id)
               ) asug_latest ON asug_latest.session_id = s.id
               LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
-             WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)"
+             WHERE 1=1 AND {ACTIVE_SESSION_FILTER_S}"
             )
         } else {
-            String::from(
+            format!(
                 "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
                     a.display_name, a.executable_name, s.project_id, p.name, p.color,
@@ -194,7 +194,7 @@ pub async fn get_sessions(
                  WHERE id IN (SELECT MAX(id) FROM assignment_suggestions GROUP BY session_id)
              ) asug_latest ON asug_latest.session_id = s.id
              LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
-             WHERE 1=1 AND (s.is_hidden IS NULL OR s.is_hidden = 0)",
+             WHERE 1=1 AND {ACTIVE_SESSION_FILTER_S}",
             )
         };
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -694,10 +694,10 @@ pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Resul
     }
 
     run_db_blocking(app, move |conn| {
-        let mut sql = String::from(
+        let mut sql = format!(
             "SELECT COUNT(*) FROM sessions s
              JOIN applications a ON a.id = s.app_id
-             WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)",
+             WHERE {ACTIVE_SESSION_FILTER_S}",
         );
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         let mut idx = 1;

@@ -13,8 +13,14 @@
 - `[2.1]` ZAMKNIĘTE: `compute_score_breakdowns` używa teraz batch-fetch nazw projektów zamiast N+1 query.
 - `[2.2]` ZAMKNIĘTE: hot-path w `assignment_model/scoring.rs` i `assignment_model/context.rs` używa `prepare_cached(...)`.
 - `[2.3]` ZAMKNIĘTE: hydration ścieżek w `src/monitor.rs` uruchamia się tylko dla foreground PID wymagającego pierwszej próby detekcji.
+- `[2.5]` ZAMKNIĘTE WCZEŚNIEJ: `ProjectDayTimeline.tsx` ma już `model = useMemo(...)`, a `summarizeCluster(...)` jest memoizowane przez `clusterDetailsSummary`.
+- `[2.6]` ZAMKNIĘTE: `BackgroundServices.tsx` używa stabilnych callbacków dla diagnostyki i ustawień DB, więc pętla job-poola nie restartuje się od zmian referencji store actions.
+- `[2.7]` ZAMKNIĘTE: `Sessions.tsx` nie rejestruje już listenerów `visibilitychange`/`focus` przy każdej zmianie filtrów; callback odświeżania jest stabilny.
 - `[3.1]` ZAMKNIĘTE: wspólne budowanie danych stacked bar zostało wydzielone do `analysis.rs` i użyte w dwóch call-site.
 - `[3.2]` ZAMKNIĘTE: parsowanie dat zostało scentralizowane w `datetime.rs`; duplikaty w `analysis.rs` i `sessions/query.rs` zostały usunięte.
+- `[3.4]` ZAMKNIĘTE: wspólny filtr `ACTIVE_SESSION_FILTER` w `sql_fragments.rs` zastąpił literalne warunki `is_hidden` w backendowych zapytaniach.
+- `[3.6]` ZAMKNIĘTE: wspólny hook `usePageRefreshListener` obsługuje już `Sessions.tsx`, `Projects.tsx` i `ProjectPage.tsx`.
+- `[3.7]` ZAMKNIĘTE: pure session helpers zostały przeniesione do `dashboard/src/lib/session-utils.ts`.
 - `[3.5]` ZAMKNIĘTE: wspólna funkcja rozróżniania nazw projektów obsługuje już `analysis.rs` i `dashboard.rs`.
 - `[3.8]` ZAMKNIĘTE: wspólny `name_hash(...)` obsługuje już oba generatory kolorów.
 - `[3.10]` ZAMKNIĘTE: `dashboard/src/lib/db-types.ts` ma już `updated_at` w `Project`.
@@ -95,21 +101,27 @@
 
 ### 2.5 ŚREDNI: `ProjectDayTimeline.tsx` — brak memoizacji kosztownych obliczeń
 
+- **Status 2026-03-14:** zamknięte wcześniej w aktualnym kodzie. `mergeSessionFragments(...)` działa wewnątrz `model = useMemo(...)`, a `summarizeCluster(...)` jest liczone przez osobne `useMemo`.
+
 - **Plik:** `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:180-285`
 - **Problem:** `mergeSessionFragments` i `summarizeCluster` obliczane przy każdym renderze (sortowanie + iteracja segmentów). Komponent 1502 linii.
 - **Naprawa:** Opakować w `useMemo` z odpowiednimi deps.
 
 ### 2.6 ŚREDNI: `BackgroundServices.tsx` — niestabilne deps mogą restartować interwał
 
+- **Status 2026-03-14:** zamknięte. Pętla job-poola korzysta ze stabilnych `useEffectEvent` wrapperów dla `refreshDiagnostics` i `refreshDatabaseSettings`, więc interwał nie jest restartowany przy zmianie referencji callbacków ze store.
+
 - **Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:427-468`
 - **Problem:** `useEffect` z `setInterval` zależy od callbacków, które mogą tracić stabilność referencji (np. `refreshDiagnostics`, `refreshDatabaseSettings`).
-- **Naprawa:** Zweryfikować stabilność referencji; jeśli niestabilne — opakować w `useRef`.
+- **Naprawa:** Użyć stabilnych wrapperów (`useEffectEvent`) dla callbacków store i nie podpinać ich bezpośrednio do deps interwału.
 
 ### 2.7 ŚREDNI: `Sessions.tsx` — event listener re-registration na zmianę filtrów
 
+- **Status 2026-03-14:** zamknięte. Listener rejestruje się raz, a `loadFirstSessionsPage` jest wywoływane przez stabilny `useEffectEvent`, więc zmiana filtrów nie powoduje już re-attach listenerów.
+
 - **Plik:** `dashboard/src/pages/Sessions.tsx:407-422`
 - **Problem:** `visibilitychange` i `focus` listenery re-rejestrowane przy każdej zmianie filtrów, bo `loadFirstSessionsPage` jest dep.
-- **Naprawa:** `useRef` do trzymania latest ref, listener registration z `[]` deps.
+- **Naprawa:** `useEffectEvent` do trzymania aktualnego callbacka odświeżania, a sama rejestracja listenerów z `[]` deps.
 
 ### 2.8 ŚREDNI: WMI COM lazy-init blokuje polling loop na 30-60 ms
 
@@ -145,6 +157,8 @@
 
 ### 3.4 ŚREDNI: `is_hidden` filter jako literal string w 10 miejscach
 
+- **Status 2026-03-14:** zamknięte. `commands/sql_fragments.rs` udostępnia wspólne `ACTIVE_SESSION_FILTER` i `ACTIVE_SESSION_FILTER_S`, a call-site przestały duplikować warunek `is_hidden`.
+
 - **Pliki:** `analysis.rs` (×2), `dashboard.rs` (×5), `sessions/split.rs`, `sessions/rebuild.rs`, `assignment_model/auto_safe.rs`
 - **Naprawa:** Stała `ACTIVE_SESSION_FILTER` w `sql_fragments.rs`.
 
@@ -157,11 +171,15 @@
 
 ### 3.6 ŚREDNI: Triplowany refresh listener pattern w 3 stronach
 
+- **Status 2026-03-14:** zamknięte. `Sessions.tsx`, `Projects.tsx` i `ProjectPage.tsx` używają wspólnego hooka `dashboard/src/hooks/usePageRefreshListener.ts`.
+
 - **Pliki:** `Sessions.tsx`, `Projects.tsx`, `ProjectPage.tsx`
 - **Problem:** 40-60 linii identycznego boilerplate (addEventListener → shouldRefreshPage → reload).
-- **Naprawa:** Hook `usePageRefreshListener(shouldRefresh, onRefresh)`.
+- **Naprawa:** Hook `usePageRefreshListener(onRefresh)` normalizujący eventy `APP_REFRESH_EVENT` i `LOCAL_DATA_CHANGED_EVENT`.
 
 ### 3.7 NISKI: Pure functions wyeksportowane z pliku hooka
+
+- **Status 2026-03-14:** zamknięte. `normalizeSessionIds`, `findSessionIdsMissingComment` i `requiresCommentForMultiplierBoost` znajdują się już w `dashboard/src/lib/session-utils.ts`, a call-site przestały importować je z hooka.
 
 - **Plik:** `hooks/useSessionActions.ts:32-46`
 - **Problem:** `findSessionIdsMissingComment`, `requiresCommentForMultiplierBoost` to pure functions importowane przez strony — powinny być w `lib/`.
@@ -304,20 +322,20 @@ commands/
 4. **[2.1]** N+1 fix w scoring.rs (batch fetch projects) — ZAMKNIĘTE 2026-03-14
 5. **[2.2]** `prepare_cached` na hot-path w scoring + context — ZAMKNIĘTE 2026-03-14
 6. **[2.3]** Guard na hydration w monitor.rs — ZAMKNIĘTE 2026-03-14
-7. **[2.5]** useMemo w ProjectDayTimeline.tsx
+7. **[2.5]** useMemo w ProjectDayTimeline.tsx — ZAMKNIĘTE WCZEŚNIEJ
 
 ### Faza 3: Refaktoryzacja Rust (duplikacje)
 8. **[3.2]** Centralizacja parserów dat w datetime.rs — ZAMKNIĘTE 2026-03-14
 9. **[3.1]** Wydzielenie `build_stacked_bar_output` — ZAMKNIĘTE 2026-03-14
-10. **[3.4]** Stała `ACTIVE_SESSION_FILTER` w sql_fragments.rs
+10. **[3.4]** Stała `ACTIVE_SESSION_FILTER` w sql_fragments.rs — ZAMKNIĘTE 2026-03-14
 11. **[3.5]** Wydzielenie `disambiguate_project_names` — ZAMKNIĘTE 2026-03-14
 12. **[3.8]** Wydzielenie `name_hash` — ZAMKNIĘTE 2026-03-14
 
 ### Faza 4: Refaktoryzacja Frontend (duplikacje + modularyzacja)
-13. **[3.6]** Hook `usePageRefreshListener`
-14. **[3.7]** Przeniesienie pure functions z hooka do lib
-15. **[2.6]** Stabilizacja deps w BackgroundServices.tsx
-16. **[2.7]** useRef pattern w Sessions.tsx listeners
+13. **[3.6]** Hook `usePageRefreshListener` — ZAMKNIĘTE 2026-03-14
+14. **[3.7]** Przeniesienie pure functions z hooka do lib — ZAMKNIĘTE 2026-03-14
+15. **[2.6]** Stabilizacja deps w BackgroundServices.tsx — ZAMKNIĘTE 2026-03-14
+16. **[2.7]** Stabilizacja listenerów w `Sessions.tsx` — ZAMKNIĘTE 2026-03-14
 17. **[3.10]** Dodanie `updated_at` do db-types.ts — ZAMKNIĘTE 2026-03-14
 
 ### Faza 5: Architektura (duże pliki, modularyzacja)
@@ -371,25 +389,33 @@ commands/
 ```typescript
 // hooks/usePageRefreshListener.ts
 export function usePageRefreshListener(
-  shouldRefresh: (reasons: string[]) => boolean,
-  onRefresh: () => void
+  onRefresh: (reasons: string[], source: 'app' | 'local') => void
 ) {
-  const onRefreshRef = useRef(onRefresh);
-  onRefreshRef.current = onRefresh;
+  const handleRefresh = useEffectEvent(onRefresh);
 
   useEffect(() => {
-    const handler = (e: CustomEvent) => {
-      if (shouldRefresh(e.detail?.reasons ?? [])) {
-        onRefreshRef.current();
-      }
+    const handleLocalDataChange = (event: Event) => {
+      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
+      const reason = customEvent.detail?.reason;
+      if (!reason) return;
+      handleRefresh([reason], 'local');
     };
-    window.addEventListener('APP_REFRESH_EVENT', handler);
-    window.addEventListener('LOCAL_DATA_CHANGED_EVENT', handler);
+
+    const handleAppRefresh = (event: Event) => {
+      const customEvent = event as CustomEvent<AppRefreshDetail>;
+      const reasons = customEvent.detail?.reasons ?? [];
+      if (reasons.length === 0) return;
+      handleRefresh(reasons, 'app');
+    };
+
+    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
+    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh);
+
     return () => {
-      window.removeEventListener('APP_REFRESH_EVENT', handler);
-      window.removeEventListener('LOCAL_DATA_CHANGED_EVENT', handler);
+      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
+      window.removeEventListener(APP_REFRESH_EVENT, handleAppRefresh);
     };
-  }, [shouldRefresh]);
+  }, []);
 }
 ```
 

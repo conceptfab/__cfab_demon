@@ -5,6 +5,7 @@ use crate::commands::assignment_model::{
     AssignmentModelStatus, AutoSafeRollbackResult, AutoSafeRunResult, DeterministicResult,
     AUTO_SAFE_MIN_MARGIN,
 };
+use crate::commands::sql_fragments::ACTIVE_SESSION_FILTER;
 use crate::commands::types::DateRange;
 use rusqlite::{OptionalExtension, ToSql};
 
@@ -14,10 +15,10 @@ pub fn fetch_unassigned_session_ids(
     date_range: Option<DateRange>,
     min_duration: Option<i64>,
 ) -> Result<Vec<i64>, String> {
-    let mut sql = String::from(
+    let mut sql = format!(
         "SELECT id
          FROM sessions
-         WHERE (is_hidden IS NULL OR is_hidden = 0) AND project_id IS NULL",
+         WHERE {ACTIVE_SESSION_FILTER} AND project_id IS NULL",
     );
     let mut params: Vec<Box<dyn ToSql>> = Vec::new();
     let mut idx = 1;

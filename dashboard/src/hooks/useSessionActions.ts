@@ -11,38 +11,13 @@ import {
   updateSessionRateMultiplier,
   updateSessionRateMultipliersBatch,
 } from '@/lib/tauri';
-export { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
+import { normalizeSessionIds } from '@/lib/session-utils';
 
 type SessionIdsInput = number | number[];
 
 interface UseSessionActionsOptions {
   onAfterMutation?: () => void;
   onError?: (action: string, error: unknown) => void;
-}
-
-function toSessionIds(input: SessionIdsInput): number[] {
-  if (Array.isArray(input)) {
-    return Array.from(
-      new Set(input.filter((id) => Number.isFinite(id) && id > 0)),
-    );
-  }
-  return Number.isFinite(input) && input > 0 ? [input] : [];
-}
-
-export function requiresCommentForMultiplierBoost(
-  multiplier: number | null | undefined,
-): boolean {
-  return multiplier != null && multiplier > 1.000_001;
-}
-
-export function findSessionIdsMissingComment(
-  sessionIdsInput: SessionIdsInput,
-  getCommentById: (sessionId: number) => string | null | undefined,
-): number[] {
-  return toSessionIds(sessionIdsInput).filter((sessionId) => {
-    const comment = getCommentById(sessionId);
-    return !comment || !comment.trim();
-  });
 }
 
 export function useSessionActions(options: UseSessionActionsOptions = {}) {
@@ -82,7 +57,7 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       projectId: number | null,
       source?: string,
     ) => {
-      const sessionIds = toSessionIds(sessionIdsInput);
+      const sessionIds = normalizeSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('assignSessions', async () => {
         await runForSessionIds(
@@ -97,7 +72,7 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
 
   const updateSessionRateMultipliers = useCallback(
     async (sessionIdsInput: SessionIdsInput, multiplier: number | null) => {
-      const sessionIds = toSessionIds(sessionIdsInput);
+      const sessionIds = normalizeSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('updateSessionRateMultipliers', async () => {
         await runForSessionIds(
@@ -112,7 +87,7 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
 
   const updateSessionComments = useCallback(
     async (sessionIdsInput: SessionIdsInput, comment: string | null) => {
-      const sessionIds = toSessionIds(sessionIdsInput);
+      const sessionIds = normalizeSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('updateSessionComments', async () => {
         await runForSessionIds(
@@ -134,7 +109,7 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
 
   const deleteSessions = useCallback(
     async (sessionIdsInput: SessionIdsInput) => {
-      const sessionIds = toSessionIds(sessionIdsInput);
+      const sessionIds = normalizeSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('deleteSessions', async () => {
         await runForSessionIds(
@@ -149,7 +124,7 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
 
   const deleteManualSessions = useCallback(
     async (sessionIdsInput: SessionIdsInput) => {
-      const sessionIds = toSessionIds(sessionIdsInput);
+      const sessionIds = normalizeSessionIds(sessionIdsInput);
       if (sessionIds.length === 0) return;
       await runMutation('deleteManualSessions', async () => {
         await runForSessionIds(

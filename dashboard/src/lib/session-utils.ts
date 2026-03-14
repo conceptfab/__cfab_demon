@@ -2,6 +2,31 @@ import type { SessionWithApp } from '@/lib/db-types';
 
 export const SESSION_PAGE_SIZE = 100;
 
+export function normalizeSessionIds(input: number | number[]): number[] {
+  if (Array.isArray(input)) {
+    return Array.from(
+      new Set(input.filter((id) => Number.isFinite(id) && id > 0)),
+    );
+  }
+  return Number.isFinite(input) && input > 0 ? [input] : [];
+}
+
+export function requiresCommentForMultiplierBoost(
+  multiplier: number | null | undefined,
+): boolean {
+  return multiplier != null && multiplier > 1.000_001;
+}
+
+export function findSessionIdsMissingComment(
+  sessionIdsInput: number | number[],
+  getCommentById: (sessionId: number) => string | null | undefined,
+): number[] {
+  return normalizeSessionIds(sessionIdsInput).filter((sessionId) => {
+    const comment = getCommentById(sessionId);
+    return !comment || !comment.trim();
+  });
+}
+
 export function areFileActivitiesEqual(
   left: SessionWithApp['files'][number],
   right: SessionWithApp['files'][number],

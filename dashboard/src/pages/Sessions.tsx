@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Sparkles,
@@ -45,29 +52,22 @@ import {
 } from '@/lib/project-utils';
 import {
   areSessionListsEqual,
+  findSessionIdsMissingComment,
+  requiresCommentForMultiplierBoost,
   SESSION_PAGE_SIZE,
 } from '@/lib/session-utils';
 import { useToast } from '@/components/ui/toast-notification';
 import { resolveDateFnsLocale } from '@/lib/date-locale';
 import { useSessionActions } from '@/hooks/useSessionActions';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
 import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
-import {
-  findSessionIdsMissingComment,
-  parsePositiveRateMultiplierInput,
-  requiresCommentForMultiplierBoost,
-} from '@/hooks/useSessionActions';
 import { buildAnalysisFromBreakdown } from '@/lib/session-analysis';
+import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 import {
   loadProjectsAllTime,
   useProjectsCacheStore,
 } from '@/store/projects-cache-store';
-import {
-  APP_REFRESH_EVENT,
-  LOCAL_DATA_CHANGED_EVENT,
-  type AppRefreshDetail,
-  type LocalDataChangedDetail,
-} from '@/lib/sync-events';
 import { shouldRefreshSessionsPage } from '@/lib/page-refresh-reasons';
 
 interface ContextMenu {
@@ -318,47 +318,16 @@ export function Sessions() {
     void loadProjectsAllTime().catch(console.error);
   }, []);
 
-  useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason || !shouldRefreshSessionsPage(reason)) {
-        return;
-      }
-      clearSplitCaches();
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (reasons.includes('settings_saved')) {
-        reloadDisplaySettings();
-      }
-      if (!reasons.some((reason) => shouldRefreshSessionsPage(reason))) {
-        return;
-      }
-      clearSplitCaches();
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    window.addEventListener(
-      LOCAL_DATA_CHANGED_EVENT,
-      handleLocalDataChange as EventListener,
-    );
-    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
-
-    return () => {
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange as EventListener,
-      );
-      window.removeEventListener(
-        APP_REFRESH_EVENT,
-        handleAppRefresh as EventListener,
-      );
-    };
-  }, [clearSplitCaches, reloadDisplaySettings]);
+  usePageRefreshListener((reasons, source) => {
+    if (source === 'app' && reasons.includes('settings_saved')) {
+      reloadDisplaySettings();
+    }
+    if (!reasons.some((reason) => shouldRefreshSessionsPage(reason))) {
+      return;
+    }
+    clearSplitCaches();
+    setDataReloadVersion((prev) => prev + 1);
+  });
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -385,6 +354,10 @@ export function Sessions() {
     replaceSessionsPage(data);
   }, [buildFetchParams, replaceSessionsPage]);
 
+  const handleVisibleSessionsRefresh = useEffectEvent(() => {
+    void loadFirstSessionsPage().catch(console.error);
+  });
+
   useEffect(() => {
     let cancelled = false;
     sessionsApi.getSessions(buildFetchParams(0))
@@ -407,10 +380,10 @@ export function Sessions() {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
-      void loadFirstSessionsPage().catch(console.error);
+      handleVisibleSessionsRefresh();
     };
     const handleWindowFocus = () => {
-      void loadFirstSessionsPage().catch(console.error);
+      handleVisibleSessionsRefresh();
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -419,7 +392,7 @@ export function Sessions() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);
     };
-  }, [loadFirstSessionsPage]);
+  }, []);
 
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{
     left: number;
