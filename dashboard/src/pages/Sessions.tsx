@@ -329,6 +329,65 @@ export function Sessions() {
     setMultiSplitSession(session);
   };
 
+  const projectIdByName = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const project of projects) {
+      const key = project.name.trim().toLowerCase();
+      if (key && !map.has(key)) {
+        map.set(key, project.id);
+      }
+    }
+    return map;
+  }, [projects]);
+
+  const groupedByProject = useMemo(() => {
+    const groups = new Map<string, GroupedProject>();
+    for (const session of sessions) {
+      const projectName = session.project_name ?? t('sessions.menu.unassigned');
+      const normalizedProjectName = projectName.trim().toLowerCase();
+      const inferredProjectId =
+        session.project_id ??
+        (normalizedProjectName
+          ? (projectIdByName.get(normalizedProjectName) ?? null)
+          : null);
+      const isUnassigned = inferredProjectId == null;
+      const projectId = inferredProjectId;
+      const projectColor = session.project_color ?? '#64748b';
+      const key = isUnassigned
+        ? UNASSIGNED_PROJECT_SENTINEL
+        : typeof projectId === 'number' && projectId > 0
+          ? `id:${projectId}`
+          : `name:${projectName.trim().toLowerCase()}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          projectId,
+          projectName,
+          projectColor,
+          totalSeconds: 0,
+          boostedCount: 0,
+          sessions: [],
+        });
+      }
+      const group = groups.get(key)!;
+      if (
+        group.projectId == null &&
+        typeof projectId === 'number' &&
+        projectId > 0
+      ) {
+        group.projectId = projectId;
+      }
+      group.totalSeconds += session.duration_seconds;
+      if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
+      group.sessions.push(session);
+    }
+    return Array.from(groups.values()).sort((a, b) => {
+      const aUnassigned = a.projectId == null;
+      const bUnassigned = b.projectId == null;
+      if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
+      return b.totalSeconds - a.totalSeconds;
+    });
+  }, [sessions, t, projectIdByName]);
+
   const handleProjectContextMenu = useCallback(
     (e: React.MouseEvent, projectId: number | null, projectName: string) => {
       e.preventDefault();
@@ -552,17 +611,6 @@ export function Sessions() {
     [assignSessions, sessionsRef, setDismissedSuggestions, setSessions],
   );
 
-  const projectIdByName = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const project of projects) {
-      const key = project.name.trim().toLowerCase();
-      if (key && !map.has(key)) {
-        map.set(key, project.id);
-      }
-    }
-    return map;
-  }, [projects]);
-
   const assignProjectSections = useMemo(() => {
     const activeProjects = projects.filter((p) => !p.frozen_at);
     const activeAlpha = [...activeProjects].sort(compareProjectsByName);
@@ -671,54 +719,6 @@ export function Sessions() {
     [assignProjectSections],
   );
   const showAssignSectionHeaders = assignProjectListMode !== 'alpha_active';
-
-  const groupedByProject = useMemo(() => {
-    const groups = new Map<string, GroupedProject>();
-    for (const session of sessions) {
-      const projectName = session.project_name ?? t('sessions.menu.unassigned');
-      const normalizedProjectName = projectName.trim().toLowerCase();
-      const inferredProjectId =
-        session.project_id ??
-        (normalizedProjectName
-          ? (projectIdByName.get(normalizedProjectName) ?? null)
-          : null);
-      const isUnassigned = inferredProjectId == null;
-      const projectId = inferredProjectId;
-      const projectColor = session.project_color ?? '#64748b';
-      const key = isUnassigned
-        ? UNASSIGNED_PROJECT_SENTINEL
-        : typeof projectId === 'number' && projectId > 0
-          ? `id:${projectId}`
-          : `name:${projectName.trim().toLowerCase()}`;
-      if (!groups.has(key)) {
-        groups.set(key, {
-          projectId,
-          projectName,
-          projectColor,
-          totalSeconds: 0,
-          boostedCount: 0,
-          sessions: [],
-        });
-      }
-      const group = groups.get(key)!;
-      if (
-        group.projectId == null &&
-        typeof projectId === 'number' &&
-        projectId > 0
-      ) {
-        group.projectId = projectId;
-      }
-      group.totalSeconds += session.duration_seconds;
-      if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
-      group.sessions.push(session);
-    }
-    return Array.from(groups.values()).sort((a, b) => {
-      const aUnassigned = a.projectId == null;
-      const bUnassigned = b.projectId == null;
-      if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
-      return b.totalSeconds - a.totalSeconds;
-    });
-  }, [sessions, t, projectIdByName]);
 
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }
