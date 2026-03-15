@@ -34,10 +34,10 @@ TODO ??
 <!-- - czy faktycznie dziala dzielenie sesji - do sprawdzenia -->
 - licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik
 <!-- - poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi -->
-- fonty systemowe do wyboru
+<!-- - fonty systemowe do wyboru -->
 <!-- - uporządkowanie settings -> Session Split wyzej logicznie poukładane! -->
-- skalowanie fontów w raporcie nie działa
+<!-- - skalowanie fontów w raporcie nie działa -->
 <!-- - przycisk zapisz do pdf jest chujowym miejscu! -->
-- lista fontów jest zle wyswietlana
+<!-- - lista fontów jest zle wyswietlana -->
 - poprawic header raportu
 - Activity Over Time w raporcie

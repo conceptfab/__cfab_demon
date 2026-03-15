@@ -1,362 +1,369 @@
-# TIMEFLOW — Analiza i Plan Refaktoryzacji
+# TIMEFLOW — Audyt kodu i plan refaktoryzacji
 
-Data analizy: 2026-03-15
-
----
-
-## 1. Mapa procesów
-
-### 1.1 Monitorowanie aktywności (Demon)
-- **Pliki**: `src/main.rs`, `src/tracker.rs`, `src/monitor.rs`, `src/monitor/pid_cache.rs`, `src/monitor/wmi_detection.rs`
-- **Przepływ**: Pętla co 10s (`tracker::run_loop`) odpytuje `GetForegroundWindow` + PID cache (`monitor::get_foreground_info`), wykrywa idle (`get_idle_time_ms`), mierzy CPU w tle (`measure_cpu_for_app`), agreguje czas w `DailyData`.
-- **Zapis**: Co 5 min do SQLite daily store (`shared/daily_store/`).
-- **Dodatkowe**: heartbeat co 30s, reload konfiguracji co 30s, evict PID cache co 10 min, WMI path detection dla IDE/przeglądarek.
-
-### 1.2 Tracking sesji (Dashboard Tauri backend)
-- **Pliki**: `dashboard/src-tauri/src/commands/sessions/`, `dashboard/src-tauri/src/commands/import.rs`
-- **Przepływ**: `refresh_today` czyta daily store, upsertuje sesje i file_activities do SQLite dashboard DB. `rebuild_sessions` scala sesje z małymi przerwami.
-
-### 1.3 AI assignment (przypisywanie sesji do projektów)
-- **Pliki**: `dashboard/src-tauri/src/commands/assignment_model/`
-- **Przepływ**: Training na historii przypisań, scoring sesji, auto-safe assignment z rollback. Deterministic assignment na podstawie file_activities → project mapping.
-- **Frontend**: `dashboard/src/components/ai/`, `dashboard/src/pages/AI.tsx`
-
-### 1.4 Synchronizacja online
-- **Pliki**: `dashboard/src/lib/online-sync.ts`, `dashboard/src/lib/sync/sync-http.ts`, `dashboard/src/lib/sync/sync-storage.ts`
-- **Przepływ**: Push/pull danych przez HTTP do zdalnego serwera. Konfiguracja w localStorage i secure token w Rust backend.
-
-### 1.5 Background services (job pool)
-- **Pliki**: `dashboard/src/components/sync/BackgroundServices.tsx`, `dashboard/src/components/sync/job-pool-helpers.ts`
-- **Przepływ**: Uniwersalna pętla 1s tick: auto-import danych z `data/`, refresh today, file signature check, auto-split sesji, online sync, diagnostyka DB, AI assignment.
-
-### 1.6 Import/Export
-- **Pliki**: `dashboard/src-tauri/src/commands/import.rs`, `dashboard/src-tauri/src/commands/import_data.rs`, `dashboard/src-tauri/src/commands/export.rs`
-- **Przepływ**: JSON daily files → SQLite, archive export/import z walidacją.
-
-### 1.7 Build pipeline
-- **Pliki**: `build_all.py`, `build_demon.py`, `dashboard_build.py`, `build_common.py`, `build_release.py`, `deploy.py`
-- **Przepływ**: Wersja z `VERSION` → Cargo.toml + tauri.conf.json + package.json, kompilacja Rust + Tauri.
+> Wygenerowano: 2026-03-15
+> Projekt: ~53 000 linii kodu (Rust daemon + Tauri backend + React frontend)
+> Priorytet: zachowanie dotychczasowych danych
 
 ---
 
-## 2. Problemy krytyczne
+## Spis treści
 
-### 2.1 Duplikacja struktur danych DailyData (demon vs shared)
-- **Plik**: `src/storage.rs` linie 18-63 — demon definiuje własne `DailyData`, `AppDailyData`, `Session`, `FileEntry`
-- **Plik**: `shared/daily_store/types.rs` linie 1-78 — shared definiuje `StoredDailyData`, `StoredAppDailyData`, `StoredSession`, `StoredFileEntry`
-- **Problem**: `storage.rs` ma ręczne konwersje `to_stored_daily()` (linie 149-189) i `from_stored_daily()` (linie 191-240) — 90 linii boilerplate. Każde dodanie pola wymaga zmian w 3 miejscach.
-- **Priorytet**: Wysoki — ryzyko desynchronizacji pól.
+1. [Błędy krytyczne](#1-błędy-krytyczne)
+2. [Błędy logiczne](#2-błędy-logiczne)
+3. [Duplikacja kodu](#3-duplikacja-kodu)
+4. [Wydajność i optymalizacje](#4-wydajność-i-optymalizacje)
+5. [Tłumaczenia i i18n](#5-tłumaczenia-i-i18n)
+6. [Dokumentacja pomocy (Help.tsx)](#6-dokumentacja-pomocy-helptsx)
+7. [Architektura i modularność](#7-architektura-i-modularność)
+8. [Sugestie funkcjonalne](#8-sugestie-funkcjonalne)
+9. [Wskazówki dla kolejnego modelu](#9-wskazówki-dla-kolejnego-modelu)
 
-### 2.2 Demon otwiera dashboard DB w read-only bez retry
-- **Plik**: `src/config.rs` linie 127-178 — `load_monitored_apps_from_dashboard_db()` otwiera `timeflow_dashboard.db` z `SQLITE_OPEN_READ_ONLY`
-- **Plik**: `src/tray.rs` linie 49-89 — `query_unassigned_attention_count()` robi to samo
-- **Problem**: Obie funkcje otwierają DB niezależnie, bez connection poolingu. Przy równoczesnym zapisie przez dashboard (WAL mode) mogą wystąpić SQLITE_BUSY mimo busy_timeout=2000ms. Brak retry logiki.
-- **Priorytet**: Średni — w praktyce rzadko powoduje widoczne problemy dzięki WAL.
+---
 
-### 2.3 Brak `schema_version` w migracyjach DB
-- **Plik**: `dashboard/src-tauri/src/db_migrations.rs`
-- **Problem**: Migracje są idempotentne (CHECK IF EXISTS), ale nie ma tabeli `schema_version`. Każda migracja jest uruchamiana przy każdym starcie aplikacji. Przy rosnącej liczbie migracji startup będzie coraz wolniejszy.
-- **Priorytet**: Średni — wymaga dodania prostej tabeli wersji schematu.
+## 1. Błędy krytyczne
 
-### 2.4 Brak stanu error w Dashboard.tsx
-- **Plik**: `dashboard/src/pages/Dashboard.tsx`
-- **Problem**: `stats`, `topProjects`, `allProjects` nie mają dedykowanego stanu error (poza `projectTimelineError`). Użytkownik widzi `N/A` bez informacji o błędzie.
-- **Priorytet**: Średni — UX problem.
+### 1.1 `rebuild_sessions` może scalać sesje po splicie → utrata danych
 
-### 2.5 Hardcoded `title = "Activity Timeline"` w `ProjectDayTimeline`
-- **Plik**: `dashboard/src/components/dashboard/ProjectDayTimeline.tsx` linia 58
-- **Problem**: Domyślny tytuł jest hardcoded po angielsku. Linia 409 sprawdza go porównaniem stringów aby zdecydować o tłumaczeniu — kruche i łamie się przy zmianie.
-- **Priorytet**: Niski — działa, ale jest antypatternem.
+**Plik:** `dashboard/src-tauri/src/commands/sessions/rebuild.rs:24-60`
+
+`ACTIVE_SESSION_FILTER` wyklucza `is_hidden = 1`, ale NIE wyklucza sesji z `split_source_session_id`. Rebuild może scalić dwie połówki splitu z powrotem, jeśli gap między nimi mieści się w `gap_fill_minutes`.
+
+**Naprawa:** Dodać warunek `AND split_source_session_id IS NULL` do filtra rebuild lub oznaczyć sesje ze splitu jako niemerge'owalne.
+
+### 1.2 Zduplikowany klucz `sessions.prompts` w JSON — utrata tłumaczeń
+
+**Pliki:** `dashboard/src/locales/{en,pl}/common.json` (~linia 328 i 357)
+
+Klucz `prompts` zdefiniowany dwukrotnie w obiekcie `sessions`. JSON bierze ostatnią wartość — klucze `bulk_comment_title` i `bulk_comment_description` z pierwszego bloku są niedostępne w runtime.
+
+**Naprawa:** Zmergować oba bloki `prompts` w jeden lub przenieść pierwszy do `sessions.bulk_prompts`.
+
+### 1.3 `train_assignment_model` z `force=true` przy 0 danych resetuje model AI
+
+**Plik:** `dashboard/src-tauri/src/commands/assignment_model/mod.rs:556-578`
+
+Gdy użytkownik wymusza retrain przy 0 feedbacku, model zapisuje puste tabele → utrata całej wiedzy.
+
+**Naprawa:** Dodać guard: jeśli feedback_count == 0, zwrócić błąd lub status "nothing to train".
+
+---
+
+## 2. Błędy logiczne
+
+### 2.1 Race condition w `useSessionsData` — podwójne ładowanie przy starcie
+
+**Plik:** `dashboard/src/hooks/useSessionsData.ts:54-89`
+
+Dwa effecty mogą uruchomić `loadFirstSessionsPage` jednocześnie (reloadVersion + visibility/focus). Brak deduplikacji między nimi.
+
+**Naprawa:** Dodać flagę `isLoadingRef` (useRef) i sprawdzać ją przed rozpoczęciem fetcha.
+
+### 2.2 `feedback_since_train` rośnie N razy przy N-way splicie
+
+**Pliki:**
+- `dashboard/src-tauri/src/commands/sessions/split.rs:156-165` — dodaje `segments.len()` do licznika
+- `dashboard/src-tauri/src/commands/sessions/mutations.rs:107-128` — dodaje zawsze `1`
+
+Niespójna semantyka: 5-way split dodaje 5, ale 5 pojedynczych assignów też dodaje 5. Split powinien liczyć jako jedna operacja feedbacku.
+
+**Naprawa:** W `split.rs` zmienić `feedback_count = segments.len()` na `feedback_count = 1`.
+
+### 2.3 `inferPreset` nie rozpoznaje przesuniętego miesiąca
+
+**Plik:** `dashboard/src/store/data-store.ts:58-74`
+
+Po powrocie do bieżącego miesiąca strzałkami, `inferPreset` porównuje z `now` zamiast z zakresem. Może zwrócić `'custom'` zamiast `'month'`.
+
+**Naprawa:** `inferPreset` powinien sprawdzać `isSameMonth(start, end)` zamiast `isSameMonth(start, now)`.
+
+### 2.4 `suggest_project_for_session_raw` — nazwa myląca
+
+**Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs:379-430`
+
+Funkcja `raw` nie stosuje thresholdów i może być przypadkowo użyta tam, gdzie threshold jest wymagany.
+
+**Naprawa:** Zmienić nazwę na `suggest_project_for_session_unfiltered` i dodać doc-comment wyjaśniający intencje.
 
 ---
 
 ## 3. Duplikacja kodu
 
-### 3.1 Typy danych demon↔shared (największa duplikacja)
-- `src/storage.rs` `DailyData`/`AppDailyData`/`Session`/`FileEntry` duplikują `shared/daily_store/types.rs` `StoredDailyData`/etc.
-- `total_time_formatted` (storage.rs:31) istnieje TYLKO w demon-side `AppDailyData` — nigdy nie jest persystowany (generowany w `update_summary`).
-- **Sugestia**: Demon powinien bezpośrednio używać `StoredDailyData` z shared, a `total_time_formatted` obliczać w locie (już to robi w `update_summary`). Eliminuje ~100 linii konwersji.
+### 3.1 `session-analysis.ts` vs `split.rs` — zduplikowana logika analizy splitu
 
-### 3.2 `timeflow_data_dir()` / `config_dir()` / `app_storage_dir()`
-- `src/config.rs:80-83` (`config_dir`) — zwraca `%APPDATA%/TimeFlow`
-- `dashboard/src-tauri/src/commands/helpers.rs:74-78` (`timeflow_data_dir`) — robi to samo
-- `dashboard/src-tauri/src/db.rs:78-101` (`app_storage_dir`) — robi to samo z fallbackami
-- **Sugestia**: Zunifikować w `shared/timeflow_paths.rs` jako jedną funkcję.
+**Pliki:**
+- `dashboard/src/lib/session-analysis.ts:16-63` (TypeScript)
+- `dashboard/src-tauri/src/commands/sessions/split.rs:509-531` (Rust)
 
-### 3.3 Dwukrotne otwarcie dashboard DB w demonie
-- `src/config.rs:127-178` — `load_monitored_apps_from_dashboard_db()` otwiera DB
-- `src/tray.rs:49-89` — `query_unassigned_attention_count()` otwiera DB
-- Obie robią to samo: open, busy_timeout, check table exists, query, close.
-- **Sugestia**: Wspólny helper `open_dashboard_db_readonly()` w config lub osobnym module.
+Identyczna logika `buildAnalysisFromBreakdown` — filtrowanie kandydatów, `ratio_to_leader`, `is_splittable`.
 
-### 3.4 Sanityzacja pól w trackerze i storage
-- `src/tracker.rs` linie 200-205 — normalizuje `file_name`, `window_title`, `detected_path` przy każdym pollu
-- `src/storage.rs` linie 114-142 — `prepare_daily_for_storage()` robi to PONOWNIE przed zapisem
-- **Sugestia**: Sanityzacja powinna być jednokrotna — albo przy wejściu (tracker), albo przy zapisie (storage), nie w obu miejscach.
+**Naprawa:** Usunąć logikę z TS. Rust zwraca `is_splittable` w odpowiedzi — frontend powinien tylko konsumować wynik.
 
-### 3.5 `build_all.py` vs `build_release.py` — skopiowana logika
-- `build_all.py` linie 48-115 — obsługa wersji (input + walidacja regex) + orkiestracja buildu
-- `build_release.py` linie 59-123 — ten sam kod 1:1, plus krok ZIP/send
-- **Sugestia**: Wyciągnąć wspólną logikę (wersja + orkiestracja) do `build_common.py`. `build_release.py` powinien rozszerzać `build_all.py`.
+### 3.2 `withTimeout` w złym pliku
 
-### 3.6 `MonitoredApp` — podwójna definicja
-- `src/config.rs:14-18` — `MonitoredApp` w demonie
-- `dashboard/src-tauri/src/commands/types.rs:318-322` — identyczna definicja
-- **Sugestia**: Przenieść do `shared/` crate.
+**Plik:** `dashboard/src/lib/session-analysis.ts:65-81`
 
-### 3.7 Konwersje `ProcessEntryInfo` powtórzone
-- `src/process_utils.rs` definiuje `ProcessEntryInfo` z `collect_process_entries()`
-- `src/tray.rs:363-375` — `is_dashboard_running()` woła `collect_process_entries()` i iteruje
-- `src/monitor.rs:302-320` — `build_process_snapshot()` woła to samo
-- Demon buduje pełny snapshot procesów regularnie — `is_dashboard_running()` mogłoby korzystać z cached snapshot zamiast tworzyć nowy.
+Funkcja `withTimeout<T>` nie ma związku z analizą sesji. Powinna być w `async-utils.ts`.
+
+**Naprawa:** Przenieść do `dashboard/src/lib/async-utils.ts`.
+
+### 3.3 `get_dashboard_stats` vs `get_dashboard_data` — podwójne obliczanie
+
+**Plik:** `dashboard/src-tauri/src/commands/dashboard.rs:168, 211`
+
+Obie funkcje wywołują `compute_project_activity_unique`. Sprawdzić czy `get_dashboard_stats` jest faktycznie używany w UI — jeśli nie, usunąć.
 
 ---
 
-## 4. Wydajność
+## 4. Wydajność i optymalizacje
 
-### 4.1 `compute_project_activity_unique` jest wywoływane wielokrotnie
-- **Plik**: `dashboard/src-tauri/src/commands/dashboard.rs`
-- `get_dashboard_data` (linia 188) woła `compute_project_activity_unique` raz, dobrze.
-- ALE: `get_dashboard_stats` (linia 219), `get_top_projects` (linia 344), `get_dashboard_projects` (linia 358), `get_timeline` (linia 372), `get_hourly_breakdown` (linia 389) — każda z tych komend woła `compute_project_activity_unique` NIEZALEŻNIE.
-- **Problem**: Dashboard Frontend woła `getDashboardData` (który zwraca stats+top+timeline), ale inne strony mogą wołać te endpointy osobno. Każde wywołanie to pełny scan `sessions` + `file_activities` + `manual_sessions`.
-- **Sugestia**: Cache wyników na poziomie date_range per request, lub batch endpoint który zwraca wszystko naraz.
+### 4.1 `rebuild.rs` — DELETE i UPDATE w pętli (N+1)
 
-### 4.2 Assignment suggestions per-session w `get_sessions`
-- **Plik**: `dashboard/src-tauri/src/commands/sessions/query.rs` linie 437-558
-- Po pobraniu sesji, jeśli `include_ai_suggestions`, robi DRUGIE `run_db_blocking` z `suggest_projects_for_sessions_with_status` + dodatkowe `suggest_projects_for_sessions_raw` dla sesji przypisanych ale bez sugestii.
-- **Problem**: Dwa osobne `run_db_blocking` calls = dwa acquire z poola, dwa `spawn_blocking`.
-- **Sugestia**: Przenieść logikę sugestii do tego samego bloku `run_db_blocking`.
+**Plik:** `dashboard/src-tauri/src/commands/sessions/rebuild.rs:119-141`
 
-### 4.3 PID cache evict interval (10 min) vs cache max age (3 min) — rozsądne
-- `src/config.rs` defaults: `cache_evict_secs=600`, `cache_max_age_secs=180`
-- Evict co 10 min, ale wpisy max 3 min stare — wpisy żyją dłużej niż max_age jeśli nie ma evictu. W praktyce działa bo `ensure_pid_cache_entry` sprawdza process creation time.
+- DELETE per-id zamiast `DELETE FROM sessions WHERE id IN (?,...)`
+- UPDATE `session_manual_overrides` per-pair zamiast batch
 
-### 4.4 `BackgroundServices` — 1s tick interval
-- **Plik**: `dashboard/src/components/sync/BackgroundServices.tsx` linia 452
-- `JOB_LOOP_TICK_MS` = prawdopodobnie 1000ms (z `job-pool-helpers.ts`)
-- Co sekundę sprawdza timestampy następnych zadań. W praktyce lekki (porównanie liczb), ale mogłoby być wydajniejsze z `setTimeout` na najbliższe zadanie zamiast stałego interwału.
+**Naprawa:** Zbatchować operacje — zgromadzić ID do usunięcia/aktualizacji, wykonać 1-2 zapytania zamiast N.
 
-### 4.5 Visibility change — burst IPC bez debounce
-- **Plik**: `dashboard/src/components/sync/BackgroundServices.tsx` linie ~401-417
-- **Problem**: Powrót do okna (visibility change) natychmiast odpala `runRefresh` + `refreshDiagnostics` (4 IPC calls) + file signature check — burst bez debounce.
-- **Sugestia**: Dodać debounce 500ms na visibility change handler.
+### 4.2 Daemon — nowe połączenie SQLite przy każdym zapisie
 
-### 4.6 `refreshDiagnostics` — 4 osobne IPC zamiast batched
-- **Plik**: `dashboard/src/store/background-status-store.ts` linie 127-140
-- **Problem**: 4 osobne Tauri IPC roundtripy (getDaemonRuntimeStatus, getAssignmentModelStatus, 2x getSessionCount). Każdy = osobny `spawn_blocking` + connection z puli.
-- **Sugestia**: Jedna komenda `get_background_diagnostics_batch` zwracająca wszystko naraz.
+**Plik:** `src/storage.rs:save_daily`
 
-### 4.7 Brakujący indeks na `sessions.date` (sam)
-- Indeksy w `db_migrations.rs:758`: `idx_sessions_app_date ON sessions(app_id, date, start_time)` — dobry dla zapytań per-app+date.
-- ALE: `ACTIVE_SESSION_FILTER` sprawdza `is_hidden = 0`, a wiele zapytań filtruje po `date` BEZ `app_id`. Composite index `(app_id, date, ...)` nie pomoże przy samym `WHERE date >= ? AND date <= ?`.
-- **Sugestia**: Dodać `CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)` — poprawi dashboard stats, timeline, heatmap.
+`open_daily_store()` otwiera nowe `rusqlite::Connection` co 5 minut.
 
----
+**Naprawa:** Trzymać `Connection` jako pole struktury tracker loop. Odświeżać tylko przy błędzie.
 
-## 5. Jakość kodu
+### 4.3 WMI blokuje wątek monitorujący
 
-### 5.1 Error handling — `String` zamiast typów błędów
-- Prawie CAŁY Tauri backend używa `Result<T, String>`. Np. `dashboard/src-tauri/src/commands/helpers.rs:85-97`.
-- Demon używa `anyhow::Result` w storage, ale `String` w config.
-- **Sugestia**: Nie wymaga natychmiastowej zmiany, ale nowe moduły powinny używać `thiserror` lub przynajmniej `anyhow`.
+**Plik:** `src/monitor/wmi_detection.rs`
 
-### 5.2 `pub use *` w commands/mod.rs
-- **Plik**: `dashboard/src-tauri/src/commands/mod.rs` linie 27-44
-- Wszystkie moduły re-exportowane globbing `pub use module::*` — ryzyko kolizji nazw, trudność w znalezieniu źródła funkcji.
-- **Sugestia**: Explicit re-exports lub przynajmniej komentarze grupujące.
+WMI query (40-200 ms) blokuje polling. Batching (16 PIDów) i jednorazowe wywołanie per-PID łagodzą problem, ale przy wielu nowych procesach jednocześnie opóźnienie rośnie.
 
-### 5.3 `DailyData` w Tauri backend to alias na `StoredDailyData`
-- **Plik**: `dashboard/src-tauri/src/commands/types.rs` prawdopodobnie definiuje `DailyData` jako alias shared type.
-- Ale `daily_store_bridge.rs` linia 7 importuje `super::types::DailyData` i przekazuje go bezpośrednio do `replace_day_snapshot` (linia 33) — to działa bo Tauri backend używa bezpośrednio `StoredDailyData`.
-- W demonie natomiast jest osobna konwersja (`storage.rs`). Niespójność.
+**Naprawa (niska priorytet):** Rozważyć wykonywanie WMI queries w osobnym wątku z `mpsc::channel` do zwracania wyników.
 
-### 5.4 Tray timer odświeża co 5s
-- **Plik**: `src/tray.rs` linia 175 — `AnimationTimer` z `interval: Duration::from_secs(5)`
-- Co 5s: sprawdza zmianę języka (`load_language` = czyta plik z dysku), odświeża attention count (baza danych co 30s, ale check co 5s).
-- Czytanie pliku co 5s to trochę za często — 10-15s byłoby wystarczające.
+### 4.4 `Sessions.tsx:itemContent` — brak `React.memo` na wierszu
 
-### 5.5 `classify_activity_type` — duplikacja z dashboard
-- **Plik**: `src/monitor.rs` linie 160-209 — hardcoded lista exe → ActivityType
-- Dashboard nie ma odpowiednika bo używa tego co demon zapisze, ale dodanie nowego IDE/przeglądarki wymaga update demona i ponownej kompilacji.
-- **Sugestia**: Przenieść listę do konfiguracji lub shared crate.
+**Plik:** `dashboard/src/components/sessions/SessionRow.tsx` + `dashboard/src/pages/Sessions.tsx`
+
+Inline render w Virtuoso powoduje re-render wszystkich widocznych wierszy przy każdej zmianie stanu.
+
+**Naprawa:** Owinąć `SessionRow` w `React.memo()`.
+
+### 4.5 `Sessions.tsx` — ~990 linii, trudny do utrzymania
+
+**Plik:** `dashboard/src/pages/Sessions.tsx`
+
+~15 useCallback, ~8 useMemo, ~10 useState w jednym komponencie.
+
+**Naprawa:** Wydzielić:
+- `useSessionContextMenuActions` hook (logika context menu)
+- `useSessionBulkActions` hook (operacje batch)
+- `SessionsHeader` komponent (toolbar + filtry)
+
+### 4.6 Tracker sleep loop — N mikro-budzień zamiast jednego
+
+**Plik:** `src/tracker.rs:531-546`
+
+Pętla 1-sekundowych sleep zamiast jednego `thread::sleep(remain)` z osobnym wątkiem do stop-signalu.
+
+**Naprawa (niska priorytet):** Użyć `Condvar::wait_timeout` na stop mutex — budzi się natychmiast przy stop lub po timeout.
 
 ---
 
-## 6. Modularyzacja
+## 5. Tłumaczenia i i18n
 
-### 6.1 `dashboard/src/pages/ProjectPage.tsx` — 1531 linii
-- Największy komponent w dashboardzie. Łączy wyświetlanie projektu, sesje, manual sessions, timeline, komentarze, context menu, dialog edycji, estymacje.
-- **Sugestia**: Wydzielić sekcje: `ProjectOverview`, `ProjectSessionsList`, `ProjectTimelineSection`, `ProjectEstimatesSection`.
+### 5.1 Niespójność "ręczne" vs "manualne" w PL
 
-### 6.2 `dashboard/src/pages/Projects.tsx` — 1445 linii
-- Folder sync, project detection, lista projektów, excluded projects, context menu, create dialog.
-- **Sugestia**: Wydzielić `ProjectsList`, `ExcludedProjectsList`, `ProjectDiscoveryPanel`.
+Dotyczy ~10 kluczy. Mieszane użycie w `common.json` PL:
+- `layout.tooltips.manual_sessions` → "Sesje manualne"
+- `components.manual_session_dialog.title_add` → "Dodaj sesję ręczną"
+- `reports_page.sections.manual_sessions` → "Sesje manualne"
 
-### 6.3 `dashboard/src/pages/Sessions.tsx` — 1167 linii
-- Hooksy wydzielone do `hooks/useSessionActions.ts`, `hooks/useSessionsData.ts`, `hooks/useSessionsFilters.ts` — dobra praktyka.
-- Ale główny komponent nadal duży — toolbar + wirtualna lista + context menu + modal split + prompt modal.
-- **Sugestia**: OK na teraz, hooks extraction zmniejszył złożoność.
+**Naprawa:** Ujednolicić do "ręczne" (naturalniejsze po polsku) we wszystkich kluczach.
 
-### 6.4 `src/tray.rs` — 456 linii, monolityczny handler
-- Event handler `nwg::full_bind_event_handler` (linie 255-347) to jeden duży closure z wieloma Rc/RefCell.
-- **Sugestia**: Wydzielić state do struktury `TrayState` i metody handle_context_menu, handle_mouse_press, handle_timer_tick, handle_menu_item.
+### 5.2 `project_day_timeline.text.s` PL = "e" — prawdopodobna literówka
 
-### 6.5 `dashboard/src-tauri/src/db_migrations.rs` — 800 linii, jeden plik
-- Wszystkie migracje w jednym pliku. Każda nowa migracja zwiększa plik.
-- **Sugestia**: Podzielić na folder `db_migrations/` z osobnymi plikami per epoch (v1, v2, v3...).
+**Plik:** `dashboard/src/locales/pl/common.json:1718`
 
-### 6.6 `dashboard/src-tauri/src/commands/analysis.rs` — 734 linie
-- Główna logika `compute_project_activity_unique` + stacked bar output.
-- **Sugestia**: Wydzielić `stacked_bar.rs` od core `project_activity.rs`.
+EN: `"s": "s"`, PL: `"s": "e"`. Wartość "e" nie ma sensu.
 
-### 6.7 Sessions.tsx — inline context menu (~220 linii JSX)
-- **Plik**: `dashboard/src/pages/Sessions.tsx` linie 890-1113
-- Context menu z logiką przypisywania projektów renderowane inline.
-- **Sugestia**: Wydzielić do `<SessionContextMenu>`.
+**Naprawa:** Zmienić na "s" (skrót od "sesje") lub odpowiedni skrót PL.
 
-### 6.8 `StackedBarData` — indeks-signatura zamiast typowanej mapy
-- **Plik**: `dashboard/src/lib/db-types.ts` linie 324-337
-- `[appName: string]: string | number | ...` — pozwala na dowolne klucze. Lepiej osobny `Record<string, number>` na dane serii.
+### 5.3 Niespójność wielkości liter "Auto-safe" vs "Auto-Safe"
 
-### 6.9 `db.rs:initialize()` — ~110 linii w jednej funkcji
-- **Plik**: `dashboard/src-tauri/src/db.rs` linie 174-283
-- Vacuum + backup + optimize w jednym bloku. Rozbić na `run_vacuum()`, `run_backup()`, `run_optimize()`.
+**Pliki:** `common.json` EN — `layout.status.auto_safe` vs `help_page.auto_safe`
+
+**Naprawa:** Ujednolicić do "Auto-safe" (lowercase 's').
+
+### 5.4 Martwy klucz `sync_on_startup_perform_...`
+
+**Pliki:** `dashboard/src/locales/{en,pl}/common.json:1598`
+
+Nieużywany — zastąpiony przez `sync_on_startup_runs_only_when_online_sync_is_en`.
+
+**Naprawa:** Usunąć z obu plików.
 
 ---
 
-## 7. Tłumaczenia i Help
+## 6. Dokumentacja pomocy (Help.tsx)
 
-### 7.1 Klucze EN/PL — pełna paritet
-- **Wynik porównania**: EN: 1389 kluczy, PL: 1389 kluczy, brak braków w żadnym kierunku.
-- Stan: doskonały.
+### 6.1 Brak sekcji dla ReportView
 
-### 7.2 Help.tsx — pokrycie stron
-- Help.tsx (922 linie) zawiera sekcje/taby mapujące strony. Używa `normalizeHelpTab` z `lib/help-navigation.ts`.
-- Strony pokryte: Dashboard, Sessions, Projects, Estimates, Applications, TimeAnalysis, AI, Data, Reports, DaemonControl, Settings, QuickStart, Import.
-- **Brak**: Sekcja „Reports/ReportView" nie ma dedykowanej zakładki Help (raportowanie jest stosunkowo nowe).
-- **Sugestia**: Dodać opis funkcji generowania raportów (szablony, eksport PDF, filtry dat) w Help.
+ReportView to osobna pełnoekranowa strona z toolbarem (Print/PDF), ale w Help.tsx jest tylko wspomniana jako cecha sekcji Reports.
 
-### 7.3 Hardcoded stringi
-- `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:58` — `title = "Activity Timeline"` jako default prop. Używany w porównaniu (linia 409) do wyboru tłumaczenia. Powinien być kluczem i18n.
-- `dashboard/src/components/dashboard/ProjectDayTimeline.tsx:318` — `title: "Session comment"` — hardcoded w context menu config.
-- W pozostałych komponentach nie znaleziono istotnych hardcoded stringów — dobra konsekwencja użycia `useTranslation()`.
+**Naprawa:** Dodać `HelpDetailsBlock` w `TabsContent value="reports"` z: co robi, kiedy użyć, ograniczenia.
+
+### 6.2 Brak opisu "Font selection" w sekcji Reports
+
+Klucz `help_page.font_selection_and_scaling_change_font_family_sans_serif` istnieje w JSON (linia 1565) ale nie jest podpięty do `features[]` w Help.tsx.
+
+**Naprawa:** Dodać `t18n('help_page.font_selection_and_scaling_...')` do tablicy features sekcji Reports.
+
+### 6.3 Pokrycie stron — status
+
+| Strona | Status w Help.tsx |
+|---|---|
+| Dashboard | ✅ Pełne |
+| Sessions | ✅ Pełne |
+| Projects | ✅ Pełne + HelpDetailsBlock |
+| Estimates | ✅ Pełne |
+| Applications | ✅ Pełne |
+| TimeAnalysis | ✅ Pełne |
+| AI | ✅ Pełne |
+| Data | ✅ Pełne + HelpDetailsBlock |
+| Reports | ⚠️ Brak ReportView + font selection |
+| DaemonControl | ✅ Pełne |
+| Settings | ✅ Pełne |
+| QuickStart | ✅ Pełne |
+| ProjectPage | ✅ Wbudowane w Projects |
+| ImportPage | ✅ Wbudowane w Data |
+
+---
+
+## 7. Architektura i modularność
+
+### 7.1 Mocne strony (nie ruszać)
+
+- **Daemon:** 1 wątek monitorujący, zero współdzielonego mutowalnego stanu — eliminuje race conditions
+- **PID cache** z liveness check przez `creation_time` — niezawodna detekcja reużycia PID
+- **Job pool pattern** w `BackgroundServices.tsx` — jeden centralny interval zamiast wielu timerów
+- **Lazy loading** wszystkich stron przez `React.lazy()`
+- **Connection pool** z WAL + busy_timeout w Tauri
+- **Assignment model** — 4-warstwowy scoring z evidence_factor
+- **Throttle + deduplicacja** refresh w data-store
+
+### 7.2 Obszary do poprawy
+
+| Obszar | Problem | Sugestia |
+|---|---|---|
+| `settings-store.ts` | Przechowuje tylko 2 z N ustawień; reszta w localStorage bez reaktywności | Rozszerzyć store o kluczowe ustawienia (workingHours, language) |
+| `background-status-store.ts` | 3 osobne flagi `InFlight` zamiast mapy | Zamienić na `Map<string, boolean>` lub zostawić (prosty wzorzec) |
+| `Sessions.tsx` | 990 linii, trudny do utrzymania | Wydzielić hooki i subkomponenty (patrz 4.5) |
+| `src/process_utils.rs` vs `shared/process_utils.rs` | Dwa pliki o podobnej nazwie, różna odpowiedzialność | OK — nie duplikacja, ale nazwa myląca. Rozważyć rename src/ na `win_process_snapshot.rs` |
+| `shared/` crate | Dobrze używany, ale `daily_store/` mógłby mieć lepszą dokumentację modułu | Dodać doc-comments do `shared/daily_store/mod.rs` |
+
+### 7.3 Sugestie podziału na moduły (przygotowanie do rozwoju)
+
+```
+dashboard/src/
+├── components/
+│   ├── sessions/
+│   │   ├── SessionRow.tsx          ← dodać React.memo
+│   │   ├── SessionsToolbar.tsx     ← wydzielić z Sessions.tsx
+│   │   ├── SessionsBulkBar.tsx     ← wydzielić z Sessions.tsx
+│   │   └── ...
+│   └── ...
+├── hooks/
+│   ├── useSessionContextMenuActions.ts  ← wydzielić z Sessions.tsx
+│   ├── useSessionBulkActions.ts         ← wydzielić z Sessions.tsx
+│   └── ...
+└── lib/
+    ├── async-utils.ts   ← przenieść withTimeout z session-analysis.ts
+    └── ...
+```
 
 ---
 
 ## 8. Sugestie funkcjonalne
 
-### 8.1 Brak feedback wizualnego przy auto-assignment
-- Kiedy AI przypisuje sesje w tle (`BackgroundServices.tsx`), użytkownik nie widzi co się dzieje. Jedyny feedback to zmiana liczby nieprzypisanych sesji.
-- **Sugestia**: Delikatny toast/badge: "AI przypisał 5 sesji" po zakończeniu cyklu.
+1. **Evidence boost dla background apps**: Model AI słabo klasyfikuje sesje bez plików (background apps) — evidence_count rośnie wolno (warstwy 1/2/3 dają +1 vs warstwa 0 +2). Rozważyć podwyższenie wagi layer1 dla znanych background apps.
 
-### 8.2 Brak stanu empty na Dashboard gdy brak danych
-- `Dashboard.tsx` — kiedy nie ma żadnych sesji (pierwszy dzień), wyświetla puste karty z zerami.
-- **Sugestia**: Wyświetlić onboarding CTA: "Uruchom demona i zacznij monitorować pierwsze aplikacje" z linkiem do DaemonControl/QuickStart.
+2. **Reaktywność ustawień**: Zmiana ustawień (workingHours, splitSettings) w jednym widoku nie propaguje się do innych bez przeładowania. Rozszerzyć Zustand store o te ustawienia.
 
-### 8.3 Session comment bulk edit
-- `updateSessionCommentsBatch` istnieje w API (`lib/tauri.ts:210`), ale UI nie eksponuje masowej edycji komentarzy (tylko per-sesja z context menu).
-- **Sugestia**: Dodać do multi-select toolbar w Sessions opcję „Dodaj komentarz do zaznaczonych".
+3. **ReportView UX**: Strona raportów nie ma dedykowanej sekcji w Help — użytkownik nie wie jak drukować/eksportować PDF.
 
-### 8.4 Brak auto-freeze feedback
-- `autoFreezeProjects` jest wywoływane ale wynik nie jest komunikowany użytkownikowi.
-- **Sugestia**: Po zamrożeniu/odmrożeniu — toast z informacją ile projektów zostało zamrożonych.
+4. **Daemon → SetWinEventHook**: Zamiana pollingu na event-driven detekcję zmian okna zmniejszyłaby opóźnienie wykrycia z 10 s do natychmiastowego. Jest to jednak duża zmiana architektoniczna — traktować jako long-term.
 
-### 8.5 Ulepszone śledzenie przeglądarek
-- `classify_activity_type` w `monitor.rs:181-189` klasyfikuje przeglądarki jako `Browsing`, ale demon nie wykrywa aktywnego URL/tytułu zakładki.
-- Window title zawiera URL/tytuł strony — jest już zapisywany w `window_title` i `title_history`.
-- **Sugestia**: Parsowanie URL z window title przeglądarek do automatycznego przypisywania do projektów (np. GitHub repo → projekt).
-
-### 8.6 Export raportów do PDF
-- `ReportView.tsx` istnieje — sprawdzić czy ma eksport PDF. Jeśli nie, jest to oczywista funkcja do dodania.
+5. **Auto-split false positives**: Przy 50 sesjach per cykl z `sleep(100ms)` throttle, cykl trwa 5-10 s. Jeśli użytkownik w tym czasie zmieni projekt sesji, auto-split może nadpisać przypisanie. Rozważyć sprawdzanie `updated_at` przed splitem.
 
 ---
 
-## 9. Plan prac (priorytetyzowany)
+## 9. Wskazówki dla kolejnego modelu
 
-### P1 — Krytyczne (bezpieczeństwo danych, poprawność)
-1. **Zunifikować typy DailyData demon↔shared** — demon powinien używać `StoredDailyData` bezpośrednio, usunąć `storage.rs` `to_stored_daily`/`from_stored_daily`. Zakres: `src/storage.rs`, `src/tracker.rs`. ~100 linii mniej.
+### Jak sporządzić `plan_implementacji.md`
 
-2. **Dodać indeks `idx_sessions_date ON sessions(date)`** — poprawi wydajność dashboard queries. Zakres: `dashboard/src-tauri/src/db_migrations.rs` (1 linia). Minimalny.
+1. **Kolejność priorytetów** (od najważniejszych):
+   - Faza 1: Błędy krytyczne (1.1, 1.2, 1.3) — ryzyko utraty danych
+   - Faza 2: Błędy logiczne (2.1-2.4) — poprawność działania
+   - Faza 3: Tłumaczenia i Help (5.x, 6.x) — jakość UX
+   - Faza 4: Wydajność (4.1-4.4) — optymalizacje
+   - Faza 5: Refaktoryzacja (3.x, 7.x) — utrzymywalność kodu
+   - Faza 6: Sugestie funkcjonalne (8.x) — rozwój
 
-### P2 — Wydajność
-3. **Przenieść AI suggestions do jednego `run_db_blocking`** w `sessions/query.rs` — zmniejszy liczbę connection acquire. Zakres: `dashboard/src-tauri/src/commands/sessions/query.rs`, ~50 linii refaktoru.
+2. **Każda zmiana w planie musi zawierać:**
+   - Dokładną ścieżkę pliku i numer linii
+   - Co zmienić (stary kod → nowy kod lub opis)
+   - Jak przetestować (scenariusz manualny lub test)
+   - Ryzyko regresji (niskie/średnie/wysokie)
 
-4. **Cache `compute_project_activity_unique` per request** lub zunifikować endpointy dashboard — jeśli frontend woła `get_dashboard_data` (który już ma stats+projects+timeline), nie powinien osobno wołać `get_dashboard_stats`/`get_timeline`. Sprawdzić usage w frontendzie.
+3. **Zasady bezpieczeństwa danych:**
+   - Przed zmianami w `rebuild.rs`, `split.rs`, `mutations.rs` — BACKUP bazy
+   - Zmiany w migracjach DB: TYLKO addytywne (nowe kolumny, indeksy), NIGDY destructive
+   - Zmiany w `daily_store/write.rs` — testować na kopii plików JSON
+   - Zmiany w `common.json` — uruchomić `npm run lint:locales` po każdej edycji
 
-5. **Batch IPC: `get_background_diagnostics_batch`** — zastąpić 4 osobne IPC w `refreshDiagnostics` jedną komendą Tauri. Zakres: nowa komenda Rust + zmiana w `background-status-store.ts`.
+4. **Pliki kluczowe do przeczytania przed implementacją:**
+   - `dashboard/src-tauri/src/commands/sessions/rebuild.rs` — cała logika rebuild
+   - `dashboard/src-tauri/src/commands/assignment_model/mod.rs` — training flow
+   - `dashboard/src-tauri/src/commands/sessions/split.rs` — logika splitu
+   - `dashboard/src/lib/session-analysis.ts` — frontend duplikat do usunięcia
+   - `dashboard/src/pages/Sessions.tsx` — do podziału na moduły
+   - `dashboard/src/pages/Help.tsx` — uzupełnienie sekcji
+   - `dashboard/src/locales/{en,pl}/common.json` — naprawa struktury JSON
+   - `dashboard/src/store/data-store.ts` — fix inferPreset
 
-6. **Debounce na visibility change** — dodać 500ms debounce w `BackgroundServices.tsx` przy powrocie do okna, żeby uniknąć burst IPC.
+5. **Komendy do weryfikacji:**
+   - TypeScript: `cd dashboard && npx tsc --noEmit`
+   - Tłumaczenia: `cd dashboard && npm run lint:locales`
+   - Testy: `cd dashboard && npm run test`
+   - Lint: `cd dashboard && npm run lint`
+   - Rust: `cargo check --workspace`
 
-### P3 — Jakość kodu
-7. **Dodać tabelę `schema_version`** do migracji DB — uniknie ponownego uruchamiania wszystkich migracji przy każdym starcie. Zakres: `db_migrations.rs` + nowa migracja.
+6. **Format planu implementacji:**
+   ```markdown
+   ## Faza N: [nazwa]
 
-8. **Wydzielić `open_dashboard_db_readonly()` w demonie** — zunifikować `config.rs:127-178` i `tray.rs:49-89`. Zakres: nowy helper + refaktor 2 plików.
-
-9. **Usunąć podwójną sanityzację** (tracker + storage) — zostawić tylko w `prepare_daily_for_storage`. Zakres: `src/tracker.rs` ~6 linii.
-
-10. **Dodać stany error w Dashboard.tsx** — obsługa błędów dla stats/topProjects/allProjects.
-
-11. **Rozbić `ProjectPage.tsx` (1531 linii)** na 3-4 sub-komponenty. Zakres: dashboard/src/pages/ + nowy folder components/project-page/.
-
-12. **Rozbić `Projects.tsx` (1445 linii)** na 2-3 sub-komponenty. Zakres: dashboard/src/pages/ + components/projects/.
-
-13. **Wydzielić `<SessionContextMenu>`** z Sessions.tsx (~220 linii inline JSX). Zakres: nowy komponent.
-
-### P4 — Modularyzacja
-14. **Przenieść `classify_activity_type` do konfiguracji** lub shared crate — umożliwi dodawanie nowych IDE/przeglądarek bez rekompilacji demona.
-
-15. **Przenieść `MonitoredApp` do shared crate** — zunifikować definicję z `config.rs:14-18` i `commands/types.rs:318-322`.
-
-16. **Podzielić `db_migrations.rs` na folder** — łatwiejsze zarządzanie. Zakres: nowy folder, 0 zmian logicznych.
-
-17. **Rozbić `db.rs:initialize()`** na mniejsze funkcje (`run_vacuum`, `run_backup`, `run_optimize`).
-
-18. **Refaktor `tray.rs`** — wydzielić TrayState struct z metodami. Zakres: ~100 linii refaktoru, 0 zmian behawioralnych.
-
-19. **Zunifikować build scripts** — wspólna logika wersji z `build_all.py` / `build_release.py` do `build_common.py`.
-
-### P5 — UX i funkcje
-20. **Dodać sekcję Reports do Help.tsx** — opis szablonów raportów.
-
-21. **Naprawić hardcoded strings w ProjectDayTimeline** — zamienić na klucze i18n.
-
-22. **Dodać toast po AI auto-assignment** — informacja ile sesji przypisano.
-
-23. **Empty state na Dashboard** — onboarding CTA dla nowych użytkowników.
-
-24. **Bulk comment edit w Sessions** — dodać do multi-select toolbar opcję „Dodaj komentarz do zaznaczonych".
+   ### Zadanie N.M: [tytuł]
+   - **Plik:** ścieżka:linia
+   - **Problem:** opis
+   - **Zmiana:** co dokładnie zmienić
+   - **Test:** jak sprawdzić
+   - **Ryzyko:** niskie/średnie/wysokie
+   - **Zależności:** czy wymaga innych zadań najpierw
+   ```
 
 ---
 
-## 10. Wskazówki dla implementującego
+## Podsumowanie ilościowe
 
-### Zachowanie danych — PRIORYTET #1
-- Przed KAŻDĄ zmianą w storage/daily_store: backup testowej bazy, test roundtrip (write→read→verify).
-- Migracja typów DailyData (P1.1): NIE zmieniaj formatu SQLite, tylko wewnętrzne typy Rust.
-- NIE usuwaj pola `total_time_formatted` z demon DailyData — jest read-only i nieszkodliwe. Zamiast tego, po zunifikowaniu typów, dodaj je jako computed field lub osobne pole tylko w demonie (nie w shared).
-
-### Jak sporządzić plan_implementacji.md
-- Każde zadanie jako osobna sekcja z: cel, pliki do zmiany, kroki, test manualny.
-- Zacząć od P1 i P2 — dają największy zwrot.
-- P3-P5 można robić równolegle, niezależnie od siebie.
-
-### Czego NIE ruszać
-- **Build scripts** (`build_all.py`, itp.) — działają, nie refaktorować bez powodu.
-- **Shared crate API** (`daily_store::replace_day_snapshot`, `load_day_snapshot`) — stabilne, dobrze przetestowane.
-- **Migracje DB** — NIE modyfikować istniejących migracji. Nowe dodawać na końcu.
-- **Tłumaczenia** — pełny parytet EN/PL, nie ruszać istniejących kluczy. Nowe klucze dodawać w obu plikach jednocześnie.
-- **`BackgroundServices.tsx`** — złożony ale poprawny, job pool jest dobrze zaprojektowany. Zmiany tylko jeśli dodajesz nowy job.
-
-### Testy
-- Demon: `cargo test -p timeflow-demon` — uruchomić po zmianach w `storage.rs`, `tracker.rs`, `monitor.rs`.
-- Shared: `cargo test -p timeflow-shared` — uruchomić po zmianach w `daily_store/`.
-- Dashboard Tauri: `cargo test -p timeflow-dashboard` — uruchomić po zmianach w `commands/`.
-- Dashboard TS: `cd dashboard && npx tsc --noEmit` — sprawdzić typy po zmianach w `.tsx`/`.ts`.
-- Frontend testy: `cd dashboard && npm test` (jeśli skonfigurowane).
-
-### Konwencje
-- Rust: `snake_case` dla zmiennych/funkcji, `CamelCase` dla typów.
-- TypeScript: `camelCase` dla zmiennych/funkcji, `PascalCase` dla komponentów/typów.
-- UI: nazwa produktu zawsze `TIMEFLOW` (wielkie litery).
-- Tłumaczenia: `t('PL text', 'EN text')` w Help.tsx (inline), `t('key')` z plików JSON w reszcie UI.
-- Commity: opisowy message, bez emoji.
+| Kategoria | Znalezione | Krytyczne | Średnie | Niskie |
+|---|---|---|---|---|
+| Błędy krytyczne | 3 | 3 | — | — |
+| Błędy logiczne | 4 | — | 4 | — |
+| Duplikacja kodu | 3 | — | 2 | 1 |
+| Wydajność | 6 | — | 3 | 3 |
+| Tłumaczenia | 4 | 1 (duplikat kluczy) | 2 | 1 |
+| Help.tsx | 2 | — | 2 | — |
+| Architektura | 5 | — | 2 | 3 |
+| Sugestie funkcjonalne | 5 | — | — | 5 |
+| **RAZEM** | **32** | **4** | **15** | **13** |
