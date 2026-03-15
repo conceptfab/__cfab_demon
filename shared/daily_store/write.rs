@@ -102,19 +102,10 @@ pub fn replace_day_snapshot(
         .map_err(|e| format!("Failed to prepare daily session trim: {}", e))?;
     let mut file_stmt = tx
         .prepare_cached(
-            "INSERT INTO daily_files (
+            "INSERT OR REPLACE INTO daily_files (
                  date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
                  window_title, detected_path, title_history_json, activity_type
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-             ON CONFLICT(date, exe_name, file_name, detected_path) DO UPDATE SET
-                 ordinal = excluded.ordinal,
-                 total_seconds = excluded.total_seconds,
-                 first_seen = excluded.first_seen,
-                 last_seen = excluded.last_seen,
-                 window_title = excluded.window_title,
-                 detected_path = excluded.detected_path,
-                 title_history_json = excluded.title_history_json,
-                 activity_type = excluded.activity_type",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )
         .map_err(|e| format!("Failed to prepare daily file insert: {}", e))?;
     tx.execute_batch(

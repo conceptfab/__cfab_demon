@@ -185,6 +185,39 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         let archive: ExportArchive = serde_json::from_str(&content).map_err(|e| e.to_string())?;
         let mut conn = db::get_connection(&app)?;
 
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let summary = import_archive_into_tx(&tx, &archive, false, &app)?;
+        tx.commit().map_err(|e| e.to_string())?;
+
+        match super::sessions::apply_manual_session_overrides(&conn) {
+            Ok(reapplied) if reapplied > 0 => {
+                log::info!(
+                    "Reapplied {} manual session override(s) after import_data",
+                    reapplied
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log::warn!(
+                    "Failed to reapply manual session overrides after import_data: {}",
+                    e
+                );
+            }
+        }
+
+        Ok(summary)
+    })
+    .await
+}
+
+/// Import archive data into a transaction (shared logic for import_data and import_data_archive).
+/// When `clear_before_import` is true, all synchronized tables are wiped first (online sync mode).
+fn import_archive_into_tx(
+    tx: &rusqlite::Transaction<'_>,
+    archive: &ExportArchive,
+    clear_before_import: bool,
+    app: &AppHandle,
+) -> Result<ImportSummary, String> {
     let mut summary = ImportSummary {
         projects_created: 0,
         apps_created: 0,
@@ -193,7 +226,68 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         daily_files_imported: 0,
     };
 
-    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    // --- Safety: snapshot counts before any changes ---
+    let sessions_before: i64 = tx
+        .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))
+        .unwrap_or(0);
+    let projects_before: i64 = tx
+        .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    // --- Clear synchronized tables (online sync only) ---
+    if clear_before_import {
+        tx.execute_batch(
+            "DELETE FROM file_activities;
+             DELETE FROM sessions;
+             DELETE FROM manual_sessions;
+             DELETE FROM applications;
+             DELETE FROM projects;
+             DELETE FROM assignment_auto_run_items;
+             DELETE FROM assignment_auto_runs;
+             DELETE FROM assignment_feedback;
+             DELETE FROM assignment_suggestions;
+             DELETE FROM assignment_model_app;
+             DELETE FROM assignment_model_token;
+             DELETE FROM assignment_model_time;
+             DELETE FROM assignment_model_state
+               WHERE key NOT IN (
+                 'mode',
+                 'min_confidence_suggest',
+                 'min_confidence_auto',
+                 'min_evidence_auto',
+                 'feedback_weight',
+                 'cooldown_until'
+               );",
+        )
+        .map_err(|e| format!("Failed to clear tables before sync import: {}", e))?;
+    }
+
+    // 0. Handle Tombstones
+    for t in &archive.data.tombstones {
+        match t.table_name.as_str() {
+            "projects" => {
+                if let Some(ref name) = t.sync_key {
+                    tx.execute("DELETE FROM projects WHERE name = ?1", [name])
+                        .ok();
+                }
+            }
+            "manual_sessions" => {
+                if let Some(ref key) = t.sync_key {
+                    let parts: Vec<&str> = key.split('|').collect();
+                    if parts.len() == 3 {
+                        let start_time = parts[1];
+                        let title = parts[2];
+                        tx.execute(
+                            "DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
+                            [start_time, title],
+                        )
+                        .ok();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 
     // 1. Map and Create Projects
     let mut existing_projects_map: HashMap<String, i64> = HashMap::new();
@@ -213,45 +307,12 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         }
     }
 
-    // 0. Handle Tombstones
-    for t in &archive.data.tombstones {
-        match t.table_name.as_str() {
-            "projects" => {
-                if let Some(ref name) = t.sync_key {
-                    tx.execute("DELETE FROM projects WHERE name = ?1", [name])
-                        .ok();
-                }
-            }
-            "manual_sessions" => {
-                if let Some(ref key) = t.sync_key {
-                    // key is "pid|start_time|title"
-                    let parts: Vec<&str> = key.split('|').collect();
-                    if parts.len() == 3 {
-                        let start_time = parts[1];
-                        let title = parts[2];
-                        // We don't have local PID here easily, but we can match by start_time and title globally
-                        // or better: just ignore if we can't match exactly.
-                        // But if it's a manual session, (start_time, title) is pretty unique for a user.
-                        tx.execute(
-                            "DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
-                            [start_time, title],
-                        )
-                        .ok();
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let mut project_mapping = HashMap::new(); // archive_id -> local_id
+    let mut project_mapping = HashMap::new();
     for p in &archive.data.projects {
         let project_key = p.name.trim().to_lowercase();
         let local_id = existing_projects_map.get(&project_key).copied();
 
         let id = if let Some(id) = local_id {
-            // Upsert: Aktualizuj istniejący projekt o dane z importu (kolor, stawkę, folder, status zamrożenia)
-            // Rozstrzygnij konflikt za pomocą updated_at
             let local_updated_at: String = tx
                 .query_row(
                     "SELECT updated_at FROM projects WHERE id = ?1",
@@ -262,8 +323,8 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
 
             if p.updated_at > local_updated_at {
                 tx.execute(
-                    "UPDATE projects 
-                     SET color = ?1, 
+                    "UPDATE projects
+                     SET color = ?1,
                          hourly_rate = COALESCE(?2, hourly_rate),
                          assigned_folder_path = COALESCE(?3, assigned_folder_path),
                          frozen_at = COALESCE(?4, frozen_at),
@@ -320,7 +381,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         }
     }
 
-    let mut app_mapping = HashMap::new(); // archive_id -> local_id
+    let mut app_mapping = HashMap::new();
     for a in &archive.data.applications {
         let exe_key = a.executable_name.trim().to_lowercase();
         let display_key = a.display_name.trim().to_lowercase();
@@ -357,6 +418,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         };
         app_mapping.insert(a.id, id);
     }
+
     // 3. Import and Merge Sessions
     for s in &archive.data.sessions {
         if let Some(&local_app_id) = app_mapping.get(&s.app_id) {
@@ -376,7 +438,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                 is_hidden: s.is_hidden,
             };
 
-            let merged = merge_or_insert_session(&tx, local_app_id, &incoming)?;
+            let merged = merge_or_insert_session(tx, local_app_id, &incoming)?;
             if merged {
                 summary.sessions_merged += 1;
             } else {
@@ -384,13 +446,13 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
             }
         }
     }
+
     // 4. Manual Sessions
     for ms in &archive.data.manual_sessions {
         if let Some(&local_pid) = project_mapping.get(&ms.project_id) {
             let local_manual_app_id = ms
                 .app_id
                 .and_then(|archive_app_id| app_mapping.get(&archive_app_id).copied());
-            // Fetch local updated_at if exists
             let local_status: Option<(i64, String)> = tx.query_row(
                 "SELECT id, updated_at FROM manual_sessions WHERE project_id = ?1 AND start_time = ?2 AND title = ?3",
                 rusqlite::params![local_pid, ms.start_time, ms.title],
@@ -400,10 +462,10 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
             if let Some((local_id, local_updated_at)) = local_status {
                 if ms.updated_at > local_updated_at {
                     tx.execute(
-                        "UPDATE manual_sessions SET 
-                            session_type = ?1, 
-                            end_time = ?2, 
-                            duration_seconds = ?3, 
+                        "UPDATE manual_sessions SET
+                            session_type = ?1,
+                            end_time = ?2,
+                            duration_seconds = ?3,
                             updated_at = ?4,
                             app_id = ?5
                          WHERE id = ?6",
@@ -420,7 +482,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
                 }
             } else {
                 tx.execute(
-                    "INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at, updated_at) 
+                    "INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at, updated_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                     rusqlite::params![ms.title, ms.session_type, local_pid, local_manual_app_id, ms.start_time, ms.end_time, ms.duration_seconds, ms.date, ms.created_at, ms.updated_at]
                 ).map_err(|e| e.to_string())?;
@@ -429,7 +491,7 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
     }
 
     // 5. Daily Files
-    let demo_mode = db::is_demo_mode_enabled(&app)?;
+    let demo_mode = db::is_demo_mode_enabled(app)?;
     for (date, daily) in &archive.data.daily_files {
         if demo_mode {
             save_demo_daily_file(date, daily)?;
@@ -447,27 +509,41 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         summary.daily_files_imported += 1;
     }
 
-    tx.commit().map_err(|e| e.to_string())?;
+    // --- Safety: pre-commit validation (online sync only) ---
+    // If we had data before and the import produced nothing, abort.
+    if clear_before_import {
+        let sessions_after: i64 = tx
+            .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))
+            .unwrap_or(0);
+        let projects_after: i64 = tx
+            .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))
+            .unwrap_or(0);
 
-    match super::sessions::apply_manual_session_overrides(&conn) {
-        Ok(reapplied) if reapplied > 0 => {
-            log::info!(
-                "Reapplied {} manual session override(s) after import_data",
-                reapplied
-            );
+        if sessions_before > 10 && sessions_after == 0 {
+            return Err(format!(
+                "Sync safety check failed: had {} sessions before sync but 0 after import. \
+                 Aborting to prevent data loss. The server payload may be empty or corrupt.",
+                sessions_before
+            ));
         }
-        Ok(_) => {}
-        Err(e) => {
-            log::warn!(
-                "Failed to reapply manual session overrides after import_data: {}",
-                e
-            );
+        if projects_before > 3 && projects_after == 0 {
+            return Err(format!(
+                "Sync safety check failed: had {} projects before sync but 0 after import. \
+                 Aborting to prevent data loss.",
+                projects_before
+            ));
         }
+
+        log::info!(
+            "Sync import pre-commit check OK: sessions {}→{}, projects {}→{}",
+            sessions_before,
+            sessions_after,
+            projects_before,
+            projects_after
+        );
     }
 
-        Ok(summary)
-    })
-    .await
+    Ok(summary)
 }
 
 #[tauri::command]
@@ -475,109 +551,63 @@ pub async fn import_data_archive(
     app: AppHandle,
     archive: ExportArchive,
 ) -> Result<ImportSummary, String> {
+    // Backup as extra safety net (kept even if tx approach works)
     let backup_path =
         run_app_blocking(app.clone(), move |app| create_sync_restore_backup(&app)).await?;
 
-    // Online sync pull should converge to exactly the server snapshot.
-    // Replace synchronized tables first to avoid legacy merge conflicts
-    // (e.g. stale boosts/comments/manual-session duplicates).
-    //
-    // AI configuration keys (mode, confidence thresholds, feedback_weight, cooldown_until)
-    // are local user preferences not included in the sync payload — preserve them
-    // so a pull does not revert the user's AI settings to defaults.
-    run_app_blocking(app.clone(), move |app| {
-        let conn = db::get_connection(&app)?;
-        conn.execute_batch(
-            "DELETE FROM file_activities;
-             DELETE FROM sessions;
-             DELETE FROM manual_sessions;
-             DELETE FROM applications;
-             DELETE FROM projects;
-             DELETE FROM assignment_auto_run_items;
-             DELETE FROM assignment_auto_runs;
-             DELETE FROM assignment_feedback;
-             DELETE FROM assignment_suggestions;
-             DELETE FROM assignment_model_app;
-             DELETE FROM assignment_model_token;
-             DELETE FROM assignment_model_time;
-             DELETE FROM assignment_model_state
-               WHERE key NOT IN (
-                 'mode',
-                 'min_confidence_suggest',
-                 'min_confidence_auto',
-                 'min_evidence_auto',
-                 'feedback_weight',
-                 'cooldown_until'
-               );",
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
+    // CRITICAL: DELETE + import in a SINGLE transaction.
+    // If anything fails, SQLite automatically rolls back — no data loss.
+    let result = run_app_blocking(app.clone(), move |app| {
+        let mut conn = db::get_connection(&app)?;
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+        let summary = import_archive_into_tx(&tx, &archive, true, &app)?;
+
+        tx.commit()
+            .map_err(|e| format!("Failed to commit sync import transaction: {}", e))?;
+
+        // Post-commit: reapply overrides and retrain model
+        match super::sessions::apply_manual_session_overrides(&conn) {
+            Ok(reapplied) if reapplied > 0 => {
+                log::info!(
+                    "Reapplied {} manual session override(s) after sync import",
+                    reapplied
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                log::warn!(
+                    "Failed to reapply manual session overrides after sync import: {}",
+                    e
+                );
+            }
+        }
+        if let Err(e) = super::assignment_model::retrain_model_sync(&mut conn) {
+            log::warn!("Auto-retrain after sync import failed: {}", e);
+        }
+
+        Ok(summary)
     })
-    .await?;
+    .await;
 
-    let timestamp_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|e| e.to_string())?
-        .as_millis();
-    let temp_path = std::env::temp_dir().join(format!(
-        "timeflow-sync-import-{}-{}.json",
-        std::process::id(),
-        timestamp_ms
-    ));
-
-    let json = serde_json::to_string(&archive).map_err(|e| e.to_string())?;
-    fs::write(&temp_path, json).map_err(|e| e.to_string())?;
-
-    let temp_path_string = temp_path.to_string_lossy().to_string();
-    let result = import_data(app.clone(), temp_path_string).await;
-    let _ = fs::remove_file(&temp_path);
     match result {
         Ok(summary) => {
-            let backup_path_for_cleanup = backup_path.clone();
-            run_app_blocking(app.clone(), move |app| {
-                let _ = fs::remove_file(&backup_path_for_cleanup);
-                if let Ok(mut conn) = db::get_connection(&app) {
-                    match super::sessions::apply_manual_session_overrides(&conn) {
-                        Ok(reapplied) if reapplied > 0 => {
-                            log::info!(
-                                "Reapplied {} manual session override(s) after sync import",
-                                reapplied
-                            );
-                        }
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::warn!(
-                                "Failed to reapply manual session overrides after sync import: {}",
-                                e
-                            );
-                        }
-                    }
-                    if let Err(e) = super::assignment_model::retrain_model_sync(&mut conn) {
-                        log::warn!("Auto-retrain after sync import failed: {}", e);
-                    }
-                }
-                Ok(())
-            })
-            .await?;
+            // Success — remove backup
+            let _ = fs::remove_file(&backup_path);
             Ok(summary)
         }
-        Err(import_error) => {
-            let backup_path_for_restore = backup_path.clone();
-            let restore_result = run_app_blocking(app.clone(), move |app| {
-                restore_db_from_backup(&app, &backup_path_for_restore)
-            })
-            .await;
-            let _ = fs::remove_file(&backup_path);
-            match restore_result {
-                Ok(()) => Err(format!(
-                    "Sync import failed and was rolled back to pre-import state: {}",
-                    import_error
-                )),
-                Err(restore_error) => Err(format!(
-                    "Sync import failed and rollback failed. import_error={}, restore_error={}",
-                    import_error, restore_error
-                )),
-            }
+        Err(e) => {
+            // Transaction rolled back automatically — data intact.
+            // Keep backup file for manual recovery just in case.
+            log::error!(
+                "Sync import transaction failed (auto-rolled-back, data intact): {}. Backup kept at: {}",
+                e,
+                backup_path.display()
+            );
+            Err(format!(
+                "Sync import failed (data preserved, nothing was deleted): {}",
+                e
+            ))
         }
     }
 }
@@ -810,45 +840,6 @@ fn create_sync_restore_backup(app: &AppHandle) -> Result<PathBuf, String> {
     })?;
 
     Ok(backup_path)
-}
-
-fn restore_db_from_backup(app: &AppHandle, backup_path: &PathBuf) -> Result<(), String> {
-    let status = db::get_demo_mode_status(app)?;
-    let active_db_path = PathBuf::from(status.active_db_path);
-    let wal_path = PathBuf::from(format!("{}-wal", active_db_path.to_string_lossy()));
-    let shm_path = PathBuf::from(format!("{}-shm", active_db_path.to_string_lossy()));
-
-    if wal_path.exists() {
-        let _ = fs::remove_file(&wal_path);
-    }
-    if shm_path.exists() {
-        let _ = fs::remove_file(&shm_path);
-    }
-    if active_db_path.exists() {
-        fs::remove_file(&active_db_path).map_err(|e| {
-            format!(
-                "Failed to remove active database '{}' before restore: {}",
-                active_db_path.display(),
-                e
-            )
-        })?;
-    }
-
-    fs::copy(backup_path, &active_db_path).map_err(|e| {
-        format!(
-            "Failed to restore database from '{}' to '{}': {}",
-            backup_path.display(),
-            active_db_path.display(),
-            e
-        )
-    })?;
-
-    // Re-open once to recreate sidecars and verify DB is usable.
-    let conn = db::get_connection(app)?;
-    conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);")
-        .map_err(|e| format!("Database restored but verification failed: {}", e))?;
-
-    Ok(())
 }
 
 #[cfg(test)]
