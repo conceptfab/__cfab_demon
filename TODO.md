@@ -24,7 +24,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-- detailed nie dziala
+- raport PDF nie drukuej 1 stronę!!!
 
 <!-- - czy refresh w Dashbordzie jest potrzebny?
 - podział sesji
