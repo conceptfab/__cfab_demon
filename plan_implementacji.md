@@ -244,6 +244,70 @@
 
 ---
 
+## Faza 7: Architektura (sugestie usprawniające)
+
+### Zadanie 7.1: `settings-store.ts` — brak reaktywności kluczowych ustawień
+- **Plik:** `dashboard/src/store/settings-store.ts`
+- **Problem:** Store przechowuje tylko 2 z N ustawień; reszta (workingHours, language, splitSettings) w localStorage bez reaktywności — zmiana w jednym widoku nie propaguje się do innych bez przeładowania.
+- **Zmiana:** Rozszerzyć Zustand store o kluczowe ustawienia (workingHours, language, splitSettings).
+- **Test:** Zmienić ustawienia w Settings → sprawdzić, że inne widoki (Dashboard, Sessions) natychmiast reagują bez przeładowania.
+- **Ryzyko:** Średnie — wymaga identyfikacji wszystkich miejsc odczytu ustawień.
+- **Zależności:** Brak.
+
+### Zadanie 7.2: `background-status-store.ts` — 3 osobne flagi InFlight
+- **Plik:** `dashboard/src/store/background-status-store.ts`
+- **Problem:** 3 osobne flagi boolean `InFlight` zamiast mapy — przy dodawaniu nowych background jobs trzeba modyfikować store.
+- **Zmiana:** Zamienić na `Map<string, boolean>` lub zostawić jeśli nie planowane nowe jobs.
+- **Test:** Sprawdzić, że status bar poprawnie pokazuje trwające operacje.
+- **Ryzyko:** Niskie.
+- **Zależności:** Brak.
+
+### Zadanie 7.3: Rename `src/process_utils.rs`
+- **Plik:** `src/process_utils.rs`
+- **Problem:** Nazwa myląca — `src/process_utils.rs` vs `shared/process_utils.rs` mają różną odpowiedzialność, ale identyczne nazwy.
+- **Zmiana:** Zmienić nazwę `src/process_utils.rs` na `src/win_process_snapshot.rs` + zaktualizować `mod` deklarację.
+- **Test:** `cargo check --workspace` — brak błędów kompilacji.
+- **Ryzyko:** Niskie — rename + find/replace.
+- **Zależności:** Brak.
+
+### Zadanie 7.4: Doc-comments dla `shared/daily_store/`
+- **Plik:** `shared/daily_store/mod.rs`
+- **Problem:** Brak dokumentacji modułu — nowy developer nie wie co moduł robi bez czytania kodu.
+- **Zmiana:** Dodać doc-comments do `mod.rs` opisujące: cel modułu, format plików JSON, cykl życia danych.
+- **Test:** `cargo doc --workspace --no-deps` — dokumentacja się generuje.
+- **Ryzyko:** Niskie.
+- **Zależności:** Brak.
+
+---
+
+## Faza 8: Sugestie rozwojowe (long-term)
+
+### Zadanie 8.1: Evidence boost dla background apps w modelu AI
+- **Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs`
+- **Problem:** Model AI słabo klasyfikuje sesje bez plików (background apps) — evidence_count rośnie wolno (warstwy 1/2/3 dają +1 vs warstwa 0 +2).
+- **Zmiana:** Podwyższyć wagę layer1 dla znanych background apps lub dodać osobną ścieżkę scoringu.
+- **Test:** Przypisać background app do projektu kilka razy → sprawdzić, że model szybciej się uczy.
+- **Ryzyko:** Średnie — zmiana wag może wpłynąć na istniejące przypisania.
+- **Zależności:** Brak.
+
+### Zadanie 8.2: Daemon → `SetWinEventHook` (event-driven detection)
+- **Plik:** `src/monitor.rs`
+- **Problem:** Polling co 10s vs event-driven — opóźnienie wykrycia zmian okna.
+- **Zmiana:** Zamienić polling na `SetWinEventHook` dla detekcji zmian aktywnego okna. Zachować polling jako fallback.
+- **Test:** Przełączać okna szybko → sprawdzić, że tracker rejestruje wszystkie zmiany bez opóźnienia.
+- **Ryzyko:** Wysokie — duża zmiana architektoniczna, dotyczy core daemon.
+- **Zależności:** Brak.
+
+### Zadanie 8.3: Auto-split false positives — guard `updated_at`
+- **Plik:** `dashboard/src-tauri/src/commands/sessions/split.rs`
+- **Problem:** Przy 50 sesjach per cykl z `sleep(100ms)` throttle, cykl trwa 5-10s. Jeśli użytkownik w tym czasie zmieni projekt sesji, auto-split może nadpisać przypisanie.
+- **Zmiana:** Sprawdzać `updated_at` sesji przed splitem — jeśli sesja była zmodyfikowana od początku cyklu, pominąć ją.
+- **Test:** Podczas auto-split cyklu ręcznie zmienić projekt sesji → sprawdzić, że zmiana nie jest nadpisana.
+- **Ryzyko:** Niskie — dodanie warunku guard.
+- **Zależności:** Brak.
+
+---
+
 ## Podsumowanie
 
 | Faza | Zadań | Ryzyko | Szacunkowa złożoność |
@@ -254,7 +318,9 @@
 | 4. Wydajność | 5 | Średnie | Średnia |
 | 5. Refaktoryzacja | 4 | Średnie | Średnia-wysoka |
 | 6. Brakujące funkcje | 1 | Wysokie | Wysoka |
-| **RAZEM** | **23** | — | — |
+| 7. Architektura | 4 | Niskie-Średnie | Niska-średnia |
+| 8. Sugestie rozwojowe | 3 | Średnie-Wysokie | Średnia-wysoka |
+| **RAZEM** | **30** | — | — |
 
 ## Zasady bezpieczeństwa (przed każdą fazą)
 
