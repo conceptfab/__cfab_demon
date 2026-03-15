@@ -369,6 +369,13 @@ export interface DaemonStatus {
   is_compatible?: boolean;
 }
 
+export interface BackgroundDiagnostics {
+  daemon_status: DaemonStatus;
+  ai_status: AssignmentModelStatus;
+  today_unassigned: number;
+  all_unassigned: number;
+}
+
 export interface MonitoredApp {
   exe_name: string;
   display_name: string;

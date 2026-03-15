@@ -292,6 +292,7 @@ function useJobPool() {
   const lastSignatureRef = useRef<string | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
   const localChangeSyncTimer = useRef<number | null>(null);
+  const visibilityDebounceTimer = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const isSyncingRef = useRef(false);
 
@@ -339,6 +340,10 @@ function useJobPool() {
     if (localChangeSyncTimer.current) {
       window.clearTimeout(localChangeSyncTimer.current);
       localChangeSyncTimer.current = null;
+    }
+    if (visibilityDebounceTimer.current) {
+      window.clearTimeout(visibilityDebounceTimer.current);
+      visibilityDebounceTimer.current = null;
     }
   }, []);
 
@@ -400,20 +405,32 @@ function useJobPool() {
 
   const handleVisibilityChange = useEffectEvent(() => {
     refreshSyncSettingsCache();
-    if (!isDocumentVisible()) return;
+    if (!isDocumentVisible()) {
+      if (visibilityDebounceTimer.current) {
+        window.clearTimeout(visibilityDebounceTimer.current);
+        visibilityDebounceTimer.current = null;
+      }
+      return;
+    }
 
-    nextDiagnosticsRef.current = 0;
-    handleDiagnosticsRefresh();
-    handleDatabaseSettingsRefresh();
+    if (visibilityDebounceTimer.current) {
+      window.clearTimeout(visibilityDebounceTimer.current);
+    }
+    visibilityDebounceTimer.current = window.setTimeout(() => {
+      visibilityDebounceTimer.current = null;
+      nextDiagnosticsRef.current = 0;
+      handleDiagnosticsRefresh();
+      handleDatabaseSettingsRefresh();
 
-    if (!autoImportDone) return;
+      if (!autoImportDone) return;
 
-    nextRefreshRef.current = 0;
-    nextSigCheckRef.current = 0;
-    nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
-    nextSyncIntervalRef.current = 0;
-    nextSyncPollRef.current = 0;
-    void runRefresh();
+      nextRefreshRef.current = 0;
+      nextSigCheckRef.current = 0;
+      nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
+      nextSyncIntervalRef.current = 0;
+      nextSyncPollRef.current = 0;
+      void runRefresh();
+    }, 500);
   });
 
   const handleLocalDataChange = useEffectEvent(() => {

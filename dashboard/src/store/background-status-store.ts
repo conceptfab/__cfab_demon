@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   getAssignmentModelStatus,
+  getBackgroundDiagnostics,
   getDaemonRuntimeStatus,
   getDatabaseSettings,
   getSessionCount,
@@ -121,75 +122,29 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
       if (diagnosticsInFlight) return;
       diagnosticsInFlight = true;
       try {
-        const minDuration =
-          loadSessionSettings().minSessionDurationSeconds || undefined;
-        const today = buildTodayDate();
-        const [daemonRes, aiRes, todayCountRes, allCountRes] =
-          await Promise.allSettled([
-            getDaemonRuntimeStatus(),
-            getAssignmentModelStatus(),
-            getSessionCount({
-              dateRange: { start: today, end: today },
-              unassigned: true,
-              minDuration,
-            }),
-            getSessionCount({
-              unassigned: true,
-              minDuration,
-            }),
-          ]);
-
+        const result = await getBackgroundDiagnostics();
         const currentState = get();
-        const nextDaemonStatus =
-          daemonRes.status === 'fulfilled'
-            ? daemonRes.value
-            : currentState.daemonStatus;
-        const nextAiStatus =
-          aiRes.status === 'fulfilled' ? aiRes.value : currentState.aiStatus;
-        const nextTodayUnassigned =
-          todayCountRes.status === 'fulfilled'
-            ? Math.max(0, todayCountRes.value)
-            : currentState.todayUnassigned;
-        const nextAllUnassigned =
-          allCountRes.status === 'fulfilled'
-            ? Math.max(0, allCountRes.value)
-            : currentState.allUnassigned;
+        const nextTodayUnassigned = Math.max(0, result.today_unassigned);
+        const nextAllUnassigned = Math.max(0, result.all_unassigned);
 
         if (
           !areDaemonStatusesEqual(
             currentState.daemonStatus,
-            nextDaemonStatus,
+            result.daemon_status,
           ) ||
-          !areAssignmentStatusesEqual(currentState.aiStatus, nextAiStatus) ||
+          !areAssignmentStatusesEqual(currentState.aiStatus, result.ai_status) ||
           currentState.todayUnassigned !== nextTodayUnassigned ||
           currentState.allUnassigned !== nextAllUnassigned
         ) {
           set({
-            daemonStatus: nextDaemonStatus,
-            aiStatus: nextAiStatus,
+            daemonStatus: result.daemon_status,
+            aiStatus: result.ai_status,
             todayUnassigned: nextTodayUnassigned,
             allUnassigned: nextAllUnassigned,
           });
         }
-
-        if (daemonRes.status === 'rejected') {
-          logTauriError('refresh daemon status', daemonRes.reason);
-        }
-        if (aiRes.status === 'rejected') {
-          logTauriError('refresh AI status', aiRes.reason);
-        }
-        if (todayCountRes.status === 'rejected') {
-          logTauriError(
-            'refresh today unassigned sessions',
-            todayCountRes.reason,
-          );
-        }
-        if (allCountRes.status === 'rejected') {
-          logTauriError(
-            'refresh unassigned sessions count',
-            allCountRes.reason,
-          );
-        }
+      } catch (error) {
+        logTauriError('refresh background diagnostics', error);
       } finally {
         diagnosticsInFlight = false;
       }

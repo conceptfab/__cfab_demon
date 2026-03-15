@@ -14,6 +14,11 @@ const MAX_DETECTED_PATH_CHARS: usize = 512;
 const MAX_TITLE_HISTORY_ENTRY_CHARS: usize = 180;
 const MAX_TITLE_HISTORY_LEN: usize = 12;
 
+/// Sesja ciągłej pracy — alias na typ ze shared crate.
+pub type Session = crate::daily_store::StoredSession;
+/// Wpis o pliku/projekcie — alias na typ ze shared crate.
+pub type FileEntry = crate::daily_store::StoredFileEntry;
+
 /// Dane dzienne — jeden plik na dzień
 #[derive(Serialize, Deserialize, Debug)]
 pub struct DailyData {
@@ -31,35 +36,6 @@ pub struct AppDailyData {
     pub total_time_formatted: String,
     pub sessions: Vec<Session>,
     pub files: Vec<FileEntry>,
-}
-
-/// Sesja ciągłej pracy
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Session {
-    pub start: String,
-    pub end: String,
-    pub duration_seconds: u64,
-}
-
-/// Wpis o pliku/projekcie
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct FileEntry {
-    pub name: String,
-    pub total_seconds: u64,
-    pub first_seen: String,
-    pub last_seen: String,
-    /// Pełny tytuł okna z ostatniego pollingu — dashboard może parsować bogatszy kontekst.
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub window_title: String,
-    /// Ścieżka wykryta z argumentów procesu (np. workspace/file path z IDE).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub detected_path: Option<String>,
-    /// Unikalna historia tytułów okien dla wpisu (limitowana w trackerze).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub title_history: Vec<String>,
-    /// Kategoria aktywności (np. coding/browsing/design).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub activity_type: Option<String>,
 }
 
 /// Podsumowanie dnia
@@ -147,44 +123,24 @@ fn open_daily_store() -> Result<rusqlite::Connection> {
 }
 
 fn to_stored_daily(data: &DailyData) -> crate::daily_store::StoredDailyData {
-    let mut apps = std::collections::BTreeMap::new();
-    for (exe_name, app_data) in &data.apps {
-        apps.insert(
-            exe_name.clone(),
-            crate::daily_store::StoredAppDailyData {
-                display_name: app_data.display_name.clone(),
-                total_seconds: app_data.total_seconds,
-                sessions: app_data
-                    .sessions
-                    .iter()
-                    .map(|session| crate::daily_store::StoredSession {
-                        start: session.start.clone(),
-                        end: session.end.clone(),
-                        duration_seconds: session.duration_seconds,
-                    })
-                    .collect(),
-                files: app_data
-                    .files
-                    .iter()
-                    .map(|file| crate::daily_store::StoredFileEntry {
-                        name: file.name.clone(),
-                        total_seconds: file.total_seconds,
-                        first_seen: file.first_seen.clone(),
-                        last_seen: file.last_seen.clone(),
-                        window_title: file.window_title.clone(),
-                        detected_path: file.detected_path.clone(),
-                        title_history: file.title_history.clone(),
-                        activity_type: file.activity_type.clone(),
-                    })
-                    .collect(),
-            },
-        );
-    }
-
     crate::daily_store::StoredDailyData {
         date: data.date.clone(),
         generated_at: data.generated_at.clone(),
-        apps,
+        apps: data
+            .apps
+            .iter()
+            .map(|(exe_name, app_data)| {
+                (
+                    exe_name.clone(),
+                    crate::daily_store::StoredAppDailyData {
+                        display_name: app_data.display_name.clone(),
+                        total_seconds: app_data.total_seconds,
+                        sessions: app_data.sessions.clone(),
+                        files: app_data.files.clone(),
+                    },
+                )
+            })
+            .collect(),
     }
 }
 
@@ -202,29 +158,8 @@ fn from_stored_daily(data: crate::daily_store::StoredDailyData) -> DailyData {
                         display_name: app_data.display_name,
                         total_seconds: app_data.total_seconds,
                         total_time_formatted: String::new(),
-                        sessions: app_data
-                            .sessions
-                            .into_iter()
-                            .map(|session| Session {
-                                start: session.start,
-                                end: session.end,
-                                duration_seconds: session.duration_seconds,
-                            })
-                            .collect(),
-                        files: app_data
-                            .files
-                            .into_iter()
-                            .map(|file| FileEntry {
-                                name: file.name,
-                                total_seconds: file.total_seconds,
-                                first_seen: file.first_seen,
-                                last_seen: file.last_seen,
-                                window_title: file.window_title,
-                                detected_path: file.detected_path,
-                                title_history: file.title_history,
-                                activity_type: file.activity_type,
-                            })
-                            .collect(),
+                        sessions: app_data.sessions,
+                        files: app_data.files,
                     },
                 )
             })

@@ -756,6 +756,7 @@ pub fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), ru
          CREATE INDEX IF NOT EXISTS idx_file_activities_project_id ON file_activities(project_id);
          CREATE INDEX IF NOT EXISTS idx_file_activities_file_path ON file_activities(file_path);
          CREATE INDEX IF NOT EXISTS idx_sessions_app_date ON sessions(app_id, date, start_time);
+         CREATE INDEX IF NOT EXISTS idx_sessions_date_standalone ON sessions(date);
          CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
          CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);",
     )?;

@@ -112,6 +112,7 @@ pub fn run() {
             commands::sync_monitored_apps_from_applications,
             commands::get_daemon_status,
             commands::get_daemon_runtime_status,
+            commands::get_background_diagnostics,
             commands::get_daemon_logs,
             commands::get_autostart_enabled,
             commands::set_autostart_enabled,

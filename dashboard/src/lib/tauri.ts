@@ -24,6 +24,7 @@ import type {
   DetectedProject,
   MonitoredApp,
   MonitoredAppsSyncResult,
+  BackgroundDiagnostics,
   DaemonStatus,
   ArchivedFile,
   ProjectFolder,
@@ -418,6 +419,8 @@ export const getDaemonStatus = (minDuration?: number) =>
   invoke<DaemonStatus>('get_daemon_status', { minDuration });
 export const getDaemonRuntimeStatus = () =>
   invoke<DaemonStatus>('get_daemon_runtime_status');
+export const getBackgroundDiagnostics = () =>
+  invoke<BackgroundDiagnostics>('get_background_diagnostics');
 export const getDaemonLogs = (tailLines?: number) =>
   invoke<string>('get_daemon_logs', { tailLines });
 export const getAutostartEnabled = () =>
@@ -708,6 +711,7 @@ export const aiApi = {
 export const daemonApi = {
   getDaemonStatus,
   getDaemonRuntimeStatus,
+  getBackgroundDiagnostics,
   getDaemonLogs,
   getAutostartEnabled,
   setAutostartEnabled,

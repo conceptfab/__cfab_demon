@@ -341,6 +341,14 @@ pub struct DaemonStatus {
 }
 
 #[derive(Serialize)]
+pub struct BackgroundDiagnostics {
+    pub daemon_status: DaemonStatus,
+    pub ai_status: crate::commands::assignment_model::AssignmentModelStatus,
+    pub today_unassigned: i64,
+    pub all_unassigned: i64,
+}
+
+#[derive(Serialize)]
 pub struct RefreshResult {
     pub sessions_upserted: usize,
     pub file_found: bool,
