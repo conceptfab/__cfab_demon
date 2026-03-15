@@ -200,4 +200,3 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
     conn.execute_batch(&migration_sql)
         .map_err(|e| format!("Failed to migrate daily_files schema: {}", e))
 }
-

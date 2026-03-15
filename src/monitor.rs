@@ -16,15 +16,15 @@ use crate::activity::ActivityType;
 use crate::process_utils::collect_process_entries;
 
 use pid_cache::ensure_pid_cache_entry;
-pub use pid_cache::{evict_old_pid_cache, PidCache};
-use wmi_detection::{hydrate_detected_paths_for_pending_pids, should_detect_path_for_activity};
 #[cfg(test)]
 use pid_cache::PidCacheEntry;
+pub use pid_cache::{evict_old_pid_cache, PidCache};
 #[cfg(test)]
 use wmi_detection::{
     build_wmi_process_command_line_query, collect_pending_detected_path_pids,
     extract_path_from_command_line,
 };
+use wmi_detection::{hydrate_detected_paths_for_pending_pids, should_detect_path_for_activity};
 
 /// Informacja o aktywnym procesie
 #[derive(Debug, Clone)]

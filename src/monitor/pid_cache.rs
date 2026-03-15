@@ -7,7 +7,7 @@ use winapi::um::processthreadsapi::{GetProcessTimes, OpenProcess};
 
 use crate::activity::ActivityType;
 
-use super::{classify_activity_type, get_exe_name_and_creation_time, filetime_to_u64};
+use super::{classify_activity_type, filetime_to_u64, get_exe_name_and_creation_time};
 
 /// Cache PID -> metadata used for PID reuse validation and detected path hints.
 #[derive(Debug, Clone)]

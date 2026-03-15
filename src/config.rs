@@ -91,6 +91,22 @@ pub(crate) fn dashboard_db_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("timeflow_dashboard.db"))
 }
 
+pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection> {
+    let db_path = dashboard_db_path()?;
+    if !db_path.exists() {
+        anyhow::bail!("Dashboard DB not found: {:?}", db_path);
+    }
+
+    let conn = rusqlite::Connection::open_with_flags(
+        &db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .with_context(|| format!("Failed to open dashboard DB: {:?}", db_path))?;
+    conn.busy_timeout(std::time::Duration::from_millis(2000))
+        .context("Failed to set busy_timeout for dashboard DB")?;
+    Ok(conn)
+}
+
 /// Ładuje legacy konfigurację z pliku JSON (interwały + fallback lista aplikacji).
 fn load_legacy_json_config() -> Config {
     let path = match config_path() {
@@ -125,18 +141,7 @@ fn load_legacy_json_config() -> Config {
 }
 
 fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
-    let db_path = dashboard_db_path()?;
-    if !db_path.exists() {
-        anyhow::bail!("Dashboard DB not found: {:?}", db_path);
-    }
-
-    let conn = rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .with_context(|| format!("Failed to open dashboard DB: {:?}", db_path))?;
-    conn.busy_timeout(std::time::Duration::from_millis(2000))
-        .context("Failed to set busy_timeout for dashboard DB")?;
+    let conn = open_dashboard_db_readonly()?;
 
     let table_exists = conn
         .query_row(

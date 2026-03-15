@@ -9,7 +9,6 @@ import type {
   Project,
   DashboardData,
   DashboardStats,
-  ProjectTimeRow,
   TimelinePoint,
   EstimateProjectRow,
   EstimateSettings,

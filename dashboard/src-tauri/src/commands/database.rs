@@ -283,10 +283,7 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
                         quoted_name
                     ))
                     .map_err(|e| {
-                        format!(
-                            "Failed to read source columns for '{}': {}",
-                            table_name, e
-                        )
+                        format!("Failed to read source columns for '{}': {}", table_name, e)
                     })?;
                 let rows = stmt
                     .query_map([], |row| row.get::<_, String>(0))

@@ -71,22 +71,27 @@ macro_rules! active_session_filter {
         "(is_hidden IS NULL OR is_hidden = 0)"
     };
     ($alias:literal) => {
-        concat!("(", $alias, ".is_hidden IS NULL OR ", $alias, ".is_hidden = 0)")
+        concat!(
+            "(",
+            $alias,
+            ".is_hidden IS NULL OR ",
+            $alias,
+            ".is_hidden = 0)"
+        )
     };
 }
 
 pub const ACTIVE_SESSION_FILTER: &str = active_session_filter!();
 pub const ACTIVE_SESSION_FILTER_S: &str = active_session_filter!("s");
 
-pub const SESSION_PROJECT_CTE: &str = session_project_cte!(
-    concat!("s.date >= ?1 AND s.date <= ?2 AND ", active_session_filter!("s"))
-);
+pub const SESSION_PROJECT_CTE: &str = session_project_cte!(concat!(
+    "s.date >= ?1 AND s.date <= ?2 AND ",
+    active_session_filter!("s")
+));
 
-pub const SESSION_PROJECT_CTE_ALL_TIME: &str = session_project_cte!(
-    concat!(
-        "s.date >= COALESCE((SELECT MIN(date) FROM sessions), '0001-01-01')
+pub const SESSION_PROJECT_CTE_ALL_TIME: &str = session_project_cte!(concat!(
+    "s.date >= COALESCE((SELECT MIN(date) FROM sessions), '0001-01-01')
      AND s.date <= COALESCE((SELECT MAX(date) FROM sessions), '9999-12-31')
      AND ",
-        active_session_filter!("s")
-    )
-);
+    active_session_filter!("s")
+));

@@ -4,8 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 // ==================== JSON Import Types ====================
 
 pub(crate) use crate::commands::daily_store::{
-    StoredAppDailyData as AppDailyData,
-    StoredDailyData as DailyData,
+    StoredAppDailyData as AppDailyData, StoredDailyData as DailyData,
 };
 
 // ==================== Response Types ====================

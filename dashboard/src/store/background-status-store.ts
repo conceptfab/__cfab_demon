@@ -2,17 +2,13 @@ import { create } from 'zustand';
 import {
   getAssignmentModelStatus,
   getBackgroundDiagnostics,
-  getDaemonRuntimeStatus,
   getDatabaseSettings,
-  getSessionCount,
 } from '@/lib/tauri';
-import { loadSessionSettings } from '@/lib/user-settings';
 import type {
   AssignmentModelStatus,
   DaemonStatus,
   DatabaseSettings,
 } from '@/lib/db-types';
-import { buildTodayDate } from '@/lib/date-helpers';
 import { logTauriError } from '@/lib/utils';
 
 let diagnosticsInFlight = false;
@@ -201,4 +197,3 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
     },
   }),
 );
-

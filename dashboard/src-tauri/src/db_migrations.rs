@@ -1,13 +1,63 @@
+const LATEST_SCHEMA_VERSION: i64 = 9;
+
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
-    migrate_vital_tables_and_blacklist(db)?;
-    migrate_file_activities_schema(db)?;
-    migrate_manual_sessions(db)?;
-    migrate_sessions_app_start_unique(db)?;
-    migrate_project_and_app_metadata(db)?;
-    migrate_file_activities_v2(db)?;
-    migrate_sessions_v2_and_cleanup(db)?;
-    migrate_estimates_and_split_source(db)?;
-    migrate_timestamps_and_overrides(db)?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER NOT NULL DEFAULT 0
+        );",
+    )?;
+
+    let current_version: i64 = db
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    if current_version >= LATEST_SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    // Run all pending migrations inside a transaction so that partial failures
+    // don't leave the DB in an inconsistent state with an outdated schema_version.
+    let tx = db.unchecked_transaction()?;
+
+    if current_version < 1 {
+        migrate_vital_tables_and_blacklist(&tx)?;
+    }
+    if current_version < 2 {
+        migrate_file_activities_schema(&tx)?;
+    }
+    if current_version < 3 {
+        migrate_manual_sessions(&tx)?;
+    }
+    if current_version < 4 {
+        migrate_sessions_app_start_unique(&tx)?;
+    }
+    if current_version < 5 {
+        migrate_project_and_app_metadata(&tx)?;
+    }
+    if current_version < 6 {
+        migrate_file_activities_v2(&tx)?;
+    }
+    if current_version < 7 {
+        migrate_sessions_v2_and_cleanup(&tx)?;
+    }
+    if current_version < 8 {
+        migrate_estimates_and_split_source(&tx)?;
+    }
+    if current_version < 9 {
+        migrate_timestamps_and_overrides(&tx)?;
+    }
+
+    tx.execute(
+        "INSERT OR REPLACE INTO schema_version (rowid, version) VALUES (1, ?1)",
+        [LATEST_SCHEMA_VERSION],
+    )?;
+
+    tx.commit()?;
+
     Ok(())
 }
 

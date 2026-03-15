@@ -4,11 +4,13 @@ mod schema;
 mod types;
 mod write;
 
-pub(crate) use types::{dedupe_files_preserving_last, detected_path_key};
 pub use legacy::{load_legacy_json_file, migrate_legacy_json_files};
 pub use read::{get_day_signature, load_day_snapshot, load_range_snapshots};
 pub use schema::{ensure_schema, open_store, store_db_path};
-pub use types::{DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession};
+pub(crate) use types::{dedupe_files_preserving_last, detected_path_key};
+pub use types::{
+    DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession,
+};
 pub use write::replace_day_snapshot;
 #[cfg(test)]
 mod tests {
@@ -570,4 +572,3 @@ mod tests {
         assert_eq!(files[0].detected_path, None);
     }
 }
-

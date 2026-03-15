@@ -1,21 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus,
-  RefreshCw,
-  CircleOff,
-  Wand2,
   Snowflake,
-  CircleDollarSign,
-  Type,
-  Clock,
   Trophy,
-  Folders,
-  Save,
-  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 
 import {
   Dialog,
@@ -27,11 +16,9 @@ import {
 } from '@/lib/tauri';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
-import { CollapsibleSection } from '@/components/project/CollapsibleSection';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { CreateProjectDialog } from '@/components/project/CreateProjectDialog';
 import {
-  formatDuration,
   getDurationParts,
   formatPathForDisplay,
   getErrorMessage,
@@ -51,6 +38,9 @@ import type {
   DetectedProject,
   ProjectWithStats,
 } from '@/lib/db-types';
+import { ProjectsList } from '@/components/projects/ProjectsList';
+import { ExcludedProjectsList } from '@/components/projects/ExcludedProjectsList';
+import { ProjectDiscoveryPanel } from '@/components/projects/ProjectDiscoveryPanel';
 
 const PROJECT_RENDER_PAGE_SIZE = 120;
 
@@ -923,162 +913,27 @@ export function Projects() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col">
-          <p className="text-sm text-muted-foreground">
-            {projects.length} {t('projects_page.projects')}
-            {excludedProjects.length > 0
-              ? ` (${excludedProjects.length} ${t('projects_page.excluded')})`
-              : ''}
-          </p>
-          {projectsAllTimeLoading && (
-            <p className="text-xs text-muted-foreground">
-              {t('ui.app.loading')}
-            </p>
-          )}
-          {duplicateProjectsView.groupCount > 0 && (
-            <p className="text-xs text-amber-600/90">
-              {t('projects_page.marked_with')}{' '}
-              <span className="mx-1 inline-flex h-4 w-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
-                D
-              </span>
-              = {t('projects_page.possible_duplicate_names_in_this_tab')} (
-              {duplicateProjectsView.projectCount} {t('projects_page.projects')} {t('projects_page.in')}{' '}
-              {duplicateProjectsView.groupCount} {t('projects_page.groups')})
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              className="flex h-9 w-48 rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              placeholder={t('projects_page.search_projects')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-1.5 bg-secondary/40 p-1 rounded-md border border-border/40">
-            <AppTooltip content={t('projects.labels.sort_abc')}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  handleSortChange(
-                    sortBy === 'name-asc' ? 'name-desc' : 'name-asc',
-                  )
-                }
-                className={`h-7 w-8 p-0 ${sortBy.startsWith('name') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                <Type className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-            <AppTooltip content={t('projects.labels.sort_value')}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  handleSortChange(
-                    sortBy === 'value-desc' ? 'value-asc' : 'value-desc',
-                  )
-                }
-                className={`h-7 w-8 p-0 ${sortBy.startsWith('value') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-              >
-                <CircleDollarSign className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-            <AppTooltip content={t('projects.labels.sort_time')}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() =>
-                  handleSortChange(
-                    sortBy === 'time-desc' ? 'time-asc' : 'time-desc',
-                  )
-                }
-                className={`h-7 w-8 p-0 ${sortBy.startsWith('time') ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-              >
-                <Clock className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-            <div className="w-[1px] h-4 bg-border/40 mx-0.5" />
-            <AppTooltip content={t('projects.labels.toggle_folder_grouping')}>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={toggleFolders}
-                className={`h-7 w-8 p-0 ${useFolders ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground'}`}
-              >
-                <Folders className="h-4 w-4" />
-              </Button>
-            </AppTooltip>
-          </div>
-
-          <div className="flex bg-secondary/50 p-1 rounded-md text-sm">
-            <button
-              onClick={() => setViewMode('detailed')}
-              className={`px-3 py-1 rounded-sm transition-colors ${viewMode === 'detailed' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t('projects.labels.detailed')}
-            </button>
-            <button
-              onClick={() => setViewMode('compact')}
-              className={`px-3 py-1 rounded-sm transition-colors ${viewMode === 'compact' ? 'bg-background shadow-sm font-medium' : 'text-muted-foreground hover:text-foreground'}`}
-            >
-              {t('projects.labels.compact')}
-            </button>
-          </div>
-
-          <AppTooltip content={t('projects_page.save_view_as_default')}>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleSaveDefaults}
-            >
-              <Save className="h-4 w-4" />
-            </Button>
-          </AppTooltip>
-
-          <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" /> {t('projects_page.new_project')}
-          </Button>
-        </div>
-      </div>
-
-      {useFolders && projectFolders.length > 0 ? (
-        <div className="space-y-5">
-          {projectsByFolder.sections.map((section) => (
-            <div key={section.rootPath} className="space-y-2">
-              <p
-                className="text-xs font-medium text-muted-foreground"
-                title={formatPathForDisplay(section.rootPath)}
-              >
-                {formatPathForDisplay(section.rootPath)}
-              </p>
-              {section.projects.length > 0 ? (
-                renderProjectList(
-                  section.projects,
-                  `folder:${section.rootPath}`,
-                )
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  {t('projects_page.no_projects_for_this_folder')}
-                </p>
-              )}
-            </div>
-          ))}
-          {projectsByFolder.outside.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                {t('projects_page.other_projects')}
-              </p>
-              {renderProjectList(projectsByFolder.outside, 'folder:outside')}
-            </div>
-          )}
-        </div>
-      ) : (
-        renderProjectList(filteredProjects, 'main')
-      )}
+      <ProjectsList
+        projectCount={projects.length}
+        excludedCount={excludedProjects.length}
+        projectsAllTimeLoading={projectsAllTimeLoading}
+        duplicateGroupCount={duplicateProjectsView.groupCount}
+        duplicateProjectCount={duplicateProjectsView.projectCount}
+        search={search}
+        onSearchChange={setSearch}
+        sortBy={sortBy}
+        onSortChange={handleSortChange}
+        useFolders={useFolders}
+        onToggleFolders={toggleFolders}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onSaveDefaults={handleSaveDefaults}
+        onCreateProject={() => setCreateDialogOpen(true)}
+        projectFolders={projectFolders}
+        projectsByFolder={projectsByFolder}
+        filteredProjects={filteredProjects}
+        renderProjectList={renderProjectList}
+      />
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <button
@@ -1098,316 +953,70 @@ export function Projects() {
         </button>
       </div>
 
-      <CollapsibleSection
-        title={t('projects.sections.excluded_projects')}
+      <ExcludedProjectsList
         isOpen={sectionOpen.excluded}
         onToggle={toggleSection('excluded')}
-      >
-            {filteredExcludedProjects.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t('projects.empty.no_excluded_projects')}
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {visibleExcludedProjects.map((p) => (
-                  <div
-                    key={p.id}
-                    className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs"
-                  >
-                    <div className="min-w-0">
-                      <p className="flex items-center gap-1.5 font-medium">
-                        <span className="min-w-0 truncate">{p.name}</span>
-                        {renderDuplicateMarker(p)}
-                      </p>
-                      <p className="truncate text-muted-foreground">
-                        {t('projects.labels.excluded')}
-                        {p.excluded_at ? `: ${p.excluded_at}` : ''}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRestore(p.id)}
-                    >
-                      {t('projects.labels.restore')}
-                    </Button>
-                    <AppTooltip content={t('projects.labels.delete_project_permanently')}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive"
-                        onClick={() => void handleDeleteProject(p)}
-                        disabled={busy === `delete-project:${p.id}`}
-                      >
-                        {t('projects.labels.delete')}
-                      </Button>
-                    </AppTooltip>
-                  </div>
-                ))}
-                {hiddenExcludedProjectsCount > 0 && (
-                  <div className="flex justify-center pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        loadMoreProjects(
-                          'excluded',
-                          filteredExcludedProjects.length,
-                        )
-                      }
-                    >
-                      {t('projects_page.load_more_projects')} (
-                      {hiddenExcludedProjectsCount})
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-      </CollapsibleSection>
+        projects={visibleExcludedProjects}
+        hiddenCount={hiddenExcludedProjectsCount}
+        renderDuplicateMarker={renderDuplicateMarker}
+        isDeleting={(projectId) => busy === `delete-project:${projectId}`}
+        onRestore={(projectId) => {
+          void handleRestore(projectId);
+        }}
+        onDelete={(project) => {
+          void handleDeleteProject(project);
+        }}
+        onLoadMore={() =>
+          loadMoreProjects('excluded', filteredExcludedProjects.length)
+        }
+      />
 
-      <CollapsibleSection
-        title={t('projects.sections.project_folders')}
-        isOpen={sectionOpen.folders}
-        onToggle={toggleSection('folders')}
-      >
-          <div className="space-y-3">
-            <div className="flex gap-2">
-              <input
-                className="flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                value={newFolderPath}
-                onChange={(e) => {
-                  setNewFolderPath(e.target.value);
-                  setFolderError(null);
-                  setFolderInfo(null);
-                }}
-                placeholder={t('projects.placeholders.project_folder_path')}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleAddFolder();
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleBrowseFolder}
-                disabled={busy === 'add-folder'}
-              >
-                  {t('projects_page.browse')}
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleAddFolder}
-                disabled={busy === 'add-folder'}
-              >
-                <Plus className="mr-1.5 h-4 w-4" />
-                {t('projects.actions.add')}
-              </Button>
-            </div>
-            {folderError && (
-              <p className="text-xs text-destructive">
-                {folderError === PROJECT_FOLDERS_LOAD_ERROR
-                  ? t('projects.errors.load_project_folders_failed')
-                  : folderError}
-              </p>
-            )}
-            {folderInfo && !folderError && (
-              <p className="text-xs text-emerald-400">{folderInfo}</p>
-            )}
-
-            {projectFolders.length > 0 ? (
-              <div className="space-y-1">
-                {projectFolders.map((f) => (
-                  <div
-                    key={f.path}
-                    className="flex items-center justify-between gap-2 text-xs"
-                  >
-                    <span
-                      className="truncate text-muted-foreground"
-                      title={formatPathForDisplay(f.path)}
-                    >
-                      {formatPathForDisplay(f.path)}
-                    </span>
-                    <AppTooltip content={t('layout.tooltips.remove_folder')}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-destructive"
-                        onClick={() => handleRemoveFolder(f.path)}
-                        disabled={busy === `remove-folder:${f.path}`}
-                      >
-                        <CircleOff className="h-3.5 w-3.5" />
-                      </Button>
-                    </AppTooltip>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {t('projects.empty.no_folders_configured')}
-              </p>
-            )}
-
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleSyncFolders}
-                disabled={busy === 'sync-folders'}
-              >
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-                {t('projects_page.sync_subfolders_as_projects')}
-              </Button>
-            </div>
-          </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title={t('projects_page.folder_project_candidates')}
-        isOpen={sectionOpen.candidates}
-        onToggle={toggleSection('candidates')}
-      >
-            {visibleFolderCandidates.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {t('projects.empty.no_subfolder_candidates')}
-              </p>
-            ) : (
-              <div className="max-h-52 space-y-1 overflow-y-auto">
-                {visibleFolderCandidates.map((c) => (
-                  <div
-                    key={c.folder_path}
-                    className="flex items-center justify-between gap-2 text-xs py-1"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{c.name}</p>
-                      <p
-                        className="truncate text-muted-foreground"
-                        title={formatPathForDisplay(c.folder_path)}
-                      >
-                        {formatPathForDisplay(c.folder_path)}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleCreateFromFolder(c.folder_path)}
-                      disabled={busy === `create-folder:${c.folder_path}`}
-                    >
-                      <Plus className="mr-1 h-3 w-3" />
-                      {t('projects.actions.create')}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {hiddenRegisteredFolderCandidatesCount > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                {t('projects_page.hidden_already_registered_folders')}{' '}
-                {hiddenRegisteredFolderCandidatesCount}
-              </p>
-            )}
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title={t('projects_page.detected_projects_opened_2_times')}
-        isOpen={sectionOpen.detected}
-        onToggle={toggleSection('detected')}
-      >
-          <div className="space-y-3">
-            {detectedCandidatesView.visible.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {detectedProjects.length === 0
-                  ? t('projects_page.no_detected_projects')
-                  : t('projects_page.no_candidate_projects_detected_items_already_match_exist')}
-              </p>
-            ) : (
-              <div className="max-h-52 space-y-1 overflow-y-auto">
-                {detectedCandidatesView.visible.map((d) => {
-                  return (
-                    <div
-                      key={d.file_name}
-                      className="flex items-center justify-between gap-2 text-xs py-1"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">
-                          {d.inferredProjectName}
-                        </p>
-                        <p className="truncate text-muted-foreground">
-                          {t('projects_page.detected_project_opens_duration', {
-                            count: d.occurrence_count,
-                            duration: formatDuration(d.total_seconds),
-                          })}
-                        </p>
-                        {d.inferredProjectName !== d.file_name && (
-                          <p
-                            className="truncate text-muted-foreground/80"
-                            title={d.file_name}
-                          >
-                            {t('projects_page.from')} {d.file_name}
-                          </p>
-                        )}
-                      </div>
-                      <Badge variant="outline">{t('projects_page.candidate')}</Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {(detectedCandidatesView.hiddenExisting > 0 ||
-              detectedCandidatesView.hiddenExcluded > 0 ||
-              detectedCandidatesView.hiddenDuplicates > 0 ||
-              detectedCandidatesView.hiddenOverflow > 0) && (
-              <p className="text-xs text-muted-foreground">
-                {t('projects.labels.hidden_prefix')}{' '}
-                {detectedCandidatesView.hiddenExisting > 0 &&
-                  t('projects.labels.hidden_existing', {
-                    count: detectedCandidatesView.hiddenExisting,
-                  })}
-                {detectedCandidatesView.hiddenExisting > 0 &&
-                  (detectedCandidatesView.hiddenExcluded > 0 ||
-                    detectedCandidatesView.hiddenDuplicates > 0 ||
-                    detectedCandidatesView.hiddenOverflow > 0) &&
-                  ' | '}
-                {detectedCandidatesView.hiddenExcluded > 0 &&
-                  t('projects.labels.hidden_excluded', {
-                    count: detectedCandidatesView.hiddenExcluded,
-                  })}
-                {detectedCandidatesView.hiddenExcluded > 0 &&
-                  (detectedCandidatesView.hiddenDuplicates > 0 ||
-                    detectedCandidatesView.hiddenOverflow > 0) &&
-                  ' | '}
-                {detectedCandidatesView.hiddenDuplicates > 0 &&
-                  t('projects.labels.duplicate_names', {
-                    count: detectedCandidatesView.hiddenDuplicates,
-                  })}
-                {detectedCandidatesView.hiddenDuplicates > 0 &&
-                  detectedCandidatesView.hiddenOverflow > 0 &&
-                  ' | '}
-                {detectedCandidatesView.hiddenOverflow > 0 &&
-                  t(
-                    isDemoMode
-                      ? 'projects.labels.extra_candidates_demo_cap'
-                      : 'projects.labels.extra_candidates',
-                    { count: detectedCandidatesView.hiddenOverflow },
-                  )}
-              </p>
-            )}
-            <div className="flex justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAutoCreateDetected}
-                disabled={
-                  busy === 'auto-detect' ||
-                  detectedCandidatesView.totalCandidateCount === 0
-                }
-              >
-                <Wand2 className="mr-1.5 h-3.5 w-3.5" />
-                {t('projects_page.auto_create_detected_projects')}
-              </Button>
-            </div>
-          </div>
-      </CollapsibleSection>
+      <ProjectDiscoveryPanel
+        sectionOpen={{
+          folders: sectionOpen.folders,
+          candidates: sectionOpen.candidates,
+          detected: sectionOpen.detected,
+        }}
+        onToggleFolders={toggleSection('folders')}
+        onToggleCandidates={toggleSection('candidates')}
+        onToggleDetected={toggleSection('detected')}
+        newFolderPath={newFolderPath}
+        onFolderPathChange={(value) => {
+          setNewFolderPath(value);
+          setFolderError(null);
+          setFolderInfo(null);
+        }}
+        folderError={folderError}
+        isFolderLoadError={folderError === PROJECT_FOLDERS_LOAD_ERROR}
+        folderInfo={folderInfo}
+        projectFolders={projectFolders}
+        busy={busy}
+        onBrowseFolder={() => {
+          void handleBrowseFolder();
+        }}
+        onAddFolder={() => {
+          void handleAddFolder();
+        }}
+        onRemoveFolder={(path) => {
+          void handleRemoveFolder(path);
+        }}
+        onSyncFolders={() => {
+          void handleSyncFolders();
+        }}
+        visibleFolderCandidates={visibleFolderCandidates}
+        hiddenRegisteredFolderCandidatesCount={
+          hiddenRegisteredFolderCandidatesCount
+        }
+        onCreateFromFolder={(path) => {
+          void handleCreateFromFolder(path);
+        }}
+        detectedProjectsCount={detectedProjects.length}
+        detectedCandidatesView={detectedCandidatesView}
+        isDemoMode={isDemoMode}
+        onAutoCreateDetected={() => {
+          void handleAutoCreateDetected();
+        }}
+      />
 
       <Dialog
         open={projectDialogId !== null}

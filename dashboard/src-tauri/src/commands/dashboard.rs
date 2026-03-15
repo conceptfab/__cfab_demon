@@ -39,9 +39,7 @@ fn build_dashboard_stats(
          ORDER BY total DESC
          LIMIT 5",
     );
-    let mut stmt = conn
-        .prepare_cached(&sql)
-        .map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
 
     let rows = stmt
         .query_map(
@@ -563,9 +561,7 @@ pub async fn get_app_timeline(
              GROUP BY date
              ORDER BY date",
         );
-        let mut stmt = conn
-            .prepare_cached(&sql)
-            .map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
 
         let rows = stmt
             .query_map(

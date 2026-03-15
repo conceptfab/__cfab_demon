@@ -191,6 +191,7 @@ export function Dashboard() {
   const [projectTimelineError, setProjectTimelineError] = useState<
     unknown | null
   >(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [todaySessions, setTodaySessions] = useState<SessionWithApp[]>([]);
   const [topProjects, setTopProjects] = useState<ProjectTimeRow[]>([]);
   const [allProjects, setAllProjects] = useState<ProjectTimeRow[]>([]);
@@ -364,6 +365,7 @@ export function Dashboard() {
     const shouldLoadTodayData = timePreset === 'today';
     setProjectTimelineLoading(true);
     setProjectTimelineError(null);
+    setLoadError(null);
 
     Promise.allSettled([
       dashboardApi.getDashboardData(
@@ -397,11 +399,17 @@ export function Dashboard() {
           setAllProjects(dashboardDataRes.value.all_projects);
           setProjectTimeline(dashboardDataRes.value.project_timeline);
           setProjectTimelineError(null);
+          setLoadError(null);
         } else {
+          const nextError = getErrorMessage(
+            dashboardDataRes.reason,
+            t('ui.common.unknown_error'),
+          );
           setStats(null);
           setTopProjects([]);
           setAllProjects([]);
           setProjectTimeline([]);
+          setLoadError(nextError);
           setProjectTimelineError(dashboardDataRes.reason);
           logTauriError('load dashboard data', dashboardDataRes.reason);
         }
@@ -446,6 +454,7 @@ export function Dashboard() {
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,
+    t,
   ]);
 
   return (
@@ -473,6 +482,16 @@ export function Dashboard() {
       {/* Auto-import status banner */}
       <AutoImportBanner />
       <DiscoveredProjectsBanner />
+      {loadError && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex items-center gap-2.5 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <span className="text-xs text-destructive">
+              {t('dashboard.errors.loading_data')}: {loadError}
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       {timePreset === 'today' && unassignedToday.sessionCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/10">

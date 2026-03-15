@@ -6,30 +6,18 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Sparkles,
-  MessageSquare,
-  Type,
-  Flame,
-} from 'lucide-react';
 
-import { AppTooltip } from '@/components/ui/app-tooltip';
 import { sessionsApi } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
-import {
-  formatMultiplierLabel,
-  logTauriError,
-} from '@/lib/utils';
-import {
-  localizeProjectLabel,
-  UNASSIGNED_PROJECT_SENTINEL,
-} from '@/lib/project-labels';
+import { logTauriError } from '@/lib/utils';
+import { UNASSIGNED_PROJECT_SENTINEL } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { format, parseISO } from 'date-fns';
 import { MultiSplitSessionModal } from '@/components/sessions/MultiSplitSessionModal';
 import { SessionsToolbar } from '@/components/sessions/SessionsToolbar';
 import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjectContextMenu';
+import { SessionContextMenu } from '@/components/sessions/SessionContextMenu';
 import { SessionsVirtualList } from '@/components/sessions/SessionsVirtualList';
 import type {
   SessionWithApp,
@@ -886,230 +874,43 @@ export function Sessions() {
         onLoadMore={loadMore}
       />
 
-      {/* Context menu for assigning session to a project */}
       {ctxMenu && (
-        <div
-          ref={ctxRef}
-          className="fixed z-50 min-w-[240px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
-          style={{
-            left: ctxMenuPlacement?.left ?? ctxMenu.x,
-            top: ctxMenuPlacement?.top ?? ctxMenu.y,
-            maxHeight: ctxMenuPlacement?.maxHeight,
+        <SessionContextMenu
+          menu={ctxMenu}
+          menuRef={ctxRef}
+          placement={ctxMenuPlacement}
+          splitSuggested={ctxMenuSplitSuggested}
+          assignProjectListMode={assignProjectListMode}
+          onAssignProjectListModeChange={setAssignProjectListMode}
+          assignProjectSections={assignProjectSections}
+          assignProjectsCount={assignProjectsCount}
+          showAssignSectionHeaders={showAssignSectionHeaders}
+          onAcceptSuggestion={() =>
+            void handleAcceptSuggestion(ctxMenu.session, {
+              stopPropagation: () => {},
+            } as React.MouseEvent)
+          }
+          onRejectSuggestion={() =>
+            void handleRejectSuggestion(ctxMenu.session, {
+              stopPropagation: () => {},
+            } as React.MouseEvent)
+          }
+          onSetRateMultiplier={(multiplier) =>
+            void handleSetRateMultiplier(multiplier)
+          }
+          onCustomRateMultiplier={() => {
+            void handleCustomRateMultiplier();
           }}
-        >
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            {t('sessions.menu.session_actions', {
-              app: ctxMenu.session.app_name,
-            })}
-          </div>
-          {ctxMenu.session.suggested_project_id !== undefined &&
-            ctxMenu.session.suggested_project_name &&
-            ctxMenu.session.project_name === null && (
-              <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
-                  <span className="text-[11px] text-sky-200">
-                    {t('sessions.menu.ai_suggests')}{' '}
-                    <span className="font-medium">
-                      {localizeProjectLabel(
-                        ctxMenu.session.suggested_project_name,
-                        {
-                          projectId:
-                            ctxMenu.session.suggested_project_id ?? null,
-                        },
-                      )}
-                    </span>
-                    {ctxMenu.session.suggested_confidence !== undefined && (
-                      <span className="ml-1 opacity-75">
-                        (
-                        {(ctxMenu.session.suggested_confidence * 100).toFixed(
-                          0,
-                        )}
-                        %)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 mt-1.5">
-                  <button
-                    className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
-                    onClick={() =>
-                      void handleAcceptSuggestion(ctxMenu.session, {
-                        stopPropagation: () => {},
-                      } as React.MouseEvent)
-                    }
-                  >
-                    {t('sessions.menu.accept')}
-                  </button>
-                  <button
-                    className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
-                    onClick={() =>
-                      void handleRejectSuggestion(ctxMenu.session, {
-                        stopPropagation: () => {},
-                      } as React.MouseEvent)
-                    }
-                  >
-                    {t('sessions.menu.reject')}
-                  </button>
-                </div>
-              </div>
-            )}
-          <div className="h-px bg-border my-1" />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            {t('sessions.menu.rate_multiplier')}{' '}
-            <span className="font-mono">
-              {formatMultiplierLabel(ctxMenu.session.rate_multiplier)}
-            </span>
-          </div>
-          <div className="flex gap-1.5 px-1.5 pb-1.5">
-            <button
-              className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(2)}
-            >
-              {t('sessions.menu.boost_x2')}
-            </button>
-            <button
-              className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
-              onClick={() => void handleCustomRateMultiplier()}
-            >
-              {t('sessions.menu.custom')}
-            </button>
-          </div>
-          <div className="h-px bg-border my-1" />
-          <button
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-            onClick={() => void handleEditComment()}
-          >
-            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span>
-              {ctxMenu.session.comment
-                ? t('sessions.menu.edit_comment')
-                : t('sessions.menu.add_comment')}
-            </span>
-          </button>
-          {ctxMenuSplitSuggested && (
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => {
-                openMultiSplitModal(ctxMenu.session);
-              }}
-            >
-              <span>
-                ✂️ {t('sessions.menu.split_session', 'Split session')}
-              </span>
-            </button>
-          )}
-          <div className="h-px bg-border my-1" />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            {t('sessions.menu.assign_to_project')}
-          </div>
-          <div className="px-2 pb-1.5">
-            <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
-              <AppTooltip
-                content={t(
-                  'sessions.menu.mode_alpha',
-                  'Aktywne alfabetycznie (A-Z)',
-                )}
-              >
-                <button
-                  type="button"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                    assignProjectListMode === 'alpha_active'
-                      ? 'bg-background text-sky-200 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => {
-                    setAssignProjectListMode('alpha_active');
-                  }}
-                >
-                  <Type className="h-3.5 w-3.5" />
-                </button>
-              </AppTooltip>
-              <AppTooltip
-                content={t(
-                  'sessions.menu.mode_new_top',
-                  'Najnowsze -> Top -> Reszta (A-Z)',
-                )}
-              >
-                <button
-                  type="button"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                    assignProjectListMode === 'new_top_rest'
-                      ? 'bg-background text-amber-300 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => {
-                    setAssignProjectListMode('new_top_rest');
-                  }}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                </button>
-              </AppTooltip>
-              <AppTooltip
-                content={t(
-                  'sessions.menu.mode_top_new',
-                  'Top -> Najnowsze -> Reszta (A-Z)',
-                )}
-              >
-                <button
-                  type="button"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                    assignProjectListMode === 'top_new_rest'
-                      ? 'bg-background text-orange-300 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => {
-                    setAssignProjectListMode('top_new_rest');
-                  }}
-                >
-                  <Flame className="h-3.5 w-3.5" />
-                </button>
-              </AppTooltip>
-            </div>
-          </div>
-          <div
-            className="max-h-[min(42vh,20rem)] overflow-y-auto pr-1"
-            style={{ scrollbarGutter: 'stable' }}
-          >
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => handleAssign(null, 'manual_session_unassign')}
-            >
-              <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-              <span className="truncate">{t('sessions.menu.unassigned')}</span>
-            </button>
-            {assignProjectsCount > 0 ? (
-              assignProjectSections.map((section) => (
-                <div key={section.key}>
-                  {showAssignSectionHeaders && section.projects.length > 0 && (
-                    <div className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                      {section.label}
-                    </div>
-                  )}
-                  {section.projects.map((p) => (
-                    <button
-                      key={p.id}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                      onClick={() =>
-                        handleAssign(p.id, 'manual_session_change')
-                      }
-                    >
-                      <div
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      <span className="truncate">{p.name}</span>
-                    </button>
-                  ))}
-                </div>
-              ))
-            ) : (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                {t('sessions.menu.no_projects')}
-              </div>
-            )}
-          </div>
-        </div>
+          onEditComment={() => {
+            void handleEditComment();
+          }}
+          onOpenSplit={() => {
+            openMultiSplitModal(ctxMenu.session);
+          }}
+          onAssign={(projectId, source) => {
+            void handleAssign(projectId, source);
+          }}
+        />
       )}
 
       <SessionsProjectContextMenu

@@ -41,19 +41,29 @@ fn build_file_cache_key(
     detected_path: Option<&str>,
     window_title: &str,
 ) -> Option<String> {
-    if file_name.is_empty() {
+    // Cache keys must match storage-normalized records loaded after restart,
+    // even though raw values stay untouched in memory until save.
+    let normalized_file_name = storage::sanitize_file_entry_name(file_name);
+    if normalized_file_name.is_empty() {
         return None;
     }
 
-    if let Some(path) = detected_path.filter(|path| !path.is_empty()) {
+    let normalized_detected_path = detected_path
+        .map(storage::sanitize_detected_path)
+        .filter(|path| !path.is_empty());
+    let normalized_window_title = storage::sanitize_window_title(window_title);
+
+    if let Some(path) = normalized_detected_path {
         return Some(format!("path:{path}"));
     }
 
-    if !window_title.is_empty() {
-        return Some(format!("title:{file_name}\n{window_title}"));
+    if !normalized_window_title.is_empty() {
+        return Some(format!(
+            "title:{normalized_file_name}\n{normalized_window_title}"
+        ));
     }
 
-    Some(format!("name:{file_name}"))
+    Some(format!("name:{normalized_file_name}"))
 }
 
 fn write_heartbeat() {
@@ -197,12 +207,12 @@ fn record_app_activity(
     let now = aligned_local_now();
     let now_str = now.to_rfc3339();
     let elapsed_seconds = elapsed.as_secs();
-    let normalized_detected_path = detected_path
-        .map(storage::sanitize_detected_path)
-        .filter(|value| !value.is_empty());
     let normalized_activity_type = activity_type.map(ActivityType::as_str);
-    let normalized_window_title = storage::sanitize_window_title(window_title);
-    let normalized_file_name = storage::sanitize_file_entry_name(file_name);
+    let trimmed_file_name = file_name.trim();
+    let trimmed_window_title = window_title.trim();
+    let trimmed_detected_path = detected_path
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
 
     let app_data = daily_data
         .apps
@@ -244,12 +254,12 @@ fn record_app_activity(
     active_sessions.insert(exe_name.to_string(), now_instant);
 
     // Update files
-    if !normalized_file_name.is_empty() {
+    if !trimmed_file_name.is_empty() {
         let app_file_index = file_index_cache.entry(exe_name.to_string()).or_default();
         let Some(file_cache_key) = build_file_cache_key(
-            &normalized_file_name,
-            normalized_detected_path.as_deref(),
-            &normalized_window_title,
+            trimmed_file_name,
+            trimmed_detected_path,
+            trimmed_window_title,
         ) else {
             return;
         };
@@ -259,12 +269,12 @@ fn record_app_activity(
                 file_entry.total_seconds += elapsed_seconds;
                 file_entry.last_seen = now_str;
                 // Aktualizuj window_title na najnowszy (bogatszy kontekst dla AI)
-                if !normalized_window_title.is_empty() {
-                    file_entry.window_title = normalized_window_title.clone();
-                    push_title_history(&mut file_entry.title_history, &normalized_window_title);
+                if !trimmed_window_title.is_empty() {
+                    file_entry.window_title = trimmed_window_title.to_string();
+                    push_title_history(&mut file_entry.title_history, trimmed_window_title);
                 }
-                if let Some(path) = normalized_detected_path.as_ref() {
-                    file_entry.detected_path = Some(path.clone());
+                if let Some(path) = trimmed_detected_path {
+                    file_entry.detected_path = Some(path.to_string());
                 }
                 if let Some(kind) = normalized_activity_type {
                     file_entry.activity_type = Some(kind.to_string());
@@ -283,14 +293,14 @@ fn record_app_activity(
         } else {
             let new_idx = app_data.files.len();
             let mut title_history = Vec::new();
-            push_title_history(&mut title_history, &normalized_window_title);
+            push_title_history(&mut title_history, trimmed_window_title);
             app_data.files.push(FileEntry {
-                name: normalized_file_name.clone(),
+                name: trimmed_file_name.to_string(),
                 total_seconds: elapsed_seconds,
                 first_seen: now_str.clone(),
                 last_seen: now_str,
-                window_title: normalized_window_title,
-                detected_path: normalized_detected_path,
+                window_title: trimmed_window_title.to_string(),
+                detected_path: trimmed_detected_path.map(str::to_string),
                 title_history,
                 activity_type: normalized_activity_type.map(str::to_string),
             });

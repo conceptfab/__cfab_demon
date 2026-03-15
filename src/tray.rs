@@ -48,20 +48,19 @@ struct AttentionState {
 
 fn query_unassigned_attention_count() -> Result<i64, String> {
     let base_dir = crate::config::config_dir().map_err(|e| e.to_string())?;
-    let db_path = crate::config::dashboard_db_path().map_err(|e| e.to_string())?;
-    if !db_path.exists() {
-        return Ok(0);
-    }
-
     let min_duration_sec =
         session_settings::read_session_settings(&base_dir).min_session_duration_seconds;
-    let conn = rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|e| format!("Failed to open dashboard DB '{}': {}", db_path.display(), e))?;
-    conn.busy_timeout(Duration::from_millis(2000))
-        .map_err(|e| format!("Failed to configure dashboard DB busy_timeout: {}", e))?;
+    let conn = match crate::config::open_dashboard_db_readonly() {
+        Ok(conn) => conn,
+        Err(error) => {
+            if let Ok(db_path) = crate::config::dashboard_db_path() {
+                if !db_path.exists() {
+                    return Ok(0);
+                }
+            }
+            return Err(format!("Failed to open dashboard DB for tray: {}", error));
+        }
+    };
 
     let table_exists = conn
         .query_row(

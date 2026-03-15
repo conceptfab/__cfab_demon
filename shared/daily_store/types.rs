@@ -75,4 +75,3 @@ pub(crate) fn decode_detected_path(value: String) -> Option<String> {
         Some(value)
     }
 }
-

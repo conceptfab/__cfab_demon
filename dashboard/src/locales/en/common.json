@@ -116,6 +116,9 @@
       "active_projects": "active projects",
       "avg_daily": "Avg Daily"
     },
+    "errors": {
+      "loading_data": "Error loading data"
+    },
     "hourly_breakdown": {
       "title": "Hourly Breakdown",
       "minutes_unit": "min",
