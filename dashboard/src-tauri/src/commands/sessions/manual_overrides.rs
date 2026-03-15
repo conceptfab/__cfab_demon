@@ -149,40 +149,18 @@ pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Res
             None => None,
         };
 
-        let sessions_to_update: Vec<(i64, i64, String, String, String, Option<i64>)> =
-            if let Some(sid) = override_session_id {
-                conn.query_row(
+        let mut sessions_to_update: Vec<(i64, i64, String, String, String, Option<i64>)> =
+            Vec::new();
+
+        // Try by session_id first
+        if let Some(sid) = override_session_id {
+            if let Some(row) = conn
+                .query_row(
                     "SELECT s.id, s.app_id, s.date, s.start_time, s.end_time, s.project_id
                      FROM sessions s
                      WHERE s.id = ?1",
                     rusqlite::params![sid],
                     |row| {
-                        Ok(vec![(
-                            row.get::<_, i64>(0)?,
-                            row.get::<_, i64>(1)?,
-                            row.get::<_, String>(2)?,
-                            row.get::<_, String>(3)?,
-                            row.get::<_, String>(4)?,
-                            row.get::<_, Option<i64>>(5)?,
-                        )])
-                    },
-                )
-                .optional()
-                .map_err(|e| e.to_string())?
-                .unwrap_or_default()
-            } else {
-                let mut stmt = conn
-                    .prepare_cached(
-                        "SELECT s.id, s.app_id, s.date, s.start_time, s.end_time, s.project_id
-                         FROM sessions s
-                         JOIN applications a ON a.id = s.app_id
-                         WHERE lower(a.executable_name) = lower(?1)
-                           AND s.start_time = ?2
-                           AND s.end_time = ?3",
-                    )
-                    .map_err(|e| e.to_string())?;
-                let rows = stmt
-                    .query_map(rusqlite::params![exe_name, start_time, end_time], |row| {
                         Ok((
                             row.get::<_, i64>(0)?,
                             row.get::<_, i64>(1)?,
@@ -191,12 +169,44 @@ pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Res
                             row.get::<_, String>(4)?,
                             row.get::<_, Option<i64>>(5)?,
                         ))
-                    })
-                    .map_err(|e| e.to_string())?;
-                rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
-                    format!("Failed to read sessions row for manual override: {}", e)
-                })?
-            };
+                    },
+                )
+                .optional()
+                .map_err(|e| e.to_string())?
+            {
+                sessions_to_update.push(row);
+            }
+        }
+
+        // Fallback: match by executable_name + start_time + end_time (session_id
+        // may have changed after sync-pull reimport).
+        if sessions_to_update.is_empty() {
+            let mut stmt = conn
+                .prepare_cached(
+                    "SELECT s.id, s.app_id, s.date, s.start_time, s.end_time, s.project_id
+                     FROM sessions s
+                     JOIN applications a ON a.id = s.app_id
+                     WHERE lower(a.executable_name) = lower(?1)
+                       AND s.start_time = ?2
+                       AND s.end_time = ?3",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map(rusqlite::params![exe_name, start_time, end_time], |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, Option<i64>>(5)?,
+                    ))
+                })
+                .map_err(|e| e.to_string())?;
+            sessions_to_update = rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
+                format!("Failed to read sessions row for manual override: {}", e)
+            })?;
+        }
 
         for (session_id, app_id, date, s_start, s_end, current_project_id) in sessions_to_update {
             if current_project_id == target_project_id {
