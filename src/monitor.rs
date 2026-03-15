@@ -157,55 +157,9 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
 }
 
 /// Lightweight app category used by the tracker to tag file activities.
+/// Delegates to the shared classification map; supports config overrides.
 pub fn classify_activity_type(exe_name: &str) -> Option<ActivityType> {
-    let exe = exe_name.to_lowercase();
-
-    if matches!(
-        exe.as_str(),
-        "code.exe"
-            | "code-insiders.exe"
-            | "cursor.exe"
-            | "idea64.exe"
-            | "pycharm64.exe"
-            | "webstorm64.exe"
-            | "clion64.exe"
-            | "rider64.exe"
-            | "devenv.exe"
-            | "notepad++.exe"
-            | "vim.exe"
-            | "nvim.exe"
-    ) {
-        return Some(ActivityType::Coding);
-    }
-
-    if matches!(
-        exe.as_str(),
-        "chrome.exe"
-            | "msedge.exe"
-            | "firefox.exe"
-            | "brave.exe"
-            | "opera.exe"
-            | "opera_gx.exe"
-            | "vivaldi.exe"
-            | "arc.exe"
-    ) {
-        return Some(ActivityType::Browsing);
-    }
-
-    if matches!(
-        exe.as_str(),
-        "figma.exe"
-            | "photoshop.exe"
-            | "illustrator.exe"
-            | "blender.exe"
-            | "gimp-2.10.exe"
-            | "inkscape.exe"
-            | "adobexd.exe"
-    ) {
-        return Some(ActivityType::Design);
-    }
-
-    None
+    timeflow_shared::activity_classification::classify_activity_type(exe_name, None)
 }
 
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.

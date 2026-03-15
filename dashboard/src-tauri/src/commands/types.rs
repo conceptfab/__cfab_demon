@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+pub use timeflow_shared::monitored_app::MonitoredApp;
 
 // ==================== JSON Import Types ====================
 
@@ -311,13 +312,6 @@ pub struct DetectedProject {
     pub apps: Vec<String>,
     pub first_seen: String,
     pub last_seen: String,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct MonitoredApp {
-    pub exe_name: String,
-    pub display_name: String,
-    pub added_at: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]

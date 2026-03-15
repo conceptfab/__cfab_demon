@@ -7,15 +7,8 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use timeflow_shared::monitored_app::MonitoredApp;
 use timeflow_shared::timeflow_paths;
-
-/// Pojedyncza monitorowana aplikacja
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct MonitoredApp {
-    pub exe_name: String,
-    pub display_name: String,
-    pub added_at: String,
-}
 
 /// Opcjonalne interwały (sekundy). Domyślne jeśli brak.
 #[derive(Serialize, Deserialize, Debug, Clone)]

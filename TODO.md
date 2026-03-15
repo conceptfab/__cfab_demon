@@ -24,6 +24,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
+- detailed nie dziala
 
 <!-- - czy refresh w Dashbordzie jest potrzebny?
 - podział sesji
