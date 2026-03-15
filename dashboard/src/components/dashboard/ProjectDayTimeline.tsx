@@ -55,7 +55,7 @@ export function ProjectDayTimeline({
   sessions,
   manualSessions = [],
   workingHours,
-  title = "Activity Timeline",
+  title,
   minHeightClassName,
   projects,
   onAssignSession,
@@ -315,10 +315,10 @@ export function ProjectDayTimeline({
     const sessionId = sessionIds[0];
 
     setPromptConfig({
-      title: "Session comment",
+      title: t('project_day_timeline.text.session_comment'),
       description: sessionIds.length > 1
-        ? `(applies to first session of ${sessionIds.length}; leave empty to remove)`
-        : "(leave empty to remove)",
+        ? t('project_day_timeline.text.comment_applies_to_first', { count: sessionIds.length })
+        : t('project_day_timeline.text.comment_leave_empty_to_remove'),
       initialValue: current,
       onConfirm: async (raw) => {
         const trimmed = raw.trim();
@@ -406,7 +406,7 @@ export function ProjectDayTimeline({
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex flex-wrap items-center justify-between gap-2">
-          <span>{title === "Activity Timeline" ? t('project_day_timeline.text.activity_timeline') : title}</span>
+          <span>{title ?? t('project_day_timeline.text.activity_timeline')}</span>
           <div className="flex flex-wrap items-center gap-2">
             <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
               <AppTooltip content={t('project_day_timeline.text.sort_by_time')}>

@@ -322,7 +322,12 @@
       "no_projects": "Brak dostępnych projektów",
       "project_label": "Projekt:",
       "no_linked_project_card": "Brak powiązanej karty projektu",
-      "go_to_project_card": "Przejdź do karty projektu"
+      "go_to_project_card": "Przejdź do karty projektu",
+      "bulk_comment": "Edytuj komentarz grupowy"
+    },
+    "prompts": {
+      "bulk_comment_title": "Komentarz zbiorczy",
+      "bulk_comment_description": "Ustaw komentarz dla {{count}} sesji (zostaw puste, aby usunąć)"
     },
     "split": {
       "title": "Podziel sesję",
@@ -1692,6 +1697,9 @@
       "applies_to_all_sessions_in_this_visual_chunk": "Dotyczy wszystkich {{count}} sesji w tym wizualnym segmencie",
       "rate_multiplier_default_x2": "Mnożnik stawki (domyślnie x2):",
       "custom": "Niestandardowy...",
+      "session_comment": "Komentarz sesji",
+      "comment_applies_to_first": "(dotyczy pierwszej sesji z {{count}}; zostaw puste aby usunąć)",
+      "comment_leave_empty_to_remove": "(zostaw puste aby usunąć)",
       "edit_comment": "Edytuj komentarz",
       "add_comment": "Dodaj komentarz",
       "assign_to_project": "Przypisz do projektu",
@@ -1717,5 +1725,13 @@
       "add_session": "Dodaj sesję ({{time}})",
       "boosted_sessions_count": "Sesje z mnożnikiem: {{count}}"
     }
+  },
+  "background": {
+    "ai_assigned_sessions": "AI automatycznie przypisał {{count}} sesji"
+  },
+  "dashboard_page": {
+    "empty_state_title": "Brak zarejestrowanej aktywności",
+    "empty_state_description": "Uruchom demona, aby rozpocząć śledzenie pracy",
+    "go_to_daemon": "Przejdź do Demona"
   }
 }

@@ -66,6 +66,7 @@ interface ProjectHeaderMenu {
   y: number;
   projectId: number | null;
   projectName: string;
+  sessionIds: number[];
 }
 
 interface GroupedProject {
@@ -333,9 +334,13 @@ export function Sessions() {
       e.preventDefault();
       e.stopPropagation();
       setCtxMenu(null);
-      setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName });
+      const group = groupedByProject.find(
+        (g) => g.projectName === projectName,
+      );
+      const sessionIds = group?.sessions.map((s) => s.id) ?? [];
+      setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName, sessionIds });
     },
-    [setCtxMenu, setProjectCtxMenu],
+    [setCtxMenu, setProjectCtxMenu, groupedByProject],
   );
 
   const handleAssign = useCallback(
@@ -927,9 +932,25 @@ export function Sessions() {
         }
         goToProjectCardLabel={t('sessions.menu.go_to_project_card')}
         noLinkedProjectCardLabel={t('sessions.menu.no_linked_project_card')}
+        bulkCommentLabel={t('sessions.menu.bulk_comment')}
         onNavigateToProject={(projectId) => {
           setProjectPageId(projectId);
           setCurrentPage('project-card');
+        }}
+        onBulkComment={(sessionIds) => {
+          setPromptConfig({
+            title: t('sessions.prompts.bulk_comment_title'),
+            description: t('sessions.prompts.bulk_comment_description', { count: sessionIds.length }),
+            initialValue: '',
+            onConfirm: async (raw) => {
+              const trimmed = raw.trim();
+              try {
+                await updateSessionComments(sessionIds, trimmed || null);
+              } catch (err) {
+                logTauriError('bulk update session comments', err);
+              }
+            },
+          });
         }}
         onClose={() => setProjectCtxMenu(null)}
       />

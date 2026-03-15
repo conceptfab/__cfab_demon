@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use native_windows_gui as nwg;
@@ -135,7 +135,7 @@ struct TrayState {
     icon_attention: nwg::Icon,
     current_lang: Cell<Lang>,
     attention_state: RefCell<AttentionState>,
-    last_tray_click: Mutex<Option<Instant>>,
+    last_tray_click: Cell<Option<Instant>>,
     action: Cell<TrayExitAction>,
     // Stored handles for comparisons in the event handler
     tray_handle: nwg::ControlHandle,
@@ -146,18 +146,21 @@ struct TrayState {
 }
 
 impl TrayState {
+    fn update_tray_appearance(&self, tray: &nwg::TrayNotification, attention: i64, lang: Lang) {
+        tray.set_tip(&build_tray_tip(lang, attention));
+        if attention > 0 {
+            tray.set_icon(&self.icon_attention);
+        } else {
+            tray.set_icon(&self.icon);
+        }
+    }
+
     fn handle_context_menu(&self, handle: nwg::ControlHandle) {
         if handle == self.tray_handle {
             let lang = self.current_lang.get();
             let attention = refresh_attention_state(&self.attention_state, true);
-            let refreshed_tip = build_tray_tip(lang, attention);
             let tray = self.tray.borrow_mut();
-            tray.set_tip(&refreshed_tip);
-            if attention > 0 {
-                tray.set_icon(&self.icon_attention);
-            } else {
-                tray.set_icon(&self.icon);
-            }
+            self.update_tray_appearance(&tray, attention, lang);
             let (x, y) = nwg::GlobalCursor::position();
             self.menu.popup(x, y);
         }
@@ -166,23 +169,19 @@ impl TrayState {
     fn handle_mouse_press(&self, handle: nwg::ControlHandle, btn: nwg::MousePressEvent) {
         if handle == self.tray_handle {
             if btn == nwg::MousePressEvent::MousePressLeftUp {
-                let mut last_click = self
-                    .last_tray_click
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner());
                 let now = Instant::now();
-                let is_double_click = if let Some(last) = *last_click {
-                    now.duration_since(last) < TRAY_DOUBLE_CLICK_WINDOW
-                } else {
-                    false
-                };
+                let is_double_click = self
+                    .last_tray_click
+                    .get()
+                    .map(|last| now.duration_since(last) < TRAY_DOUBLE_CLICK_WINDOW)
+                    .unwrap_or(false);
 
                 if is_double_click {
                     log::info!("Tray icon double-clicked, launching Dashboard");
                     launch_dashboard(self.current_lang.get());
-                    *last_click = None; // Reset after double click
+                    self.last_tray_click.set(None);
                 } else {
-                    *last_click = Some(now);
+                    self.last_tray_click.set(Some(now));
                 }
             }
         }
@@ -207,16 +206,8 @@ impl TrayState {
 
             let lang = self.current_lang.get();
             let attention = refresh_attention_state(&self.attention_state, false);
-            let refreshed_tip = build_tray_tip(lang, attention);
-
             let tray = self.tray.borrow_mut();
-            tray.set_tip(&refreshed_tip);
-
-            if attention > 0 {
-                tray.set_icon(&self.icon_attention);
-            } else {
-                tray.set_icon(&self.icon);
-            }
+            self.update_tray_appearance(&tray, attention, lang);
         }
     }
 
@@ -350,7 +341,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
             count: initial_attention,
             last_refresh: Instant::now(),
         }),
-        last_tray_click: Mutex::new(None),
+        last_tray_click: Cell::new(None),
         action: Cell::new(TrayExitAction::Exit),
         tray_handle,
         tip_timer_handle,

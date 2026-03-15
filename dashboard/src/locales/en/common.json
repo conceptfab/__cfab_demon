@@ -322,7 +322,12 @@
       "no_projects": "No projects available",
       "project_label": "Project:",
       "no_linked_project_card": "No linked project card",
-      "go_to_project_card": "Go to project card"
+      "go_to_project_card": "Go to project card",
+      "bulk_comment": "Edit group comment"
+    },
+    "prompts": {
+      "bulk_comment_title": "Bulk comment",
+      "bulk_comment_description": "Set comment for {{count}} sessions (leave empty to remove)"
     },
     "split": {
       "title": "Split session",
@@ -1692,6 +1697,9 @@
       "applies_to_all_sessions_in_this_visual_chunk": "Applies to all {{count}} sessions in this visual chunk",
       "rate_multiplier_default_x2": "Rate multiplier (default x2):",
       "custom": "Custom...",
+      "session_comment": "Session comment",
+      "comment_applies_to_first": "(applies to first session of {{count}}; leave empty to remove)",
+      "comment_leave_empty_to_remove": "(leave empty to remove)",
       "edit_comment": "Edit comment",
       "add_comment": "Add comment",
       "assign_to_project": "Assign to project",
@@ -1717,5 +1725,13 @@
       "add_session": "Add Session ({{time}})",
       "boosted_sessions_count": "{{count}} boosted session(s)"
     }
+  },
+  "background": {
+    "ai_assigned_sessions": "AI auto-assigned {{count}} session(s)"
+  },
+  "dashboard_page": {
+    "empty_state_title": "No tracked activity yet",
+    "empty_state_description": "Start the daemon to begin tracking your work",
+    "go_to_daemon": "Go to Daemon"
   }
 }

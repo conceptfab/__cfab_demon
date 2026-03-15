@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 /// Activity type categories for file activity tagging.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,8 +28,10 @@ impl ActivityType {
     }
 }
 
-/// Returns the default exe→ActivityType map.
-pub fn default_classification_map() -> HashMap<&'static str, ActivityType> {
+/// Returns the default exe→ActivityType map (lazily initialized, shared across calls).
+pub fn default_classification_map() -> &'static HashMap<&'static str, ActivityType> {
+    static MAP: OnceLock<HashMap<&'static str, ActivityType>> = OnceLock::new();
+    MAP.get_or_init(|| {
     let mut map = HashMap::new();
     // Coding
     for exe in &[
@@ -73,6 +76,7 @@ pub fn default_classification_map() -> HashMap<&'static str, ActivityType> {
         map.insert(*exe, ActivityType::Design);
     }
     map
+    })
 }
 
 /// Classifies an exe name using the default map + optional overrides.

@@ -8,6 +8,7 @@ import {
   Archive,
   RefreshCw,
   AlertTriangle,
+  Rocket,
 } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
@@ -520,6 +521,21 @@ export function Dashboard() {
         </Card>
       )}
 
+      {stats && stats.total_seconds === 0 && !loadError ? (
+        <div className="flex flex-col items-center gap-4 py-12">
+          <Rocket className="h-12 w-12 text-muted-foreground/40" />
+          <p className="text-muted-foreground">
+            {t('dashboard_page.empty_state_title')}
+          </p>
+          <p className="text-sm text-muted-foreground/70">
+            {t('dashboard_page.empty_state_description')}
+          </p>
+          <Button onClick={() => setCurrentPage('daemon')}>
+            {t('dashboard_page.go_to_daemon')}
+          </Button>
+        </div>
+      ) : (<>
+
       {/* Metric cards */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
@@ -622,6 +638,8 @@ export function Dashboard() {
 
       {/* All projects chart */}
       <AllProjectsChart projects={allProjects} />
+
+      </>)}
 
       <ManualSessionDialog
         open={sessionDialogOpen}
