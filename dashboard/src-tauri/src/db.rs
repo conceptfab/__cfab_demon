@@ -447,6 +447,14 @@ fn current_active_db_path_string(app: &AppHandle) -> Result<String, String> {
     Ok(guard.clone())
 }
 
+pub fn reset_active_pool(app: &AppHandle) -> Result<(), String> {
+    let path = current_active_db_path_string(app)?;
+    if let Some(pool) = app.try_state::<ActiveDbPool>() {
+        pool.0.reset(&path)?;
+    }
+    Ok(())
+}
+
 pub fn get_demo_mode_status(app: &AppHandle) -> Result<DemoModeStatus, String> {
     Ok(DemoModeStatus {
         enabled: current_demo_mode_enabled(app)?,

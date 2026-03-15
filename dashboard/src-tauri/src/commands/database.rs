@@ -218,6 +218,7 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
             integrity
         ));
     }
+    drop(src_conn);
 
     // Restore by copying table contents through SQLite itself instead of overwriting
     // the active file. This avoids corruption risks on open/locked DB files.
@@ -225,11 +226,36 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
     conn.execute_batch("PRAGMA foreign_keys = OFF;")
         .map_err(|e| format!("Failed to disable foreign keys: {}", e))?;
 
+    // Collect and drop all triggers before restore to prevent interference
+    // (e.g. blacklist triggers blocking project inserts, tombstone triggers
+    // creating spurious records during DELETE phase).
+    let trigger_defs: Vec<(String, String)> = {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name, sql FROM main.sqlite_master
+                 WHERE type = 'trigger' AND sql IS NOT NULL
+                 ORDER BY name",
+            )
+            .map_err(|e| format!("Failed to enumerate triggers: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| format!("Failed to read trigger list: {}", e))?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+    for (trigger_name, _) in &trigger_defs {
+        let quoted = trigger_name.replace('"', "\"\"");
+        conn.execute_batch(&format!("DROP TRIGGER IF EXISTS \"{}\";", quoted))
+            .map_err(|e| format!("Failed to drop trigger '{}': {}", trigger_name, e))?;
+    }
+
     let result = (|| -> Result<(), String> {
         conn.execute("ATTACH DATABASE ?1 AS restore_src", [path])
             .map_err(|e| format!("Failed to attach source database: {}", e))?;
         let tx = conn.transaction().map_err(|e| e.to_string())?;
 
+        // Enumerate tables from source backup.
         let tables: Vec<String> = {
             let mut stmt = tx
                 .prepare(
@@ -245,13 +271,87 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
             rows.filter_map(|row| row.ok()).collect()
         };
 
-        for table_name in tables {
+        for table_name in &tables {
             let quoted_name = table_name.replace('"', "\"\"");
+
+            // Build column-aware INSERT to handle schema differences between
+            // backup and current database (e.g. migrations added new columns).
+            let src_cols: Vec<String> = {
+                let mut stmt = tx
+                    .prepare(&format!(
+                        "SELECT name FROM restore_src.pragma_table_info(\"{}\")",
+                        quoted_name
+                    ))
+                    .map_err(|e| {
+                        format!(
+                            "Failed to read source columns for '{}': {}",
+                            table_name, e
+                        )
+                    })?;
+                let rows = stmt
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|e| {
+                        format!(
+                            "Failed to enumerate source columns for '{}': {}",
+                            table_name, e
+                        )
+                    })?;
+                rows.filter_map(|r| r.ok()).collect()
+            };
+
+            let dest_cols: Vec<String> = {
+                let mut stmt = tx
+                    .prepare(&format!(
+                        "SELECT name FROM pragma_table_info(\"{}\")",
+                        quoted_name
+                    ))
+                    .map_err(|e| {
+                        format!(
+                            "Failed to read destination columns for '{}': {}",
+                            table_name, e
+                        )
+                    })?;
+                let rows = stmt
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|e| {
+                        format!(
+                            "Failed to enumerate destination columns for '{}': {}",
+                            table_name, e
+                        )
+                    })?;
+                rows.filter_map(|r| r.ok()).collect()
+            };
+
+            // Use only columns present in both source and destination.
+            let dest_set: std::collections::HashSet<&str> =
+                dest_cols.iter().map(|s| s.as_str()).collect();
+            let common_cols: Vec<&str> = src_cols
+                .iter()
+                .filter(|c| dest_set.contains(c.as_str()))
+                .map(|s| s.as_str())
+                .collect();
+
             tx.execute_batch(&format!("DELETE FROM \"{}\";", quoted_name))
                 .map_err(|e| format!("Failed to clear table '{}': {}", table_name, e))?;
+
+            if common_cols.is_empty() {
+                log::warn!(
+                    "Restore: no common columns for table '{}', skipping data copy",
+                    table_name
+                );
+                continue;
+            }
+
+            let cols_csv: String = common_cols
+                .iter()
+                .map(|c| format!("\"{}\"", c.replace('"', "\"\"")))
+                .collect::<Vec<_>>()
+                .join(", ");
+
             tx.execute_batch(&format!(
-                "INSERT INTO \"{name}\" SELECT * FROM restore_src.\"{name}\";",
-                name = quoted_name
+                "INSERT INTO \"{name}\" ({cols}) SELECT {cols} FROM restore_src.\"{name}\";",
+                name = quoted_name,
+                cols = cols_csv,
             ))
             .map_err(|e| format!("Failed to restore table '{}': {}", table_name, e))?;
         }
@@ -278,6 +378,13 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
         Ok(())
     })();
 
+    // Restore triggers regardless of whether data restore succeeded.
+    for (_, sql) in &trigger_defs {
+        if let Err(e) = conn.execute_batch(&format!("{};", sql)) {
+            log::error!("Failed to recreate trigger: {}", e);
+        }
+    }
+
     let _ = conn.execute_batch("DETACH DATABASE restore_src;");
     let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
 
@@ -287,7 +394,10 @@ pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Resul
 #[tauri::command]
 pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<(), String> {
     run_app_blocking(app, move |app| {
-        restore_database_from_file_internal(&app, &path)
+        restore_database_from_file_internal(&app, &path)?;
+        // Reset connection pool so subsequent queries see restored data immediately.
+        db::reset_active_pool(&app)?;
+        Ok(())
     })
     .await
 }
