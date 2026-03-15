@@ -255,10 +255,6 @@ export const getDashboardData = (
   });
 export const getDashboardStats = (dateRange: DateRange) =>
   invoke<DashboardStats>('get_dashboard_stats', { dateRange });
-export const getTopProjects = (dateRange: DateRange, limit = 8) =>
-  invoke<ProjectTimeRow[]>('get_top_projects', { dateRange, limit });
-export const getDashboardProjects = (dateRange: DateRange) =>
-  invoke<ProjectTimeRow[]>('get_dashboard_projects', { dateRange });
 export const getTimeline = (dateRange: DateRange) =>
   invoke<TimelinePoint[]>('get_timeline', { dateRange });
 export const getEstimateSettings = () =>
@@ -656,8 +652,6 @@ export const dashboardApi = {
   getActivityDateSpan,
   getDashboardData,
   getDashboardStats,
-  getTopProjects,
-  getDashboardProjects,
   getTimeline,
   getEstimateSettings,
   updateGlobalHourlyRate,
