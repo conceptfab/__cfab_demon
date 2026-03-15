@@ -15,8 +15,9 @@
 5. [Tłumaczenia i i18n](#5-tłumaczenia-i-i18n)
 6. [Dokumentacja pomocy (Help.tsx)](#6-dokumentacja-pomocy-helptsx)
 7. [Architektura i modularność](#7-architektura-i-modularność)
-8. [Sugestie funkcjonalne](#8-sugestie-funkcjonalne)
-9. [Wskazówki dla kolejnego modelu](#9-wskazówki-dla-kolejnego-modelu)
+8. [Brakujące funkcje](#8-brakujące-funkcje)
+9. [Sugestie funkcjonalne](#9-sugestie-funkcjonalne)
+10. [Wskazówki dla kolejnego modelu](#10-wskazówki-dla-kolejnego-modelu)
 
 ---
 
@@ -76,7 +77,68 @@ Po powrocie do bieżącego miesiąca strzałkami, `inferPreset` porównuje z `no
 
 **Naprawa:** `inferPreset` powinien sprawdzać `isSameMonth(start, end)` zamiast `isSameMonth(start, now)`.
 
-### 2.4 `suggest_project_for_session_raw` — nazwa myląca
+### 2.4 "Unique Files" w projektach — błędne liczenie (zwraca np. 1 zamiast setek)
+
+**Pliki:**
+- `dashboard/src-tauri/src/commands/projects.rs:1389-1411` — zapytanie SQL liczące pliki
+- `dashboard/src-tauri/src/commands/import.rs:298-314` — zapis file_activities do DB
+- `dashboard/src-tauri/src/commands/sql_fragments.rs:1-66` — CTE `session_project_cte`
+
+**Problem:** Mechanizm liczenia "Unique Files" ma 4 niezależne defekty, które razem powodują dramatyczne niedoliczenie:
+
+#### Defekt A: `file_path` kolapsuje pliki o tej samej nazwie (UNIQUE constraint)
+
+Tabela `file_activities` ma `UNIQUE(app_id, date, file_path)`. Gdy `detected_path` jest niedostępny (większość przypadków dla wielu aplikacji), `file_path` = `normalize_file_path(file.name)`, czyli np. `"index.ts"`.
+
+Oznacza to, że jeśli edytujesz `src/a/index.ts` i `src/b/index.ts`, obie aktywności trafiają do JEDNEGO rekordu (upsert `ON CONFLICT DO UPDATE`). Dane o jednym z plików są po prostu nadpisywane. Utrata danych na poziomie storage — nie da się naprawić samym zapytaniem SQL.
+
+**Skala problemu:** Przy projektach z wieloma plikami o tych samych nazwach (np. `index.ts`, `README.md`, `__init__.py`) realna liczba unikalnych plików jest wielokrotnie zaniżona.
+
+#### Defekt B: Zapytanie SQL nie używa `fa.project_id` — liczy pliki z INNYCH projektów lub żadne
+
+Zapytanie (projects.rs:1389-1403):
+```sql
+JOIN file_activities fa
+  ON fa.app_id = s.app_id
+ AND fa.date = s.date
+ AND fa.last_seen > s.start_time
+ AND fa.first_seen < s.end_time
+WHERE sp.project_id = ?3
+```
+
+Join jest przez `app_id + date + temporal overlap`, ale NIE filtruje `fa.project_id`. To oznacza:
+1. Liczy pliki z innych projektów, jeśli overlap czasowy się zgadza
+2. Ale jednocześnie NIE liczy plików, które należą do projektu, ale ich temporal overlap z sesją nie zachodzi (np. plik edytowany między sesjami)
+
+#### Defekt C: CTE wymaga `fa.project_id IS NOT NULL` do przypisania sesji
+
+W `session_project_cte` (sql_fragments.rs:17-22) CTE buduje `session_project_overlap` z warunkiem `fa.project_id IS NOT NULL`. Jeśli daemon nie przypisał `project_id` do file_activities (a robi to tylko warstwa import → `ensure_app_project_from_file_hint`), sesje nie zostaną przypisane do projektu przez overlap — jedynie przez explicit `s.project_id`.
+
+W efekcie: mało sesji → mało temporal overlap → mało plików.
+
+#### Defekt D: COALESCE fallback w COUNT jest pozornie redundantny
+
+```sql
+COUNT(DISTINCT LOWER(
+  COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
+))
+```
+
+`file_path` w DB jest już wynikiem `normalize_file_path(detected_path || file_name)`, więc `file_path` nigdy nie jest pusty (minimun `"(unknown)"`). COALESCE fallback do `file_name` nigdy się nie aktywuje — ale to nie pomaga, bo problem jest wyżej.
+
+**Naprawa (propozycja):**
+
+1. **Zmienić UNIQUE constraint** na `UNIQUE(app_id, date, file_path, file_name)` lub lepiej: użyć `detected_path` jako głównego klucza unikalności (gdy dostępny), albo dodać hash/id okna jako dodatkowy dyskryminator.
+
+2. **W zapytaniu SQL dodać filtr `fa.project_id = ?3`** (lub `fa.project_id = sp.project_id`) jako alternatywny/dodatkowy warunek — nie polegać wyłącznie na temporal overlap sesji.
+
+3. **Rozważyć prostsze zapytanie**: zamiast przechodzić przez CTE sesji, liczyć bezpośrednio `COUNT(DISTINCT ...) FROM file_activities WHERE project_id = ?`.
+
+4. **Poprawić zapis `file_path`**: gdy `detected_path` jest dostępny, użyć go jako `file_path` w DB. Gdy nie — dołączyć kontekst z `window_title` aby uniknąć kolizji (np. `"vscode/index.ts"` vs `"webstorm/index.ts"`).
+
+**Test:** Otworzyć projekt z wieloma plikami w IDE (np. ten repo ~100+ plików), poczekać aż daemon zbierze dane, sprawdzić czy "Unique Files" pokazuje wartość zbliżoną do realnej.
+
+### 2.5 `suggest_project_for_session_raw` — nazwa myląca
 
 **Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs:379-430`
 
@@ -213,13 +275,7 @@ ReportView to osobna pełnoekranowa strona z toolbarem (Print/PDF), ale w Help.t
 
 **Naprawa:** Dodać `HelpDetailsBlock` w `TabsContent value="reports"` z: co robi, kiedy użyć, ograniczenia.
 
-### 6.2 Brak opisu "Font selection" w sekcji Reports
-
-Klucz `help_page.font_selection_and_scaling_change_font_family_sans_serif` istnieje w JSON (linia 1565) ale nie jest podpięty do `features[]` w Help.tsx.
-
-**Naprawa:** Dodać `t18n('help_page.font_selection_and_scaling_...')` do tablicy features sekcji Reports.
-
-### 6.3 Pokrycie stron — status
+### 6.2 Pokrycie stron — status
 
 | Strona | Status w Help.tsx |
 |---|---|
@@ -231,7 +287,7 @@ Klucz `help_page.font_selection_and_scaling_change_font_family_sans_serif` istni
 | TimeAnalysis | ✅ Pełne |
 | AI | ✅ Pełne |
 | Data | ✅ Pełne + HelpDetailsBlock |
-| Reports | ⚠️ Brak ReportView + font selection |
+| Reports | ⚠️ Brak ReportView |
 | DaemonControl | ✅ Pełne |
 | Settings | ✅ Pełne |
 | QuickStart | ✅ Pełne |
@@ -284,7 +340,38 @@ dashboard/src/
 
 ---
 
-## 8. Sugestie funkcjonalne
+## 8. Brakujące funkcje
+
+### 8.1 Manual sessions nie wyświetlają się w zakładce Sessions
+
+**Pliki:**
+- `dashboard/src/pages/Sessions.tsx` — główna lista sesji; **zero** referencji do `manual_session` / `ManualSession`
+- `dashboard/src-tauri/src/commands/sessions/queries.rs` (lub odpowiednik) — zapytanie ładujące sesje; nie uwzględnia tabeli `manual_sessions`
+- `dashboard/src/lib/db-types.ts:420-445` — `ManualSession` / `ManualSessionWithProject` istnieją, ale Sessions.tsx ich nie używa
+
+**Problem:** Sesje dodane ręcznie (manual sessions) istnieją w bazie (`manual_sessions`), wyświetlają się na stronie projektu (`ProjectSessionsTable`, `ProjectSessionsList`), w raportach (`ReportView`), i na timeline (`ProjectDayTimeline`) — ale **nie pojawiają się w głównej zakładce "Sessions"**.
+
+Z punktu widzenia użytkownika manual session to pełnoprawna sesja — ma start/end, czas trwania, przypisany projekt. Brak ich na liście sesji jest niespójny i dezorientujący: użytkownik dodaje sesję, ale nie widzi jej tam, gdzie spodziewa się widzieć wszystkie sesje.
+
+**Wymagania:**
+1. Manual sessions muszą pojawiać się na liście w zakładce Sessions, pomieszane chronologicznie ze zwykłymi sesjami.
+2. Muszą być **wizualnie oznakowane** (badge/ikona/kolor) żeby odróżnić je od sesji automatycznych — np. ikonka `MousePointerClick` lub `CalendarPlus` + badge "Manual".
+3. Dane wyświetlane: tytuł, projekt (nazwa + kolor), czas trwania, start/end, typ sesji (`session_type`).
+4. Context menu / akcje: edycja, usunięcie — nie: split, hide, reassign app (bo manual session nie ma `app_id` w sensie automatycznej detekcji).
+5. Filtrowanie: istniejące filtry (projekt, zakres dat) muszą uwzględniać manual sessions.
+6. Paginacja/virtualizacja: manual sessions muszą być uwzględnione w łącznej liczbie sesji i poprawnie działać z Virtuoso.
+7. Statystyki w headerze (total time, session count) muszą uwzględniać manual sessions.
+
+**Naprawa (podejście):**
+- **Backend:** Dodać komendę `get_sessions_page_with_manual` (lub rozszerzyć istniejącą) — UNION sessions + manual_sessions, sortowanie po `start_time DESC`, paginacja.
+- **Frontend:** Rozszerzyć typ sesji w `Sessions.tsx` o wariant `manual`, dodać renderowanie w `SessionRow` z odpowiednim oznaczeniem, wykluczyć nieadekwatne akcje z context menu.
+- **Alternatywa (prostsza):** Osobna sekcja/tab "Manual" w Sessions — ale to mniej spójne UX.
+
+**Test:** Dodać manual session do projektu → przejść do zakładki Sessions → sesja manualna musi być widoczna, oznakowana, z poprawnym czasem i projektem.
+
+---
+
+## 9. Sugestie rozwojowe
 
 1. **Evidence boost dla background apps**: Model AI słabo klasyfikuje sesje bez plików (background apps) — evidence_count rośnie wolno (warstwy 1/2/3 dają +1 vs warstwa 0 +2). Rozważyć podwyższenie wagi layer1 dla znanych background apps.
 
@@ -298,7 +385,7 @@ dashboard/src/
 
 ---
 
-## 9. Wskazówki dla kolejnego modelu
+## 10. Wskazówki dla kolejnego modelu
 
 ### Jak sporządzić `plan_implementacji.md`
 
@@ -359,11 +446,12 @@ dashboard/src/
 | Kategoria | Znalezione | Krytyczne | Średnie | Niskie |
 |---|---|---|---|---|
 | Błędy krytyczne | 3 | 3 | — | — |
-| Błędy logiczne | 4 | — | 4 | — |
+| Błędy logiczne | 5 | 1 (unique files) | 4 | — |
 | Duplikacja kodu | 3 | — | 2 | 1 |
 | Wydajność | 6 | — | 3 | 3 |
 | Tłumaczenia | 4 | 1 (duplikat kluczy) | 2 | 1 |
-| Help.tsx | 2 | — | 2 | — |
+| Help.tsx | 1 | — | 1 | — |
 | Architektura | 5 | — | 2 | 3 |
-| Sugestie funkcjonalne | 5 | — | — | 5 |
-| **RAZEM** | **32** | **4** | **15** | **13** |
+| Brakujące funkcje | 1 | — | 1 | — |
+| Sugestie rozwojowe | 5 | — | — | 5 |
+| **RAZEM** | **33** | **5** | **15** | **13** |
