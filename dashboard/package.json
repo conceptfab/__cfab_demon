@@ -1,9 +1,10 @@
 {
   "name": "dashboard",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.526",
   "type": "module",
   "scripts": {
+    "pretauri": "node scripts/sync-version.cjs",
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -b",

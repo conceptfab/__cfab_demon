@@ -1,7 +1,7 @@
 mod commands;
 mod db;
 mod db_migrations;
-pub const VERSION: &str = include_str!("../../../VERSION");
+pub const VERSION: &str = env!("TIMEFLOW_VERSION");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

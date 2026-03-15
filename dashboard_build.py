@@ -31,29 +31,42 @@ def main():
 
     # Kopiuj wynik do wspólnego dist/
     DIST.mkdir(parents=True, exist_ok=True)
-    bundle_dir = DASHBOARD / "src-tauri" / "target" / "release"
-    # Tauri może wygenerować różne nazwy w zależności od productName / Cargo name
-    exe_candidates = ["TimeFlow.exe", "timeflow-dashboard.exe", "timeflow_dashboard.exe"]
+    # Workspace Cargo buduje do root/target/, nie dashboard/src-tauri/target/
+    release_dirs = [
+        ROOT / "target" / "release",
+        DASHBOARD / "src-tauri" / "target" / "release",
+    ]
+    exe_candidates = ["TIMEFLOW.exe", "TimeFlow.exe", "timeflow-dashboard.exe", "timeflow_dashboard.exe"]
     copied = False
-    for exe_name in exe_candidates:
-        src_exe = bundle_dir / exe_name
-        if src_exe.exists():
-            shutil.copy2(src_exe, DIST / FINAL_NAME)
-            size_mb = (DIST / FINAL_NAME).stat().st_size / (1024 * 1024)
-            print(f"\n   Skopiowano: {exe_name} -> dist/{FINAL_NAME} ({size_mb:.2f} MB)")
-            copied = True
+    for release_dir in release_dirs:
+        if not release_dir.exists():
+            continue
+        for exe_name in exe_candidates:
+            src_exe = release_dir / exe_name
+            if src_exe.exists():
+                shutil.copy2(src_exe, DIST / FINAL_NAME)
+                size_mb = (DIST / FINAL_NAME).stat().st_size / (1024 * 1024)
+                print(f"\n   Skopiowano: {src_exe} -> dist/{FINAL_NAME} ({size_mb:.2f} MB)")
+                copied = True
+                break
+        if copied:
             break
     if not copied:
-        bundle_path = bundle_dir / "bundle"
-        if bundle_path.exists():
+        # Szukaj w bundle (nsis/msi) jako fallback
+        for release_dir in release_dirs:
+            bundle_path = release_dir / "bundle"
+            if not bundle_path.exists():
+                continue
             for path in bundle_path.rglob("*.exe"):
                 if "setup" not in path.name.lower() and "install" not in path.name.lower():
                     shutil.copy2(path, DIST / FINAL_NAME)
                     print(f"\n   Skopiowano: {path.name} -> dist/{FINAL_NAME}")
                     copied = True
                     break
+            if copied:
+                break
     if not copied:
-        print(f"\n   UWAGA: Nie znaleziono exe w {bundle_dir}")
+        print(f"\n   UWAGA: Nie znaleziono exe dashboardu w żadnym z: {[str(d) for d in release_dirs]}")
         sys.exit(1)
 
 
