@@ -24,7 +24,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-- raport PDF nie drukuej 1 stronę!!!
+- raport PDF nie drukuje 1 stronę, a dane zaiwierają więcej niż 1 strona!!!
 
 <!-- - czy refresh w Dashbordzie jest potrzebny?
 - podział sesji

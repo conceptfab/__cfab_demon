@@ -2,13 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
   MultiProjectAnalysis,
-  ScoreBreakdown,
   SessionWithApp,
 } from '@/lib/db-types';
 import {
-  buildAnalysisFromBreakdown,
   isAlreadySplitSession,
-  isSplittableFromBreakdown,
 } from '@/lib/session-analysis';
 import { withTimeout } from '@/lib/async-utils';
 import { sessionsApi } from '@/lib/tauri';
@@ -17,14 +14,12 @@ import type { SplitSettings } from '@/lib/user-settings';
 const SPLIT_ANALYSIS_BATCH_SIZE = 25;
 
 interface UseSessionSplitAnalysisOptions {
-  getScoreBreakdownData: (sessionId: number) => ScoreBreakdown | null;
   multiSplitSession: SessionWithApp | null;
   sessions: SessionWithApp[];
   splitSettings: SplitSettings;
 }
 
 export function useSessionSplitAnalysis({
-  getScoreBreakdownData,
   multiSplitSession,
   sessions,
   splitSettings,
@@ -89,21 +84,14 @@ export function useSessionSplitAnalysis({
         if (cancelled) return;
         setSplitAnalysisBySession((prev) => {
           if (prev.has(sessionId)) return prev;
-          const fallback =
-            buildAnalysisFromBreakdown(
-              sessionId,
-              getScoreBreakdownData(sessionId),
-              splitSettings.toleranceThreshold,
-              splitSettings.maxProjectsPerSession,
-            ) ?? {
-              session_id: sessionId,
-              candidates: [],
-              is_splittable: false,
-              leader_project_id: null,
-              leader_score: 0,
-            };
           const next = new Map(prev);
-          next.set(sessionId, fallback);
+          next.set(sessionId, {
+            session_id: sessionId,
+            candidates: [],
+            is_splittable: false,
+            leader_project_id: null,
+            leader_score: 0,
+          });
           return next;
         });
       })
@@ -119,7 +107,6 @@ export function useSessionSplitAnalysis({
       cancelled = true;
     };
   }, [
-    getScoreBreakdownData,
     multiSplitSession,
     splitAnalysisBySession,
     splitAnalysisLoadingIds,
@@ -223,22 +210,9 @@ export function useSessionSplitAnalysis({
   const isSessionSplittable = useCallback(
     (session: SessionWithApp): boolean => {
       if (isAlreadySplitSession(session)) return false;
-
-      const breakdownSuggestsSplit = isSplittableFromBreakdown(
-        getScoreBreakdownData(session.id),
-        splitSettings.toleranceThreshold,
-      );
-
-      const explicit = splitEligibilityBySession.get(session.id);
-      if (typeof explicit === 'boolean') return explicit || breakdownSuggestsSplit;
-
-      return breakdownSuggestsSplit;
+      return splitEligibilityBySession.get(session.id) ?? false;
     },
-    [
-      getScoreBreakdownData,
-      splitEligibilityBySession,
-      splitSettings.toleranceThreshold,
-    ],
+    [splitEligibilityBySession],
   );
 
   const selectedSplitAnalysis = useMemo(

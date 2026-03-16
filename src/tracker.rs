@@ -14,6 +14,7 @@ use timeflow_shared::version_compat;
 
 use crate::activity::ActivityType;
 use crate::config;
+use crate::foreground_hook::ForegroundSignal;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
 
@@ -132,10 +133,14 @@ fn should_refresh_background_process_snapshot(last_refresh: Option<Instant>, now
 
 /// Starts the monitor thread. Returns a JoinHandle.
 /// `stop_signal` — set to true to stop the thread.
-pub fn start(stop_signal: Arc<AtomicBool>) -> thread::JoinHandle<()> {
+/// `foreground_signal` — optional event from SetWinEventHook for instant wake on window change.
+pub fn start(
+    stop_signal: Arc<AtomicBool>,
+    foreground_signal: Option<Arc<ForegroundSignal>>,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         log::info!("Monitor thread started");
-        run_loop(stop_signal);
+        run_loop(stop_signal, foreground_signal);
         log::info!("Monitor thread stopped");
     })
 }
@@ -309,7 +314,7 @@ fn record_app_activity(
     }
 }
 
-fn run_loop(stop_signal: Arc<AtomicBool>) {
+fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<ForegroundSignal>>) {
     let mut pid_cache: PidCache = HashMap::new();
     monitor::warm_path_detection_wmi();
     let mut cfg = config::load();
@@ -526,22 +531,29 @@ fn run_loop(stop_signal: Arc<AtomicBool>) {
             last_cache_evict = Instant::now();
         }
 
-        // Sleep with early stop signal check (D-10)
-        // Check time remaining to the next scheduled tick
+        // Wait for next tick — either woken by foreground hook or timeout
         let elapsed_since_tick = last_tracking_tick.elapsed();
         if elapsed_since_tick < poll_interval {
             let remain = poll_interval - elapsed_since_tick;
-            let sleep_chunks = (remain.as_secs_f32().ceil() as u32).max(1);
-
-            for _ in 0..sleep_chunks {
-                if stop_signal.load(Ordering::Relaxed) {
-                    break;
+            if let Some(ref signal) = foreground_signal {
+                // Event-driven: wake immediately on foreground window change
+                if signal.wait_timeout(remain) {
+                    log::debug!("Woken early by foreground change event");
                 }
-                let remaining_now = poll_interval.saturating_sub(last_tracking_tick.elapsed());
-                if remaining_now.is_zero() {
-                    break;
+            } else {
+                // Fallback: chunked sleep with stop signal check
+                let sleep_chunks = (remain.as_secs_f32().ceil() as u32).max(1);
+                for _ in 0..sleep_chunks {
+                    if stop_signal.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let remaining_now =
+                        poll_interval.saturating_sub(last_tracking_tick.elapsed());
+                    if remaining_now.is_zero() {
+                        break;
+                    }
+                    thread::sleep(Duration::from_secs(1).min(remaining_now));
                 }
-                thread::sleep(Duration::from_secs(1).min(remaining_now));
             }
         }
     }

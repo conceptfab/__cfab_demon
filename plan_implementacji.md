@@ -97,7 +97,8 @@
 
 ## Faza 3: Tłumaczenia i Help (jakość UX)
 
-### Zadanie 3.1: Niespójność "ręczne" vs "manualne" w PL ✅ DONE
+### Zadanie 3.1: Niespójność "ręczne" vs "
+alne" w PL ✅ DONE
 - **Pliki:** `dashboard/src/locales/pl/common.json` (~10 kluczy)
 - **Problem:** Mieszane użycie "manualne" i "ręczne".
 - **Zmiana:** Ujednolicić wszystkie do "ręczne" (naturalniejsze po polsku).
@@ -185,7 +186,7 @@
 
 ## Faza 5: Refaktoryzacja (utrzymywalność kodu)
 
-### Zadanie 5.1: Usunąć duplikację `session-analysis.ts` vs `split.rs`
+### Zadanie 5.1: Usunąć duplikację `session-analysis.ts` vs `split.rs` ✅ DONE
 - **Pliki:**
   - `dashboard/src/lib/session-analysis.ts:16-63` (usunąć)
   - `dashboard/src-tauri/src/commands/sessions/split.rs:509-531` (źródło prawdy)
@@ -211,7 +212,7 @@
 - **Ryzyko:** Niskie (jeśli nieużywany).
 - **Zależności:** Brak.
 
-### Zadanie 5.4: Podział `Sessions.tsx` na moduły
+### Zadanie 5.4: Podział `Sessions.tsx` na moduły ✅ DONE
 - **Plik:** `dashboard/src/pages/Sessions.tsx` (~990 linii)
 - **Problem:** Zbyt duży komponent z ~15 useCallback, ~8 useMemo, ~10 useState.
 - **Zmiana:** Wydzielić:
@@ -246,7 +247,7 @@
 
 ## Faza 7: Architektura (sugestie usprawniające)
 
-### Zadanie 7.1: `settings-store.ts` — brak reaktywności kluczowych ustawień
+### Zadanie 7.1: `settings-store.ts` — brak reaktywności kluczowych ustawień ✅ DONE
 - **Plik:** `dashboard/src/store/settings-store.ts`
 - **Problem:** Store przechowuje tylko 2 z N ustawień; reszta (workingHours, language, splitSettings) w localStorage bez reaktywności — zmiana w jednym widoku nie propaguje się do innych bez przeładowania.
 - **Zmiana:** Rozszerzyć Zustand store o kluczowe ustawienia (workingHours, language, splitSettings).
@@ -282,7 +283,7 @@
 
 ## Faza 8: Sugestie rozwojowe (long-term)
 
-### Zadanie 8.1: Evidence boost dla background apps w modelu AI
+### Zadanie 8.1: Evidence boost dla background apps w modelu AI ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs`
 - **Problem:** Model AI słabo klasyfikuje sesje bez plików (background apps) — evidence_count rośnie wolno (warstwy 1/2/3 dają +1 vs warstwa 0 +2).
 - **Zmiana:** Podwyższyć wagę layer1 dla znanych background apps lub dodać osobną ścieżkę scoringu.
@@ -290,15 +291,15 @@
 - **Ryzyko:** Średnie — zmiana wag może wpłynąć na istniejące przypisania.
 - **Zależności:** Brak.
 
-### Zadanie 8.2: Daemon → `SetWinEventHook` (event-driven detection)
-- **Plik:** `src/monitor.rs`
+### Zadanie 8.2: Daemon → `SetWinEventHook` (event-driven detection) ✅ DONE
+- **Plik:** `src/foreground_hook.rs` (nowy), `src/tracker.rs`, `src/main.rs`
 - **Problem:** Polling co 10s vs event-driven — opóźnienie wykrycia zmian okna.
-- **Zmiana:** Zamienić polling na `SetWinEventHook` dla detekcji zmian aktywnego okna. Zachować polling jako fallback.
+- **Zmiana:** Nowy moduł `foreground_hook.rs` z `SetWinEventHook` + message pump w osobnym wątku. Tracker budzi się natychmiast przez Condvar zamiast sleep-loop. Polling zachowany jako fallback gdy hook nie zadziała.
 - **Test:** Przełączać okna szybko → sprawdzić, że tracker rejestruje wszystkie zmiany bez opóźnienia.
 - **Ryzyko:** Wysokie — duża zmiana architektoniczna, dotyczy core daemon.
 - **Zależności:** Brak.
 
-### Zadanie 8.3: Auto-split false positives — guard `updated_at`
+### Zadanie 8.3: Auto-split false positives — guard `updated_at` ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/sessions/split.rs`
 - **Problem:** Przy 50 sesjach per cykl z `sleep(100ms)` throttle, cykl trwa 5-10s. Jeśli użytkownik w tym czasie zmieni projekt sesji, auto-split może nadpisać przypisanie.
 - **Zmiana:** Sprawdzać `updated_at` sesji przed splitem — jeśli sesja była zmodyfikowana od początku cyklu, pominąć ją.

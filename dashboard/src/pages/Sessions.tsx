@@ -28,7 +28,6 @@ import type { PromptConfig } from '@/lib/ui-types';
 import {
   loadSessionSettings,
   loadIndicatorSettings,
-  loadSplitSettings,
   loadFreezeSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
@@ -37,24 +36,20 @@ import {
   compareProjectsByName,
   isRecentProject,
 } from '@/lib/project-utils';
-import {
-  findSessionIdsMissingComment,
-  requiresCommentForMultiplierBoost,
-} from '@/lib/session-utils';
-import { useToast } from '@/components/ui/toast-notification';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { useSessionsData } from '@/hooks/useSessionsData';
 import { useSessionsFilters } from '@/hooks/useSessionsFilters';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
 import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
-import { buildAnalysisFromBreakdown } from '@/lib/session-analysis';
-import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 import {
   loadProjectsAllTime,
   useProjectsCacheStore,
 } from '@/store/projects-cache-store';
 import { shouldRefreshSessionsPage } from '@/lib/page-refresh-reasons';
+import { useSettingsStore } from '@/store/settings-store';
+import { useSessionBulkActions } from '@/hooks/useSessionBulkActions';
+import { useSessionContextMenuActions } from '@/hooks/useSessionContextMenuActions';
 
 interface ContextMenu {
   x: number;
@@ -84,7 +79,6 @@ const TOP_PROJECTS_LIMIT = 5;
 export function Sessions() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
-  const { showError } = useToast();
   const {
     setProjectPageId,
     setCurrentPage,
@@ -118,7 +112,7 @@ export function Sessions() {
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const [splitSettings, setSplitSettings] = useState(() => loadSplitSettings());
+  const splitSettings = useSettingsStore((s) => s.splitSettings);
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
   const [customScrollParent, setCustomScrollParent] = useState<
@@ -138,7 +132,6 @@ export function Sessions() {
   } = useSessionsFilters(viewMode);
   const reloadDisplaySettings = useCallback(() => {
     const sessionSettings = loadSessionSettings();
-    setSplitSettings(loadSplitSettings());
     setIndicators(loadIndicatorSettings());
     setMinDuration(
       sessionSettings.minSessionDurationSeconds > 0
@@ -221,7 +214,6 @@ export function Sessions() {
     selectedSplitAnalysis,
     selectedSplitAnalysisLoading,
   } = useSessionSplitAnalysis({
-    getScoreBreakdownData,
     multiSplitSession,
     sessions,
     splitSettings,
@@ -359,21 +351,6 @@ export function Sessions() {
     [setProjectCtxMenu, setCtxMenu],
   );
 
-  const openMultiSplitModal = (session: SessionWithApp) => {
-    const derivedAnalysis = buildAnalysisFromBreakdown(
-      session.id,
-      getScoreBreakdownData(session.id),
-      splitSettings.toleranceThreshold,
-      splitSettings.maxProjectsPerSession,
-    );
-    const splitSuggested =
-      isSessionSplittable(session) || (derivedAnalysis?.is_splittable ?? false);
-    if (!splitSuggested) return;
-
-    setCtxMenu(null);
-    setMultiSplitSession(session);
-  };
-
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
     for (const project of projects) {
@@ -447,214 +424,39 @@ export function Sessions() {
     [setCtxMenu, setProjectCtxMenu, groupedByProject],
   );
 
-  const handleAssign = useCallback(
-    async (projectId: number | null, source?: string) => {
-      if (!ctxMenu) return;
-      try {
-        await assignSessions(ctxMenu.session.id, projectId, source);
-      } catch (err) {
-        logTauriError('assign session to project', err);
-      }
-      setCtxMenu(null);
-    },
-    [assignSessions, ctxMenu, setCtxMenu],
-  );
-
-  const ensureCommentForBoost = useCallback(
-    async (sessionIds: number[]) => {
-      if (sessionIds.length === 0) return true;
-
-      const commentById = new Map(mergedSessions.map((s) => [s.id, s.comment]));
-      const missingIds = findSessionIdsMissingComment(
-        sessionIds,
-        (id) => commentById.get(id) ?? null,
-      );
-
-      if (missingIds.length === 0) return true;
-
-      const label =
-        missingIds.length === 1
-          ? t('sessions.prompts.boost_label_single')
-          : t('sessions.prompts.boost_label_multi', {
-              count: missingIds.length,
-            });
-      const entered = await new Promise<string | null>((resolve) => {
-        setPromptConfig({
-          title: t('sessions.prompts.boost_requires_comment_prompt', { label }),
-          initialValue: '',
-          onConfirm: (val) => resolve(val),
-          onCancel: () => resolve(null),
-        });
-      });
-      const normalized = entered?.trim() ?? '';
-
-      if (!normalized) {
-        showError(t('sessions.prompts.boost_comment_required'));
-        return false;
-      }
-
-      try {
-        await updateSessionComments(missingIds, normalized);
-        const missingSet = new Set(missingIds);
-        setSessions((prev) => {
-          const next = prev.map((s) =>
-            missingSet.has(s.id) ? { ...s, comment: normalized } : s,
-          );
-          sessionsRef.current = next;
-          return next;
-        });
-        return true;
-      } catch (err) {
-        logTauriError('save required boost comment', err);
-        showError(
-          t('sessions.prompts.boost_comment_save_failed', {
-            error: String(err),
-          }),
-        );
-        return false;
-      }
-    },
-    [sessions, sessionsRef, setPromptConfig, setSessions, showError, t, updateSessionComments],
-  );
-
-  const handleSetRateMultiplier = useCallback(
-    async (multiplier: number | null) => {
-      if (!ctxMenu) return;
-      const sessionId = ctxMenu.session.id;
-      try {
-        if (requiresCommentForMultiplierBoost(multiplier)) {
-          const ok = await ensureCommentForBoost([sessionId]);
-          if (!ok) return;
-        }
-        await updateSessionRateMultipliers(sessionId, multiplier);
-        setCtxMenu(null);
-      } catch (err) {
-        logTauriError('update session rate multiplier', err);
-        showError(
-          t('sessions.errors.update_multiplier', { error: String(err) }),
-        );
-      }
-    },
-    [
-      ctxMenu,
-      ensureCommentForBoost,
-      showError,
-      t,
-      updateSessionRateMultipliers,
-      setCtxMenu,
-    ],
-  );
-
-  const handleCustomRateMultiplier = useCallback(async () => {
-    if (!ctxMenu) return;
-    const current =
-      typeof ctxMenu.session.rate_multiplier === 'number'
-        ? ctxMenu.session.rate_multiplier
-        : 1;
-    const suggested = current > 1 ? current : 2;
-
-    setPromptConfig({
-      title: t('sessions.prompts.multiplier_title'),
-      description: t('sessions.prompts.multiplier_desc'),
-      initialValue: String(suggested),
-      onConfirm: async (raw) => {
-        const parsed = parsePositiveRateMultiplierInput(raw);
-        if (parsed == null) {
-          showError(t('sessions.prompts.multiplier_positive'));
-          return;
-        }
-        await handleSetRateMultiplier(parsed);
-      },
-    });
-    setCtxMenu(null);
-  }, [
-    ctxMenu,
-    handleSetRateMultiplier,
-    showError,
-    t,
+  const {
+    ensureCommentForBoost,
+    handleAcceptSuggestion,
+    handleRejectSuggestion,
+  } = useSessionBulkActions({
+    assignSessions,
+    updateSessionComments,
+    setSessions,
+    sessionsRef,
+    setDismissedSuggestions,
     setPromptConfig,
+    mergedSessions,
+  });
+
+  const {
+    handleAssign,
+    handleSetRateMultiplier,
+    handleCustomRateMultiplier,
+    handleEditComment,
+    openMultiSplitModal,
+  } = useSessionContextMenuActions({
+    ctxMenu,
     setCtxMenu,
-  ]);
-
-  const handleEditComment = useCallback(async () => {
-    if (!ctxMenu) return;
-    const current = ctxMenu.session.comment ?? '';
-    const sessionId = ctxMenu.session.id;
-
-    setPromptConfig({
-      title: t('sessions.prompts.session_comment_title'),
-      description: t('sessions.prompts.session_comment_desc'),
-      initialValue: current,
-      onConfirm: async (raw) => {
-        const trimmed = raw.trim();
-        try {
-          await updateOneSessionComment(sessionId, trimmed || null);
-          setSessions((prev) => {
-            const next = prev.map((s) =>
-              s.id === sessionId ? { ...s, comment: trimmed || null } : s,
-            );
-            sessionsRef.current = next;
-            return next;
-          });
-        } catch (err) {
-          logTauriError('update session comment', err);
-        }
-      },
-    });
-    setCtxMenu(null);
-  }, [ctxMenu, sessionsRef, setCtxMenu, setPromptConfig, setSessions, t, updateOneSessionComment]);
-
-  const handleAcceptSuggestion = useCallback(
-    async (session: SessionWithApp, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        await assignSessions(
-          session.id,
-          session.suggested_project_id ?? null,
-          'ai_suggestion_accept',
-        );
-        setDismissedSuggestions((prev) => {
-          const next = new Set(prev);
-          next.delete(session.id);
-          return next;
-        });
-      } catch (err) {
-        logTauriError('accept AI suggestion', err);
-      }
-    },
-    [assignSessions, setDismissedSuggestions],
-  );
-
-  const handleRejectSuggestion = useCallback(
-    async (session: SessionWithApp, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        await assignSessions(session.id, null, 'ai_suggestion_reject');
-        setDismissedSuggestions((prev) => {
-          const next = new Set(prev);
-          next.add(session.id);
-          return next;
-        });
-        setSessions((prev) => {
-          const next = prev.map((item) =>
-            item.id === session.id
-              ? {
-                  ...item,
-                  suggested_project_id: undefined,
-                  suggested_project_name: undefined,
-                  suggested_confidence: undefined,
-                }
-              : item,
-          );
-          sessionsRef.current = next;
-          return next;
-        });
-      } catch (err) {
-        logTauriError('reject AI suggestion', err);
-      }
-    },
-    [assignSessions, sessionsRef, setDismissedSuggestions, setSessions],
-  );
+    setPromptConfig,
+    setMultiSplitSession,
+    assignSessions,
+    updateSessionRateMultipliers,
+    updateOneSessionComment,
+    setSessions,
+    sessionsRef,
+    isSessionSplittable,
+    ensureCommentForBoost,
+  });
 
   const assignProjectSections = useMemo(() => {
     const activeProjects = projects.filter((p) => !p.frozen_at);

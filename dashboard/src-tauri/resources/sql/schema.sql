@@ -118,11 +118,22 @@ CREATE TABLE IF NOT EXISTS sessions (
     rate_multiplier REAL NOT NULL DEFAULT 1.0,
     split_source_session_id INTEGER,
     project_id INTEGER,
+    updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00',
     FOREIGN KEY (app_id) REFERENCES applications(id),
     FOREIGN KEY (split_source_session_id) REFERENCES sessions(id) ON DELETE SET NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     UNIQUE(app_id, start_time)
 );
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_updated_at
+AFTER UPDATE OF app_id, start_time, end_time, duration_seconds, date,
+               rate_multiplier, project_id, split_source_session_id, comment
+ON sessions
+FOR EACH ROW
+WHEN NEW.updated_at IS OLD.updated_at
+BEGIN
+    UPDATE sessions SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
 
 CREATE TABLE IF NOT EXISTS file_activities (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

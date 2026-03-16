@@ -142,6 +142,7 @@ pub async fn split_session_multi(
     app: AppHandle,
     session_id: i64,
     splits: Vec<SplitPart>,
+    not_modified_since: Option<String>,
 ) -> Result<(), String> {
-    split::split_session_multi(app, session_id, splits).await
+    split::split_session_multi(app, session_id, splits, not_modified_since).await
 }

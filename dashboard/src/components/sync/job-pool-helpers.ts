@@ -66,6 +66,7 @@ export async function runAutoSplitCycle(
     loadSessionSettings().minSessionDurationSeconds || undefined;
 
   await runExclusive(operationKey, async () => {
+    const cycleStartedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
     const sessions = await sessionsApi.getSessions({
       limit: 50,
       offset: 0,
@@ -98,7 +99,7 @@ export async function runAutoSplitCycle(
       );
       if (splits.length < 2) continue;
 
-      await sessionsApi.splitSessionMulti(session.id, splits);
+      await sessionsApi.splitSessionMulti(session.id, splits, cycleStartedAt);
       splitCount += 1;
       if (splitCount >= 5) break;
     }

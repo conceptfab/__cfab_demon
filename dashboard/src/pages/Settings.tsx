@@ -33,6 +33,9 @@ export function Settings() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const setCurrencyCode = useSettingsStore((s) => s.setCurrencyCode);
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
+  const setStoreWorkingHours = useSettingsStore((s) => s.setWorkingHours);
+  const setStoreLanguage = useSettingsStore((s) => s.setLanguage);
+  const setStoreSplitSettings = useSettingsStore((s) => s.setSplitSettings);
   const setPageChangeGuard = useUIStore((s) => s.setPageChangeGuard);
 
   const {
@@ -91,6 +94,9 @@ export function Settings() {
     setCurrencyCode,
     setChartAnimations,
     setPageChangeGuard,
+    setStoreWorkingHours,
+    setStoreLanguage,
+    setStoreSplitSettings,
   });
 
   const {

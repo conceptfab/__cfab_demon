@@ -32,10 +32,9 @@ import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import {
-  loadWorkingHoursSettings,
   loadSessionSettings,
-  type WorkingHoursSettings,
 } from '@/lib/user-settings';
+import { useSettingsStore } from '@/store/settings-store';
 import type {
   DashboardStats,
   ManualSessionWithProject,
@@ -163,17 +162,6 @@ function DiscoveredProjectsBanner() {
   );
 }
 
-function areWorkingHoursEqual(
-  left: WorkingHoursSettings,
-  right: WorkingHoursSettings,
-): boolean {
-  return (
-    left.start === right.start &&
-    left.end === right.end &&
-    left.color === right.color
-  );
-}
-
 export function Dashboard() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
@@ -206,9 +194,7 @@ export function Dashboard() {
   >();
   const [editingManualSession, setEditingManualSession] =
     useState<ManualSessionWithProject | null>(null);
-  const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
-    loadWorkingHoursSettings(),
-  );
+  const workingHours = useSettingsStore((s) => s.workingHours);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const projectsList = useProjectsCacheStore((s) => s.projectsAllTime);
   const projectCount = projectsList.length;
@@ -437,12 +423,6 @@ export function Dashboard() {
           }
         }
 
-        const nextWorkingHours = loadWorkingHoursSettings();
-        setWorkingHours((current) =>
-          areWorkingHoursEqual(current, nextWorkingHours)
-            ? current
-            : nextWorkingHours,
-        );
         setProjectTimelineLoading(false);
       },
     );

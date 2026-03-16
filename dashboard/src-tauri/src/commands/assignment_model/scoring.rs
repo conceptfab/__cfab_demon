@@ -149,6 +149,10 @@ pub fn compute_score_breakdowns(
     }
 
     // Layer 1: app
+    // For background apps (no file evidence), boost evidence from +1 to +2
+    // so that the evidence_factor grows at a comparable rate to file-based apps.
+    let is_background_app = context.file_project_ids.is_empty();
+    let layer1_evidence_weight: i64 = if is_background_app { 2 } else { 1 };
     let mut stmt = conn
         .prepare_cached("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
         .map_err(|e| e.to_string())?;
@@ -163,7 +167,7 @@ pub fn compute_score_breakdowns(
         let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
         let score = 0.30 * (1.0 + cnt).ln();
         *layer1.entry(pid).or_insert(0.0) += score;
-        *candidate_evidence.entry(pid).or_insert(0) += 1;
+        *candidate_evidence.entry(pid).or_insert(0) += layer1_evidence_weight;
     }
 
     // Layer 2: time
