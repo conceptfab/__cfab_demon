@@ -960,6 +960,7 @@ export function Sessions() {
           onAssign={(projectId, source) => {
             void handleAssign(projectId, source);
           }}
+          isManual={'isManual' in ctxMenu.session && !!(ctxMenu.session as SessionWithApp & { isManual?: boolean }).isManual}
         />
       )}
 

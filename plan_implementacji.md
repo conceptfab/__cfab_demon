@@ -226,7 +226,7 @@
 
 ## Faza 6: Brakujące funkcje (rozwój)
 
-### Zadanie 6.1: Manual sessions w zakładce Sessions
+### Zadanie 6.1: Manual sessions w zakładce Sessions ✅ DONE
 - **Pliki:**
   - `dashboard/src/pages/Sessions.tsx` (frontend)
   - `dashboard/src-tauri/src/commands/sessions/queries.rs` (backend)
