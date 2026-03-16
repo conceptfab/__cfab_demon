@@ -459,7 +459,7 @@ pub async fn get_sessions(
 
                     if !assigned_without_threshold.is_empty() {
                         let raw =
-                            super::super::assignment_model::suggest_projects_for_sessions_raw(
+                            super::super::assignment_model::suggest_projects_for_sessions_unfiltered(
                                 conn,
                                 &status,
                                 &assigned_without_threshold,

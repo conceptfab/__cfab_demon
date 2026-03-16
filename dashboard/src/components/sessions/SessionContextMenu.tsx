@@ -44,6 +44,7 @@ type SessionContextMenuProps = {
   onEditComment: () => void;
   onOpenSplit: () => void;
   onAssign: (projectId: number | null, source?: string) => void;
+  isManual?: boolean;
 };
 
 export function SessionContextMenu({
@@ -63,6 +64,7 @@ export function SessionContextMenu({
   onEditComment,
   onOpenSplit,
   onAssign,
+  isManual,
 }: SessionContextMenuProps) {
   const { t } = useTranslation();
 
@@ -117,40 +119,44 @@ export function SessionContextMenu({
             </div>
           </div>
         )}
-      <div className="my-1 h-px bg-border" />
-      <div className="px-2 py-1 text-[11px] text-muted-foreground">
-        {t('sessions.menu.rate_multiplier')}{' '}
-        <span className="font-mono">
-          {formatMultiplierLabel(menu.session.rate_multiplier)}
-        </span>
-      </div>
-      <div className="flex gap-1.5 px-1.5 pb-1.5">
-        <button
-          className="flex-1 cursor-pointer rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20"
-          onClick={() => onSetRateMultiplier(2)}
-        >
-          {t('sessions.menu.boost_x2')}
-        </button>
-        <button
-          className="flex-1 cursor-pointer rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60"
-          onClick={onCustomRateMultiplier}
-        >
-          {t('sessions.menu.custom')}
-        </button>
-      </div>
-      <div className="my-1 h-px bg-border" />
-      <button
-        className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
-        onClick={onEditComment}
-      >
-        <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span>
-          {menu.session.comment
-            ? t('sessions.menu.edit_comment')
-            : t('sessions.menu.add_comment')}
-        </span>
-      </button>
-      {splitSuggested && (
+      {!isManual && (
+        <>
+          <div className="my-1 h-px bg-border" />
+          <div className="px-2 py-1 text-[11px] text-muted-foreground">
+            {t('sessions.menu.rate_multiplier')}{' '}
+            <span className="font-mono">
+              {formatMultiplierLabel(menu.session.rate_multiplier)}
+            </span>
+          </div>
+          <div className="flex gap-1.5 px-1.5 pb-1.5">
+            <button
+              className="flex-1 cursor-pointer rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20"
+              onClick={() => onSetRateMultiplier(2)}
+            >
+              {t('sessions.menu.boost_x2')}
+            </button>
+            <button
+              className="flex-1 cursor-pointer rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60"
+              onClick={onCustomRateMultiplier}
+            >
+              {t('sessions.menu.custom')}
+            </button>
+          </div>
+          <div className="my-1 h-px bg-border" />
+          <button
+            className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
+            onClick={onEditComment}
+          >
+            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span>
+              {menu.session.comment
+                ? t('sessions.menu.edit_comment')
+                : t('sessions.menu.add_comment')}
+            </span>
+          </button>
+        </>
+      )}
+      {!isManual && splitSuggested && (
         <button
           className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
           onClick={onOpenSplit}

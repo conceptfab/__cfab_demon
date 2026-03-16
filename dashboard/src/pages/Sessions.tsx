@@ -7,7 +7,7 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { sessionsApi } from '@/lib/tauri';
+import { sessionsApi, manualSessionsApi } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { logTauriError } from '@/lib/utils';
 import { UNASSIGNED_PROJECT_SENTINEL } from '@/lib/project-labels';
@@ -20,6 +20,7 @@ import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjec
 import { SessionContextMenu } from '@/components/sessions/SessionContextMenu';
 import { SessionsVirtualList } from '@/components/sessions/SessionsVirtualList';
 import type {
+  ManualSessionWithProject,
   SessionWithApp,
   SplitPart,
 } from '@/lib/db-types';
@@ -159,6 +160,50 @@ export function Sessions() {
     buildFetchParams,
     reloadVersion: dataReloadVersion,
   });
+
+  const [manualSessions, setManualSessions] = useState<
+    ManualSessionWithProject[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    manualSessionsApi
+      .getManualSessions({
+        dateRange: activeDateRange,
+        projectId: undefined,
+      })
+      .then((data) => {
+        if (!cancelled) setManualSessions(data);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDateRange, dataReloadVersion]);
+
+  const mergedSessions = useMemo(() => {
+    if (manualSessions.length === 0) return sessions;
+    const manualAsSession: SessionWithApp[] = manualSessions.map((m) => ({
+      id: m.id,
+      app_id: m.app_id ?? 0,
+      start_time: m.start_time,
+      end_time: m.end_time,
+      date: m.date,
+      duration_seconds: m.duration_seconds,
+      app_name: t('project_page.text.manual_session', 'Sesja ręczna'),
+      executable_name: 'manual',
+      project_id: m.project_id,
+      project_name: m.project_name,
+      project_color: m.project_color,
+      comment: m.title,
+      files: [],
+      isManual: true,
+      session_type: m.session_type,
+    } as SessionWithApp & { isManual: true; session_type: string }));
+    return [...sessions, ...manualAsSession].sort((a, b) =>
+      b.start_time.localeCompare(a.start_time),
+    );
+  }, [sessions, manualSessions, t]);
+
   const {
     aiBreakdowns,
     getScoreBreakdownData,
@@ -342,7 +387,7 @@ export function Sessions() {
 
   const groupedByProject = useMemo(() => {
     const groups = new Map<string, GroupedProject>();
-    for (const session of sessions) {
+    for (const session of mergedSessions) {
       const projectName = session.project_name ?? t('sessions.menu.unassigned');
       const normalizedProjectName = projectName.trim().toLowerCase();
       const inferredProjectId =
@@ -386,7 +431,7 @@ export function Sessions() {
       if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
       return b.totalSeconds - a.totalSeconds;
     });
-  }, [sessions, t, projectIdByName]);
+  }, [mergedSessions, t, projectIdByName]);
 
   const handleProjectContextMenu = useCallback(
     (e: React.MouseEvent, projectId: number | null, projectName: string) => {
@@ -419,7 +464,7 @@ export function Sessions() {
     async (sessionIds: number[]) => {
       if (sessionIds.length === 0) return true;
 
-      const commentById = new Map(sessions.map((s) => [s.id, s.comment]));
+      const commentById = new Map(mergedSessions.map((s) => [s.id, s.comment]));
       const missingIds = findSessionIdsMissingComment(
         sessionIds,
         (id) => commentById.get(id) ?? null,
@@ -755,14 +800,14 @@ export function Sessions() {
   const unassignedGroup = groupedByProject.find((g) => g.projectId == null);
   const aiSessionsCount = useMemo(
     () =>
-      sessions.filter(
+      mergedSessions.filter(
         (s) =>
           aiBreakdowns.has(s.id) ||
           s.suggested_project_id != null ||
           s.suggested_confidence != null ||
           s.ai_assigned,
       ).length,
-    [sessions, aiBreakdowns],
+    [mergedSessions, aiBreakdowns],
   );
   const resolveGroupProjectId = useCallback(
     (group: GroupedProject) => {
@@ -802,7 +847,7 @@ export function Sessions() {
     ? isSessionSplittable(ctxMenu.session)
     : false;
   const sessionsSummaryText = t('sessions.summary', {
-    sessions: sessions.length,
+    sessions: mergedSessions.length,
     ai: aiSessionsCount,
     projects: groupedByProject.length,
   });
@@ -874,7 +919,7 @@ export function Sessions() {
         onAcceptSuggestion={handleAcceptSuggestion}
         onRejectSuggestion={handleRejectSuggestion}
         onSplitClick={openMultiSplitModal}
-        isEmpty={sessions.length === 0}
+        isEmpty={mergedSessions.length === 0}
         hasMore={hasMore}
         onLoadMore={loadMore}
       />

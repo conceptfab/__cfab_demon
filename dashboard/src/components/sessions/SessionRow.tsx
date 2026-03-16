@@ -9,6 +9,7 @@ import {
   BarChart3,
   Scissors,
   GitBranch,
+  CalendarPlus,
 } from 'lucide-react';
 import {
   formatDuration,
@@ -142,7 +143,9 @@ export const SessionRow = memo(function SessionRow({
     'sessions.split_badge',
     'Split session — cannot be split again',
   );
+  const isManual = 'isManual' in s && (s as SessionWithApp & { isManual?: boolean }).isManual === true;
   const isSuggested =
+    !isManual &&
     s.project_name === null &&
     s.suggested_project_id != null &&
     !dismissedSuggestions.has(s.id);
@@ -155,13 +158,20 @@ export const SessionRow = memo(function SessionRow({
         <div className="grid grid-cols-[140px_1fr] gap-x-3">
           <div className="flex border-r border-border/5 pr-2 items-center justify-between">
             <div className="flex items-center gap-1.5 min-w-0">
-              <span
-                className="font-bold text-[11px] text-foreground/80 truncate max-w-[80px]"
-                title={s.app_name}
-              >
-                {s.app_name}
-              </span>
-              {(s.rate_multiplier ?? 1) > 1.000_001 && (
+              {isManual ? (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-400/80">
+                  <CalendarPlus className="h-3 w-3 shrink-0" />
+                  <span className="truncate max-w-[70px]">{s.comment || s.app_name}</span>
+                </span>
+              ) : (
+                <span
+                  className="font-bold text-[11px] text-foreground/80 truncate max-w-[80px]"
+                  title={s.app_name}
+                >
+                  {s.app_name}
+                </span>
+              )}
+              {!isManual && (s.rate_multiplier ?? 1) > 1.000_001 && (
                 <CircleDollarSign className="h-3 w-3 text-emerald-400/80 fill-emerald-500/5 shrink-0" />
               )}
               {typeof s.split_source_session_id === 'number' && (
@@ -291,16 +301,23 @@ export const SessionRow = memo(function SessionRow({
     >
       <div className="flex items-center justify-between mb-1.5 h-6">
         <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="font-bold text-[14px] text-foreground/90 truncate max-w-[200px]"
-            title={s.app_name}
-          >
-            {s.app_name}
-          </span>
-          {(s.rate_multiplier ?? 1) > 1.000_001 && (
+          {isManual ? (
+            <span className="inline-flex items-center gap-1 text-[13px] font-medium text-emerald-400/90">
+              <CalendarPlus className="h-4 w-4 shrink-0" />
+              <span className="truncate max-w-[180px]">{s.comment || s.app_name}</span>
+            </span>
+          ) : (
+            <span
+              className="font-bold text-[14px] text-foreground/90 truncate max-w-[200px]"
+              title={s.app_name}
+            >
+              {s.app_name}
+            </span>
+          )}
+          {!isManual && (s.rate_multiplier ?? 1) > 1.000_001 && (
             <CircleDollarSign className="h-4 w-4 text-emerald-400 fill-emerald-500/10 shrink-0" />
           )}
-          {ind.showAiBadge && s.ai_assigned && !isSuggested && (
+          {!isManual && ind.showAiBadge && s.ai_assigned && !isSuggested && (
             <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
           )}
           {typeof s.split_source_session_id === 'number' && (

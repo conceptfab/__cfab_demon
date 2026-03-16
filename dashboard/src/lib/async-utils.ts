@@ -14,6 +14,24 @@ export function handleSettledResult<T>(
   handlers.onRejected?.(result.reason);
 }
 
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(
+      () => reject(new Error(`timeout after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    promise
+      .then((result) => {
+        window.clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
 export function useCancellableAsync() {
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);

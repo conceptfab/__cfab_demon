@@ -11,7 +11,7 @@ use rusqlite::OptionalExtension;
 use timeflow_shared::session_settings;
 
 use crate::i18n::{self, Lang, TrayText};
-use crate::process_utils::{collect_process_entries, no_console};
+use crate::win_process_snapshot::{collect_process_entries, no_console};
 use crate::APP_NAME;
 
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);

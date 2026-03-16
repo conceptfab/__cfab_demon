@@ -9,8 +9,8 @@ import {
   buildAnalysisFromBreakdown,
   isAlreadySplitSession,
   isSplittableFromBreakdown,
-  withTimeout,
 } from '@/lib/session-analysis';
+import { withTimeout } from '@/lib/async-utils';
 import { sessionsApi } from '@/lib/tauri';
 import type { SplitSettings } from '@/lib/user-settings';
 

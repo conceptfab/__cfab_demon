@@ -1399,6 +1399,7 @@ pub async fn get_project_extra_info(
                       AND fa.last_seen > s.start_time
                       AND fa.first_seen < s.end_time
                      WHERE sp.project_id = ?3
+                       AND (fa.project_id = ?3 OR fa.project_id IS NULL)
                        AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
                        AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
                 );

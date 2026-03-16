@@ -8,7 +8,7 @@
 
 ## Faza 1: Błędy krytyczne (ryzyko utraty danych)
 
-### Zadanie 1.1: `rebuild_sessions` może scalać sesje po splicie
+### Zadanie 1.1: `rebuild_sessions` może scalać sesje po splicie ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/sessions/rebuild.rs:24-60`
 - **Problem:** `ACTIVE_SESSION_FILTER` nie wyklucza sesji z `split_source_session_id` — rebuild może scalić dwie połówki splitu z powrotem.
 - **Zmiana:** Dodać `AND split_source_session_id IS NULL` do `ACTIVE_SESSION_FILTER` w zapytaniu SQL.
@@ -16,7 +16,7 @@
 - **Ryzyko:** Średnie — zmiana filtra może wykluczyć sesje, które powinny być w rebuild. Przetestować na kopii bazy.
 - **Zależności:** Brak.
 
-### Zadanie 1.2: Zduplikowany klucz `sessions.prompts` w JSON — utrata tłumaczeń
+### Zadanie 1.2: Zduplikowany klucz `sessions.prompts` w JSON — utrata tłumaczeń ✅ DONE
 - **Pliki:** `dashboard/src/locales/en/common.json` (~linia 328 i 357), `dashboard/src/locales/pl/common.json` (analogicznie)
 - **Problem:** Klucz `prompts` zdefiniowany dwukrotnie w obiekcie `sessions` — JSON bierze ostatnią wartość, klucze `bulk_comment_title` i `bulk_comment_description` z pierwszego bloku są niedostępne.
 - **Zmiana:** Zmergować oba bloki `prompts` w jeden obiekt (przenieść klucze z pierwszego bloku do drugiego).
@@ -24,7 +24,7 @@
 - **Ryzyko:** Niskie — zmiana struktury JSON, bez zmiany kodu.
 - **Zależności:** Brak.
 
-### Zadanie 1.3: `train_assignment_model` z `force=true` przy 0 danych resetuje model AI
+### Zadanie 1.3: `train_assignment_model` z `force=true` przy 0 danych resetuje model AI ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/assignment_model/mod.rs:556-578`
 - **Problem:** Wymuszony retrain przy 0 feedbacku zapisuje puste tabele — utrata wiedzy modelu.
 - **Zmiana:** Dodać guard na początku funkcji:
@@ -41,7 +41,7 @@
 
 ## Faza 2: Błędy logiczne (poprawność działania)
 
-### Zadanie 2.1: Race condition w `useSessionsData` — podwójne ładowanie
+### Zadanie 2.1: Race condition w `useSessionsData` — podwójne ładowanie ✅ DONE
 - **Plik:** `dashboard/src/hooks/useSessionsData.ts:54-89`
 - **Problem:** Dwa effecty mogą uruchomić `loadFirstSessionsPage` jednocześnie.
 - **Zmiana:** Dodać `isLoadingRef = useRef(false)` i sprawdzać flagę przed rozpoczęciem fetcha:
@@ -54,7 +54,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 2.2: `feedback_since_train` rośnie N razy przy N-way splicie
+### Zadanie 2.2: `feedback_since_train` rośnie N razy przy N-way splicie ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/sessions/split.rs:156-165`
 - **Problem:** 5-way split dodaje 5 do licznika feedbacku zamiast 1 (niespójna semantyka).
 - **Zmiana:** Zamienić `feedback_count = segments.len()` na `feedback_count = 1`.
@@ -62,7 +62,7 @@
 - **Ryzyko:** Niskie — zmiana jednej wartości.
 - **Zależności:** Brak.
 
-### Zadanie 2.3: `inferPreset` nie rozpoznaje przesuniętego miesiąca
+### Zadanie 2.3: `inferPreset` nie rozpoznaje przesuniętego miesiąca ✅ DONE
 - **Plik:** `dashboard/src/store/data-store.ts:58-74`
 - **Problem:** Po powrocie do bieżącego miesiąca strzałkami, `inferPreset` porównuje z `now` zamiast z zakresem — zwraca `'custom'` zamiast `'month'`.
 - **Zmiana:** Zmienić `isSameMonth(start, now)` na `isSameMonth(start, end)` + sprawdzić, że `start` to pierwszy dzień miesiąca i `end` to ostatni.
@@ -70,7 +70,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 2.4: "Unique Files" w projektach — błędne liczenie
+### Zadanie 2.4: "Unique Files" w projektach — błędne liczenie ✅ DONE (etap 1: SQL filter)
 - **Pliki:**
   - `dashboard/src-tauri/src/commands/projects.rs:1389-1411` (zapytanie SQL)
   - `dashboard/src-tauri/src/commands/import.rs:298-314` (zapis file_activities)
@@ -85,7 +85,7 @@
 - **Ryzyko:** Wysokie — zmiana UNIQUE constraint wymaga migracji DB. Backup bazy przed zmianą. Etap 1 (SQL filter) można wdrożyć niezależnie.
 - **Zależności:** Etap 2 wymaga migracji DB.
 
-### Zadanie 2.5: Rename `suggest_project_for_session_raw`
+### Zadanie 2.5: Rename `suggest_project_for_session_raw` ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/assignment_model/scoring.rs:379-430`
 - **Problem:** Nazwa `raw` myląca — funkcja nie stosuje thresholdów.
 - **Zmiana:** Zmienić nazwę na `suggest_project_for_session_unfiltered` + dodać doc-comment.
@@ -97,7 +97,7 @@
 
 ## Faza 3: Tłumaczenia i Help (jakość UX)
 
-### Zadanie 3.1: Niespójność "ręczne" vs "manualne" w PL
+### Zadanie 3.1: Niespójność "ręczne" vs "manualne" w PL ✅ DONE
 - **Pliki:** `dashboard/src/locales/pl/common.json` (~10 kluczy)
 - **Problem:** Mieszane użycie "manualne" i "ręczne".
 - **Zmiana:** Ujednolicić wszystkie do "ręczne" (naturalniejsze po polsku).
@@ -105,7 +105,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 3.2: `project_day_timeline.text.s` PL = "e" — literówka
+### Zadanie 3.2: `project_day_timeline.text.s` PL = "e" — literówka ✅ DONE
 - **Plik:** `dashboard/src/locales/pl/common.json:1718`
 - **Problem:** Wartość `"s": "e"` nie ma sensu.
 - **Zmiana:** Zmienić na `"s": "s"` (skrót od "sesje").
@@ -113,7 +113,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 3.3: Niespójność "Auto-safe" vs "Auto-Safe"
+### Zadanie 3.3: Niespójność "Auto-safe" vs "Auto-Safe" ✅ DONE
 - **Pliki:** `dashboard/src/locales/en/common.json` — `layout.status.auto_safe` vs `help_page.auto_safe`
 - **Problem:** Niespójna wielkość liter.
 - **Zmiana:** Ujednolicić do "Auto-safe" (lowercase 's').
@@ -121,7 +121,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 3.4: Usunąć martwy klucz `sync_on_startup_perform_...`
+### Zadanie 3.4: Usunąć martwy klucz `sync_on_startup_perform_...` ✅ DONE
 - **Pliki:** `dashboard/src/locales/{en,pl}/common.json:1598`
 - **Problem:** Klucz nieużywany, zastąpiony innym.
 - **Zmiana:** Usunąć z obu plików JSON.
@@ -129,7 +129,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 3.5: Brak sekcji Help dla ReportView
+### Zadanie 3.5: Brak sekcji Help dla ReportView ✅ DONE
 - **Plik:** `dashboard/src/pages/Help.tsx`
 - **Problem:** ReportView nie ma dedykowanej sekcji w Help.
 - **Zmiana:** Dodać `HelpDetailsBlock` w `TabsContent value="reports"` z opisem: co robi, kiedy użyć, jak drukować/eksportować PDF.
@@ -141,7 +141,7 @@
 
 ## Faza 4: Wydajność (optymalizacje)
 
-### Zadanie 4.1: `rebuild.rs` — DELETE i UPDATE w pętli (N+1)
+### Zadanie 4.1: `rebuild.rs` — DELETE i UPDATE w pętli (N+1) ✅ DONE
 - **Plik:** `dashboard/src-tauri/src/commands/sessions/rebuild.rs:119-141`
 - **Problem:** DELETE per-id zamiast batch.
 - **Zmiana:** Zbierać ID do usunięcia/aktualizacji → wykonać `DELETE FROM sessions WHERE id IN (?,?,...)` i batch UPDATE.
@@ -149,7 +149,7 @@
 - **Ryzyko:** Średnie — zmiana logiki SQL. Backup bazy.
 - **Zależności:** Brak.
 
-### Zadanie 4.2: Daemon — nowe połączenie SQLite przy każdym zapisie
+### Zadanie 4.2: Daemon — nowe połączenie SQLite przy każdym zapisie ⏭️ DEFERRED (wymaga zmiany architektury wątków)
 - **Plik:** `src/storage.rs:save_daily`
 - **Problem:** `open_daily_store()` otwiera nowe `Connection` co 5 minut.
 - **Zmiana:** Trzymać `Connection` jako pole struktury. Odświeżać tylko przy błędzie.
@@ -157,7 +157,7 @@
 - **Ryzyko:** Średnie — wymaga sprawdzenia, czy connection nie jest używany z wielu wątków.
 - **Zależności:** Brak.
 
-### Zadanie 4.3: `SessionRow` — brak `React.memo`
+### Zadanie 4.3: `SessionRow` — brak `React.memo` ✅ ALREADY DONE (memo already exists)
 - **Plik:** `dashboard/src/components/sessions/SessionRow.tsx`
 - **Problem:** Inline render w Virtuoso powoduje re-render wszystkich widocznych wierszy.
 - **Zmiana:** Owinąć `SessionRow` w `React.memo()`.
@@ -165,7 +165,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 4.4: WMI blokuje wątek monitorujący (niska priorytet)
+### Zadanie 4.4: WMI blokuje wątek monitorujący (niska priorytet) ⏭️ DEFERRED
 - **Plik:** `src/monitor/wmi_detection.rs`
 - **Problem:** WMI query (40-200ms) blokuje polling.
 - **Zmiana:** Przenieść WMI queries do osobnego wątku z `mpsc::channel`.
@@ -173,7 +173,7 @@
 - **Ryzyko:** Średnie — zmiana architektury wątków.
 - **Zależności:** Brak.
 
-### Zadanie 4.5: Tracker sleep loop (niska priorytet)
+### Zadanie 4.5: Tracker sleep loop (niska priorytet) ⏭️ DEFERRED
 - **Plik:** `src/tracker.rs:531-546`
 - **Problem:** Pętla 1-sekundowych sleep zamiast jednego `thread::sleep(remain)`.
 - **Zmiana:** Użyć `Condvar::wait_timeout` na stop mutex.
@@ -195,7 +195,7 @@
 - **Ryzyko:** Średnie — wymaga sprawdzenia wszystkich konsumentów TS function.
 - **Zależności:** Brak.
 
-### Zadanie 5.2: Przenieść `withTimeout` z `session-analysis.ts`
+### Zadanie 5.2: Przenieść `withTimeout` z `session-analysis.ts` ✅ DONE
 - **Plik:** `dashboard/src/lib/session-analysis.ts:65-81` → `dashboard/src/lib/async-utils.ts`
 - **Problem:** Funkcja `withTimeout<T>` nie ma związku z analizą sesji.
 - **Zmiana:** Przenieść do `async-utils.ts`, zaktualizować importy.
@@ -203,7 +203,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Zadanie 5.1 (łatwiej przenieść po usunięciu duplikacji).
 
-### Zadanie 5.3: Sprawdzić/usunąć `get_dashboard_stats`
+### Zadanie 5.3: Sprawdzić/usunąć `get_dashboard_stats` ⏭️ SKIP (jest używany w frontend)
 - **Plik:** `dashboard/src-tauri/src/commands/dashboard.rs:168, 211`
 - **Problem:** `get_dashboard_stats` i `get_dashboard_data` obie wywołują `compute_project_activity_unique`.
 - **Zmiana:** Sprawdzić, czy `get_dashboard_stats` jest wywoływany z frontendu. Jeśli nie — usunąć.
@@ -254,7 +254,7 @@
 - **Ryzyko:** Średnie — wymaga identyfikacji wszystkich miejsc odczytu ustawień.
 - **Zależności:** Brak.
 
-### Zadanie 7.2: `background-status-store.ts` — 3 osobne flagi InFlight
+### Zadanie 7.2: `background-status-store.ts` — 3 osobne flagi InFlight ⏭️ SKIP (prosty wzorzec, działa dobrze)
 - **Plik:** `dashboard/src/store/background-status-store.ts`
 - **Problem:** 3 osobne flagi boolean `InFlight` zamiast mapy — przy dodawaniu nowych background jobs trzeba modyfikować store.
 - **Zmiana:** Zamienić na `Map<string, boolean>` lub zostawić jeśli nie planowane nowe jobs.
@@ -262,7 +262,7 @@
 - **Ryzyko:** Niskie.
 - **Zależności:** Brak.
 
-### Zadanie 7.3: Rename `src/process_utils.rs`
+### Zadanie 7.3: Rename `src/process_utils.rs` ✅ DONE
 - **Plik:** `src/process_utils.rs`
 - **Problem:** Nazwa myląca — `src/process_utils.rs` vs `shared/process_utils.rs` mają różną odpowiedzialność, ale identyczne nazwy.
 - **Zmiana:** Zmienić nazwę `src/process_utils.rs` na `src/win_process_snapshot.rs` + zaktualizować `mod` deklarację.
@@ -270,7 +270,7 @@
 - **Ryzyko:** Niskie — rename + find/replace.
 - **Zależności:** Brak.
 
-### Zadanie 7.4: Doc-comments dla `shared/daily_store/`
+### Zadanie 7.4: Doc-comments dla `shared/daily_store/` ✅ DONE
 - **Plik:** `shared/daily_store/mod.rs`
 - **Problem:** Brak dokumentacji modułu — nowy developer nie wie co moduł robi bez czytania kodu.
 - **Zmiana:** Dodać doc-comments do `mod.rs` opisujące: cel modułu, format plików JSON, cykl życia danych.

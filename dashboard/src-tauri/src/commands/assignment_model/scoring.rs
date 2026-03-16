@@ -395,7 +395,10 @@ pub fn suggest_projects_for_sessions_with_status(
     Ok(out)
 }
 
-pub fn suggest_project_for_session_raw(
+/// Returns the best project suggestion for a session WITHOUT applying
+/// confidence/threshold filters. Use `suggest_project_for_session_with_status`
+/// if you need threshold-based acceptance logic.
+pub fn suggest_project_for_session_unfiltered(
     conn: &rusqlite::Connection,
     status: &AssignmentModelStatus,
     session_id: i64,
@@ -410,7 +413,9 @@ pub fn suggest_project_for_session_raw(
     compute_raw_suggestion(conn, &context)
 }
 
-pub fn suggest_projects_for_sessions_raw(
+/// Batch version of `suggest_project_for_session_unfiltered` — returns
+/// unfiltered suggestions (no threshold logic) for multiple sessions at once.
+pub fn suggest_projects_for_sessions_unfiltered(
     conn: &rusqlite::Connection,
     status: &AssignmentModelStatus,
     session_ids: &[i64],
@@ -421,7 +426,7 @@ pub fn suggest_projects_for_sessions_raw(
     }
 
     for &session_id in session_ids {
-        if let Some(suggestion) = suggest_project_for_session_raw(conn, status, session_id)? {
+        if let Some(suggestion) = suggest_project_for_session_unfiltered(conn, status, session_id)? {
             out.insert(session_id, suggestion);
         }
     }
