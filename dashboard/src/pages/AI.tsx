@@ -275,6 +275,10 @@ export function AIPage() {
     async (silent = false) => {
       if (isFetchingMetricsRef.current) return;
       isFetchingMetricsRef.current = true;
+      // Safety timeout: reset flag after 30s even if fetch hangs
+      const timeout = setTimeout(() => {
+        isFetchingMetricsRef.current = false;
+      }, 30_000);
       if (!silent) setLoadingMetrics(true);
       try {
         const nextMetrics = await aiApi.getAssignmentModelMetrics(30);
@@ -285,6 +289,7 @@ export function AIPage() {
         console.error(e);
         showTranslatedError('ai_page.errors.metrics_load_failed', e);
       } finally {
+        clearTimeout(timeout);
         if (!silent) setLoadingMetrics(false);
         isFetchingMetricsRef.current = false;
       }

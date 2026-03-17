@@ -84,8 +84,10 @@ fn check_dashboard_compatibility() {
             let v_dash = v_dash.trim();
             let demon_version = crate::VERSION.trim();
             if !version_compat::check_version_compatibility(demon_version, v_dash) {
-                if !WARNING_SHOWN.load(Ordering::SeqCst) {
-                    WARNING_SHOWN.store(true, Ordering::SeqCst);
+                if WARNING_SHOWN
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .is_ok()
+                {
                     let lang_obj = crate::i18n::load_language();
                     let msg = lang_obj
                         .t(crate::i18n::TrayText::VersionMismatchTemplate)
@@ -296,20 +298,64 @@ fn record_app_activity(
                 }
             }
         } else {
-            let new_idx = app_data.files.len();
-            let mut title_history = Vec::new();
-            push_title_history(&mut title_history, trimmed_window_title);
-            app_data.files.push(FileEntry {
-                name: trimmed_file_name.to_string(),
-                total_seconds: elapsed_seconds,
-                first_seen: now_str.clone(),
-                last_seen: now_str,
-                window_title: trimmed_window_title.to_string(),
-                detected_path: trimmed_detected_path.map(str::to_string),
-                title_history,
-                activity_type: normalized_activity_type.map(str::to_string),
-            });
-            app_file_index.insert(file_cache_key, new_idx);
+            // Fallback: check if a file with the same normalized name already exists
+            // (prevents duplicates when window_title changes, e.g. "[modified]", "[Git: branch]")
+            let normalized_file_name =
+                storage::sanitize_file_entry_name(trimmed_file_name);
+            let existing_idx = if !normalized_file_name.is_empty() {
+                app_file_index
+                    .iter()
+                    .find(|(_, &idx)| {
+                        app_data
+                            .files
+                            .get(idx)
+                            .map(|f| {
+                                storage::sanitize_file_entry_name(&f.name)
+                                    == normalized_file_name
+                            })
+                            .unwrap_or(false)
+                    })
+                    .map(|(_, &idx)| idx)
+            } else {
+                None
+            };
+
+            if let Some(idx) = existing_idx {
+                if let Some(file_entry) = app_data.files.get_mut(idx) {
+                    file_entry.total_seconds += elapsed_seconds;
+                    file_entry.last_seen = now_str;
+                    if !trimmed_window_title.is_empty() {
+                        file_entry.window_title = trimmed_window_title.to_string();
+                        push_title_history(
+                            &mut file_entry.title_history,
+                            trimmed_window_title,
+                        );
+                    }
+                    if let Some(path) = trimmed_detected_path {
+                        file_entry.detected_path = Some(path.to_string());
+                    }
+                    if let Some(kind) = normalized_activity_type {
+                        file_entry.activity_type = Some(kind.to_string());
+                    }
+                    // Update cache with the new key pointing to the same entry
+                    app_file_index.insert(file_cache_key, idx);
+                }
+            } else {
+                let new_idx = app_data.files.len();
+                let mut title_history = Vec::new();
+                push_title_history(&mut title_history, trimmed_window_title);
+                app_data.files.push(FileEntry {
+                    name: trimmed_file_name.to_string(),
+                    total_seconds: elapsed_seconds,
+                    first_seen: now_str.clone(),
+                    last_seen: now_str,
+                    window_title: trimmed_window_title.to_string(),
+                    detected_path: trimmed_detected_path.map(str::to_string),
+                    title_history,
+                    activity_type: normalized_activity_type.map(str::to_string),
+                });
+                app_file_index.insert(file_cache_key, new_idx);
+            }
         }
     }
 }

@@ -49,6 +49,7 @@ import type {
   SplitPart,
   DataFolderStats,
   CleanupResult,
+  HeatmapCell,
 } from './db-types';
 
 export function hasTauriRuntime(): boolean {
@@ -396,6 +397,28 @@ export const getProjectTimeline = (
     limit,
     granularity,
     id: projectId,
+  });
+
+export const getHeatmap = (dateRange: DateRange) =>
+  invoke<HeatmapCell[]>('get_heatmap', { dateRange });
+
+export const getStackedTimeline = (
+  dateRange: DateRange,
+  limit = 8,
+) =>
+  invoke<StackedBarData[]>('get_stacked_timeline', { dateRange, limit });
+
+export const sendBugReport = (
+  subject: string,
+  message: string,
+  version: string,
+  attachments: [string, number[]][],
+) =>
+  invoke<{ ok: boolean; message: string }>('send_bug_report', {
+    subject,
+    message,
+    version,
+    attachments,
   });
 
 // Auto-import

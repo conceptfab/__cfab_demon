@@ -1,5 +1,6 @@
 use tauri::AppHandle;
 
+use super::daemon::load_persisted_session_min_duration;
 use super::estimates::get_global_hourly_rate;
 use super::helpers::{run_app_blocking, run_db_blocking};
 use super::manual_sessions::get_manual_sessions;
@@ -15,6 +16,7 @@ async fn get_report_project(
     app: AppHandle,
     project_id: i64,
 ) -> Result<ProjectWithStats, String> {
+    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         conn.query_row(
             "SELECT p.id, p.name, p.color, p.created_at, p.excluded_at, p.frozen_at,
@@ -22,18 +24,21 @@ async fn get_report_project(
                     COALESCE((SELECT CAST(SUM(s.duration_seconds) AS INTEGER)
                               FROM sessions s
                               JOIN applications a ON a.id = s.app_id
-                              WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id)), 0),
+                              WHERE (s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
+                                AND s.duration_seconds >= ?2), 0),
                     COALESCE((SELECT COUNT(DISTINCT s.app_id)
                               FROM sessions s
                               JOIN applications a ON a.id = s.app_id
-                              WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id)), 0),
+                              WHERE (s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
+                                AND s.duration_seconds >= ?2), 0),
                     (SELECT MAX(s.end_time)
                      FROM sessions s
                      JOIN applications a ON a.id = s.app_id
-                     WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
+                     WHERE (s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
+                       AND s.duration_seconds >= ?2)
              FROM projects p
              WHERE p.id = ?1",
-            [project_id],
+            rusqlite::params![project_id, min_duration],
             |row| {
                 Ok(ProjectWithStats {
                     id: row.get(0)?,
@@ -62,6 +67,7 @@ async fn get_report_estimate(
     app: AppHandle,
     project_id: i64,
 ) -> Result<f64, String> {
+    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         let hourly_rate: Option<f64> = conn
             .query_row(
@@ -83,8 +89,9 @@ async fn get_report_estimate(
                             THEN s.duration_seconds * (s.rate_multiplier - 1.0) ELSE 0 END), 0)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)",
-                [project_id],
+                 WHERE (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
+                   AND s.duration_seconds >= ?2",
+                rusqlite::params![project_id, min_duration],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap_or((0.0, 0.0));
@@ -103,6 +110,7 @@ async fn get_report_sessions(
     project_id: i64,
     date_range: DateRange,
 ) -> Result<Vec<SessionWithApp>, String> {
+    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         let sql = format!(
             "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
@@ -133,11 +141,12 @@ async fn get_report_sessions(
              WHERE {ACTIVE_SESSION_FILTER_S}
                AND (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
                AND s.date >= ?2 AND s.date <= ?3
+               AND s.duration_seconds >= ?4
              ORDER BY s.start_time DESC"
         );
         let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map(rusqlite::params![project_id, date_range.start, date_range.end], |row| {
+            .query_map(rusqlite::params![project_id, date_range.start, date_range.end, min_duration], |row| {
                 Ok(SessionWithApp {
                     id: row.get(0)?,
                     app_id: row.get(1)?,
@@ -173,6 +182,7 @@ async fn get_report_extra_info(
     project_id: i64,
     estimate: f64,
 ) -> Result<ProjectExtraInfo, String> {
+    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         // Top apps: group sessions by app, sum duration
         let mut app_stmt = conn
@@ -180,14 +190,15 @@ async fn get_report_extra_info(
                 "SELECT a.display_name, CAST(SUM(s.duration_seconds) AS INTEGER)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)
+                 WHERE (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
+                   AND s.duration_seconds >= ?2
                  GROUP BY a.id
                  ORDER BY SUM(s.duration_seconds) DESC
                  LIMIT 10",
             )
             .map_err(|e| e.to_string())?;
         let top_apps: Vec<TopApp> = app_stmt
-            .query_map([project_id], |row| {
+            .query_map(rusqlite::params![project_id, min_duration], |row| {
                 Ok(TopApp {
                     name: row.get(0)?,
                     seconds: row.get(1)?,
@@ -206,8 +217,9 @@ async fn get_report_extra_info(
                         SUM(CASE WHEN s.rate_multiplier > 1.0 THEN 1 ELSE 0 END)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)",
-                [project_id],
+                 WHERE (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
+                   AND s.duration_seconds >= ?2",
+                rusqlite::params![project_id, min_duration],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap_or((0, 0, 0));

@@ -8,7 +8,7 @@
 | §3 Błędy i dane | ✅ | unwrap/expect audit + storage format |
 | §4 Refaktoryzacja | ✅ | Duplikacja kodu, modularyzacja |
 | §5 Tłumaczenia | ✅ | JSON pełne, Help.tsx OK |
-| §6 Bugi krytyczne | ✅ | 2/3 aktywne (BUG #1 PDF naprawiony) |
+| §6 Bugi krytyczne | ✅ | Wszystkie 3 naprawione |
 | §7 Bezpieczeństwo | ✅ | Tauri permissions, sieć, szyfrowanie |
 | §8 Sugestie | ✅ | Na podstawie znalezionych luk |
 
@@ -321,39 +321,37 @@ Wynikające z analizy kodu:
 | # | Zadanie | Pliki | Zależność |
 |---|---------|-------|-----------|
 | ~~1.1~~ | ~~Fix PDF page breaks~~ | ~~`ReportView.tsx`, globalny CSS print~~ | ✅ Naprawiony |
-| 1.2 | Fix unique files deduplikacja | `src/tracker.rs` (build_file_cache_key, record_app_activity) | Brak |
-| 1.3 | Fix min_session_duration w raporcie | `dashboard/src-tauri/src/commands/report.rs`, `sql_fragments.rs` | Brak |
+| ~~1.2~~ | ~~Fix unique files deduplikacja~~ | ~~`src/tracker.rs`~~ | ✅ Zrobione |
+| ~~1.3~~ | ~~Fix min_session_duration w raporcie~~ | ~~`dashboard/src-tauri/src/commands/report.rs`~~ | ✅ Zrobione |
 
 ### Faza 2 — Ważne 🟡 (częściowo zależne)
 
 | # | Zadanie | Pliki | Zależność |
 |---|---------|-------|-----------|
-| 2.1 | Graceful tray init (zamienić expect na match) | `src/tray.rs` | Brak |
-| 2.2 | Fix WARNING_SHOWN race (compare_exchange) | `src/tracker.rs:77-119` | Brak |
-| 2.3 | Wyekstrahować handleTauriError utility | `dashboard/src/lib/tauri-error.ts`, strony | Brak |
-| 2.4 | Użyć usePageRefreshListener wszędzie | AI.tsx, Dashboard.tsx, Applications.tsx, Sessions.tsx | 2.3 |
-| 2.5 | SQLite WAL mode | shared crate / config.rs | Brak |
-| 2.6 | Timeout dla isFetchingMetricsRef | `AI.tsx` | Brak |
+| ~~2.1~~ | ~~Graceful tray init (zamienić expect na match)~~ | ~~`src/tray.rs`~~ | ✅ Zrobione |
+| ~~2.2~~ | ~~Fix WARNING_SHOWN race (compare_exchange)~~ | ~~`src/tracker.rs:77-119`~~ | ✅ Zrobione |
+| 2.3 | Wyekstrahować handleTauriError utility | `dashboard/src/lib/tauri-error.ts`, strony | Odroczone — wzorce nie tak repetytywne jak oceniono |
+| 2.4 | Użyć usePageRefreshListener wszędzie | AI.tsx, Dashboard.tsx, Applications.tsx, Sessions.tsx | Odroczone — zależy od 2.3 |
+| ~~2.5~~ | ~~SQLite WAL mode~~ | ~~shared crate / config.rs~~ | ✅ Już zaimplementowane (daily_store + pool.rs) |
+| ~~2.6~~ | ~~Timeout dla isFetchingMetricsRef~~ | ~~`AI.tsx`~~ | ✅ Zrobione |
 
 ### Faza 3 — Nice-to-have 🟢 (niezależne)
 
 | # | Zadanie | Pliki | Zależność |
 |---|---------|-------|-----------|
-| 3.1 | Podzielić tauri.ts na moduły | `dashboard/src/lib/tauri/*.ts` | Brak |
-| 3.2 | Dodać brakujące commands do tauri.ts | `dashboard/src/lib/tauri.ts` | Brak |
-| 3.3 | Ograniczyć fs permissions do ścieżek | `capabilities/default.json` | Brak |
-| 3.4 | Loading state na ExportPanel | `ExportPanel.tsx` | 2.3 |
-| 3.5 | Konsolidacja duplikatów plików (migracja) | `db_migrations/` | 1.2 |
-| 3.6 | Potwierdzenie przed Rebuild | UI + Sessions strona | Brak |
+| 3.1 | Podzielić tauri.ts na moduły | `dashboard/src/lib/tauri/*.ts` | Odroczone — duży refaktor |
+| ~~3.2~~ | ~~Dodać brakujące commands do tauri.ts~~ | ~~`dashboard/src/lib/tauri.ts`~~ | ✅ Zrobione (getHeatmap, getStackedTimeline, sendBugReport) |
+| 3.3 | Ograniczyć fs permissions do ścieżek | `capabilities/default.json` | Odroczone — wymaga analizy użycia fs |
+| 3.4 | Loading state na ExportPanel | `ExportPanel.tsx` | Odroczone |
+| 3.5 | Konsolidacja duplikatów plików (migracja) | `db_migrations/` | Odroczone — wymaga testów z danymi |
+| 3.6 | Potwierdzenie przed Rebuild | UI + Sessions strona | Odroczone |
 
 ### Równoległość
 
 ```
-Faza 1: [1.1 ✅] [1.2] [1.3]  ← 1.2 i 1.3 niezależne, mogą być równoległe
-                  ↓     ↓
-Faza 2: [2.1] [2.2] [2.5]  ← niezależne
-        [2.3] → [2.4]      ← sekwencyjne
-        [2.6]               ← niezależny
+Faza 1: [1.1 ✅] [1.2 ✅] [1.3 ✅]  ← UKOŃCZONA
+Faza 2: [2.1 ✅] [2.2 ✅] [2.5 ✅] [2.6 ✅]  ← UKOŃCZONA (2.3/2.4 odroczone)
+Faza 3: [3.2 ✅]  ← reszta odroczona
          ↓
 Faza 3: [3.1-3.6]          ← wszystkie niezależne
 ```
