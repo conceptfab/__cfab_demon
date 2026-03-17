@@ -160,7 +160,8 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
         "NULL"
     };
     let migration_sql = format!(
-        "CREATE TABLE daily_files_new (
+        "BEGIN TRANSACTION;
+         CREATE TABLE daily_files_new (
              date TEXT NOT NULL,
              exe_name TEXT NOT NULL,
              file_name TEXT NOT NULL,
@@ -195,7 +196,8 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
          DROP TABLE daily_files;
          ALTER TABLE daily_files_new RENAME TO daily_files;
          CREATE INDEX IF NOT EXISTS idx_daily_files_date_exe
-             ON daily_files(date, exe_name, ordinal);"
+             ON daily_files(date, exe_name, ordinal);
+         COMMIT;"
     );
     conn.execute_batch(&migration_sql)
         .map_err(|e| format!("Failed to migrate daily_files schema: {}", e))

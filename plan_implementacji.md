@@ -819,3 +819,30 @@ Istniejace pliki testow:
 3. **`BackgroundServices.tsx`** jest centralnym job pool — zmiany tam wplywaja na caly dashboard. Testuj dokladnie.
 4. **`useBackgroundStatusStore.getState().refreshDiagnostics()`** — uzycie `.getState()` poza komponentem jest poprawne w zustand (wzorzec store actions).
 5. **Po zmianie 2.8** (`loadFreezeSettings`) upewnij sie ze event name jest zgodny z tym co emituje strona Settings.
+
+---
+
+## Postep realizacji (aktualizacja: 2026-03-17)
+
+### FAZA 1 — ZAKONCZONA
+- [x] 1.1 PDF: wielostronicowy druk (`print:h-auto` + `@page`) — `ReportView.tsx`, `index.css`
+- [x] 1.2 PDF: nazwa pliku `timeflow_raport_NAZWAPROJEKTU.pdf` — `ReportView.tsx`
+- [x] 1.3 Natychmiastowa aktualizacja badge po przypisaniu sesji — `useSessionActions.ts`
+- [x] 1.4 Race condition w `loadMore` (guard `isLoadingRef`) — `useSessionsData.ts`
+- [x] 1.5 `expect()` w `tracker.rs` zamieniony na `match` + `continue`
+- [x] 1.6 `expect()` w `db.rs` zamieniony na fallback + error log
+
+### FAZA 2 — W TOKU (2 z 10 krokow)
+- [x] 2.1 Transakcja w migracji `daily_files` schema — `shared/daily_store/schema.rs` (BEGIN TRANSACTION + COMMIT)
+- [x] 2.2 `busy_timeout` — juz zaimplementowane w `schema.rs:24` (`open_store()`)
+- [ ] 2.3 Cache polaczenia DB w tray — `src/tray.rs`
+- [ ] 2.4 Cache mtime dla `load_language()` — `src/i18n.rs`
+- [ ] 2.5 Cache mtime dla config reload — `src/config.rs`
+- [ ] 2.6 Bounded cache w `scoreBreakdownCacheRef` — `useSessionScoreBreakdown.ts`
+- [ ] 2.7 Bounded cache w `splitEligibilityCacheRef` — `useSessionSplitAnalysis.ts`
+- [ ] 2.8 `loadFreezeSettings` z useMemo do stanu — `Sessions.tsx`
+- [ ] 2.9 PDF: usunac limity sesji — `ReportView.tsx`
+- [ ] 2.10 PDF: `print:break-inside-avoid` na sekcjach — `ReportView.tsx`
+
+### FAZA 3 — OCZEKUJE
+Nie rozpoczeta. 8 krokow (nice-to-have).
