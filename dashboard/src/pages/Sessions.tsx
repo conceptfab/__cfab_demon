@@ -458,11 +458,14 @@ export function Sessions() {
     ensureCommentForBoost,
   });
 
+  const [freezeThresholdDays] = useState(
+    () => loadFreezeSettings().thresholdDays,
+  );
+
   const assignProjectSections = useMemo(() => {
     const activeProjects = projects.filter((p) => !p.frozen_at);
     const activeAlpha = [...activeProjects].sort(compareProjectsByName);
-    const { thresholdDays } = loadFreezeSettings();
-    const newProjectMaxAgeMs = Math.max(1, thresholdDays) * 24 * 60 * 60 * 1000;
+    const newProjectMaxAgeMs = Math.max(1, freezeThresholdDays) * 24 * 60 * 60 * 1000;
 
     if (assignProjectListMode === 'alpha_active') {
       return [
@@ -555,7 +558,7 @@ export function Sessions() {
         projects: rest,
       },
     ];
-  }, [assignProjectListMode, projects, t]);
+  }, [assignProjectListMode, freezeThresholdDays, projects, t]);
 
   const assignProjectsCount = useMemo(
     () =>

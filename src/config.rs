@@ -175,9 +175,36 @@ fn load_monitored_apps_from_dashboard_db() -> Result<Vec<MonitoredApp>> {
     Ok(apps)
 }
 
+use std::sync::Mutex;
+use std::time::SystemTime;
+
+struct ConfigCache {
+    json_mtime: Option<SystemTime>,
+    db_mtime: Option<SystemTime>,
+    config: Config,
+}
+
+static CONFIG_CACHE: Mutex<Option<ConfigCache>> = Mutex::new(None);
+
+pub(crate) fn file_mtime(path: &std::path::Path) -> Option<SystemTime> {
+    std::fs::metadata(path).ok().and_then(|m| m.modified().ok())
+}
+
 /// Ładuje konfigurację demona. Lista monitorowanych aplikacji pochodzi z DB dashboardu.
 /// JSON pozostaje fallbackiem (legacy) oraz źródłem interwałów.
+/// Wynik cachowany na podstawie mtime pliku JSON i DB.
 pub fn load() -> Config {
+    let json_mtime = config_path().ok().and_then(|p| file_mtime(&p));
+    let db_mtime = dashboard_db_path().ok().and_then(|p| file_mtime(&p));
+
+    if let Ok(guard) = CONFIG_CACHE.lock() {
+        if let Some(cached) = guard.as_ref() {
+            if cached.json_mtime == json_mtime && cached.db_mtime == db_mtime {
+                return cached.config.clone();
+            }
+        }
+    }
+
     let mut cfg = load_legacy_json_config();
 
     match load_monitored_apps_from_dashboard_db() {
@@ -185,12 +212,19 @@ pub fn load() -> Config {
             cfg.apps = apps;
         }
         Err(e) => {
-            // Fallback dla pierwszego uruchomienia / starszych DB.
             log::warn!(
                 "Failed to read monitored_apps from dashboard DB (fallback to JSON): {}",
                 e
             );
         }
+    }
+
+    if let Ok(mut guard) = CONFIG_CACHE.lock() {
+        *guard = Some(ConfigCache {
+            json_mtime,
+            db_mtime,
+            config: cfg.clone(),
+        });
     }
 
     cfg

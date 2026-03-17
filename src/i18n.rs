@@ -2,6 +2,10 @@
 // Język odczytywany z %APPDATA%/TimeFlow/language.json (wspólny z dashboardem).
 
 use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::SystemTime;
+
+use crate::config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lang {
@@ -72,23 +76,42 @@ fn language_file_path() -> Option<PathBuf> {
     )
 }
 
+static LANG_CACHE: Mutex<Option<(SystemTime, Lang)>> = Mutex::new(None);
+
 /// Odczytuje język z pliku współdzielonego z dashboardem.
 /// Fallback: PL (zachowanie dotychczasowe).
+/// Wynik cachowany na podstawie mtime pliku.
 pub fn load_language() -> Lang {
     let path = match language_file_path() {
         Some(p) => p,
         None => return Lang::Pl,
     };
+    let mtime = match config::file_mtime(&path) {
+        Some(t) => t,
+        None => return Lang::Pl,
+    };
+    if let Ok(guard) = LANG_CACHE.lock() {
+        if let Some((cached_mtime, cached_lang)) = guard.as_ref() {
+            if *cached_mtime == mtime {
+                return *cached_lang;
+            }
+        }
+    }
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
         Err(_) => return Lang::Pl,
     };
-    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-        if let Some(code) = parsed.get("code").and_then(|v| v.as_str()) {
-            if code.eq_ignore_ascii_case("en") {
-                return Lang::En;
-            }
+    let lang = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+        if parsed.get("code").and_then(|v| v.as_str()).map_or(false, |c| c.eq_ignore_ascii_case("en")) {
+            Lang::En
+        } else {
+            Lang::Pl
         }
+    } else {
+        Lang::Pl
+    };
+    if let Ok(mut guard) = LANG_CACHE.lock() {
+        *guard = Some((mtime, lang));
     }
-    Lang::Pl
+    lang
 }

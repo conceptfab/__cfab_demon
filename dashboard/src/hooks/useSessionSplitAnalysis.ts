@@ -7,7 +7,7 @@ import type {
 import {
   isAlreadySplitSession,
 } from '@/lib/session-analysis';
-import { withTimeout } from '@/lib/async-utils';
+import { evictOldestEntries, withTimeout } from '@/lib/async-utils';
 import { sessionsApi } from '@/lib/tauri';
 import type { SplitSettings } from '@/lib/user-settings';
 
@@ -154,9 +154,11 @@ export function useSessionSplitAnalysis({
           const splitFlagsBySession = new Map(
             flags.map((flag) => [flag.session_id, flag.is_splittable] as const),
           );
+          const eligibilityCache = splitEligibilityCacheRef.current;
           batch.forEach((sessionId) => {
-            splitEligibilityCacheRef.current.set(sessionId, splitSettingsKey);
+            eligibilityCache.set(sessionId, splitSettingsKey);
           });
+          evictOldestEntries(eligibilityCache, 200);
           setSplitEligibilityBySession((prev) => {
             const next = new Map(prev);
             let changed = false;

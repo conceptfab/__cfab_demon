@@ -34,7 +34,7 @@ fn validate_hourly_rate(rate: f64) -> Result<(), String> {
     Ok(())
 }
 
-fn get_global_hourly_rate(conn: &rusqlite::Connection) -> Result<f64, String> {
+pub(crate) fn get_global_hourly_rate(conn: &rusqlite::Connection) -> Result<f64, String> {
     let raw: Option<String> = conn
         .query_row(
             "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",

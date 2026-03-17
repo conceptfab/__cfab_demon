@@ -235,7 +235,7 @@ pub struct StackedBarData {
     pub data: HashMap<String, i64>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct DateRange {
     pub start: String,
     pub end: String,

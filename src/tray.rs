@@ -40,27 +40,16 @@ pub enum TrayExitAction {
     Restart,
 }
 
-#[derive(Debug, Clone, Copy)]
 struct AttentionState {
     count: i64,
     last_refresh: Instant,
+    conn: Option<rusqlite::Connection>,
 }
 
-fn query_unassigned_attention_count() -> Result<i64, String> {
+fn query_unassigned_attention_count(conn: &rusqlite::Connection) -> Result<i64, String> {
     let base_dir = crate::config::config_dir().map_err(|e| e.to_string())?;
     let min_duration_sec =
         session_settings::read_session_settings(&base_dir).min_session_duration_seconds;
-    let conn = match crate::config::open_dashboard_db_readonly() {
-        Ok(conn) => conn,
-        Err(error) => {
-            if let Ok(db_path) = crate::config::dashboard_db_path() {
-                if !db_path.exists() {
-                    return Ok(0);
-                }
-            }
-            return Err(format!("Failed to open dashboard DB for tray: {}", error));
-        }
-    };
 
     let table_exists = conn
         .query_row(
@@ -87,6 +76,25 @@ fn query_unassigned_attention_count() -> Result<i64, String> {
     .map_err(|e| format!("Failed to query unassigned sessions for tray: {}", e))
 }
 
+fn ensure_conn(state: &mut AttentionState) -> Result<&rusqlite::Connection, String> {
+    if state.conn.is_none() {
+        match crate::config::open_dashboard_db_readonly() {
+            Ok(c) => {
+                state.conn = Some(c);
+            }
+            Err(error) => {
+                if let Ok(db_path) = crate::config::dashboard_db_path() {
+                    if !db_path.exists() {
+                        return Err("DB not found yet".into());
+                    }
+                }
+                return Err(format!("Failed to open dashboard DB for tray: {}", error));
+            }
+        }
+    }
+    Ok(state.conn.as_ref().unwrap())
+}
+
 fn refresh_attention_state(state: &RefCell<AttentionState>, force: bool) -> i64 {
     let now = Instant::now();
     let should_refresh = {
@@ -100,12 +108,19 @@ fn refresh_attention_state(state: &RefCell<AttentionState>, force: bool) -> i64 
 
     let mut snapshot = state.borrow_mut();
     snapshot.last_refresh = now;
-    match query_unassigned_attention_count() {
+
+    let result = match ensure_conn(&mut snapshot) {
+        Ok(conn) => query_unassigned_attention_count(conn),
+        Err(_) => Ok(0),
+    };
+
+    match result {
         Ok(count) => {
             snapshot.count = count;
         }
         Err(error) => {
             log::warn!("Failed to refresh tray attention count: {}", error);
+            snapshot.conn = None;
         }
     }
     snapshot.count
@@ -254,10 +269,19 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
                 .expect("APP_ICON not found in resources")
         });
 
-    let initial_attention = query_unassigned_attention_count().unwrap_or_else(|error| {
-        log::warn!("Failed to load initial tray attention count: {}", error);
-        0
-    });
+    let (initial_conn, initial_attention) = match crate::config::open_dashboard_db_readonly() {
+        Ok(conn) => {
+            let count = query_unassigned_attention_count(&conn).unwrap_or_else(|error| {
+                log::warn!("Failed to load initial tray attention count: {}", error);
+                0
+            });
+            (Some(conn), count)
+        }
+        Err(error) => {
+            log::warn!("Failed to open dashboard DB for initial tray count: {}", error);
+            (None, 0)
+        }
+    };
     let tip = build_tray_tip(initial_lang, initial_attention);
 
     let mut tray_obj = nwg::TrayNotification::default();
@@ -340,6 +364,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         attention_state: RefCell::new(AttentionState {
             count: initial_attention,
             last_refresh: Instant::now(),
+            conn: initial_conn,
         }),
         last_tray_click: Cell::new(None),
         action: Cell::new(TrayExitAction::Exit),

@@ -12,7 +12,7 @@ import {
   EMPTY_SCORE_BREAKDOWN,
   isAlreadySplitSession,
 } from '@/lib/session-analysis';
-import { withTimeout } from '@/lib/async-utils';
+import { evictOldestEntries, withTimeout } from '@/lib/async-utils';
 import { sessionsApi } from '@/lib/tauri';
 import { logTauriError } from '@/lib/utils';
 
@@ -138,10 +138,12 @@ export function useSessionScoreBreakdown({
         10_000,
       )
         .then((data) => {
-          scoreBreakdownCacheRef.current.set(sessionId, {
+          const cache = scoreBreakdownCacheRef.current;
+          cache.set(sessionId, {
             data,
             fetchedAtMs: Date.now(),
           });
+          evictOldestEntries(cache, 200);
           setAiBreakdowns((prev) => {
             if (prev.has(sessionId)) return prev;
             const next = new Map(prev);

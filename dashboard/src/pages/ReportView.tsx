@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { format, parseISO } from 'date-fns';
 import { ChevronLeft, Printer } from 'lucide-react';
@@ -24,9 +24,31 @@ export function ReportView() {
   const runDaemonRequest = useCancellableAsync();
 
   const [report, setReport] = useState<ProjectReportData | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
   const [loadedProjectId, setLoadedProjectId] = useState<number | null>(null);
   const [appVersion, setAppVersion] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const template = useMemo(() => getTemplate(reportTemplateId || 'default'), [reportTemplateId]);
+  const SCREEN_LIMIT = 100;
+
+  const handlePrint = useCallback(() => {
+    if (!report) return;
+    const originalTitle = document.title;
+    const safeName = report.project.name.replace(/[^a-zA-Z0-9_\-\s]/g, '_');
+    document.title = `timeflow_raport_${safeName}`;
+    if (report.sessions.length <= SCREEN_LIMIT && report.manual_sessions.length <= SCREEN_LIMIT) {
+      window.print();
+      document.title = originalTitle;
+    } else {
+      setShowAll(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.print();
+          document.title = originalTitle;
+        });
+      });
+    }
+  }, [report]);
   const sections = template.sections;
   const has = (id: string) => sections.includes(id);
   const generatedAt = format(new Date(), 'yyyy-MM-dd HH:mm');
@@ -43,6 +65,7 @@ export function ReportView() {
         },
         onError: (err) => {
           console.error('Report error:', err);
+          setReportError(String(err));
           setReport(null);
           setLoadedProjectId(projectPageId);
         },
@@ -76,8 +99,23 @@ export function ReportView() {
 
   if (!report) {
     return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
-        {t('report_view.no_data_found')}
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <div className="text-muted-foreground text-sm">
+          {t('report_view.no_data_found')}
+        </div>
+        {reportError && (
+          <div className="text-destructive text-xs font-mono max-w-md text-center break-all">
+            {reportError}
+          </div>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCurrentPage('project-card')}
+        >
+          <ChevronLeft className="mr-1 h-4 w-4" />
+          {t('report_view.back_to_project')}
+        </Button>
       </div>
     );
   }
@@ -107,13 +145,7 @@ export function ReportView() {
 
         <Button
           size="sm"
-          onClick={() => {
-            const originalTitle = document.title;
-            const safeName = report.project.name.replace(/[^a-zA-Z0-9_\-\s]/g, '_');
-            document.title = `timeflow_raport_${safeName}`;
-            window.print();
-            document.title = originalTitle;
-          }}
+          onClick={handlePrint}
           className="bg-sky-600 hover:bg-sky-700 text-white"
         >
           <Printer className="mr-1.5 h-4 w-4" />
@@ -166,7 +198,7 @@ export function ReportView() {
 
           {/* ═══ STATS ═══ */}
           {has('stats') && (
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-4 gap-4 print:break-inside-avoid">
               {[
                 {
                   label: t('report_view.total_time'),
@@ -207,7 +239,7 @@ export function ReportView() {
 
           {/* ═══ FINANCIALS ═══ */}
           {has('financials') && report.estimate > 0 && (
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 print:border-green-200 print:bg-green-50">
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-4 print:border-green-200 print:bg-green-50 print:break-inside-avoid">
               <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                 {t('report_view.financials')}
               </div>
@@ -289,7 +321,7 @@ export function ReportView() {
 
           {/* ═══ AI DATA ═══ */}
           {has('ai') && (
-            <div className="rounded-lg border border-border/20 p-4 print:border-gray-200">
+            <div className="rounded-lg border border-border/20 p-4 print:border-gray-200 print:break-inside-avoid">
               <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                 {t('report_view.ai_model')}
               </h2>
@@ -338,7 +370,7 @@ export function ReportView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.sessions.slice(0, 50).map((s) => (
+                  {(showAll ? report.sessions : report.sessions.slice(0, SCREEN_LIMIT)).map((s) => (
                     <tr
                       key={s.id}
                       className="border-b border-border/10 print:border-gray-100"
@@ -359,11 +391,13 @@ export function ReportView() {
                   ))}
                 </tbody>
               </table>
-              {report.sessions.length > 50 && (
-                <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
-                  +{report.sessions.length - 50}{' '}
-                  {t('report_view.more_sessions')}...
-                </p>
+              {!showAll && report.sessions.length > SCREEN_LIMIT && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="text-[10px] text-sky-500 hover:text-sky-400 mt-1 print:hidden"
+                >
+                  {t('report_view.show_all')} ({report.sessions.length})
+                </button>
               )}
             </div>
           )}
@@ -375,7 +409,7 @@ export function ReportView() {
                 {t('report_view.comments')} ({sessionsWithComments.length})
               </h2>
               <div className="space-y-1.5">
-                {sessionsWithComments.slice(0, 25).map((s) => (
+                {(showAll ? sessionsWithComments : sessionsWithComments.slice(0, SCREEN_LIMIT)).map((s) => (
                   <div
                     key={s.id}
                     className="flex gap-3 text-xs print:text-black"
@@ -386,6 +420,14 @@ export function ReportView() {
                     <span>{s.comment}</span>
                   </div>
                 ))}
+                {!showAll && sessionsWithComments.length > SCREEN_LIMIT && (
+                  <button
+                    onClick={() => setShowAll(true)}
+                    className="text-[10px] text-sky-500 hover:text-sky-400 mt-1 print:hidden"
+                  >
+                    {t('report_view.show_all')} ({sessionsWithComments.length})
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -417,7 +459,7 @@ export function ReportView() {
                     </tr>
                   </thead>
                   <tbody>
-                    {boostedSessions.slice(0, 25).map((s) => (
+                    {boostedSessions.map((s) => (
                       <tr
                         key={s.id}
                         className="border-b border-border/10 print:border-gray-100"
@@ -438,12 +480,6 @@ export function ReportView() {
                     ))}
                   </tbody>
                 </table>
-                {boostedSessions.length > 25 && (
-                  <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
-                    +{boostedSessions.length - 25}{' '}
-                    {t('report_view.more_sessions')}...
-                  </p>
-                )}
               </div>
             );
           })()}
@@ -472,7 +508,7 @@ export function ReportView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.manual_sessions.slice(0, 50).map((s) => (
+                  {(showAll ? report.manual_sessions : report.manual_sessions.slice(0, SCREEN_LIMIT)).map((s) => (
                     <tr
                       key={s.id}
                       className="border-b border-border/10 print:border-gray-100"
@@ -493,11 +529,13 @@ export function ReportView() {
                   ))}
                 </tbody>
               </table>
-              {report.manual_sessions.length > 50 && (
-                <p className="text-[10px] text-muted-foreground/30 mt-1 print:text-gray-400">
-                  +{report.manual_sessions.length - 50}{' '}
-                  {t('report_view.more_sessions')}...
-                </p>
+              {!showAll && report.manual_sessions.length > SCREEN_LIMIT && (
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="text-[10px] text-sky-500 hover:text-sky-400 mt-1 print:hidden"
+                >
+                  {t('report_view.show_all')} ({report.manual_sessions.length})
+                </button>
               )}
             </div>
           )}
