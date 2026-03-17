@@ -92,7 +92,7 @@ export function ReportView() {
   const sessionsWithComments = report.sessions.filter((s) => s.comment?.trim());
 
   return (
-    <div className="flex flex-col h-screen bg-background pt-8 print:pt-0 print:bg-white">
+    <div className="flex flex-col h-screen print:h-auto bg-background pt-8 print:pt-0 print:bg-white">
       {/* Toolbar — hidden in print */}
       <div className="flex items-center gap-2 pb-3 border-b border-border/30 print:hidden shrink-0">
         <Button
@@ -107,7 +107,13 @@ export function ReportView() {
 
         <Button
           size="sm"
-          onClick={() => window.print()}
+          onClick={() => {
+            const originalTitle = document.title;
+            const safeName = report.project.name.replace(/[^a-zA-Z0-9_\-\s]/g, '_');
+            document.title = `timeflow_raport_${safeName}`;
+            window.print();
+            document.title = originalTitle;
+          }}
           className="bg-sky-600 hover:bg-sky-700 text-white"
         >
           <Printer className="mr-1.5 h-4 w-4" />

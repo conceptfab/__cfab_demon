@@ -133,6 +133,10 @@
 
 /* Print styles for Reports page */
 @media print {
+  @page {
+    margin: 15mm;
+    size: A4;
+  }
   aside,
   header,
   [class*='print:hidden'] {

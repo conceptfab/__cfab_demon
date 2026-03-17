@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useBackgroundStatusStore } from '@/store/background-status-store';
 import {
   assignSessionToProject,
   assignSessionsToProjectBatch,
@@ -28,6 +29,7 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       try {
         await fn();
         onAfterMutation?.();
+        void useBackgroundStatusStore.getState().refreshDiagnostics();
       } catch (error) {
         onError?.(action, error);
         throw error;

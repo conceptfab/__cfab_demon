@@ -107,6 +107,8 @@ export function useSessionsData(params: {
   }, []);
 
   const loadMore = useCallback(() => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     sessionsApi
       .getSessions(buildFetchParams(sessionsRef.current.length))
       .then((data) => {
@@ -119,7 +121,10 @@ export function useSessionsData(params: {
         hasMoreRef.current = nextHasMore;
         setHasMore(nextHasMore);
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => {
+        isLoadingRef.current = false;
+      });
   }, [buildFetchParams, sessionsRef, setSessions]);
 
   return {

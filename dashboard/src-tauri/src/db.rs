@@ -92,9 +92,15 @@ fn app_storage_dir(app: &AppHandle) -> PathBuf {
             }
         }
     } else {
-        app.path()
-            .app_data_dir()
-            .expect("Failed to get app data dir")
+        match app.path().app_data_dir() {
+            Ok(dir) => dir,
+            Err(e) => {
+                log::error!("Failed to get app data dir: {}", e);
+                let fallback = std::env::current_dir().unwrap_or_default().join("timeflow_data");
+                std::fs::create_dir_all(&fallback).ok();
+                fallback
+            }
+        }
     };
     std::fs::create_dir_all(&app_dir).ok();
     app_dir
