@@ -147,11 +147,26 @@
   #root {
     background: white !important;
     color: black !important;
+    height: auto !important;
+    overflow: visible !important;
   }
+  #root > *,
   main {
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+  /* Kill all scroll containers & flex height constraints in print */
+  [class*='h-screen'],
+  [class*='overflow-y-auto'],
+  [class*='overflow-auto'],
+  [class*='flex-1'] {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
   }
   .ml-56 {
     margin-left: 0 !important;

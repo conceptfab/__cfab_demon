@@ -159,7 +159,7 @@ export function ReportView() {
       </div>
 
       {/* Report body — print-optimized */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 print:px-0 print:pt-0 print:overflow-visible print:text-black print:bg-white">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 print:px-0 print:pt-0 print:overflow-visible print:text-black print:bg-white print:!h-auto print:!max-h-none print:!flex-none">
         <div className="max-w-[700px] mx-auto space-y-6 print:space-y-5">
           {/* ═══ HEADER ═══ */}
           {has('header') && (
