@@ -184,88 +184,11 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
 
     initialize_database_file_once(&path_str)?;
 
-    // Perform vacuum on startup if enabled
     {
         let db = rusqlite_open(&path_str).map_err(|e| e.to_string())?;
-        let vacuum_on_startup = get_system_setting_internal(&db, "vacuum_on_startup")
-            .map(|v| v == "true")
-            .unwrap_or(false);
-        if vacuum_on_startup {
-            log::info!("Performing startup VACUUM...");
-            db.execute_batch("VACUUM;")
-                .map_err(|e| format!("Startup VACUUM failed: {}", e))?;
-        }
-
-        // Auto backup check
-        let backup_enabled = get_system_setting_internal(&db, "backup_enabled")
-            .map(|v| v == "true")
-            .unwrap_or(false);
-        if backup_enabled {
-            let backup_path = get_system_setting_internal(&db, "backup_path").unwrap_or_default();
-            if !backup_path.is_empty() {
-                let interval_days = get_system_setting_internal(&db, "backup_interval_days")
-                    .and_then(|v| v.parse::<i64>().ok())
-                    .unwrap_or(7);
-                let last_backup = get_system_setting_internal(&db, "last_backup_at");
-
-                let should_backup = match last_backup {
-                    Some(date_str) => {
-                        if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
-                            let diff = chrono::Local::now()
-                                .signed_duration_since(last.with_timezone(&chrono::Local));
-                            diff.num_days() >= interval_days
-                        } else {
-                            true
-                        }
-                    }
-                    None => true,
-                };
-
-                if should_backup {
-                    log::info!("Auto-backup is due. Performing backup...");
-                    if let Err(e) = perform_backup_internal(&db, &backup_path) {
-                        log::error!("Auto-backup failed: {}", e);
-                    } else {
-                        let now = chrono::Local::now().to_rfc3339();
-                        if let Err(e) = db.execute(
-                            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_backup_at', ?1, datetime('now'))",
-                            [now],
-                        ) {
-                             log::error!("Failed to update last_backup_at: {}", e);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Auto optimization check
-        let auto_optimize_enabled = get_system_setting_internal(&db, "auto_optimize_enabled")
-            .map(|v| v == "true")
-            .unwrap_or(true);
-        if auto_optimize_enabled {
-            let interval_hours = get_system_setting_internal(&db, "auto_optimize_interval_hours")
-                .and_then(|v| v.parse::<i64>().ok())
-                .unwrap_or(24)
-                .clamp(1, 24 * 30);
-            let last_optimize = get_system_setting_internal(&db, "last_optimize_at");
-            let should_optimize = match last_optimize {
-                Some(date_str) => {
-                    if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
-                        let diff = chrono::Local::now()
-                            .signed_duration_since(last.with_timezone(&chrono::Local));
-                        diff.num_hours() >= interval_hours
-                    } else {
-                        true
-                    }
-                }
-                None => true,
-            };
-            if should_optimize {
-                if let Err(e) = optimize_database_internal(&db) {
-                    log::error!("Auto optimization failed: {}", e);
-                }
-            }
-        }
+        maybe_vacuum_on_startup(&db)?;
+        maybe_auto_backup(&db);
+        maybe_auto_optimize(&db);
     }
 
     let active_pool = Arc::new(ConnectionPool::new(DB_POOL_MAX_IDLE_CONNECTIONS));
@@ -280,6 +203,94 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
     app.manage(PrimaryDbPool(primary_pool));
 
     Ok(())
+}
+
+fn maybe_vacuum_on_startup(db: &rusqlite::Connection) -> Result<(), String> {
+    let vacuum_on_startup = get_system_setting_internal(db, "vacuum_on_startup")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if vacuum_on_startup {
+        log::info!("Performing startup VACUUM...");
+        db.execute_batch("VACUUM;")
+            .map_err(|e| format!("Startup VACUUM failed: {}", e))?;
+    }
+    Ok(())
+}
+
+fn maybe_auto_backup(db: &rusqlite::Connection) {
+    let backup_enabled = get_system_setting_internal(db, "backup_enabled")
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    if !backup_enabled {
+        return;
+    }
+    let backup_path = get_system_setting_internal(db, "backup_path").unwrap_or_default();
+    if backup_path.is_empty() {
+        return;
+    }
+    let interval_days = get_system_setting_internal(db, "backup_interval_days")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(7);
+    let last_backup = get_system_setting_internal(db, "last_backup_at");
+
+    let should_backup = match last_backup {
+        Some(date_str) => {
+            if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
+                let diff = chrono::Local::now()
+                    .signed_duration_since(last.with_timezone(&chrono::Local));
+                diff.num_days() >= interval_days
+            } else {
+                true
+            }
+        }
+        None => true,
+    };
+
+    if should_backup {
+        log::info!("Auto-backup is due. Performing backup...");
+        if let Err(e) = perform_backup_internal(db, &backup_path) {
+            log::error!("Auto-backup failed: {}", e);
+        } else {
+            let now = chrono::Local::now().to_rfc3339();
+            if let Err(e) = db.execute(
+                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_backup_at', ?1, datetime('now'))",
+                [now],
+            ) {
+                log::error!("Failed to update last_backup_at: {}", e);
+            }
+        }
+    }
+}
+
+fn maybe_auto_optimize(db: &rusqlite::Connection) {
+    let auto_optimize_enabled = get_system_setting_internal(db, "auto_optimize_enabled")
+        .map(|v| v == "true")
+        .unwrap_or(true);
+    if !auto_optimize_enabled {
+        return;
+    }
+    let interval_hours = get_system_setting_internal(db, "auto_optimize_interval_hours")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(24)
+        .clamp(1, 24 * 30);
+    let last_optimize = get_system_setting_internal(db, "last_optimize_at");
+    let should_optimize = match last_optimize {
+        Some(date_str) => {
+            if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
+                let diff = chrono::Local::now()
+                    .signed_duration_since(last.with_timezone(&chrono::Local));
+                diff.num_hours() >= interval_hours
+            } else {
+                true
+            }
+        }
+        None => true,
+    };
+    if should_optimize {
+        if let Err(e) = optimize_database_internal(db) {
+            log::error!("Auto optimization failed: {}", e);
+        }
+    }
 }
 
 fn get_system_setting_internal(db: &rusqlite::Connection, key: &str) -> Option<String> {

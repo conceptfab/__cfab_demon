@@ -9,7 +9,6 @@ import type {
   Project,
   DashboardData,
   DashboardStats,
-  ProjectTimeRow,
   TimelinePoint,
   EstimateProjectRow,
   EstimateSettings,
@@ -612,8 +611,16 @@ export const analyzeSessionsSplittable = (
     maxProjects,
   });
 
-export const splitSessionMulti = (sessionId: number, splits: SplitPart[]) =>
-  invokeMutation<void>('split_session_multi', { sessionId, splits });
+export const splitSessionMulti = (
+  sessionId: number,
+  splits: SplitPart[],
+  notModifiedSince?: string,
+) =>
+  invokeMutation<void>('split_session_multi', {
+    sessionId,
+    splits,
+    notModifiedSince: notModifiedSince ?? null,
+  });
 
 export const runtimeApi = {
   hasTauriRuntime,

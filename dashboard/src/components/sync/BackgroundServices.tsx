@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useToast } from '@/components/ui/toast-notification';
 import { useDataStore } from '@/store/data-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
 import {
@@ -117,14 +119,21 @@ async function runHeavyOperation<T>(
   }
 }
 
-async function runAutoAiAssignmentCycle(): Promise<boolean> {
+type AiAssignmentResult = {
+  needsRefresh: boolean;
+  deterministicAssigned: number;
+  aiAssigned: number;
+};
+
+async function runAutoAiAssignmentCycle(): Promise<AiAssignmentResult> {
   const result = await runHeavyOperation(
     AI_AND_SPLIT_OPERATION_KEY,
     async () => {
-      let needsRefresh = false;
+      let deterministicAssigned = 0;
+      let aiAssigned = 0;
       try {
         const det = await aiApi.applyDeterministicAssignment();
-        if (det.sessions_assigned > 0) needsRefresh = true;
+        deterministicAssigned = det.sessions_assigned;
       } catch (e) {
         console.warn('Deterministic assignment failed:', e);
       }
@@ -133,16 +142,17 @@ async function runAutoAiAssignmentCycle(): Promise<boolean> {
         const minDuration =
           loadSessionSettings().minSessionDurationSeconds || undefined;
         const aiResult = await aiApi.autoRunIfNeeded(minDuration);
-        if (aiResult && aiResult.assigned > 0) needsRefresh = true;
+        if (aiResult) aiAssigned = aiResult.assigned;
       } catch (e) {
         console.warn('AI auto-assignment failed:', e);
       }
 
-      return needsRefresh;
+      const needsRefresh = deterministicAssigned > 0 || aiAssigned > 0;
+      return { needsRefresh, deterministicAssigned, aiAssigned };
     },
   );
 
-  return result ?? false;
+  return result ?? { needsRefresh: false, deterministicAssigned: 0, aiAssigned: 0 };
 }
 
 function shouldRefreshAfterOnlineSync(result: OnlineSyncRunResult): boolean {
@@ -256,7 +266,8 @@ function useStartupProjectSyncAndAiAssignment() {
       if (cancelled) return;
 
       try {
-        await runAutoAiAssignmentCycle();
+        const aiResult = await runAutoAiAssignmentCycle();
+        dispatchAiAssignmentDone(aiResult);
       } catch (error) {
         console.warn('AI auto-assignment failed:', error);
       }
@@ -319,7 +330,8 @@ function useJobPool() {
     try {
       const result = await daemonApi.refreshToday();
       if (result.sessions_upserted > 0) {
-        await runAutoAiAssignmentCycle();
+        const aiResult = await runAutoAiAssignmentCycle();
+        dispatchAiAssignmentDone(aiResult);
       }
     } catch (error) {
       console.warn('[useJobPool] Refresh today failed', error);
@@ -537,11 +549,33 @@ function useJobPool() {
   }, [autoImportDone, runAutoSplit, runSync, refreshSyncSettingsCache]);
 }
 
+const AI_ASSIGNMENT_DONE_EVENT = 'timeflow:ai-assignment-done';
+
+function dispatchAiAssignmentDone(result: AiAssignmentResult) {
+  const total = result.deterministicAssigned + result.aiAssigned;
+  if (total > 0) {
+    window.dispatchEvent(
+      new CustomEvent(AI_ASSIGNMENT_DONE_EVENT, { detail: total }),
+    );
+  }
+}
+
 export function BackgroundServices() {
   useAutoImporter();
   useAutoSessionRebuild();
   useStartupProjectSyncAndAiAssignment();
   useJobPool();
+
+  const { t } = useTranslation();
+  const { showInfo } = useToast();
+  const handleAiAssignmentDone = useEffectEvent((e: Event) => {
+    const count = (e as CustomEvent<number>).detail;
+    showInfo(t('background.ai_assigned_sessions', { count }));
+  });
+  useEffect(() => {
+    window.addEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
+    return () => window.removeEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
+  }, []);
 
   return null;
 }

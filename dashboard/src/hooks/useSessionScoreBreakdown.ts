@@ -11,8 +11,8 @@ import type { ScoreBreakdown, SessionWithApp } from '@/lib/db-types';
 import {
   EMPTY_SCORE_BREAKDOWN,
   isAlreadySplitSession,
-  withTimeout,
 } from '@/lib/session-analysis';
+import { withTimeout } from '@/lib/async-utils';
 import { sessionsApi } from '@/lib/tauri';
 import { logTauriError } from '@/lib/utils';
 

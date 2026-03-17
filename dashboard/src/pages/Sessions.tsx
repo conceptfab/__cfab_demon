@@ -6,32 +6,21 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Sparkles,
-  MessageSquare,
-  Type,
-  Flame,
-} from 'lucide-react';
 
-import { AppTooltip } from '@/components/ui/app-tooltip';
-import { sessionsApi } from '@/lib/tauri';
+import { sessionsApi, manualSessionsApi } from '@/lib/tauri';
 import { PromptModal } from '@/components/ui/prompt-modal';
-import {
-  formatMultiplierLabel,
-  logTauriError,
-} from '@/lib/utils';
-import {
-  localizeProjectLabel,
-  UNASSIGNED_PROJECT_SENTINEL,
-} from '@/lib/project-labels';
+import { logTauriError } from '@/lib/utils';
+import { UNASSIGNED_PROJECT_SENTINEL } from '@/lib/project-labels';
 import { useUIStore } from '@/store/ui-store';
 import { useDataStore } from '@/store/data-store';
 import { format, parseISO } from 'date-fns';
 import { MultiSplitSessionModal } from '@/components/sessions/MultiSplitSessionModal';
 import { SessionsToolbar } from '@/components/sessions/SessionsToolbar';
 import { SessionsProjectContextMenu } from '@/components/sessions/SessionsProjectContextMenu';
+import { SessionContextMenu } from '@/components/sessions/SessionContextMenu';
 import { SessionsVirtualList } from '@/components/sessions/SessionsVirtualList';
 import type {
+  ManualSessionWithProject,
   SessionWithApp,
   SplitPart,
 } from '@/lib/db-types';
@@ -39,7 +28,6 @@ import type { PromptConfig } from '@/lib/ui-types';
 import {
   loadSessionSettings,
   loadIndicatorSettings,
-  loadSplitSettings,
   loadFreezeSettings,
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
@@ -48,24 +36,20 @@ import {
   compareProjectsByName,
   isRecentProject,
 } from '@/lib/project-utils';
-import {
-  findSessionIdsMissingComment,
-  requiresCommentForMultiplierBoost,
-} from '@/lib/session-utils';
-import { useToast } from '@/components/ui/toast-notification';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { useSessionsData } from '@/hooks/useSessionsData';
 import { useSessionsFilters } from '@/hooks/useSessionsFilters';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
 import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
-import { buildAnalysisFromBreakdown } from '@/lib/session-analysis';
-import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
 import {
   loadProjectsAllTime,
   useProjectsCacheStore,
 } from '@/store/projects-cache-store';
 import { shouldRefreshSessionsPage } from '@/lib/page-refresh-reasons';
+import { useSettingsStore } from '@/store/settings-store';
+import { useSessionBulkActions } from '@/hooks/useSessionBulkActions';
+import { useSessionContextMenuActions } from '@/hooks/useSessionContextMenuActions';
 
 interface ContextMenu {
   x: number;
@@ -78,6 +62,7 @@ interface ProjectHeaderMenu {
   y: number;
   projectId: number | null;
   projectName: string;
+  sessionIds: number[];
 }
 
 interface GroupedProject {
@@ -94,7 +79,6 @@ const TOP_PROJECTS_LIMIT = 5;
 export function Sessions() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
-  const { showError } = useToast();
   const {
     setProjectPageId,
     setCurrentPage,
@@ -128,7 +112,7 @@ export function Sessions() {
   const [indicators, setIndicators] = useState<SessionIndicatorSettings>(() =>
     loadIndicatorSettings(),
   );
-  const [splitSettings, setSplitSettings] = useState(() => loadSplitSettings());
+  const splitSettings = useSettingsStore((s) => s.splitSettings);
   const ctxRef = useRef<HTMLDivElement>(null);
   const projectCtxRef = useRef<HTMLDivElement>(null);
   const [customScrollParent, setCustomScrollParent] = useState<
@@ -148,7 +132,6 @@ export function Sessions() {
   } = useSessionsFilters(viewMode);
   const reloadDisplaySettings = useCallback(() => {
     const sessionSettings = loadSessionSettings();
-    setSplitSettings(loadSplitSettings());
     setIndicators(loadIndicatorSettings());
     setMinDuration(
       sessionSettings.minSessionDurationSeconds > 0
@@ -170,6 +153,50 @@ export function Sessions() {
     buildFetchParams,
     reloadVersion: dataReloadVersion,
   });
+
+  const [manualSessions, setManualSessions] = useState<
+    ManualSessionWithProject[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    manualSessionsApi
+      .getManualSessions({
+        dateRange: activeDateRange,
+        projectId: undefined,
+      })
+      .then((data) => {
+        if (!cancelled) setManualSessions(data);
+      })
+      .catch(console.error);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDateRange, dataReloadVersion]);
+
+  const mergedSessions = useMemo(() => {
+    if (manualSessions.length === 0) return sessions;
+    const manualAsSession: SessionWithApp[] = manualSessions.map((m) => ({
+      id: m.id,
+      app_id: m.app_id ?? 0,
+      start_time: m.start_time,
+      end_time: m.end_time,
+      date: m.date,
+      duration_seconds: m.duration_seconds,
+      app_name: t('project_page.text.manual_session', 'Sesja ręczna'),
+      executable_name: 'manual',
+      project_id: m.project_id,
+      project_name: m.project_name,
+      project_color: m.project_color,
+      comment: m.title,
+      files: [],
+      isManual: true,
+      session_type: m.session_type,
+    } as SessionWithApp & { isManual: true; session_type: string }));
+    return [...sessions, ...manualAsSession].sort((a, b) =>
+      b.start_time.localeCompare(a.start_time),
+    );
+  }, [sessions, manualSessions, t]);
+
   const {
     aiBreakdowns,
     getScoreBreakdownData,
@@ -187,7 +214,6 @@ export function Sessions() {
     selectedSplitAnalysis,
     selectedSplitAnalysisLoading,
   } = useSessionSplitAnalysis({
-    getScoreBreakdownData,
     multiSplitSession,
     sessions,
     splitSettings,
@@ -325,240 +351,6 @@ export function Sessions() {
     [setProjectCtxMenu, setCtxMenu],
   );
 
-  const openMultiSplitModal = (session: SessionWithApp) => {
-    const derivedAnalysis = buildAnalysisFromBreakdown(
-      session.id,
-      getScoreBreakdownData(session.id),
-      splitSettings.toleranceThreshold,
-      splitSettings.maxProjectsPerSession,
-    );
-    const splitSuggested =
-      isSessionSplittable(session) || (derivedAnalysis?.is_splittable ?? false);
-    if (!splitSuggested) return;
-
-    setCtxMenu(null);
-    setMultiSplitSession(session);
-  };
-
-  const handleProjectContextMenu = useCallback(
-    (e: React.MouseEvent, projectId: number | null, projectName: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setCtxMenu(null);
-      setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName });
-    },
-    [setCtxMenu, setProjectCtxMenu],
-  );
-
-  const handleAssign = useCallback(
-    async (projectId: number | null, source?: string) => {
-      if (!ctxMenu) return;
-      try {
-        await assignSessions(ctxMenu.session.id, projectId, source);
-      } catch (err) {
-        logTauriError('assign session to project', err);
-      }
-      setCtxMenu(null);
-    },
-    [assignSessions, ctxMenu, setCtxMenu],
-  );
-
-  const ensureCommentForBoost = useCallback(
-    async (sessionIds: number[]) => {
-      if (sessionIds.length === 0) return true;
-
-      const commentById = new Map(sessions.map((s) => [s.id, s.comment]));
-      const missingIds = findSessionIdsMissingComment(
-        sessionIds,
-        (id) => commentById.get(id) ?? null,
-      );
-
-      if (missingIds.length === 0) return true;
-
-      const label =
-        missingIds.length === 1
-          ? t('sessions.prompts.boost_label_single')
-          : t('sessions.prompts.boost_label_multi', {
-              count: missingIds.length,
-            });
-      const entered = await new Promise<string | null>((resolve) => {
-        setPromptConfig({
-          title: t('sessions.prompts.boost_requires_comment_prompt', { label }),
-          initialValue: '',
-          onConfirm: (val) => resolve(val),
-          onCancel: () => resolve(null),
-        });
-      });
-      const normalized = entered?.trim() ?? '';
-
-      if (!normalized) {
-        showError(t('sessions.prompts.boost_comment_required'));
-        return false;
-      }
-
-      try {
-        await updateSessionComments(missingIds, normalized);
-        const missingSet = new Set(missingIds);
-        setSessions((prev) => {
-          const next = prev.map((s) =>
-            missingSet.has(s.id) ? { ...s, comment: normalized } : s,
-          );
-          sessionsRef.current = next;
-          return next;
-        });
-        return true;
-      } catch (err) {
-        logTauriError('save required boost comment', err);
-        showError(
-          t('sessions.prompts.boost_comment_save_failed', {
-            error: String(err),
-          }),
-        );
-        return false;
-      }
-    },
-    [sessions, sessionsRef, setPromptConfig, setSessions, showError, t, updateSessionComments],
-  );
-
-  const handleSetRateMultiplier = useCallback(
-    async (multiplier: number | null) => {
-      if (!ctxMenu) return;
-      const sessionId = ctxMenu.session.id;
-      try {
-        if (requiresCommentForMultiplierBoost(multiplier)) {
-          const ok = await ensureCommentForBoost([sessionId]);
-          if (!ok) return;
-        }
-        await updateSessionRateMultipliers(sessionId, multiplier);
-        setCtxMenu(null);
-      } catch (err) {
-        logTauriError('update session rate multiplier', err);
-        showError(
-          t('sessions.errors.update_multiplier', { error: String(err) }),
-        );
-      }
-    },
-    [
-      ctxMenu,
-      ensureCommentForBoost,
-      showError,
-      t,
-      updateSessionRateMultipliers,
-      setCtxMenu,
-    ],
-  );
-
-  const handleCustomRateMultiplier = useCallback(async () => {
-    if (!ctxMenu) return;
-    const current =
-      typeof ctxMenu.session.rate_multiplier === 'number'
-        ? ctxMenu.session.rate_multiplier
-        : 1;
-    const suggested = current > 1 ? current : 2;
-
-    setPromptConfig({
-      title: t('sessions.prompts.multiplier_title'),
-      description: t('sessions.prompts.multiplier_desc'),
-      initialValue: String(suggested),
-      onConfirm: async (raw) => {
-        const parsed = parsePositiveRateMultiplierInput(raw);
-        if (parsed == null) {
-          showError(t('sessions.prompts.multiplier_positive'));
-          return;
-        }
-        await handleSetRateMultiplier(parsed);
-      },
-    });
-    setCtxMenu(null);
-  }, [
-    ctxMenu,
-    handleSetRateMultiplier,
-    showError,
-    t,
-    setPromptConfig,
-    setCtxMenu,
-  ]);
-
-  const handleEditComment = useCallback(async () => {
-    if (!ctxMenu) return;
-    const current = ctxMenu.session.comment ?? '';
-    const sessionId = ctxMenu.session.id;
-
-    setPromptConfig({
-      title: t('sessions.prompts.session_comment_title'),
-      description: t('sessions.prompts.session_comment_desc'),
-      initialValue: current,
-      onConfirm: async (raw) => {
-        const trimmed = raw.trim();
-        try {
-          await updateOneSessionComment(sessionId, trimmed || null);
-          setSessions((prev) => {
-            const next = prev.map((s) =>
-              s.id === sessionId ? { ...s, comment: trimmed || null } : s,
-            );
-            sessionsRef.current = next;
-            return next;
-          });
-        } catch (err) {
-          logTauriError('update session comment', err);
-        }
-      },
-    });
-    setCtxMenu(null);
-  }, [ctxMenu, sessionsRef, setCtxMenu, setPromptConfig, setSessions, t, updateOneSessionComment]);
-
-  const handleAcceptSuggestion = useCallback(
-    async (session: SessionWithApp, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        await assignSessions(
-          session.id,
-          session.suggested_project_id ?? null,
-          'ai_suggestion_accept',
-        );
-        setDismissedSuggestions((prev) => {
-          const next = new Set(prev);
-          next.delete(session.id);
-          return next;
-        });
-      } catch (err) {
-        logTauriError('accept AI suggestion', err);
-      }
-    },
-    [assignSessions, setDismissedSuggestions],
-  );
-
-  const handleRejectSuggestion = useCallback(
-    async (session: SessionWithApp, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        await assignSessions(session.id, null, 'ai_suggestion_reject');
-        setDismissedSuggestions((prev) => {
-          const next = new Set(prev);
-          next.add(session.id);
-          return next;
-        });
-        setSessions((prev) => {
-          const next = prev.map((item) =>
-            item.id === session.id
-              ? {
-                  ...item,
-                  suggested_project_id: undefined,
-                  suggested_project_name: undefined,
-                  suggested_confidence: undefined,
-                }
-              : item,
-          );
-          sessionsRef.current = next;
-          return next;
-        });
-      } catch (err) {
-        logTauriError('reject AI suggestion', err);
-      }
-    },
-    [assignSessions, sessionsRef, setDismissedSuggestions, setSessions],
-  );
-
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
     for (const project of projects) {
@@ -569,6 +361,102 @@ export function Sessions() {
     }
     return map;
   }, [projects]);
+
+  const groupedByProject = useMemo(() => {
+    const groups = new Map<string, GroupedProject>();
+    for (const session of mergedSessions) {
+      const projectName = session.project_name ?? t('sessions.menu.unassigned');
+      const normalizedProjectName = projectName.trim().toLowerCase();
+      const inferredProjectId =
+        session.project_id ??
+        (normalizedProjectName
+          ? (projectIdByName.get(normalizedProjectName) ?? null)
+          : null);
+      const isUnassigned = inferredProjectId == null;
+      const projectId = inferredProjectId;
+      const projectColor = session.project_color ?? '#64748b';
+      const key = isUnassigned
+        ? UNASSIGNED_PROJECT_SENTINEL
+        : typeof projectId === 'number' && projectId > 0
+          ? `id:${projectId}`
+          : `name:${projectName.trim().toLowerCase()}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          projectId,
+          projectName,
+          projectColor,
+          totalSeconds: 0,
+          boostedCount: 0,
+          sessions: [],
+        });
+      }
+      const group = groups.get(key)!;
+      if (
+        group.projectId == null &&
+        typeof projectId === 'number' &&
+        projectId > 0
+      ) {
+        group.projectId = projectId;
+      }
+      group.totalSeconds += session.duration_seconds;
+      if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
+      group.sessions.push(session);
+    }
+    return Array.from(groups.values()).sort((a, b) => {
+      const aUnassigned = a.projectId == null;
+      const bUnassigned = b.projectId == null;
+      if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
+      return b.totalSeconds - a.totalSeconds;
+    });
+  }, [mergedSessions, t, projectIdByName]);
+
+  const handleProjectContextMenu = useCallback(
+    (e: React.MouseEvent, projectId: number | null, projectName: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCtxMenu(null);
+      const group = groupedByProject.find(
+        (g) => g.projectName === projectName,
+      );
+      const sessionIds = group?.sessions.map((s) => s.id) ?? [];
+      setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName, sessionIds });
+    },
+    [setCtxMenu, setProjectCtxMenu, groupedByProject],
+  );
+
+  const {
+    ensureCommentForBoost,
+    handleAcceptSuggestion,
+    handleRejectSuggestion,
+  } = useSessionBulkActions({
+    assignSessions,
+    updateSessionComments,
+    setSessions,
+    sessionsRef,
+    setDismissedSuggestions,
+    setPromptConfig,
+    mergedSessions,
+  });
+
+  const {
+    handleAssign,
+    handleSetRateMultiplier,
+    handleCustomRateMultiplier,
+    handleEditComment,
+    openMultiSplitModal,
+  } = useSessionContextMenuActions({
+    ctxMenu,
+    setCtxMenu,
+    setPromptConfig,
+    setMultiSplitSession,
+    assignSessions,
+    updateSessionRateMultipliers,
+    updateOneSessionComment,
+    setSessions,
+    sessionsRef,
+    isSessionSplittable,
+    ensureCommentForBoost,
+  });
 
   const assignProjectSections = useMemo(() => {
     const activeProjects = projects.filter((p) => !p.frozen_at);
@@ -679,54 +567,6 @@ export function Sessions() {
   );
   const showAssignSectionHeaders = assignProjectListMode !== 'alpha_active';
 
-  const groupedByProject = useMemo(() => {
-    const groups = new Map<string, GroupedProject>();
-    for (const session of sessions) {
-      const projectName = session.project_name ?? t('sessions.menu.unassigned');
-      const normalizedProjectName = projectName.trim().toLowerCase();
-      const inferredProjectId =
-        session.project_id ??
-        (normalizedProjectName
-          ? (projectIdByName.get(normalizedProjectName) ?? null)
-          : null);
-      const isUnassigned = inferredProjectId == null;
-      const projectId = inferredProjectId;
-      const projectColor = session.project_color ?? '#64748b';
-      const key = isUnassigned
-        ? UNASSIGNED_PROJECT_SENTINEL
-        : typeof projectId === 'number' && projectId > 0
-          ? `id:${projectId}`
-          : `name:${projectName.trim().toLowerCase()}`;
-      if (!groups.has(key)) {
-        groups.set(key, {
-          projectId,
-          projectName,
-          projectColor,
-          totalSeconds: 0,
-          boostedCount: 0,
-          sessions: [],
-        });
-      }
-      const group = groups.get(key)!;
-      if (
-        group.projectId == null &&
-        typeof projectId === 'number' &&
-        projectId > 0
-      ) {
-        group.projectId = projectId;
-      }
-      group.totalSeconds += session.duration_seconds;
-      if ((session.rate_multiplier ?? 1) > 1.000_001) group.boostedCount++;
-      group.sessions.push(session);
-    }
-    return Array.from(groups.values()).sort((a, b) => {
-      const aUnassigned = a.projectId == null;
-      const bUnassigned = b.projectId == null;
-      if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
-      return b.totalSeconds - a.totalSeconds;
-    });
-  }, [sessions, t, projectIdByName]);
-
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }
     | {
@@ -762,14 +602,14 @@ export function Sessions() {
   const unassignedGroup = groupedByProject.find((g) => g.projectId == null);
   const aiSessionsCount = useMemo(
     () =>
-      sessions.filter(
+      mergedSessions.filter(
         (s) =>
           aiBreakdowns.has(s.id) ||
           s.suggested_project_id != null ||
           s.suggested_confidence != null ||
           s.ai_assigned,
       ).length,
-    [sessions, aiBreakdowns],
+    [mergedSessions, aiBreakdowns],
   );
   const resolveGroupProjectId = useCallback(
     (group: GroupedProject) => {
@@ -809,7 +649,7 @@ export function Sessions() {
     ? isSessionSplittable(ctxMenu.session)
     : false;
   const sessionsSummaryText = t('sessions.summary', {
-    sessions: sessions.length,
+    sessions: mergedSessions.length,
     ai: aiSessionsCount,
     projects: groupedByProject.length,
   });
@@ -881,235 +721,49 @@ export function Sessions() {
         onAcceptSuggestion={handleAcceptSuggestion}
         onRejectSuggestion={handleRejectSuggestion}
         onSplitClick={openMultiSplitModal}
-        isEmpty={sessions.length === 0}
+        isEmpty={mergedSessions.length === 0}
         hasMore={hasMore}
         onLoadMore={loadMore}
       />
 
-      {/* Context menu for assigning session to a project */}
       {ctxMenu && (
-        <div
-          ref={ctxRef}
-          className="fixed z-50 min-w-[240px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
-          style={{
-            left: ctxMenuPlacement?.left ?? ctxMenu.x,
-            top: ctxMenuPlacement?.top ?? ctxMenu.y,
-            maxHeight: ctxMenuPlacement?.maxHeight,
+        <SessionContextMenu
+          menu={ctxMenu}
+          menuRef={ctxRef}
+          placement={ctxMenuPlacement}
+          splitSuggested={ctxMenuSplitSuggested}
+          assignProjectListMode={assignProjectListMode}
+          onAssignProjectListModeChange={setAssignProjectListMode}
+          assignProjectSections={assignProjectSections}
+          assignProjectsCount={assignProjectsCount}
+          showAssignSectionHeaders={showAssignSectionHeaders}
+          onAcceptSuggestion={() =>
+            void handleAcceptSuggestion(ctxMenu.session, {
+              stopPropagation: () => {},
+            } as React.MouseEvent)
+          }
+          onRejectSuggestion={() =>
+            void handleRejectSuggestion(ctxMenu.session, {
+              stopPropagation: () => {},
+            } as React.MouseEvent)
+          }
+          onSetRateMultiplier={(multiplier) =>
+            void handleSetRateMultiplier(multiplier)
+          }
+          onCustomRateMultiplier={() => {
+            void handleCustomRateMultiplier();
           }}
-        >
-          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-            {t('sessions.menu.session_actions', {
-              app: ctxMenu.session.app_name,
-            })}
-          </div>
-          {ctxMenu.session.suggested_project_id !== undefined &&
-            ctxMenu.session.suggested_project_name &&
-            ctxMenu.session.project_name === null && (
-              <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
-                  <span className="text-[11px] text-sky-200">
-                    {t('sessions.menu.ai_suggests')}{' '}
-                    <span className="font-medium">
-                      {localizeProjectLabel(
-                        ctxMenu.session.suggested_project_name,
-                        {
-                          projectId:
-                            ctxMenu.session.suggested_project_id ?? null,
-                        },
-                      )}
-                    </span>
-                    {ctxMenu.session.suggested_confidence !== undefined && (
-                      <span className="ml-1 opacity-75">
-                        (
-                        {(ctxMenu.session.suggested_confidence * 100).toFixed(
-                          0,
-                        )}
-                        %)
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 mt-1.5">
-                  <button
-                    className="rounded-sm bg-sky-500/25 hover:bg-sky-500/40 px-2 py-1 text-[11px] text-sky-100 transition-colors cursor-pointer"
-                    onClick={() =>
-                      void handleAcceptSuggestion(ctxMenu.session, {
-                        stopPropagation: () => {},
-                      } as React.MouseEvent)
-                    }
-                  >
-                    {t('sessions.menu.accept')}
-                  </button>
-                  <button
-                    className="rounded-sm hover:bg-muted/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors cursor-pointer"
-                    onClick={() =>
-                      void handleRejectSuggestion(ctxMenu.session, {
-                        stopPropagation: () => {},
-                      } as React.MouseEvent)
-                    }
-                  >
-                    {t('sessions.menu.reject')}
-                  </button>
-                </div>
-              </div>
-            )}
-          <div className="h-px bg-border my-1" />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            {t('sessions.menu.rate_multiplier')}{' '}
-            <span className="font-mono">
-              {formatMultiplierLabel(ctxMenu.session.rate_multiplier)}
-            </span>
-          </div>
-          <div className="flex gap-1.5 px-1.5 pb-1.5">
-            <button
-              className="flex-1 rounded border border-emerald-500/20 bg-emerald-500/10 py-2 text-xs font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 cursor-pointer"
-              onClick={() => void handleSetRateMultiplier(2)}
-            >
-              {t('sessions.menu.boost_x2')}
-            </button>
-            <button
-              className="flex-1 rounded border border-border bg-secondary/30 py-2 text-xs font-medium transition-colors hover:bg-secondary/60 cursor-pointer"
-              onClick={() => void handleCustomRateMultiplier()}
-            >
-              {t('sessions.menu.custom')}
-            </button>
-          </div>
-          <div className="h-px bg-border my-1" />
-          <button
-            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-            onClick={() => void handleEditComment()}
-          >
-            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span>
-              {ctxMenu.session.comment
-                ? t('sessions.menu.edit_comment')
-                : t('sessions.menu.add_comment')}
-            </span>
-          </button>
-          {ctxMenuSplitSuggested && (
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => {
-                openMultiSplitModal(ctxMenu.session);
-              }}
-            >
-              <span>
-                ✂️ {t('sessions.menu.split_session', 'Split session')}
-              </span>
-            </button>
-          )}
-          <div className="h-px bg-border my-1" />
-          <div className="px-2 py-1 text-[11px] text-muted-foreground">
-            {t('sessions.menu.assign_to_project')}
-          </div>
-          <div className="px-2 pb-1.5">
-            <div className="inline-flex rounded-sm border border-border/70 bg-secondary/20 p-0.5">
-              <AppTooltip
-                content={t(
-                  'sessions.menu.mode_alpha',
-                  'Aktywne alfabetycznie (A-Z)',
-                )}
-              >
-                <button
-                  type="button"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                    assignProjectListMode === 'alpha_active'
-                      ? 'bg-background text-sky-200 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => {
-                    setAssignProjectListMode('alpha_active');
-                  }}
-                >
-                  <Type className="h-3.5 w-3.5" />
-                </button>
-              </AppTooltip>
-              <AppTooltip
-                content={t(
-                  'sessions.menu.mode_new_top',
-                  'Najnowsze -> Top -> Reszta (A-Z)',
-                )}
-              >
-                <button
-                  type="button"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                    assignProjectListMode === 'new_top_rest'
-                      ? 'bg-background text-amber-300 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => {
-                    setAssignProjectListMode('new_top_rest');
-                  }}
-                >
-                  <Sparkles className="h-3.5 w-3.5" />
-                </button>
-              </AppTooltip>
-              <AppTooltip
-                content={t(
-                  'sessions.menu.mode_top_new',
-                  'Top -> Najnowsze -> Reszta (A-Z)',
-                )}
-              >
-                <button
-                  type="button"
-                  className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
-                    assignProjectListMode === 'top_new_rest'
-                      ? 'bg-background text-orange-300 shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  }`}
-                  onClick={() => {
-                    setAssignProjectListMode('top_new_rest');
-                  }}
-                >
-                  <Flame className="h-3.5 w-3.5" />
-                </button>
-              </AppTooltip>
-            </div>
-          </div>
-          <div
-            className="max-h-[min(42vh,20rem)] overflow-y-auto pr-1"
-            style={{ scrollbarGutter: 'stable' }}
-          >
-            <button
-              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-              onClick={() => handleAssign(null, 'manual_session_unassign')}
-            >
-              <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
-              <span className="truncate">{t('sessions.menu.unassigned')}</span>
-            </button>
-            {assignProjectsCount > 0 ? (
-              assignProjectSections.map((section) => (
-                <div key={section.key}>
-                  {showAssignSectionHeaders && section.projects.length > 0 && (
-                    <div className="px-2 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-muted-foreground/80">
-                      {section.label}
-                    </div>
-                  )}
-                  {section.projects.map((p) => (
-                    <button
-                      key={p.id}
-                      className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                      onClick={() =>
-                        handleAssign(p.id, 'manual_session_change')
-                      }
-                    >
-                      <div
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      <span className="truncate">{p.name}</span>
-                    </button>
-                  ))}
-                </div>
-              ))
-            ) : (
-              <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                {t('sessions.menu.no_projects')}
-              </div>
-            )}
-          </div>
-        </div>
+          onEditComment={() => {
+            void handleEditComment();
+          }}
+          onOpenSplit={() => {
+            openMultiSplitModal(ctxMenu.session);
+          }}
+          onAssign={(projectId, source) => {
+            void handleAssign(projectId, source);
+          }}
+          isManual={'isManual' in ctxMenu.session && !!(ctxMenu.session as SessionWithApp & { isManual?: boolean }).isManual}
+        />
       )}
 
       <SessionsProjectContextMenu
@@ -1126,9 +780,25 @@ export function Sessions() {
         }
         goToProjectCardLabel={t('sessions.menu.go_to_project_card')}
         noLinkedProjectCardLabel={t('sessions.menu.no_linked_project_card')}
+        bulkCommentLabel={t('sessions.menu.bulk_comment')}
         onNavigateToProject={(projectId) => {
           setProjectPageId(projectId);
           setCurrentPage('project-card');
+        }}
+        onBulkComment={(sessionIds) => {
+          setPromptConfig({
+            title: t('sessions.prompts.bulk_comment_title'),
+            description: t('sessions.prompts.bulk_comment_description', { count: sessionIds.length }),
+            initialValue: '',
+            onConfirm: async (raw) => {
+              const trimmed = raw.trim();
+              try {
+                await updateSessionComments(sessionIds, trimmed || null);
+              } catch (err) {
+                logTauriError('bulk update session comments', err);
+              }
+            },
+          });
         }}
         onClose={() => setProjectCtxMenu(null)}
       />

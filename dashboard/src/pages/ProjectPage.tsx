@@ -2,33 +2,17 @@ import * as React from 'react';
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft,
-  TimerReset,
-  Snowflake,
-  CircleOff,
   MessageSquare,
-  RefreshCw,
-  LayoutDashboard,
   History,
-  MousePointerClick,
-  CircleDollarSign,
   Trash2,
   Plus,
   PenLine,
-  FileText,
 } from 'lucide-react';
-import { TimelineChart } from '@/components/dashboard/TimelineChart';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ProjectSessionDetailDialog } from '@/components/project/ProjectSessionDetailDialog';
-import { ProjectManualSessionsCard } from '@/components/project/ProjectManualSessionsCard';
-import { ProjectRecentCommentsCard } from '@/components/project/ProjectRecentCommentsCard';
-import { ProjectSessionsTable } from '@/components/project/ProjectSessionsTable';
 import {
   dashboardApi,
   manualSessionsApi,
@@ -36,11 +20,9 @@ import {
 } from '@/lib/tauri';
 import {
   formatDuration,
-  formatMoney,
   formatMultiplierLabel,
   getErrorMessage,
   logTauriError,
-  cn,
 } from '@/lib/utils';
 import { useUIStore } from '@/store/ui-store';
 import { ReportTemplateSelector } from '@/components/reports/ReportTemplateSelector';
@@ -61,11 +43,20 @@ import {
   requiresCommentForMultiplierBoost,
 } from '@/lib/session-utils';
 import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
-import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import { loadProjectsAllTime } from '@/store/projects-cache-store';
 import { fetchAllSessions } from '@/lib/session-pagination';
 import { shouldRefreshProjectPage } from '@/lib/page-refresh-reasons';
+import { ProjectOverview } from '@/components/project-page/ProjectOverview';
+import { ProjectEstimatesSection } from '@/components/project-page/ProjectEstimatesSection';
+import { ProjectTimelineSection } from '@/components/project-page/ProjectTimelineSection';
+import {
+  ProjectSessionsList,
+  type AutoSessionRow,
+  type ManualSessionRow,
+  type ProjectSessionRow,
+  type RecentCommentItem,
+} from '@/components/project-page/ProjectSessionsList';
 
 function RateMultiplierPanel({
   description,
@@ -113,14 +104,7 @@ function RateMultiplierPanel({
   );
 }
 
-type AutoSessionRow = SessionWithApp & { isManual: false };
-
-type ManualSessionRow = SessionWithApp &
-  ManualSessionWithProject & {
-    isManual: true;
-  };
-
-type ProjectSessionRow = AutoSessionRow | ManualSessionRow;
+// AutoSessionRow, ManualSessionRow, ProjectSessionRow imported from ProjectSessionsList
 
 type ContextMenu =
   | {
@@ -137,13 +121,7 @@ type ContextMenu =
       sessions: ProjectSessionRow[];
     };
 
-type RecentCommentItem = {
-  key: string;
-  start_time: string;
-  duration_seconds: number;
-  comment: string;
-  source: string;
-};
+// RecentCommentItem imported from ProjectSessionsList
 
 function upsertProjectInList(
   projects: ProjectWithStats[],
@@ -775,345 +753,90 @@ export function ProjectPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="sm" onClick={handleBack} className="h-8">
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          {t('project_page.text.back_to_projects')}
-        </Button>
-        <div className="h-4 w-[1px] bg-border" />
-        <h1
-          data-project-id={project.id}
-          data-project-name={project.name}
-          className="text-xl font-semibold flex items-center gap-2"
-        >
-          <ProjectColorPicker
-            currentColor={project.color}
-            labels={{
-              changeColor: t('project_page.text.change_color'),
-              chooseColor: t('project_page.text.choose_color'),
-              saveColor: t('project_page.text.save_color'),
-            }}
-            onSave={async (color) => {
-              await projectsApi.updateProject(project.id, color);
-              setProject({ ...project, color });
-            }}
-          />
-          {project.name}
-        </h1>
-        <Button
-          size="sm"
-          className="ml-auto bg-sky-600 hover:bg-sky-700 text-white"
-          onClick={() => setShowTemplateSelector(true)}
-        >
-          <FileText className="mr-2 h-4 w-4" />
-          {t('project_page.text.generate_report_pdf')}
-        </Button>
-      </div>
+      <ProjectOverview
+        project={project}
+        onBack={handleBack}
+        onGenerateReport={() => setShowTemplateSelector(true)}
+        onSaveColor={async (color) => {
+          await projectsApi.updateProject(project.id, color);
+          setProject({ ...project, color });
+        }}
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              {t('project_page.text.project_overview')}
-            </CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  handleAction(
-                    () => projectsApi.resetProjectTime(project.id),
-                    t(
-                      'project_page.text.reset_tracked_time_for_this_project_this_cannot_be_undon',
-                    ),
-                  )
-                }
-                title={t('project_page.text.reset_time')}
-              >
-                <TimerReset className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className={cn(
-                  project.frozen_at && 'text-blue-400 bg-blue-500/10',
-                )}
-                onClick={() =>
-                  handleAction(() =>
-                    project.frozen_at
-                      ? projectsApi.unfreezeProject(project.id)
-                      : projectsApi.freezeProject(project.id),
-                  )
-                }
-                title={
-                  project.frozen_at
-                    ? t('project_page.text.unfreeze_project')
-                    : t('project_page.text.freeze_project')
-                }
-              >
-                <Snowflake className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive"
-                onClick={() =>
-                  handleAction(
-                    () => projectsApi.excludeProject(project.id),
-                    t('project_page.text.exclude_this_project'),
-                  )
-                }
-                title={t('project_page.text.exclude_project')}
-              >
-                <CircleOff className="h-4 w-4" />
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex flex-col gap-1">
-              <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                {t('project_page.text.total_time_value')}
-              </p>
-              <div className="flex items-baseline gap-4">
-                <p className="text-4xl font-[200] text-emerald-400">
-                  {formatDuration(project.total_seconds)}
-                </p>
-                <span className="text-2xl font-[100] opacity-30">/</span>
-                <p className="text-3xl font-[200] text-emerald-400/80">
-                  {formatMoney(estimate, currencyCode)}
-                </p>
-              </div>
-            </div>
+      <ProjectEstimatesSection
+        project={project}
+        extraInfo={extraInfo}
+        estimate={estimate}
+        currencyCode={currencyCode}
+        busy={busy}
+        onResetTime={() =>
+          void handleAction(
+            () => projectsApi.resetProjectTime(project.id),
+            t(
+              'project_page.text.reset_tracked_time_for_this_project_this_cannot_be_undon',
+            ),
+          )
+        }
+        onToggleFreeze={() =>
+          void handleAction(() =>
+            project.frozen_at
+              ? projectsApi.unfreezeProject(project.id)
+              : projectsApi.freezeProject(project.id),
+          )
+        }
+        onExclude={() =>
+          void handleAction(
+            () => projectsApi.excludeProject(project.id),
+            t('project_page.text.exclude_this_project'),
+          )
+        }
+        onCompact={handleCompact}
+      />
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              {(
-                [
-                  {
-                    label: t('project_page.text.sessions'),
-                    value: extraInfo?.db_stats.session_count || 0,
-                  },
-                  {
-                    label: t('project_page.text.unique_files'),
-                    value: extraInfo?.db_stats.file_activity_count || 0,
-                  },
-                  {
-                    label: t('project_page.text.manual_sessions'),
-                    value: extraInfo?.db_stats.manual_session_count || 0,
-                    icon: MousePointerClick,
-                    iconBg: 'bg-orange-500/10',
-                    iconText: 'text-orange-400',
-                  },
-                  {
-                    label: t('project_page.text.comments'),
-                    value: extraInfo?.db_stats.comment_count || 0,
-                    icon: MessageSquare,
-                    iconBg: 'bg-sky-500/10',
-                    iconText: 'text-sky-400',
-                  },
-                  {
-                    label: t('project_page.text.boosted_sessions'),
-                    value: extraInfo?.db_stats.boosted_session_count || 0,
-                    icon: CircleDollarSign,
-                    iconBg: 'bg-emerald-500/10',
-                    iconText: 'text-emerald-400',
-                  },
-                ] as {
-                  label: string;
-                  value: number;
-                  icon?: React.ElementType;
-                  iconBg?: string;
-                  iconText?: string;
-                }[]
-              ).map(({ label, value, icon: Icon, iconBg, iconText }) => (
-                <div
-                  key={label}
-                  className="rounded-lg bg-secondary/20 p-4 border border-border/40 flex flex-col justify-between"
-                >
-                  <p className="text-[10px] text-muted-foreground uppercase font-bold mb-1">
-                    {label}
-                  </p>
-                  <p className="text-2xl font-light flex items-center justify-between">
-                    <span>{value}</span>
-                    {Icon && value > 0 && (
-                      <div
-                        className={`h-6 w-6 rounded flex items-center justify-center ${iconBg} ${iconText}`}
-                      >
-                        <Icon className="h-3.5 w-3.5" />
-                      </div>
-                    )}
-                  </p>
-                </div>
-              ))}
-            </div>
+      <ProjectTimelineSection
+        project={project}
+        data={filteredTimeline}
+        isLoading={loading && timelineData.length === 0}
+        errorMessage={timelineError}
+        onBarClick={(date) => {
+          setSessionDialogDate(date);
+          setSessionDialogOpen(true);
+        }}
+        onBarContextMenu={(date, x, y) => {
+          const dayLogSessions: ProjectSessionRow[] = recentSessions
+            .filter((s) => s.start_time.startsWith(date))
+            .map((s) => ({ ...s, isManual: false as const }));
+          const dayManualSessions: ProjectSessionRow[] = manualSessions
+            .filter((s) => s.start_time.startsWith(date))
+            .map(toManualSessionRow);
+          const daySessions = [...dayLogSessions, ...dayManualSessions];
+          setCtxMenu({
+            type: 'chart',
+            x,
+            y,
+            date,
+            sessions: daySessions,
+          });
+        }}
+      />
 
-            {project.assigned_folder_path && (
-              <div className="space-y-1">
-                <p className="text-[10px] text-muted-foreground uppercase font-bold">
-                  {t('project_page.text.assigned_folder')}
-                </p>
-                <p
-                  className="text-sm font-mono bg-secondary/30 p-2 rounded truncate transition-colors hover:bg-secondary/50 cursor-default"
-                  title={project.assigned_folder_path}
-                >
-                  {project.assigned_folder_path}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-              {t('project_page.text.top_applications')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {extraInfo?.top_apps.map((app, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 p-2 rounded-md hover:bg-secondary/20 transition-colors"
-                >
-                  <div
-                    className="h-2.5 w-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: app.color || '#64748b' }}
-                  />
-                  <span className="text-sm truncate flex-1 font-medium">
-                    {app.name}
-                  </span>
-                  <span className="font-mono text-xs text-emerald-400 shrink-0">
-                    {formatDuration(app.seconds)}
-                  </span>
-                </div>
-              ))}
-              {(!extraInfo?.top_apps || extraInfo.top_apps.length === 0) && (
-                <p className="text-sm text-muted-foreground italic text-center py-4">
-                  {t('project_page.text.no_application_data_yet')}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-dashed border-border/60">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs text-muted-foreground uppercase font-bold">
-                  {t('project_page.text.data_management')}
-                </span>
-                <Badge variant="outline" className="text-[10px] opacity-70">
-                  ~
-                  {(
-                    (extraInfo?.db_stats.estimated_size_bytes || 0) / 1024
-                  ).toFixed(1)}{' '}
-                  KB
-                </Badge>
-              </div>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="w-full text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border-amber-500/20"
-                onClick={handleCompact}
-                disabled={
-                  !extraInfo ||
-                  extraInfo.db_stats.file_activity_count === 0 ||
-                  !!busy
-                }
-              >
-                {busy === 'compact' ? (
-                  <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <LayoutDashboard className="mr-2 h-3.5 w-3.5" />
-                )}
-                {t('project_page.text.compact_detailed_records')}
-              </Button>
-              <p className="text-[10px] text-muted-foreground mt-2 px-1 leading-tight">
-                {t(
-                  'project_page.text.compaction_removes_detailed_file_level_history_while_pre',
-                )}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        <TimelineChart
-          data={filteredTimeline}
-          presentation={{
-            title: t('project_page.timeline.activity_over_time'),
-            projectColors: project ? { [project.name]: project.color } : {},
-            granularity: 'day',
-            heightClassName: 'h-64',
-          }}
-          interaction={{
-            onBarClick: (date) => {
-              setSessionDialogDate(date);
-              setSessionDialogOpen(true);
-            },
-            onBarContextMenu: (date, x, y) => {
-              const dayLogSessions: ProjectSessionRow[] = recentSessions
-                .filter((s) => s.start_time.startsWith(date))
-                .map((s) => ({ ...s, isManual: false as const }));
-              const dayManualSessions: ProjectSessionRow[] = manualSessions
-                .filter((s) => s.start_time.startsWith(date))
-                .map(toManualSessionRow);
-              const daySessions = [...dayLogSessions, ...dayManualSessions];
-              setCtxMenu({
-                type: 'chart',
-                x,
-                y,
-                date,
-                sessions: daySessions,
-              });
-            },
-          }}
-          state={{
-            isLoading: loading && timelineData.length === 0,
-            errorMessage: timelineError,
-          }}
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ProjectManualSessionsCard
-            sessions={manualSessions}
-            labels={{
-              title: t('project_page.text.manual_sessions'),
-              addManual: t('project_page.text.add_manual'),
-              valueAdded: t('project_page.text.value_added'),
-              emptyText: t('project_page.text.no_manual_sessions_recorded'),
-            }}
-            formatDuration={formatDuration}
-            onAddManual={() => {
-              setEditManualSession(null);
-              setSessionDialogDate(undefined);
-              setSessionDialogOpen(true);
-            }}
-            onEditManual={(session) => {
-              setEditManualSession(session);
-              setSessionDialogOpen(true);
-            }}
-          />
-
-          <ProjectRecentCommentsCard
-            comments={recentComments}
-            labels={{
-              title: t('project_page.text.recent_comments'),
-              emptyText: t('project_page.text.no_comments_found'),
-            }}
-            formatDuration={formatDuration}
-          />
-        </div>
-
-        <ProjectSessionsTable
-          groupedSessions={groupedSessions}
-          sessionCountLabel={sessionCountLabel}
-          onSessionContextMenu={handleContextMenu}
-          onEditManualSession={(session) => {
-            setEditManualSession(session);
-            setSessionDialogOpen(true);
-          }}
-          onEditComment={handleEditCommentForSession}
-        />
-      </div>
+      <ProjectSessionsList
+        manualSessions={manualSessions}
+        recentComments={recentComments}
+        groupedSessions={groupedSessions}
+        sessionCountLabel={sessionCountLabel}
+        onSessionContextMenu={handleContextMenu}
+        onAddManual={() => {
+          setEditManualSession(null);
+          setSessionDialogDate(undefined);
+          setSessionDialogOpen(true);
+        }}
+        onEditManual={(session) => {
+          setEditManualSession(session);
+          setSessionDialogOpen(true);
+        }}
+        onEditComment={handleEditCommentForSession}
+      />
 
       {ctxMenu && ctxMenu.type === 'chart' && (
         <div

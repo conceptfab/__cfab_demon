@@ -85,4 +85,3 @@ pub fn migrate_legacy_json_files(base_dir: &Path) -> Result<usize, String> {
 
     Ok(migrated)
 }
-

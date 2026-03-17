@@ -3,7 +3,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use native_windows_gui as nwg;
@@ -11,7 +11,7 @@ use rusqlite::OptionalExtension;
 use timeflow_shared::session_settings;
 
 use crate::i18n::{self, Lang, TrayText};
-use crate::process_utils::{collect_process_entries, no_console};
+use crate::win_process_snapshot::{collect_process_entries, no_console};
 use crate::APP_NAME;
 
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
@@ -48,20 +48,19 @@ struct AttentionState {
 
 fn query_unassigned_attention_count() -> Result<i64, String> {
     let base_dir = crate::config::config_dir().map_err(|e| e.to_string())?;
-    let db_path = crate::config::dashboard_db_path().map_err(|e| e.to_string())?;
-    if !db_path.exists() {
-        return Ok(0);
-    }
-
     let min_duration_sec =
         session_settings::read_session_settings(&base_dir).min_session_duration_seconds;
-    let conn = rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|e| format!("Failed to open dashboard DB '{}': {}", db_path.display(), e))?;
-    conn.busy_timeout(Duration::from_millis(2000))
-        .map_err(|e| format!("Failed to configure dashboard DB busy_timeout: {}", e))?;
+    let conn = match crate::config::open_dashboard_db_readonly() {
+        Ok(conn) => conn,
+        Err(error) => {
+            if let Ok(db_path) = crate::config::dashboard_db_path() {
+                if !db_path.exists() {
+                    return Ok(0);
+                }
+            }
+            return Err(format!("Failed to open dashboard DB for tray: {}", error));
+        }
+    };
 
     let table_exists = conn
         .query_row(
@@ -88,7 +87,7 @@ fn query_unassigned_attention_count() -> Result<i64, String> {
     .map_err(|e| format!("Failed to query unassigned sessions for tray: {}", e))
 }
 
-fn refresh_attention_state(state: &Rc<RefCell<AttentionState>>, force: bool) -> i64 {
+fn refresh_attention_state(state: &RefCell<AttentionState>, force: bool) -> i64 {
     let now = Instant::now();
     let should_refresh = {
         let snapshot = state.borrow();
@@ -122,6 +121,110 @@ fn build_tray_tip(lang: Lang, attention: i64) -> String {
         )
     } else {
         format!("{} - {}", APP_NAME, lang.t(TrayText::RunningInBackground))
+    }
+}
+
+/// Groups all tray-related state into a single struct to reduce Rc/RefCell clones.
+struct TrayState {
+    tray: RefCell<nwg::TrayNotification>,
+    menu: nwg::Menu,
+    menu_exit: RefCell<nwg::MenuItem>,
+    menu_restart: RefCell<nwg::MenuItem>,
+    menu_dashboard: RefCell<nwg::MenuItem>,
+    icon: nwg::Icon,
+    icon_attention: nwg::Icon,
+    current_lang: Cell<Lang>,
+    attention_state: RefCell<AttentionState>,
+    last_tray_click: Cell<Option<Instant>>,
+    action: Cell<TrayExitAction>,
+    // Stored handles for comparisons in the event handler
+    tray_handle: nwg::ControlHandle,
+    tip_timer_handle: nwg::ControlHandle,
+    exit_handle: nwg::ControlHandle,
+    restart_handle: nwg::ControlHandle,
+    dashboard_handle: nwg::ControlHandle,
+}
+
+impl TrayState {
+    fn update_tray_appearance(&self, tray: &nwg::TrayNotification, attention: i64, lang: Lang) {
+        tray.set_tip(&build_tray_tip(lang, attention));
+        if attention > 0 {
+            tray.set_icon(&self.icon_attention);
+        } else {
+            tray.set_icon(&self.icon);
+        }
+    }
+
+    fn handle_context_menu(&self, handle: nwg::ControlHandle) {
+        if handle == self.tray_handle {
+            let lang = self.current_lang.get();
+            let attention = refresh_attention_state(&self.attention_state, true);
+            let tray = self.tray.borrow_mut();
+            self.update_tray_appearance(&tray, attention, lang);
+            let (x, y) = nwg::GlobalCursor::position();
+            self.menu.popup(x, y);
+        }
+    }
+
+    fn handle_mouse_press(&self, handle: nwg::ControlHandle, btn: nwg::MousePressEvent) {
+        if handle == self.tray_handle {
+            if btn == nwg::MousePressEvent::MousePressLeftUp {
+                let now = Instant::now();
+                let is_double_click = self
+                    .last_tray_click
+                    .get()
+                    .map(|last| now.duration_since(last) < TRAY_DOUBLE_CLICK_WINDOW)
+                    .unwrap_or(false);
+
+                if is_double_click {
+                    log::info!("Tray icon double-clicked, launching Dashboard");
+                    launch_dashboard(self.current_lang.get());
+                    self.last_tray_click.set(None);
+                } else {
+                    self.last_tray_click.set(Some(now));
+                }
+            }
+        }
+    }
+
+    fn handle_timer_tick(&self, handle: nwg::ControlHandle) {
+        if handle == self.tip_timer_handle {
+            let new_lang = i18n::load_language();
+            let old_lang = self.current_lang.get();
+            if new_lang != old_lang {
+                self.current_lang.set(new_lang);
+                set_menu_item_text(&self.menu_exit.borrow(), new_lang.t(TrayText::Close));
+                set_menu_item_text(
+                    &self.menu_restart.borrow(),
+                    new_lang.t(TrayText::Restart),
+                );
+                set_menu_item_text(
+                    &self.menu_dashboard.borrow(),
+                    new_lang.t(TrayText::OpenDashboard),
+                );
+            }
+
+            let lang = self.current_lang.get();
+            let attention = refresh_attention_state(&self.attention_state, false);
+            let tray = self.tray.borrow_mut();
+            self.update_tray_appearance(&tray, attention, lang);
+        }
+    }
+
+    fn handle_menu_item(&self, handle: nwg::ControlHandle, stop_signal: &Arc<AtomicBool>) {
+        if handle == self.exit_handle {
+            log::info!("Shutting down daemon");
+            stop_signal.store(true, Ordering::SeqCst);
+            nwg::stop_thread_dispatch();
+        } else if handle == self.restart_handle {
+            log::info!("Restarting daemon from tray menu");
+            self.action.set(TrayExitAction::Restart);
+            stop_signal.store(true, Ordering::SeqCst);
+            nwg::stop_thread_dispatch();
+        } else if handle == self.dashboard_handle {
+            log::info!("Launching Dashboard from tray menu");
+            launch_dashboard(self.current_lang.get());
+        }
     }
 }
 
@@ -167,7 +270,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     if initial_attention > 0 {
         tray_obj.set_icon(&icon_attention);
     }
-    let tray = Rc::new(RefCell::new(tray_obj));
+    let tray_handle = tray_obj.handle;
 
     let mut tip_refresh_timer = nwg::AnimationTimer::default();
     nwg::AnimationTimer::builder()
@@ -176,6 +279,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .active(true)
         .build(&mut tip_refresh_timer)
         .expect("Failed to create tray tip refresh timer");
+    let tip_timer_handle = tip_refresh_timer.handle.clone();
 
     let mut menu = nwg::Menu::default();
     nwg::Menu::builder()
@@ -204,6 +308,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .parent(&menu)
         .build(&mut menu_exit)
         .expect("Failed to create Exit menu item");
+    let exit_handle = menu_exit.handle;
 
     let mut menu_restart = nwg::MenuItem::default();
     nwg::MenuItem::builder()
@@ -211,6 +316,7 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .parent(&menu)
         .build(&mut menu_restart)
         .expect("Failed to create Restart menu item");
+    let restart_handle = menu_restart.handle;
 
     let mut menu_dashboard = nwg::MenuItem::default();
     nwg::MenuItem::builder()
@@ -218,131 +324,41 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .parent(&menu)
         .build(&mut menu_dashboard)
         .expect("Failed to create Launch Dashboard menu item");
+    let dashboard_handle = menu_dashboard.handle;
 
     let window_handle = window.handle;
-    let tray_handle = tray.borrow().handle;
-    let exit_handle = menu_exit.handle;
-    let restart_handle = menu_restart.handle;
-    let dashboard_handle = menu_dashboard.handle;
-    let tip_timer_handle = tip_refresh_timer.handle.clone();
-    let menu = Rc::new(menu);
-    let menu_clone = menu.clone();
-    let tray_clone = tray.clone();
-    let attention_state = Rc::new(RefCell::new(AttentionState {
-        count: initial_attention,
-        last_refresh: Instant::now(),
-    }));
-    let attention_state_clone = attention_state.clone();
 
-    let current_lang: Rc<Cell<Lang>> = Rc::new(Cell::new(initial_lang));
-    let lang_clone = current_lang.clone();
+    let state = Rc::new(TrayState {
+        tray: RefCell::new(tray_obj),
+        menu,
+        menu_exit: RefCell::new(menu_exit),
+        menu_restart: RefCell::new(menu_restart),
+        menu_dashboard: RefCell::new(menu_dashboard),
+        icon,
+        icon_attention,
+        current_lang: Cell::new(initial_lang),
+        attention_state: RefCell::new(AttentionState {
+            count: initial_attention,
+            last_refresh: Instant::now(),
+        }),
+        last_tray_click: Cell::new(None),
+        action: Cell::new(TrayExitAction::Exit),
+        tray_handle,
+        tip_timer_handle,
+        exit_handle,
+        restart_handle,
+        dashboard_handle,
+    });
 
-    let menu_exit = Rc::new(RefCell::new(menu_exit));
-    let menu_restart = Rc::new(RefCell::new(menu_restart));
-    let menu_dashboard = Rc::new(RefCell::new(menu_dashboard));
-    let menu_exit_clone = menu_exit.clone();
-    let menu_restart_clone = menu_restart.clone();
-    let menu_dashboard_clone = menu_dashboard.clone();
-
+    let state_clone = state.clone();
     let stop_clone = stop_signal.clone();
-    let action = Rc::new(Cell::new(TrayExitAction::Exit));
-    let action_clone = action.clone();
-
-    // To track double clicks on tray icon
-    let last_tray_click = Arc::new(Mutex::new(None::<Instant>));
-    let last_tray_click_clone = last_tray_click.clone();
 
     let handler =
         nwg::full_bind_event_handler(&window_handle, move |evt, _evt_data, handle| match evt {
-            nwg::Event::OnContextMenu => {
-                if handle == tray_handle {
-                    let lang = lang_clone.get();
-                    let attention = refresh_attention_state(&attention_state_clone, true);
-                    let refreshed_tip = build_tray_tip(lang, attention);
-                    let tray = tray_clone.borrow_mut();
-                    tray.set_tip(&refreshed_tip);
-                    if attention > 0 {
-                        tray.set_icon(&icon_attention);
-                    } else {
-                        tray.set_icon(&icon);
-                    }
-                    let (x, y) = nwg::GlobalCursor::position();
-                    menu_clone.popup(x, y);
-                }
-            }
-
-            nwg::Event::OnMousePress(btn) => {
-                if handle == tray_handle {
-                    if btn == nwg::MousePressEvent::MousePressLeftUp {
-                        let mut last_click = last_tray_click_clone
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner());
-                        let now = Instant::now();
-                        let is_double_click = if let Some(last) = *last_click {
-                            now.duration_since(last) < TRAY_DOUBLE_CLICK_WINDOW
-                        } else {
-                            false
-                        };
-
-                        if is_double_click {
-                            log::info!("Tray icon double-clicked, launching Dashboard");
-                            launch_dashboard(lang_clone.get());
-                            *last_click = None; // Reset after double click
-                        } else {
-                            *last_click = Some(now);
-                        }
-                    }
-                }
-            }
-
-            nwg::Event::OnTimerTick => {
-                if handle == tip_timer_handle {
-                    let new_lang = i18n::load_language();
-                    let old_lang = lang_clone.get();
-                    if new_lang != old_lang {
-                        lang_clone.set(new_lang);
-                        set_menu_item_text(&menu_exit_clone.borrow(), new_lang.t(TrayText::Close));
-                        set_menu_item_text(
-                            &menu_restart_clone.borrow(),
-                            new_lang.t(TrayText::Restart),
-                        );
-                        set_menu_item_text(
-                            &menu_dashboard_clone.borrow(),
-                            new_lang.t(TrayText::OpenDashboard),
-                        );
-                    }
-
-                    let lang = lang_clone.get();
-                    let attention = refresh_attention_state(&attention_state, false);
-                    let refreshed_tip = build_tray_tip(lang, attention);
-
-                    let tray = tray_clone.borrow_mut();
-                    tray.set_tip(&refreshed_tip);
-
-                    if attention > 0 {
-                        tray.set_icon(&icon_attention);
-                    } else {
-                        tray.set_icon(&icon);
-                    }
-                }
-            }
-
-            nwg::Event::OnMenuItemSelected => {
-                if handle == exit_handle {
-                    log::info!("Shutting down daemon");
-                    stop_clone.store(true, Ordering::SeqCst);
-                    nwg::stop_thread_dispatch();
-                } else if handle == restart_handle {
-                    log::info!("Restarting daemon from tray menu");
-                    action_clone.set(TrayExitAction::Restart);
-                    stop_clone.store(true, Ordering::SeqCst);
-                    nwg::stop_thread_dispatch();
-                } else if handle == dashboard_handle {
-                    log::info!("Launching Dashboard from tray menu");
-                    launch_dashboard(lang_clone.get());
-                }
-            }
-
+            nwg::Event::OnContextMenu => state_clone.handle_context_menu(handle),
+            nwg::Event::OnMousePress(btn) => state_clone.handle_mouse_press(handle, btn),
+            nwg::Event::OnTimerTick => state_clone.handle_timer_tick(handle),
+            nwg::Event::OnMenuItemSelected => state_clone.handle_menu_item(handle, &stop_clone),
             _ => {}
         });
 
@@ -351,13 +367,13 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     nwg::dispatch_thread_events();
 
     // Hide tray icon before exiting
-    tray.borrow().set_visibility(false);
+    state.tray.borrow().set_visibility(false);
 
     nwg::unbind_event_handler(&handler);
     log::info!("Daemon stopped");
 
     // Return the requested exit action (Exit / Restart).
-    action.get()
+    state.action.get()
 }
 
 fn is_dashboard_running() -> bool {

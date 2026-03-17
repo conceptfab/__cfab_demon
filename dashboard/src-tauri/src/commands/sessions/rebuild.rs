@@ -26,6 +26,7 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
                 "SELECT id, app_id, project_id, COALESCE(rate_multiplier, 1.0), start_time, end_time, date, duration_seconds
                  FROM sessions
                  WHERE {ACTIVE_SESSION_FILTER}
+                   AND split_source_session_id IS NULL
                  ORDER BY app_id, project_id, start_time ASC"
             );
             let mut stmt = tx.prepare(&sql).map_err(|e| e.to_string())?;
@@ -124,21 +125,34 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
                     rusqlite::params![to_session_id, from_session_id],
                 )
                 .map_err(|e| e.to_string())?;
-                tx.execute(
-                    "DELETE FROM session_manual_overrides WHERE session_id = ?1",
-                    rusqlite::params![from_session_id],
-                )
-                .map_err(|e| e.to_string())?;
+            }
+            if !merged_into.is_empty() {
+                let from_ids: Vec<String> = merged_into
+                    .iter()
+                    .filter(|(f, t)| f != t)
+                    .map(|(f, _)| f.to_string())
+                    .collect();
+                if !from_ids.is_empty() {
+                    let placeholders = from_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                    tx.execute(
+                        &format!(
+                            "DELETE FROM session_manual_overrides WHERE session_id IN ({})",
+                            placeholders
+                        ),
+                        rusqlite::params_from_iter(from_ids.iter()),
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
             }
         }
 
-        {
-            let mut delete_stmt = tx
-                .prepare("DELETE FROM sessions WHERE id = ?1")
-                .map_err(|e| e.to_string())?;
-            for id in &to_delete {
-                delete_stmt.execute([id]).map_err(|e| e.to_string())?;
-            }
+        if !to_delete.is_empty() {
+            let placeholders = to_delete.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            tx.execute(
+                &format!("DELETE FROM sessions WHERE id IN ({})", placeholders),
+                rusqlite::params_from_iter(to_delete.iter()),
+            )
+            .map_err(|e| e.to_string())?;
         }
 
         tx.commit().map_err(|e| e.to_string())?;

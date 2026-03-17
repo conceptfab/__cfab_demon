@@ -66,6 +66,9 @@ interface UseSettingsFormStateOptions {
   setCurrencyCode: (code: CurrencySettings['code']) => void;
   setChartAnimations: (enabled: boolean) => void;
   setPageChangeGuard: (guard: PageChangeGuard | null) => void;
+  setStoreWorkingHours?: (next: WorkingHoursSettings) => void;
+  setStoreLanguage?: (code: string) => void;
+  setStoreSplitSettings?: (next: SplitSettings) => void;
 }
 
 export function useSettingsFormState({
@@ -78,6 +81,9 @@ export function useSettingsFormState({
   setCurrencyCode,
   setChartAnimations,
   setPageChangeGuard,
+  setStoreWorkingHours,
+  setStoreLanguage,
+  setStoreSplitSettings,
 }: UseSettingsFormStateOptions) {
   const [clearing, setClearing] = useState(false);
   const [clearArmed, setClearArmed] = useState(false);
@@ -341,6 +347,9 @@ export function useSettingsFormState({
     setAppearanceSettings(savedAppearance);
     setCurrencyCode(savedCurrency.code);
     setChartAnimations(savedAppearance.chartAnimations);
+    setStoreWorkingHours?.(savedWorking);
+    setStoreLanguage?.(savedLanguage.code);
+    setStoreSplitSettings?.(splitSettings);
     if (i18n.resolvedLanguage !== savedLanguage.code) {
       void i18n.changeLanguage(savedLanguage.code).catch((error) => {
         console.warn('Failed to apply language change:', error);
@@ -361,7 +370,11 @@ export function useSettingsFormState({
     sessionSettings,
     setChartAnimations,
     setCurrencyCode,
+    setStoreLanguage,
+    setStoreSplitSettings,
+    setStoreWorkingHours,
     showInfo,
+    splitSettings,
     t,
     triggerRefresh,
     workingHours,

@@ -8,14 +8,15 @@ use std::sync::Arc;
 
 mod activity;
 mod config;
+mod foreground_hook;
 mod i18n;
 mod monitor;
-mod process_utils;
+mod win_process_snapshot;
 mod single_instance;
 mod storage;
 mod tracker;
 mod tray;
-use crate::process_utils::no_console;
+use crate::win_process_snapshot::no_console;
 pub use timeflow_shared::daily_store;
 
 /// Application name — single constant used everywhere
@@ -54,15 +55,21 @@ fn main() {
     // Monitor thread control signal
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    // Start monitoring thread
-    let monitor_handle = tracker::start(stop_signal.clone());
+    // Start event-driven foreground detection (SetWinEventHook)
+    let (foreground_signal, hook_handle) = foreground_hook::start(stop_signal.clone());
+
+    // Start monitoring thread with foreground signal for instant wake
+    let monitor_handle = tracker::start(stop_signal.clone(), Some(foreground_signal.clone()));
 
     // Start tray icon event loop
     let tray_action = tray::run(stop_signal.clone());
 
     // After tray closes — cleanly stop monitor thread
     stop_signal.store(true, Ordering::SeqCst);
+    // Wake tracker so it exits without waiting for poll timeout
+    foreground_signal.notify();
     let _ = monitor_handle.join();
+    let _ = hook_handle.join();
 
     log::info!("{} - stopped", APP_NAME);
     log::logger().flush();

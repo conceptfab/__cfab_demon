@@ -729,7 +729,17 @@ export function Help() {
                   t18n('help_page.preview_loading_state_when_switching_templates_or_rebuild'),
                   t18n('help_page.empty_templates_state_if_no_report_templates_are_availab'),
                 ]}
-              />
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.reportview_detail_title')}
+                  items={[
+                    t18n('help_page.reportview_detail_what_it_does'),
+                    t18n('help_page.reportview_detail_when_to_use'),
+                    t18n('help_page.reportview_detail_how_to_print'),
+                    t18n('help_page.reportview_detail_limitations'),
+                  ]}
+                />
+              </SectionHelp>
             </TabsContent>
 
             <TabsContent

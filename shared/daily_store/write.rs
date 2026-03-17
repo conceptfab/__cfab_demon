@@ -117,9 +117,7 @@ pub fn replace_day_snapshot(
     )
     .map_err(|e| format!("Failed to prepare temp daily file key table: {}", e))?;
     let mut clear_file_keys_stmt = tx
-        .prepare_cached(
-            "DELETE FROM _daily_store_file_keys",
-        )
+        .prepare_cached("DELETE FROM _daily_store_file_keys")
         .map_err(|e| format!("Failed to prepare temp daily file key cleanup: {}", e))?;
     let mut insert_file_key_stmt = tx
         .prepare_cached(
@@ -257,4 +255,3 @@ pub fn replace_day_snapshot(
         revision,
     })
 }
-

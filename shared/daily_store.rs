@@ -1,14 +1,27 @@
+/// Daily store module — manages per-day JSON-derived activity snapshots in SQLite.
+///
+/// **Data format:** Each day's data is stored as structured rows in a local SQLite database
+/// (migrated from legacy per-day JSON files). A day snapshot contains application activity
+/// records with timestamps, file paths, window titles, and optional project assignments.
+///
+/// **Lifecycle:** The daemon writes snapshots every ~5 minutes via [`write`]. The dashboard
+/// reads snapshots via [`read`] for display and analysis. Legacy JSON files are migrated
+/// on first access via [`legacy`].
+///
+/// **Key types:** See [`types`] for `DaySnapshot`, `AppActivityRecord`, etc.
 mod legacy;
 mod read;
 mod schema;
 mod types;
 mod write;
 
-pub(crate) use types::{dedupe_files_preserving_last, detected_path_key};
 pub use legacy::{load_legacy_json_file, migrate_legacy_json_files};
 pub use read::{get_day_signature, load_day_snapshot, load_range_snapshots};
 pub use schema::{ensure_schema, open_store, store_db_path};
-pub use types::{DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession};
+pub(crate) use types::{dedupe_files_preserving_last, detected_path_key};
+pub use types::{
+    DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession,
+};
 pub use write::replace_day_snapshot;
 #[cfg(test)]
 mod tests {
@@ -570,4 +583,3 @@ mod tests {
         assert_eq!(files[0].detected_path, None);
     }
 }
-

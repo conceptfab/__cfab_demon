@@ -149,6 +149,10 @@ pub fn compute_score_breakdowns(
     }
 
     // Layer 1: app
+    // For background apps (no file evidence), boost evidence from +1 to +2
+    // so that the evidence_factor grows at a comparable rate to file-based apps.
+    let is_background_app = context.file_project_ids.is_empty();
+    let layer1_evidence_weight: i64 = if is_background_app { 2 } else { 1 };
     let mut stmt = conn
         .prepare_cached("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
         .map_err(|e| e.to_string())?;
@@ -163,7 +167,7 @@ pub fn compute_score_breakdowns(
         let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
         let score = 0.30 * (1.0 + cnt).ln();
         *layer1.entry(pid).or_insert(0.0) += score;
-        *candidate_evidence.entry(pid).or_insert(0) += 1;
+        *candidate_evidence.entry(pid).or_insert(0) += layer1_evidence_weight;
     }
 
     // Layer 2: time
@@ -395,7 +399,10 @@ pub fn suggest_projects_for_sessions_with_status(
     Ok(out)
 }
 
-pub fn suggest_project_for_session_raw(
+/// Returns the best project suggestion for a session WITHOUT applying
+/// confidence/threshold filters. Use `suggest_project_for_session_with_status`
+/// if you need threshold-based acceptance logic.
+pub fn suggest_project_for_session_unfiltered(
     conn: &rusqlite::Connection,
     status: &AssignmentModelStatus,
     session_id: i64,
@@ -410,7 +417,9 @@ pub fn suggest_project_for_session_raw(
     compute_raw_suggestion(conn, &context)
 }
 
-pub fn suggest_projects_for_sessions_raw(
+/// Batch version of `suggest_project_for_session_unfiltered` — returns
+/// unfiltered suggestions (no threshold logic) for multiple sessions at once.
+pub fn suggest_projects_for_sessions_unfiltered(
     conn: &rusqlite::Connection,
     status: &AssignmentModelStatus,
     session_ids: &[i64],
@@ -421,7 +430,7 @@ pub fn suggest_projects_for_sessions_raw(
     }
 
     for &session_id in session_ids {
-        if let Some(suggestion) = suggest_project_for_session_raw(conn, status, session_id)? {
+        if let Some(suggestion) = suggest_project_for_session_unfiltered(conn, status, session_id)? {
             out.insert(session_id, suggestion);
         }
     }

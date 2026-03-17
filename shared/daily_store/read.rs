@@ -1,5 +1,7 @@
-use crate::daily_store::{DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession};
 use crate::daily_store::types::decode_detected_path;
+use crate::daily_store::{
+    DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession,
+};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::BTreeMap;
 fn parse_title_history_json(title_history_json: &str) -> Vec<String> {

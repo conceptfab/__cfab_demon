@@ -8,6 +8,7 @@ import {
   Archive,
   RefreshCw,
   AlertTriangle,
+  Rocket,
 } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { TimelineChart } from '@/components/dashboard/TimelineChart';
@@ -31,10 +32,9 @@ import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
 import {
-  loadWorkingHoursSettings,
   loadSessionSettings,
-  type WorkingHoursSettings,
 } from '@/lib/user-settings';
+import { useSettingsStore } from '@/store/settings-store';
 import type {
   DashboardStats,
   ManualSessionWithProject,
@@ -162,17 +162,6 @@ function DiscoveredProjectsBanner() {
   );
 }
 
-function areWorkingHoursEqual(
-  left: WorkingHoursSettings,
-  right: WorkingHoursSettings,
-): boolean {
-  return (
-    left.start === right.start &&
-    left.end === right.end &&
-    left.color === right.color
-  );
-}
-
 export function Dashboard() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
@@ -191,6 +180,7 @@ export function Dashboard() {
   const [projectTimelineError, setProjectTimelineError] = useState<
     unknown | null
   >(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [todaySessions, setTodaySessions] = useState<SessionWithApp[]>([]);
   const [topProjects, setTopProjects] = useState<ProjectTimeRow[]>([]);
   const [allProjects, setAllProjects] = useState<ProjectTimeRow[]>([]);
@@ -204,9 +194,7 @@ export function Dashboard() {
   >();
   const [editingManualSession, setEditingManualSession] =
     useState<ManualSessionWithProject | null>(null);
-  const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
-    loadWorkingHoursSettings(),
-  );
+  const workingHours = useSettingsStore((s) => s.workingHours);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const projectsList = useProjectsCacheStore((s) => s.projectsAllTime);
   const projectCount = projectsList.length;
@@ -364,6 +352,7 @@ export function Dashboard() {
     const shouldLoadTodayData = timePreset === 'today';
     setProjectTimelineLoading(true);
     setProjectTimelineError(null);
+    setLoadError(null);
 
     Promise.allSettled([
       dashboardApi.getDashboardData(
@@ -397,11 +386,17 @@ export function Dashboard() {
           setAllProjects(dashboardDataRes.value.all_projects);
           setProjectTimeline(dashboardDataRes.value.project_timeline);
           setProjectTimelineError(null);
+          setLoadError(null);
         } else {
+          const nextError = getErrorMessage(
+            dashboardDataRes.reason,
+            t('ui.common.unknown_error'),
+          );
           setStats(null);
           setTopProjects([]);
           setAllProjects([]);
           setProjectTimeline([]);
+          setLoadError(nextError);
           setProjectTimelineError(dashboardDataRes.reason);
           logTauriError('load dashboard data', dashboardDataRes.reason);
         }
@@ -428,12 +423,6 @@ export function Dashboard() {
           }
         }
 
-        const nextWorkingHours = loadWorkingHoursSettings();
-        setWorkingHours((current) =>
-          areWorkingHoursEqual(current, nextWorkingHours)
-            ? current
-            : nextWorkingHours,
-        );
         setProjectTimelineLoading(false);
       },
     );
@@ -446,6 +435,7 @@ export function Dashboard() {
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,
+    t,
   ]);
 
   return (
@@ -473,6 +463,16 @@ export function Dashboard() {
       {/* Auto-import status banner */}
       <AutoImportBanner />
       <DiscoveredProjectsBanner />
+      {loadError && (
+        <Card className="border-destructive/30 bg-destructive/5">
+          <CardContent className="flex items-center gap-2.5 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <span className="text-xs text-destructive">
+              {t('dashboard.errors.loading_data')}: {loadError}
+            </span>
+          </CardContent>
+        </Card>
+      )}
 
       {timePreset === 'today' && unassignedToday.sessionCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/10">
@@ -500,6 +500,21 @@ export function Dashboard() {
           </CardContent>
         </Card>
       )}
+
+      {stats && stats.total_seconds === 0 && !loadError ? (
+        <div className="flex flex-col items-center gap-4 py-12">
+          <Rocket className="h-12 w-12 text-muted-foreground/40" />
+          <p className="text-muted-foreground">
+            {t('dashboard_page.empty_state_title')}
+          </p>
+          <p className="text-sm text-muted-foreground/70">
+            {t('dashboard_page.empty_state_description')}
+          </p>
+          <Button onClick={() => setCurrentPage('daemon')}>
+            {t('dashboard_page.go_to_daemon')}
+          </Button>
+        </div>
+      ) : (<>
 
       {/* Metric cards */}
       <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
@@ -603,6 +618,8 @@ export function Dashboard() {
 
       {/* All projects chart */}
       <AllProjectsChart projects={allProjects} />
+
+      </>)}
 
       <ManualSessionDialog
         open={sessionDialogOpen}

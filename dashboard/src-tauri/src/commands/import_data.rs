@@ -496,7 +496,8 @@ fn import_archive_into_tx(
         if demo_mode {
             save_demo_daily_file(date, daily)?;
         } else {
-            let final_daily = if let Some(mut existing_daily) = daily_store_bridge::load_day(date)? {
+            let final_daily = if let Some(mut existing_daily) = daily_store_bridge::load_day(date)?
+            {
                 for (exe, app_data) in &daily.apps {
                     existing_daily.apps.insert(exe.clone(), app_data.clone());
                 }

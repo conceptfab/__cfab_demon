@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from 'react';
 
 import type { DateRange, SessionWithApp } from '@/lib/db-types';
 import { areSessionListsEqual, SESSION_PAGE_SIZE } from '@/lib/session-utils';
@@ -21,6 +27,7 @@ export function useSessionsData(params: {
   const [hasMore, setHasMore] = useState(false);
   const sessionsRef = useRef<SessionWithApp[]>([]);
   const hasMoreRef = useRef(false);
+  const isLoadingRef = useRef(false);
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -43,8 +50,14 @@ export function useSessionsData(params: {
   }, []);
 
   const loadFirstSessionsPage = useCallback(async () => {
-    const data = await sessionsApi.getSessions(buildFetchParams(0));
-    replaceSessionsPage(data);
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
+    try {
+      const data = await sessionsApi.getSessions(buildFetchParams(0));
+      replaceSessionsPage(data);
+    } finally {
+      isLoadingRef.current = false;
+    }
   }, [buildFetchParams, replaceSessionsPage]);
 
   const handleVisibleSessionsRefresh = useEffectEvent(() => {
@@ -53,13 +66,18 @@ export function useSessionsData(params: {
 
   useEffect(() => {
     let cancelled = false;
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     sessionsApi
       .getSessions(buildFetchParams(0))
       .then((data) => {
         if (cancelled) return;
         replaceSessionsPage(data);
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => {
+        isLoadingRef.current = false;
+      });
     return () => {
       cancelled = true;
     };

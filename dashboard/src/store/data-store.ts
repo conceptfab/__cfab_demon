@@ -65,9 +65,11 @@ function inferPreset(range: DateRange): TimePreset {
     range.end === today
   )
     return 'week';
+  const rangeEnd = parseISO(range.end);
   if (
-    range.start === format(startOfMonth(now), 'yyyy-MM-dd') &&
-    range.end === today
+    range.start === format(startOfMonth(rangeEnd), 'yyyy-MM-dd') &&
+    (range.end === today ||
+      range.end === format(endOfMonth(rangeEnd), 'yyyy-MM-dd'))
   )
     return 'month';
   return 'custom';

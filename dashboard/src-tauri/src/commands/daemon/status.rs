@@ -41,9 +41,7 @@ pub async fn get_autostart_enabled() -> Result<bool, String> {
 }
 
 #[tauri::command]
-pub async fn get_background_diagnostics(
-    app: AppHandle,
-) -> Result<BackgroundDiagnostics, String> {
+pub async fn get_background_diagnostics(app: AppHandle) -> Result<BackgroundDiagnostics, String> {
     use crate::commands::get_assignment_model_status;
     use crate::commands::get_session_count;
     use crate::commands::types::SessionFilters;

@@ -153,7 +153,7 @@ fn apply_split_side_effects(
         }
     }
 
-    let feedback_count = segments.len() as i64;
+    let feedback_count = 1_i64;
     tx.execute(
         "INSERT INTO assignment_model_state (key, value, updated_at)
          VALUES ('feedback_since_train', ?1, datetime('now'))
@@ -850,12 +850,33 @@ pub async fn analyze_sessions_splittable(
 }
 
 /// Splits a session into N parts (max 5) with given ratios and optional project assignments.
+///
+/// If `not_modified_since` is provided, the split is silently skipped when the session's
+/// `updated_at` is newer than the given timestamp. This guards against overwriting manual
+/// user changes during automated split cycles.
 pub async fn split_session_multi(
     app: AppHandle,
     session_id: i64,
     splits: Vec<SplitPart>,
+    not_modified_since: Option<String>,
 ) -> Result<(), String> {
     run_db_blocking(app, move |conn| {
+        if let Some(ref threshold) = not_modified_since {
+            let updated_at: String = conn
+                .query_row(
+                    "SELECT COALESCE(updated_at, '1970-01-01 00:00:00') FROM sessions WHERE id = ?1",
+                    [session_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Failed to read session updated_at: {}", e))?;
+            if updated_at > *threshold {
+                log::info!(
+                    "Skipping split for session {} — modified since cycle start ({} > {})",
+                    session_id, updated_at, threshold,
+                );
+                return Ok(());
+            }
+        }
         let source = load_split_source_session(conn, session_id, true)?;
         execute_session_split(conn, session_id, &source, splits.as_slice())
     })

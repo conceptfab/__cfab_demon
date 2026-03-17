@@ -102,9 +102,7 @@ pub fn build_wmi_process_command_line_query(pids: &[u32]) -> Option<String> {
     ))
 }
 
-fn with_wmi_connection<T>(
-    op: impl FnOnce(&wmi::WMIConnection) -> Result<T, ()>,
-) -> Result<T, ()> {
+fn with_wmi_connection<T>(op: impl FnOnce(&wmi::WMIConnection) -> Result<T, ()>) -> Result<T, ()> {
     WMI_CONN_CACHE.with(|cache| {
         let mut cached_conn = cache.borrow_mut();
         if cached_conn.is_none() {
