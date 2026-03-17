@@ -1,1 +1,3 @@
 - sprawdzic PDF wielostronicowy
+
+- dlaczego jestli w ustawieniach maja być sesje pomijane ponizej lub równa np 10 sekund - one sa w raporcie! kurwa po przycisku rebuild takie sesje powinny zostać usunięte. Jakim prawem one tam są?
