@@ -65,7 +65,12 @@ export function ReportView() {
         },
         onError: (err) => {
           console.error('Report error:', err);
-          setReportError(String(err));
+          const errStr = String(err);
+          if (errStr.includes('not found')) {
+            setCurrentPage('projects');
+            return;
+          }
+          setReportError(errStr);
           setReport(null);
           setLoadedProjectId(projectPageId);
         },

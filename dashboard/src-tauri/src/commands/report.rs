@@ -19,9 +19,18 @@ async fn get_report_project(
         conn.query_row(
             "SELECT p.id, p.name, p.color, p.created_at, p.excluded_at, p.frozen_at,
                     p.assigned_folder_path,
-                    COALESCE((SELECT CAST(SUM(s.duration_seconds) AS INTEGER) FROM sessions s WHERE s.project_id = p.id), 0),
-                    COALESCE((SELECT COUNT(DISTINCT s.app_id) FROM sessions s WHERE s.project_id = p.id), 0),
-                    (SELECT MAX(s.end_time) FROM sessions s WHERE s.project_id = p.id)
+                    COALESCE((SELECT CAST(SUM(s.duration_seconds) AS INTEGER)
+                              FROM sessions s
+                              JOIN applications a ON a.id = s.app_id
+                              WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id)), 0),
+                    COALESCE((SELECT COUNT(DISTINCT s.app_id)
+                              FROM sessions s
+                              JOIN applications a ON a.id = s.app_id
+                              WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id)), 0),
+                    (SELECT MAX(s.end_time)
+                     FROM sessions s
+                     JOIN applications a ON a.id = s.app_id
+                     WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
              FROM projects p
              WHERE p.id = ?1",
             [project_id],
@@ -41,23 +50,7 @@ async fn get_report_project(
                 })
             },
         )
-        .map_err(|e| {
-            // Debug: check if the project exists at all (including excluded)
-            let exists: bool = conn
-                .query_row(
-                    "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1",
-                    [project_id],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
-            let total: i64 = conn
-                .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
-                .unwrap_or(-1);
-            format!(
-                "Project {} not found (exists_check={}, total_projects={}): {}",
-                project_id, exists, total, e
-            )
-        })
+        .map_err(|e| format!("Project {} not found: {}", project_id, e))
     })
     .await
 }
@@ -82,12 +75,15 @@ async fn get_report_estimate(
         let effective_rate = hourly_rate.unwrap_or(global_rate);
 
         // Single query: base seconds + multiplier bonus
+        // Includes sessions assigned directly (s.project_id) or via app (a.project_id)
         let (base_seconds, multiplier_extra): (f64, f64) = conn
             .query_row(
-                "SELECT COALESCE(SUM(duration_seconds), 0),
-                        COALESCE(SUM(CASE WHEN rate_multiplier > 1.0
-                            THEN duration_seconds * (rate_multiplier - 1.0) ELSE 0 END), 0)
-                 FROM sessions WHERE project_id = ?1",
+                "SELECT COALESCE(SUM(s.duration_seconds), 0),
+                        COALESCE(SUM(CASE WHEN s.rate_multiplier > 1.0
+                            THEN s.duration_seconds * (s.rate_multiplier - 1.0) ELSE 0 END), 0)
+                 FROM sessions s
+                 JOIN applications a ON a.id = s.app_id
+                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)",
                 [project_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
@@ -100,7 +96,8 @@ async fn get_report_estimate(
 }
 
 /// Lightweight session query for reports.
-/// Bypasses the expensive SESSION_PROJECT_CTE entirely — filters directly by s.project_id.
+/// Bypasses the expensive SESSION_PROJECT_CTE entirely.
+/// Matches sessions by: direct s.project_id OR app assigned to project (a.project_id).
 async fn get_report_sessions(
     app: AppHandle,
     project_id: i64,
@@ -110,7 +107,9 @@ async fn get_report_sessions(
         let sql = format!(
             "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
-                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    a.display_name, a.executable_name,
+                    COALESCE(s.project_id, a.project_id) as effective_project_id,
+                    p_eff.name, p_eff.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
                     s.comment,
                     s.split_source_session_id,
@@ -119,7 +118,7 @@ async fn get_report_sessions(
                     p_sug.name
              FROM sessions s
              JOIN applications a ON a.id = s.app_id
-             LEFT JOIN projects p ON p.id = s.project_id
+             LEFT JOIN projects p_eff ON p_eff.id = COALESCE(s.project_id, a.project_id)
              LEFT JOIN (
                  SELECT session_id, source
                  FROM assignment_feedback
@@ -132,7 +131,7 @@ async fn get_report_sessions(
              ) asug_latest ON asug_latest.session_id = s.id
              LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
              WHERE {ACTIVE_SESSION_FILTER_S}
-               AND s.project_id = ?1
+               AND (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
                AND s.date >= ?2 AND s.date <= ?3
              ORDER BY s.start_time DESC"
         );
@@ -181,7 +180,7 @@ async fn get_report_extra_info(
                 "SELECT a.display_name, CAST(SUM(s.duration_seconds) AS INTEGER)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE s.project_id = ?1
+                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)
                  GROUP BY a.id
                  ORDER BY SUM(s.duration_seconds) DESC
                  LIMIT 10",
@@ -203,9 +202,11 @@ async fn get_report_extra_info(
         let (session_count, comment_count, boosted_session_count): (i64, i64, i64) = conn
             .query_row(
                 "SELECT COUNT(*),
-                        SUM(CASE WHEN comment IS NOT NULL AND comment <> '' THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN rate_multiplier > 1.0 THEN 1 ELSE 0 END)
-                 FROM sessions WHERE project_id = ?1",
+                        SUM(CASE WHEN s.comment IS NOT NULL AND s.comment <> '' THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN s.rate_multiplier > 1.0 THEN 1 ELSE 0 END)
+                 FROM sessions s
+                 JOIN applications a ON a.id = s.app_id
+                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)",
                 [project_id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
