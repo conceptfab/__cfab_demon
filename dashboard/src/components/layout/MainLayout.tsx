@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUIStore } from '@/store/ui-store';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { ProjectContextMenu } from '@/components/project/ProjectContextMenu';
@@ -12,11 +13,27 @@ export function MainLayout({
   showChrome?: boolean;
 }) {
   const { t } = useTranslation();
+  const currentPage = useUIStore((state) => state.currentPage);
+  const mainRef = useRef<HTMLElement>(null);
+  const previousPageRef = useRef(currentPage);
+
+  useEffect(() => {
+    if (previousPageRef.current === currentPage) {
+      return;
+    }
+    previousPageRef.current = currentPage;
+    mainRef.current?.focus();
+  }, [currentPage]);
 
   if (!showChrome) {
     return (
       <div className="h-screen overflow-hidden bg-background">
-        <main id="main-content" tabIndex={-1} className="h-full overflow-y-auto">
+        <main
+          id="main-content"
+          ref={mainRef}
+          tabIndex={-1}
+          className="h-full overflow-y-auto"
+        >
           {children}
         </main>
       </div>
@@ -36,6 +53,7 @@ export function MainLayout({
         <TopBar />
         <main
           id="main-content"
+          ref={mainRef}
           tabIndex={-1}
           className="flex-1 overflow-y-auto p-4 md:p-5"
         >

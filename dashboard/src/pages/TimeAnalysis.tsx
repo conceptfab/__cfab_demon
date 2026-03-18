@@ -94,13 +94,21 @@ export function TimeAnalysis() {
       </div>
 
       {d.isLoading && (
-        <div className="rounded-lg border border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-lg border border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground"
+        >
           {t('time_analysis_page.fallbacks.loading_chart_data')}
         </div>
       )}
 
       {!d.isLoading && d.loadError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+        >
           {t('time_analysis_page.fallbacks.load_chart_failed')} {d.loadError}
         </div>
       )}

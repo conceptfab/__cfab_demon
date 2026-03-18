@@ -412,12 +412,22 @@ export function Applications() {
             </Button>
           </div>
           {monitoredError && (
-            <p className="text-xs text-destructive">{monitoredError}</p>
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="text-xs text-destructive"
+            >
+              {monitoredError}
+            </p>
           )}
 
           {/* Monitored list */}
           {loadingMonitored && monitored.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-2">
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-xs text-muted-foreground text-center py-2"
+            >
               {t('applications_page.monitored.loading')}
             </p>
           ) : monitored.length > 0 ? (
@@ -461,7 +471,11 @@ export function Applications() {
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground text-center py-2">
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-xs text-muted-foreground text-center py-2"
+            >
               {t('applications_page.monitored.empty')}
             </p>
           )}
@@ -675,6 +689,8 @@ export function Applications() {
                 <tr>
                   <td
                     colSpan={6}
+                    role="status"
+                    aria-live="polite"
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     {t('applications_page.loading.applications')}
@@ -685,6 +701,8 @@ export function Applications() {
                 <tr>
                   <td
                     colSpan={6}
+                    role="alert"
+                    aria-live="assertive"
                     className="px-4 py-8 text-center text-destructive"
                   >
                     {appsLoadError}
@@ -695,6 +713,8 @@ export function Applications() {
                 <tr>
                   <td
                     colSpan={6}
+                    role="status"
+                    aria-live="polite"
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
                     {t('applications_page.empty.no_applications')}

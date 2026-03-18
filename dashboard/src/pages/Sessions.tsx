@@ -182,7 +182,7 @@ export function Sessions() {
       end_time: m.end_time,
       date: m.date,
       duration_seconds: m.duration_seconds,
-      app_name: t('project_page.text.manual_session', 'Sesja ręczna'),
+      app_name: t('project_page.text.manual_session', 'Manual Session'),
       executable_name: 'manual',
       project_id: m.project_id,
       project_name: m.project_name,

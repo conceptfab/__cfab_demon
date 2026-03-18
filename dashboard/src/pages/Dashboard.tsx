@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { startTransition, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Clock,
@@ -54,6 +54,24 @@ import { shouldRefreshDashboardPage } from '@/lib/page-refresh-reasons';
 const UNASSIGNED_PROJECT_KEY = 'unassigned';
 const EMPTY_PROJECT_ROWS: ProjectTimeRow[] = [];
 const EMPTY_STACKED_BAR_DATA: StackedBarData[] = [];
+
+type DashboardViewState = {
+  dashboardData: DashboardData | null;
+  projectTimelineLoading: boolean;
+  projectTimelineError: unknown | null;
+  loadError: string | null;
+  todaySessions: SessionWithApp[];
+  manualSessions: ManualSessionWithProject[];
+};
+
+const EMPTY_DASHBOARD_VIEW_STATE: DashboardViewState = {
+  dashboardData: null,
+  projectTimelineLoading: true,
+  projectTimelineError: null,
+  loadError: null,
+  todaySessions: [],
+  manualSessions: [],
+};
 
 function AutoImportBanner() {
   const { t } = useTranslation();
@@ -172,19 +190,10 @@ export function Dashboard() {
     canShiftForward,
     triggerRefresh,
   } = useDataStore();
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
-    null,
+  const [dashboardView, setDashboardView] = useState<DashboardViewState>(
+    EMPTY_DASHBOARD_VIEW_STATE,
   );
-  const [projectTimelineLoading, setProjectTimelineLoading] = useState(true);
-  const [projectTimelineError, setProjectTimelineError] = useState<
-    unknown | null
-  >(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [todaySessions, setTodaySessions] = useState<SessionWithApp[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [manualSessions, setManualSessions] = useState<
-    ManualSessionWithProject[]
-  >([]);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogStartTime, setSessionDialogStartTime] = useState<
     string | undefined
@@ -195,6 +204,14 @@ export function Dashboard() {
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const projectsList = useProjectsCacheStore((s) => s.projectsAllTime);
   const projectCount = projectsList.length;
+  const {
+    dashboardData,
+    projectTimelineLoading,
+    projectTimelineError,
+    loadError,
+    todaySessions,
+    manualSessions,
+  } = dashboardView;
   const stats: DashboardStats | null = dashboardData?.stats ?? null;
   const topProjects: ProjectTimeRow[] =
     dashboardData?.top_projects ?? EMPTY_PROJECT_ROWS;
@@ -285,9 +302,12 @@ export function Dashboard() {
     async (sessionId: number, comment: string | null) => {
       try {
         await updateSessionComment(sessionId, comment);
-        setTodaySessions((prev) =>
-          prev.map((s) => (s.id === sessionId ? { ...s, comment } : s)),
-        );
+        setDashboardView((prev) => ({
+          ...prev,
+          todaySessions: prev.todaySessions.map((s) =>
+            s.id === sessionId ? { ...s, comment } : s,
+          ),
+        }));
       } catch (err) {
         logTauriError('update session comment', err);
       }
@@ -324,9 +344,12 @@ export function Dashboard() {
     const minDuration =
       loadSessionSettings().minSessionDurationSeconds || undefined;
     const shouldLoadTodayData = timePreset === 'today';
-    setProjectTimelineLoading(true);
-    setProjectTimelineError(null);
-    setLoadError(null);
+    setDashboardView((prev) => ({
+      ...prev,
+      projectTimelineLoading: true,
+      projectTimelineError: null,
+      loadError: null,
+    }));
 
     Promise.allSettled([
       dashboardApi.getDashboardData(
@@ -354,29 +377,27 @@ export function Dashboard() {
         manualSessionsRes,
       ]) => {
         if (cancelled) return;
+        let nextDashboardData: DashboardData | null = null;
+        let nextLoadError: string | null = null;
+        let nextProjectTimelineError: unknown | null = null;
+
         if (dashboardDataRes.status === 'fulfilled') {
-          setDashboardData(dashboardDataRes.value);
-          setProjectTimelineError(null);
-          setLoadError(null);
+          nextDashboardData = dashboardDataRes.value;
         } else {
-          const nextError = getErrorMessage(
+          nextLoadError = getErrorMessage(
             dashboardDataRes.reason,
             t('ui.common.unknown_error'),
           );
-          setDashboardData(null);
-          setLoadError(nextError);
-          setProjectTimelineError(dashboardDataRes.reason);
+          nextProjectTimelineError = dashboardDataRes.reason;
           logTauriError('load dashboard data', dashboardDataRes.reason);
         }
 
-        if (!shouldLoadTodayData) {
-          setTodaySessions([]);
-          setManualSessions([]);
-        } else {
+        let nextTodaySessions: SessionWithApp[] = [];
+        let nextManualSessions: ManualSessionWithProject[] = [];
+        if (shouldLoadTodayData) {
           if (todaySessionsRes.status === 'fulfilled') {
-            setTodaySessions(todaySessionsRes.value);
+            nextTodaySessions = todaySessionsRes.value;
           } else {
-            setTodaySessions([]);
             logTauriError(
               'load today sessions for timeline',
               todaySessionsRes.reason,
@@ -384,14 +405,22 @@ export function Dashboard() {
           }
 
           if (manualSessionsRes.status === 'fulfilled') {
-            setManualSessions(manualSessionsRes.value);
+            nextManualSessions = manualSessionsRes.value;
           } else {
-            setManualSessions([]);
             logTauriError('load manual sessions', manualSessionsRes.reason);
           }
         }
 
-        setProjectTimelineLoading(false);
+        startTransition(() => {
+          setDashboardView({
+            dashboardData: nextDashboardData,
+            projectTimelineLoading: false,
+            projectTimelineError: nextProjectTimelineError,
+            loadError: nextLoadError,
+            todaySessions: nextTodaySessions,
+            manualSessions: nextManualSessions,
+          });
+        });
       },
     );
     return () => {
