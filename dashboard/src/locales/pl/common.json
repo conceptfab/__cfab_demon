@@ -1,5 +1,8 @@
 {
   "ui": {
+    "a11y": {
+      "skip_to_content": "Przejdź do głównej treści"
+    },
     "common": {
       "not_available": "—",
       "unknown_error": "Nieznany błąd",
@@ -32,6 +35,9 @@
     }
   },
   "layout": {
+    "aria": {
+      "main_navigation": "Nawigacja główna"
+    },
     "nav": {
       "dashboard": "Dashboard",
       "sessions": "Sesje",

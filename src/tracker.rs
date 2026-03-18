@@ -188,6 +188,53 @@ fn compute_session_duration_seconds(
         .unwrap_or(fallback_seconds)
 }
 
+fn update_file_entry(
+    file_entry: &mut FileEntry,
+    elapsed_seconds: u64,
+    now_str: &str,
+    window_title: &str,
+    detected_path: Option<&str>,
+    activity_type: Option<&str>,
+) {
+    file_entry.total_seconds += elapsed_seconds;
+    file_entry.last_seen = now_str.to_string();
+
+    // Keep the latest title because it carries the richest AI context.
+    if !window_title.is_empty() {
+        file_entry.window_title = window_title.to_string();
+        push_title_history(&mut file_entry.title_history, window_title);
+    }
+    if let Some(path) = detected_path {
+        file_entry.detected_path = Some(path.to_string());
+    }
+    if let Some(kind) = activity_type {
+        file_entry.activity_type = Some(kind.to_string());
+    }
+}
+
+fn build_new_file_entry(
+    file_name: &str,
+    elapsed_seconds: u64,
+    now_str: &str,
+    window_title: &str,
+    detected_path: Option<&str>,
+    activity_type: Option<&str>,
+) -> FileEntry {
+    let mut title_history = Vec::new();
+    push_title_history(&mut title_history, window_title);
+
+    FileEntry {
+        name: file_name.to_string(),
+        total_seconds: elapsed_seconds,
+        first_seen: now_str.to_string(),
+        last_seen: now_str.to_string(),
+        window_title: window_title.to_string(),
+        detected_path: detected_path.map(str::to_string),
+        title_history,
+        activity_type: activity_type.map(str::to_string),
+    }
+}
+
 struct ActivityContext<'a> {
     exe_name: &'a str,
     file_name: &'a str,
@@ -302,19 +349,14 @@ fn record_app_activity(
             app_file_index.entry(file_cache_key.clone()).or_insert(idx);
 
             if let Some(file_entry) = app_data.files.get_mut(idx) {
-                file_entry.total_seconds += elapsed_seconds;
-                file_entry.last_seen = now_str;
-                // Aktualizuj window_title na najnowszy (bogatszy kontekst dla AI)
-                if !trimmed_window_title.is_empty() {
-                    file_entry.window_title = trimmed_window_title.to_string();
-                    push_title_history(&mut file_entry.title_history, trimmed_window_title);
-                }
-                if let Some(path) = trimmed_detected_path {
-                    file_entry.detected_path = Some(path.to_string());
-                }
-                if let Some(kind) = normalized_activity_type {
-                    file_entry.activity_type = Some(kind.to_string());
-                }
+                update_file_entry(
+                    file_entry,
+                    elapsed_seconds,
+                    &now_str,
+                    trimmed_window_title,
+                    trimmed_detected_path,
+                    normalized_activity_type,
+                );
                 if let Some(updated_cache_key) = build_file_cache_key(
                     &file_entry.name,
                     file_entry.detected_path.as_deref(),
@@ -328,18 +370,14 @@ fn record_app_activity(
             }
         } else {
             let new_idx = app_data.files.len();
-            let mut title_history = Vec::new();
-            push_title_history(&mut title_history, trimmed_window_title);
-            app_data.files.push(FileEntry {
-                name: trimmed_file_name.to_string(),
-                total_seconds: elapsed_seconds,
-                first_seen: now_str.clone(),
-                last_seen: now_str,
-                window_title: trimmed_window_title.to_string(),
-                detected_path: trimmed_detected_path.map(str::to_string),
-                title_history,
-                activity_type: normalized_activity_type.map(str::to_string),
-            });
+            app_data.files.push(build_new_file_entry(
+                trimmed_file_name,
+                elapsed_seconds,
+                &now_str,
+                trimmed_window_title,
+                trimmed_detected_path,
+                normalized_activity_type,
+            ));
             app_file_index.insert(file_cache_key, new_idx);
         }
     }

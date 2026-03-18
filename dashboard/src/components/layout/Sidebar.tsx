@@ -190,7 +190,10 @@ export function Sidebar() {
         </span>
       </div>
 
-      <nav className="flex-1 space-y-0.5 p-2">
+      <nav
+        className="flex-1 space-y-0.5 p-2"
+        aria-label={t('layout.aria.main_navigation')}
+      >
         {navItems.map((item) => (
           <AppTooltip
             key={item.id}
@@ -201,6 +204,12 @@ export function Sidebar() {
           >
             <button
               onClick={() => setCurrentPage(item.id)}
+              aria-current={
+                currentPage === item.id ||
+                (item.id === 'projects' && currentPage === 'project-card')
+                  ? 'page'
+                  : undefined
+              }
               className={cn(
                 'flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
                 currentPage === item.id ||
@@ -346,6 +355,7 @@ export function Sidebar() {
             <AppTooltip content={t('layout.tooltips.bughunter')}>
               <button
                 onClick={() => setIsBugHunterOpen(true)}
+                aria-label={t('layout.tooltips.bughunter')}
                 className={cn(
                   'transition-all text-muted-foreground/30 hover:text-destructive active:scale-90',
                 )}
@@ -358,6 +368,7 @@ export function Sidebar() {
                 onClick={() => {
                   setCurrentPage('quickstart');
                 }}
+                aria-label={t('layout.tooltips.quick_start')}
                 className={cn(
                   'relative transition-all',
                   currentPage === 'quickstart'
@@ -383,6 +394,7 @@ export function Sidebar() {
             <AppTooltip content={t('layout.tooltips.help')}>
               <button
                 onClick={openContextHelp}
+                aria-label={t('layout.tooltips.help')}
                 className={cn(
                   'transition-all',
                   currentPage === 'help'
@@ -396,6 +408,7 @@ export function Sidebar() {
             <AppTooltip content={t('layout.tooltips.settings')}>
               <button
                 onClick={() => setCurrentPage('settings')}
+                aria-label={t('layout.tooltips.settings')}
                 className={cn(
                   'transition-all',
                   currentPage === 'settings'
