@@ -52,6 +52,7 @@ Nie generuj gotowego kodu refaktoryzacji — opisz co i dlaczego zmienić.
 
 Zbadaj poniższe bugi. Dla każdego wskaż dokładny plik i fragment kodu który jest przyczyną:
 
+<<<<<<< HEAD
 
 
 1. **Unique Files liczone niepoprawnie** — sprawdź logikę deduplikacji plików w `storage.rs`
@@ -81,6 +82,10 @@ __cfab_demon
 15 111,26 zł. Kurwa w kazdym widoku jest co innego!!!!!
 Sprawdz gdzie jest błąd i napraw to do chuja.
 
+=======
+1. **Unique Files liczone niepoprawnie** — sprawdź logikę deduplikacji plików w `storage.rs`
+   i/lub `tracker.rs`. Zidentyfikuj gdzie jest błąd zliczania. Jeśli nie da sie go naprawic usun tą kurwa funkcę!
+>>>>>>> 763446e7b6ef35ecd3815137e8e380ae5143bc97
 
 ### 7. Bezpieczeństwo i prywatność
 

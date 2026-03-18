@@ -38,7 +38,7 @@ import {
   type AiSettingsFormValues,
 } from '@/components/ai/AiSettingsForm';
 import { AiMetricsCharts } from '@/components/ai/AiMetricsCharts';
-import { LOCAL_DATA_CHANGED_EVENT } from '@/lib/sync-events';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 
 const FEEDBACK_TRIGGER = 30;
 const RETRAIN_INTERVAL_HOURS = 24;
@@ -275,9 +275,11 @@ export function AIPage() {
     async (silent = false) => {
       if (isFetchingMetricsRef.current) return;
       isFetchingMetricsRef.current = true;
-      // Safety timeout: reset flag after 30s even if fetch hangs
-      const timeout = setTimeout(() => {
+      // Safety timeout: reset guard and loading state after 30s to prevent
+      // permanent blocking if the IPC call hangs indefinitely.
+      const safetyTimer = setTimeout(() => {
         isFetchingMetricsRef.current = false;
+        setLoadingMetrics(false);
       }, 30_000);
       if (!silent) setLoadingMetrics(true);
       try {
@@ -289,7 +291,7 @@ export function AIPage() {
         console.error(e);
         showTranslatedError('ai_page.errors.metrics_load_failed', e);
       } finally {
-        clearTimeout(timeout);
+        clearTimeout(safetyTimer);
         if (!silent) setLoadingMetrics(false);
         isFetchingMetricsRef.current = false;
       }
@@ -308,6 +310,13 @@ export function AIPage() {
     void refreshModelData();
   }, [refreshModelData]);
 
+  // Refresh on local data changes (daemon writes, settings saved, etc.)
+  usePageRefreshListener(() => {
+    if (document.visibilityState !== 'visible') return;
+    void refreshModelData(true);
+  });
+
+  // Refresh on tab visibility / window focus
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
@@ -316,20 +325,12 @@ export function AIPage() {
     const handleWindowFocus = () => {
       void refreshModelData(true);
     };
-    const handleLocalDataChange = () => {
-      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
-        return;
-      }
-      void refreshModelData(true);
-    };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleWindowFocus);
-    window.addEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener(LOCAL_DATA_CHANGED_EVENT, handleLocalDataChange);
     };
   }, [refreshModelData]);
 

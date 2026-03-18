@@ -16,7 +16,6 @@ async fn get_report_project(
     app: AppHandle,
     project_id: i64,
 ) -> Result<ProjectWithStats, String> {
-    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         conn.query_row(
             "SELECT p.id, p.name, p.color, p.created_at, p.excluded_at, p.frozen_at,
@@ -24,21 +23,18 @@ async fn get_report_project(
                     COALESCE((SELECT CAST(SUM(s.duration_seconds) AS INTEGER)
                               FROM sessions s
                               JOIN applications a ON a.id = s.app_id
-                              WHERE (s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
-                                AND s.duration_seconds >= ?2), 0),
+                              WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id)), 0),
                     COALESCE((SELECT COUNT(DISTINCT s.app_id)
                               FROM sessions s
                               JOIN applications a ON a.id = s.app_id
-                              WHERE (s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
-                                AND s.duration_seconds >= ?2), 0),
+                              WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id)), 0),
                     (SELECT MAX(s.end_time)
                      FROM sessions s
                      JOIN applications a ON a.id = s.app_id
-                     WHERE (s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
-                       AND s.duration_seconds >= ?2)
+                     WHERE s.project_id = p.id OR (s.project_id IS NULL AND a.project_id = p.id))
              FROM projects p
              WHERE p.id = ?1",
-            rusqlite::params![project_id, min_duration],
+            [project_id],
             |row| {
                 Ok(ProjectWithStats {
                     id: row.get(0)?,
@@ -67,7 +63,6 @@ async fn get_report_estimate(
     app: AppHandle,
     project_id: i64,
 ) -> Result<f64, String> {
-    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         let hourly_rate: Option<f64> = conn
             .query_row(
@@ -89,9 +84,8 @@ async fn get_report_estimate(
                             THEN s.duration_seconds * (s.rate_multiplier - 1.0) ELSE 0 END), 0)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
-                   AND s.duration_seconds >= ?2",
-                rusqlite::params![project_id, min_duration],
+                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)",
+                [project_id],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap_or((0.0, 0.0));
@@ -105,12 +99,13 @@ async fn get_report_estimate(
 /// Lightweight session query for reports.
 /// Bypasses the expensive SESSION_PROJECT_CTE entirely.
 /// Matches sessions by: direct s.project_id OR app assigned to project (a.project_id).
+/// Filters out sessions shorter than `min_duration` seconds.
 async fn get_report_sessions(
     app: AppHandle,
     project_id: i64,
     date_range: DateRange,
+    min_duration: i64,
 ) -> Result<Vec<SessionWithApp>, String> {
-    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         let sql = format!(
             "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
@@ -139,9 +134,9 @@ async fn get_report_sessions(
              ) asug_latest ON asug_latest.session_id = s.id
              LEFT JOIN projects p_sug ON p_sug.id = asug_latest.suggested_project_id
              WHERE {ACTIVE_SESSION_FILTER_S}
+               AND s.duration_seconds >= ?4
                AND (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
                AND s.date >= ?2 AND s.date <= ?3
-               AND s.duration_seconds >= ?4
              ORDER BY s.start_time DESC"
         );
         let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
@@ -182,7 +177,6 @@ async fn get_report_extra_info(
     project_id: i64,
     estimate: f64,
 ) -> Result<ProjectExtraInfo, String> {
-    let min_duration = load_persisted_session_min_duration();
     run_db_blocking(app, move |conn| {
         // Top apps: group sessions by app, sum duration
         let mut app_stmt = conn
@@ -190,15 +184,14 @@ async fn get_report_extra_info(
                 "SELECT a.display_name, CAST(SUM(s.duration_seconds) AS INTEGER)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
-                   AND s.duration_seconds >= ?2
+                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)
                  GROUP BY a.id
                  ORDER BY SUM(s.duration_seconds) DESC
                  LIMIT 10",
             )
             .map_err(|e| e.to_string())?;
         let top_apps: Vec<TopApp> = app_stmt
-            .query_map(rusqlite::params![project_id, min_duration], |row| {
+            .query_map([project_id], |row| {
                 Ok(TopApp {
                     name: row.get(0)?,
                     seconds: row.get(1)?,
@@ -217,9 +210,8 @@ async fn get_report_extra_info(
                         SUM(CASE WHEN s.rate_multiplier > 1.0 THEN 1 ELSE 0 END)
                  FROM sessions s
                  JOIN applications a ON a.id = s.app_id
-                 WHERE (s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1))
-                   AND s.duration_seconds >= ?2",
-                rusqlite::params![project_id, min_duration],
+                 WHERE s.project_id = ?1 OR (s.project_id IS NULL AND a.project_id = ?1)",
+                [project_id],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap_or((0, 0, 0));
@@ -272,6 +264,7 @@ pub async fn get_project_report_data(
     log::info!("[report] START project_id={}, date_range={:?}", project_id, date_range);
 
     let t0 = std::time::Instant::now();
+    let min_duration = load_persisted_session_min_duration();
 
     // Phase 1: independent tasks — run in parallel
     let project_handle = tauri::async_runtime::spawn({
@@ -299,7 +292,7 @@ pub async fn get_project_report_data(
         let t0 = t0;
         async move {
             log::info!("[report] get_report_sessions START");
-            let r = get_report_sessions(app, project_id, date_range).await;
+            let r = get_report_sessions(app, project_id, date_range, min_duration).await;
             log::info!("[report] get_report_sessions DONE ({:?})", t0.elapsed());
             r
         }

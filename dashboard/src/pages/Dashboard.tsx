@@ -47,12 +47,7 @@ import {
   loadProjectsAllTime,
   useProjectsCacheStore,
 } from '@/store/projects-cache-store';
-import {
-  APP_REFRESH_EVENT,
-  LOCAL_DATA_CHANGED_EVENT,
-  type AppRefreshDetail,
-  type LocalDataChangedDetail,
-} from '@/lib/sync-events';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { shouldRefreshDashboardPage } from '@/lib/page-refresh-reasons';
 
 const UNASSIGNED_PROJECT_KEY = 'unassigned';
@@ -308,42 +303,12 @@ export function Dashboard() {
     void loadProjectsAllTime();
   }, []);
 
-  useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason || !shouldRefreshDashboardPage(reason)) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (!reasons.some((reason) => shouldRefreshDashboardPage(reason))) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    window.addEventListener(
-      LOCAL_DATA_CHANGED_EVENT,
-      handleLocalDataChange as EventListener,
-    );
-    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
-
-    return () => {
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange as EventListener,
-      );
-      window.removeEventListener(
-        APP_REFRESH_EVENT,
-        handleAppRefresh as EventListener,
-      );
-    };
-  }, []);
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some((reason) => shouldRefreshDashboardPage(reason))) {
+      return;
+    }
+    setDataReloadVersion((prev) => prev + 1);
+  });
 
   useEffect(() => {
     let cancelled = false;
