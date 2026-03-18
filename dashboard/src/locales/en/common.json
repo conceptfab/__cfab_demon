@@ -833,7 +833,8 @@
     "sessions_count": "{{count}} sessions",
     "archive_title": "Archive",
     "archive_empty": "Archive is empty",
-    "delete_from_archive": "Delete from archive"
+    "delete_from_archive": "Delete from archive",
+    "delete_archive_confirm": "Delete archive file \"{{fileName}}\"? This only removes the archived file and cannot be undone."
   },
   "time_analysis_page": {
     "no_project_data": "No project data",
@@ -900,6 +901,7 @@
   },
   "applications_page": {
     "errors": {
+      "load_applications": "Failed to load applications",
       "load_monitored": "Failed to load monitored applications",
       "app_name_empty": "Application name cannot be empty.",
       "monitored_exe_required": "Enter the monitored application exe name.",
@@ -910,19 +912,25 @@
       "save_color_prefix": "Failed to save application color:",
       "rename_app_prefix": "Failed to rename application:",
       "delete_app_prefix": "Failed to delete application:",
-      "sync_monitored_prefix": "Failed to sync monitored applications:"
+      "sync_monitored_prefix": "Failed to sync monitored applications:",
+      "reset_time_prefix": "Failed to reset application time:"
     },
     "prompts": {
       "rename_monitored_title": "Rename monitored application",
       "rename_app_title": "Rename application",
       "rename_app_description": "(display name)",
-      "delete_app_confirm": "Delete application \"{{label}}\" and all related sessions/files? This will remove the app row, {{sessionCount}} sessions, and related file activity records. This cannot be undone."
+      "delete_app_confirm": "Delete application \"{{label}}\" and all related sessions/files? This will remove the app row, {{sessionCount}} sessions, and related file activity records. This cannot be undone.",
+      "remove_monitored_confirm": "Remove monitored application \"{{exeName}}\"? TIMEFLOW will stop tracking it until you add it again.",
+      "reset_time_confirm": "Reset tracked time for \"{{label}}\"? This keeps the application entry but removes its accumulated time."
     },
     "monitored": {
       "title": "Monitored Applications",
+      "exe_label": "Monitored application executable name",
       "exe_placeholder": "exe name (e.g. code.exe)",
+      "display_name_label": "Monitored application display name",
       "display_name_placeholder": "Display name (optional)",
-      "empty": "No monitored applications. Add exe names above to start tracking."
+      "empty": "No monitored applications. Add exe names above to start tracking.",
+      "loading": "Loading monitored applications..."
     },
     "actions": {
       "add": "Add",
@@ -959,6 +967,9 @@
     },
     "empty": {
       "no_applications": "No applications found"
+    },
+    "loading": {
+      "applications": "Loading applications..."
     }
   },
   "estimates_page": {
@@ -1372,6 +1383,8 @@
     "data": "Data",
     "reports": "Reports",
     "daemon": "Daemon",
+    "online_sync": "Online Sync",
+    "bughunter": "BugHunter",
     "settings": "Settings",
     "quick_start_2": "QUICK START",
     "fast_timeflow_setup_for_a_new_install_and_first_launch": "Fast TIMEFLOW setup for a new install and first launch.",
@@ -1442,6 +1455,7 @@
     "search_filter_projects_by_name_or_folder_path_in_real_ti": "Search – filter projects by name or folder path in real time.",
     "color_change_click_the_color_dot_on_the_project_card_to": "Color change – click the color dot on the project card to change the project color (preset palette + custom color).",
     "project_card_projectpage_full_project_view_data_compacti": "Project card (ProjectPage) – full project view: data compaction, time reset, inline name edit, timeline with comments, manual sessions, and report generation.",
+    "project_time_is_consistent_across_project_views_estima": "Consistent project time – project lists, ProjectPage, estimates, and reports all use the same deduplicated clock time for overlapping sessions.",
     "project_page_daily_timeline_comments_manual_sessions": "ProjectPage workflow – the project detail view combines the daily timeline, recent comments, manual sessions, compaction, and direct report generation in one place.",
     "saved_view_persist_your_preferred_sorting_and_presentati": "Saved View – persist your preferred sorting and presentation mode for lists/timeline so it comes back when you reopen the screen.",
     "project_data_compaction_action_in_the_project_view_that": "Project data compaction – action in the project view that reduces data size without losing time summaries.",
@@ -1566,6 +1580,7 @@
     "reportview_full_screen_report_preview_without_the_side_p": "ReportView – full-screen report preview (without the side panel) optimized for print and PDF export.",
     "report_view_toolbar_focuses_on_preview_print_and_pdf_": "ReportView toolbar – clean full-screen preview with Print / PDF action; use it to verify layout, scaling, and page breaks before export.",
     "files_activity_section_report_templates_can_include_file": "\"Files/activity\" section – report templates can include file/activity details, not only time summaries.",
+    "report_work_time_uses_the_same_deduplicated_clock_time_a": "Consistent work time in reports – reports show the same work time as project and estimate views, while multipliers affect financial value instead of hour totals.",
     "additional_sections_boosts_sessions_with_time_multiplier": "Additional sections: Boosts (sessions with time multiplier), Manual sessions (manually added), Comments, AI Statistics.",
     "section_reordering_up_down_arrows_on_each_section_in_the": "Section reordering – up/down arrows on each section in the template editor let you set a custom order of report elements.",
     "preview_loading_state_when_switching_templates_or_rebuild": "Preview loading state – when switching templates or rebuilding the section layout, the preview panel shows a temporary loading state instead of stale content.",

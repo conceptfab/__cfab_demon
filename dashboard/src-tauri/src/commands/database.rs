@@ -3,6 +3,7 @@ use crate::db;
 use chrono::{DateTime, Local};
 use rusqlite::OpenFlags;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use tauri::AppHandle;
@@ -34,31 +35,63 @@ pub struct DatabaseSettings {
 }
 
 fn load_database_settings(app: &AppHandle) -> Result<DatabaseSettings, String> {
-    let vacuum_on_startup = db::get_system_setting(app, "vacuum_on_startup")?
+    let conn = db::get_connection(app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT key, value
+             FROM system_settings
+             WHERE key IN (
+                'vacuum_on_startup',
+                'backup_enabled',
+                'backup_path',
+                'backup_interval_days',
+                'last_backup_at',
+                'auto_optimize_enabled',
+                'auto_optimize_interval_hours',
+                'last_optimize_at'
+             )",
+        )
+        .map_err(|e| format!("Failed to prepare database settings query: {}", e))?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(|e| format!("Failed to query database settings: {}", e))?;
+
+    let settings: HashMap<String, String> = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("Failed to read database settings: {}", e))?
+        .into_iter()
+        .collect();
+
+    let setting = |key: &str| settings.get(key).map(String::as_str);
+
+    let vacuum_on_startup = setting("vacuum_on_startup")
         .map(|v| v == "true")
         .unwrap_or(false);
 
-    let backup_enabled = db::get_system_setting(app, "backup_enabled")?
+    let backup_enabled = setting("backup_enabled")
         .map(|v| v == "true")
         .unwrap_or(false);
 
-    let backup_path = db::get_system_setting(app, "backup_path")?.unwrap_or_default();
+    let backup_path = setting("backup_path").unwrap_or_default().to_string();
 
-    let backup_interval_days = db::get_system_setting(app, "backup_interval_days")?
+    let backup_interval_days = setting("backup_interval_days")
         .and_then(|v| v.parse().ok())
         .unwrap_or(7);
 
-    let last_backup_at = db::get_system_setting(app, "last_backup_at")?;
+    let last_backup_at = setting("last_backup_at").map(str::to_string);
 
-    let auto_optimize_enabled = db::get_system_setting(app, "auto_optimize_enabled")?
+    let auto_optimize_enabled = setting("auto_optimize_enabled")
         .map(|v| v == "true")
         .unwrap_or(true);
 
-    let auto_optimize_interval_hours = db::get_system_setting(app, "auto_optimize_interval_hours")?
+    let auto_optimize_interval_hours = setting("auto_optimize_interval_hours")
         .and_then(|v| v.parse().ok())
         .unwrap_or(24);
 
-    let last_optimize_at = db::get_system_setting(app, "last_optimize_at")?;
+    let last_optimize_at = setting("last_optimize_at").map(str::to_string);
 
     log::info!(
         "Loaded database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",

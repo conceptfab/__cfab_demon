@@ -833,7 +833,8 @@
     "sessions_count": "{{count}} sesji",
     "archive_title": "Archiwum",
     "archive_empty": "Archiwum jest puste",
-    "delete_from_archive": "Usuń z archiwum"
+    "delete_from_archive": "Usuń z archiwum",
+    "delete_archive_confirm": "Usunąć plik archiwum \"{{fileName}}\"? Ta operacja usuwa tylko zapisany plik i nie może zostać cofnięta."
   },
   "time_analysis_page": {
     "no_project_data": "Brak danych projektowych",
@@ -886,7 +887,7 @@
     "stopping": "Zatrzymywanie...",
     "stop": "Zatrzymaj",
     "restarting": "Restartowanie...",
-    "restart": "Restart",
+    "restart": "Uruchom ponownie",
     "starting": "Uruchamianie...",
     "start": "Uruchom",
     "autostart_title": "Autostart",
@@ -900,6 +901,7 @@
   },
   "applications_page": {
     "errors": {
+      "load_applications": "Nie udało się wczytać aplikacji",
       "load_monitored": "Nie udało się wczytać monitorowanych aplikacji",
       "app_name_empty": "Nazwa aplikacji nie może być pusta.",
       "monitored_exe_required": "Podaj nazwę pliku exe monitorowanej aplikacji.",
@@ -910,19 +912,25 @@
       "save_color_prefix": "Nie udało się zapisać koloru aplikacji:",
       "rename_app_prefix": "Nie udało się zmienić nazwy aplikacji:",
       "delete_app_prefix": "Nie udało się usunąć aplikacji:",
-      "sync_monitored_prefix": "Nie udało się zsynchronizować monitorowanych aplikacji:"
+      "sync_monitored_prefix": "Nie udało się zsynchronizować monitorowanych aplikacji:",
+      "reset_time_prefix": "Nie udało się zresetować czasu aplikacji:"
     },
     "prompts": {
       "rename_monitored_title": "Zmień nazwę monitorowanej aplikacji",
       "rename_app_title": "Zmień nazwę aplikacji",
       "rename_app_description": "(nazwa wyświetlana)",
-      "delete_app_confirm": "Usunąć aplikację \"{{label}}\" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, {{sessionCount}} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć."
+      "delete_app_confirm": "Usunąć aplikację \"{{label}}\" oraz wszystkie powiązane sesje/pliki? To usunie wpis aplikacji, {{sessionCount}} sesji i powiązane rekordy aktywności plików. Tej operacji nie można cofnąć.",
+      "remove_monitored_confirm": "Usunąć monitorowaną aplikację \"{{exeName}}\"? TIMEFLOW przestanie ją śledzić, dopóki nie dodasz jej ponownie.",
+      "reset_time_confirm": "Zresetować naliczony czas dla \"{{label}}\"? Wpis aplikacji zostanie zachowany, ale skumulowany czas zostanie wyczyszczony."
     },
     "monitored": {
       "title": "Monitorowane aplikacje",
+      "exe_label": "Nazwa wykonywalna monitorowanej aplikacji",
       "exe_placeholder": "nazwa exe (np. code.exe)",
+      "display_name_label": "Nazwa wyświetlana monitorowanej aplikacji",
       "display_name_placeholder": "Nazwa wyświetlana (opcjonalnie)",
-      "empty": "Brak monitorowanych aplikacji. Dodaj nazwy exe powyżej, aby rozpocząć śledzenie."
+      "empty": "Brak monitorowanych aplikacji. Dodaj nazwy exe powyżej, aby rozpocząć śledzenie.",
+      "loading": "Ładowanie monitorowanych aplikacji..."
     },
     "actions": {
       "add": "Dodaj",
@@ -959,6 +967,9 @@
     },
     "empty": {
       "no_applications": "Nie znaleziono aplikacji"
+    },
+    "loading": {
+      "applications": "Ładowanie aplikacji..."
     }
   },
   "estimates_page": {
@@ -1031,7 +1042,7 @@
       "autosave_hint": "Szablon zapisywany automatycznie"
     },
     "template": {
-      "default_template": "Standard",
+      "default_template": "Standardowy",
       "new_template": "Nowy szablon",
       "copy_suffix": "kopia"
     },
@@ -1163,7 +1174,7 @@
     "language_hint": "Język ustawisz w Ustawienia > Język.",
     "heading": {
       "quick": "Szybki",
-      "start": "Start"
+      "start": "Rozpocznij"
     },
     "intro": "Witaj w TIMEFLOW! Przejdźmy przez te kilka prostych kroków, aby poprawnie skonfigurować Twój system śledzenia czasu.",
     "outro": "To wszystko! Teraz możesz cieszyć się pełną automatyzacją.",
@@ -1361,7 +1372,7 @@
     "section_guide": "Przewodnik po sekcjach",
     "open_full_tutorial": "Uruchom pełny samouczek",
     "open_this_module": "Przejdź do opisywanego modułu",
-    "quick_start": "Quick Start",
+    "quick_start": "Szybki start",
     "dashboard": "Dashboard",
     "sessions": "Sesje",
     "projects": "Projekty",
@@ -1372,6 +1383,8 @@
     "data": "Dane",
     "reports": "Raporty",
     "daemon": "Demon",
+    "online_sync": "Online Sync",
+    "bughunter": "BugHunter",
     "settings": "Ustawienia",
     "quick_start_2": "SZYBKI START",
     "fast_timeflow_setup_for_a_new_install_and_first_launch": "Szybka konfiguracja TIMEFLOW dla nowych instalacji i pierwszego uruchomienia.",
@@ -1442,6 +1455,7 @@
     "search_filter_projects_by_name_or_folder_path_in_real_ti": "Wyszukiwanie – filtruj projekty po nazwie lub ścieżce folderu w czasie rzeczywistym.",
     "color_change_click_the_color_dot_on_the_project_card_to": "Zmiana koloru – kliknij kropkę koloru w karcie projektu, aby zmienić kolor projektu (paleta presetów + dowolny kolor).",
     "project_card_projectpage_full_project_view_data_compacti": "Karta projektu (ProjectPage) – pełny widok projektu: kompaktowanie danych, reset czasu, edycja nazwy inline, timeline z komentarzami, sesje ręczne oraz generowanie raportu.",
+    "project_time_is_consistent_across_project_views_estima": "Spójny czas projektu – listy projektów, ProjectPage, wyceny i raporty korzystają z tego samego czasu zegarowego z deduplikacją nakładających się sesji.",
     "project_page_daily_timeline_comments_manual_sessions": "Widok ProjectPage – szczegóły projektu łączą dzienny timeline, ostatnie komentarze, sesje ręczne, kompaktowanie danych i bezpośrednie generowanie raportu w jednym miejscu.",
     "saved_view_persist_your_preferred_sorting_and_presentati": "Zapisany widok (Save View) – możesz utrwalić preferowany układ sortowania i prezentacji list/timeline, aby wracał po ponownym otwarciu ekranu.",
     "project_data_compaction_action_in_the_project_view_that": "Kompaktowanie danych projektu – akcja w widoku projektu redukująca rozmiar danych bez utraty podsumowań czasowych.",
@@ -1513,15 +1527,15 @@
     "time_of_day_and_day_of_the_week_your_work_habits": "Pora dnia i dzień tygodnia (Twoje nawyki pracy).",
     "token_analysis": "Analiza tokenów",
     "keywords_extracted_from_file_names_and_windows_the_stron": "Słowa kluczowe wyciągane z nazw plików i okien (najsilniejszy sygnał).",
-    "score_and_base_log_prob": "Score & Base Log Prob:",
-    "matched_tokens_and_context_matches": "Matched Tokens & Context Matches:",
+    "score_and_base_log_prob": "Punkty i bazowy log. prawdop.:",
+    "matched_tokens_and_context_matches": "Dopasowane tokeny i trafienia kontekstowe:",
     "k_2_decision_algorithm": "2. Algorytm decyzyjny",
     "the_model_doesn_t_guess_blindly_for_each_unassigned_sess": "Model nie zgaduje „na ślepo” – dla każdej nieprzypisanej sesji wylicza:",
     "confidence_2": "Ufność",
     "a_value_from_0_to_1_determined_by_a_sigmoid_function": "Wartość od 0 do 1 określaną przez funkcję sigmoidalną.",
     "evidence_count_2": "Dowody",
     "the_number_of_historical_proofs_confirming_the_decision": "Liczba historycznych „dowodów” potwierdzających decyzję.",
-    "margin": "Margin",
+    "margin": "Margines",
     "the_difference_between_the_best_and_second_match_protect": "Różnica między najlepszym a drugim dopasowaniem (chroni przed błędami).",
     "k_3_operating_modes": "3. Tryby pracy",
     "suggest": "Suggest (Sugestie):",
@@ -1566,6 +1580,7 @@
     "reportview_full_screen_report_preview_without_the_side_p": "ReportView – pełnoekranowy podgląd raportu (tryb bez bocznego panelu) przygotowany pod wydruk i eksport PDF.",
     "report_view_toolbar_focuses_on_preview_print_and_pdf_": "Toolbar ReportView – czysty pełnoekranowy podgląd z akcją Drukuj / PDF; użyj go do sprawdzenia układu, skali i podziału stron przed eksportem.",
     "files_activity_section_report_templates_can_include_file": "Sekcja \"Pliki/aktywność\" – w szablonie raportu możesz uwzględnić listę plików i aktywności, nie tylko podsumowania czasowe.",
+    "report_work_time_uses_the_same_deduplicated_clock_time_a": "Spójny czas w raportach – raport pokazuje ten sam czas pracy co widoki projektów i wycen, a mnożniki wpływają na wartość finansową, nie na liczbę godzin.",
     "additional_sections_boosts_sessions_with_time_multiplier": "Sekcje dodatkowe: sesje z mnożnikiem czasu, sesje ręczne (ręcznie dodane), komentarze i statystyki AI.",
     "section_reordering_up_down_arrows_on_each_section_in_the": "Zmiana kolejności sekcji – strzałki góra/dół przy każdej sekcji w edytorze szablonu pozwalają ustalić własną kolejność elementów raportu.",
     "preview_loading_state_when_switching_templates_or_rebuild": "Stan ładowania podglądu – przy przełączaniu szablonów lub przebudowie układu sekcji panel podglądu pokazuje krótki stan ładowania zamiast starej zawartości.",

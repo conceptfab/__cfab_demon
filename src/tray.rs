@@ -92,7 +92,10 @@ fn ensure_conn(state: &mut AttentionState) -> Result<&rusqlite::Connection, Stri
             }
         }
     }
-    Ok(state.conn.as_ref().unwrap())
+    match state.conn.as_ref() {
+        Some(conn) => Ok(conn),
+        None => Err("Dashboard DB connection is unavailable".into()),
+    }
 }
 
 fn refresh_attention_state(state: &RefCell<AttentionState>, force: bool) -> i64 {
@@ -209,10 +212,7 @@ impl TrayState {
             if new_lang != old_lang {
                 self.current_lang.set(new_lang);
                 set_menu_item_text(&self.menu_exit.borrow(), new_lang.t(TrayText::Close));
-                set_menu_item_text(
-                    &self.menu_restart.borrow(),
-                    new_lang.t(TrayText::Restart),
-                );
+                set_menu_item_text(&self.menu_restart.borrow(), new_lang.t(TrayText::Restart));
                 set_menu_item_text(
                     &self.menu_dashboard.borrow(),
                     new_lang.t(TrayText::OpenDashboard),
@@ -296,7 +296,10 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
             (Some(conn), count)
         }
         Err(error) => {
-            log::warn!("Failed to open dashboard DB for initial tray count: {}", error);
+            log::warn!(
+                "Failed to open dashboard DB for initial tray count: {}",
+                error
+            );
             (None, 0)
         }
     };

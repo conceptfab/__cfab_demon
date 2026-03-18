@@ -485,4 +485,49 @@ mod tests {
         assert!((row_b.effective_hourly_rate - 150.0).abs() < 0.0001);
         assert!((row_b.estimated_value - 150.0).abs() < 0.0001);
     }
+
+    #[test]
+    fn estimate_rows_keep_clock_time_and_add_multiplier_only_once() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Boosted", "#111111", Option::<f64>::None],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden, rate_multiplier)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)",
+            rusqlite::params![
+                1i64,
+                "2026-01-02T09:00:00",
+                "2026-01-02T10:00:00",
+                3600i64,
+                "2026-01-02",
+                1i64,
+                2.0f64
+            ],
+        )
+        .expect("insert boosted session");
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-01-02".to_string(),
+                end: "2026-01-02".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        let row = rows.first().expect("row");
+        assert_eq!(row.seconds, 3600);
+        assert!((row.hours - 1.0).abs() < 0.0001);
+        assert!((row.weighted_hours - 2.0).abs() < 0.0001);
+        assert!((row.estimated_value - 200.0).abs() < 0.0001);
+        assert!((row.multiplier_extra_seconds - 3600.0).abs() < 0.0001);
+    }
 }

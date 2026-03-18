@@ -36,6 +36,7 @@ import {
 } from '@/lib/user-settings';
 import { useSettingsStore } from '@/store/settings-store';
 import type {
+  DashboardData,
   DashboardStats,
   ManualSessionWithProject,
   ProjectTimeRow,
@@ -51,6 +52,8 @@ import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { shouldRefreshDashboardPage } from '@/lib/page-refresh-reasons';
 
 const UNASSIGNED_PROJECT_KEY = 'unassigned';
+const EMPTY_PROJECT_ROWS: ProjectTimeRow[] = [];
+const EMPTY_STACKED_BAR_DATA: StackedBarData[] = [];
 
 function AutoImportBanner() {
   const { t } = useTranslation();
@@ -169,16 +172,15 @@ export function Dashboard() {
     canShiftForward,
     triggerRefresh,
   } = useDataStore();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [projectTimeline, setProjectTimeline] = useState<StackedBarData[]>([]);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(
+    null,
+  );
   const [projectTimelineLoading, setProjectTimelineLoading] = useState(true);
   const [projectTimelineError, setProjectTimelineError] = useState<
     unknown | null
   >(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [todaySessions, setTodaySessions] = useState<SessionWithApp[]>([]);
-  const [topProjects, setTopProjects] = useState<ProjectTimeRow[]>([]);
-  const [allProjects, setAllProjects] = useState<ProjectTimeRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [manualSessions, setManualSessions] = useState<
     ManualSessionWithProject[]
@@ -193,6 +195,13 @@ export function Dashboard() {
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const projectsList = useProjectsCacheStore((s) => s.projectsAllTime);
   const projectCount = projectsList.length;
+  const stats: DashboardStats | null = dashboardData?.stats ?? null;
+  const topProjects: ProjectTimeRow[] =
+    dashboardData?.top_projects ?? EMPTY_PROJECT_ROWS;
+  const allProjects: ProjectTimeRow[] =
+    dashboardData?.all_projects ?? EMPTY_PROJECT_ROWS;
+  const projectTimeline: StackedBarData[] =
+    dashboardData?.project_timeline ?? EMPTY_STACKED_BAR_DATA;
 
   const projectColorMap = useMemo(
     () =>
@@ -346,10 +355,7 @@ export function Dashboard() {
       ]) => {
         if (cancelled) return;
         if (dashboardDataRes.status === 'fulfilled') {
-          setStats(dashboardDataRes.value.stats);
-          setTopProjects(dashboardDataRes.value.top_projects);
-          setAllProjects(dashboardDataRes.value.all_projects);
-          setProjectTimeline(dashboardDataRes.value.project_timeline);
+          setDashboardData(dashboardDataRes.value);
           setProjectTimelineError(null);
           setLoadError(null);
         } else {
@@ -357,10 +363,7 @@ export function Dashboard() {
             dashboardDataRes.reason,
             t('ui.common.unknown_error'),
           );
-          setStats(null);
-          setTopProjects([]);
-          setAllProjects([]);
-          setProjectTimeline([]);
+          setDashboardData(null);
           setLoadError(nextError);
           setProjectTimelineError(dashboardDataRes.reason);
           logTauriError('load dashboard data', dashboardDataRes.reason);

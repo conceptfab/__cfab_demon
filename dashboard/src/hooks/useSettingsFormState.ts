@@ -67,7 +67,7 @@ interface UseSettingsFormStateOptions {
   setChartAnimations: (enabled: boolean) => void;
   setPageChangeGuard: (guard: PageChangeGuard | null) => void;
   setStoreWorkingHours?: (next: WorkingHoursSettings) => void;
-  setStoreLanguage?: (code: string) => void;
+  setStoreLanguage?: (code: LanguageSettings['code']) => void;
   setStoreSplitSettings?: (next: SplitSettings) => void;
 }
 

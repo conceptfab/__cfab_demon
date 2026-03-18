@@ -98,16 +98,12 @@ export function ProjectEstimatesSection({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {(
               [
                 {
                   label: t('project_page.text.sessions'),
                   value: extraInfo?.db_stats.session_count || 0,
-                },
-                {
-                  label: t('project_page.text.unique_files'),
-                  value: extraInfo?.db_stats.file_activity_count || 0,
                 },
                 {
                   label: t('project_page.text.manual_sessions'),

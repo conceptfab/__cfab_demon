@@ -32,50 +32,50 @@ impl ActivityType {
 pub fn default_classification_map() -> &'static HashMap<&'static str, ActivityType> {
     static MAP: OnceLock<HashMap<&'static str, ActivityType>> = OnceLock::new();
     MAP.get_or_init(|| {
-    let mut map = HashMap::new();
-    // Coding
-    for exe in &[
-        "code.exe",
-        "code-insiders.exe",
-        "cursor.exe",
-        "idea64.exe",
-        "pycharm64.exe",
-        "webstorm64.exe",
-        "clion64.exe",
-        "rider64.exe",
-        "devenv.exe",
-        "notepad++.exe",
-        "vim.exe",
-        "nvim.exe",
-    ] {
-        map.insert(*exe, ActivityType::Coding);
-    }
-    // Browsing
-    for exe in &[
-        "chrome.exe",
-        "msedge.exe",
-        "firefox.exe",
-        "brave.exe",
-        "opera.exe",
-        "opera_gx.exe",
-        "vivaldi.exe",
-        "arc.exe",
-    ] {
-        map.insert(*exe, ActivityType::Browsing);
-    }
-    // Design
-    for exe in &[
-        "figma.exe",
-        "photoshop.exe",
-        "illustrator.exe",
-        "blender.exe",
-        "gimp-2.10.exe",
-        "inkscape.exe",
-        "adobexd.exe",
-    ] {
-        map.insert(*exe, ActivityType::Design);
-    }
-    map
+        let mut map = HashMap::new();
+        // Coding
+        for exe in &[
+            "code.exe",
+            "code-insiders.exe",
+            "cursor.exe",
+            "idea64.exe",
+            "pycharm64.exe",
+            "webstorm64.exe",
+            "clion64.exe",
+            "rider64.exe",
+            "devenv.exe",
+            "notepad++.exe",
+            "vim.exe",
+            "nvim.exe",
+        ] {
+            map.insert(*exe, ActivityType::Coding);
+        }
+        // Browsing
+        for exe in &[
+            "chrome.exe",
+            "msedge.exe",
+            "firefox.exe",
+            "brave.exe",
+            "opera.exe",
+            "opera_gx.exe",
+            "vivaldi.exe",
+            "arc.exe",
+        ] {
+            map.insert(*exe, ActivityType::Browsing);
+        }
+        // Design
+        for exe in &[
+            "figma.exe",
+            "photoshop.exe",
+            "illustrator.exe",
+            "blender.exe",
+            "gimp-2.10.exe",
+            "inkscape.exe",
+            "adobexd.exe",
+        ] {
+            map.insert(*exe, ActivityType::Design);
+        }
+        map
     })
 }
 

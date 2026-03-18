@@ -96,7 +96,9 @@ fn app_storage_dir(app: &AppHandle) -> PathBuf {
             Ok(dir) => dir,
             Err(e) => {
                 log::error!("Failed to get app data dir: {}", e);
-                let fallback = std::env::current_dir().unwrap_or_default().join("timeflow_data");
+                let fallback = std::env::current_dir()
+                    .unwrap_or_default()
+                    .join("timeflow_data");
                 std::fs::create_dir_all(&fallback).ok();
                 fallback
             }
@@ -242,8 +244,8 @@ fn maybe_auto_backup(db: &rusqlite::Connection) {
     let should_backup = match last_backup {
         Some(date_str) => {
             if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
-                let diff = chrono::Local::now()
-                    .signed_duration_since(last.with_timezone(&chrono::Local));
+                let diff =
+                    chrono::Local::now().signed_duration_since(last.with_timezone(&chrono::Local));
                 diff.num_days() >= interval_days
             } else {
                 true
@@ -283,8 +285,8 @@ fn maybe_auto_optimize(db: &rusqlite::Connection) {
     let should_optimize = match last_optimize {
         Some(date_str) => {
             if let Ok(last) = chrono::DateTime::parse_from_rfc3339(&date_str) {
-                let diff = chrono::Local::now()
-                    .signed_duration_since(last.with_timezone(&chrono::Local));
+                let diff =
+                    chrono::Local::now().signed_duration_since(last.with_timezone(&chrono::Local));
                 diff.num_hours() >= interval_hours
             } else {
                 true

@@ -277,26 +277,24 @@ fn record_app_activity(
 
         // Primary lookup by full cache key; fallback by normalized name
         // to avoid duplicates when window_title changes (e.g. "[modified]").
-        let matched_idx = app_file_index
-            .get(&file_cache_key)
-            .copied()
-            .or_else(|| {
-                // Fallback: find existing entry with the same normalized name
-                // (only when the primary key is title-based, i.e. no detected_path).
-                if file_cache_key.starts_with(CACHE_PREFIX_TITLE)
-                    || file_cache_key.starts_with(CACHE_PREFIX_NAME)
-                {
-                    // Pre-normalize once to avoid re-allocating per candidate.
-                    let needle = storage::sanitize_file_entry_name(trimmed_file_name);
-                    // Guard: only match entries without a detected_path to avoid
-                    // merging different files that share the same base name.
-                    app_data.files.iter().position(|f| {
-                        f.detected_path.is_none() && f.name == needle
-                    })
-                } else {
-                    None
-                }
-            });
+        let matched_idx = app_file_index.get(&file_cache_key).copied().or_else(|| {
+            // Fallback: find existing entry with the same normalized name
+            // (only when the primary key is title-based, i.e. no detected_path).
+            if file_cache_key.starts_with(CACHE_PREFIX_TITLE)
+                || file_cache_key.starts_with(CACHE_PREFIX_NAME)
+            {
+                // Pre-normalize once to avoid re-allocating per candidate.
+                let needle = storage::sanitize_file_entry_name(trimmed_file_name);
+                // Guard: only match entries without a detected_path to avoid
+                // merging different files that share the same base name.
+                app_data
+                    .files
+                    .iter()
+                    .position(|f| f.detected_path.is_none() && f.name == needle)
+            } else {
+                None
+            }
+        });
 
         if let Some(idx) = matched_idx {
             // Ensure current cache key maps to this entry so subsequent
@@ -581,8 +579,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                     if stop_signal.load(Ordering::Relaxed) {
                         break;
                     }
-                    let remaining_now =
-                        poll_interval.saturating_sub(last_tracking_tick.elapsed());
+                    let remaining_now = poll_interval.saturating_sub(last_tracking_tick.elapsed());
                     if remaining_now.is_zero() {
                         break;
                     }
@@ -601,11 +598,12 @@ mod tests {
         BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
     };
     use crate::activity::ActivityType;
-    use crate::config::{Config, MonitoredApp};
+    use crate::config::Config;
     use crate::storage::{DailyData, DailySummary};
     use chrono::{Local, TimeZone, Timelike};
     use std::collections::HashMap;
     use std::time::{Duration, Instant};
+    use timeflow_shared::monitored_app::MonitoredApp;
 
     #[test]
     fn refreshes_background_process_snapshot_when_never_built() {

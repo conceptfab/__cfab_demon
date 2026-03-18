@@ -21,7 +21,6 @@ import {
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { formatDuration, getErrorMessage, logTauriError } from '@/lib/utils';
-import { handleSettledResult } from '@/lib/async-utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
@@ -54,6 +53,9 @@ export function Applications() {
   const [monitoredError, setMonitoredError] = useState('');
   const [syncingMonitored, setSyncingMonitored] = useState(false);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
+  const [loadingApps, setLoadingApps] = useState(true);
+  const [loadingMonitored, setLoadingMonitored] = useState(true);
+  const [appsLoadError, setAppsLoadError] = useState('');
 
   const monitoredDateFormatter = useMemo(
     () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language),
@@ -96,7 +98,24 @@ export function Applications() {
     [t],
   );
 
+  const loadApplications = useCallback(async () => {
+    setLoadingApps(true);
+    try {
+      const value = await applicationsApi.getApplications();
+      setApps(value);
+      setVisibleRows(APP_ROWS_PAGE_SIZE);
+      setAppsLoadError('');
+    } catch (error) {
+      logTauriError('load applications', error);
+      setApps([]);
+      setAppsLoadError(t('applications_page.errors.load_applications'));
+    } finally {
+      setLoadingApps(false);
+    }
+  }, [t]);
+
   const loadMonitored = useCallback(async () => {
+    setLoadingMonitored(true);
     try {
       const value = await daemonApi.getMonitoredApps();
       setMonitored(value);
@@ -104,6 +123,8 @@ export function Applications() {
     } catch (error) {
       logTauriError('load monitored apps', error);
       setMonitoredError(t('applications_page.errors.load_monitored'));
+    } finally {
+      setLoadingMonitored(false);
     }
   }, [t]);
 
@@ -115,36 +136,9 @@ export function Applications() {
   });
 
   useEffect(() => {
-    Promise.allSettled([
-      applicationsApi.getApplications(),
-      daemonApi.getMonitoredApps(),
-    ]).then(
-      (results) => {
-        const [appsResult, monitoredResult] = results;
-
-        handleSettledResult(appsResult, {
-          onFulfilled: (value) => {
-            setApps(value);
-            setVisibleRows(APP_ROWS_PAGE_SIZE);
-          },
-          onRejected: (reason) => {
-            logTauriError('load applications', reason);
-          },
-        });
-
-        handleSettledResult(monitoredResult, {
-          onFulfilled: (value) => {
-            setMonitored(value);
-            setMonitoredError('');
-          },
-          onRejected: (reason) => {
-            logTauriError('load monitored apps', reason);
-            setMonitoredError(t('applications_page.errors.load_monitored'));
-          },
-        });
-      },
-    );
-  }, [dataReloadVersion, t]);
+    void loadApplications();
+    void loadMonitored();
+  }, [dataReloadVersion, loadApplications, loadMonitored]);
 
   const monitoredSet = useMemo(
     () => new Set(monitored.map((m) => m.exe_name)),
@@ -164,6 +158,11 @@ export function Applications() {
   };
 
   const handleRemoveApp = async (exeName: string) => {
+    const confirmed = await confirm(
+      t('applications_page.prompts.remove_monitored_confirm', { exeName }),
+    );
+    if (!confirmed) return;
+
     try {
       await daemonApi.removeMonitoredApp(exeName);
       await loadMonitored();
@@ -258,12 +257,21 @@ export function Applications() {
   );
   const canLoadMore = visibleRows < filtered.length;
 
-  const handleResetAppTime = async (appId: number) => {
+  const handleResetAppTime = async (app: AppWithStats) => {
+    const label = app.display_name || app.executable_name;
+    const confirmed = await confirm(
+      t('applications_page.prompts.reset_time_confirm', { label }),
+    );
+    if (!confirmed) return;
+
     try {
-      await applicationsApi.resetAppTime(appId);
+      await applicationsApi.resetAppTime(app.id);
       triggerRefresh('applications_changed');
     } catch (err) {
       logTauriError('reset app time', err);
+      showError(
+        `${t('applications_page.errors.reset_time_prefix')} ${getErrorMessage(err, t('ui.common.unknown_error'))}`,
+      );
     }
   };
 
@@ -356,7 +364,8 @@ export function Applications() {
                 onClick={() => {
                   void handleSyncMonitored();
                 }}
-                disabled={syncingMonitored || apps.length === 0}
+                disabled={syncingMonitored || loadingApps || apps.length === 0}
+                aria-busy={syncingMonitored}
               >
                 <RefreshCw
                   className={`mr-1 h-3.5 w-3.5 ${
@@ -376,6 +385,7 @@ export function Applications() {
           <div className="flex items-center gap-2">
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              aria-label={t('applications_page.monitored.exe_label')}
               placeholder={t('applications_page.monitored.exe_placeholder')}
               value={newExe}
               onChange={(e) => setNewExe(e.target.value)}
@@ -383,6 +393,7 @@ export function Applications() {
             />
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              aria-label={t('applications_page.monitored.display_name_label')}
               placeholder={t(
                 'applications_page.monitored.display_name_placeholder',
               )}
@@ -405,7 +416,11 @@ export function Applications() {
           )}
 
           {/* Monitored list */}
-          {monitored.length > 0 ? (
+          {loadingMonitored && monitored.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              {t('applications_page.monitored.loading')}
+            </p>
+          ) : monitored.length > 0 ? (
             <div className="space-y-1">
               {monitored.map((app) => (
                 <div
@@ -637,7 +652,7 @@ export function Applications() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
-                          onClick={() => handleResetAppTime(app.id)}
+                          onClick={() => handleResetAppTime(app)}
                         >
                           <TimerReset className="h-3.5 w-3.5" />
                         </Button>
@@ -656,7 +671,27 @@ export function Applications() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {loadingApps && filtered.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-8 text-center text-muted-foreground"
+                  >
+                    {t('applications_page.loading.applications')}
+                  </td>
+                </tr>
+              )}
+              {!loadingApps && appsLoadError && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-8 text-center text-destructive"
+                  >
+                    {appsLoadError}
+                  </td>
+                </tr>
+              )}
+              {!loadingApps && !appsLoadError && filtered.length === 0 && (
                 <tr>
                   <td
                     colSpan={6}

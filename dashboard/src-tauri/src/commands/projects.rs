@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use tauri::AppHandle;
 
-use super::analysis::compute_project_activity_unique;
+use super::analysis::{compute_project_clock_totals_by_id, query_activity_date_range};
 use super::helpers::{name_hash, run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
 use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
@@ -371,51 +371,22 @@ fn query_projects_with_stats(
         "p.excluded_at IS NULL"
     };
 
-    let (min_date, max_date): (Option<String>, Option<String>) = conn
-        .query_row(
-            "SELECT MIN(d), MAX(d)
-             FROM (
-                 SELECT date as d FROM sessions
-                 UNION ALL
-                 SELECT date as d FROM manual_sessions
-             )",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .map_err(|e| e.to_string())?;
-
     let mut all_time_totals: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
     let mut period_totals: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
 
     // 1. Always compute All-Time totals
-    if let (Some(start), Some(end)) = (min_date.clone(), max_date.clone()) {
-        let (_, totals, series_meta_by_key, _, _) =
-            compute_project_activity_unique(conn, &DateRange { start, end }, false, false, None)?;
-        all_time_totals = totals
+    if let Some(all_time_range) = query_activity_date_range(conn)? {
+        all_time_totals = compute_project_clock_totals_by_id(conn, &all_time_range, false)?
             .into_iter()
-            .filter_map(|(series_key, seconds)| {
-                series_meta_by_key.get(&series_key).and_then(|series| {
-                    series
-                        .project_id
-                        .map(|project_id| (project_id, seconds.round() as i64))
-                })
-            })
+            .map(|(project_id, seconds)| (project_id, seconds.round() as i64))
             .collect();
     }
 
     // 2. Compute Period totals if date_range is provided
     if let Some(range) = date_range {
-        let (_, totals, series_meta_by_key, _, _) =
-            compute_project_activity_unique(conn, range, false, false, None)?;
-        period_totals = totals
+        period_totals = compute_project_clock_totals_by_id(conn, range, false)?
             .into_iter()
-            .filter_map(|(series_key, seconds)| {
-                series_meta_by_key.get(&series_key).and_then(|series| {
-                    series
-                        .project_id
-                        .map(|project_id| (project_id, seconds.round() as i64))
-                })
-            })
+            .map(|(project_id, seconds)| (project_id, seconds.round() as i64))
             .collect();
     }
 
@@ -492,7 +463,7 @@ fn query_projects_with_stats(
     Ok(out)
 }
 
-fn query_active_project_with_stats(
+pub(crate) fn query_active_project_with_stats(
     conn: &rusqlite::Connection,
     id: i64,
 ) -> Result<ProjectWithStats, String> {
@@ -563,33 +534,14 @@ fn query_active_project_with_stats(
     // are counted only once (wall-clock time, not raw sum).
     // IMPORTANT: must compute ALL projects (project_id_filter: None) so that
     // cross-project time splitting works correctly, then pick this project's total.
-    let total_seconds = {
-        let (min_date, max_date): (Option<String>, Option<String>) = conn
-            .query_row(
-                "SELECT MIN(d), MAX(d)
-                 FROM (
-                     SELECT date as d FROM sessions
-                     UNION ALL
-                     SELECT date as d FROM manual_sessions
-                 )",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| e.to_string())?;
-
-        if let (Some(start), Some(end)) = (min_date, max_date) {
-            let (_, totals, _, _, _) = compute_project_activity_unique(
-                conn,
-                &DateRange { start, end },
-                false,
-                false,
-                None,
-            )?;
-            let project_key = super::analysis::project_series_key(Some(id));
-            totals.get(&project_key).copied().unwrap_or(0.0).round() as i64
-        } else {
-            0
-        }
+    let total_seconds = if let Some(all_time_range) = query_activity_date_range(conn)? {
+        compute_project_clock_totals_by_id(conn, &all_time_range, false)?
+            .get(&id)
+            .copied()
+            .unwrap_or(0.0)
+            .round() as i64
+    } else {
+        0
     };
 
     let last_activity = match (last_session_activity, last_manual_activity) {
@@ -1279,6 +1231,191 @@ pub async fn auto_create_projects_from_detection(
     })
     .await
 }
+pub(crate) fn query_project_extra_info(
+    conn: &rusqlite::Connection,
+    id: i64,
+    date_range: &DateRange,
+) -> Result<ProjectExtraInfo, String> {
+    let (_name, hourly_rate): (String, Option<f64>) = conn
+        .query_row(
+            "SELECT name, hourly_rate FROM projects WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("Project not found: {}", e))?;
+
+    let global_rate_str: Option<String> = conn
+        .query_row(
+            "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let global_rate = global_rate_str
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(100.0);
+
+    let effective_rate = hourly_rate.unwrap_or(global_rate);
+
+    let get_extra_secs =
+        |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
+            let sql = format!(
+                "{SESSION_PROJECT_CTE}
+                 SELECT SUM(
+                     CASE
+                         WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
+                         ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
+                     END
+                 )
+                 FROM session_projects sp
+                 WHERE sp.project_id = ?3"
+            );
+            conn.query_row(&sql, rusqlite::params![start, end, p_id], |row| {
+                Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
+            })
+            .map_err(|e| e.to_string())
+        };
+
+    let all_time_range = query_activity_date_range(conn)?;
+    let all_time_bounds = all_time_range
+        .as_ref()
+        .map(|range| (range.start.as_str(), range.end.as_str()));
+
+    let all_time_totals = if let Some(range) = all_time_range.as_ref() {
+        compute_project_clock_totals_by_id(conn, range, false)?
+    } else {
+        HashMap::new()
+    };
+
+    let period_totals = if all_time_range
+        .as_ref()
+        .is_some_and(|range| range.start == date_range.start && range.end == date_range.end)
+    {
+        all_time_totals.clone()
+    } else {
+        compute_project_clock_totals_by_id(conn, date_range, false)?
+    };
+
+    let current_value = if let Some((start, end)) = all_time_bounds {
+        let clock_seconds = all_time_totals.get(&id).copied().unwrap_or(0.0);
+        let extra_seconds = get_extra_secs(conn, start, end, id)?;
+        ((clock_seconds + extra_seconds) / 3600.0) * effective_rate
+    } else {
+        0.0
+    };
+
+    let period_clock_seconds = period_totals.get(&id).copied().unwrap_or(0.0);
+    let period_extra_seconds = get_extra_secs(conn, &date_range.start, &date_range.end, id)?;
+    let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
+
+    let (session_count, file_activity_count, comment_count, boosted_session_count) = if let Some(
+        (start, end),
+    ) =
+        all_time_bounds
+    {
+        let session_count_sql = format!(
+            "{SESSION_PROJECT_CTE}
+                 SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?3"
+        );
+        let session_count: i64 = conn
+            .query_row(
+                &session_count_sql,
+                rusqlite::params![start, end, id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let file_activity_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM file_activities WHERE project_id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+
+        let comment_and_boost_sql = format!(
+                "{SESSION_PROJECT_CTE}
+                 SELECT
+                     COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.comment IS NOT NULL AND sp.comment <> ''),
+                     COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.safe_rate_multiplier > 1.000001)
+                 FROM session_projects sp"
+            );
+        let (comment_count, boosted_session_count): (i64, i64) = conn
+            .query_row(
+                &comment_and_boost_sql,
+                rusqlite::params![start, end, id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| e.to_string())?;
+        (
+            session_count,
+            file_activity_count,
+            comment_count,
+            boosted_session_count,
+        )
+    } else {
+        (0, 0, 0, 0)
+    };
+
+    let manual_session_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM manual_sessions WHERE project_id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let estimated_size_bytes = (session_count * 150)
+        + (file_activity_count * 150)
+        + (manual_session_count * 150)
+        + (comment_count * 100);
+
+    let top_apps = if let Some((start, end)) = all_time_bounds {
+        let top_apps_sql = format!(
+            "{SESSION_PROJECT_CTE}
+             SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
+                    SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
+                    MAX(a.color) as color
+             FROM session_projects sp
+             LEFT JOIN applications a ON a.id = sp.app_id
+             WHERE sp.project_id = ?3
+             GROUP BY COALESCE(a.display_name, 'Unknown App')
+             ORDER BY total DESC
+             LIMIT 15"
+        );
+        let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![start, end, id], |row| {
+                Ok(TopApp {
+                    name: row.get(0)?,
+                    seconds: row.get(1)?,
+                    color: row.get(2)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to read top app row: {}", e))?
+    } else {
+        Vec::new()
+    };
+
+    Ok(ProjectExtraInfo {
+        current_value,
+        period_value,
+        db_stats: ProjectDbStats {
+            session_count,
+            file_activity_count,
+            manual_session_count,
+            comment_count,
+            boosted_session_count,
+            estimated_size_bytes,
+        },
+        top_apps,
+    })
+}
+
 #[tauri::command]
 pub async fn get_project_extra_info(
     app: AppHandle,
@@ -1286,223 +1423,7 @@ pub async fn get_project_extra_info(
     date_range: DateRange,
 ) -> Result<ProjectExtraInfo, String> {
     run_db_blocking(app, move |conn| {
-        let (_name, hourly_rate): (String, Option<f64>) = conn
-            .query_row(
-                "SELECT name, hourly_rate FROM projects WHERE id = ?1",
-                [id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| format!("Project not found: {}", e))?;
-
-        let global_rate_str: Option<String> = conn
-            .query_row(
-                "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| e.to_string())?;
-
-        let global_rate = global_rate_str
-            .and_then(|v| v.parse::<f64>().ok())
-            .unwrap_or(100.0);
-
-        let effective_rate = hourly_rate.unwrap_or(global_rate);
-
-        let (min_date, max_date): (Option<String>, Option<String>) = conn
-            .query_row(
-                "SELECT MIN(d), MAX(d)
-                 FROM (
-                     SELECT date as d FROM sessions
-                     UNION ALL
-                     SELECT date as d FROM manual_sessions
-                 )",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| e.to_string())?;
-
-        let get_extra_secs =
-            |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {
-                let sql = format!(
-                    "{SESSION_PROJECT_CTE}
-                     SELECT SUM(
-                         CASE
-                             WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
-                             ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
-                         END
-                     )
-                     FROM session_projects sp
-                     WHERE sp.project_id = ?3"
-                );
-                conn.query_row(&sql, rusqlite::params![start, end, p_id], |row| {
-                    Ok(row.get::<_, Option<f64>>(0)?.unwrap_or(0.0))
-                })
-                .map_err(|e| e.to_string())
-            };
-
-        let all_time_bounds = min_date.as_deref().zip(max_date.as_deref());
-
-        let mut current_value = 0.0;
-        if let Some((start, end)) = all_time_bounds {
-            let (_, totals_raw, series_meta_by_key, _, _) = compute_project_activity_unique(
-                conn,
-                &DateRange {
-                    start: start.to_string(),
-                    end: end.to_string(),
-                },
-                false,
-                false,
-                None,
-            )?;
-            let totals: HashMap<i64, f64> = totals_raw
-                .into_iter()
-                .filter_map(|(series_key, seconds)| {
-                    series_meta_by_key
-                        .get(&series_key)
-                        .and_then(|series| series.project_id.map(|project_id| (project_id, seconds)))
-                })
-                .collect();
-            let clock_seconds = totals.get(&id).copied().unwrap_or(0.0);
-            let extra_seconds = get_extra_secs(conn, start, end, id)?;
-            current_value = ((clock_seconds + extra_seconds) / 3600.0) * effective_rate;
-        }
-
-        let (_, period_totals_raw, period_series_meta_by_key, _, _) =
-            compute_project_activity_unique(conn, &date_range, false, false, None)?;
-        let period_totals: HashMap<i64, f64> = period_totals_raw
-            .into_iter()
-            .filter_map(|(series_key, seconds)| {
-                period_series_meta_by_key
-                    .get(&series_key)
-                    .and_then(|series| series.project_id.map(|project_id| (project_id, seconds)))
-            })
-            .collect();
-        let period_clock_seconds = period_totals
-            .get(&id)
-            .copied()
-            .unwrap_or(0.0);
-        let period_extra_seconds = get_extra_secs(conn, &date_range.start, &date_range.end, id)?;
-        let period_value = ((period_clock_seconds + period_extra_seconds) / 3600.0) * effective_rate;
-
-        let (session_count, file_activity_count, comment_count, boosted_session_count) =
-            if let Some((start, end)) = all_time_bounds {
-                let session_count_sql = format!(
-                    "{SESSION_PROJECT_CTE}
-                     SELECT COUNT(*) FROM session_projects sp WHERE sp.project_id = ?3"
-                );
-                let session_count: i64 = conn
-                    .query_row(
-                        &session_count_sql,
-                        rusqlite::params![start, end, id],
-                        |row| row.get(0),
-                    )
-                    .map_err(|e| e.to_string())?;
-
-                let file_activity_count_sql = format!(
-                    "{SESSION_PROJECT_CTE}
-                     SELECT COUNT(DISTINCT LOWER(
-                         COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))
-                     ))
-                     FROM session_projects sp
-                     JOIN sessions s ON s.id = sp.id
-                     JOIN file_activities fa
-                       ON fa.app_id = s.app_id
-                      AND fa.date = s.date
-                      AND fa.last_seen > s.start_time
-                      AND fa.first_seen < s.end_time
-                     WHERE sp.project_id = ?3
-                       AND (fa.project_id = ?3 OR fa.project_id IS NULL)
-                       AND COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), '')) IS NOT NULL
-                       AND LOWER(COALESCE(NULLIF(TRIM(fa.file_path), ''), NULLIF(TRIM(fa.file_name), ''))) <> '(background)'"
-                );
-                let file_activity_count: i64 = conn
-                    .query_row(
-                        &file_activity_count_sql,
-                        rusqlite::params![start, end, id],
-                        |row| row.get(0),
-                    )
-                    .map_err(|e| e.to_string())?;
-
-                let comment_and_boost_sql = format!(
-                    "{SESSION_PROJECT_CTE}
-                     SELECT
-                         COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.comment IS NOT NULL AND sp.comment <> ''),
-                         COUNT(*) FILTER (WHERE sp.project_id = ?3 AND sp.safe_rate_multiplier > 1.000001)
-                     FROM session_projects sp"
-                );
-                let (comment_count, boosted_session_count): (i64, i64) = conn
-                    .query_row(
-                        &comment_and_boost_sql,
-                        rusqlite::params![start, end, id],
-                        |row| Ok((row.get(0)?, row.get(1)?)),
-                    )
-                    .map_err(|e| e.to_string())?;
-                (
-                    session_count,
-                    file_activity_count,
-                    comment_count,
-                    boosted_session_count,
-                )
-            } else {
-                (0, 0, 0, 0)
-            };
-
-        let manual_session_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM manual_sessions WHERE project_id = ?1",
-                [id],
-                |row| row.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-
-        let estimated_size_bytes = (session_count * 150)
-            + (file_activity_count * 150)
-            + (manual_session_count * 150)
-            + (comment_count * 100);
-
-        let top_apps = if let Some((start, end)) = all_time_bounds {
-            let top_apps_sql = format!(
-                "{SESSION_PROJECT_CTE}
-                 SELECT COALESCE(a.display_name, 'Unknown App') as display_name,
-                        SUM(CAST(sp.duration_seconds AS INTEGER)) as total,
-                        MAX(a.color) as color
-                 FROM session_projects sp
-                 LEFT JOIN applications a ON a.id = sp.app_id
-                 WHERE sp.project_id = ?3
-                 GROUP BY COALESCE(a.display_name, 'Unknown App')
-                 ORDER BY total DESC
-                 LIMIT 15"
-            );
-            let mut stmt = conn.prepare(&top_apps_sql).map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map(rusqlite::params![start, end, id], |row| {
-                    Ok(TopApp {
-                        name: row.get(0)?,
-                        seconds: row.get(1)?,
-                        color: row.get(2)?,
-                    })
-                })
-                .map_err(|e| e.to_string())?;
-            rows.collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("Failed to read top app row: {}", e))?
-        } else {
-            Vec::new()
-        };
-
-        Ok(ProjectExtraInfo {
-            current_value,
-            period_value,
-            db_stats: ProjectDbStats {
-                session_count,
-                file_activity_count,
-                manual_session_count,
-                comment_count,
-                boosted_session_count,
-                estimated_size_bytes,
-            },
-            top_apps,
-        })
+        query_project_extra_info(conn, id, &date_range)
     })
     .await
 }

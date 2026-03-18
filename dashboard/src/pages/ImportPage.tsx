@@ -4,12 +4,14 @@ import { FileDropzone } from "@/components/import/FileDropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AppTooltip } from "@/components/ui/app-tooltip";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles } from "@/lib/tauri";
 import type { ArchivedFile } from "@/lib/db-types";
 import { useTranslation } from "react-i18next";
 
 export function ImportPage() {
   const { t } = useTranslation();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [imported, setImported] = useState<{ file_path: string; import_date: string; records_count: number }[]>([]);
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -24,6 +26,11 @@ export function ImportPage() {
   }, []);
 
   const handleDeleteArchive = async (fileName: string) => {
+    const confirmed = await confirm(
+      t("import_page.delete_archive_confirm", { fileName }),
+    );
+    if (!confirmed) return;
+
     setDeleting(fileName);
     try {
       await deleteArchiveFile(fileName);
@@ -88,6 +95,7 @@ export function ImportPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog />
     </div>
   );
 }

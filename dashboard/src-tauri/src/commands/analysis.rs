@@ -252,6 +252,45 @@ pub(crate) fn build_stacked_bar_output(
     output
 }
 
+pub(crate) fn query_activity_date_range(
+    conn: &rusqlite::Connection,
+) -> Result<Option<DateRange>, String> {
+    let (min_date, max_date): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT MIN(d), MAX(d)
+             FROM (
+                 SELECT date as d FROM sessions
+                 UNION ALL
+                 SELECT date as d FROM manual_sessions
+             )",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(min_date
+        .zip(max_date)
+        .map(|(start, end)| DateRange { start, end }))
+}
+
+pub(crate) fn compute_project_clock_totals_by_id(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+    active_only: bool,
+) -> Result<HashMap<i64, f64>, String> {
+    let (_, totals, series_meta_by_key, _, _) =
+        compute_project_activity_unique(conn, date_range, false, active_only, None)?;
+
+    Ok(totals
+        .into_iter()
+        .filter_map(|(series_key, seconds)| {
+            series_meta_by_key
+                .get(&series_key)
+                .and_then(|series| series.project_id.map(|project_id| (project_id, seconds)))
+        })
+        .collect())
+}
+
 pub(crate) fn compute_project_activity_unique(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
@@ -452,25 +491,20 @@ pub(crate) fn compute_project_activity_unique(
             bucket_comments.insert(bucket.clone(), comments);
         }
 
-        let mut events: Vec<(i64, i32, String, f64)> = Vec::with_capacity(slices.len() * 2);
+        let mut events: Vec<(i64, i32, String)> = Vec::with_capacity(slices.len() * 2);
         for slice in slices {
             if slice.end_ms <= slice.start_ms {
                 continue;
             }
-            events.push((
-                slice.start_ms,
-                1,
-                slice.project_key.clone(),
-                slice.multiplier,
-            ));
-            events.push((slice.end_ms, -1, slice.project_key, slice.multiplier));
+            events.push((slice.start_ms, 1, slice.project_key.clone()));
+            events.push((slice.end_ms, -1, slice.project_key));
         }
         if events.is_empty() {
             continue;
         }
         events.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
-        let mut active: HashMap<String, (i32, f64)> = HashMap::new();
+        let mut active: HashMap<String, i32> = HashMap::new();
         let mut i = 0usize;
         let mut prev_ms = events[0].0;
         let mut seconds_for_bucket: HashMap<String, f64> = HashMap::new();
@@ -479,23 +513,24 @@ pub(crate) fn compute_project_activity_unique(
             let current_ms = events[i].0;
             if current_ms > prev_ms && !active.is_empty() {
                 let delta_seconds = (current_ms - prev_ms) as f64 / 1000.0;
-                let active_items: Vec<(String, f64)> = active
+                let active_items: Vec<String> = active
                     .iter()
-                    .filter_map(|(name, (count, mult))| {
-                        if *count > 0 {
-                            Some((name.clone(), *mult))
-                        } else {
-                            None
-                        }
-                    })
+                    .filter_map(
+                        |(name, count)| {
+                            if *count > 0 {
+                                Some(name.clone())
+                            } else {
+                                None
+                            }
+                        },
+                    )
                     .collect();
 
                 if !active_items.is_empty() {
                     let share = delta_seconds / active_items.len() as f64;
-                    for (name, mult) in active_items {
-                        let weighted_share = share * mult;
-                        *seconds_for_bucket.entry(name.clone()).or_insert(0.0) += weighted_share;
-                        *total_by_project.entry(name).or_insert(0.0) += weighted_share;
+                    for name in active_items {
+                        *seconds_for_bucket.entry(name.clone()).or_insert(0.0) += share;
+                        *total_by_project.entry(name).or_insert(0.0) += share;
                     }
                 }
             }
@@ -503,11 +538,9 @@ pub(crate) fn compute_project_activity_unique(
             while i < events.len() && events[i].0 == current_ms {
                 let delta = events[i].1;
                 let name = events[i].2.clone();
-                let mult = events[i].3;
-                let entry = active.entry(name.clone()).or_insert((0, 1.0));
-                entry.0 += delta;
-                entry.1 = mult; // Simplified: last mult wins if multiple sessions of same project overlap
-                if entry.0 <= 0 {
+                let entry = active.entry(name.clone()).or_insert(0);
+                *entry += delta;
+                if *entry <= 0 {
                     active.remove(&name);
                 }
                 i += 1;
@@ -672,12 +705,58 @@ pub async fn get_project_timeline(
 #[cfg(test)]
 mod tests {
     use super::{
-        finalize_project_series_labels, other_project_series_meta, project_series_key,
-        ProjectSeriesMetaMap, UNASSIGNED_PROJECT_SERIES_KEY,
+        compute_project_activity_unique, finalize_project_series_labels, other_project_series_meta,
+        project_series_key, ProjectSeriesMetaMap, UNASSIGNED_PROJECT_SERIES_KEY,
     };
     use crate::commands::datetime::parse_datetime_local;
+    use crate::commands::types::DateRange;
     use crate::commands::types::StackedSeriesMeta;
     use std::collections::HashMap;
+
+    fn setup_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                color TEXT NOT NULL,
+                excluded_at TEXT
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                project_id INTEGER,
+                is_hidden INTEGER DEFAULT 0,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
+                comment TEXT
+            );
+            CREATE TABLE file_activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                file_name TEXT NOT NULL DEFAULT '',
+                total_seconds INTEGER NOT NULL DEFAULT 0,
+                first_seen TEXT NOT NULL DEFAULT '',
+                last_seen TEXT NOT NULL DEFAULT '',
+                project_id INTEGER
+            );
+            CREATE TABLE manual_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '',
+                project_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL
+            );",
+        )
+        .expect("schema");
+        conn
+    }
 
     #[test]
     fn parse_datetime_local_accepts_legacy_and_fractional_formats() {
@@ -730,5 +809,56 @@ mod tests {
             labels,
             vec!["Client · #1".to_string(), "Client · #2".to_string()]
         );
+    }
+
+    #[test]
+    fn compute_project_activity_unique_keeps_clock_time_separate_from_boost() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO projects (id, name, color) VALUES (?1, ?2, ?3)",
+            rusqlite::params![1i64, "Project A", "#111111"],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden, rate_multiplier)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)",
+            rusqlite::params![
+                10i64,
+                "2026-03-01T09:00:00",
+                "2026-03-01T10:00:00",
+                3600i64,
+                "2026-03-01",
+                1i64,
+                2.0f64
+            ],
+        )
+        .expect("insert session");
+
+        let (bucket_seconds, totals, _, flags, _) = compute_project_activity_unique(
+            &conn,
+            &DateRange {
+                start: "2026-03-01".to_string(),
+                end: "2026-03-01".to_string(),
+            },
+            false,
+            false,
+            None,
+        )
+        .expect("compute activity");
+
+        assert_eq!(
+            totals.get("project:1").copied().unwrap_or_default().round() as i64,
+            3600
+        );
+        assert_eq!(
+            bucket_seconds
+                .get("2026-03-01")
+                .and_then(|bucket| bucket.get("project:1"))
+                .copied()
+                .unwrap_or_default()
+                .round() as i64,
+            3600
+        );
+        assert_eq!(flags.get("2026-03-01"), Some(&(true, false)));
     }
 }

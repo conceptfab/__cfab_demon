@@ -13,6 +13,7 @@ import {
   Activity,
   Settings,
   Info,
+  Bug,
   ChevronRight,
   Rocket,
   ArrowRight,
@@ -242,6 +243,16 @@ export function Help() {
               label={t18n('help_page.daemon')}
             />
             <HelpTabTrigger
+              value="online-sync"
+              icon={<Activity className="h-3.5 w-3.5" />}
+              label={t18n('help_page.online_sync')}
+            />
+            <HelpTabTrigger
+              value="bughunter"
+              icon={<Bug className="h-3.5 w-3.5" />}
+              label={t18n('help_page.bughunter')}
+            />
+            <HelpTabTrigger
               value="settings"
               icon={<Settings className="h-3.5 w-3.5" />}
               label={t18n('help_page.settings')}
@@ -405,6 +416,7 @@ export function Help() {
                   t18n('help_page.search_filter_projects_by_name_or_folder_path_in_real_ti'),
                   t18n('help_page.color_change_click_the_color_dot_on_the_project_card_to'),
                   t18n('help_page.project_card_projectpage_full_project_view_data_compacti'),
+                  t18n('help_page.project_time_is_consistent_across_project_views_estima'),
                   t18n('help_page.project_page_daily_timeline_comments_manual_sessions'),
                   t18n('help_page.saved_view_persist_your_preferred_sorting_and_presentati'),
                   t18n('help_page.project_data_compaction_action_in_the_project_view_that'),
@@ -723,7 +735,7 @@ export function Help() {
                   t18n('help_page.report_generation_button_in_the_top_toolbar_of_the_proje'),
                   t18n('help_page.reportview_full_screen_report_preview_without_the_side_p'),
                   t18n('help_page.report_view_toolbar_focuses_on_preview_print_and_pdf_'),
-                  t18n('help_page.files_activity_section_report_templates_can_include_file'),
+                  t18n('help_page.report_work_time_uses_the_same_deduplicated_clock_time_a'),
                   t18n('help_page.additional_sections_boosts_sessions_with_time_multiplier'),
                   t18n('help_page.section_reordering_up_down_arrows_on_each_section_in_the'),
                   t18n('help_page.preview_loading_state_when_switching_templates_or_rebuild'),
@@ -766,6 +778,65 @@ export function Help() {
                   t18n('help_page.log_coloring_error_and_warn_lines_are_highlighted_with_c'),
                 ]}
               />
+            </TabsContent>
+
+            <TabsContent
+              value="online-sync"
+              className="m-0 focus-visible:outline-none"
+            >
+              <SectionHelp
+                icon={<Activity className="h-6 w-6" />}
+                title={t18n('help_page.online_sync_setup_title')}
+                description={t18n('help_page.online_sync_set_up_synchronization_with_an_external_serv')}
+                footer={t18n('help_page.key_functionalities')}
+                features={[
+                  t18n('help_page.device_id_a_device_identifier_is_generated_when_sync_set'),
+                  t18n('help_page.the_sync_token_is_stored_in_rust_side_secure_storage_the'),
+                  t18n('help_page.sync_on_startup_runs_only_when_online_sync_is_en'),
+                  t18n('help_page.auto_sync_interval_configure_automatic_synchronization_i'),
+                  t18n('help_page.ack_statuses_in_online_sync_the_status_area_shows_whethe'),
+                  t18n('help_page.online_sync_status_panel_shows_revision_hash_and_retr'),
+                  t18n('help_page.server_snapshot_pruned_scenario_if_the_server_payload_wa'),
+                  t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
+                  t18n('help_page.demo_mode_and_sync_when_switched_to_the_demo_database_on'),
+                ]}
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.online_sync_setup_title')}
+                  items={[
+                    t18n('help_page.online_sync_setup_what_it_does'),
+                    t18n('help_page.online_sync_setup_how_to_start'),
+                    t18n('help_page.online_sync_setup_when_to_use'),
+                    t18n('help_page.online_sync_setup_limitations'),
+                  ]}
+                />
+              </SectionHelp>
+            </TabsContent>
+
+            <TabsContent
+              value="bughunter"
+              className="m-0 focus-visible:outline-none"
+            >
+              <SectionHelp
+                icon={<Bug className="h-6 w-6" />}
+                title={t18n('help_page.bughunter_detail_title')}
+                description={t18n('help_page.bughunter_the_bug_icon_in_the_sidebar_allows_quick_bug_r')}
+                footer={t18n('help_page.key_functionalities')}
+                features={[
+                  t18n('help_page.bughunter_detail_what_it_does'),
+                  t18n('help_page.bughunter_detail_when_to_use'),
+                  t18n('help_page.bughunter_detail_limitations'),
+                ]}
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.bughunter_detail_title')}
+                  items={[
+                    t18n('help_page.bughunter_detail_what_it_does'),
+                    t18n('help_page.bughunter_detail_when_to_use'),
+                    t18n('help_page.bughunter_detail_limitations'),
+                  ]}
+                />
+              </SectionHelp>
             </TabsContent>
 
             <TabsContent

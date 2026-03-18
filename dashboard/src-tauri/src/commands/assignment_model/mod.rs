@@ -570,11 +570,9 @@ pub async fn train_assignment_model(
 
     // Guard: prevent wiping model tables when there is no feedback data
     let feedback_count: i64 = run_db_blocking(app.clone(), move |conn| {
-        conn.query_row(
-            "SELECT COUNT(*) FROM assignment_feedback",
-            [],
-            |row| row.get(0),
-        )
+        conn.query_row("SELECT COUNT(*) FROM assignment_feedback", [], |row| {
+            row.get(0)
+        })
         .map_err(|e| e.to_string())
     })
     .await?;

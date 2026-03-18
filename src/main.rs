@@ -11,11 +11,11 @@ mod config;
 mod foreground_hook;
 mod i18n;
 mod monitor;
-mod win_process_snapshot;
 mod single_instance;
 mod storage;
 mod tracker;
 mod tray;
+mod win_process_snapshot;
 use crate::win_process_snapshot::no_console;
 pub use timeflow_shared::daily_store;
 

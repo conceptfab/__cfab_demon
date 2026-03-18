@@ -388,14 +388,6 @@ export function ProjectCard({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      {t('projects_page.unique_files')}
-                    </span>
-                    <span className="font-medium">
-                      {extraInfo?.db_stats.file_activity_count || 0}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
                       {t('projects_page.manual')}
                     </span>
                     <span className="font-medium">

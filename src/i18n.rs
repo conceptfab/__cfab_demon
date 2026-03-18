@@ -102,7 +102,11 @@ pub fn load_language() -> Lang {
         Err(_) => return Lang::Pl,
     };
     let lang = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
-        if parsed.get("code").and_then(|v| v.as_str()).map_or(false, |c| c.eq_ignore_ascii_case("en")) {
+        if parsed
+            .get("code")
+            .and_then(|v| v.as_str())
+            .map_or(false, |c| c.eq_ignore_ascii_case("en"))
+        {
             Lang::En
         } else {
             Lang::Pl

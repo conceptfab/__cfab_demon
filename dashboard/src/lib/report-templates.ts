@@ -29,14 +29,15 @@ function normalizeTemplate(template: ReportTemplate): ReportTemplate {
     (!template.name || template.name === 'reports_page.template.default_template')
       ? defaultName
       : template.name;
+  const normalizedSections =
+    Array.isArray(template.sections) && template.sections.length > 0
+      ? template.sections.filter((section) => section !== 'files')
+      : [];
 
   return {
     ...template,
     name: normalizedName,
-    sections:
-      Array.isArray(template.sections) && template.sections.length > 0
-        ? template.sections
-        : [...DEFAULT_SECTIONS],
+    sections: normalizedSections.length > 0 ? normalizedSections : [...DEFAULT_SECTIONS],
   };
 }
 

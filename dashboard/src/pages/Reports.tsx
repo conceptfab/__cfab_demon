@@ -112,16 +112,6 @@ const ALL_SECTIONS: SectionDef[] = [
     ),
   },
   {
-    id: 'files',
-    labelKey: 'reports_page.sections.files',
-    preview: (t) => (
-      <div className="text-sm text-muted-foreground/40">
-        <div className="text-[9px]">{t('reports_page.preview.files.title')}</div>
-        <div className="font-bold">{t('reports_page.preview.files.count')}</div>
-      </div>
-    ),
-  },
-  {
     id: 'ai',
     labelKey: 'reports_page.sections.ai',
     preview: (t) => (

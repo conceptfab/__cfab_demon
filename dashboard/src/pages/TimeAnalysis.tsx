@@ -93,6 +93,18 @@ export function TimeAnalysis() {
         </div>
       </div>
 
+      {d.isLoading && (
+        <div className="rounded-lg border border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+          {t('time_analysis_page.fallbacks.loading_chart_data')}
+        </div>
+      )}
+
+      {!d.isLoading && d.loadError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {t('time_analysis_page.fallbacks.load_chart_failed')} {d.loadError}
+        </div>
+      )}
+
       {/* Charts row */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Bar chart — delegates to view-specific component */}

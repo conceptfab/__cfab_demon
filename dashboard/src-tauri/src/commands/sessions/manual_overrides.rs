@@ -203,9 +203,9 @@ pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Res
                     ))
                 })
                 .map_err(|e| e.to_string())?;
-            sessions_to_update = rows.collect::<Result<Vec<_>, _>>().map_err(|e| {
-                format!("Failed to read sessions row for manual override: {}", e)
-            })?;
+            sessions_to_update = rows
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| format!("Failed to read sessions row for manual override: {}", e))?;
         }
 
         for (session_id, app_id, date, s_start, s_end, current_project_id) in sessions_to_update {

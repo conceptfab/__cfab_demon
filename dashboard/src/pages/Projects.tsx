@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Snowflake,
@@ -157,6 +157,7 @@ export function Projects() {
   const [newFolderPath, setNewFolderPath] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [folderInfo, setFolderInfo] = useState<string | null>(null);
+  const folderInfoTimeoutRef = useRef<number | null>(null);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDialogProjectId, setSessionDialogProjectId] = useState<
     number | null
@@ -482,6 +483,14 @@ export function Projects() {
     folderCandidates.length,
   ]);
 
+  useEffect(() => {
+    return () => {
+      if (folderInfoTimeoutRef.current !== null) {
+        window.clearTimeout(folderInfoTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const getRenderLimit = (listKey: string) =>
     projectRenderLimits[listKey] ?? PROJECT_RENDER_PAGE_SIZE;
 
@@ -521,7 +530,13 @@ export function Projects() {
     localStorage.setItem(FOLDERS_STORAGE_KEY, String(useFolders));
     localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
     setFolderInfo(t('projects.messages.view_settings_saved'));
-    setTimeout(() => setFolderInfo(null), 3000);
+    if (folderInfoTimeoutRef.current !== null) {
+      window.clearTimeout(folderInfoTimeoutRef.current);
+    }
+    folderInfoTimeoutRef.current = window.setTimeout(() => {
+      setFolderInfo(null);
+      folderInfoTimeoutRef.current = null;
+    }, 3000);
   };
 
   const visibleFolderCandidates = useMemo(() => {

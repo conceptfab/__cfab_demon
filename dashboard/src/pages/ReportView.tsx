@@ -204,7 +204,7 @@ export function ReportView() {
 
           {/* ═══ STATS ═══ */}
           {has('stats') && (
-            <div className="grid grid-cols-4 gap-4 print:break-inside-avoid">
+            <div className="grid grid-cols-3 gap-4 print:break-inside-avoid">
               {[
                 {
                   label: t('report_view.total_time'),
@@ -218,12 +218,6 @@ export function ReportView() {
                 {
                   label: t('report_view.apps'),
                   value: String(report.extra.top_apps.length),
-                },
-                {
-                  label: t('report_view.unique_files'),
-                  value: String(
-                    report.extra.db_stats?.file_activity_count ?? 0,
-                  ),
                 },
               ].map((item) => (
                 <div
@@ -307,23 +301,6 @@ export function ReportView() {
               </div>
             </div>
           )}
-
-          {/* ═══ FILES ═══ */}
-          {has('files') &&
-            (report.extra.db_stats?.file_activity_count ?? 0) > 0 && (
-              <div className="rounded-lg border border-border/20 p-4 print:border-gray-200">
-                <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-1 print:text-gray-500">
-                  {t('report_view.file_activity')}
-                </h2>
-                <div className="text-sm print:text-black">
-                  {t('report_view.tracked')}:{' '}
-                  <strong>
-                    {report.extra.db_stats?.file_activity_count ?? 0}
-                  </strong>{' '}
-                  {t('report_view.unique_files_2')}
-                </div>
-              </div>
-            )}
 
           {/* ═══ AI DATA ═══ */}
           {has('ai') && (

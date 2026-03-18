@@ -430,7 +430,8 @@ pub fn suggest_projects_for_sessions_unfiltered(
     }
 
     for &session_id in session_ids {
-        if let Some(suggestion) = suggest_project_for_session_unfiltered(conn, status, session_id)? {
+        if let Some(suggestion) = suggest_project_for_session_unfiltered(conn, status, session_id)?
+        {
             out.insert(session_id, suggestion);
         }
     }
