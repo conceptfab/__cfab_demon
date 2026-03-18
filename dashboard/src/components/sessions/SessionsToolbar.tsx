@@ -69,6 +69,7 @@ export function SessionsToolbar({
           <Button
             variant={range.mode === 'daily' ? 'secondary' : 'ghost'}
             size="sm"
+            aria-pressed={range.mode === 'daily'}
             className="h-7 text-[10px] px-3 font-bold"
             onClick={() => {
               range.onModeChange('daily');
@@ -80,6 +81,7 @@ export function SessionsToolbar({
           <Button
             variant={range.mode === 'weekly' ? 'secondary' : 'ghost'}
             size="sm"
+            aria-pressed={range.mode === 'weekly'}
             className="h-7 text-[10px] px-3 font-bold"
             onClick={() => {
               range.onModeChange('weekly');
@@ -95,6 +97,7 @@ export function SessionsToolbar({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={range.labels.previousTooltip}
               className="h-7 w-7"
               onClick={range.onShiftBackward}
             >
@@ -108,6 +111,7 @@ export function SessionsToolbar({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={range.labels.nextTooltip}
               className="h-7 w-7"
               onClick={range.onShiftForward}
               disabled={!range.canShiftForward}
@@ -119,6 +123,8 @@ export function SessionsToolbar({
         <div className="mx-1 h-4 w-px bg-border/40" />
         <div className="flex bg-secondary/30 p-0.5 rounded border border-border/20">
           <button
+            type="button"
+            aria-pressed={view.mode === 'ai_detailed'}
             onClick={() => view.onModeChange('ai_detailed')}
             className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${
               view.mode === 'ai_detailed'
@@ -129,6 +135,8 @@ export function SessionsToolbar({
             {view.labels.aiData}
           </button>
           <button
+            type="button"
+            aria-pressed={view.mode === 'detailed'}
             onClick={() => view.onModeChange('detailed')}
             className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${
               view.mode === 'detailed'
@@ -139,6 +147,8 @@ export function SessionsToolbar({
             {view.labels.detailed}
           </button>
           <button
+            type="button"
+            aria-pressed={view.mode === 'compact'}
             onClick={() => view.onModeChange('compact')}
             className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${
               view.mode === 'compact'

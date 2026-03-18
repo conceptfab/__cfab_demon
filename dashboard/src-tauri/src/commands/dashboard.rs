@@ -5,7 +5,10 @@ use super::analysis::{
     build_stacked_bar_output, compute_project_activity_unique, project_series_key,
 };
 use super::helpers::{disambiguate_name, duplicate_name_counts, name_hash, run_db_blocking};
-use super::sql_fragments::{ACTIVE_SESSION_FILTER, ACTIVE_SESSION_FILTER_S, SESSION_PROJECT_CTE};
+use super::sql_fragments::{
+    ensure_session_project_cache, ACTIVE_SESSION_FILTER, ACTIVE_SESSION_FILTER_S,
+    SESSION_PROJECT_CTE,
+};
 use super::types::{
     AppWithStats, DashboardData, DashboardStats, DateRange, HourlyData, ProjectTimeRow,
     StackedSeriesMeta, TimelinePoint, TopApp, TopProject,
@@ -263,6 +266,8 @@ fn query_project_counts(
     end: &str,
     active_only: bool,
 ) -> Result<HashMap<String, (i64, i64)>, String> {
+    ensure_session_project_cache(conn, start, end)?;
+
     let sql = format!(
         "{SESSION_PROJECT_CTE},
          combined AS (
@@ -629,6 +634,22 @@ mod tests {
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE session_project_cache (
+                session_id INTEGER PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                project_id INTEGER,
+                multiplier REAL NOT NULL,
+                duration_seconds REAL NOT NULL,
+                comment TEXT,
+                built_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE session_project_cache_dirty (
+                date TEXT PRIMARY KEY,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
         )
         .expect("schema");

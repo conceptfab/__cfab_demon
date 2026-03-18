@@ -23,8 +23,10 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
   return (
     <div className="relative group">
       <AppTooltip content={labels.changeColor}>
-        <div
-          className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+        <button
+          type="button"
+          aria-label={labels.changeColor}
+          className="h-3 w-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
           style={{ backgroundColor: pending && editing ? pending : currentColor }}
           onClick={() => {
             setEditing(!editing);
@@ -39,6 +41,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
               type="color"
               defaultValue={currentColor}
               className="w-16 h-8 border border-border rounded cursor-pointer"
+              aria-label={labels.chooseColor}
               onChange={(e) => setPending(e.target.value)}
               title={labels.chooseColor}
             />
@@ -47,6 +50,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-green-500 hover:text-green-400"
+                aria-label={labels.saveColor}
                 onClick={() => applyColor(pending)}
                 title={labels.saveColor}
               >
@@ -57,10 +61,12 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
           <div className="mt-2 flex gap-1">
             {PROJECT_COLORS.map((c) => (
               <button
+                type="button"
                 key={c}
                 className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                 style={{ backgroundColor: c }}
                 onClick={() => applyColor(c)}
+                aria-label={`${labels.chooseColor}: ${c}`}
                 title={c}
               />
             ))}

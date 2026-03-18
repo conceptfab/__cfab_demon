@@ -1,4 +1,6 @@
-use crate::commands::sql_fragments::SESSION_PROJECT_CTE_ALL_TIME;
+use crate::commands::sql_fragments::{
+    ensure_session_project_cache_all, SESSION_PROJECT_CTE_ALL_TIME,
+};
 use crate::commands::types::SplitPart;
 
 use super::split::{
@@ -94,6 +96,22 @@ fn setup_conn() -> rusqlite::Connection {
                 project_name TEXT,
                 updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(executable_name, start_time, end_time)
+            );
+            CREATE TABLE session_project_cache (
+                session_id INTEGER PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                project_id INTEGER,
+                multiplier REAL NOT NULL,
+                duration_seconds REAL NOT NULL,
+                comment TEXT,
+                built_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE session_project_cache_dirty (
+                date TEXT PRIMARY KEY,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
     )
     .expect("schema");
@@ -143,6 +161,7 @@ fn session_project_cte_does_not_assign_non_overlapping_activity() {
             ],
         )
         .expect("insert file activity");
+    ensure_session_project_cache_all(&conn).expect("build cache");
 
     let sql = format!(
         "{SESSION_PROJECT_CTE_ALL_TIME}
@@ -185,6 +204,7 @@ fn session_project_cte_assigns_single_project_with_major_overlap() {
             ],
         )
         .expect("insert file activity");
+    ensure_session_project_cache_all(&conn).expect("build cache");
 
     let sql = format!(
         "{SESSION_PROJECT_CTE_ALL_TIME}
@@ -210,6 +230,7 @@ fn project_count_query_matches_overlap_and_hidden_rules() {
                 (2, 1, '2026-01-01', 'b.txt', 2400, '2026-01-01T12:10:00Z', '2026-01-01T12:50:00Z', 10);",
         )
         .expect("seed data");
+    ensure_session_project_cache_all(&conn).expect("build cache");
 
     let sql = format!(
         "{SESSION_PROJECT_CTE_ALL_TIME}

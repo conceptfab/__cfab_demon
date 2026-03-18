@@ -1,7 +1,8 @@
 {
   "ui": {
     "a11y": {
-      "skip_to_content": "Przejdź do głównej treści"
+      "skip_to_content": "Przejdź do głównej treści",
+      "dismiss_notification": "Zamknij powiadomienie"
     },
     "common": {
       "not_available": "—",

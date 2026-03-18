@@ -41,6 +41,7 @@ export function DateRangeToolbar({
           key={preset}
           variant={timePreset === preset ? 'default' : 'ghost'}
           size="sm"
+          aria-pressed={timePreset === preset}
           onClick={() => setTimePreset(preset)}
           className="capitalize"
         >
@@ -57,6 +58,7 @@ export function DateRangeToolbar({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={t('date_range_toolbar.previous_period')}
               className="h-8 w-8"
               onClick={() => shiftDateRange(-1)}
             >
@@ -70,6 +72,7 @@ export function DateRangeToolbar({
             <Button
               variant="ghost"
               size="icon"
+              aria-label={t('date_range_toolbar.next_period')}
               className="h-8 w-8"
               onClick={() => shiftDateRange(1)}
               disabled={!canShiftForward}

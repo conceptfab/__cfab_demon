@@ -4,7 +4,7 @@ use tauri::AppHandle;
 
 use super::analysis::{compute_project_clock_totals_by_id, query_activity_date_range};
 use super::helpers::{name_hash, run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
-use super::sql_fragments::SESSION_PROJECT_CTE;
+use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
     ProjectFolder, ProjectWithStats, TopApp,
@@ -1282,6 +1282,10 @@ pub(crate) fn query_project_extra_info(
     let all_time_bounds = all_time_range
         .as_ref()
         .map(|range| (range.start.as_str(), range.end.as_str()));
+
+    if let Some((start, end)) = all_time_bounds {
+        ensure_session_project_cache(conn, start, end)?;
+    }
 
     let all_time_totals = if let Some(range) = all_time_range.as_ref() {
         compute_project_clock_totals_by_id(conn, range, false)?

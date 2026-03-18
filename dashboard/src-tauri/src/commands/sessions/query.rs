@@ -3,7 +3,10 @@ use tauri::AppHandle;
 
 use super::super::datetime::parse_datetime_ms_opt;
 use super::super::helpers::run_db_blocking;
-use super::super::sql_fragments::{ACTIVE_SESSION_FILTER_S, SESSION_PROJECT_CTE_ALL_TIME};
+use super::super::sql_fragments::{
+    ensure_session_project_cache, ensure_session_project_cache_all, ACTIVE_SESSION_FILTER_S,
+    SESSION_PROJECT_CTE_ALL_TIME,
+};
 use super::super::types::{FileActivity, SessionFilters, SessionWithApp};
 
 #[derive(Clone)]
@@ -140,6 +143,13 @@ pub async fn get_sessions(
     let include_ai_suggestions = filters.include_ai_suggestions.unwrap_or(true);
     let (mut sessions, needs_suggestion) = run_db_blocking(app.clone(), move |conn| {
         let project_filter = filters.project_id;
+        if project_filter.is_some() {
+            if let Some(date_range) = filters.date_range.as_ref() {
+                ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
+            } else {
+                ensure_session_project_cache_all(conn)?;
+            }
+        }
         let mut sql = if project_filter.is_some() {
             format!(
                 "{SESSION_PROJECT_CTE_ALL_TIME}
@@ -671,6 +681,12 @@ mod tests {
 pub async fn get_session_count(app: AppHandle, filters: SessionFilters) -> Result<i64, String> {
     if let Some(pid) = filters.project_id {
         return run_db_blocking(app, move |conn| {
+            if let Some(date_range) = filters.date_range.as_ref() {
+                ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
+            } else {
+                ensure_session_project_cache_all(conn)?;
+            }
+
             let mut sql = format!(
                 "{SESSION_PROJECT_CTE_ALL_TIME}
                  SELECT COUNT(*) FROM session_projects sp

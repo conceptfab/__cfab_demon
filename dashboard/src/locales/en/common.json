@@ -1,7 +1,8 @@
 {
   "ui": {
     "a11y": {
-      "skip_to_content": "Skip to main content"
+      "skip_to_content": "Skip to main content",
+      "dismiss_notification": "Dismiss notification"
     },
     "common": {
       "not_available": "—",

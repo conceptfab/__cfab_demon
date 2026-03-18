@@ -5,7 +5,7 @@ use tauri::AppHandle;
 
 use super::analysis::{compute_project_activity_unique, project_series_key};
 use super::helpers::run_db_blocking;
-use super::sql_fragments::SESSION_PROJECT_CTE;
+use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
 use super::types::{DateRange, EstimateProjectRow, EstimateSettings, EstimateSummary};
 
 const DEFAULT_GLOBAL_HOURLY_RATE: f64 = 100.0;
@@ -174,6 +174,8 @@ fn build_estimate_rows(
     conn: &rusqlite::Connection,
     date_range: &DateRange,
 ) -> Result<Vec<EstimateProjectRow>, String> {
+    ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
+
     let global_hourly_rate = get_global_hourly_rate(conn)?;
     let (_, totals, series_meta_by_key, _, _) =
         compute_project_activity_unique(conn, date_range, false, true, None)?;
@@ -381,6 +383,22 @@ mod tests {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
                 updated_at TEXT NOT NULL
+            );
+            CREATE TABLE session_project_cache (
+                session_id INTEGER PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                project_id INTEGER,
+                multiplier REAL NOT NULL,
+                duration_seconds REAL NOT NULL,
+                comment TEXT,
+                built_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE session_project_cache_dirty (
+                date TEXT PRIMARY KEY,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
         )
         .expect("schema");

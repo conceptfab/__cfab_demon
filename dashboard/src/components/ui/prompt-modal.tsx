@@ -38,13 +38,20 @@ export function PromptModal({
     cancelLabel ?? t('components.prompt_modal.cancel_default');
   const [value, setValue] = React.useState(initialValue);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const focusTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     if (open) {
       setValue(initialValue);
       // Timeout to ensure focus after animation
-      setTimeout(() => inputRef.current?.focus(), 100);
+      focusTimerRef.current = window.setTimeout(() => inputRef.current?.focus(), 100);
     }
+    return () => {
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current);
+        focusTimerRef.current = null;
+      }
+    };
   }, [open, initialValue]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -64,6 +71,7 @@ export function PromptModal({
           <Input
             ref={inputRef}
             className="bg-secondary/30 border-secondary focus:border-primary/50"
+            aria-label={title}
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />

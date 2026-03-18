@@ -364,6 +364,21 @@ fs:default, fs:allow-read-text-file, fs:allow-exists
 
 ## Plan prac — kolejność realizacji
 
+## Status realizacji planu
+
+Stan na `2026-03-18`:
+
+| Faza | Status | Zakres |
+|------|--------|--------|
+| Faza 1 | ✅ Zrealizowana | `1.1-1.3` |
+| Faza 2 | ✅ Zrealizowana | `2.1-2.6` |
+| Faza 3 | ✅ Zrealizowana | `3.1-3.8` |
+
+Uwagi końcowe:
+- `3.6` domknięte przez per-day cache `SESSION_PROJECT_CTE` z migracją, triggerami dirty i podpięciem do zapytań backendu.
+- `3.7` domknięte przez uzupełnienie `aria-label`, `aria-live`, `aria-pressed`, focus management i keyboard navigation w kluczowych komponentach UI.
+- W repo pozostaje 1 wcześniejszy warning ESLint w `ProjectDayTimeline.tsx`, niezwiązany z tym planem.
+
 ### Faza 1 — Bugi krytyczne 🔴
 
 | # | Zadanie | Pliki | Zależność |

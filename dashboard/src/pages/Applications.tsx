@@ -451,6 +451,7 @@ export function Applications() {
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0"
+                        aria-label={t('applications_page.tooltips.rename_monitored')}
                         onClick={() => handleRenameMonitoredApp(app)}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -461,6 +462,7 @@ export function Applications() {
                         variant="ghost"
                         size="sm"
                         className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        aria-label={t('applications_page.tooltips.remove_monitored')}
                         onClick={() => handleRemoveApp(app.exe_name)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -488,6 +490,7 @@ export function Applications() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             className="flex h-9 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            aria-label={t('applications_page.search_placeholder')}
             placeholder={t('applications_page.search_placeholder')}
             value={search}
             onChange={(e) => {
@@ -542,8 +545,10 @@ export function Applications() {
                     <div className="flex items-center gap-2">
                       <div className="relative group">
                         <AppTooltip content={t('applications_page.tooltips.change_color')}>
-                          <div
-                            className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+                          <button
+                            type="button"
+                            aria-label={t('applications_page.tooltips.change_color')}
+                            className="h-3 w-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
                             style={{ backgroundColor: pendingColor && editingColorId === app.id ? pendingColor : app.color }}
                             onClick={() => {
                               if (editingColorId === app.id) {
@@ -563,6 +568,7 @@ export function Applications() {
                                 type="color"
                                 defaultValue={app.color || '#38bdf8'}
                                 className="w-16 h-8 border border-border rounded cursor-pointer"
+                                aria-label={t('applications_page.tooltips.choose_color')}
                                 onChange={(e) => setPendingColor(e.target.value)}
                                 title={t('applications_page.tooltips.choose_color')}
                               />
@@ -571,6 +577,7 @@ export function Applications() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-green-500 hover:text-green-400"
+                                  aria-label={t('applications_page.tooltips.save_color')}
                                   onClick={() => {
                                     handleUpdateColor(app.id, pendingColor);
                                     setPendingColor(null);
@@ -593,6 +600,7 @@ export function Applications() {
                                 '#22d3ee',
                               ].map((c) => (
                                 <button
+                                  type="button"
                                   key={c}
                                   className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                                   style={{ backgroundColor: c }}
@@ -600,6 +608,7 @@ export function Applications() {
                                     handleUpdateColor(app.id, c);
                                     setPendingColor(null);
                                   }}
+                                  aria-label={`${t('applications_page.tooltips.choose_color')}: ${c}`}
                                   title={c}
                                 />
                               ))}
@@ -656,6 +665,7 @@ export function Applications() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
+                          aria-label={t('applications_page.tooltips.rename_app')}
                           onClick={() => handleRenameApp(app)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -666,6 +676,7 @@ export function Applications() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7"
+                          aria-label={t('applications_page.tooltips.reset_time')}
                           onClick={() => handleResetAppTime(app)}
                         >
                           <TimerReset className="h-3.5 w-3.5" />
@@ -676,6 +687,7 @@ export function Applications() {
                           variant="ghost"
                           size="icon"
                           className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          aria-label={t('applications_page.tooltips.delete_app_and_sessions')}
                           onClick={() => handleDeleteApp(app)}
                         >
                           <Trash2 className="h-3.5 w-3.5" />

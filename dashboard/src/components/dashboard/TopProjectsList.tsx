@@ -32,6 +32,16 @@ export function TopProjectsList({
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const setSessionsFocusProject = useUIStore((s) => s.setSessionsFocusProject);
 
+  const openProjectSessions = (projectId: number | null) => {
+    setSessionsFocusDate(dateRange.end);
+    if (projectId == null) {
+      setSessionsFocusProject('unassigned');
+    } else {
+      setSessionsFocusProject(projectId);
+    }
+    setCurrentPage('sessions');
+  };
+
   if (projects.length === 0) {
     return (
       <p className="py-3 text-xs text-muted-foreground text-center">
@@ -59,17 +69,15 @@ export function TopProjectsList({
             key={`${projectKey}-${i}`}
             data-project-id={linkedProject?.id}
             data-project-name={linkedProject?.name}
+            role="button"
+            tabIndex={0}
             className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
-            onClick={() => {
-              setSessionsFocusDate(dateRange.end);
-              if (p.project_id == null) {
-                setSessionsFocusProject('unassigned');
-              } else if (p.project_id != null) {
-                setSessionsFocusProject(p.project_id);
-              } else {
-                setSessionsFocusProject(null);
+            onClick={() => openProjectSessions(p.project_id ?? null)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openProjectSessions(p.project_id ?? null);
               }
-              setCurrentPage('sessions');
             }}
             title={t('components.top_projects.click_to_view', {
               name: projectLabel,

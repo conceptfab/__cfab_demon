@@ -153,7 +153,7 @@ fn apply_split_side_effects(
         }
     }
 
-    let feedback_count = 1_i64;
+    let feedback_count = segments.len() as i64;
     tx.execute(
         "INSERT INTO assignment_model_state (key, value, updated_at)
          VALUES ('feedback_since_train', ?1, datetime('now'))

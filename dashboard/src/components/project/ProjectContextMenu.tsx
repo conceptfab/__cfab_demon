@@ -32,6 +32,7 @@ export function ProjectContextMenu() {
   const { t } = useTranslation();
   const [menu, setMenu] = useState<ProjectMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const firstActionRef = useRef<HTMLButtonElement>(null);
   const setProjectPageId = useUIStore((s) => s.setProjectPageId);
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
 
@@ -70,6 +71,11 @@ export function ProjectContextMenu() {
     return () =>
       document.removeEventListener('contextmenu', handleContextMenu, true);
   }, []);
+
+  useEffect(() => {
+    if (!menu) return;
+    firstActionRef.current?.focus();
+  }, [menu]);
 
   useEffect(() => {
     if (!menu) return;
@@ -112,6 +118,7 @@ export function ProjectContextMenu() {
   return (
     <div
       ref={menuRef}
+      role="menu"
       className="fixed z-[120] min-w-[240px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
       style={{ left: menu.x, top: menu.y }}
     >
@@ -120,7 +127,9 @@ export function ProjectContextMenu() {
         <span className="font-medium text-foreground">{menu.projectName}</span>
       </div>
       <button
+        ref={firstActionRef}
         type="button"
+        role="menuitem"
         className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
         onClick={() => {
           setProjectPageId(menu.projectId);

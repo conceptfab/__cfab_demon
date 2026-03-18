@@ -104,6 +104,7 @@ export function ProjectsList({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-48 pl-9"
+              aria-label={t('projects_page.search_projects')}
               placeholder={t('projects_page.search_projects')}
               value={search}
               onChange={(event) => onSearchChange(event.target.value)}
@@ -114,6 +115,8 @@ export function ProjectsList({
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label={t('projects.labels.sort_abc')}
+                aria-pressed={sortBy.startsWith('name')}
                 onClick={() =>
                   onSortChange(sortBy === 'name-asc' ? 'name-desc' : 'name-asc')
                 }
@@ -130,6 +133,8 @@ export function ProjectsList({
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label={t('projects.labels.sort_value')}
+                aria-pressed={sortBy.startsWith('value')}
                 onClick={() =>
                   onSortChange(
                     sortBy === 'value-desc' ? 'value-asc' : 'value-desc',
@@ -148,6 +153,8 @@ export function ProjectsList({
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label={t('projects.labels.sort_time')}
+                aria-pressed={sortBy.startsWith('time')}
                 onClick={() =>
                   onSortChange(
                     sortBy === 'time-desc' ? 'time-asc' : 'time-desc',
@@ -167,6 +174,8 @@ export function ProjectsList({
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label={t('projects.labels.toggle_folder_grouping')}
+                aria-pressed={useFolders}
                 onClick={onToggleFolders}
                 className={`h-7 w-8 p-0 ${
                   useFolders
@@ -181,6 +190,8 @@ export function ProjectsList({
 
           <div className="flex rounded-md bg-secondary/50 p-1 text-sm">
             <button
+              type="button"
+              aria-pressed={viewMode === 'detailed'}
               onClick={() => onViewModeChange('detailed')}
               className={`rounded-sm px-3 py-1 transition-colors ${
                 viewMode === 'detailed'
@@ -191,6 +202,8 @@ export function ProjectsList({
               {t('projects.labels.detailed')}
             </button>
             <button
+              type="button"
+              aria-pressed={viewMode === 'compact'}
               onClick={() => onViewModeChange('compact')}
               className={`rounded-sm px-3 py-1 transition-colors ${
                 viewMode === 'compact'
@@ -203,7 +216,12 @@ export function ProjectsList({
           </div>
 
           <AppTooltip content={t('projects_page.save_view_as_default')}>
-            <Button variant="ghost" size="icon" onClick={onSaveDefaults}>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t('projects_page.save_view_as_default')}
+              onClick={onSaveDefaults}
+            >
               <Save className="h-4 w-4" />
             </Button>
           </AppTooltip>

@@ -103,8 +103,10 @@ export function ProjectCard({
         <div className="flex items-center gap-2">
           <div className="relative group">
             <AppTooltip content={t('projects.labels.change_color')}>
-              <div
-                className="h-3 w-3 rounded-full cursor-pointer hover:scale-125 transition-transform"
+              <button
+                type="button"
+                aria-label={t('projects.labels.change_color')}
+                className="h-3 w-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
                 style={{
                   backgroundColor:
                     isColorEditorOpen && pendingColor ? pendingColor : project.color,
@@ -119,6 +121,7 @@ export function ProjectCard({
                     type="color"
                     defaultValue={project.color}
                     className="h-8 w-16 cursor-pointer rounded border border-border"
+                    aria-label={t('projects.labels.choose_color')}
                     onChange={(event) => onPendingColorChange(event.target.value)}
                     title={t('projects.labels.choose_color')}
                   />
@@ -128,6 +131,7 @@ export function ProjectCard({
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 text-green-500 hover:text-green-400"
+                      aria-label={t('projects.labels.save')}
                       onClick={onSavePendingColor}
                       title={t('projects.labels.save')}
                     >
@@ -143,6 +147,7 @@ export function ProjectCard({
                         className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                         style={{ backgroundColor: color }}
                         onClick={() => onSelectPresetColor(color)}
+                        aria-label={`${t('projects.labels.choose_color')}: ${color}`}
                       />
                     </AppTooltip>
                   ))}
@@ -178,6 +183,7 @@ export function ProjectCard({
               type="button"
               variant="ghost"
               size="icon"
+              aria-label={t('projects.labels.reset_time')}
               className="h-7 w-7"
               onClick={onResetProjectTime}
               disabled={isDeleting}
@@ -198,6 +204,13 @@ export function ProjectCard({
               type="button"
               variant="ghost"
               size="icon"
+              aria-label={
+                project.frozen_at
+                  ? t('projects.labels.frozen_since_click_unfreeze', {
+                      date: project.frozen_at.slice(0, 10),
+                    })
+                  : t('projects.labels.freeze_project')
+              }
               className={cn(
                 'h-7 w-7',
                 project.frozen_at
@@ -215,6 +228,7 @@ export function ProjectCard({
               type="button"
               variant="ghost"
               size="icon"
+              aria-label={t('projects.labels.exclude_project')}
               className="h-7 w-7 text-destructive"
               onClick={onExclude}
               disabled={isDeleting}
@@ -227,6 +241,7 @@ export function ProjectCard({
               type="button"
               variant="ghost"
               size="icon"
+              aria-label={t('projects.labels.delete_project_permanently')}
               className="h-7 w-7 text-destructive"
               onClick={() => void onDelete()}
               disabled={isDeleting}
@@ -286,6 +301,7 @@ export function ProjectCard({
                 type="button"
                 variant="outline"
                 size="sm"
+                aria-label={t('projects.labels.add_manual_session')}
                 onClick={onOpenManualSession}
                 className="h-9 w-9 shrink-0"
                 disabled={isDeleting}
@@ -299,6 +315,7 @@ export function ProjectCard({
                 type="button"
                 variant="outline"
                 size="sm"
+                aria-label={t('projects.labels.project_card')}
                 onClick={onOpenProjectPage}
                 className="h-9 w-9 shrink-0"
                 disabled={isDeleting}

@@ -5,7 +5,7 @@ use super::daemon::load_persisted_session_min_duration;
 use super::helpers::{run_app_blocking, run_db_blocking};
 use super::manual_sessions::get_manual_sessions;
 use super::projects::{query_active_project_with_stats, query_project_extra_info};
-use super::sql_fragments::SESSION_PROJECT_CTE;
+use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
 use super::types::{
     DateRange, ManualSessionFilters, ProjectExtraInfo, ProjectReportData, ProjectWithStats,
     SessionWithApp,
@@ -39,6 +39,8 @@ async fn get_report_sessions(
     min_duration: i64,
 ) -> Result<Vec<SessionWithApp>, String> {
     run_db_blocking(app, move |conn| {
+        ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
+
         let sql = format!(
             "{SESSION_PROJECT_CTE}
              SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,

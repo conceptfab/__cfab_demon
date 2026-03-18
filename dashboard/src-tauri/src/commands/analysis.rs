@@ -7,7 +7,10 @@ use tauri::AppHandle;
 
 use super::datetime::parse_datetime_local;
 use super::helpers::{disambiguate_name, duplicate_name_counts, run_db_blocking};
-use super::sql_fragments::{ACTIVE_SESSION_FILTER, ACTIVE_SESSION_FILTER_S, SESSION_PROJECT_CTE};
+use super::sql_fragments::{
+    ensure_session_project_cache, ACTIVE_SESSION_FILTER, ACTIVE_SESSION_FILTER_S,
+    SESSION_PROJECT_CTE,
+};
 use super::types::{DateRange, HeatmapCell, StackedBarData, StackedSeriesMeta};
 
 pub(crate) const OTHER_PROJECT_SERIES_KEY: &str = "__other__";
@@ -298,6 +301,8 @@ pub(crate) fn compute_project_activity_unique(
     active_only: bool,
     project_id_filter: Option<i64>,
 ) -> Result<ProjectActivityUniqueResult, String> {
+    ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
+
     let bucket_kind = if hourly {
         BucketKind::Hour
     } else {
@@ -752,6 +757,22 @@ mod tests {
                 end_time TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
                 date TEXT NOT NULL
+            );
+            CREATE TABLE session_project_cache (
+                session_id INTEGER PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                project_id INTEGER,
+                multiplier REAL NOT NULL,
+                duration_seconds REAL NOT NULL,
+                comment TEXT,
+                built_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE session_project_cache_dirty (
+                date TEXT PRIMARY KEY,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
             );",
         )
         .expect("schema");
