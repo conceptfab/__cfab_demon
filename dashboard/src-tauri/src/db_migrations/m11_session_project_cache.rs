@@ -85,10 +85,9 @@ pub fn run(db: &rusqlite::Transaction) -> Result<(), rusqlite::Error> {
             ON CONFLICT(date) DO UPDATE SET updated_at = CURRENT_TIMESTAMP;
         END;
 
-        INSERT INTO session_project_cache_dirty (date, updated_at)
+        INSERT OR REPLACE INTO session_project_cache_dirty (date, updated_at)
         SELECT DISTINCT date, CURRENT_TIMESTAMP
-        FROM sessions
-        ON CONFLICT(date) DO UPDATE SET updated_at = CURRENT_TIMESTAMP;",
+        FROM sessions;",
     )?;
 
     Ok(())
