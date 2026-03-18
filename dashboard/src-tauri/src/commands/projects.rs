@@ -4,7 +4,7 @@ use tauri::AppHandle;
 
 use super::analysis::compute_project_activity_unique;
 use super::helpers::{name_hash, run_db_blocking, LAST_PRUNE_EPOCH_SECS, PRUNE_CACHE_TTL_SECS};
-use super::sql_fragments::{SESSION_PROJECT_CTE, SESSION_PROJECT_CTE_ALL_TIME};
+use super::sql_fragments::SESSION_PROJECT_CTE;
 use super::types::{
     DateRange, FolderProjectCandidate, FolderSyncResult, Project, ProjectDbStats, ProjectExtraInfo,
     ProjectFolder, ProjectWithStats, TopApp,
@@ -558,26 +558,39 @@ fn query_active_project_with_stats(
         )
         .map_err(|e| format!("Project not found: {}", e))?;
 
-    let total_auto_seconds: f64 = {
-        let sql = format!(
-            "{SESSION_PROJECT_CTE_ALL_TIME}
-             SELECT COALESCE(SUM(sp.duration_seconds), 0.0)
-             FROM session_projects sp
-             WHERE sp.project_id = ?1"
-        );
-        conn.query_row(&sql, [id], |row| row.get(0))
-            .map_err(|e| e.to_string())?
-    };
+    // Use the same deduplicating algorithm as the projects list and estimates,
+    // so overlapping sessions (e.g. Cursor + Claude running simultaneously)
+    // are counted only once (wall-clock time, not raw sum).
+    // IMPORTANT: must compute ALL projects (project_id_filter: None) so that
+    // cross-project time splitting works correctly, then pick this project's total.
+    let total_seconds = {
+        let (min_date, max_date): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT MIN(d), MAX(d)
+                 FROM (
+                     SELECT date as d FROM sessions
+                     UNION ALL
+                     SELECT date as d FROM manual_sessions
+                 )",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| e.to_string())?;
 
-    let manual_seconds: i64 = conn
-        .query_row(
-            "SELECT COALESCE(SUM(duration_seconds), 0)
-             FROM manual_sessions
-             WHERE project_id = ?1",
-            [id],
-            |row| row.get(0),
-        )
-        .map_err(|e| e.to_string())?;
+        if let (Some(start), Some(end)) = (min_date, max_date) {
+            let (_, totals, _, _, _) = compute_project_activity_unique(
+                conn,
+                &DateRange { start, end },
+                false,
+                false,
+                None,
+            )?;
+            let project_key = super::analysis::project_series_key(Some(id));
+            totals.get(&project_key).copied().unwrap_or(0.0).round() as i64
+        } else {
+            0
+        }
+    };
 
     let last_activity = match (last_session_activity, last_manual_activity) {
         (Some(a), Some(b)) => Some(if a >= b { a } else { b }),
@@ -593,7 +606,7 @@ fn query_active_project_with_stats(
         created_at,
         excluded_at,
         frozen_at,
-        total_seconds: total_auto_seconds.round() as i64 + manual_seconds,
+        total_seconds,
         period_seconds: None,
         app_count,
         last_activity,

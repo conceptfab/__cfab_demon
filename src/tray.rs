@@ -248,11 +248,7 @@ impl TrayState {
 /// Returns whether the user requested a restart.
 pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     if let Err(e) = nwg::init() {
-        log::error!("Failed to initialize NWG (tray disabled): {}", e);
-        // Run without tray — just wait for stop signal
-        while !stop_signal.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_secs(1));
-        }
+        log::error!("Failed to initialize NWG (headless/no-GUI?): {e}");
         return TrayExitAction::Exit;
     }
 
@@ -260,30 +256,21 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
 
     let mut window = nwg::MessageWindow::default();
     if let Err(e) = nwg::MessageWindow::builder().build(&mut window) {
-        log::error!("Failed to create MessageWindow (tray disabled): {}", e);
-        while !stop_signal.load(Ordering::SeqCst) {
-            std::thread::sleep(Duration::from_secs(1));
-        }
+        log::error!("Failed to create MessageWindow: {e}");
         return TrayExitAction::Exit;
     }
 
     let embed = match nwg::EmbedResource::load(None) {
         Ok(e) => e,
         Err(e) => {
-            log::error!("Failed to load exe resources (tray disabled): {}", e);
-            while !stop_signal.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_secs(1));
-            }
+            log::error!("Failed to load exe resources for tray icon: {e}");
             return TrayExitAction::Exit;
         }
     };
     let icon = match embed.icon_str("APP_ICON", None) {
         Some(i) => i,
         None => {
-            log::error!("APP_ICON not found in resources (tray disabled)");
-            while !stop_signal.load(Ordering::SeqCst) {
-                std::thread::sleep(Duration::from_secs(1));
-            }
+            log::error!("APP_ICON not found in resources");
             return TrayExitAction::Exit;
         }
     };
@@ -292,9 +279,12 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .icon_str("APP_ICON_ATTENTION", None)
         .or_else(|| embed.icon_str("APP_ICON", None))
         .unwrap_or_else(|| {
-            log::warn!("APP_ICON_ATTENTION not found, using default icon");
-            // Fallback: load APP_ICON again (separate handle)
-            embed.icon_str("APP_ICON", None).expect("APP_ICON must exist at this point")
+            log::warn!("No attention icon found, reloading APP_ICON as fallback");
+            // Reload APP_ICON as a separate handle since Icon is not Clone
+            nwg::EmbedResource::load(None)
+                .ok()
+                .and_then(|e| e.icon_str("APP_ICON", None))
+                .expect("APP_ICON must exist (loaded successfully earlier)")
         });
 
     let (initial_conn, initial_attention) = match crate::config::open_dashboard_db_readonly() {
@@ -312,27 +302,23 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     };
     let tip = build_tray_tip(initial_lang, initial_attention);
 
-    // Build tray GUI — all components must succeed or we fall back to no-tray mode
-    macro_rules! tray_build {
-        ($builder:expr, $target:expr, $label:expr) => {
+    macro_rules! try_build {
+        ($builder:expr, $target:expr, $label:literal) => {
             if let Err(e) = $builder.build($target) {
-                log::error!("{} (tray disabled): {}", $label, e);
-                while !stop_signal.load(Ordering::SeqCst) {
-                    std::thread::sleep(Duration::from_secs(1));
-                }
+                log::error!("Failed to create {}: {e}", $label);
                 return TrayExitAction::Exit;
             }
         };
     }
 
     let mut tray_obj = nwg::TrayNotification::default();
-    tray_build!(
+    try_build!(
         nwg::TrayNotification::builder()
             .parent(&window)
             .icon(Some(&icon))
             .tip(Some(&tip)),
         &mut tray_obj,
-        "Failed to create tray icon"
+        "tray icon"
     );
     if initial_attention > 0 {
         tray_obj.set_icon(&icon_attention);
@@ -340,67 +326,67 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
     let tray_handle = tray_obj.handle;
 
     let mut tip_refresh_timer = nwg::AnimationTimer::default();
-    tray_build!(
+    try_build!(
         nwg::AnimationTimer::builder()
             .parent(&window)
             .interval(Duration::from_secs(5))
             .active(true),
         &mut tip_refresh_timer,
-        "Failed to create tray tip refresh timer"
+        "tray tip refresh timer"
     );
     let tip_timer_handle = tip_refresh_timer.handle.clone();
 
     let mut menu = nwg::Menu::default();
-    tray_build!(
+    try_build!(
         nwg::Menu::builder().popup(true).parent(&window),
         &mut menu,
-        "Failed to create menu"
+        "menu"
     );
 
     let mut menu_version = nwg::MenuItem::default();
-    tray_build!(
+    try_build!(
         nwg::MenuItem::builder()
             .text(&format!("{} v{}", APP_NAME, crate::VERSION.trim()))
             .disabled(true)
             .parent(&menu),
         &mut menu_version,
-        "Failed to create Version menu item"
+        "Version menu item"
     );
 
     let mut menu_sep = nwg::MenuSeparator::default();
-    tray_build!(
+    try_build!(
         nwg::MenuSeparator::builder().parent(&menu),
         &mut menu_sep,
-        "Failed to create separator"
+        "separator"
     );
 
     let mut menu_exit = nwg::MenuItem::default();
-    tray_build!(
+    try_build!(
         nwg::MenuItem::builder()
             .text(initial_lang.t(TrayText::Close))
             .parent(&menu),
         &mut menu_exit,
-        "Failed to create Exit menu item"
+        "Exit menu item"
     );
     let exit_handle = menu_exit.handle;
 
     let mut menu_restart = nwg::MenuItem::default();
-    tray_build!(
+    try_build!(
         nwg::MenuItem::builder()
             .text(initial_lang.t(TrayText::Restart))
             .parent(&menu),
         &mut menu_restart,
-        "Failed to create Restart menu item"
+        "Restart menu item"
     );
     let restart_handle = menu_restart.handle;
 
     let mut menu_dashboard = nwg::MenuItem::default();
-    tray_build!(
+    try_build!(
         nwg::MenuItem::builder()
             .text(initial_lang.t(TrayText::OpenDashboard))
             .parent(&menu),
         &mut menu_dashboard,
-        "Failed to create Launch Dashboard menu item"
+        "Launch Dashboard menu item"
     );
     let dashboard_handle = menu_dashboard.handle;
 

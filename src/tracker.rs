@@ -37,6 +37,10 @@ fn rebuild_file_index_cache(
     cache
 }
 
+const CACHE_PREFIX_PATH: &str = "path:";
+const CACHE_PREFIX_TITLE: &str = "title:";
+const CACHE_PREFIX_NAME: &str = "name:";
+
 fn build_file_cache_key(
     file_name: &str,
     detected_path: Option<&str>,
@@ -55,16 +59,16 @@ fn build_file_cache_key(
     let normalized_window_title = storage::sanitize_window_title(window_title);
 
     if let Some(path) = normalized_detected_path {
-        return Some(format!("path:{path}"));
+        return Some(format!("{CACHE_PREFIX_PATH}{path}"));
     }
 
     if !normalized_window_title.is_empty() {
         return Some(format!(
-            "title:{normalized_file_name}\n{normalized_window_title}"
+            "{CACHE_PREFIX_TITLE}{normalized_file_name}\n{normalized_window_title}"
         ));
     }
 
-    Some(format!("name:{normalized_file_name}"))
+    Some(format!("{CACHE_PREFIX_NAME}{normalized_file_name}"))
 }
 
 fn write_heartbeat() {
@@ -271,7 +275,34 @@ fn record_app_activity(
             return;
         };
 
-        if let Some(&idx) = app_file_index.get(&file_cache_key) {
+        // Primary lookup by full cache key; fallback by normalized name
+        // to avoid duplicates when window_title changes (e.g. "[modified]").
+        let matched_idx = app_file_index
+            .get(&file_cache_key)
+            .copied()
+            .or_else(|| {
+                // Fallback: find existing entry with the same normalized name
+                // (only when the primary key is title-based, i.e. no detected_path).
+                if file_cache_key.starts_with(CACHE_PREFIX_TITLE)
+                    || file_cache_key.starts_with(CACHE_PREFIX_NAME)
+                {
+                    // Pre-normalize once to avoid re-allocating per candidate.
+                    let needle = storage::sanitize_file_entry_name(trimmed_file_name);
+                    // Guard: only match entries without a detected_path to avoid
+                    // merging different files that share the same base name.
+                    app_data.files.iter().position(|f| {
+                        f.detected_path.is_none() && f.name == needle
+                    })
+                } else {
+                    None
+                }
+            });
+
+        if let Some(idx) = matched_idx {
+            // Ensure current cache key maps to this entry so subsequent
+            // ticks hit the primary lookup instead of the fallback scan.
+            app_file_index.entry(file_cache_key.clone()).or_insert(idx);
+
             if let Some(file_entry) = app_data.files.get_mut(idx) {
                 file_entry.total_seconds += elapsed_seconds;
                 file_entry.last_seen = now_str;
@@ -298,64 +329,20 @@ fn record_app_activity(
                 }
             }
         } else {
-            // Fallback: check if a file with the same normalized name already exists
-            // (prevents duplicates when window_title changes, e.g. "[modified]", "[Git: branch]")
-            let normalized_file_name =
-                storage::sanitize_file_entry_name(trimmed_file_name);
-            let existing_idx = if !normalized_file_name.is_empty() {
-                app_file_index
-                    .iter()
-                    .find(|(_, &idx)| {
-                        app_data
-                            .files
-                            .get(idx)
-                            .map(|f| {
-                                storage::sanitize_file_entry_name(&f.name)
-                                    == normalized_file_name
-                            })
-                            .unwrap_or(false)
-                    })
-                    .map(|(_, &idx)| idx)
-            } else {
-                None
-            };
-
-            if let Some(idx) = existing_idx {
-                if let Some(file_entry) = app_data.files.get_mut(idx) {
-                    file_entry.total_seconds += elapsed_seconds;
-                    file_entry.last_seen = now_str;
-                    if !trimmed_window_title.is_empty() {
-                        file_entry.window_title = trimmed_window_title.to_string();
-                        push_title_history(
-                            &mut file_entry.title_history,
-                            trimmed_window_title,
-                        );
-                    }
-                    if let Some(path) = trimmed_detected_path {
-                        file_entry.detected_path = Some(path.to_string());
-                    }
-                    if let Some(kind) = normalized_activity_type {
-                        file_entry.activity_type = Some(kind.to_string());
-                    }
-                    // Update cache with the new key pointing to the same entry
-                    app_file_index.insert(file_cache_key, idx);
-                }
-            } else {
-                let new_idx = app_data.files.len();
-                let mut title_history = Vec::new();
-                push_title_history(&mut title_history, trimmed_window_title);
-                app_data.files.push(FileEntry {
-                    name: trimmed_file_name.to_string(),
-                    total_seconds: elapsed_seconds,
-                    first_seen: now_str.clone(),
-                    last_seen: now_str,
-                    window_title: trimmed_window_title.to_string(),
-                    detected_path: trimmed_detected_path.map(str::to_string),
-                    title_history,
-                    activity_type: normalized_activity_type.map(str::to_string),
-                });
-                app_file_index.insert(file_cache_key, new_idx);
-            }
+            let new_idx = app_data.files.len();
+            let mut title_history = Vec::new();
+            push_title_history(&mut title_history, trimmed_window_title);
+            app_data.files.push(FileEntry {
+                name: trimmed_file_name.to_string(),
+                total_seconds: elapsed_seconds,
+                first_seen: now_str.clone(),
+                last_seen: now_str,
+                window_title: trimmed_window_title.to_string(),
+                detected_path: trimmed_detected_path.map(str::to_string),
+                title_history,
+                activity_type: normalized_activity_type.map(str::to_string),
+            });
+            app_file_index.insert(file_cache_key, new_idx);
         }
     }
 }

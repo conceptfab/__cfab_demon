@@ -27,12 +27,7 @@ import { useToast } from '@/components/ui/toast-notification';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
-import {
-  APP_REFRESH_EVENT,
-  LOCAL_DATA_CHANGED_EVENT,
-  type AppRefreshDetail,
-  type LocalDataChangedDetail,
-} from '@/lib/sync-events';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { shouldRefreshApplicationsPage } from '@/lib/page-refresh-reasons';
 
 type SortKey = 'display_name' | 'total_seconds' | 'session_count' | 'last_used';
@@ -112,42 +107,12 @@ export function Applications() {
     }
   }, [t]);
 
-  useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason || !shouldRefreshApplicationsPage(reason)) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (!reasons.some((reason) => shouldRefreshApplicationsPage(reason))) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    window.addEventListener(
-      LOCAL_DATA_CHANGED_EVENT,
-      handleLocalDataChange as EventListener,
-    );
-    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
-
-    return () => {
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange as EventListener,
-      );
-      window.removeEventListener(
-        APP_REFRESH_EVENT,
-        handleAppRefresh as EventListener,
-      );
-    };
-  }, []);
+  usePageRefreshListener((reasons) => {
+    if (!reasons.some((reason) => shouldRefreshApplicationsPage(reason))) {
+      return;
+    }
+    setDataReloadVersion((prev) => prev + 1);
+  });
 
   useEffect(() => {
     Promise.allSettled([

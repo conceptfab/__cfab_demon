@@ -52,15 +52,8 @@ Nie generuj gotowego kodu refaktoryzacji — opisz co i dlaczego zmienić.
 
 Zbadaj poniższe bugi. Dla każdego wskaż dokładny plik i fragment kodu który jest przyczyną:
 
-1. **Raport PDF drukuje tylko jedną stronę** — sprawdź logikę generowania PDF w `ReportView.tsx`
-   i funkcjach eksportu.
-
-2. **Unique Files liczone niepoprawnie** — sprawdź logikę deduplikacji plików w `storage.rs`
-   i/lub `tracker.rs`. Zidentyfikuj gdzie jest błąd zliczania.
-
-3. **Sesje poniżej/równe N sekund (z ustawień) pojawiają się w raporcie po Rebuild** —
-   sprawdź gdzie jest zastosowany filtr minimalnego czasu sesji (`config.rs`? `storage.rs`?).
-   Filtr musi być stosowany przy każdym `rebuild`, nie tylko przy nowych sesjach.
+1. **Unique Files liczone niepoprawnie** — sprawdź logikę deduplikacji plików w `storage.rs`
+   i/lub `tracker.rs`. Zidentyfikuj gdzie jest błąd zliczania. Jeśli nie da sie go naprawic usun tą kurwa funkcę!
 
 ### 7. Bezpieczeństwo i prywatność
 

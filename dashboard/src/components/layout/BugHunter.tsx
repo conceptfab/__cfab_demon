@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Bug, Paperclip, X, Send, Check } from "lucide-react";
-import { sendBugReport } from "@/lib/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Dialog,
   DialogContent,
@@ -70,12 +70,12 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
         })
       );
 
-      const result = await sendBugReport(
-        title,
-        description,
-        version,
-        attachmentsData as [string, number[]][],
-      );
+      const result = await invoke<{ ok: boolean; message: string }>("send_bug_report", {
+        subject: title,
+        message: description,
+        version: version,
+        attachments: attachmentsData,
+      });
 
       if (!result.ok) {
         throw new Error(result.message || t("components.bughunter.errors.send_report_failed"));
