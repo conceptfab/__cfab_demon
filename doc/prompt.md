@@ -52,15 +52,35 @@ Nie generuj gotowego kodu refaktoryzacji — opisz co i dlaczego zmienić.
 
 Zbadaj poniższe bugi. Dla każdego wskaż dokładny plik i fragment kodu który jest przyczyną:
 
-1. **Raport PDF drukuje tylko jedną stronę** — sprawdź logikę generowania PDF w `ReportView.tsx`
-   i funkcjach eksportu.
 
-2. **Unique Files liczone niepoprawnie** — sprawdź logikę deduplikacji plików w `storage.rs`
-   i/lub `tracker.rs`. Zidentyfikuj gdzie jest błąd zliczania.
 
-3. **Sesje poniżej/równe N sekund (z ustawień) pojawiają się w raporcie po Rebuild** —
-   sprawdź gdzie jest zastosowany filtr minimalnego czasu sesji (`config.rs`? `storage.rs`?).
-   Filtr musi być stosowany przy każdym `rebuild`, nie tylko przy nowych sesjach.
+1. **Unique Files liczone niepoprawnie** — sprawdź logikę deduplikacji plików w `storage.rs`
+   i/lub `tracker.rs`. Zidentyfikuj gdzie jest błąd zliczania. Sprawdz czy tak funkcja jest do zrealizowania w ogóle. W projektach gdzie sa satki plików w statystykach jest np 8 - to bez sesnu. trzeba podjąć dycyzję czy tą funkcje warto utrzymywać
+
+2. Jest bład w wyswietlaniu czasu pracy w zakładce projekty. Wartość jest inna niż w raporcie! NP: _cfab_demon
+TOTAL TIME / VALUE
+148h 51m
+/
+15 111,26 zł. 
+W karcie projektu: Project Overview
+Total Time / Value
+176h 8m/15 111,26 zł
+W raporcie: Financials
+Estimated value
+17 467,78 zł
+/
+Work time
+172h 25m
+W estymacjach: 
+__cfab_demon
+2 boosted
+148,85
+151,11
+160
+100,00 zł
+15 111,26 zł. Kurwa w kazdym widoku jest co innego!!!!!
+Sprawdz gdzie jest błąd i napraw to do chuja.
+
 
 ### 7. Bezpieczeństwo i prywatność
 

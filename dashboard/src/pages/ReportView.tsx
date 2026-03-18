@@ -76,7 +76,7 @@ export function ReportView() {
         },
       },
     );
-  }, [projectPageId, runReportRequest]);
+  }, [projectPageId, runReportRequest, setCurrentPage]);
 
   useEffect(() => {
     void runDaemonRequest(() => getDaemonRuntimeStatus(), {
@@ -137,25 +137,26 @@ export function ReportView() {
   return (
     <div className="flex flex-col h-screen print:h-auto bg-background pt-8 print:pt-0 print:bg-white">
       {/* Toolbar — hidden in print */}
-      <div className="flex items-center gap-2 pb-3 border-b border-border/30 print:hidden shrink-0">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setCurrentPage('project-card')}
-        >
-          <ChevronLeft className="mr-1 h-4 w-4" />
-          {t('report_view.back_to_project')}
-        </Button>
-        <div className="flex-1" />
+      <div className="border-b border-border/30 print:hidden shrink-0 px-4">
+        <div className="mx-auto flex w-full max-w-[700px] flex-wrap items-center justify-between gap-2 pb-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCurrentPage('project-card')}
+          >
+            <ChevronLeft className="mr-1 h-4 w-4" />
+            {t('report_view.back_to_project')}
+          </Button>
 
-        <Button
-          size="sm"
-          onClick={handlePrint}
-          className="bg-sky-600 hover:bg-sky-700 text-white"
-        >
-          <Printer className="mr-1.5 h-4 w-4" />
-          {t('report_view.print_pdf')}
-        </Button>
+          <Button
+            size="sm"
+            onClick={handlePrint}
+            className="bg-sky-600 hover:bg-sky-700 text-white"
+          >
+            <Printer className="mr-1.5 h-4 w-4" />
+            {t('report_view.print_pdf')}
+          </Button>
+        </div>
       </div>
 
       {/* Report body — print-optimized */}
