@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 DASHBOARD_DIR = ROOT / "dashboard"
@@ -28,7 +29,7 @@ def load_env_file() -> None:
                 os.environ[key.strip()] = value.strip()
 
 
-def run_powershell_json(script: str) -> list[dict[str, object]]:
+def run_powershell_json(script: str) -> list[dict[str, Any]]:
     result = subprocess.run(
         ["powershell", "-NoProfile", "-Command", script],
         capture_output=True,
@@ -46,7 +47,7 @@ def run_powershell_json(script: str) -> list[dict[str, object]]:
     return []
 
 
-def find_repo_dev_processes() -> list[dict[str, object]]:
+def find_repo_dev_processes() -> list[dict[str, Any]]:
     root_str = str(ROOT).replace("'", "''")
     script = rf"""
     $root = '{root_str}'
@@ -63,7 +64,7 @@ def find_repo_dev_processes() -> list[dict[str, object]]:
     return run_powershell_json(script)
 
 
-def find_port_owners(port: int) -> list[dict[str, object]]:
+def find_port_owners(port: int) -> list[dict[str, Any]]:
     script = rf"""
     $owners = Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue |
       Select-Object OwningProcess, LocalAddress, LocalPort

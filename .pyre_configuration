@@ -1,0 +1,12 @@
+{
+  "source_directories": ["."],
+  "search_path": ["."],
+  "site_package_search_strategy": "none",
+  "strict": false,
+  "exclude": [
+    ".*/dashboard/node_modules/.*",
+    ".*/target/.*",
+    ".*/dist/.*",
+    ".*/dashboard/src-tauri/.*"
+  ]
+}

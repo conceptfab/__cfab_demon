@@ -4,6 +4,8 @@ Szybki skrypt do testów developerskich - TimeFlow Demon
 Minimalne kroki, bez czyszczenia, tryb debug.
 """
 
+from __future__ import annotations
+
 import subprocess
 import sys
 import os
@@ -54,7 +56,7 @@ class DevRunner(CargoProjectBase):
         return True
 
 
-def main():
+def main() -> None:
     p = argparse.ArgumentParser(
         description="Szybkie testy developerskie – TimeFlow Demon",
         formatter_class=argparse.RawDescriptionHelpFormatter,

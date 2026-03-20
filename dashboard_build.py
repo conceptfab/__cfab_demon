@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Build Tauri dashboard for production. Output is copied to dist/."""
+from __future__ import annotations
+
 import os
 import shutil
 import subprocess
@@ -12,7 +14,7 @@ DIST = ROOT / "dist"
 FINAL_NAME = "timeflow-dashboard.exe"
 
 
-def main():
+def main() -> None:
     # Zaladuj .env do srodowiska procesu buildu (runtime app config during build/run scripts).
     env_file = ROOT / ".env"
     if env_file.exists():
