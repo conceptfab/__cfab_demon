@@ -3,6 +3,8 @@
 Kompiluje po kolei: demon (timeflow-demon) oraz dashboard (TimeFlow).
 Wszystkie pliki wykonywalne trafiają do wspólnego katalogu dist/.
 """
+from __future__ import annotations
+
 import argparse
 import subprocess
 import sys
@@ -14,7 +16,7 @@ from build_common import handle_version, build_demon, build_dashboard
 ROOT = Path(__file__).resolve().parent
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Kompilacja demona + dashboard -> dist/",
         epilog="""

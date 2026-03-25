@@ -1,8 +1,9 @@
-import os
+from __future__ import annotations
+
 import shutil
 import pathlib
 
-def clean():
+def clean() -> None:
     root = pathlib.Path(__file__).parent.resolve()
     
     # Directories to remove (relative to root)

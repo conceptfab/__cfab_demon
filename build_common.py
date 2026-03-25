@@ -3,11 +3,12 @@
 Wspólna logika dla build.py i dev.py — projekt TimeFlow Demon.
 """
 
+from __future__ import annotations
+
 import re
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 class CargoProjectBase:
@@ -29,7 +30,7 @@ class CargoProjectBase:
         command: list[str],
         description: str,
         live_output: bool = False,
-        cwd: Optional[Path] = None,
+        cwd: Path | None = None,
     ) -> tuple[bool, subprocess.CompletedProcess | subprocess.CalledProcessError | Exception]:
         """Uruchamia komendę i zwraca (sukces, wynik)."""
         work_dir = cwd or self.project_dir

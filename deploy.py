@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import ftplib
-import os
 import sys
 import re
 from pathlib import Path
@@ -10,7 +11,7 @@ except ImportError:
     print("BŁĄD: Brak pliku konfiguracyjnego ftp_config.py")
     sys.exit(1)
 
-def get_highest_version_zip(dist_dir):
+def get_highest_version_zip(dist_dir: str) -> Path | None:
     dist_path = Path(dist_dir)
     if not dist_path.exists() or not dist_path.is_dir():
         print(f"BŁĄD: Folder {dist_dir} nie istnieje.")
@@ -34,7 +35,7 @@ def get_highest_version_zip(dist_dir):
     zip_files.sort(key=lambda x: x[0], reverse=True)
     return zip_files[0][1]
 
-def main():
+def main() -> None:
     dist_dir = "dist"
     latest_zip = get_highest_version_zip(dist_dir)
     

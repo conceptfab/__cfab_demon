@@ -1,0 +1,12 @@
+{
+  "include": ["."],
+  "exclude": [
+    "dashboard/node_modules",
+    "target",
+    "dist",
+    "dashboard/src-tauri"
+  ],
+  "extraPaths": ["."],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "standard"
+}

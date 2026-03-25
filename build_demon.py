@@ -4,6 +4,8 @@ Automatyczny skrypt kompilacji dla aplikacji TimeFlow Demon
 Autor: Projekt TimeFlow Demon - Windows Tray Daemon
 """
 
+from __future__ import annotations
+
 import subprocess
 import sys
 import os
@@ -11,13 +13,12 @@ import time
 import argparse
 import shutil
 from pathlib import Path
-from typing import Optional
 
 from build_common import CargoProjectBase
 
 
 class RustBuilder(CargoProjectBase):
-    def _read_package_version(self) -> Optional[str]:
+    def _read_package_version(self) -> str | None:
         """Odczytuje wersję pakietu z Cargo.toml."""
         try:
             content = self.cargo_toml.read_text(encoding="utf-8")
@@ -39,7 +40,7 @@ class RustBuilder(CargoProjectBase):
                     pass
         return None
 
-    def detect_bin_name(self) -> Optional[str]:
+    def detect_bin_name(self) -> str | None:
         """Wykrywa nazwę binarki na podstawie Cargo.toml."""
         try:
             content = self.cargo_toml.read_text(encoding="utf-8")
@@ -80,13 +81,13 @@ class RustBuilder(CargoProjectBase):
                         pass
         return None
 
-    def print_header(self, message):
+    def print_header(self, message: str) -> None:
         """Wyswietla naglowek z ramka."""
         print("\n" + "=" * 60)
         print(f"  {message}")
         print("=" * 60)
 
-    def print_step(self, step, message):
+    def print_step(self, step: str, message: str) -> None:
         """Wyswietla krok z numerem."""
         print(f"\n[{step}] {message}")
         print("-" * 40)
@@ -162,7 +163,12 @@ class RustBuilder(CargoProjectBase):
             return "Sprawdz bledy powyzej. Wiecej szczegolow: cargo test -- --nocapture"
         return "Sprawdz logi powyzej i dokumentacje projektu."
 
-    def run_command(self, command, description, live_output=False):
+    def run_command(  # type: ignore[override]
+        self,
+        command: list[str],
+        description: str,
+        live_output: bool = False,
+    ) -> tuple[bool, subprocess.CompletedProcess[str] | subprocess.CalledProcessError | Exception]:
         """Uruchamia komende i zwraca wynik."""
         print(f"   {description}...")
         print(f"   Komenda: {' '.join(command)}")
@@ -222,7 +228,7 @@ class RustBuilder(CargoProjectBase):
             print("   Podpowiedz: Sprawdz czy cargo jest w PATH.")
             return False, e
 
-    def clean_build(self, verbose=False):
+    def clean_build(self, verbose: bool = False) -> bool:
         """Czysci poprzednia kompilacje."""
         self.print_step("1", "Czyszczenie poprzedniej kompilacji")
 
@@ -241,7 +247,7 @@ class RustBuilder(CargoProjectBase):
 
         return success
 
-    def check_project(self):
+    def check_project(self) -> bool:
         """Sprawdza projekt bez kompilacji (cargo check)."""
         self.print_step("2", "Sprawdzanie skladni i typow")
 
@@ -250,7 +256,7 @@ class RustBuilder(CargoProjectBase):
         )
         return success
 
-    def run_clippy(self):
+    def run_clippy(self) -> bool:
         """Uruchamia cargo clippy do analizy statycznej."""
         self.print_step("2b", "Analiza statyczna (clippy)")
 
@@ -260,7 +266,7 @@ class RustBuilder(CargoProjectBase):
         )
         return success
 
-    def build_project(self, release=True):
+    def build_project(self, release: bool = True) -> bool:
         """Kompiluje projekt."""
         mode = "release" if release else "debug"
         self.print_step("3", f"Kompilacja projektu (tryb: {mode})")
@@ -297,7 +303,7 @@ class RustBuilder(CargoProjectBase):
         out_dir: str = "dist",
         clean: bool = True,
         verbose: bool = False,
-        jobs: Optional[int] = None,
+        jobs: int | None = None,
     ) -> bool:
         """Buduje binarkę w trybie release i kopiuje do katalogu wyjściowego."""
         demon_name = "timeflow-demon"
@@ -356,7 +362,7 @@ class RustBuilder(CargoProjectBase):
         print(f"   Wersja:  {pkg_version or '?'}")
         return True
 
-    def full_build_and_run(self, release=True, run_tests=False, verbose=False):
+    def full_build_and_run(self, release: bool = True, run_tests: bool = False, verbose: bool = False) -> bool:
         """Pelny proces: czyszczenie, kompilacja, opcjonalne testy i uruchomienie."""
         self.print_header("KOMPILACJA PROJEKTU TIMEFLOW DEMON")
 
@@ -390,7 +396,7 @@ class RustBuilder(CargoProjectBase):
 
         return True
 
-    def run_application(self, release=True):
+    def run_application(self, release: bool = True) -> None:
         """Uruchamia aplikacje."""
         self.print_step("RUN", "Uruchamianie demona")
 
@@ -414,7 +420,7 @@ class RustBuilder(CargoProjectBase):
             print(f"\n   BLAD: Demon zakonczyl sie bledem (kod: {e.returncode})")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Automatyczny skrypt kompilacji dla projektu TimeFlow Demon",
         formatter_class=argparse.RawDescriptionHelpFormatter,

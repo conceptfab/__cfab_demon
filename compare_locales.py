@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import json
 import sys
+from typing import Any
 
-def get_keys(d, prefix=''):
+
+def get_keys(d: dict[str, Any], prefix: str = '') -> set[str]:
     keys = set()
     for k, v in d.items():
         new_key = f"{prefix}.{k}" if prefix else k
@@ -13,7 +17,7 @@ def get_keys(d, prefix=''):
             keys.add(new_key)
     return keys
 
-def main():
+def main() -> None:
     with open(r'c:\_cloud\__cfab_demon\__client\dashboard\src\locales\en\common.json', 'r', encoding='utf-8') as f:
         en = json.load(f)
     with open(r'c:\_cloud\__cfab_demon\__client\dashboard\src\locales\pl\common.json', 'r', encoding='utf-8') as f:
