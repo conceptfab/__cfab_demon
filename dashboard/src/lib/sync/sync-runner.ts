@@ -9,7 +9,9 @@ import type {
   RunOnlineSyncOptions,
   SyncPullResponse,
   SyncPushResponse,
+  SyncDeltaPushResponse,
   SyncStatusResponse,
+  DeltaArchive,
 } from '@/lib/online-sync-types';
 import {
   emitSyncingIndicatorSnapshot,
@@ -17,7 +19,7 @@ import {
   updateIndicatorFromRunResult,
 } from '@/lib/sync/sync-indicator';
 import {
-  getLocalDatasetState,
+  getLocalDeltaState,
   isDemoModeSyncDisabled,
   logSyncDiagnostic,
   postAckWithRetries,
@@ -364,10 +366,10 @@ async function runOnlineSyncOnceImpl(
       needsReseed: state.needsReseed,
     });
 
-    log?.info('Exporting local dataset');
+    log?.info('Exporting local dataset as delta');
     const exportT0 = Date.now();
-    const local = await getLocalDatasetState(state);
-    log?.info('Local dataset state', {
+    const local = await getLocalDeltaState(state);
+    log?.info('Local dataset delta state', {
       exportOk: local.exportOk,
       hasArchive: local.archive !== null,
       revision: local.revision,
@@ -395,6 +397,7 @@ async function runOnlineSyncOnceImpl(
         deviceId: settings.deviceId,
         clientRevision: state.localRevision,
         clientHash: clientHashForStatus,
+        tableHashes: local.tableHashes ?? undefined,
       },
       settings.requestTimeoutMs,
       secureApiToken,
@@ -444,7 +447,7 @@ async function runOnlineSyncOnceImpl(
       const pullT0 = Date.now();
       const pull = await postJson<SyncPullResponse>(
         settings.serverUrl,
-        '/api/sync/pull',
+        '/api/sync/delta-pull',
         {
           userId: settings.userId,
           deviceId: settings.deviceId,
@@ -616,50 +619,53 @@ async function runOnlineSyncOnceImpl(
       }
 
       const pushPayloadSize = JSON.stringify(local.archive).length;
-      log?.info('Pushing to server', {
+      log?.info('Pushing delta to server', {
         knownServerRevision: status.serverRevision ?? null,
         payloadSizeKB: Math.round(pushPayloadSize / 1024),
         timeoutMs: settings.requestTimeoutMs,
       });
+
+      const deltaArchive = local.archive as DeltaArchive;
+      
       const pushT0 = Date.now();
-      const push = await postJson<SyncPushResponse>(
+      const push = await postJson<SyncDeltaPushResponse>(
         settings.serverUrl,
-        '/api/sync/push',
+        '/api/sync/delta-push',
         {
           userId: settings.userId,
           deviceId: settings.deviceId,
-          knownServerRevision: status.serverRevision ?? null,
-          archive: local.archive,
+          tableHashes: deltaArchive.table_hashes,
+          baseRevision: state.localRevision ?? 0,
+          delta: deltaArchive.data,
         },
         settings.requestTimeoutMs,
         secureApiToken,
       );
 
       if (push.accepted === false) {
-        log?.error('Push rejected', {
+        log?.error('Delta push rejected', {
           reason: push.reason,
           durationMs: Date.now() - pushT0,
         });
-        throw new Error(`push rejected: ${push.reason}`);
+        throw new Error(`delta push rejected: ${push.reason}`);
       }
 
-      log?.info('Push accepted', {
+      log?.info('Delta push accepted', {
         revision: push.revision,
-        noOp: push.noOp ?? false,
         durationMs: Date.now() - pushT0,
       });
 
       state.localRevision = push.revision;
-      state.localHash = push.payloadSha256;
+      
+      // Update local storage representation after push applied on server
       state.serverRevision = push.revision;
-      state.serverHash = push.payloadSha256;
       state.needsReseed = false;
       state.lastSyncAt = new Date().toISOString();
       saveOnlineSyncState(state, settings);
 
       const result: OnlineSyncRunResult = {
         ok: true,
-        action: push.noOp ? 'noop' : 'push',
+        action: 'push',
         reason: push.reason,
         serverRevision: push.revision,
       };

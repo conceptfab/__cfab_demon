@@ -140,6 +140,7 @@ pub fn run() {
             commands::validate_import,
             commands::import_data,
             commands::import_data_archive,
+            commands::build_delta_archive,
             commands::update_app_color,
             commands::update_session_rate_multiplier,
             commands::update_session_rate_multipliers,

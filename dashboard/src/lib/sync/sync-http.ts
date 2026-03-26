@@ -10,6 +10,7 @@ import {
   appendSyncLog,
   exportDataArchive,
   getDemoModeStatus,
+  buildDeltaArchive,
 } from '@/lib/tauri';
 
 export class SyncHttpError extends Error {
@@ -249,8 +250,46 @@ export async function getLocalDatasetState(
       exportOk: false,
       hasReseedData: false,
       revision: state.localRevision,
-      payloadSha256: state.localHash,
+      payloadSha256: null,
       archive: null,
+      exportError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function getLocalDeltaState(
+  state: OnlineSyncState,
+): Promise<LocalDatasetState> {
+  try {
+    const sinceTimestamp = state.lastSyncAt || "1970-01-01T00:00:00Z";
+    // buildDeltaArchive responds with [DeltaArchive, filename]
+    const [archive, _] = await buildDeltaArchive(sinceTimestamp);
+    
+    // the archive.since timestamp ensures what delta we fetched.
+    const payloadSha256 = await sha256Hex(JSON.stringify(archive));
+    
+    const hasAnyDeltaData = archive.data.projects.length > 0 ||
+          archive.data.applications.length > 0 ||
+          archive.data.sessions.length > 0 ||
+          archive.data.manual_sessions.length > 0 ||
+          archive.data.tombstones.length > 0;
+
+    return {
+      exportOk: true,
+      hasReseedData: hasAnyDeltaData,
+      revision: state.localRevision,
+      payloadSha256,
+      archive,
+      tableHashes: archive.table_hashes,
+    };
+  } catch (error) {
+    return {
+      exportOk: false,
+      hasReseedData: false,
+      revision: state.localRevision,
+      payloadSha256: null,
+      archive: null,
+      tableHashes: null,
       exportError: error instanceof Error ? error.message : String(error),
     };
   }

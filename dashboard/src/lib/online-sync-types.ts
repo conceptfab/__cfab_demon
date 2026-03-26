@@ -12,6 +12,35 @@ export interface OnlineSyncSettings {
   enableLogging: boolean;
 }
 
+export interface TableHashes {
+  projects: string;
+  applications: string;
+  sessions: string;
+  manual_sessions: string;
+}
+
+export interface DeltaData {
+  projects: any[];
+  applications: any[];
+  sessions: any[];
+  manual_sessions: any[];
+  tombstones: {
+    table_name: string;
+    record_id: string;
+    record_uuid: string;
+    deleted_at: string;
+    sync_key: string;
+  }[];
+}
+
+export interface DeltaArchive {
+  version: string;
+  since: string;
+  is_full: boolean;
+  table_hashes: TableHashes;
+  data: DeltaData;
+}
+
 export interface OnlineSyncPendingAck {
   revision: number;
   payloadSha256: string;
@@ -81,6 +110,14 @@ export interface SyncStatusResponse {
   reason: string;
 }
 
+export interface SyncDeltaPushResponse {
+  ok: true;
+  accepted: boolean;
+  revision: number;
+  serverTableHashes: TableHashes;
+  reason: string;
+}
+
 export interface SyncPushResponse {
   ok: true;
   accepted?: boolean;
@@ -122,7 +159,8 @@ export interface LocalDatasetState {
   hasReseedData: boolean;
   revision: number | null;
   payloadSha256: string | null;
-  archive: import('@/lib/db-types').ExportArchive | null;
+  archive: ExportArchive | DeltaArchive | null;
+  tableHashes?: TableHashes | null;
   exportError?: string;
 }
 

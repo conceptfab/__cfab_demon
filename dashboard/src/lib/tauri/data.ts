@@ -8,6 +8,7 @@ import type {
   ImportValidation,
   ImportedFile,
 } from '../db-types';
+import type { DeltaArchive } from '../online-sync-types';
 
 export const getImportedFiles = () =>
   invoke<ImportedFile[]>('get_imported_files');
@@ -41,6 +42,9 @@ export const exportDataArchive = (
     dateEnd,
   });
 
+export const buildDeltaArchive = (since: string) =>
+  invoke<[DeltaArchive, string]>('build_delta_archive', { since });
+
 export const validateImport = (archivePath: string) =>
   invoke<ImportValidation>('validate_import', { archivePath });
 
@@ -71,6 +75,7 @@ export const dataApi = {
   autoImportFromDataDir,
   exportData,
   exportDataArchive,
+  buildDeltaArchive,
   validateImport,
   importData,
   importDataArchive,

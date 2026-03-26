@@ -9,8 +9,9 @@ mod m08_estimates;
 mod m09_timestamps;
 mod m10_sessions_updated_at;
 mod m11_session_project_cache;
+mod m12_delta_sync;
 
-const LATEST_SCHEMA_VERSION: i64 = 11;
+const LATEST_SCHEMA_VERSION: i64 = 12;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -67,6 +68,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 11 {
         m11_session_project_cache::run(&tx)?;
+    }
+    if current_version < 12 {
+        m12_delta_sync::run(&tx)?;
     }
 
     tx.execute(
