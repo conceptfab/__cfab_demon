@@ -1,7 +1,6 @@
 use super::types::{ApplicationRow, ManualSession, Project, SessionRow, Tombstone};
 use crate::db;
 use serde::Serialize;
-use tauri::AppHandle;
 
 #[derive(Serialize)]
 pub struct TableHashes {
