@@ -562,7 +562,9 @@ pub async fn import_data_archive(
         let mut conn = db::get_connection(&app)?;
         let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-        let summary = import_archive_into_tx(&tx, &archive, true, &app)?;
+        // Merge server data with local instead of clearing — preserves
+        // locally-recorded sessions that haven't been pushed yet.
+        let summary = import_archive_into_tx(&tx, &archive, false, &app)?;
 
         tx.commit()
             .map_err(|e| format!("Failed to commit sync import transaction: {}", e))?;
