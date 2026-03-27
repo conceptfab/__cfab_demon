@@ -709,11 +709,73 @@ async function runOnlineSyncOnceImpl(
       );
 
       if (push.accepted === false) {
-        log?.error('Delta push rejected', {
+        const pushDuration = Date.now() - pushT0;
+        log?.warn('Delta push rejected, falling back to full push', {
           reason: push.reason,
-          durationMs: Date.now() - pushT0,
+          durationMs: pushDuration,
         });
-        throw new Error(`delta push rejected: ${push.reason}`);
+
+        // Fallback: full push when delta is rejected (revision mismatch, no base snapshot, etc.)
+        const fullLocal = await getLocalDatasetState(state);
+        if (!fullLocal.archive || !fullLocal.hasReseedData) {
+          log?.error('Full push fallback impossible: no local data', {
+            exportOk: fullLocal.exportOk,
+            exportError: fullLocal.exportError ?? null,
+          });
+          throw new Error(fullLocal.exportError ?? 'No local data for full push fallback');
+        }
+
+        const fullPayloadSize = JSON.stringify(fullLocal.archive).length;
+        log?.info('Pushing full archive to server (fallback)', {
+          knownServerRevision: push.revision,
+          payloadSizeKB: Math.round(fullPayloadSize / 1024),
+        });
+
+        const fullPushT0 = Date.now();
+        const fullPush = await postJson<SyncPushResponse>(
+          settings.serverUrl,
+          '/api/sync/push',
+          {
+            userId: settings.userId,
+            deviceId: settings.deviceId,
+            knownServerRevision: push.revision,
+            archive: fullLocal.archive,
+          },
+          settings.requestTimeoutMs,
+          secureApiToken,
+        );
+
+        if (fullPush.accepted === false) {
+          log?.error('Full push fallback rejected', {
+            reason: fullPush.reason,
+            durationMs: Date.now() - fullPushT0,
+          });
+          throw new Error(`full push fallback rejected: ${fullPush.reason}`);
+        }
+
+        log?.info('Full push fallback accepted', {
+          revision: fullPush.revision,
+          durationMs: Date.now() - fullPushT0,
+        });
+
+        state.localRevision = fullPush.revision;
+        state.localHash = fullPush.payloadSha256;
+        state.serverRevision = fullPush.revision;
+        state.serverHash = fullPush.payloadSha256;
+        state.needsReseed = false;
+        state.lastSyncAt = new Date().toISOString();
+        saveOnlineSyncState(state, settings);
+
+        const result: OnlineSyncRunResult = {
+          ok: true,
+          action: 'push',
+          reason: `delta_rejected_full_push_fallback (${push.reason})`,
+          serverRevision: fullPush.revision,
+        };
+        log?.info('Sync finished: full push fallback', { reason: result.reason });
+        updateIndicatorFromRunResult(result);
+        await log?.flush();
+        return result;
       }
 
       log?.info('Delta push accepted', {
