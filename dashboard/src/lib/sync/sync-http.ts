@@ -125,6 +125,18 @@ export async function postJson<T>(
   }
 }
 
+export function isRetryableNetworkError(error: unknown): boolean {
+  const normalized = normalizeRequestError(error);
+  if (normalized.kind === 'timeout' || normalized.kind === 'network') {
+    return true;
+  }
+  return (
+    normalized.kind === 'http' &&
+    normalized.status !== null &&
+    normalized.status >= 500
+  );
+}
+
 function isRetryableAckError(error: unknown): boolean {
   const normalized = normalizeRequestError(error);
   if (normalized.kind === 'timeout' || normalized.kind === 'network') {

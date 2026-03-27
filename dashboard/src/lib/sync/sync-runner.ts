@@ -22,6 +22,7 @@ import {
   getLocalDatasetState,
   getLocalDeltaState,
   isDemoModeSyncDisabled,
+  isRetryableNetworkError,
   logSyncDiagnostic,
   postAckWithRetries,
   postJson,
@@ -373,6 +374,7 @@ async function runOnlineSyncOnceImpl(
     log?.info('Local dataset delta state', {
       exportOk: local.exportOk,
       hasArchive: local.archive !== null,
+      hasDeltaData: local.hasReseedData,
       revision: local.revision,
       hash: local.payloadSha256?.substring(0, 12) ?? null,
       exportError: local.exportError ?? null,
@@ -380,11 +382,20 @@ async function runOnlineSyncOnceImpl(
     });
     if (local.exportOk) {
       state.localRevision = local.revision;
-      state.localHash = local.payloadSha256;
+      // Only update localHash when delta has actual data to push.
+      // Delta hash ≠ full snapshot hash — overwriting localHash with an
+      // empty-delta hash causes a false mismatch on the next status check,
+      // triggering an unnecessary push cycle that always fails.
+      if (local.hasReseedData) {
+        state.localHash = local.payloadSha256;
+      }
       saveOnlineSyncState(state, settings);
     }
 
-    const clientHashForStatus = local.payloadSha256 ?? state.localHash;
+    // When delta is empty, use stored hash (matches server after pull/ack)
+    const clientHashForStatus = (local.exportOk && local.hasReseedData)
+      ? local.payloadSha256
+      : state.localHash;
     log?.info('Checking server status', {
       clientRevision: state.localRevision,
       clientHash: clientHashForStatus?.substring(0, 12) ?? null,
@@ -633,18 +644,42 @@ async function runOnlineSyncOnceImpl(
         });
 
         const pushT0 = Date.now();
-        const push = await postJson<SyncPushResponse>(
-          settings.serverUrl,
-          '/api/sync/push',
-          {
-            userId: settings.userId,
-            deviceId: settings.deviceId,
-            knownServerRevision: status.serverRevision ?? null,
-            archive: fullLocal.archive,
-          },
-          fullPushTimeoutMs,
-          secureApiToken,
-        );
+        const maxPushAttempts = 3;
+        let push: SyncPushResponse | null = null;
+        for (let attempt = 1; attempt <= maxPushAttempts; attempt += 1) {
+          try {
+            push = await postJson<SyncPushResponse>(
+              settings.serverUrl,
+              '/api/sync/push',
+              {
+                userId: settings.userId,
+                deviceId: settings.deviceId,
+                knownServerRevision: status.serverRevision ?? null,
+                archive: fullLocal.archive,
+              },
+              fullPushTimeoutMs,
+              secureApiToken,
+            );
+            break;
+          } catch (error) {
+            if (attempt >= maxPushAttempts || !isRetryableNetworkError(error)) {
+              throw error;
+            }
+            const msg = error instanceof Error ? error.message : String(error);
+            const delayMs = 1000 * attempt;
+            log?.warn('Full push transient failure, retrying', {
+              attempt,
+              maxPushAttempts,
+              error: msg,
+              delayMs,
+            });
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+        }
+
+        if (!push) {
+          throw new Error('Full push retry loop failed unexpectedly');
+        }
 
         if (push.accepted === false) {
           log?.error('Full push rejected', { reason: push.reason, durationMs: Date.now() - pushT0 });
@@ -736,18 +771,42 @@ async function runOnlineSyncOnceImpl(
         });
 
         const fullPushT0 = Date.now();
-        const fullPush = await postJson<SyncPushResponse>(
-          settings.serverUrl,
-          '/api/sync/push',
-          {
-            userId: settings.userId,
-            deviceId: settings.deviceId,
-            knownServerRevision: push.revision,
-            archive: fullLocal.archive,
-          },
-          fullPushTimeoutMs,
-          secureApiToken,
-        );
+        const maxFallbackAttempts = 3;
+        let fullPush: SyncPushResponse | null = null;
+        for (let attempt = 1; attempt <= maxFallbackAttempts; attempt += 1) {
+          try {
+            fullPush = await postJson<SyncPushResponse>(
+              settings.serverUrl,
+              '/api/sync/push',
+              {
+                userId: settings.userId,
+                deviceId: settings.deviceId,
+                knownServerRevision: push.revision,
+                archive: fullLocal.archive,
+              },
+              fullPushTimeoutMs,
+              secureApiToken,
+            );
+            break;
+          } catch (error) {
+            if (attempt >= maxFallbackAttempts || !isRetryableNetworkError(error)) {
+              throw error;
+            }
+            const msg = error instanceof Error ? error.message : String(error);
+            const delayMs = 1000 * attempt;
+            log?.warn('Full push fallback transient failure, retrying', {
+              attempt,
+              maxFallbackAttempts,
+              error: msg,
+              delayMs,
+            });
+            await new Promise((r) => setTimeout(r, delayMs));
+          }
+        }
+
+        if (!fullPush) {
+          throw new Error('Full push fallback retry loop failed unexpectedly');
+        }
 
         if (fullPush.accepted === false) {
           log?.error('Full push fallback rejected', {
