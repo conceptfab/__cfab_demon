@@ -625,9 +625,11 @@ async function runOnlineSyncOnceImpl(
         }
 
         const fullPayloadSize = JSON.stringify(fullLocal.archive).length;
+        const fullPushTimeoutMs = Math.max(settings.requestTimeoutMs, Math.min(60_000, Math.ceil(fullPayloadSize / 1024) * 15));
         log?.info('Pushing full archive to server', {
           knownServerRevision: status.serverRevision ?? null,
           payloadSizeKB: Math.round(fullPayloadSize / 1024),
+          timeoutMs: fullPushTimeoutMs,
         });
 
         const pushT0 = Date.now();
@@ -640,7 +642,7 @@ async function runOnlineSyncOnceImpl(
             knownServerRevision: status.serverRevision ?? null,
             archive: fullLocal.archive,
           },
-          settings.requestTimeoutMs,
+          fullPushTimeoutMs,
           secureApiToken,
         );
 
@@ -701,7 +703,7 @@ async function runOnlineSyncOnceImpl(
           userId: settings.userId,
           deviceId: settings.deviceId,
           tableHashes: deltaArchive.table_hashes,
-          baseRevision: state.localRevision ?? 0,
+          baseRevision: state.serverRevision ?? 0,
           delta: deltaArchive.data,
         },
         settings.requestTimeoutMs,
@@ -726,9 +728,11 @@ async function runOnlineSyncOnceImpl(
         }
 
         const fullPayloadSize = JSON.stringify(fullLocal.archive).length;
+        const fullPushTimeoutMs = Math.max(settings.requestTimeoutMs, Math.min(60_000, Math.ceil(fullPayloadSize / 1024) * 15));
         log?.info('Pushing full archive to server (fallback)', {
           knownServerRevision: push.revision,
           payloadSizeKB: Math.round(fullPayloadSize / 1024),
+          timeoutMs: fullPushTimeoutMs,
         });
 
         const fullPushT0 = Date.now();
@@ -741,7 +745,7 @@ async function runOnlineSyncOnceImpl(
             knownServerRevision: push.revision,
             archive: fullLocal.archive,
           },
-          settings.requestTimeoutMs,
+          fullPushTimeoutMs,
           secureApiToken,
         );
 
