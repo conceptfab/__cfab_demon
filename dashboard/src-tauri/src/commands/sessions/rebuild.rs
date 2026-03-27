@@ -149,7 +149,7 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
         if !to_delete.is_empty() {
             let placeholders = to_delete.iter().map(|_| "?").collect::<Vec<_>>().join(",");
             tx.execute(
-                &format!("DELETE FROM sessions WHERE id IN ({})", placeholders),
+                &format!("UPDATE sessions SET is_hidden = 1 WHERE id IN ({})", placeholders),
                 rusqlite::params_from_iter(to_delete.iter()),
             )
             .map_err(|e| e.to_string())?;
