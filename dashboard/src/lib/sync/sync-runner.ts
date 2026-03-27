@@ -19,6 +19,7 @@ import {
   updateIndicatorFromRunResult,
 } from '@/lib/sync/sync-indicator';
 import {
+  getLocalDatasetState,
   getLocalDeltaState,
   isDemoModeSyncDisabled,
   logSyncDiagnostic,
@@ -609,6 +610,71 @@ async function runOnlineSyncOnceImpl(
     }
 
     if (status.shouldPush) {
+      // When server has no snapshot, we must do a full push (not delta)
+      const needsFullPush = status.reason === 'server_has_no_snapshot' || (status.serverRevision ?? 0) === 0;
+
+      if (needsFullPush) {
+        log?.info('Server has no snapshot, performing full push instead of delta');
+        const fullLocal = await getLocalDatasetState(state);
+        if (!fullLocal.archive || !fullLocal.hasReseedData) {
+          log?.error('Full push impossible: no local data', {
+            exportOk: fullLocal.exportOk,
+            exportError: fullLocal.exportError ?? null,
+          });
+          throw new Error(fullLocal.exportError ?? 'No local data available for full push');
+        }
+
+        const fullPayloadSize = JSON.stringify(fullLocal.archive).length;
+        log?.info('Pushing full archive to server', {
+          knownServerRevision: status.serverRevision ?? null,
+          payloadSizeKB: Math.round(fullPayloadSize / 1024),
+        });
+
+        const pushT0 = Date.now();
+        const push = await postJson<SyncPushResponse>(
+          settings.serverUrl,
+          '/api/sync/push',
+          {
+            userId: settings.userId,
+            deviceId: settings.deviceId,
+            knownServerRevision: status.serverRevision ?? null,
+            archive: fullLocal.archive,
+          },
+          settings.requestTimeoutMs,
+          secureApiToken,
+        );
+
+        if (push.accepted === false) {
+          log?.error('Full push rejected', { reason: push.reason, durationMs: Date.now() - pushT0 });
+          throw new Error(`full push rejected: ${push.reason}`);
+        }
+
+        log?.info('Full push accepted', {
+          revision: push.revision,
+          noOp: push.noOp ?? false,
+          durationMs: Date.now() - pushT0,
+        });
+
+        state.localRevision = push.revision;
+        state.localHash = push.payloadSha256;
+        state.serverRevision = push.revision;
+        state.serverHash = push.payloadSha256;
+        state.needsReseed = false;
+        state.lastSyncAt = new Date().toISOString();
+        saveOnlineSyncState(state, settings);
+
+        const result: OnlineSyncRunResult = {
+          ok: true,
+          action: push.noOp ? 'noop' : 'push',
+          reason: 'full_push_no_server_snapshot',
+          serverRevision: push.revision,
+        };
+        log?.info('Sync finished: full push', { reason: result.reason });
+        updateIndicatorFromRunResult(result);
+        await log?.flush();
+        return result;
+      }
+
       if (!local.archive) {
         log?.error('Local export unavailable for push', {
           exportError: local.exportError ?? null,
@@ -626,7 +692,7 @@ async function runOnlineSyncOnceImpl(
       });
 
       const deltaArchive = local.archive as DeltaArchive;
-      
+
       const pushT0 = Date.now();
       const push = await postJson<SyncDeltaPushResponse>(
         settings.serverUrl,
@@ -656,7 +722,7 @@ async function runOnlineSyncOnceImpl(
       });
 
       state.localRevision = push.revision;
-      
+
       // Update local storage representation after push applied on server
       state.serverRevision = push.revision;
       state.needsReseed = false;
