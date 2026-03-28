@@ -699,7 +699,14 @@ fn merge_or_insert_session(
     if overlap_ids.is_empty() {
         tx.execute(
             "INSERT INTO sessions (app_id, project_id, start_time, end_time, duration_seconds, date, rate_multiplier, comment, is_hidden)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(app_id, start_time) DO UPDATE SET
+                end_time = CASE WHEN excluded.end_time > sessions.end_time THEN excluded.end_time ELSE sessions.end_time END,
+                duration_seconds = CASE WHEN excluded.duration_seconds > sessions.duration_seconds THEN excluded.duration_seconds ELSE sessions.duration_seconds END,
+                project_id = COALESCE(sessions.project_id, excluded.project_id),
+                rate_multiplier = CASE WHEN excluded.rate_multiplier > sessions.rate_multiplier THEN excluded.rate_multiplier ELSE sessions.rate_multiplier END,
+                comment = CASE WHEN excluded.comment IS NOT NULL AND (sessions.comment IS NULL OR sessions.comment = '') THEN excluded.comment ELSE sessions.comment END,
+                is_hidden = CASE WHEN excluded.is_hidden THEN excluded.is_hidden ELSE sessions.is_hidden END",
             rusqlite::params![
                 local_app_id,
                 merged_project_id,
