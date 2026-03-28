@@ -113,9 +113,9 @@ WITH session_project_overlap AS (
     JOIN file_activities fa
       ON fa.app_id = s.app_id
      AND fa.date = s.date
-     AND fa.project_id IS NOT NULL
      AND fa.last_seen > s.start_time
      AND fa.first_seen < s.end_time
+    JOIN projects proj ON proj.id = fa.project_id
     WHERE s.date = ?1 AND {ACTIVE_SESSION_FILTER_S}
     GROUP BY s.id, fa.project_id
 ),
@@ -135,7 +135,7 @@ resolved_sessions AS (
            s.start_time,
            s.end_time,
            CASE
-               WHEN s.project_id IS NOT NULL THEN s.project_id
+               WHEN s.project_id IS NOT NULL AND p.id IS NOT NULL THEN s.project_id
                WHEN ro.project_count = 1
                 AND ro.overlap_seconds * 2 >= ro.span_seconds
                THEN ro.project_id
@@ -148,6 +148,7 @@ resolved_sessions AS (
     LEFT JOIN ranked_overlap ro
       ON ro.session_id = s.id
      AND ro.rn = 1
+    LEFT JOIN projects p ON p.id = s.project_id
     WHERE s.date = ?1 AND {ACTIVE_SESSION_FILTER_S}
 )
 INSERT INTO session_project_cache (
