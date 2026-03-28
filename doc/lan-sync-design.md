@@ -84,7 +84,7 @@ Scenariusz: dwa komputery (np. stacjonarny + laptop) — po uruchomieniu TIMEFLO
 ### 4.2 Protokół UDP broadcast
 
 Port: **47892** (UDP)
-Adres: `255.255.255.255` (broadcast) lub `224.0.0.251` (multicast mDNS-like)
+Adres: `255.255.255.255` (broadcast)
 
 **Beacon packet** (JSON, wysyłany co 30s):
 ```json
@@ -139,7 +139,8 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> JoinHandle<()>
 **Przepływ wątku:**
 
 1. Bind `UdpSocket` na `0.0.0.0:47892`, `set_broadcast(true)`, receive timeout 1s
-2. Loop:
+2. Wyślij jednorazowy `timeflow_discover` broadcast przy starcie
+3. Loop:
    - Co 30s wysyła beacon na `255.255.255.255:47892`
    - Odczytuje pakiety w pętli (timeout 1s, nieblokujące)
    - Filtruje własne pakiety (porównuje `device_id`)
@@ -179,13 +180,7 @@ Alternatywnie: daemon zapisuje plik → filesystem watcher w Tauri (tauri-plugin
 
 ### 5.1 Stos techniczny
 
-**Opcja A: `tiny_http`** — minimalna zależność (~50 KB), brak async
-**Opcja B: `axum` + tokio** — duże, ale tokio już jest w Cargo.toml
-**Opcja C: raw `TcpListener`** — std lib, bez zależności, wystarczy dla 2 endpointów
-
-**Decyzja: Opcja C** — raw TcpListener z HTTP/1.1 ręcznym parserem. Zero nowych zależności. Tylko 2 endpointy, prosty JSON in/out.
-
-Alternatywnie: `warp` lub `axum` jeśli tokio już jest — dodaje ~3 MB do binary.
+**Raw `TcpListener`** (std lib) — zero nowych zależności. Tokio jest już w Cargo.toml dashboardu, ale raw TCP jest prostsze dla 3 endpointów z prostym JSON in/out.
 
 ### 5.2 Endpointy serwera
 
@@ -325,31 +320,19 @@ Rozszerzenie `BackgroundServices.tsx` o LAN sync orchestrator:
 
 ## 9. Zmiany w demonie (timeflow-demon v0.3)
 
-Nowy moduł: `src/lan_discovery.rs`
+| Plik | Akcja |
+|---|---|
+| `src/lan_discovery.rs` | **Nowy** — discovery loop |
+| `src/main.rs` | Dodanie `lan_discovery::start(stop_signal.clone())` |
+| `Cargo.toml` | **Bez zmian** — `std::net::UdpSocket` + `serde_json` + `chrono` już są |
 
-**Nowe zależności Cargo.toml demona:**
-```toml
-# Opcja bez nowych zależności: raw std::net::UdpSocket (already in std)
-# Opcja z mDNS: mdns-sd = "0.10"  (jeśli chcemy proper mDNS)
-```
-
-**Preferowane: raw UDP broadcast** — bez nowych zależności, std::net::UdpSocket.
-
-**Nowy wątek w `main.rs`:**
+**Integracja w `main.rs`** — identyczny wzorzec jak `tracker::start()`:
 ```rust
-let discovery = LanDiscovery::new(device_id, machine_name, dashboard_port);
-std::thread::spawn(move || discovery.run());
+let discovery_handle = lan_discovery::start(stop_signal.clone());
+// ... tray loop ...
+stop_signal.store(true, Ordering::SeqCst);
+let _ = discovery_handle.join();
 ```
-
-**`run()` loop:**
-1. Bind UDP socket na 0.0.0.0:47892
-2. SO_BROADCAST = true
-3. Set receive timeout = 1s
-4. Loop:
-   - Wyślij beacon co 30s
-   - Odbierz pakiety → filtruj type=timeflow_beacon → zapisz/aktualizuj peers
-   - Usuń peers niewidzianych > 120s
-   - Zapisz `lan_peers.json`
 
 ---
 
@@ -442,11 +425,9 @@ Wymagana zmiana w `tauri.conf.json`:
 
 ## 13. Pytania otwarte
 
-1. **Port konflikty**: co jeśli port 47891 jest zajęty? → fallback do 47892, 47893, lub user konfiguruje.
-2. **Wiele instancji**: czy sync działa gdy demon nie działa (tylko dashboard)? → dashboard musi też broadcastować/nasłuchiwać.
-3. **Demon vs dashboard discovery**: jeśli demon jest wyłączony, discovery spada na dashboard. Czy to wymagane w MVP?
-4. **Format UUID vs integer ID**: sesje używają `id INTEGER`. Czy przy merge z 2 urządzeń może być kolizja ID? → sprawdzić logikę `import_data_archive`.
-5. **Co synchronizujemy**: tylko sesje i projekty, czy też aplikacje, ustawienia? → analogicznie do online sync (projekty + sesje + manual_sessions + applications + tombstones).
+1. **Port konflikty**: co jeśli port 47891 jest zajęty? → user konfiguruje w ustawieniach.
+2. **Kolizja ID**: sesje używają `id INTEGER`. Przy merge z 2 urządzeń może być kolizja → sprawdzić logikę `import_data_archive` (unique constraint `app_id + start_time` powinna temu zapobiec).
+3. **Co synchronizujemy**: analogicznie do online sync — projekty + sesje + manual_sessions + applications + tombstones. Bez ustawień.
 
 ---
 
