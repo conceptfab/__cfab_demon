@@ -1199,7 +1199,9 @@
       "dashboard_offline": "offline",
       "peer_found": "TIMEFLOW found on {{name}}",
       "error_peer_unreachable": "Peer offline — start TIMEFLOW Dashboard on the other machine",
-      "full_sync": "Full Sync"
+      "full_sync": "Full Sync",
+      "sync_interval": "Sync interval",
+      "sync_marker": "Last sync marker"
     }
   },
   "help": {
@@ -1693,7 +1695,12 @@
     "lan_sync_setup_what_it_does": "What it does: LAN Sync exchanges data directly between two TIMEFLOW instances on the same network — no server, no cloud, no account needed.",
     "lan_sync_setup_how_to_start": "How to start: enable LAN Sync in Settings on both machines, make sure they are on the same LAN/Wi-Fi, and wait for peer discovery (up to 30 seconds).",
     "lan_sync_setup_when_to_use": "When to use: use it to quickly synchronize work data between your desktop and laptop, or between team members on the same office network.",
-    "lan_sync_setup_limitations": "Limitations: both devices must be on the same local network. The sync is one-directional per trigger (pull then push). Large datasets may take a moment on the first sync.",
+    "lan_sync_setup_limitations": "Limitations: both devices must be on the same local network. Large datasets may take a moment on the first sync.",
+    "lan_sync_master_slave": "MASTER/SLAVE Roles – roles are automatically assigned via UDP discovery. The first device becomes MASTER, subsequent ones become SLAVE. MASTER coordinates the merge.",
+    "lan_sync_sync_markers": "Sync Markers – after each successful sync, a SHA256 marker is stored in SQLite. Matching markers enable efficient delta sync; mismatched markers trigger a full sync.",
+    "lan_sync_scheduled": "Scheduled Sync – configure the sync interval (4h/8h/12h/24h/48h or manual) in Settings. Discovery activates only during sync windows to save resources.",
+    "lan_sync_freeze": "Database Freeze – during sync, both databases are frozen (no new writes). The daemon buffers activity in memory and flushes after unfreeze. Auto-unfreeze after 5 minutes (safety net).",
+    "lan_sync_backup": "Automatic Backup – a database backup is created before every merge. Up to 5 backups are rotated automatically.",
     "bughunter_detail_title": "BugHunter",
     "bughunter_detail_what_it_does": "What it does: BugHunter opens a fast bug report form with subject, description, version number, and attachments.",
     "bughunter_detail_when_to_use": "When to use: send a report right after the issue appears, ideally with short reproduction steps and a screenshot or supporting file.",

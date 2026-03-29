@@ -114,7 +114,7 @@ export function LanPeerNotification() {
       const state = loadLanSyncState();
       const since = state.peerSyncTimes?.[peer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z';
       const result = await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since);
-      recordPeerSync(peer, [peer]);
+      recordPeerSync(peer);
       if (result.pulled || result.pushed) {
         triggerRefresh('lan_sync_pull');
       }
@@ -126,8 +126,6 @@ export function LanPeerNotification() {
       console.warn('LAN sync failed:', msg);
       if (msg.includes('Ping failed') || msg.includes('connection') || msg.includes('refused')) {
         setSyncError(t('settings.lan_sync.error_peer_unreachable'));
-        // Peer is unreachable — hide it so user isn't confused
-        setVisiblePeer(null);
       } else {
         setSyncError(msg);
       }

@@ -23,6 +23,17 @@ export const persistSessionSettingsForDaemon = (
     minSessionDurationSeconds,
   });
 
+export const persistLanSyncSettingsForDaemon = (
+  syncIntervalHours: number,
+  discoveryDurationMinutes: number,
+  enabled: boolean,
+) =>
+  invoke<void>('persist_lan_sync_settings_for_daemon', {
+    syncIntervalHours,
+    discoveryDurationMinutes,
+    enabled,
+  });
+
 export const settingsApi = {
   clearAllData,
   getDataDir,
@@ -32,4 +43,5 @@ export const settingsApi = {
   setSecureToken,
   persistLanguageForDaemon,
   persistSessionSettingsForDaemon,
+  persistLanSyncSettingsForDaemon,
 } as const;

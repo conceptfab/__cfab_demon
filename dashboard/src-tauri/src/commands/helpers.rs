@@ -98,6 +98,15 @@ pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> St
         .to_lowercase()
 }
 
+pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_export::TableHashes {
+    super::delta_export::TableHashes {
+        projects: compute_table_hash(conn, "projects"),
+        applications: compute_table_hash(conn, "applications"),
+        sessions: compute_table_hash(conn, "sessions"),
+        manual_sessions: compute_table_hash(conn, "manual_sessions"),
+    }
+}
+
 pub fn get_machine_id() -> String {
     std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
 }

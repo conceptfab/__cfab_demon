@@ -140,14 +140,16 @@ fn should_refresh_background_process_snapshot(last_refresh: Option<Instant>, now
 /// Starts the monitor thread. Returns a JoinHandle.
 /// `stop_signal` — set to true to stop the thread.
 /// `foreground_signal` — optional event from SetWinEventHook for instant wake on window change.
+/// `sync_state` — shared LAN sync state; tracker skips saves when `db_frozen` is true.
 pub fn start(
     stop_signal: Arc<AtomicBool>,
     foreground_signal: Option<Arc<ForegroundSignal>>,
+    sync_state: Option<Arc<crate::lan_server::LanSyncState>>,
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         log::info!("Monitor thread started");
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_loop(stop_signal, foreground_signal);
+            run_loop(stop_signal, foreground_signal, sync_state);
         })) {
             Ok(()) => log::info!("Monitor thread stopped"),
             Err(_) => log::error!("Monitor thread PANICKED (see panic log above)"),
@@ -388,7 +390,7 @@ fn record_app_activity(
     }
 }
 
-fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<ForegroundSignal>>) {
+fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<ForegroundSignal>>, sync_state: Option<Arc<crate::lan_server::LanSyncState>>) {
     let mut pid_cache: PidCache = HashMap::new();
     monitor::warm_path_detection_wmi();
     let mut cfg = config::load();
@@ -591,13 +593,18 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
             last_heartbeat = Instant::now();
         }
 
-        // Periodic save
+        // Periodic save (skip while database is frozen for LAN sync)
         if last_save.elapsed() >= save_interval {
-            if let Err(e) = storage::save_daily(&mut daily_data) {
-                log::error!("Error saving daily data: {}", e);
-                log::logger().flush();
+            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Relaxed));
+            if is_frozen {
+                log::debug!("Skipping periodic save — database frozen for sync");
+            } else {
+                if let Err(e) = storage::save_daily(&mut daily_data) {
+                    log::error!("Error saving daily data: {}", e);
+                    log::logger().flush();
+                }
+                last_save = Instant::now();
             }
-            last_save = Instant::now();
         }
 
         // Evict old PID cache entries

@@ -100,6 +100,44 @@ pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection> {
     Ok(conn)
 }
 
+/// LAN sync settings persisted by the dashboard for the daemon to read.
+#[derive(Deserialize, Debug, Clone)]
+pub struct LanSyncSettings {
+    #[serde(default = "default_sync_interval")]
+    pub sync_interval_hours: u32,
+    #[serde(default = "default_discovery_duration")]
+    pub discovery_duration_minutes: u32,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_sync_interval() -> u32 { 12 }
+fn default_discovery_duration() -> u32 { 5 }
+fn default_enabled() -> bool { true }
+
+impl Default for LanSyncSettings {
+    fn default() -> Self {
+        Self {
+            sync_interval_hours: default_sync_interval(),
+            discovery_duration_minutes: default_discovery_duration(),
+            enabled: default_enabled(),
+        }
+    }
+}
+
+/// Read LAN sync settings from the shared file (written by dashboard).
+pub fn load_lan_sync_settings() -> LanSyncSettings {
+    let dir = match config_dir() {
+        Ok(d) => d,
+        Err(_) => return LanSyncSettings::default(),
+    };
+    let path = dir.join("lan_sync_settings.json");
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => LanSyncSettings::default(),
+    }
+}
+
 /// Ładuje legacy konfigurację z pliku JSON (interwały + fallback lista aplikacji).
 fn load_legacy_json_config() -> Config {
     let path = match config_path() {

@@ -2,7 +2,7 @@
 // Reads lan_peers.json (written by demon discovery), runs sync with a peer via HTTP.
 
 use super::delta_export::{DeltaArchive, TableHashes};
-use super::helpers::{compute_table_hash, run_app_blocking, run_db_blocking, timeflow_data_dir};
+use super::helpers::{build_table_hashes, run_app_blocking, run_db_blocking, timeflow_data_dir};
 use super::types::Project;
 use crate::db;
 use serde::{Deserialize, Serialize};
@@ -86,12 +86,7 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, String> {
 #[tauri::command]
 pub fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
     let conn = db::get_connection(&app)?;
-    Ok(TableHashes {
-        projects: compute_table_hash(&conn, "projects"),
-        applications: compute_table_hash(&conn, "applications"),
-        sessions: compute_table_hash(&conn, "sessions"),
-        manual_sessions: compute_table_hash(&conn, "manual_sessions"),
-    })
+    Ok(build_table_hashes(&conn))
 }
 
 #[tauri::command]
@@ -121,12 +116,7 @@ pub async fn run_lan_sync(
     // 2. Get local hashes and send status request
     let local_hashes = run_app_blocking(app.clone(), |app| {
         let conn = db::get_connection(&app)?;
-        Ok(TableHashes {
-            projects: compute_table_hash(&conn, "projects"),
-            applications: compute_table_hash(&conn, "applications"),
-            sessions: compute_table_hash(&conn, "sessions"),
-            manual_sessions: compute_table_hash(&conn, "manual_sessions"),
-        })
+        Ok(build_table_hashes(&conn))
     })
     .await?;
 
@@ -302,6 +292,10 @@ pub(crate) fn import_delta_into_db(
     // Build project name → local id cache once (avoids N+1 in resolve_project_id)
     let project_name_map = build_project_name_map(&tx)?;
 
+    // Build remote project id → project cache for O(1) lookups
+    let remote_project_by_id: std::collections::HashMap<i64, &Project> =
+        delta.data.projects.iter().map(|p| (p.id, p)).collect();
+
     // Merge applications (upsert by executable_name, last-writer-wins by updated_at)
     // Also collect app_id mapping inline (avoids a second N+1 query loop)
     let mut app_id_map = std::collections::HashMap::new();
@@ -320,7 +314,7 @@ pub(crate) fn import_delta_into_db(
                 let remote_updated = app_row.updated_at.as_deref().unwrap_or("");
                 let local_ts = local_updated.as_deref().unwrap_or("");
                 if remote_updated > local_ts {
-                    let resolved_project = resolve_project_id_cached(app_row.project_id, &delta.data.projects, &project_name_map);
+                    let resolved_project = resolve_project_id_cached(app_row.project_id, &remote_project_by_id, &project_name_map);
                     tx.execute(
                         "UPDATE applications SET display_name = ?1, project_id = ?2, \
                          updated_at = ?3 WHERE id = ?4",
@@ -346,14 +340,7 @@ pub(crate) fn import_delta_into_db(
                     ],
                 )
                 .map_err(|e| e.to_string())?;
-                // Get the newly inserted id for the mapping
-                let new_id: i64 = tx
-                    .query_row(
-                        "SELECT id FROM applications WHERE executable_name = ?1",
-                        [&app_row.executable_name],
-                        |row| row.get(0),
-                    )
-                    .map_err(|e| e.to_string())?;
+                let new_id = tx.last_insert_rowid();
                 app_id_map.insert(app_row.id, new_id);
                 summary.apps_merged += 1;
             }
@@ -373,7 +360,7 @@ pub(crate) fn import_delta_into_db(
         };
 
         // Resolve project_id via name if different DB
-        let local_project_id = resolve_project_id_cached(session.project_id, &delta.data.projects, &project_name_map);
+        let local_project_id = resolve_project_id_cached(session.project_id, &remote_project_by_id, &project_name_map);
         let remote_updated = session.updated_at.as_deref().unwrap_or("");
         let utc_fallback;
         let effective_updated = if remote_updated.is_empty() {
@@ -440,7 +427,7 @@ pub(crate) fn import_delta_into_db(
 
     // Merge manual sessions (upsert by project_id + start_time + title — matches UNIQUE constraint)
     for ms in &delta.data.manual_sessions {
-        let local_project_id = resolve_project_id_cached(Some(ms.project_id), &delta.data.projects, &project_name_map);
+        let local_project_id = resolve_project_id_cached(Some(ms.project_id), &remote_project_by_id, &project_name_map);
 
         let existing: Option<(i64, Option<String>)> = tx
             .query_row(
@@ -569,7 +556,47 @@ pub(crate) fn import_delta_into_db(
     }
 
     tx.commit().map_err(|e| e.to_string())?;
+
+    // Post-merge FK integrity check + orphan cleanup
+    verify_and_cleanup_after_merge(conn)?;
+
     Ok(summary)
+}
+
+/// Verify foreign key integrity after merge and clean up orphaned records.
+fn verify_and_cleanup_after_merge(conn: &rusqlite::Connection) -> Result<(), String> {
+    // Delete orphaned sessions (app_id not in applications)
+    let orphaned_sessions = conn
+        .execute(
+            "DELETE FROM sessions WHERE app_id NOT IN (SELECT id FROM applications)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    if orphaned_sessions > 0 {
+        log::warn!("LAN sync: cleaned up {} orphaned sessions after merge", orphaned_sessions);
+    }
+
+    // Delete orphaned manual_sessions (project_id not in projects)
+    let orphaned_manual = conn
+        .execute(
+            "DELETE FROM manual_sessions WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    if orphaned_manual > 0 {
+        log::warn!("LAN sync: cleaned up {} orphaned manual sessions after merge", orphaned_manual);
+    }
+
+    // Run PRAGMA integrity_check (quick validation)
+    let integrity: String = conn
+        .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
+    if integrity != "ok" {
+        log::error!("LAN sync: integrity check failed after merge: {}", integrity);
+        return Err(format!("Integrity check failed: {}", integrity));
+    }
+
+    Ok(())
 }
 
 // ── Helpers ──
@@ -597,14 +624,14 @@ fn build_project_name_map(
     Ok(map)
 }
 
-/// Resolve remote project_id to local project_id using pre-built name cache.
+/// Resolve remote project_id to local project_id using pre-built caches (O(1) lookups).
 fn resolve_project_id_cached(
     remote_project_id: Option<i64>,
-    remote_projects: &[Project],
+    remote_project_by_id: &std::collections::HashMap<i64, &Project>,
     project_name_map: &std::collections::HashMap<String, i64>,
 ) -> Option<i64> {
     let remote_id = remote_project_id?;
-    let remote_project = remote_projects.iter().find(|p| p.id == remote_id)?;
+    let remote_project = remote_project_by_id.get(&remote_id)?;
     let key = remote_project.name.trim().to_lowercase();
     project_name_map.get(&key).copied()
 }

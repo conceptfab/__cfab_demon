@@ -4,5 +4,6 @@
 // Named resource - ikona tray (ładowana przez NWG po nazwie)
 APP_ICON ICON "icon.ico"
 APP_ICON_ATTENTION ICON "icon_attention.ico"
+APP_ICON_SYNC ICON "icon_sync.ico"
 // Manifest - wymusza Common Controls v6 (GetWindowSubclass)
 1 24 "app.manifest"

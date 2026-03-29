@@ -1,4 +1,4 @@
-use super::helpers::compute_table_hash;
+use super::helpers::build_table_hashes;
 use super::types::{ApplicationRow, ManualSession, Project, SessionRow, Tombstone};
 use crate::db;
 use serde::{Deserialize, Serialize};
@@ -45,12 +45,7 @@ pub fn build_delta_archive(
     let since = since_normalized;
 
     // 1. Calculate deterministic hashes for each table
-    let table_hashes = TableHashes {
-        projects: compute_table_hash(&conn, "projects"),
-        applications: compute_table_hash(&conn, "applications"),
-        sessions: compute_table_hash(&conn, "sessions"),
-        manual_sessions: compute_table_hash(&conn, "manual_sessions"),
-    };
+    let table_hashes = build_table_hashes(&conn);
 
     // 2. Fetch delta data
     // Projects & Applications are ALWAYS exported in full (small reference tables)

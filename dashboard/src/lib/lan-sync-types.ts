@@ -2,6 +2,8 @@ export interface LanSyncSettings {
   enabled: boolean;
   serverPort: number;
   autoSyncOnPeerFound: boolean;
+  syncIntervalHours: number;        // 0 = manual only, 4/8/12/24/48
+  discoveryDurationMinutes: number;  // how long to search for peers
 }
 
 export interface LanPeer {
@@ -42,6 +44,16 @@ export interface LanServerStatus {
   port: number | null;
 }
 
+export interface SyncMarker {
+  id: number;
+  marker_hash: string;
+  created_at: string;
+  device_id: string;
+  peer_id: string | null;
+  tables_hash: string;
+  full_sync: boolean;
+}
+
 export const LAN_SYNC_SETTINGS_KEY = 'timeflow.settings.lan-sync';
 export const LAN_SYNC_STATE_KEY = 'timeflow.state.lan-sync';
 export const LAN_SYNC_SETTINGS_CHANGED_EVENT = 'timeflow:lan-sync-settings-changed';
@@ -50,4 +62,6 @@ export const DEFAULT_LAN_SYNC_SETTINGS: LanSyncSettings = {
   enabled: true,
   serverPort: 47891,
   autoSyncOnPeerFound: true,
+  syncIntervalHours: 12,
+  discoveryDurationMinutes: 5,
 };

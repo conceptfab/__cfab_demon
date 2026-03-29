@@ -11,8 +11,9 @@ mod m10_sessions_updated_at;
 mod m11_session_project_cache;
 mod m12_delta_sync;
 mod m13_fix_updated_at;
+mod m14_sync_markers;
 
-const LATEST_SCHEMA_VERSION: i64 = 13;
+const LATEST_SCHEMA_VERSION: i64 = 14;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -75,6 +76,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 13 {
         m13_fix_updated_at::run(&tx)?;
+    }
+    if current_version < 14 {
+        m14_sync_markers::run(&tx)?;
     }
 
     tx.execute(

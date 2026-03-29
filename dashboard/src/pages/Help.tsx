@@ -830,9 +830,14 @@ export function Help() {
                 description={t18n('help_page.lan_sync_description')}
                 footer={t18n('help_page.key_functionalities')}
                 features={[
+                  t18n('help_page.lan_sync_master_slave'),
                   t18n('help_page.lan_sync_udp_discovery'),
                   t18n('help_page.lan_sync_http_server'),
                   t18n('help_page.lan_sync_delta_merge'),
+                  t18n('help_page.lan_sync_sync_markers'),
+                  t18n('help_page.lan_sync_scheduled'),
+                  t18n('help_page.lan_sync_freeze'),
+                  t18n('help_page.lan_sync_backup'),
                   t18n('help_page.lan_sync_auto_sync'),
                   t18n('help_page.lan_sync_peer_notification'),
                   t18n('help_page.lan_sync_sidebar_indicator'),

@@ -179,6 +179,7 @@ pub fn run() {
             commands::set_secure_token,
             commands::persist_language_for_daemon,
             commands::persist_session_settings_for_daemon,
+            commands::persist_lan_sync_settings_for_daemon,
             commands::split_session,
             commands::suggest_session_split,
             commands::analyze_session_projects,
@@ -189,7 +190,11 @@ pub fn run() {
             commands::run_lan_sync,
             commands::start_lan_server,
             commands::stop_lan_server,
-            commands::get_lan_server_status
+            commands::get_lan_server_status,
+            commands::insert_sync_marker,
+            commands::get_latest_sync_marker,
+            commands::markers_match,
+            commands::backup_before_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

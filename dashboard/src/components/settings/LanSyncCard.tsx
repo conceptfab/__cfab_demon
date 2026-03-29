@@ -1,8 +1,17 @@
-import { useState } from 'react';
-import { Wifi, Monitor, RefreshCw, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Wifi, Monitor, RefreshCw, Loader2, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { LanPeer, LanSyncSettings } from '@/lib/lan-sync-types';
+import type { LanPeer, LanSyncSettings, SyncMarker } from '@/lib/lan-sync-types';
+
+const SYNC_INTERVAL_OPTIONS = [
+  { value: 0, label: 'Manual' },
+  { value: 4, label: '4h' },
+  { value: 8, label: '8h' },
+  { value: 12, label: '12h' },
+  { value: 24, label: '24h' },
+  { value: 48, label: '48h' },
+];
 
 interface LanSyncCardProps {
   settings: LanSyncSettings;
@@ -11,6 +20,7 @@ interface LanSyncCardProps {
   lastSyncAt: string | null;
   lastSyncResult: string | null;
   lastSyncSuccess: boolean;
+  latestMarker: SyncMarker | null;
   title: string;
   description: string;
   enableTitle: string;
@@ -18,6 +28,8 @@ interface LanSyncCardProps {
   portLabel: string;
   autoSyncTitle: string;
   autoSyncDescription: string;
+  syncIntervalLabel: string;
+  syncMarkerLabel: string;
   peersTitle: string;
   noPeersText: string;
   syncButtonLabel: string;
@@ -30,6 +42,7 @@ interface LanSyncCardProps {
   onEnabledChange: (enabled: boolean) => void;
   onPortChange: (port: number) => void;
   onAutoSyncChange: (enabled: boolean) => void;
+  onSyncIntervalChange: (hours: number) => void;
   onSyncWithPeer: (peer: LanPeer) => void;
   onFullSyncWithPeer?: (peer: LanPeer) => void;
 }
@@ -41,6 +54,7 @@ export function LanSyncCard({
   lastSyncAt,
   lastSyncResult,
   lastSyncSuccess,
+  latestMarker,
   title,
   description,
   enableTitle,
@@ -48,6 +62,8 @@ export function LanSyncCard({
   portLabel,
   autoSyncTitle,
   autoSyncDescription,
+  syncIntervalLabel,
+  syncMarkerLabel,
   peersTitle,
   noPeersText,
   syncButtonLabel,
@@ -60,6 +76,7 @@ export function LanSyncCard({
   onEnabledChange,
   onPortChange,
   onAutoSyncChange,
+  onSyncIntervalChange,
   onSyncWithPeer,
   onFullSyncWithPeer,
 }: LanSyncCardProps) {
@@ -129,6 +146,39 @@ export function LanSyncCard({
             onChange={(e) => onAutoSyncChange(e.target.checked)}
           />
         </label>
+
+        <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{syncIntervalLabel}</p>
+          </div>
+          <select
+            className="h-8 w-28 rounded-md border border-input bg-background px-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            value={settings.syncIntervalHours}
+            onChange={(e) => onSyncIntervalChange(Number(e.target.value))}
+          >
+            {SYNC_INTERVAL_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {latestMarker && (
+          <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-1">
+            <div className="flex items-center gap-2">
+              <Shield className="h-3.5 w-3.5 text-sky-400" />
+              <p className="text-sm font-medium">{syncMarkerLabel}</p>
+            </div>
+            <p className="text-xs text-muted-foreground font-mono truncate">
+              {latestMarker.marker_hash.slice(0, 16)}…
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(latestMarker.created_at).toLocaleString()} — {latestMarker.device_id}
+              {latestMarker.full_sync ? ' (full)' : ' (delta)'}
+            </p>
+          </div>
+        )}
 
         <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-3">
           <p className="text-sm font-medium">{peersTitle}</p>

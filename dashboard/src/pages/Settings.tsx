@@ -21,9 +21,9 @@ import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
 import { LanSyncCard } from '@/components/settings/LanSyncCard';
 import { useSettingsFormState } from '@/hooks/useSettingsFormState';
 import { useSettingsDemoMode } from '@/hooks/useSettingsDemoMode';
-import { lanSyncApi } from '@/lib/tauri';
+import { lanSyncApi, settingsApi } from '@/lib/tauri';
 import { loadLanSyncSettings, saveLanSyncSettings, loadLanSyncState, recordPeerSync } from '@/lib/lan-sync';
-import type { LanPeer, LanSyncSettings as LanSyncSettingsType } from '@/lib/lan-sync-types';
+import type { LanPeer, LanSyncSettings as LanSyncSettingsType, SyncMarker } from '@/lib/lan-sync-types';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, i) =>
@@ -123,6 +123,12 @@ export function Settings() {
   const [lanPeers, setLanPeers] = useState<LanPeer[]>([]);
   const [lanSyncing, setLanSyncing] = useState(false);
   const [lanSyncResult, setLanSyncResult] = useState<{ text: string; success: boolean } | null>(null);
+  const [latestMarker, setLatestMarker] = useState<SyncMarker | null>(null);
+
+  // Load latest sync marker
+  useEffect(() => {
+    lanSyncApi.getLatestSyncMarker().then(setLatestMarker).catch(() => {});
+  }, [lanSyncing]); // Refresh after sync completes
 
   // Poll peers every 5s
   useEffect(() => {
@@ -157,6 +163,12 @@ export function Settings() {
     setLanSettings((prev) => {
       const next = updater(prev);
       saveLanSyncSettings(next);
+      // Persist to file for daemon to read
+      settingsApi.persistLanSyncSettingsForDaemon(
+        next.syncIntervalHours,
+        next.discoveryDurationMinutes,
+        next.enabled,
+      ).catch((e) => console.warn('Failed to persist LAN sync settings for daemon:', e));
       return next;
     });
   }, []);
@@ -170,7 +182,7 @@ export function Settings() {
         ? '1970-01-01T00:00:00Z'
         : (state.peerSyncTimes?.[peer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z');
       const result = await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since);
-      recordPeerSync(peer, lanPeers);
+      recordPeerSync(peer);
       const parts: string[] = [];
       if (fullSync) parts.push('full');
       if (result.pulled) parts.push('pull');
@@ -356,6 +368,7 @@ export function Settings() {
           lastSyncAt={loadLanSyncState().lastSyncAt}
           lastSyncResult={lanSyncResult?.text ?? null}
           lastSyncSuccess={lanSyncResult?.success ?? false}
+          latestMarker={latestMarker}
           title={t('settings.lan_sync.title')}
           description={t('settings.lan_sync.description')}
           enableTitle={t('settings.lan_sync.enable_title')}
@@ -363,6 +376,8 @@ export function Settings() {
           portLabel={t('settings.lan_sync.port_label')}
           autoSyncTitle={t('settings.lan_sync.auto_sync_title')}
           autoSyncDescription={t('settings.lan_sync.auto_sync_description')}
+          syncIntervalLabel={t('settings.lan_sync.sync_interval')}
+          syncMarkerLabel={t('settings.lan_sync.sync_marker')}
           peersTitle={t('settings.lan_sync.peers_title')}
           noPeersText={t('settings.lan_sync.no_peers')}
           syncButtonLabel={t('settings.lan_sync.sync_button')}
@@ -379,6 +394,9 @@ export function Settings() {
           }}
           onAutoSyncChange={(autoSyncOnPeerFound) => {
             updateLanSettings((prev) => ({ ...prev, autoSyncOnPeerFound }));
+          }}
+          onSyncIntervalChange={(syncIntervalHours) => {
+            updateLanSettings((prev) => ({ ...prev, syncIntervalHours }));
           }}
           onSyncWithPeer={(peer) => {
             void handleLanSync(peer);

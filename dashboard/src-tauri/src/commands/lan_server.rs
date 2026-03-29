@@ -3,7 +3,7 @@
 // Uses std::net::TcpListener — no extra dependencies.
 
 use super::delta_export::{DeltaArchive, TableHashes};
-use super::helpers::compute_table_hash;
+use super::helpers::build_table_hashes;
 use super::lan_sync::{import_delta_into_db, LanImportSummary};
 use crate::db;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,6 @@ static SERVER_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16:
 
 #[derive(Deserialize)]
 struct StatusRequest {
-    #[allow(dead_code)]
     device_id: String,
     table_hashes: TableHashes,
 }
@@ -41,7 +40,6 @@ struct StatusResponse {
 
 #[derive(Deserialize)]
 struct PullRequest {
-    #[allow(dead_code)]
     device_id: String,
     since: String,
 }
@@ -192,10 +190,8 @@ fn handle_connection(
         if trimmed.is_empty() {
             break;
         }
-        if let Some(value) = trimmed.strip_prefix("Content-Length:") {
-            content_length = value.trim().parse().unwrap_or(0);
-        }
-        if let Some(value) = trimmed.strip_prefix("content-length:") {
+        let lower = trimmed.to_ascii_lowercase();
+        if let Some(value) = lower.strip_prefix("content-length:") {
             content_length = value.trim().parse().unwrap_or(0);
         }
     }
@@ -220,13 +216,7 @@ fn handle_connection(
 
     // Write HTTP response
     let response = format!(
-        "HTTP/1.1 {} {}\r\n\
-         Content-Type: application/json\r\n\
-         Content-Length: {}\r\n\
-         Access-Control-Allow-Origin: *\r\n\
-         Connection: close\r\n\
-         \r\n\
-         {}",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
         status,
         status_text(status),
         response_body.len(),
@@ -255,7 +245,7 @@ fn handle_ping() -> (u16, String) {
         ok: true,
         version: crate::VERSION.trim().to_string(),
         device_id: super::helpers::get_machine_id(),
-        machine_name: std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string()),
+        machine_name: super::helpers::get_machine_id(),
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }
@@ -265,18 +255,14 @@ fn handle_status(app: &AppHandle, body: &str) -> (u16, String) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
+    log::debug!("LAN server: /lan/status from device_id={}", req.device_id);
 
     let conn = match db::get_connection(app) {
         Ok(c) => c,
         Err(e) => return (500, json_error(&e)),
     };
 
-    let local_hashes = TableHashes {
-        projects: compute_table_hash(&conn, "projects"),
-        applications: compute_table_hash(&conn, "applications"),
-        sessions: compute_table_hash(&conn, "sessions"),
-        manual_sessions: compute_table_hash(&conn, "manual_sessions"),
-    };
+    let local_hashes = build_table_hashes(&conn);
 
     let needs_push = local_hashes.projects != req.table_hashes.projects
         || local_hashes.applications != req.table_hashes.applications
@@ -298,6 +284,7 @@ fn handle_pull(app: &AppHandle, body: &str) -> (u16, String) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
+    log::debug!("LAN server: /lan/pull from device_id={}, since={}", req.device_id, req.since);
 
     match super::delta_export::build_delta_archive(app.clone(), req.since) {
         Ok((archive, _)) => (200, serde_json::to_string(&archive).unwrap_or_default()),

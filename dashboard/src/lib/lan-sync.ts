@@ -38,14 +38,13 @@ export function saveLanSyncState(state: LanSyncState): void {
   localStorage.setItem(LAN_SYNC_STATE_KEY, JSON.stringify(state));
 }
 
-export function recordPeerSync(peer: import('./lan-sync-types').LanPeer, allPeers: import('./lan-sync-types').LanPeer[]): void {
+export function recordPeerSync(peer: import('./lan-sync-types').LanPeer): void {
   const state = loadLanSyncState();
   const now = new Date().toISOString();
   saveLanSyncState({
     ...state,
     lastSyncAt: now,
     lastSyncPeerId: peer.device_id,
-    peers: allPeers,
     peerSyncTimes: { ...state.peerSyncTimes, [peer.device_id]: now },
   });
 }

@@ -12,6 +12,8 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use crate::config;
+use crate::lan_server::LanSyncState;
+use crate::lan_sync_orchestrator;
 
 const DISCOVERY_PORT: u16 = 47892;
 const DASHBOARD_PORT_DEFAULT: u16 = 47891;
@@ -32,6 +34,16 @@ struct BeaconPacket {
     dashboard_port: u16,
     dashboard_running: bool,
     timeflow_version: String,
+    #[serde(default = "default_role")]
+    role: String,
+    #[serde(default)]
+    sync_marker_hash: Option<String>,
+    #[serde(default)]
+    sync_ready: bool,
+}
+
+fn default_role() -> String {
+    "undecided".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -40,6 +52,16 @@ struct DiscoverPacket {
     packet_type: String,
     version: u32,
     device_id: String,
+}
+
+/// Tagged enum for single-pass JSON parsing of inbound packets
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type")]
+enum InboundPacket {
+    #[serde(rename = "timeflow_beacon")]
+    Beacon(BeaconPacket),
+    #[serde(rename = "timeflow_discover")]
+    Discover(DiscoverPacket),
 }
 
 // ── Peer info (persisted to lan_peers.json) ──
@@ -52,6 +74,8 @@ pub struct PeerInfo {
     pub dashboard_port: u16,
     pub last_seen: String,
     pub dashboard_running: bool,
+    #[serde(default = "default_role")]
+    pub role: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -144,11 +168,11 @@ fn is_dashboard_running() -> bool {
 
 // ── Main discovery loop ──
 
-pub fn start(stop_signal: Arc<AtomicBool>) -> JoinHandle<()> {
+pub fn start(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>) -> JoinHandle<()> {
     thread::spawn(move || {
         log::info!("LAN discovery thread started");
         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_discovery_loop(stop_signal);
+            run_discovery_loop(stop_signal, sync_state);
         })) {
             Ok(()) => log::info!("LAN discovery thread stopped"),
             Err(_) => log::error!("LAN discovery thread PANICKED (see panic log above)"),
@@ -157,7 +181,7 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> JoinHandle<()> {
     })
 }
 
-fn run_discovery_loop(stop_signal: Arc<AtomicBool>) {
+fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>) {
     let device_id = get_or_create_device_id();
     let machine_name = get_machine_name();
     let version_str = crate::VERSION.trim().to_string();
@@ -191,36 +215,141 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>) {
     let mut peers_dirty = false;
     let mut last_peers_write = Instant::now();
     let mut last_status_log = Instant::now();
+    // Role assignment: after 2 beacon cycles (60s) without peers → become master
+    let mut role_decision_at: Option<Instant> = Some(Instant::now() + Duration::from_secs(60));
 
     // Send initial discover packet
     log::info!("LAN discovery: sending initial discover broadcast");
     send_discover(&socket, &device_id);
 
     let mut buf = [0u8; 2048];
+    let mut sync_handle: Option<JoinHandle<()>> = None;
+    let mut last_sync_attempt = Instant::now() - Duration::from_secs(3600); // allow immediate first sync
+    let mut last_settings_reload = Instant::now() - Duration::from_secs(300);
+    let mut lan_settings = config::load_lan_sync_settings();
+    // Track when the next sync window should open
+    let mut next_sync_window = Instant::now(); // first window starts immediately
+    let mut discovery_active = true;
 
     loop {
         if stop_signal.load(Ordering::Relaxed) {
             break;
         }
 
-        // Send beacon periodically
-        if last_beacon.elapsed() >= BEACON_INTERVAL {
+        // Reload LAN sync settings periodically (every 60s)
+        if last_settings_reload.elapsed() >= Duration::from_secs(60) {
+            lan_settings = config::load_lan_sync_settings();
+            last_settings_reload = Instant::now();
+
+            if !lan_settings.enabled {
+                if discovery_active {
+                    log::info!("LAN discovery: disabled by settings");
+                    discovery_active = false;
+                }
+            }
+        }
+
+        // Scheduled discovery: check if we're in the active window
+        if lan_settings.enabled && lan_settings.sync_interval_hours > 0 {
+            let now = Instant::now();
+            if now >= next_sync_window {
+                if !discovery_active {
+                    log::info!("LAN discovery: sync window opened");
+                    discovery_active = true;
+                }
+                // Discovery window duration
+                let window_duration = Duration::from_secs(lan_settings.discovery_duration_minutes as u64 * 60);
+                if now > next_sync_window + window_duration {
+                    // Window closed, schedule next
+                    let interval = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
+                    next_sync_window = now + interval;
+                    if peers.is_empty() {
+                        discovery_active = false;
+                        log::info!("LAN discovery: window closed, next in {}h", lan_settings.sync_interval_hours);
+                    }
+                    // If sync was successful, also deactivate
+                    if let Some(ref state) = sync_state {
+                        if !state.sync_in_progress.load(Ordering::Relaxed) {
+                            let role = state.get_role();
+                            if role != "undecided" {
+                                discovery_active = false;
+                                state.set_role("undecided");
+                            }
+                        }
+                    }
+                }
+            }
+        } else if lan_settings.sync_interval_hours == 0 && lan_settings.enabled {
+            // Manual only — still listen for beacons but don't send proactively
+            discovery_active = true;
+        }
+
+        // Check if we should trigger sync as master
+        if let Some(ref state) = sync_state {
+            let role = state.get_role();
+            let in_progress = state.sync_in_progress.load(Ordering::Relaxed);
+            let handle_done = sync_handle.as_ref().map_or(true, |h| h.is_finished());
+
+            if role == "master" && !in_progress && handle_done && last_sync_attempt.elapsed() >= Duration::from_secs(60) {
+                // Find a slave peer to sync with
+                if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
+                    log::info!("LAN discovery: triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
+                    last_sync_attempt = Instant::now();
+                    let target = lan_sync_orchestrator::PeerTarget {
+                        ip: slave.ip.clone(),
+                        port: slave.dashboard_port,
+                        device_id: slave.device_id.clone(),
+                    };
+                    sync_handle = Some(lan_sync_orchestrator::run_sync_as_master(
+                        target,
+                        Arc::clone(state),
+                        stop_signal.clone(),
+                    ));
+                }
+            }
+        }
+
+        // Send beacon periodically (only when discovery is active)
+        if discovery_active && last_beacon.elapsed() >= BEACON_INTERVAL {
             let dashboard_up = is_dashboard_running();
+            let current_role = sync_state.as_ref()
+                .map(|s| s.get_role())
+                .unwrap_or_else(|| "undecided".to_string());
             send_beacon(
                 &socket,
                 &device_id,
                 &machine_name,
                 dashboard_up,
                 &version_str,
+                &current_role,
             );
             last_beacon = Instant::now();
         }
 
+        // Role assignment: if undecided and no peers found after 60s → become master
+        if let Some(deadline) = role_decision_at {
+            if Instant::now() >= deadline {
+                if peers.is_empty() {
+                    if let Some(ref state) = sync_state {
+                        if state.get_role() == "undecided" {
+                            state.set_role("master");
+                            log::info!("LAN discovery: no peers found — assuming MASTER role");
+                        }
+                    }
+                }
+                role_decision_at = None;
+            }
+        }
+
         // Periodic status log (every 60s) so user sees discovery is alive
         if last_status_log.elapsed() >= Duration::from_secs(60) {
+            let current_role = sync_state.as_ref()
+                .map(|s| s.get_role())
+                .unwrap_or_else(|| "undecided".to_string());
             log::info!(
-                "LAN discovery: alive, {} peer(s) known",
-                peers.len()
+                "LAN discovery: alive, {} peer(s) known, role={}",
+                peers.len(),
+                current_role
             );
             last_status_log = Instant::now();
         }
@@ -238,6 +367,7 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>) {
                         &socket,
                         &mut peers,
                         &mut peers_dirty,
+                        &sync_state,
                     );
                 }
             }
@@ -291,6 +421,7 @@ fn send_beacon(
     machine_name: &str,
     dashboard_running: bool,
     version: &str,
+    role: &str,
 ) {
     let packet = BeaconPacket {
         packet_type: "timeflow_beacon".to_string(),
@@ -300,6 +431,9 @@ fn send_beacon(
         dashboard_port: DASHBOARD_PORT_DEFAULT,
         dashboard_running,
         timeflow_version: version.to_string(),
+        role: role.to_string(),
+        sync_marker_hash: None,
+        sync_ready: true,
     };
     if let Ok(json) = serde_json::to_string(&packet) {
         let target = format!("255.255.255.255:{}", DISCOVERY_PORT);
@@ -332,60 +466,86 @@ fn handle_packet(
     socket: &UdpSocket,
     peers: &mut HashMap<String, PeerInfo>,
     dirty: &mut bool,
+    sync_state: &Option<Arc<LanSyncState>>,
 ) {
-    // Try to parse as a generic JSON with "type" field
-    let parsed: serde_json::Value = match serde_json::from_str(text) {
-        Ok(v) => v,
+    let packet: InboundPacket = match serde_json::from_str(text) {
+        Ok(p) => p,
         Err(_) => return,
     };
 
-    let packet_type = match parsed.get("type").and_then(|v| v.as_str()) {
-        Some(t) => t,
-        None => return,
-    };
+    match packet {
+        InboundPacket::Beacon(beacon) => {
+            if beacon.device_id == my_device_id {
+                return;
+            }
+            let is_new = !peers.contains_key(&beacon.device_id);
+            let peer = PeerInfo {
+                device_id: beacon.device_id.clone(),
+                machine_name: beacon.machine_name,
+                ip: src_ip.to_string(),
+                dashboard_port: beacon.dashboard_port,
+                last_seen: Utc::now().to_rfc3339(),
+                dashboard_running: beacon.dashboard_running,
+                role: beacon.role.clone(),
+            };
+            peers.insert(beacon.device_id.clone(), peer);
+            *dirty = true;
 
-    let sender_device_id = parsed
-        .get("device_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-
-    // Ignore own packets
-    if sender_device_id == my_device_id {
-        return;
-    }
-
-    match packet_type {
-        "timeflow_beacon" => {
-            if let Ok(beacon) = serde_json::from_str::<BeaconPacket>(text) {
-                let peer = PeerInfo {
-                    device_id: beacon.device_id.clone(),
-                    machine_name: beacon.machine_name,
-                    ip: src_ip.to_string(),
-                    dashboard_port: beacon.dashboard_port,
-                    last_seen: Utc::now().to_rfc3339(),
-                    dashboard_running: beacon.dashboard_running,
-                };
-                let is_new = !peers.contains_key(&beacon.device_id);
-                peers.insert(beacon.device_id, peer);
-                *dirty = true;
-                if is_new {
-                    log::info!("LAN discovery: new peer found at {}", src_ip);
-                    // Write immediately for new peers so dashboard picks them up fast
-                    write_peers_file(peers);
-                    *dirty = false;
+            // Role assignment logic
+            if let Some(ref state) = sync_state {
+                let my_role = state.get_role();
+                if my_role == "undecided" {
+                    match beacon.role.as_str() {
+                        "master" => {
+                            // Peer is master → we become slave
+                            state.set_role("slave");
+                            log::info!(
+                                "LAN discovery: peer {} is MASTER — assuming SLAVE role",
+                                beacon.device_id
+                            );
+                        }
+                        "undecided" => {
+                            // Both undecided — lower device_id becomes master
+                            if my_device_id < beacon.device_id.as_str() {
+                                state.set_role("master");
+                                log::info!(
+                                    "LAN discovery: tie-break with {} — assuming MASTER role (lower device_id)",
+                                    beacon.device_id
+                                );
+                            } else {
+                                state.set_role("slave");
+                                log::info!(
+                                    "LAN discovery: tie-break with {} — assuming SLAVE role (higher device_id)",
+                                    beacon.device_id
+                                );
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
+
+            if is_new {
+                log::info!("LAN discovery: new peer found at {} (role={})", src_ip, beacon.role);
+                write_peers_file(peers);
+                *dirty = false;
+            }
         }
-        "timeflow_discover" => {
-            // Respond with our beacon immediately
+        InboundPacket::Discover(discover) => {
+            if discover.device_id == my_device_id {
+                return;
+            }
+            let current_role = sync_state.as_ref()
+                .map(|s| s.get_role())
+                .unwrap_or_else(|| "undecided".to_string());
             send_beacon(
                 socket,
                 my_device_id,
                 my_machine_name,
                 is_dashboard_running(),
                 my_version,
+                &current_role,
             );
         }
-        _ => {}
     }
 }

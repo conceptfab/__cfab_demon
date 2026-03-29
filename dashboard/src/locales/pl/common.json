@@ -1199,7 +1199,9 @@
       "dashboard_offline": "offline",
       "peer_found": "TIMEFLOW znaleziony na {{name}}",
       "error_peer_unreachable": "Peer offline — uruchom TIMEFLOW Dashboard na drugiej maszynie",
-      "full_sync": "Pełny Sync"
+      "full_sync": "Pełny Sync",
+      "sync_interval": "Interwał synchronizacji",
+      "sync_marker": "Ostatni znacznik sync"
     }
   },
   "help": {
@@ -1693,7 +1695,12 @@
     "lan_sync_setup_what_it_does": "Co robi: LAN Sync wymienia dane bezpośrednio między dwiema instancjami TIMEFLOW w tej samej sieci — bez serwera, chmury ani konta.",
     "lan_sync_setup_how_to_start": "Jak zacząć: włącz LAN Sync w Ustawieniach na obu maszynach, upewnij się że są w tej samej sieci LAN/Wi-Fi i poczekaj na wykrycie peera (do 30 sekund).",
     "lan_sync_setup_when_to_use": "Kiedy użyć: użyj do szybkiej synchronizacji danych między komputerem stacjonarnym a laptopem lub między członkami zespołu w tej samej sieci biurowej.",
-    "lan_sync_setup_limitations": "Ograniczenia: oba urządzenia muszą być w tej samej sieci lokalnej. Synchronizacja jest jednokierunkowa na jedno wyzwolenie (pull potem push). Przy pierwszej synchronizacji duże zestawy danych mogą chwilę potrwać.",
+    "lan_sync_setup_limitations": "Ograniczenia: oba urządzenia muszą być w tej samej sieci lokalnej. Przy pierwszej synchronizacji duże zestawy danych mogą chwilę potrwać.",
+    "lan_sync_master_slave": "Role MASTER/SLAVE – role przydzielane automatycznie przez UDP discovery. Pierwsze urządzenie staje się MASTEREM, kolejne SLAVE'em. MASTER koordynuje scalanie.",
+    "lan_sync_sync_markers": "Znaczniki Sync – po każdej udanej synchronizacji w SQLite zapisywany jest znacznik SHA256. Zgodne znaczniki umożliwiają wydajny delta sync; różne znaczniki wymuszają pełny sync.",
+    "lan_sync_scheduled": "Harmonogram Sync – ustaw interwał synchronizacji (4h/8h/12h/24h/48h lub ręcznie) w Ustawieniach. Discovery aktywuje się tylko w oknie synchronizacji.",
+    "lan_sync_freeze": "Zamrożenie bazy – podczas sync obie bazy są zamrożone (brak nowych zapisów). Demon buforuje aktywność w pamięci i zapisuje po odmrożeniu. Auto-odmrożenie po 5 minutach (zabezpieczenie).",
+    "lan_sync_backup": "Automatyczny backup – kopia bazy tworzona przed każdym scaleniem. Maksymalnie 5 kopii rotowanych automatycznie.",
     "bughunter_detail_title": "BugHunter",
     "bughunter_detail_what_it_does": "Co robi: BugHunter otwiera szybki formularz zgłoszenia błędu z tematem, opisem, numerem wersji i załącznikami.",
     "bughunter_detail_when_to_use": "Kiedy użyć: wyślij zgłoszenie od razu po problemie, najlepiej z krótkim opisem kroków i screenem lub plikiem pomocniczym.",

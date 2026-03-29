@@ -3,6 +3,7 @@ import type {
   LanPeer,
   LanSyncResult,
   LanServerStatus,
+  SyncMarker,
 } from '../lan-sync-types';
 import type { TableHashes } from '../online-sync-types';
 
@@ -24,6 +25,18 @@ export const stopLanServer = () =>
 export const getLanServerStatus = () =>
   invoke<LanServerStatus>('get_lan_server_status');
 
+export const insertSyncMarker = (tablesHash: string, deviceId: string, peerId?: string, fullSync?: boolean) =>
+  invokeMutation<SyncMarker>('insert_sync_marker', { tablesHash, deviceId, peerId, fullSync: fullSync ?? false });
+
+export const getLatestSyncMarker = () =>
+  invoke<SyncMarker | null>('get_latest_sync_marker');
+
+export const markersMatch = (remoteMarkerHash?: string | null) =>
+  invoke<boolean>('markers_match', { remoteMarkerHash });
+
+export const backupBeforeSync = () =>
+  invoke<string>('backup_before_sync');
+
 export const lanSyncApi = {
   getLanPeers,
   buildTableHashesOnly,
@@ -31,4 +44,8 @@ export const lanSyncApi = {
   startLanServer,
   stopLanServer,
   getLanServerStatus,
+  insertSyncMarker,
+  getLatestSyncMarker,
+  markersMatch,
+  backupBeforeSync,
 } as const;

@@ -106,3 +106,20 @@ pub async fn persist_session_settings_for_daemon(
     };
     session_settings::write_session_settings(&base_dir, &settings)
 }
+
+#[tauri::command]
+pub async fn persist_lan_sync_settings_for_daemon(
+    sync_interval_hours: u32,
+    discovery_duration_minutes: u32,
+    enabled: bool,
+) -> Result<(), String> {
+    let base_dir = timeflow_data_dir()?;
+    let path = base_dir.join("lan_sync_settings.json");
+    let content = serde_json::json!({
+        "sync_interval_hours": sync_interval_hours,
+        "discovery_duration_minutes": discovery_duration_minutes,
+        "enabled": enabled,
+    });
+    std::fs::write(&path, content.to_string())
+        .map_err(|e| format!("Failed to write lan_sync_settings.json: {}", e))
+}

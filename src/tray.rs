@@ -149,8 +149,11 @@ struct TrayState {
     menu_exit: RefCell<nwg::MenuItem>,
     menu_restart: RefCell<nwg::MenuItem>,
     menu_dashboard: RefCell<nwg::MenuItem>,
+    menu_sync_status: RefCell<nwg::MenuItem>,
     icon: nwg::Icon,
     icon_attention: nwg::Icon,
+    icon_sync: Option<nwg::Icon>,
+    sync_state: Option<Arc<crate::lan_server::LanSyncState>>,
     current_lang: Cell<Lang>,
     attention_state: RefCell<AttentionState>,
     last_tray_click: Cell<Option<Instant>>,
@@ -164,12 +167,25 @@ struct TrayState {
 }
 
 impl TrayState {
+    fn is_syncing(&self) -> bool {
+        self.sync_state.as_ref().map_or(false, |s| {
+            s.sync_in_progress.load(Ordering::Relaxed)
+        })
+    }
+
     fn update_tray_appearance(&self, tray: &nwg::TrayNotification, attention: i64, lang: Lang) {
-        tray.set_tip(&build_tray_tip(lang, attention));
-        if attention > 0 {
-            tray.set_icon(&self.icon_attention);
+        if self.is_syncing() {
+            tray.set_tip(&format!("{} - LAN Sync...", APP_NAME));
+            if let Some(ref icon_sync) = self.icon_sync {
+                tray.set_icon(icon_sync);
+            }
         } else {
-            tray.set_icon(&self.icon);
+            tray.set_tip(&build_tray_tip(lang, attention));
+            if attention > 0 {
+                tray.set_icon(&self.icon_attention);
+            } else {
+                tray.set_icon(&self.icon);
+            }
         }
     }
 
@@ -227,6 +243,19 @@ impl TrayState {
             let attention = refresh_attention_state(&self.attention_state, false);
             let tray = self.tray.borrow_mut();
             self.update_tray_appearance(&tray, attention, lang);
+
+            // Update sync status menu item
+            if let Some(ref state) = self.sync_state {
+                let role = state.get_role();
+                let syncing = state.sync_in_progress.load(Ordering::Relaxed);
+                let frozen = state.db_frozen.load(Ordering::Relaxed);
+                let status = if syncing {
+                    format!("Sync: {} (frozen={})", role, frozen)
+                } else {
+                    format!("Sync: {}", role)
+                };
+                set_menu_item_text(&self.menu_sync_status.borrow(), &status);
+            }
         }
     }
 
@@ -250,7 +279,7 @@ impl TrayState {
 /// Initializes and runs the tray icon event loop.
 /// `stop_signal` — set to true on shutdown.
 /// Returns whether the user requested a restart.
-pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
+pub fn run(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<crate::lan_server::LanSyncState>>) -> TrayExitAction {
     if let Err(e) = nwg::init() {
         log::error!("Failed to initialize NWG (headless/no-GUI?): {e}");
         return TrayExitAction::Exit;
@@ -284,12 +313,16 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         .or_else(|| embed.icon_str("APP_ICON", None))
         .unwrap_or_else(|| {
             log::warn!("No attention icon found, reloading APP_ICON as fallback");
-            // Reload APP_ICON as a separate handle since Icon is not Clone
             nwg::EmbedResource::load(None)
                 .ok()
                 .and_then(|e| e.icon_str("APP_ICON", None))
                 .expect("APP_ICON must exist (loaded successfully earlier)")
         });
+
+    let icon_sync = embed.icon_str("APP_ICON_SYNC", None);
+    if icon_sync.is_none() {
+        log::warn!("APP_ICON_SYNC not found in resources — sync icon unavailable");
+    }
 
     let (initial_conn, initial_attention) = match crate::config::open_dashboard_db_readonly() {
         Ok(conn) => {
@@ -360,6 +393,16 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         "Version menu item"
     );
 
+    let mut menu_sync_status = nwg::MenuItem::default();
+    try_build!(
+        nwg::MenuItem::builder()
+            .text("Sync: idle")
+            .disabled(true)
+            .parent(&menu),
+        &mut menu_sync_status,
+        "Sync status menu item"
+    );
+
     let mut menu_sep = nwg::MenuSeparator::default();
     try_build!(
         nwg::MenuSeparator::builder().parent(&menu),
@@ -405,8 +448,11 @@ pub fn run(stop_signal: Arc<AtomicBool>) -> TrayExitAction {
         menu_exit: RefCell::new(menu_exit),
         menu_restart: RefCell::new(menu_restart),
         menu_dashboard: RefCell::new(menu_dashboard),
+        menu_sync_status: RefCell::new(menu_sync_status),
         icon,
         icon_attention,
+        icon_sync,
+        sync_state,
         current_lang: Cell::new(initial_lang),
         attention_state: RefCell::new(AttentionState {
             count: initial_attention,

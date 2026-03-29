@@ -11,6 +11,8 @@ mod config;
 mod foreground_hook;
 mod i18n;
 mod lan_discovery;
+mod lan_server;
+mod lan_sync_orchestrator;
 mod monitor;
 mod single_instance;
 mod storage;
@@ -60,14 +62,25 @@ fn main() {
     // Start event-driven foreground detection (SetWinEventHook)
     let (foreground_signal, hook_handle) = foreground_hook::start(stop_signal.clone());
 
+    // Shared LAN sync state (role, freeze, markers)
+    let sync_state = Arc::new(lan_server::LanSyncState::new());
+
     // Start monitoring thread with foreground signal for instant wake
-    let monitor_handle = tracker::start(stop_signal.clone(), Some(foreground_signal.clone()));
+    // Pass sync_state so tracker skips saves when db_frozen is true
+    let monitor_handle = tracker::start(
+        stop_signal.clone(),
+        Some(foreground_signal.clone()),
+        Some(sync_state.clone()),
+    );
 
     // Start LAN discovery thread (UDP broadcast for peer-to-peer sync)
-    let discovery_handle = lan_discovery::start(stop_signal.clone());
+    let discovery_handle = lan_discovery::start(stop_signal.clone(), Some(sync_state.clone()));
 
-    // Start tray icon event loop
-    let tray_action = tray::run(stop_signal.clone());
+    // Start LAN HTTP server (sync endpoints — works even without dashboard)
+    let lan_server_handle = lan_server::start(stop_signal.clone(), sync_state.clone());
+
+    // Start tray icon event loop (pass sync_state for sync icon)
+    let tray_action = tray::run(stop_signal.clone(), Some(sync_state.clone()));
 
     // After tray closes — cleanly stop all threads
     stop_signal.store(true, Ordering::SeqCst);
@@ -76,6 +89,7 @@ fn main() {
     let _ = monitor_handle.join();
     let _ = hook_handle.join();
     let _ = discovery_handle.join();
+    let _ = lan_server_handle.join();
 
     log::info!("{} - stopped", APP_NAME);
     log::logger().flush();
