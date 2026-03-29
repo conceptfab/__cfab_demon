@@ -11,6 +11,7 @@ import {
   Import,
   Cpu,
   Activity,
+  Wifi,
   Settings,
   Info,
   Bug,
@@ -246,6 +247,11 @@ export function Help() {
               value="online-sync"
               icon={<Activity className="h-3.5 w-3.5" />}
               label={t18n('help_page.online_sync')}
+            />
+            <HelpTabTrigger
+              value="lan-sync"
+              icon={<Wifi className="h-3.5 w-3.5" />}
+              label={t18n('help_page.lan_sync_title')}
             />
             <HelpTabTrigger
               value="bughunter"
@@ -815,6 +821,37 @@ export function Help() {
             </TabsContent>
 
             <TabsContent
+              value="lan-sync"
+              className="m-0 focus-visible:outline-none"
+            >
+              <SectionHelp
+                icon={<Wifi className="h-6 w-6" />}
+                title={t18n('help_page.lan_sync_setup_title')}
+                description={t18n('help_page.lan_sync_description')}
+                footer={t18n('help_page.key_functionalities')}
+                features={[
+                  t18n('help_page.lan_sync_udp_discovery'),
+                  t18n('help_page.lan_sync_http_server'),
+                  t18n('help_page.lan_sync_delta_merge'),
+                  t18n('help_page.lan_sync_auto_sync'),
+                  t18n('help_page.lan_sync_peer_notification'),
+                  t18n('help_page.lan_sync_sidebar_indicator'),
+                  t18n('help_page.lan_sync_port_config'),
+                ]}
+              >
+                <HelpDetailsBlock
+                  title={t18n('help_page.lan_sync_setup_title')}
+                  items={[
+                    t18n('help_page.lan_sync_setup_what_it_does'),
+                    t18n('help_page.lan_sync_setup_how_to_start'),
+                    t18n('help_page.lan_sync_setup_when_to_use'),
+                    t18n('help_page.lan_sync_setup_limitations'),
+                  ]}
+                />
+              </SectionHelp>
+            </TabsContent>
+
+            <TabsContent
               value="bughunter"
               className="m-0 focus-visible:outline-none"
             >
@@ -857,6 +894,7 @@ export function Help() {
                   t18n('help_page.currency_choose_valuation_currency_pln_usd_eur_used_acro'),
                   t18n('help_page.ui_language_pl_en_language_switch_for_the_whole_dashboar'),
                   t18n('help_page.online_sync_set_up_synchronization_with_an_external_serv'),
+                  t18n('help_page.lan_sync_description'),
                   t18n('help_page.device_id_a_device_identifier_is_generated_when_sync_set'),
                   t18n('help_page.the_sync_token_is_stored_in_rust_side_secure_storage_the'),
                   t18n('help_page.sync_on_startup_runs_only_when_online_sync_is_en'),

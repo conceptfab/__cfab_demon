@@ -138,6 +138,7 @@ fn build_export_archive(
                     display_name: row.get(2)?,
                     project_id: row.get(3)?,
                     is_imported: row.get(4)?,
+                    updated_at: None,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -151,6 +152,7 @@ fn build_export_archive(
                     display_name: row.get(2)?,
                     project_id: row.get(3)?,
                     is_imported: row.get(4)?,
+                    updated_at: None,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -213,6 +215,7 @@ fn build_export_archive(
                         rate_multiplier: row.get(7)?,
                         comment: row.get(8)?,
                         is_hidden: row.get::<_, i64>(9)? != 0,
+                        updated_at: None,
                     })
                 })
                 .map_err(|e| e.to_string())?;

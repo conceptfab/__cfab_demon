@@ -16,6 +16,9 @@ import {
   runOnlineSyncOnce,
   type OnlineSyncRunResult,
 } from '@/lib/online-sync';
+import { loadLanSyncSettings } from '@/lib/lan-sync';
+import { lanSyncApi } from '@/lib/tauri';
+import { LanPeerNotification } from '@/components/sync/LanPeerNotification';
 import {
   LOCAL_DATA_CHANGED_EVENT,
   emitProjectsAllTimeInvalidated,
@@ -560,11 +563,26 @@ function dispatchAiAssignmentDone(result: AiAssignmentResult) {
   }
 }
 
+function useLanSyncServerStartup() {
+  useEffect(() => {
+    const settings = loadLanSyncSettings();
+    if (settings.enabled) {
+      lanSyncApi.startLanServer(settings.serverPort).catch((e) => {
+        console.warn('Failed to start LAN server on startup:', e);
+      });
+    }
+    return () => {
+      lanSyncApi.stopLanServer().catch(() => {});
+    };
+  }, []);
+}
+
 export function BackgroundServices() {
   useAutoImporter();
   useAutoSessionRebuild();
   useStartupProjectSyncAndAiAssignment();
   useJobPool();
+  useLanSyncServerStartup();
 
   const { t } = useTranslation();
   const { showInfo } = useToast();
@@ -577,6 +595,6 @@ export function BackgroundServices() {
     return () => window.removeEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
   }, []);
 
-  return null;
+  return <LanPeerNotification />;
 }
 

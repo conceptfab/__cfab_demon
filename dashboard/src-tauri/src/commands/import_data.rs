@@ -436,6 +436,7 @@ fn import_archive_into_tx(
                 date: s.date.clone(),
                 comment: s.comment.clone(),
                 is_hidden: s.is_hidden,
+                updated_at: s.updated_at.clone(),
             };
 
             let merged = merge_or_insert_session(tx, local_app_id, &incoming)?;
@@ -735,6 +736,14 @@ fn merge_or_insert_session(
         Some(merged_comment)
     };
 
+    // Delete overlapping sessions BEFORE updating the kept one — otherwise
+    // changing start_time on the kept row can collide with a not-yet-deleted
+    // overlap row, causing UNIQUE(app_id, start_time) violation.
+    for id in overlap_ids.iter().filter(|id| **id != keep_id) {
+        tx.execute("DELETE FROM sessions WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+    }
+
     tx.execute(
         "UPDATE sessions
          SET start_time = ?1, end_time = ?2, duration_seconds = ?3, rate_multiplier = ?4, comment = ?5, is_hidden = ?6, project_id = ?7
@@ -751,11 +760,6 @@ fn merge_or_insert_session(
         ],
     )
     .map_err(|e| e.to_string())?;
-
-    for id in overlap_ids.into_iter().filter(|id| *id != keep_id) {
-        tx.execute("DELETE FROM sessions WHERE id = ?1", [id])
-            .map_err(|e| e.to_string())?;
-    }
 
     Ok(true)
 }
@@ -916,6 +920,7 @@ mod tests {
             date: "2026-01-01".to_string(),
             comment: None,
             is_hidden: false,
+            updated_at: None,
         };
 
         let merged = merge_or_insert_session(&tx, 1, &incoming).expect("merge");

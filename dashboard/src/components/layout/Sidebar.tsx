@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Activity,
   ShieldCheck,
+  Wifi,
   Cpu,
   Rocket,
   HelpCircle,
@@ -24,6 +25,10 @@ import { cn } from '@/lib/utils';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useUIStore } from '@/store/ui-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
+import { lanSyncApi } from '@/lib/tauri';
+import type { LanPeer } from '@/lib/lan-sync-types';
+import { loadLanSyncSettings, loadLanSyncState, saveLanSyncState } from '@/lib/lan-sync';
+import { useDataStore } from '@/store/data-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { tryStartWindowDrag } from '@/lib/window-drag';
@@ -127,6 +132,66 @@ export function Sidebar() {
       getOnlineSyncIndicatorSnapshot(),
     );
 
+  const [lanPeer, setLanPeer] = useState<LanPeer | null>(null);
+  const [lanSyncing, setLanSyncing] = useState(false);
+  const [lanSyncStatus, setLanSyncStatus] = useState<'idle' | 'ok' | 'error'>('idle');
+  const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+
+  const handleLanSync = useCallback(async () => {
+    if (!lanPeer || lanSyncing) return;
+    setLanSyncing(true);
+    setLanSyncStatus('idle');
+    setLanSyncMessage(t('settings.lan_sync.syncing'));
+    try {
+      // Ensure our server is running so the peer can push back
+      try {
+        const serverStatus = await lanSyncApi.getLanServerStatus();
+        if (!serverStatus.running) {
+          const s = loadLanSyncSettings();
+          await lanSyncApi.startLanServer(s.serverPort);
+        }
+      } catch { /* ignore */ }
+
+      const state = loadLanSyncState();
+      const since = state.lastSyncAt || '1970-01-01T00:00:00Z';
+      const result = await lanSyncApi.runLanSync(lanPeer.ip, lanPeer.dashboard_port, since);
+      saveLanSyncState({
+        ...state,
+        lastSyncAt: new Date().toISOString(),
+        lastSyncPeerId: lanPeer.device_id,
+        peers: [lanPeer],
+      });
+      if (result.pulled || result.pushed) {
+        triggerRefresh('lan_sync_pull');
+      }
+      setLanSyncStatus('ok');
+      const action = result.action === 'noop'
+        ? t('layout.status.lan_synced')
+        : result.action === 'pull+push'
+          ? t('layout.status.lan_pull_push')
+          : result.action === 'pull'
+            ? t('layout.status.lan_pulled')
+            : t('layout.status.lan_pushed');
+      setLanSyncMessage(action);
+      setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 8_000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn('LAN sync failed:', msg);
+      setLanSyncStatus('error');
+      if (msg.includes('Ping failed') || msg.includes('refused') || msg.includes('connection')) {
+        setLanSyncMessage(t('settings.lan_sync.error_peer_unreachable'));
+        // Peer is unreachable — remove from UI immediately
+        setLanPeer(null);
+      } else {
+        setLanSyncMessage(msg.length > 60 ? msg.slice(0, 60) + '…' : msg);
+      }
+      setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 10_000);
+    } finally {
+      setLanSyncing(false);
+    }
+  }, [lanPeer, lanSyncing, triggerRefresh, t]);
+
   const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
   const openContextHelp = useCallback(() => {
     const targetTab =
@@ -137,6 +202,22 @@ export function Sidebar() {
 
   useEffect(() => {
     return subscribeOnlineSyncIndicator(setSyncIndicator);
+  }, []);
+
+  useEffect(() => {
+    let timer: number | null = null;
+    const poll = async () => {
+      try {
+        const peers = await lanSyncApi.getLanPeers();
+        const online = peers.find((p) => p.dashboard_running);
+        setLanPeer(online ?? null);
+      } catch {
+        setLanPeer(null);
+      }
+    };
+    void poll();
+    timer = window.setInterval(poll, 5_000);
+    return () => { if (timer !== null) clearInterval(timer); };
   }, []);
 
   useEffect(() => {
@@ -269,6 +350,35 @@ export function Sidebar() {
               void runOnlineSyncOnce();
             }}
             title={syncIndicator.detail}
+          />
+
+          <StatusIndicator
+            icon={Wifi}
+            label={t('layout.status.lan')}
+            statusText={
+              lanSyncMessage
+                ?? (lanPeer
+                  ? t('layout.status.lan_peer_found', { name: lanPeer.machine_name })
+                  : t('layout.status.lan_no_peers'))
+            }
+            colorClass={
+              lanSyncStatus === 'error'
+                ? 'text-red-400'
+                : lanSyncStatus === 'ok'
+                  ? 'text-emerald-500'
+                  : lanSyncing
+                    ? 'text-amber-400'
+                    : lanPeer
+                      ? 'text-sky-400'
+                      : 'text-muted-foreground/35'
+            }
+            pulse={lanSyncing}
+            onClick={lanPeer ? () => void handleLanSync() : undefined}
+            title={
+              lanPeer
+                ? t('layout.tooltips.lan_peer_ip', { name: lanPeer.machine_name, ip: lanPeer.ip })
+                : undefined
+            }
           />
 
           <StatusIndicator

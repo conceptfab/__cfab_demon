@@ -177,8 +177,12 @@ impl TrayState {
         if handle == self.tray_handle {
             let lang = self.current_lang.get();
             let attention = refresh_attention_state(&self.attention_state, true);
-            let tray = self.tray.borrow_mut();
-            self.update_tray_appearance(&tray, attention, lang);
+            // Scope the borrow so it's released before popup() — popup() runs
+            // a nested message loop where timer ticks can fire and also borrow tray.
+            {
+                let tray = self.tray.borrow_mut();
+                self.update_tray_appearance(&tray, attention, lang);
+            }
             let (x, y) = nwg::GlobalCursor::position();
             self.menu.popup(x, y);
         }

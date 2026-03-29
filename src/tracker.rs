@@ -146,8 +146,13 @@ pub fn start(
 ) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         log::info!("Monitor thread started");
-        run_loop(stop_signal, foreground_signal);
-        log::info!("Monitor thread stopped");
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_loop(stop_signal, foreground_signal);
+        })) {
+            Ok(()) => log::info!("Monitor thread stopped"),
+            Err(_) => log::error!("Monitor thread PANICKED (see panic log above)"),
+        }
+        log::logger().flush();
     })
 }
 

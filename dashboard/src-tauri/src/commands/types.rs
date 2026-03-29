@@ -453,6 +453,8 @@ pub struct ApplicationRow {
     pub display_name: String,
     pub project_id: Option<i64>,
     pub is_imported: i64,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -469,6 +471,8 @@ pub struct SessionRow {
     pub comment: Option<String>,
     #[serde(default)]
     pub is_hidden: bool,
+    #[serde(default)]
+    pub updated_at: Option<String>,
 }
 
 fn default_rate_multiplier() -> f64 {

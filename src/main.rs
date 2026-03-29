@@ -10,6 +10,7 @@ mod activity;
 mod config;
 mod foreground_hook;
 mod i18n;
+mod lan_discovery;
 mod monitor;
 mod single_instance;
 mod storage;
@@ -33,6 +34,7 @@ fn main() {
 
     // Initialize file logging for actual daemon run
     init_logging();
+    install_panic_hook();
     log::info!("{} - starting...", APP_NAME);
     log::logger().flush();
 
@@ -61,15 +63,19 @@ fn main() {
     // Start monitoring thread with foreground signal for instant wake
     let monitor_handle = tracker::start(stop_signal.clone(), Some(foreground_signal.clone()));
 
+    // Start LAN discovery thread (UDP broadcast for peer-to-peer sync)
+    let discovery_handle = lan_discovery::start(stop_signal.clone());
+
     // Start tray icon event loop
     let tray_action = tray::run(stop_signal.clone());
 
-    // After tray closes — cleanly stop monitor thread
+    // After tray closes — cleanly stop all threads
     stop_signal.store(true, Ordering::SeqCst);
     // Wake tracker so it exits without waiting for poll timeout
     foreground_signal.notify();
     let _ = monitor_handle.join();
     let _ = hook_handle.join();
+    let _ = discovery_handle.join();
 
     log::info!("{} - stopped", APP_NAME);
     log::logger().flush();
@@ -99,6 +105,26 @@ fn show_already_running_message(msg: &str) {
             winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONINFORMATION,
         );
     }
+}
+
+/// Install panic hook so panics are logged to file instead of being swallowed
+/// by #![windows_subsystem = "windows"].
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        log::error!("PANIC at {}: {}", location, payload);
+        log::logger().flush();
+    }));
 }
 
 /// Initialize file logging in the directory next to the exe.

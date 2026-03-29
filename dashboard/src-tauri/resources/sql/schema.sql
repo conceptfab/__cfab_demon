@@ -99,8 +99,26 @@ CREATE TABLE IF NOT EXISTS applications (
     project_id INTEGER,
     color TEXT DEFAULT NULL,
     is_imported INTEGER DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00',
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
+
+CREATE TRIGGER IF NOT EXISTS trg_applications_updated_at
+AFTER UPDATE OF executable_name, display_name, project_id, is_imported
+ON applications
+FOR EACH ROW
+WHEN NEW.updated_at IS OLD.updated_at
+BEGIN
+    UPDATE applications SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_applications_updated_at_insert
+AFTER INSERT ON applications
+FOR EACH ROW
+WHEN NEW.updated_at = '1970-01-01 00:00:00' OR NEW.updated_at IS NULL
+BEGIN
+    UPDATE applications SET updated_at = datetime('now') WHERE id = NEW.id;
+END;
 
 CREATE TABLE IF NOT EXISTS monitored_apps (
     exe_name TEXT PRIMARY KEY,
@@ -133,6 +151,14 @@ FOR EACH ROW
 WHEN NEW.updated_at IS OLD.updated_at
 BEGIN
     UPDATE sessions SET updated_at = datetime('now') WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_updated_at_insert
+AFTER INSERT ON sessions
+FOR EACH ROW
+WHEN NEW.updated_at = '1970-01-01 00:00:00' OR NEW.updated_at IS NULL
+BEGIN
+    UPDATE sessions SET updated_at = datetime('now') WHERE id = NEW.id;
 END;
 
 CREATE TABLE IF NOT EXISTS file_activities (

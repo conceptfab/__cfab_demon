@@ -11,6 +11,7 @@ export const HELP_TAB_IDS = [
   "reports",
   "daemon",
   "online-sync",
+  "lan-sync",
   "bughunter",
   "settings",
 ] as const;
@@ -34,6 +35,7 @@ const HELP_TAB_TO_PAGE: Record<HelpTabId, string> = {
   reports: "reports",
   daemon: "daemon",
   "online-sync": "settings",
+  "lan-sync": "settings",
   bughunter: "settings",
   settings: "settings",
 };

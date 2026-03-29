@@ -183,7 +183,13 @@ pub fn run() {
             commands::suggest_session_split,
             commands::analyze_session_projects,
             commands::analyze_sessions_splittable,
-            commands::split_session_multi
+            commands::split_session_multi,
+            commands::get_lan_peers,
+            commands::build_table_hashes_only,
+            commands::run_lan_sync,
+            commands::start_lan_server,
+            commands::stop_lan_server,
+            commands::get_lan_server_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

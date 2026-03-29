@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { useDataStore } from '@/store/data-store';
@@ -18,8 +18,12 @@ import { AppearanceCard } from '@/components/settings/AppearanceCard';
 import { SessionManagementCard } from '@/components/settings/SessionManagementCard';
 import { SessionSplitCard } from '@/components/settings/SessionSplitCard';
 import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
+import { LanSyncCard } from '@/components/settings/LanSyncCard';
 import { useSettingsFormState } from '@/hooks/useSettingsFormState';
 import { useSettingsDemoMode } from '@/hooks/useSettingsDemoMode';
+import { lanSyncApi } from '@/lib/tauri';
+import { loadLanSyncSettings, saveLanSyncSettings, loadLanSyncState, recordPeerSync } from '@/lib/lan-sync';
+import type { LanPeer, LanSyncSettings as LanSyncSettingsType } from '@/lib/lan-sync-types';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
 const MINUTES = Array.from({ length: 60 }, (_, i) =>
@@ -113,6 +117,78 @@ export function Settings() {
       resetManualSyncResult();
     },
   });
+
+  // ── LAN Sync state ──
+  const [lanSettings, setLanSettings] = useState<LanSyncSettingsType>(loadLanSyncSettings);
+  const [lanPeers, setLanPeers] = useState<LanPeer[]>([]);
+  const [lanSyncing, setLanSyncing] = useState(false);
+  const [lanSyncResult, setLanSyncResult] = useState<{ text: string; success: boolean } | null>(null);
+
+  // Poll peers every 5s
+  useEffect(() => {
+    if (!lanSettings.enabled) {
+      setLanPeers([]);
+      return;
+    }
+    const poll = () => {
+      lanSyncApi.getLanPeers().then((peers) => {
+        setLanPeers((prev) =>
+          JSON.stringify(prev) !== JSON.stringify(peers) ? peers : prev,
+        );
+      }).catch(() => {});
+    };
+    poll();
+    const id = window.setInterval(poll, 5_000);
+    return () => clearInterval(id);
+  }, [lanSettings.enabled]);
+
+  // Start/stop LAN server based on enabled setting
+  useEffect(() => {
+    if (lanSettings.enabled) {
+      lanSyncApi.startLanServer(lanSettings.serverPort).catch((e) => {
+        console.warn('Failed to start LAN server:', e);
+      });
+    } else {
+      lanSyncApi.stopLanServer().catch(() => {});
+    }
+  }, [lanSettings.enabled, lanSettings.serverPort]);
+
+  const updateLanSettings = useCallback((updater: (prev: LanSyncSettingsType) => LanSyncSettingsType) => {
+    setLanSettings((prev) => {
+      const next = updater(prev);
+      saveLanSyncSettings(next);
+      return next;
+    });
+  }, []);
+
+  const handleLanSync = useCallback(async (peer: LanPeer, fullSync = false) => {
+    setLanSyncing(true);
+    setLanSyncResult(null);
+    try {
+      const state = loadLanSyncState();
+      const since = fullSync
+        ? '1970-01-01T00:00:00Z'
+        : (state.peerSyncTimes?.[peer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z');
+      const result = await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since);
+      recordPeerSync(peer, lanPeers);
+      const parts: string[] = [];
+      if (fullSync) parts.push('full');
+      if (result.pulled) parts.push('pull');
+      if (result.pushed) parts.push('push');
+      if (result.import_summary) {
+        const s = result.import_summary;
+        parts.push(`${s.sessions_merged} sessions`);
+      }
+      setLanSyncResult({ text: parts.length > 0 ? parts.join(', ') : 'noop', success: true });
+      if (result.pulled) {
+        triggerRefresh('lan_sync_pull');
+      }
+    } catch (e) {
+      setLanSyncResult({ text: e instanceof Error ? e.message : String(e), success: false });
+    } finally {
+      setLanSyncing(false);
+    }
+  }, [lanPeers, triggerRefresh]);
 
   const labelClassName = 'text-sm font-medium text-muted-foreground';
   const compactSelectClassName =
@@ -271,6 +347,46 @@ export function Settings() {
           onAutoSplitEnabledChange={(enabled) => {
             updateSplitSetting('autoSplitEnabled', enabled);
           }}
+        />
+
+        <LanSyncCard
+          settings={lanSettings}
+          peers={lanPeers}
+          syncing={lanSyncing}
+          lastSyncAt={loadLanSyncState().lastSyncAt}
+          lastSyncResult={lanSyncResult?.text ?? null}
+          lastSyncSuccess={lanSyncResult?.success ?? false}
+          title={t('settings.lan_sync.title')}
+          description={t('settings.lan_sync.description')}
+          enableTitle={t('settings.lan_sync.enable_title')}
+          enableDescription={t('settings.lan_sync.enable_description')}
+          portLabel={t('settings.lan_sync.port_label')}
+          autoSyncTitle={t('settings.lan_sync.auto_sync_title')}
+          autoSyncDescription={t('settings.lan_sync.auto_sync_description')}
+          peersTitle={t('settings.lan_sync.peers_title')}
+          noPeersText={t('settings.lan_sync.no_peers')}
+          syncButtonLabel={t('settings.lan_sync.sync_button')}
+          syncingLabel={t('settings.lan_sync.syncing')}
+          lastSyncLabel={t('settings.lan_sync.last_sync')}
+          dashboardRunningLabel={t('settings.lan_sync.dashboard_running')}
+          dashboardOfflineLabel={t('settings.lan_sync.dashboard_offline')}
+          labelClassName={labelClassName}
+          onEnabledChange={(enabled) => {
+            updateLanSettings((prev) => ({ ...prev, enabled }));
+          }}
+          onPortChange={(serverPort) => {
+            updateLanSettings((prev) => ({ ...prev, serverPort }));
+          }}
+          onAutoSyncChange={(autoSyncOnPeerFound) => {
+            updateLanSettings((prev) => ({ ...prev, autoSyncOnPeerFound }));
+          }}
+          onSyncWithPeer={(peer) => {
+            void handleLanSync(peer);
+          }}
+          onFullSyncWithPeer={(peer) => {
+            void handleLanSync(peer, true);
+          }}
+          fullSyncButtonLabel={t('settings.lan_sync.full_sync')}
         />
 
         <OnlineSyncCard
