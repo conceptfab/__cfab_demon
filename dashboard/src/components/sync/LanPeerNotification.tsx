@@ -6,6 +6,7 @@ import { lanSyncApi } from '@/lib/tauri';
 import { loadLanSyncSettings, loadLanSyncState, recordPeerSync } from '@/lib/lan-sync';
 import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
+import { SyncProgressOverlay } from './SyncProgressOverlay';
 
 const POLL_INTERVAL_MS = 5_000;
 const NOTIFICATION_DISMISS_KEY = 'timeflow.lan-sync.dismissed-peers';
@@ -140,6 +141,18 @@ export function LanPeerNotification() {
     }
     setVisiblePeer(null);
   }, [visiblePeer]);
+
+  const handleSyncFinished = useCallback((success: boolean) => {
+    if (success) {
+      triggerRefresh('lan_sync_pull');
+    }
+    setSyncing(false);
+  }, [triggerRefresh]);
+
+  // Show progress overlay when syncing (even if peer notification was dismissed)
+  if (syncing) {
+    return <SyncProgressOverlay active={syncing} onFinished={handleSyncFinished} />;
+  }
 
   if (!visiblePeer) return null;
 

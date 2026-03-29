@@ -1701,10 +1701,27 @@
     "lan_sync_scheduled": "Scheduled Sync – configure the sync interval (4h/8h/12h/24h/48h or manual) in Settings. Discovery activates only during sync windows to save resources.",
     "lan_sync_freeze": "Database Freeze – during sync, both databases are frozen (no new writes). The daemon buffers activity in memory and flushes after unfreeze. Auto-unfreeze after 5 minutes (safety net).",
     "lan_sync_backup": "Automatic Backup – a database backup is created before every merge. Up to 5 backups are rotated automatically.",
+    "lan_sync_progress": "Sync Progress – during synchronization a progress bar shows the current step, transfer speed, and estimated time remaining.",
     "bughunter_detail_title": "BugHunter",
     "bughunter_detail_what_it_does": "What it does: BugHunter opens a fast bug report form with subject, description, version number, and attachments.",
     "bughunter_detail_when_to_use": "When to use: send a report right after the issue appears, ideally with short reproduction steps and a screenshot or supporting file.",
     "bughunter_detail_limitations": "Limitations and consequences: each attachment is limited to 5 MB, subject and description are required, and sending the form does not automatically resolve the issue on the support side."
+  },
+  "sync_progress": {
+    "title": "LAN Synchronization",
+    "idle": "Idle",
+    "negotiating": "Negotiating with peer...",
+    "negotiated": "Sync mode agreed",
+    "freezing": "Freezing database...",
+    "downloading_from_slave": "Downloading data from peer...",
+    "received_from_slave": "Data received",
+    "backing_up": "Creating backup...",
+    "merging": "Merging data...",
+    "verifying": "Verifying integrity...",
+    "uploading_to_slave": "Sending merged database...",
+    "slave_downloading": "Peer downloading merged database...",
+    "completed": "Synchronization complete",
+    "error": "Synchronization error"
   },
   "projects_page": {
     "load_more_projects": "Load more projects",

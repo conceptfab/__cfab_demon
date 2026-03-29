@@ -86,6 +86,31 @@ struct DbReadyResponse {
     transfer_mode: String,
 }
 
+// ── Sync progress ──
+
+/// Transfer progress visible to the UI layer.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SyncProgress {
+    pub step: u32,                   // current step 0-13
+    pub total_steps: u32,            // always 13
+    pub phase: String,               // human-readable phase label key
+    pub direction: String,           // "upload" | "download" | "local" | "idle"
+    pub bytes_transferred: u64,
+    pub bytes_total: u64,            // 0 = unknown
+    pub started_at: u64,             // unix millis when this phase started
+}
+
+impl SyncProgress {
+    pub fn idle() -> Self {
+        Self {
+            step: 0, total_steps: 13,
+            phase: "idle".into(), direction: "idle".into(),
+            bytes_transferred: 0, bytes_total: 0,
+            started_at: 0,
+        }
+    }
+}
+
 // ── Shared state ──
 
 /// Global sync state shared between the server, discovery, and orchestrator.
@@ -96,6 +121,8 @@ pub struct LanSyncState {
     pub latest_marker_hash: std::sync::Mutex<Option<String>>,
     /// Timestamp when db_frozen was set to true (for auto-unfreeze timeout).
     pub frozen_at: std::sync::Mutex<Option<Instant>>,
+    /// Current sync progress for UI polling.
+    pub progress: std::sync::Mutex<SyncProgress>,
 }
 
 const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
@@ -108,7 +135,40 @@ impl LanSyncState {
             sync_in_progress: AtomicBool::new(false),
             latest_marker_hash: std::sync::Mutex::new(None),
             frozen_at: std::sync::Mutex::new(None),
+            progress: std::sync::Mutex::new(SyncProgress::idle()),
         }
+    }
+
+    /// Update sync progress (called by orchestrator).
+    pub fn set_progress(&self, step: u32, phase: &str, direction: &str) {
+        let mut guard = self.progress.lock().unwrap_or_else(|e| e.into_inner());
+        guard.step = step;
+        guard.phase = phase.to_string();
+        guard.direction = direction.to_string();
+        guard.bytes_transferred = 0;
+        guard.bytes_total = 0;
+        guard.started_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+    }
+
+    /// Update transfer byte counters (called during upload/download).
+    pub fn update_transfer_bytes(&self, transferred: u64, total: u64) {
+        let mut guard = self.progress.lock().unwrap_or_else(|e| e.into_inner());
+        guard.bytes_transferred = transferred;
+        guard.bytes_total = total;
+    }
+
+    /// Get a snapshot of current progress.
+    pub fn get_progress(&self) -> SyncProgress {
+        self.progress.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Reset progress to idle.
+    pub fn reset_progress(&self) {
+        let mut guard = self.progress.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = SyncProgress::idle();
     }
 
     /// Freeze the database. Records the freeze timestamp for auto-unfreeze.
@@ -125,6 +185,8 @@ impl LanSyncState {
         self.sync_in_progress.store(false, Ordering::SeqCst);
         let mut guard = self.frozen_at.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
+        drop(guard);
+        self.reset_progress();
     }
 
     /// Check if frozen for too long and auto-unfreeze if needed.
@@ -276,6 +338,7 @@ fn handle_connection(
     // Route
     let (status, response_body) = match (method, path) {
         ("GET", "/lan/ping") => handle_ping(state),
+        ("GET", "/lan/sync-progress") => handle_sync_progress(state),
         ("POST", "/lan/status") => handle_status(&body),
         ("POST", "/lan/negotiate") => handle_negotiate(state, &body),
         ("POST", "/lan/freeze-ack") => handle_freeze_ack(state),
@@ -409,6 +472,12 @@ fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
 }
 
 // ── Endpoint handlers ──
+
+fn handle_sync_progress(state: &LanSyncState) -> (u16, String) {
+    let progress = state.get_progress();
+    let json = serde_json::to_string(&progress).unwrap_or_else(|_| r#"{"step":0}"#.to_string());
+    (200, json)
+}
 
 fn handle_ping(state: &LanSyncState) -> (u16, String) {
     let marker_hash = open_dashboard_db_readonly()

@@ -838,6 +838,7 @@ export function Help() {
                   t18n('help_page.lan_sync_scheduled'),
                   t18n('help_page.lan_sync_freeze'),
                   t18n('help_page.lan_sync_backup'),
+                  t18n('help_page.lan_sync_progress'),
                   t18n('help_page.lan_sync_auto_sync'),
                   t18n('help_page.lan_sync_peer_notification'),
                   t18n('help_page.lan_sync_sidebar_indicator'),

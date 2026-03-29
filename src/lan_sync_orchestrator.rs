@@ -12,48 +12,7 @@ use std::time::{Duration, Instant};
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-// ── Sync state machine ──
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum SyncPhase {
-    Idle,
-    Discovering,
-    RoleAssigned,
-    RequestingDatabase,   // MASTER: step 3
-    Negotiating,          // step 4
-    Frozen,               // step 5
-    TransferringToMaster, // step 6
-    AckReceived,          // step 7
-    BackingUp,            // step 8
-    Merging,              // step 9
-    Verifying,            // step 10
-    DistributingToSlave,  // step 11
-    SlaveVerifying,       // step 12
-    Completed,            // step 13
-    Error(String),
-}
-
-impl std::fmt::Display for SyncPhase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SyncPhase::Idle => write!(f, "idle"),
-            SyncPhase::Discovering => write!(f, "discovering"),
-            SyncPhase::RoleAssigned => write!(f, "role_assigned"),
-            SyncPhase::RequestingDatabase => write!(f, "requesting_database"),
-            SyncPhase::Negotiating => write!(f, "negotiating"),
-            SyncPhase::Frozen => write!(f, "frozen"),
-            SyncPhase::TransferringToMaster => write!(f, "transferring_to_master"),
-            SyncPhase::AckReceived => write!(f, "ack_received"),
-            SyncPhase::BackingUp => write!(f, "backing_up"),
-            SyncPhase::Merging => write!(f, "merging"),
-            SyncPhase::Verifying => write!(f, "verifying"),
-            SyncPhase::DistributingToSlave => write!(f, "distributing_to_slave"),
-            SyncPhase::SlaveVerifying => write!(f, "slave_verifying"),
-            SyncPhase::Completed => write!(f, "completed"),
-            SyncPhase::Error(e) => write!(f, "error: {}", e),
-        }
-    }
-}
+// ── Sync types ──
 
 #[derive(Debug, Clone)]
 pub struct PeerTarget {
@@ -64,22 +23,27 @@ pub struct PeerTarget {
 
 // ── HTTP client helpers ──
 
-fn http_get(url: &str) -> Result<String, String> {
-    let stream = std::net::TcpStream::connect_timeout(
-        &url_to_addr(url)?,
-        HTTP_TIMEOUT,
-    )
-    .map_err(|e| format!("Connect failed: {}", e))?;
-    http_request(stream, "GET", url, None)
-}
-
 fn http_post(url: &str, body: &str) -> Result<String, String> {
     let stream = std::net::TcpStream::connect_timeout(
         &url_to_addr(url)?,
         HTTP_TIMEOUT,
     )
     .map_err(|e| format!("Connect failed: {}", e))?;
-    http_request(stream, "POST", url, Some(body))
+    http_request(stream, "POST", url, Some(body), None)
+}
+
+/// HTTP POST with progress callback — used for large data transfers.
+fn http_post_with_progress(
+    url: &str,
+    body: &str,
+    on_progress: impl Fn(u64, u64),
+) -> Result<String, String> {
+    let stream = std::net::TcpStream::connect_timeout(
+        &url_to_addr(url)?,
+        HTTP_TIMEOUT,
+    )
+    .map_err(|e| format!("Connect failed: {}", e))?;
+    http_request(stream, "POST", url, Some(body), Some(&on_progress))
 }
 
 fn url_to_addr(url: &str) -> Result<std::net::SocketAddr, String> {
@@ -103,6 +67,7 @@ fn http_request(
     method: &str,
     url: &str,
     body: Option<&str>,
+    on_progress: Option<&dyn Fn(u64, u64)>,
 ) -> Result<String, String> {
     use std::io::{BufRead, BufReader, Read, Write};
 
@@ -148,16 +113,42 @@ fn http_request(
         }
     }
 
-    // Read body
+    // Read body — chunked with progress reporting
     if response_content_length > 0 {
+        let total = response_content_length as u64;
         let mut buf = vec![0u8; response_content_length];
-        reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
+        let mut read_so_far: usize = 0;
+        const CHUNK: usize = 64 * 1024; // 64 KB chunks
+
+        while read_so_far < response_content_length {
+            let end = (read_so_far + CHUNK).min(response_content_length);
+            reader.read_exact(&mut buf[read_so_far..end])
+                .map_err(|e| e.to_string())?;
+            read_so_far = end;
+            if let Some(cb) = &on_progress {
+                cb(read_so_far as u64, total);
+            }
+        }
         String::from_utf8(buf).map_err(|e| e.to_string())
     } else {
-        // Read until connection close
-        let mut buf = String::new();
-        let _ = reader.read_to_string(&mut buf);
-        Ok(buf)
+        // Read until connection close — report progress periodically
+        let mut buf = Vec::new();
+        let mut tmp = [0u8; 64 * 1024];
+        loop {
+            match reader.read(&mut tmp) {
+                Ok(0) => break,
+                Ok(n) => {
+                    buf.extend_from_slice(&tmp[..n]);
+                    if let Some(cb) = &on_progress {
+                        cb(buf.len() as u64, 0); // total unknown
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => break,
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        String::from_utf8(buf).map_err(|e| e.to_string())
     }
 }
 
@@ -222,6 +213,7 @@ fn execute_master_sync(
     let sync_start = Instant::now();
 
     // Step 3: Request database — negotiate with SLAVE
+    sync_state.set_progress(3, "negotiating", "local");
     log::info!("Sync orchestrator: step 3 — requesting database from slave");
     let device_id = get_device_id();
     let local_marker = get_local_marker_hash();
@@ -250,6 +242,7 @@ fn execute_master_sync(
     }
 
     let transfer_mode = neg.mode.clone();
+    sync_state.set_progress(4, "negotiated", "local");
     log::info!("Sync orchestrator: step 4 — negotiated mode={}", transfer_mode);
 
     // Check timeout
@@ -258,6 +251,7 @@ fn execute_master_sync(
     }
 
     // Step 5: Freeze both databases
+    sync_state.set_progress(5, "freezing", "local");
     log::info!("Sync orchestrator: step 5 — freezing databases");
     sync_state.freeze();
 
@@ -265,6 +259,7 @@ fn execute_master_sync(
     log::debug!("Sync orchestrator: slave freeze response: {}", freeze_resp);
 
     // Step 6: Pull data from SLAVE
+    sync_state.set_progress(6, "downloading_from_slave", "download");
     log::info!("Sync orchestrator: step 6 — pulling data from slave");
     let since = match transfer_mode.as_str() {
         "delta" => neg.slave_marker_hash.as_deref()
@@ -278,18 +273,24 @@ fn execute_master_sync(
         "since": since,
     });
 
-    let slave_data = http_post(
+    let slave_data = http_post_with_progress(
         &format!("{}/lan/pull", base_url),
         &pull_body.to_string(),
+        |transferred, total| {
+            sync_state.update_transfer_bytes(transferred, total);
+        },
     )?;
 
+    sync_state.set_progress(7, "received_from_slave", "local");
     log::info!("Sync orchestrator: step 7 — received {} bytes from slave", slave_data.len());
 
     // Step 8: Backup
+    sync_state.set_progress(8, "backing_up", "local");
     log::info!("Sync orchestrator: step 8 — backing up database");
     backup_database()?;
 
     // Step 9: Merge
+    sync_state.set_progress(9, "merging", "local");
     log::info!("Sync orchestrator: step 9 — merging slave data into master");
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     std::fs::write(dir.join("lan_sync_incoming.json"), &slave_data)
@@ -299,6 +300,7 @@ fn execute_master_sync(
     merge_incoming_data(&slave_data)?;
 
     // Step 10: Verify
+    sync_state.set_progress(10, "verifying", "local");
     log::info!("Sync orchestrator: step 10 — verifying merge integrity");
     verify_merge_integrity()?;
 
@@ -315,6 +317,7 @@ fn execute_master_sync(
     }
 
     // Step 11: Distribute merged data to SLAVE
+    sync_state.set_progress(11, "uploading_to_slave", "upload");
     log::info!("Sync orchestrator: step 11 — distributing merged database to slave");
     // Build full export for slave
     let merged_export = build_full_export()?;
@@ -325,14 +328,19 @@ fn execute_master_sync(
         "marker_hash": new_marker,
         "transfer_mode": transfer_mode,
     });
+    // Report merged export size for progress visibility
+    sync_state.update_transfer_bytes(merged_export.len() as u64, merged_export.len() as u64);
+
     http_post(&format!("{}/lan/db-ready", base_url), &ready_body.to_string())?;
 
     // SLAVE downloads via GET /lan/download-db (from our server)
     // Wait for slave to verify
+    sync_state.set_progress(12, "slave_downloading", "upload");
     log::info!("Sync orchestrator: step 12 — waiting for slave verification");
     // The slave will call /lan/verify-ack on our server when done
 
     // Step 13: Unfreeze
+    sync_state.set_progress(13, "completed", "local");
     log::info!("Sync orchestrator: step 13 — unfreezing databases");
     sync_state.unfreeze();
 

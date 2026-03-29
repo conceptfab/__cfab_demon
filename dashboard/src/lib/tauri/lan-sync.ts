@@ -4,6 +4,7 @@ import type {
   LanSyncResult,
   LanServerStatus,
   SyncMarker,
+  SyncProgress,
 } from '../lan-sync-types';
 import type { TableHashes } from '../online-sync-types';
 
@@ -37,6 +38,9 @@ export const markersMatch = (remoteMarkerHash?: string | null) =>
 export const backupBeforeSync = () =>
   invoke<string>('backup_before_sync');
 
+export const getLanSyncProgress = () =>
+  invoke<SyncProgress>('get_lan_sync_progress');
+
 export const lanSyncApi = {
   getLanPeers,
   buildTableHashesOnly,
@@ -48,4 +52,5 @@ export const lanSyncApi = {
   getLatestSyncMarker,
   markersMatch,
   backupBeforeSync,
+  getLanSyncProgress,
 } as const;

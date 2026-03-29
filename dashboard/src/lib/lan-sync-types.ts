@@ -54,6 +54,16 @@ export interface SyncMarker {
   full_sync: boolean;
 }
 
+export interface SyncProgress {
+  step: number;
+  total_steps: number;
+  phase: string;
+  direction: 'upload' | 'download' | 'local' | 'idle';
+  bytes_transferred: number;
+  bytes_total: number;
+  started_at: number;
+}
+
 export const LAN_SYNC_SETTINGS_KEY = 'timeflow.settings.lan-sync';
 export const LAN_SYNC_STATE_KEY = 'timeflow.state.lan-sync';
 export const LAN_SYNC_SETTINGS_CHANGED_EVENT = 'timeflow:lan-sync-settings-changed';

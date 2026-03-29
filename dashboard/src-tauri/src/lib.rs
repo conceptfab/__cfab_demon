@@ -186,6 +186,7 @@ pub fn run() {
             commands::analyze_sessions_splittable,
             commands::split_session_multi,
             commands::get_lan_peers,
+            commands::get_lan_sync_progress,
             commands::build_table_hashes_only,
             commands::run_lan_sync,
             commands::start_lan_server,

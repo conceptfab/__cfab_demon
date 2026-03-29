@@ -70,6 +70,17 @@ pub struct LanServerStatus {
     pub port: Option<u16>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SyncProgress {
+    pub step: u32,
+    pub total_steps: u32,
+    pub phase: String,
+    pub direction: String,
+    pub bytes_transferred: u64,
+    pub bytes_total: u64,
+    pub started_at: u64,
+}
+
 // ── Commands ──
 
 #[tauri::command]
@@ -81,6 +92,23 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, String> {
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let file: LanPeersFile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     Ok(file.peers)
+}
+
+#[tauri::command]
+pub async fn get_lan_sync_progress() -> Result<SyncProgress, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("http://127.0.0.1:47891/lan/sync-progress")
+        .send()
+        .await
+        .map_err(|e| format!("Daemon not reachable: {}", e))?;
+
+    let progress: SyncProgress = resp.json().await.map_err(|e| e.to_string())?;
+    Ok(progress)
 }
 
 #[tauri::command]
