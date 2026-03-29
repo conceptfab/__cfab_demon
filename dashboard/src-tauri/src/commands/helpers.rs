@@ -71,6 +71,10 @@ pub(crate) fn disambiguate_name(
     }
 }
 
+pub fn get_machine_id() -> String {
+    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
+}
+
 pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
     let appdata_root = std::path::PathBuf::from(&appdata);

@@ -137,17 +137,6 @@ export function isRetryableNetworkError(error: unknown): boolean {
   );
 }
 
-function isRetryableAckError(error: unknown): boolean {
-  const normalized = normalizeRequestError(error);
-  if (normalized.kind === 'timeout' || normalized.kind === 'network') {
-    return true;
-  }
-  return (
-    normalized.kind === 'http' &&
-    normalized.status !== null &&
-    normalized.status >= 500
-  );
-}
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -182,7 +171,7 @@ export async function postAckWithRetries(
         apiToken,
       );
     } catch (error) {
-      if (attempt >= maxAttempts || !isRetryableAckError(error)) {
+      if (attempt >= maxAttempts || !isRetryableNetworkError(error)) {
         throw error;
       }
 
@@ -276,15 +265,17 @@ export async function getLocalDeltaState(
     const sinceTimestamp = state.lastSyncAt || "1970-01-01T00:00:00Z";
     // buildDeltaArchive responds with [DeltaArchive, filename]
     const [archive, _] = await buildDeltaArchive(sinceTimestamp);
-    
-    // the archive.since timestamp ensures what delta we fetched.
-    const payloadSha256 = await sha256Hex(JSON.stringify(archive));
-    
+
     const hasAnyDeltaData = archive.data.projects.length > 0 ||
           archive.data.applications.length > 0 ||
           archive.data.sessions.length > 0 ||
           archive.data.manual_sessions.length > 0 ||
           archive.data.tombstones.length > 0;
+
+    // Only compute SHA-256 when there is actual data to push
+    const payloadSha256 = hasAnyDeltaData
+      ? await sha256Hex(JSON.stringify(archive))
+      : null;
 
     return {
       exportOk: true,

@@ -336,7 +336,7 @@ fn build_export_archive(
             None
         };
 
-        let machine_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
+        let machine_id = super::helpers::get_machine_id();
 
         let default_name = format!(
             "timeflow-export-{}.json",

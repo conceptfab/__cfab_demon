@@ -229,6 +229,58 @@ async function handleServerSnapshotPruned(
   };
 }
 
+async function pushFullArchiveWithRetry(
+  settings: OnlineSyncSettings,
+  archive: NonNullable<LocalDatasetState['archive']>,
+  knownServerRevision: number | null,
+  apiToken: string,
+  log?: SyncFileLogger | null,
+): Promise<SyncPushResponse> {
+  const payloadSize = JSON.stringify(archive).length;
+  const timeoutMs = Math.max(
+    settings.requestTimeoutMs,
+    Math.min(60_000, Math.ceil(payloadSize / 1024) * 15),
+  );
+  const maxAttempts = 3;
+  let result: SyncPushResponse | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      result = await postJson<SyncPushResponse>(
+        settings.serverUrl,
+        '/api/sync/push',
+        {
+          userId: settings.userId,
+          deviceId: settings.deviceId,
+          knownServerRevision,
+          archive,
+        },
+        timeoutMs,
+        apiToken,
+      );
+      break;
+    } catch (error) {
+      if (attempt >= maxAttempts || !isRetryableNetworkError(error)) {
+        throw error;
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      const delayMs = 1000 * attempt;
+      log?.warn('Full push transient failure, retrying', {
+        attempt,
+        maxAttempts,
+        error: msg,
+        delayMs,
+      });
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  if (!result) {
+    throw new Error('Full push retry loop failed unexpectedly');
+  }
+  return result;
+}
+
 let syncRunning = false;
 
 export async function runOnlineSyncOnce(
@@ -338,7 +390,9 @@ async function runOnlineSyncOnceImpl(
       pendingRemains: pendingAckResult.pendingRemains,
       reason: pendingAckResult.reason,
     });
-    state = loadOnlineSyncState(settings);
+    if (pendingAckResult.attempted) {
+      state = loadOnlineSyncState(settings);
+    }
 
     if (!options.ignoreStartupToggle && !settings.autoSyncOnStartup) {
       if (pendingAckResult.accepted) {
@@ -635,51 +689,19 @@ async function runOnlineSyncOnceImpl(
           throw new Error(fullLocal.exportError ?? 'No local data available for full push');
         }
 
-        const fullPayloadSize = JSON.stringify(fullLocal.archive).length;
-        const fullPushTimeoutMs = Math.max(settings.requestTimeoutMs, Math.min(60_000, Math.ceil(fullPayloadSize / 1024) * 15));
         log?.info('Pushing full archive to server', {
           knownServerRevision: status.serverRevision ?? null,
-          payloadSizeKB: Math.round(fullPayloadSize / 1024),
-          timeoutMs: fullPushTimeoutMs,
+          payloadSizeKB: Math.round(JSON.stringify(fullLocal.archive).length / 1024),
         });
 
         const pushT0 = Date.now();
-        const maxPushAttempts = 3;
-        let push: SyncPushResponse | null = null;
-        for (let attempt = 1; attempt <= maxPushAttempts; attempt += 1) {
-          try {
-            push = await postJson<SyncPushResponse>(
-              settings.serverUrl,
-              '/api/sync/push',
-              {
-                userId: settings.userId,
-                deviceId: settings.deviceId,
-                knownServerRevision: status.serverRevision ?? null,
-                archive: fullLocal.archive,
-              },
-              fullPushTimeoutMs,
-              secureApiToken,
-            );
-            break;
-          } catch (error) {
-            if (attempt >= maxPushAttempts || !isRetryableNetworkError(error)) {
-              throw error;
-            }
-            const msg = error instanceof Error ? error.message : String(error);
-            const delayMs = 1000 * attempt;
-            log?.warn('Full push transient failure, retrying', {
-              attempt,
-              maxPushAttempts,
-              error: msg,
-              delayMs,
-            });
-            await new Promise((r) => setTimeout(r, delayMs));
-          }
-        }
-
-        if (!push) {
-          throw new Error('Full push retry loop failed unexpectedly');
-        }
+        const push = await pushFullArchiveWithRetry(
+          settings,
+          fullLocal.archive,
+          status.serverRevision ?? null,
+          secureApiToken,
+          log,
+        );
 
         if (push.accepted === false) {
           log?.error('Full push rejected', { reason: push.reason, durationMs: Date.now() - pushT0 });
@@ -762,51 +784,19 @@ async function runOnlineSyncOnceImpl(
           throw new Error(fullLocal.exportError ?? 'No local data for full push fallback');
         }
 
-        const fullPayloadSize = JSON.stringify(fullLocal.archive).length;
-        const fullPushTimeoutMs = Math.max(settings.requestTimeoutMs, Math.min(60_000, Math.ceil(fullPayloadSize / 1024) * 15));
         log?.info('Pushing full archive to server (fallback)', {
           knownServerRevision: push.revision,
-          payloadSizeKB: Math.round(fullPayloadSize / 1024),
-          timeoutMs: fullPushTimeoutMs,
+          payloadSizeKB: Math.round(JSON.stringify(fullLocal.archive).length / 1024),
         });
 
         const fullPushT0 = Date.now();
-        const maxFallbackAttempts = 3;
-        let fullPush: SyncPushResponse | null = null;
-        for (let attempt = 1; attempt <= maxFallbackAttempts; attempt += 1) {
-          try {
-            fullPush = await postJson<SyncPushResponse>(
-              settings.serverUrl,
-              '/api/sync/push',
-              {
-                userId: settings.userId,
-                deviceId: settings.deviceId,
-                knownServerRevision: push.revision,
-                archive: fullLocal.archive,
-              },
-              fullPushTimeoutMs,
-              secureApiToken,
-            );
-            break;
-          } catch (error) {
-            if (attempt >= maxFallbackAttempts || !isRetryableNetworkError(error)) {
-              throw error;
-            }
-            const msg = error instanceof Error ? error.message : String(error);
-            const delayMs = 1000 * attempt;
-            log?.warn('Full push fallback transient failure, retrying', {
-              attempt,
-              maxFallbackAttempts,
-              error: msg,
-              delayMs,
-            });
-            await new Promise((r) => setTimeout(r, delayMs));
-          }
-        }
-
-        if (!fullPush) {
-          throw new Error('Full push fallback retry loop failed unexpectedly');
-        }
+        const fullPush = await pushFullArchiveWithRetry(
+          settings,
+          fullLocal.archive,
+          push.revision,
+          secureApiToken,
+          log,
+        );
 
         if (fullPush.accepted === false) {
           log?.error('Full push fallback rejected', {

@@ -1,6 +1,18 @@
 use super::types::{ApplicationRow, ManualSession, Project, SessionRow, Tombstone};
 use crate::db;
+use rusqlite::Connection;
 use serde::Serialize;
+
+fn compute_table_hash(conn: &Connection, table: &str) -> String {
+    let sql = format!(
+        "SELECT COALESCE(hex(sha256(group_concat(id || '|' || updated_at, ';'))), '') \
+         FROM (SELECT id, updated_at FROM {} ORDER BY id)",
+        table
+    );
+    conn.query_row(&sql, [], |row| row.get(0))
+        .unwrap_or_else(|_| String::new())
+        .to_lowercase()
+}
 
 #[derive(Serialize)]
 pub struct TableHashes {
@@ -36,54 +48,14 @@ pub fn build_delta_archive(
     since: String,
 ) -> Result<(DeltaArchive, String), String> {
     let conn = db::get_connection(&app)?;
-    let machine_id = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string());
+    let machine_id = super::helpers::get_machine_id();
     
     // 1. Calculate deterministic hashes for each table
-    // For projects
-    let projects_hash: String = conn
-        .query_row(
-            "SELECT COALESCE(hex(sha256(group_concat(id || '|' || updated_at, ';'))), '') 
-             FROM (SELECT id, updated_at FROM projects ORDER BY id)",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or_else(|_| "".to_string());
-
-    // For applications
-    let apps_hash: String = conn
-        .query_row(
-            "SELECT COALESCE(hex(sha256(group_concat(id || '|' || updated_at, ';'))), '') 
-             FROM (SELECT id, updated_at FROM applications ORDER BY id)",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or_else(|_| "".to_string());
-
-    // For sessions
-    let sessions_hash: String = conn
-        .query_row(
-            "SELECT COALESCE(hex(sha256(group_concat(id || '|' || updated_at, ';'))), '') 
-             FROM (SELECT id, updated_at FROM sessions ORDER BY id)",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or_else(|_| "".to_string());
-
-    // For manual_sessions
-    let manual_sessions_hash: String = conn
-        .query_row(
-            "SELECT COALESCE(hex(sha256(group_concat(id || '|' || updated_at, ';'))), '') 
-             FROM (SELECT id, updated_at FROM manual_sessions ORDER BY id)",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or_else(|_| "".to_string());
-
     let table_hashes = TableHashes {
-        projects: projects_hash.to_lowercase(),
-        applications: apps_hash.to_lowercase(),
-        sessions: sessions_hash.to_lowercase(),
-        manual_sessions: manual_sessions_hash.to_lowercase(),
+        projects: compute_table_hash(&conn, "projects"),
+        applications: compute_table_hash(&conn, "applications"),
+        sessions: compute_table_hash(&conn, "sessions"),
+        manual_sessions: compute_table_hash(&conn, "manual_sessions"),
     };
 
     // 2. Fetch delta data (updated_at > since)
