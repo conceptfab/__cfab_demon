@@ -142,6 +142,59 @@ pub fn load_lan_sync_settings() -> LanSyncSettings {
     }
 }
 
+/// Online sync settings persisted by the dashboard for the daemon to read.
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct OnlineSyncSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub server_url: String,
+    #[serde(default)]
+    pub auth_token: String,
+    #[serde(default)]
+    pub device_id: String,
+    #[serde(default)]
+    pub sync_interval_hours: u32,
+    #[serde(default)]
+    pub auto_sync_on_startup: bool,
+}
+
+impl Default for OnlineSyncSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            server_url: String::new(),
+            auth_token: String::new(),
+            device_id: String::new(),
+            sync_interval_hours: 0,
+            auto_sync_on_startup: false,
+        }
+    }
+}
+
+/// Read online sync settings from the shared file (written by dashboard).
+pub fn load_online_sync_settings() -> OnlineSyncSettings {
+    let path = match config_dir() {
+        Ok(d) => d.join("online_sync_settings.json"),
+        Err(_) => return OnlineSyncSettings::default(),
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+        Err(_) => OnlineSyncSettings::default(),
+    }
+}
+
+/// Save online sync settings to disk.
+pub fn save_online_sync_settings(settings: &OnlineSyncSettings) -> Result<()> {
+    let dir = config_dir()?;
+    let path = dir.join("online_sync_settings.json");
+    let json = serde_json::to_string_pretty(settings)
+        .context("Failed to serialize OnlineSyncSettings")?;
+    std::fs::write(&path, json)
+        .with_context(|| format!("Failed to write {:?}", path))?;
+    Ok(())
+}
+
 /// Ładuje legacy konfigurację z pliku JSON (interwały + fallback lista aplikacji).
 fn load_legacy_json_config() -> Config {
     let path = match config_path() {
