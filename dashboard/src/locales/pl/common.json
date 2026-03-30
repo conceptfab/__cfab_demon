@@ -1708,6 +1708,7 @@
     "online_sync_setup_how_to_start": "Jak zacząć: wpisz URL serwera, User ID i surowy Token, zapisz ustawienia, poczekaj na wygenerowanie Device ID i dopiero wtedy uruchom `Sync now` albo `Sync on startup`.",
     "online_sync_setup_when_to_use": "Kiedy użyć: włącz to, gdy chcesz mieć kopie danych poza lokalną bazą lub synchronizować pracę między maszynami.",
     "online_sync_setup_limitations": "Ograniczenia i konsekwencje: tryb demo wyłącza synchronizację, błędny token zablokuje push/pull, a po komunikacie o reseed trzeba odbudować stan lokalnym eksportem lub nowym seedem.",
+    "online_sync_daemon_mode": "Synchronizacja przez daemon (protokół LAN Sync): Gdy daemon TIMEFLOW jest uruchomiony, synchronizacja online może użyć 13-krokowego protokołu sesji z transferem SFTP. Zapewnia szyfrowany transfer plików, śledzenie postępu i automatyczne scalanie — ten sam protokół co synchronizacja LAN, ale przez zdalny serwer. Skonfiguruj klucz szyfrowania w ustawieniach synchronizacji.",
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej, bez pośredniczącego serwera.",
     "lan_sync_udp_discovery": "Wykrywanie UDP – TIMEFLOW automatycznie rozgłasza swoją obecność w sieci lokalnej (port 47892) co 30 sekund. Inne instancje są wykrywane bez ręcznej konfiguracji.",
@@ -1749,7 +1750,16 @@
     "uploading_to_slave": "Wysyłanie scalonej bazy...",
     "slave_downloading": "Peer pobiera scaloną bazę...",
     "completed": "Synchronizacja zakończona",
-    "error": "Błąd synchronizacji"
+    "error": "Błąd synchronizacji",
+    "online_title": "Synchronizacja Online",
+    "creating_session": "Tworzenie sesji na serwerze...",
+    "awaiting_peer": "Oczekiwanie na drugie urządzenie...",
+    "uploading_to_storage": "Wysyłanie danych do magazynu...",
+    "waiting_for_merge": "Oczekiwanie na scalenie przez mastera...",
+    "downloading_from_storage": "Pobieranie scalonych danych...",
+    "uploading_merged": "Wysyłanie scalonych danych...",
+    "waiting_for_upload": "Oczekiwanie na wysłanie przez peera...",
+    "waiting_for_download": "Oczekiwanie na pobranie przez peera..."
   },
   "projects_page": {
     "load_more_projects": "Wczytaj więcej projektów",

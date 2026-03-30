@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { lanSyncApi } from '@/lib/tauri';
+import { getDaemonOnlineSyncProgress } from '@/lib/tauri/online-sync';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 
 const POLL_MS = 500;
@@ -23,9 +24,11 @@ interface SyncProgressOverlayProps {
   active: boolean;
   /** Called when sync completes or errors out */
   onFinished?: (success: boolean) => void;
+  /** Which sync backend to poll — defaults to "lan" */
+  syncType?: 'lan' | 'online';
 }
 
-export function SyncProgressOverlay({ active, onFinished }: SyncProgressOverlayProps) {
+export function SyncProgressOverlay({ active, onFinished, syncType = 'lan' }: SyncProgressOverlayProps) {
   const { t } = useTranslation();
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [speed, setSpeed] = useState(0);
@@ -45,7 +48,9 @@ export function SyncProgressOverlay({ active, onFinished }: SyncProgressOverlayP
     const poll = async () => {
       if (cancelled) return;
       try {
-        const p = await lanSyncApi.getLanSyncProgress();
+        const p = syncType === 'online'
+          ? await getDaemonOnlineSyncProgress()
+          : await lanSyncApi.getLanSyncProgress();
         if (cancelled) return;
         setProgress(p);
 
@@ -81,7 +86,7 @@ export function SyncProgressOverlay({ active, onFinished }: SyncProgressOverlayP
     void poll();
     const id = window.setInterval(poll, POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
-  }, [active, onFinished]);
+  }, [active, onFinished, syncType]);
 
   if (!active || !progress || progress.phase === 'idle') return null;
 
@@ -112,7 +117,9 @@ export function SyncProgressOverlay({ active, onFinished }: SyncProgressOverlayP
             <Loader2 className="h-4 w-4 text-sky-400 shrink-0 animate-spin" />
           )}
           <span className="text-sm font-medium truncate">
-            {t('sync_progress.title', 'Synchronizacja LAN')}
+            {syncType === 'online'
+              ? t('sync_progress.online_title', 'Online Synchronization')
+              : t('sync_progress.title', 'Synchronizacja LAN')}
           </span>
           <span className="text-xs text-muted-foreground ml-auto shrink-0">
             {progress.step}/{progress.total_steps}
