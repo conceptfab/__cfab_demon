@@ -221,6 +221,10 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     let mut peers_dirty = false;
     let mut last_peers_write = Instant::now();
     let mut last_status_log = Instant::now();
+    let mut last_expiry_check = Instant::now();
+
+    // Clear stale peers file from previous daemon session on startup
+    write_peers_file(&peers);
 
     // ── Role assignment: forced or elected ──
     let lan_settings = config::load_lan_sync_settings();
@@ -521,8 +525,9 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             }
         }
 
-        // Expire old peers (check every 30s, not every tick)
-        if last_beacon.elapsed() < Duration::from_secs(1) {
+        // Expire old peers (check every 30s, independent of beacon sending)
+        if last_expiry_check.elapsed() >= Duration::from_secs(30) {
+            last_expiry_check = Instant::now();
             let now_utc = Utc::now();
             let before_count = peers.len();
             peers.retain(|_, peer| {

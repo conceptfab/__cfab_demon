@@ -130,6 +130,14 @@ export function LanPeerNotification() {
       } else {
         setSyncError(msg);
       }
+      // Auto-dismiss notification after sync failure (peer gone)
+      if (visiblePeerRef.current) {
+        dismissPeer(visiblePeerRef.current.device_id);
+      }
+      setTimeout(() => {
+        setVisiblePeer(null);
+        setSyncError(null);
+      }, 5_000);
     } finally {
       setSyncing(false);
     }
