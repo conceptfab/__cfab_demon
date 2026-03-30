@@ -2,6 +2,7 @@
 // Runs as a sub-thread spawned when peers are discovered and roles assigned.
 
 use crate::config;
+use crate::lan_common;
 use crate::lan_server::LanSyncState;
 use serde::Deserialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,17 +13,8 @@ use std::time::{Duration, Instant};
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Write timestamped line to lan_sync.log (visible in dashboard UI).
 fn sync_log(msg: &str) {
-    log::info!("{}", msg);
-    if let Ok(dir) = config::config_dir() {
-        let path = dir.join("lan_sync.log");
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let _ = writeln!(f, "[{}] {}", ts, msg);
-        }
-    }
+    lan_common::sync_log(msg);
 }
 
 // ── Sync types ──
@@ -212,7 +204,14 @@ pub fn run_sync_as_master_with_options(
                     if attempt < MAX_RETRIES {
                         let backoff = Duration::from_secs(5 * 3u64.pow(attempt - 1));
                         sync_log(&format!("[!] Ponowienie za {:?}...", backoff));
-                        thread::sleep(backoff);
+                        let deadline = Instant::now() + backoff;
+                        while Instant::now() < deadline {
+                            if stop_signal.load(Ordering::Relaxed) {
+                                sync_log("[!] Stop signal podczas backoff — przerywam");
+                                return;
+                            }
+                            thread::sleep(Duration::from_secs(1));
+                        }
                     }
                 }
             }
@@ -235,11 +234,14 @@ fn execute_master_sync(
     let base_url = format!("http://{}:{}", peer.ip, peer.port);
     let sync_start = Instant::now();
 
+    // Open single DB connection for entire sync flow
+    let mut conn = open_dashboard_db()?;
+
     // Step 3: Negotiate with SLAVE
     sync_state.set_progress(3, "negotiating", "local");
     sync_log(&format!("[3/13] Negocjacja z peerem {}:{} ...", peer.ip, peer.port));
     let device_id = get_device_id();
-    let local_marker = get_local_marker_hash();
+    let local_marker = get_local_marker_hash_with_conn(&conn);
 
     let negotiate_body = serde_json::json!({
         "master_device_id": device_id,
@@ -285,15 +287,18 @@ fn execute_master_sync(
     sync_state.set_progress(5, "freezing", "local");
     sync_log("[5/13] Zamrazanie baz danych (master + slave)...");
     sync_state.freeze();
-    http_post(&format!("{}/lan/freeze-ack", base_url), "{}")
-        .map_err(|e| { sync_log(&format!("[5/13] BLAD freeze slave: {}", e)); e })?;
+    if let Err(e) = http_post(&format!("{}/lan/freeze-ack", base_url), "{}") {
+        sync_log(&format!("[5/13] BLAD freeze slave: {} — rollback master freeze", e));
+        sync_state.unfreeze();
+        return Err(e);
+    }
     sync_log("[5/13] Obie bazy zamrozone");
 
     // Step 6: Pull data from SLAVE
     sync_state.set_progress(6, "downloading_from_slave", "download");
     let since = match transfer_mode.as_str() {
         "delta" => neg.slave_marker_hash.as_deref()
-            .and_then(|_| get_local_marker_created_at())
+            .and_then(|_| get_local_marker_created_at_with_conn(&conn))
             .unwrap_or_else(|| "1970-01-01 00:00:00".to_string()),
         _ => "1970-01-01 00:00:00".to_string(),
     };
@@ -329,22 +334,22 @@ fn execute_master_sync(
     std::fs::write(dir.join("lan_sync_incoming.json"), &slave_data)
         .map_err(|e| format!("Failed to write incoming data: {}", e))?;
 
-    merge_incoming_data(&slave_data)
+    merge_incoming_data(&mut conn, &slave_data)
         .map_err(|e| { sync_log(&format!("[9/13] BLAD scalania: {}", e)); e })?;
     sync_log("[9/13] Scalanie zakonczone");
 
     // Step 10: Verify
     sync_state.set_progress(10, "verifying", "local");
     sync_log("[10/13] Weryfikacja integralnosci bazy...");
-    verify_merge_integrity()
+    verify_merge_integrity(&conn)
         .map_err(|e| { sync_log(&format!("[10/13] BLAD weryfikacji: {}", e)); e })?;
     sync_log("[10/13] Baza zweryfikowana — OK");
 
     // Generate new sync marker
-    let new_tables_hash = compute_tables_hash_string()?;
+    let new_tables_hash = compute_tables_hash_string_conn(&conn);
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let new_marker = generate_marker_hash_simple(&new_tables_hash, &now, &device_id);
-    insert_sync_marker_db(&new_marker, &now, &device_id, Some(&peer.device_id), &new_tables_hash,
+    insert_sync_marker_db(&conn, &new_marker, &now, &device_id, Some(&peer.device_id), &new_tables_hash,
         transfer_mode == "full")?;
     sync_log(&format!("[10/13] Nowy marker: {}", &new_marker[..16.min(new_marker.len())]));
 
@@ -356,7 +361,7 @@ fn execute_master_sync(
     // Step 11: Upload merged data to SLAVE
     sync_state.set_progress(11, "uploading_to_slave", "upload");
     sync_log("[11/13] Budowanie pelnego eksportu dla peera...");
-    let merged_export = build_full_export()
+    let merged_export = build_full_export(&conn)
         .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?;
     let export_kb = merged_export.len() as f64 / 1024.0;
     sync_log(&format!("[11/13] Wysylanie {:.1} KB do peera...", export_kb));
@@ -399,26 +404,10 @@ fn execute_master_sync(
 // ── DB helper functions ──
 
 fn get_device_id() -> String {
-    let dir = match config::config_dir() {
-        Ok(d) => d,
-        Err(_) => return get_machine_name(),
-    };
-    let path = dir.join("device_id.txt");
-    if let Ok(id) = std::fs::read_to_string(&path) {
-        let trimmed = id.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
-        }
-    }
-    get_machine_name()
+    lan_common::get_device_id()
 }
 
-fn get_machine_name() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
-}
-
-fn get_local_marker_hash() -> Option<String> {
-    let conn = open_dashboard_db().ok()?;
+fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String> {
     conn.query_row(
         "SELECT marker_hash FROM sync_markers ORDER BY created_at DESC LIMIT 1",
         [],
@@ -427,8 +416,7 @@ fn get_local_marker_hash() -> Option<String> {
     .ok()
 }
 
-fn get_local_marker_created_at() -> Option<String> {
-    let conn = open_dashboard_db().ok()?;
+fn get_local_marker_created_at_with_conn(conn: &rusqlite::Connection) -> Option<String> {
     conn.query_row(
         "SELECT created_at FROM sync_markers ORDER BY created_at DESC LIMIT 1",
         [],
@@ -438,12 +426,7 @@ fn get_local_marker_created_at() -> Option<String> {
 }
 
 fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
-    let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
-    rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|e| format!("Failed to open dashboard DB: {}", e))
+    lan_common::open_dashboard_db()
 }
 
 fn backup_database() -> Result<(), String> {
@@ -484,7 +467,7 @@ fn backup_database() -> Result<(), String> {
     Ok(())
 }
 
-fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
+fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
     let archive: serde_json::Value = serde_json::from_str(slave_data)
         .map_err(|e| format!("Failed to parse slave data: {}", e))?;
 
@@ -494,7 +477,6 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
         count("/data/projects"), count("/data/applications"), count("/data/sessions"),
         count("/data/manual_sessions"), count("/data/tombstones")));
 
-    let mut conn = open_dashboard_db()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // Merge projects
@@ -590,20 +572,82 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
         }
     }
 
-    // Merge sessions
+    // Build ID maps: remote ID → name, local name → ID
+    let mut remote_app_id_to_name: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+    if let Some(apps) = archive.pointer("/data/applications").and_then(|v| v.as_array()) {
+        for app in apps {
+            let remote_id = app.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let exe_name = app.get("executable_name").and_then(|v| v.as_str()).unwrap_or("");
+            if remote_id > 0 && !exe_name.is_empty() {
+                remote_app_id_to_name.insert(remote_id, exe_name.to_string());
+            }
+        }
+    }
+    let mut app_name_to_local_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, executable_name FROM applications")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+        for row in rows.flatten() {
+            app_name_to_local_id.insert(row.1, row.0);
+        }
+    }
+
+    let mut remote_project_id_to_name: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+    if let Some(projects) = archive.pointer("/data/projects").and_then(|v| v.as_array()) {
+        for proj in projects {
+            let remote_id = proj.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let name = proj.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if remote_id > 0 && !name.is_empty() {
+                remote_project_id_to_name.insert(remote_id, name.to_string());
+            }
+        }
+    }
+    let mut project_name_to_local_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, name FROM projects")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+        for row in rows.flatten() {
+            project_name_to_local_id.insert(row.1, row.0);
+        }
+    }
+
+    // Merge sessions (using local IDs resolved via name maps)
     if let Some(sessions) = archive.pointer("/data/sessions").and_then(|v| v.as_array()) {
         for sess in sessions {
-            let app_id = sess.get("app_id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let remote_app_id = sess.get("app_id").and_then(|v| v.as_i64()).unwrap_or(0);
             let start_time = sess.get("start_time").and_then(|v| v.as_str()).unwrap_or("");
             let updated_at = sess.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
-            if start_time.is_empty() || app_id == 0 {
+            if start_time.is_empty() || remote_app_id == 0 {
                 continue;
             }
+
+            // Resolve remote app_id → local app_id via executable_name
+            let local_app_id = match remote_app_id_to_name.get(&remote_app_id)
+                .and_then(|name| app_name_to_local_id.get(name))
+            {
+                Some(&id) => id,
+                None => {
+                    sync_log(&format!("  SKIP sesja (brak lokalnego app_id dla remote={})", remote_app_id));
+                    continue;
+                }
+            };
+
+            // Resolve remote project_id → local project_id via name
+            let local_project_id: Option<i64> = sess.get("project_id").and_then(|v| v.as_i64())
+                .and_then(|rid| remote_project_id_to_name.get(&rid))
+                .and_then(|name| project_name_to_local_id.get(name))
+                .copied();
 
             let existing: Option<(i64, Option<String>)> = tx
                 .query_row(
                     "SELECT id, updated_at FROM sessions WHERE app_id = ?1 AND start_time = ?2",
-                    rusqlite::params![app_id, start_time],
+                    rusqlite::params![local_app_id, start_time],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .ok();
@@ -634,8 +678,8 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
                          duration_seconds, date, rate_multiplier, comment, is_hidden, updated_at) \
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
                         rusqlite::params![
-                            app_id,
-                            json_i64_opt(sess, "project_id"),
+                            local_app_id,
+                            local_project_id,
                             start_time,
                             json_str_opt(sess, "end_time"),
                             json_i64(sess, "duration_seconds"),
@@ -651,17 +695,26 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
         }
     }
 
-    // Merge manual_sessions
+    // Merge manual_sessions (using resolved local IDs)
     if let Some(manual_sessions) = archive.pointer("/data/manual_sessions").and_then(|v| v.as_array()) {
         log::info!("Sync orchestrator: merging {} manual sessions", manual_sessions.len());
         for ms in manual_sessions {
             let title = ms.get("title").and_then(|v| v.as_str()).unwrap_or("");
             let start_time = ms.get("start_time").and_then(|v| v.as_str()).unwrap_or("");
             let updated_at = ms.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
-            let project_id = json_i64_opt(ms, "project_id");
             if title.is_empty() || start_time.is_empty() {
                 continue;
             }
+
+            // Resolve remote IDs to local
+            let local_project_id: Option<i64> = ms.get("project_id").and_then(|v| v.as_i64())
+                .and_then(|rid| remote_project_id_to_name.get(&rid))
+                .and_then(|name| project_name_to_local_id.get(name))
+                .copied();
+            let local_app_id: Option<i64> = ms.get("app_id").and_then(|v| v.as_i64())
+                .and_then(|rid| remote_app_id_to_name.get(&rid))
+                .and_then(|name| app_name_to_local_id.get(name))
+                .copied();
 
             let existing: Option<(i64, Option<String>)> = tx
                 .query_row(
@@ -681,8 +734,8 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
                              date = ?6, updated_at = ?7 WHERE id = ?8",
                             rusqlite::params![
                                 json_str_opt(ms, "session_type"),
-                                project_id,
-                                json_i64_opt(ms, "app_id"),
+                                local_project_id,
+                                local_app_id,
                                 json_str_opt(ms, "end_time"),
                                 json_i64(ms, "duration_seconds"),
                                 json_str_opt(ms, "date"),
@@ -700,8 +753,8 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
                         rusqlite::params![
                             title,
                             json_str_opt(ms, "session_type"),
-                            project_id,
-                            json_i64_opt(ms, "app_id"),
+                            local_project_id,
+                            local_app_id,
                             start_time,
                             json_str_opt(ms, "end_time"),
                             json_i64(ms, "duration_seconds"),
@@ -759,8 +812,7 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn verify_merge_integrity() -> Result<(), String> {
-    let conn = open_dashboard_db()?;
+fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String> {
 
     // Check FK integrity
     let fk_errors: Vec<String> = {
@@ -797,41 +849,16 @@ fn verify_merge_integrity() -> Result<(), String> {
     Ok(())
 }
 
-fn compute_tables_hash_string() -> Result<String, String> {
-    let conn = open_dashboard_db()?;
-    let tables = ["projects", "applications", "sessions", "manual_sessions"];
-    let mut combined = String::new();
-    for table in &tables {
-        let hash: String = compute_single_table_hash(&conn, table);
-        combined.push_str(&hash);
-    }
-    Ok(combined)
-}
-
-fn compute_single_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let sql = match table {
-        "projects" => "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') FROM (SELECT name, updated_at FROM projects ORDER BY name)",
-        "applications" => "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)",
-        "sessions" => "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at FROM sessions s JOIN applications a ON s.app_id = a.id ORDER BY a.executable_name, s.start_time)",
-        "manual_sessions" => "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)",
-        _ => return String::new(),
-    };
-    let concat: String = conn.query_row(sql, [], |row| row.get(0)).unwrap_or_default();
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    concat.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+fn compute_tables_hash_string_conn(conn: &rusqlite::Connection) -> String {
+    lan_common::compute_tables_hash_string(conn)
 }
 
 fn generate_marker_hash_simple(tables_hash: &str, timestamp: &str, device_id: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    input.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    lan_common::generate_marker_hash(tables_hash, timestamp, device_id)
 }
 
 fn insert_sync_marker_db(
+    conn: &rusqlite::Connection,
     marker_hash: &str,
     created_at: &str,
     device_id: &str,
@@ -839,7 +866,6 @@ fn insert_sync_marker_db(
     tables_hash: &str,
     full_sync: bool,
 ) -> Result<(), String> {
-    let conn = open_dashboard_db()?;
     conn.execute(
         "INSERT INTO sync_markers (marker_hash, created_at, device_id, peer_id, tables_hash, full_sync) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
@@ -849,13 +875,9 @@ fn insert_sync_marker_db(
     Ok(())
 }
 
-fn build_full_export() -> Result<String, String> {
-    let conn = open_dashboard_db()?;
-    let device_id = get_device_id();
+fn build_full_export(conn: &rusqlite::Connection) -> Result<String, String> {
     let since = "1970-01-01 00:00:00";
-
-    // Reuse the same export logic as lan_server
-    crate::lan_server::build_delta_for_pull_public(&conn, since, &device_id)
+    crate::lan_server::build_delta_for_pull_public(conn, since)
 }
 
 // ── JSON helpers ──
@@ -870,10 +892,6 @@ fn json_str_opt(v: &serde_json::Value, key: &str) -> Option<String> {
 
 fn json_i64(v: &serde_json::Value, key: &str) -> i64 {
     v.get(key).and_then(|v| v.as_i64()).unwrap_or(0)
-}
-
-fn json_i64_opt(v: &serde_json::Value, key: &str) -> Option<i64> {
-    v.get(key).and_then(|v| v.as_i64())
 }
 
 fn json_f64(v: &serde_json::Value, key: &str) -> f64 {

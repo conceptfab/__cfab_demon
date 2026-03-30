@@ -12,6 +12,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use crate::config;
+use crate::lan_common;
 use crate::lan_server::LanSyncState;
 use crate::lan_sync_orchestrator;
 
@@ -118,11 +119,11 @@ fn generate_device_id() -> String {
 }
 
 fn fallback_device_id() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
+    lan_common::get_machine_name()
 }
 
 fn get_machine_name() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
+    lan_common::get_machine_name()
 }
 
 // ── Peers file I/O ──

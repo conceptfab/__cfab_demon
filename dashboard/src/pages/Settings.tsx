@@ -126,6 +126,24 @@ export function Settings() {
   const [latestMarker, setLatestMarker] = useState<SyncMarker | null>(null);
   const [myIp, setMyIp] = useState('');
 
+  const lastSyncAt = useMemo(() => loadLanSyncState().lastSyncAt, [lanSyncing]);
+
+  const syncPhaseLabels = useMemo(() => ({
+    sync_phase_idle: t('settings.lan_sync.sync_phase_idle'),
+    sync_phase_starting: t('settings.lan_sync.sync_phase_starting'),
+    sync_phase_negotiating: t('settings.lan_sync.sync_phase_negotiating'),
+    sync_phase_negotiated: t('settings.lan_sync.sync_phase_negotiated'),
+    sync_phase_freezing: t('settings.lan_sync.sync_phase_freezing'),
+    sync_phase_downloading: t('settings.lan_sync.sync_phase_downloading'),
+    sync_phase_received: t('settings.lan_sync.sync_phase_received'),
+    sync_phase_backup: t('settings.lan_sync.sync_phase_backup'),
+    sync_phase_merging: t('settings.lan_sync.sync_phase_merging'),
+    sync_phase_verifying: t('settings.lan_sync.sync_phase_verifying'),
+    sync_phase_uploading: t('settings.lan_sync.sync_phase_uploading'),
+    sync_phase_slave_downloading: t('settings.lan_sync.sync_phase_slave_downloading'),
+    sync_phase_completed: t('settings.lan_sync.sync_phase_completed'),
+  }), [t]);
+
   // Get local LAN IP
   useEffect(() => {
     lanSyncApi.getLocalIps().then((ips) => {
@@ -146,9 +164,15 @@ export function Settings() {
     }
     const poll = () => {
       lanSyncApi.getLanPeers().then((peers) => {
-        setLanPeers((prev) =>
-          JSON.stringify(prev) !== JSON.stringify(peers) ? peers : prev,
-        );
+        setLanPeers((prev) => {
+          if (prev.length !== peers.length) return peers;
+          const changed = peers.some((p, i) =>
+            p.device_id !== prev[i]?.device_id ||
+            p.dashboard_running !== prev[i]?.dashboard_running ||
+            p.ip !== prev[i]?.ip
+          );
+          return changed ? peers : prev;
+        });
       }).catch(() => {});
     };
     poll();
@@ -191,27 +215,8 @@ export function Settings() {
         ? '1970-01-01T00:00:00Z'
         : (state.peerSyncTimes?.[peer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z');
 
-      // 1. Trigger daemon sync (returns immediately)
       await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since, force);
-
-      // 2. Poll daemon progress until completed or error (max 5 min)
-      const deadline = Date.now() + 300_000;
-      let lastPhase = '';
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 800));
-        try {
-          const p = await lanSyncApi.getLanSyncProgress();
-          if (p.phase !== lastPhase) {
-            lastPhase = p.phase;
-          }
-          if (p.phase === 'completed' || (p.phase === 'idle' && p.step === 0 && lastPhase !== '')) {
-            break;
-          }
-        } catch {
-          // daemon unreachable — keep waiting
-        }
-      }
-
+      // LanSyncCard already polls progress — no duplicate polling here.
       recordPeerSync(peer);
       const label = force ? 'Force sync' : fullSync ? 'Full sync' : 'Sync';
       setLanSyncResult({ text: `${label} — OK`, success: true });
@@ -221,7 +226,7 @@ export function Settings() {
     } finally {
       setLanSyncing(false);
     }
-  }, [lanPeers, triggerRefresh]);
+  }, [triggerRefresh]);
 
   const handleManualPing = useCallback(async (ip: string, port: number): Promise<LanPeer | null> => {
     const result = await lanSyncApi.pingLanPeer(ip, port);
@@ -405,7 +410,7 @@ export function Settings() {
           settings={lanSettings}
           peers={lanPeers}
           syncing={lanSyncing}
-          lastSyncAt={loadLanSyncState().lastSyncAt}
+          lastSyncAt={lastSyncAt}
           lastSyncResult={lanSyncResult?.text ?? null}
           lastSyncSuccess={lanSyncResult?.success ?? false}
           latestMarker={latestMarker}
@@ -413,7 +418,6 @@ export function Settings() {
           description={t('settings.lan_sync.description')}
           enableTitle={t('settings.lan_sync.enable_title')}
           enableDescription={t('settings.lan_sync.enable_description')}
-          portLabel={t('settings.lan_sync.port_label')}
           autoSyncTitle={t('settings.lan_sync.auto_sync_title')}
           autoSyncDescription={t('settings.lan_sync.auto_sync_description')}
           syncIntervalLabel={t('settings.lan_sync.sync_interval')}
@@ -439,9 +443,6 @@ export function Settings() {
           onEnabledChange={(enabled) => {
             updateLanSettings((prev) => ({ ...prev, enabled }));
           }}
-          onPortChange={(serverPort) => {
-            updateLanSettings((prev) => ({ ...prev, serverPort }));
-          }}
           onAutoSyncChange={(autoSyncOnPeerFound) => {
             updateLanSettings((prev) => ({ ...prev, autoSyncOnPeerFound }));
           }}
@@ -462,21 +463,12 @@ export function Settings() {
           }}
           fullSyncButtonLabel={t('settings.lan_sync.full_sync')}
           forceSyncButtonLabel={t('settings.lan_sync.force_sync')}
-          syncPhaseLabels={{
-            sync_phase_idle: t('settings.lan_sync.sync_phase_idle'),
-            sync_phase_starting: t('settings.lan_sync.sync_phase_starting'),
-            sync_phase_negotiating: t('settings.lan_sync.sync_phase_negotiating'),
-            sync_phase_negotiated: t('settings.lan_sync.sync_phase_negotiated'),
-            sync_phase_freezing: t('settings.lan_sync.sync_phase_freezing'),
-            sync_phase_downloading: t('settings.lan_sync.sync_phase_downloading'),
-            sync_phase_received: t('settings.lan_sync.sync_phase_received'),
-            sync_phase_backup: t('settings.lan_sync.sync_phase_backup'),
-            sync_phase_merging: t('settings.lan_sync.sync_phase_merging'),
-            sync_phase_verifying: t('settings.lan_sync.sync_phase_verifying'),
-            sync_phase_uploading: t('settings.lan_sync.sync_phase_uploading'),
-            sync_phase_slave_downloading: t('settings.lan_sync.sync_phase_slave_downloading'),
-            sync_phase_completed: t('settings.lan_sync.sync_phase_completed'),
-          }}
+          slaveInfoText={t('settings.lan_sync.slave_info')}
+          showLogLabel={t('settings.lan_sync.show_log')}
+          hideLogLabel={t('settings.lan_sync.hide_log')}
+          noLogEntriesText={t('settings.lan_sync.no_log_entries')}
+          forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
+          syncPhaseLabels={syncPhaseLabels}
         />
 
         <OnlineSyncCard

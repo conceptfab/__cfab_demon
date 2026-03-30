@@ -43,7 +43,6 @@ interface LanSyncCardProps {
   description: string;
   enableTitle: string;
   enableDescription: string;
-  portLabel: string;
   autoSyncTitle: string;
   autoSyncDescription: string;
   syncIntervalLabel: string;
@@ -68,8 +67,12 @@ interface LanSyncCardProps {
   myIp: string;
   labelClassName: string;
   syncPhaseLabels?: Record<string, string>;
+  slaveInfoText?: string;
+  showLogLabel?: string;
+  hideLogLabel?: string;
+  noLogEntriesText?: string;
+  forceMergeTooltip?: string;
   onEnabledChange: (enabled: boolean) => void;
-  onPortChange: (port: number) => void;
   onAutoSyncChange: (enabled: boolean) => void;
   onSyncIntervalChange: (hours: number) => void;
   onForcedRoleChange: (role: string) => void;
@@ -91,7 +94,6 @@ export function LanSyncCard({
   description,
   enableTitle,
   enableDescription,
-  portLabel,
   autoSyncTitle,
   autoSyncDescription,
   syncIntervalLabel,
@@ -116,8 +118,12 @@ export function LanSyncCard({
   myIp,
   labelClassName,
   syncPhaseLabels,
+  slaveInfoText,
+  showLogLabel,
+  hideLogLabel,
+  noLogEntriesText,
+  forceMergeTooltip,
   onEnabledChange,
-  onPortChange,
   onAutoSyncChange,
   onSyncIntervalChange,
   onForcedRoleChange,
@@ -294,25 +300,6 @@ export function LanSyncCard({
           />
         </label>
 
-        <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{portLabel}</p>
-          </div>
-          <input
-            type="number"
-            min={1024}
-            max={65535}
-            className="h-8 w-24 rounded-md border border-input bg-background px-2 text-right font-mono text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            value={settings.serverPort}
-            onChange={(e) => {
-              const val = Number.parseInt(e.target.value, 10);
-              if (Number.isFinite(val) && val >= 1024 && val <= 65535) {
-                onPortChange(val);
-              }
-            }}
-          />
-        </div>
-
         <label
           htmlFor="lanAutoSync"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
@@ -427,7 +414,7 @@ export function LanSyncCard({
 
           {isSlave && (
             <p className="text-xs text-muted-foreground italic">
-              To urządzenie jest w trybie slave — synchronizacja jest inicjowana przez mastera.
+              {slaveInfoText ?? 'This device is in slave mode — synchronization is initiated by the master.'}
             </p>
           )}
 
@@ -500,7 +487,7 @@ export function LanSyncCard({
                             className="h-7 px-2 text-xs text-amber-400 hover:text-amber-300"
                             disabled={isBusy || !peer.dashboard_running}
                             onClick={() => onForceSyncWithPeer(peer)}
-                            title="Force merge — ignores hash comparison"
+                            title={forceMergeTooltip ?? 'Force merge — ignores hash comparison'}
                           >
                             <Zap className="h-3 w-3 mr-1" />
                             {forceSyncButtonLabel ?? 'Force'}
@@ -543,7 +530,7 @@ export function LanSyncCard({
             onClick={() => setShowLog((v) => !v)}
           >
             <FileText className="h-3 w-3 mr-1" />
-            {showLog ? 'Hide Log' : 'Show Log'}
+            {showLog ? (hideLogLabel ?? 'Hide Log') : (showLogLabel ?? 'Show Log')}
           </Button>
         </div>
 
@@ -552,7 +539,7 @@ export function LanSyncCard({
             ref={logRef}
             className="mt-2 max-h-48 overflow-auto rounded-md border border-border/50 bg-black/30 p-2 text-[11px] font-mono text-muted-foreground whitespace-pre-wrap"
           >
-            {syncLog || '(no log entries yet)'}
+            {syncLog || (noLogEntriesText ?? '(no log entries yet)')}
           </pre>
         )}
       </CardContent>

@@ -4,6 +4,7 @@
 // This server runs even when the dashboard is closed.
 
 use crate::config;
+use crate::lan_common;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -398,15 +399,7 @@ fn json_error(msg: &str) -> String {
 // ── DB helpers ──
 
 fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
-    let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
-    if !db_path.exists() {
-        return Err("Dashboard DB not found".to_string());
-    }
-    rusqlite::Connection::open_with_flags(
-        &db_path,
-        rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|e| format!("Failed to open dashboard DB: {}", e))
+    lan_common::open_dashboard_db()
 }
 
 fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
@@ -414,33 +407,7 @@ fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
 }
 
 fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    use std::hash::{Hash, Hasher};
-    let sql = match table {
-        "projects" => {
-            "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-             FROM (SELECT name, updated_at FROM projects ORDER BY name)"
-        }
-        "applications" => {
-            "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
-             FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)"
-        }
-        "sessions" => {
-            "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
-                   FROM sessions s JOIN applications a ON s.app_id = a.id \
-                   ORDER BY a.executable_name, s.start_time)"
-        }
-        "manual_sessions" => {
-            "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)"
-        }
-        _ => return String::new(),
-    };
-    let concat: String = conn.query_row(sql, [], |row| row.get(0))
-        .unwrap_or_else(|_| String::new());
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    concat.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    lan_common::compute_table_hash(conn, table)
 }
 
 fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
@@ -453,22 +420,11 @@ fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
 }
 
 fn get_device_id() -> String {
-    let dir = match config::config_dir() {
-        Ok(d) => d,
-        Err(_) => return get_machine_name(),
-    };
-    let path = dir.join("device_id.txt");
-    if let Ok(id) = std::fs::read_to_string(&path) {
-        let trimmed = id.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
-        }
-    }
-    get_machine_name()
+    lan_common::get_device_id()
 }
 
 fn get_machine_name() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
+    lan_common::get_machine_name()
 }
 
 fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
@@ -480,17 +436,8 @@ fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
     .ok()
 }
 
-/// Write timestamped line to lan_sync.log (visible in dashboard UI).
 fn sync_log(msg: &str) {
-    log::info!("{}", msg);
-    if let Ok(dir) = config::config_dir() {
-        let path = dir.join("lan_sync.log");
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let _ = writeln!(f, "[{}] {}", ts, msg);
-        }
-    }
+    lan_common::sync_log(msg);
 }
 
 // ── Endpoint handlers ──
@@ -757,7 +704,7 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
 }
 
 /// Public wrapper for the orchestrator to call.
-pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str, _device_id: &str) -> Result<String, String> {
+pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str) -> Result<String, String> {
     build_delta_for_pull(conn, since)
 }
 
@@ -772,28 +719,28 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, updated_at FROM applications ORDER BY executable_name")?;
 
-    // Fetch sessions since timestamp
-    let sessions = fetch_all_rows(conn, &format!(
+    // Fetch sessions since timestamp (parameterized — no SQL injection)
+    let sessions = fetch_all_rows_params(conn,
         "SELECT s.id, s.app_id, s.project_id, s.start_time, s.end_time, s.duration_seconds, \
          s.date, s.rate_multiplier, s.comment, s.is_hidden, s.updated_at \
-         FROM sessions s WHERE s.updated_at >= '{}' ORDER BY s.start_time",
-        since_ref
-    ))?;
+         FROM sessions s WHERE s.updated_at >= ?1 ORDER BY s.start_time",
+        &[&since_ref as &dyn rusqlite::types::ToSql],
+    )?;
 
-    // Fetch manual_sessions since timestamp
-    let manual = fetch_all_rows(conn, &format!(
+    // Fetch manual_sessions since timestamp (parameterized)
+    let manual = fetch_all_rows_params(conn,
         "SELECT id, title, session_type, project_id, app_id, start_time, end_time, \
          duration_seconds, date, created_at, updated_at \
-         FROM manual_sessions WHERE updated_at >= '{}' ORDER BY start_time",
-        since_ref
-    ))?;
+         FROM manual_sessions WHERE updated_at >= ?1 ORDER BY start_time",
+        &[&since_ref as &dyn rusqlite::types::ToSql],
+    )?;
 
-    // Fetch tombstones since timestamp
-    let tombstones = fetch_all_rows(conn, &format!(
+    // Fetch tombstones since timestamp (parameterized)
+    let tombstones = fetch_all_rows_params(conn,
         "SELECT id, table_name, record_id, record_uuid, deleted_at, sync_key \
-         FROM tombstones WHERE deleted_at >= '{}' ORDER BY deleted_at",
-        since_ref
-    ))?;
+         FROM tombstones WHERE deleted_at >= ?1 ORDER BY deleted_at",
+        &[&since_ref as &dyn rusqlite::types::ToSql],
+    )?;
 
     let table_hashes = build_table_hashes(conn);
 
@@ -814,6 +761,14 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
 }
 
 fn fetch_all_rows(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<serde_json::Value>, String> {
+    fetch_all_rows_params(conn, sql, &[])
+}
+
+fn fetch_all_rows_params(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    params: &[&dyn rusqlite::types::ToSql],
+) -> Result<Vec<serde_json::Value>, String> {
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
     let col_count = stmt.column_count();
     let col_names: Vec<String> = (0..col_count)
@@ -821,7 +776,7 @@ fn fetch_all_rows(conn: &rusqlite::Connection, sql: &str) -> Result<Vec<serde_js
         .collect();
 
     let rows = stmt
-        .query_map([], |row| {
+        .query_map(params, |row| {
             let mut map = serde_json::Map::new();
             for (i, name) in col_names.iter().enumerate() {
                 let val = match row.get_ref(i) {
