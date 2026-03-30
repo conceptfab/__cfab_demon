@@ -24,11 +24,14 @@ pub struct Project {
     pub name: String,
     pub color: String,
     pub hourly_rate: Option<f64>,
+    #[serde(default)]
     pub created_at: String,
     pub excluded_at: Option<String>,
     pub frozen_at: Option<String>,
     pub assigned_folder_path: Option<String>,
+    #[serde(default)]
     pub is_imported: i64,
+    #[serde(default)]
     pub updated_at: String,
 }
 
@@ -362,14 +365,18 @@ pub struct TodayFileSignature {
 pub struct ManualSession {
     pub id: i64,
     pub title: String,
+    #[serde(default)]
     pub session_type: String,
     pub project_id: i64,
     pub app_id: Option<i64>,
     pub start_time: String,
     pub end_time: String,
     pub duration_seconds: i64,
+    #[serde(default)]
     pub date: String,
+    #[serde(default)]
     pub created_at: String,
+    #[serde(default)]
     pub updated_at: String,
 }
 
@@ -439,6 +446,8 @@ pub struct ExportData {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Tombstone {
+    #[serde(default)]
+    pub id: Option<i64>,
     pub table_name: String,
     pub record_id: Option<i64>,
     pub record_uuid: Option<String>,
@@ -450,8 +459,10 @@ pub struct Tombstone {
 pub struct ApplicationRow {
     pub id: i64,
     pub executable_name: String,
+    #[serde(default)]
     pub display_name: String,
     pub project_id: Option<i64>,
+    #[serde(default)]
     pub is_imported: i64,
     #[serde(default)]
     pub updated_at: Option<String>,

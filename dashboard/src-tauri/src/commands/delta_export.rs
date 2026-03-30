@@ -3,30 +3,45 @@ use super::types::{ApplicationRow, ManualSession, Project, SessionRow, Tombstone
 use crate::db;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct TableHashes {
+    #[serde(default)]
     pub projects: String,
+    #[serde(default)]
     pub applications: String,
+    #[serde(default)]
     pub sessions: String,
+    #[serde(default)]
     pub manual_sessions: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DeltaData {
+    #[serde(default)]
     pub projects: Vec<Project>,
+    #[serde(default)]
     pub applications: Vec<ApplicationRow>,
+    #[serde(default)]
     pub sessions: Vec<SessionRow>,
+    #[serde(default)]
     pub manual_sessions: Vec<ManualSession>,
+    #[serde(default)]
     pub tombstones: Vec<Tombstone>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DeltaArchive {
+    #[serde(default)]
     pub version: String,
+    #[serde(default)]
     pub exported_at: String,
+    #[serde(default, alias = "device_id")]
     pub machine_id: String,
+    #[serde(default)]
     pub since: String,
+    #[serde(default)]
     pub is_full: bool,
+    #[serde(default)]
     pub table_hashes: TableHashes,
     pub data: DeltaData,
 }
@@ -160,6 +175,7 @@ pub fn build_delta_archive(
     let tombstones: Vec<Tombstone> = stmt
         .query_map([since.as_str()], |row| {
             Ok(Tombstone {
+                id: None,
                 table_name: row.get(0)?,
                 record_id: row.get(1)?,
                 record_uuid: row.get(2)?,

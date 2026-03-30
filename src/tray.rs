@@ -15,7 +15,7 @@ use crate::win_process_snapshot::{collect_process_entries, no_console};
 use crate::APP_NAME;
 
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
-const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Zmienia tekst menu item przez WinAPI (NWG nie ma set_text na MenuItem).
 fn set_menu_item_text(item: &nwg::MenuItem, text: &str) {
@@ -169,7 +169,12 @@ struct TrayState {
 impl TrayState {
     fn is_syncing(&self) -> bool {
         self.sync_state.as_ref().map_or(false, |s| {
-            s.sync_in_progress.load(Ordering::Relaxed)
+            if s.sync_in_progress.load(Ordering::Relaxed) {
+                return true;
+            }
+            // Also check progress phase (covers the "completed" window)
+            let p = s.get_progress();
+            p.phase != "idle" && p.step > 0
         })
     }
 
@@ -369,7 +374,7 @@ pub fn run(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<crate::lan_serve
     try_build!(
         nwg::AnimationTimer::builder()
             .parent(&window)
-            .interval(Duration::from_secs(5))
+            .interval(Duration::from_secs(1))
             .active(true),
         &mut tip_refresh_timer,
         "tray tip refresh timer"

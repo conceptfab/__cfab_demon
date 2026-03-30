@@ -2,11 +2,24 @@
 // Reads lan_peers.json (written by demon discovery), runs sync with a peer via HTTP.
 
 use super::delta_export::{DeltaArchive, TableHashes};
-use super::helpers::{build_table_hashes, run_app_blocking, run_db_blocking, timeflow_data_dir};
+use super::helpers::{build_table_hashes, timeflow_data_dir};
 use super::types::Project;
 use crate::db;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
+
+/// Write a line to lan_sync.log in the TimeFlow data dir (visible to user).
+fn sync_log(msg: &str) {
+    log::info!("{}", msg);
+    if let Ok(dir) = timeflow_data_dir() {
+        let path = dir.join("lan_sync.log");
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "[{}] {}", ts, msg);
+        }
+    }
+}
 
 // ── Types ──
 
@@ -45,12 +58,14 @@ pub struct LanImportSummary {
     pub tombstones_applied: usize,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug)]
 struct LanStatusRequest {
     device_id: String,
     table_hashes: TableHashes,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug)]
 struct LanStatusResponse {
     needs_push: bool,
@@ -58,6 +73,7 @@ struct LanStatusResponse {
     their_hashes: TableHashes,
 }
 
+#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug)]
 struct LanPullRequest {
     device_id: String,
@@ -79,6 +95,8 @@ pub struct SyncProgress {
     pub bytes_transferred: u64,
     pub bytes_total: u64,
     pub started_at: u64,
+    #[serde(default)]
+    pub role: String,
 }
 
 // ── Commands ──
@@ -92,6 +110,94 @@ pub async fn get_lan_peers() -> Result<Vec<LanPeer>, String> {
     let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let file: LanPeersFile = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     Ok(file.peers)
+}
+
+/// Insert or update a peer in lan_peers.json (used after manual ping).
+#[tauri::command]
+pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), String> {
+    let path = timeflow_data_dir()?.join("lan_peers.json");
+    let mut file = if path.exists() {
+        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        serde_json::from_str::<LanPeersFile>(&content).unwrap_or(LanPeersFile {
+            updated_at: String::new(),
+            peers: Vec::new(),
+        })
+    } else {
+        LanPeersFile {
+            updated_at: String::new(),
+            peers: Vec::new(),
+        }
+    };
+    file.updated_at = chrono::Utc::now().to_rfc3339();
+    if let Some(existing) = file.peers.iter_mut().find(|p| p.device_id == peer.device_id) {
+        *existing = peer;
+    } else {
+        file.peers.push(peer);
+    }
+    let json = serde_json::to_string_pretty(&file).map_err(|e| e.to_string())?;
+    std::fs::write(&path, json).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Read the last N lines from lan_sync.log.
+#[tauri::command]
+pub fn get_lan_sync_log(lines: Option<usize>) -> Result<String, String> {
+    let path = timeflow_data_dir()?.join("lan_sync.log");
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let max = lines.unwrap_or(50);
+    let all: Vec<&str> = content.lines().collect();
+    let start = if all.len() > max { all.len() - max } else { 0 };
+    Ok(all[start..].join("\n"))
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PingLanPeerResult {
+    pub device_id: String,
+    pub machine_name: String,
+    pub ip: String,
+    pub dashboard_port: u16,
+    pub role: String,
+    pub version: String,
+}
+
+#[tauri::command]
+pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = format!("http://{}:{}/lan/ping", ip, port);
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Cannot reach {}:{} — {}", ip, port, e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Peer responded with status {}", resp.status()));
+    }
+
+    #[derive(Deserialize)]
+    struct PingResp {
+        device_id: String,
+        machine_name: String,
+        role: String,
+        version: String,
+    }
+    let ping: PingResp = resp.json().await.map_err(|e| format!("Invalid response: {}", e))?;
+
+    Ok(PingLanPeerResult {
+        device_id: ping.device_id,
+        machine_name: ping.machine_name,
+        ip,
+        dashboard_port: port,
+        role: ping.role,
+        version: ping.version,
+    })
 }
 
 #[tauri::command]
@@ -119,129 +225,92 @@ pub fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
 
 #[tauri::command]
 pub async fn run_lan_sync(
-    app: AppHandle,
+    _app: AppHandle,
     peer_ip: String,
     peer_port: u16,
-    since: String,
+    _since: String,
+    force: Option<bool>,
 ) -> Result<LanSyncResult, String> {
-    log::info!("LAN sync: starting with peer {}:{} (since={})", peer_ip, peer_port, since);
-    let base_url = format!("http://{}:{}", peer_ip, peer_port);
-    let client = build_http_client();
+    let force = force.unwrap_or(false);
+    sync_log(&format!("LAN sync: delegating to daemon for peer {}:{}{}", peer_ip, peer_port, if force { " [FORCE]" } else { "" }));
 
-    // 1. Ping peer
-    let ping_url = format!("{}/lan/ping", base_url);
-    let ping_resp = client
-        .get(&ping_url)
-        .send()
-        .map_err(|e| {
-            log::warn!("LAN sync: ping failed for {}:{}: {}", peer_ip, peer_port, e);
-            format!("Ping failed: {}", e)
-        })?;
-    if !ping_resp.status().is_success() {
-        return Err(format!("Ping failed with status {}", ping_resp.status()));
-    }
-
-    // 2. Get local hashes and send status request
-    let local_hashes = run_app_blocking(app.clone(), |app| {
-        let conn = db::get_connection(&app)?;
-        Ok(build_table_hashes(&conn))
+    // 1. Ping peer first to get device_id and verify version
+    let ip_c = peer_ip.clone();
+    let port_c = peer_port;
+    let ping_result = tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+        let url = format!("http://{}:{}/lan/ping", ip_c, port_c);
+        let resp = client.get(&url).send().map_err(|e| format!("Peer unreachable: {}", e))?;
+        let body = resp.text().map_err(|e| format!("Ping read failed: {}", e))?;
+        let ping: serde_json::Value = serde_json::from_str(&body)
+            .map_err(|e| format!("Ping parse failed: {}", e))?;
+        Ok::<serde_json::Value, String>(ping)
     })
-    .await?;
+    .await
+    .map_err(|e| format!("Ping task failed: {}", e))??;
 
-    let machine_id = super::helpers::get_machine_id();
-    let status_req = LanStatusRequest {
-        device_id: machine_id.clone(),
-        table_hashes: local_hashes.clone(),
-    };
+    let peer_version = ping_result.get("version").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let peer_device_id = ping_result.get("device_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let local_version = crate::VERSION.trim();
 
-    let status_url = format!("{}/lan/status", base_url);
-    let status_resp: LanStatusResponse = client
-        .post(&status_url)
-        .json(&status_req)
-        .send()
-        .map_err(|e| format!("Status request failed: {}", e))?
-        .json()
-        .map_err(|e| format!("Status response parse failed: {}", e))?;
+    sync_log(&format!(
+        "LAN sync: peer {} v{} (device={}), local v{}",
+        peer_ip, peer_version, peer_device_id, local_version
+    ));
 
-    log::info!(
-        "LAN sync: status response — needs_pull={}, needs_push={}",
-        status_resp.needs_pull, status_resp.needs_push
-    );
-
-    let mut pulled = false;
-    let mut pushed = false;
-    let mut import_summary = None;
-
-    // 3. Pull if needed (import peer's data first)
-    if status_resp.needs_pull {
-        let pull_req = LanPullRequest {
-            device_id: machine_id.clone(),
-            since: since.clone(),
-        };
-        let pull_url = format!("{}/lan/pull", base_url);
-        let peer_delta: DeltaArchive = client
-            .post(&pull_url)
-            .json(&pull_req)
-            .send()
-            .map_err(|e| format!("Pull failed: {}", e))?
-            .json()
-            .map_err(|e| format!("Pull response parse failed: {}", e))?;
-
-        let summary = run_db_blocking(app.clone(), move |conn| {
-            import_delta_into_db(conn, &peer_delta)
-        })
-        .await?;
-
-        log::info!(
-            "LAN sync: pull complete — projects={}, apps={}, sessions={}, manual={}",
-            summary.projects_merged, summary.apps_merged, summary.sessions_merged, summary.manual_sessions_merged
+    if peer_version != local_version {
+        let msg = format!(
+            "Version mismatch! Local: v{}, Peer: v{}. Update both machines first.",
+            local_version, peer_version
         );
-        import_summary = Some(summary);
-        pulled = true;
+        sync_log(&format!("LAN sync: ABORTED — {}", msg));
+        return Err(msg);
     }
 
-    // 4. Push if needed (send our data)
-    if status_resp.needs_push {
-        let since_clone = since.clone();
-        let (delta, _) = run_app_blocking(app.clone(), move |app| {
-            super::delta_export::build_delta_archive(app, since_clone)
-        })
-        .await?;
+    sync_log("LAN sync: versions match — triggering daemon sync...");
 
-        let push_url = format!("{}/lan/push", base_url);
-        let push_resp = client
-            .post(&push_url)
-            .json(&delta)
+    // 2. Tell local daemon to run the 13-step sync with the peer
+    let trigger_body = serde_json::json!({
+        "peer_ip": peer_ip,
+        "peer_port": peer_port,
+        "peer_device_id": peer_device_id,
+        "force": force,
+    });
+
+    let _trigger_result = tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+        let url = "http://127.0.0.1:47891/lan/trigger-sync";
+        let resp = client.post(url)
+            .json(&trigger_body)
             .send()
-            .map_err(|e| format!("Push failed: {}", e))?;
-        if !push_resp.status().is_success() {
-            return Err(format!("Push failed with status {}", push_resp.status()));
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
+        let status = resp.status();
+        let body = resp.text().map_err(|e| format!("Read response failed: {}", e))?;
+        if !status.is_success() {
+            return Err(format!("Daemon refused: {} — {}", status, body));
         }
-        log::info!("LAN sync: push complete");
-        pushed = true;
-    }
+        sync_log(&format!("LAN sync: daemon accepted — {}", body));
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("Trigger task failed: {}", e))??;
 
-    let action = match (pulled, pushed) {
-        (true, true) => "pull+push",
-        (true, false) => "pull",
-        (false, true) => "push",
-        (false, false) => "noop",
-    };
-
-    log::info!("LAN sync: done — action={}", action);
+    sync_log("LAN sync: sync delegated to daemon — check daemon logs for progress");
 
     Ok(LanSyncResult {
         ok: true,
-        action: action.to_string(),
-        pulled,
-        pushed,
-        import_summary,
+        action: "daemon_sync_started".to_string(),
+        pulled: false,
+        pushed: false,
+        import_summary: None,
         error: None,
     })
 }
 
 // ── Delta import (merge peer data into local DB) ──
+// Kept for potential fallback use; currently daemon handles sync directly.
 
+#[allow(dead_code)]
 pub(crate) fn import_delta_into_db(
     conn: &mut rusqlite::Connection,
     delta: &DeltaArchive,
@@ -592,6 +661,7 @@ pub(crate) fn import_delta_into_db(
 }
 
 /// Verify foreign key integrity after merge and clean up orphaned records.
+#[allow(dead_code)]
 fn verify_and_cleanup_after_merge(conn: &rusqlite::Connection) -> Result<(), String> {
     // Delete orphaned sessions (app_id not in applications)
     let orphaned_sessions = conn
@@ -631,6 +701,7 @@ fn verify_and_cleanup_after_merge(conn: &rusqlite::Connection) -> Result<(), Str
 
 /// Build a cache of LOWER(TRIM(name)) → local project id for all projects.
 /// Called once per import to avoid N+1 queries in resolve_project_id.
+#[allow(dead_code)]
 fn build_project_name_map(
     tx: &rusqlite::Transaction,
 ) -> Result<std::collections::HashMap<String, i64>, String> {
@@ -653,6 +724,7 @@ fn build_project_name_map(
 }
 
 /// Resolve remote project_id to local project_id using pre-built caches (O(1) lookups).
+#[allow(dead_code)]
 fn resolve_project_id_cached(
     remote_project_id: Option<i64>,
     remote_project_by_id: &std::collections::HashMap<i64, &Project>,
@@ -666,7 +738,7 @@ fn resolve_project_id_cached(
 
 fn build_http_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(120))
         .build()
         .unwrap_or_else(|_| reqwest::blocking::Client::new())
 }

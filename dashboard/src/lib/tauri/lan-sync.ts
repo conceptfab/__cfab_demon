@@ -11,11 +11,26 @@ import type { TableHashes } from '../online-sync-types';
 export const getLanPeers = () =>
   invoke<LanPeer[]>('get_lan_peers');
 
+export const getLocalIps = () =>
+  invoke<string[]>('get_local_ips');
+
+export interface PingLanPeerResult {
+  device_id: string;
+  machine_name: string;
+  ip: string;
+  dashboard_port: number;
+  role: string;
+  version: string;
+}
+
+export const pingLanPeer = (ip: string, port: number) =>
+  invoke<PingLanPeerResult>('ping_lan_peer', { ip, port });
+
 export const buildTableHashesOnly = () =>
   invoke<TableHashes>('build_table_hashes_only');
 
-export const runLanSync = (peerIp: string, peerPort: number, since: string) =>
-  invokeMutation<LanSyncResult>('run_lan_sync', { peerIp, peerPort, since });
+export const runLanSync = (peerIp: string, peerPort: number, since: string, force?: boolean) =>
+  invokeMutation<LanSyncResult>('run_lan_sync', { peerIp, peerPort, since, force: force ?? false });
 
 export const startLanServer = (port?: number) =>
   invoke<void>('start_lan_server', { port });
@@ -38,11 +53,21 @@ export const markersMatch = (remoteMarkerHash?: string | null) =>
 export const backupBeforeSync = () =>
   invoke<string>('backup_before_sync');
 
+export const upsertLanPeer = (peer: LanPeer) =>
+  invokeMutation<void>('upsert_lan_peer', { peer });
+
+export const getLanSyncLog = (lines?: number) =>
+  invoke<string>('get_lan_sync_log', { lines: lines ?? 30 });
+
 export const getLanSyncProgress = () =>
   invoke<SyncProgress>('get_lan_sync_progress');
 
 export const lanSyncApi = {
   getLanPeers,
+  getLocalIps,
+  pingLanPeer,
+  upsertLanPeer,
+  getLanSyncLog,
   buildTableHashesOnly,
   runLanSync,
   startLanServer,

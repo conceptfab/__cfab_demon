@@ -136,10 +136,11 @@ export function Sidebar() {
   const [lanSyncing, setLanSyncing] = useState(false);
   const [lanSyncStatus, setLanSyncStatus] = useState<'idle' | 'ok' | 'error'>('idle');
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
+  const [lanIsSlave, setLanIsSlave] = useState(false);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
 
   const handleLanSync = useCallback(async () => {
-    if (!lanPeer || lanSyncing) return;
+    if (!lanPeer || lanSyncing || lanIsSlave) return;
     setLanSyncing(true);
     setLanSyncStatus('idle');
     setLanSyncMessage(t('settings.lan_sync.syncing'));
@@ -155,33 +156,40 @@ export function Sidebar() {
 
       const state = loadLanSyncState();
       const since = state.lastSyncAt || '1970-01-01T00:00:00Z';
-      const result = await lanSyncApi.runLanSync(lanPeer.ip, lanPeer.dashboard_port, since);
+      await lanSyncApi.runLanSync(lanPeer.ip, lanPeer.dashboard_port, since);
+
+      // Poll daemon progress until completed (max 5 min)
+      const deadline = Date.now() + 300_000;
+      let lastPhase = '';
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          const p = await lanSyncApi.getLanSyncProgress();
+          if (p.phase !== lastPhase) {
+            lastPhase = p.phase;
+          }
+          if (p.phase === 'completed' || (p.phase === 'idle' && p.step === 0 && lastPhase !== '')) {
+            break;
+          }
+        } catch { /* daemon unreachable */ }
+      }
+
       saveLanSyncState({
         ...state,
         lastSyncAt: new Date().toISOString(),
         lastSyncPeerId: lanPeer.device_id,
         peers: [lanPeer],
       });
-      if (result.pulled || result.pushed) {
-        triggerRefresh('lan_sync_pull');
-      }
+      triggerRefresh('lan_sync_pull');
       setLanSyncStatus('ok');
-      const action = result.action === 'noop'
-        ? t('layout.status.lan_synced')
-        : result.action === 'pull+push'
-          ? t('layout.status.lan_pull_push')
-          : result.action === 'pull'
-            ? t('layout.status.lan_pulled')
-            : t('layout.status.lan_pushed');
-      setLanSyncMessage(action);
+      setLanSyncMessage(t('layout.status.lan_synced'));
       setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 8_000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('LAN sync failed:', msg);
       setLanSyncStatus('error');
-      if (msg.includes('Ping failed') || msg.includes('refused') || msg.includes('connection')) {
+      if (msg.includes('Ping failed') || msg.includes('refused') || msg.includes('connection') || msg.includes('unreachable')) {
         setLanSyncMessage(t('settings.lan_sync.error_peer_unreachable'));
-        // Peer is unreachable — remove from UI immediately
         setLanPeer(null);
       } else {
         setLanSyncMessage(msg.length > 60 ? msg.slice(0, 60) + '…' : msg);
@@ -190,7 +198,7 @@ export function Sidebar() {
     } finally {
       setLanSyncing(false);
     }
-  }, [lanPeer, lanSyncing, triggerRefresh, t]);
+  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t]);
 
   const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
   const openContextHelp = useCallback(() => {
@@ -213,6 +221,20 @@ export function Sidebar() {
         setLanPeer(online ?? null);
       } catch {
         setLanPeer(null);
+      }
+      // Detect slave role — disable sync button for slave
+      try {
+        const settings = loadLanSyncSettings();
+        if (settings.forcedRole === 'slave') {
+          setLanIsSlave(true);
+        } else if (settings.forcedRole === 'master') {
+          setLanIsSlave(false);
+        } else {
+          const p = await lanSyncApi.getLanSyncProgress();
+          setLanIsSlave(p.role === 'slave');
+        }
+      } catch {
+        // If settings or progress unavailable, default to not-slave
       }
     };
     void poll();
@@ -373,7 +395,7 @@ export function Sidebar() {
                       : 'text-muted-foreground/35'
             }
             pulse={lanSyncing}
-            onClick={lanPeer ? () => void handleLanSync() : undefined}
+            onClick={lanPeer && !lanIsSlave ? () => void handleLanSync() : undefined}
             title={
               lanPeer
                 ? t('layout.tooltips.lan_peer_ip', { name: lanPeer.machine_name, ip: lanPeer.ip })

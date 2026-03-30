@@ -27,11 +27,13 @@ export const persistLanSyncSettingsForDaemon = (
   syncIntervalHours: number,
   discoveryDurationMinutes: number,
   enabled: boolean,
+  forcedRole?: string,
 ) =>
   invoke<void>('persist_lan_sync_settings_for_daemon', {
     syncIntervalHours,
     discoveryDurationMinutes,
     enabled,
+    forcedRole: forcedRole || '',
   });
 
 export const settingsApi = {

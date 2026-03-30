@@ -98,6 +98,8 @@ pub struct SyncProgress {
     pub bytes_transferred: u64,
     pub bytes_total: u64,            // 0 = unknown
     pub started_at: u64,             // unix millis when this phase started
+    #[serde(default)]
+    pub role: String,                // "master" | "slave" | "undecided"
 }
 
 impl SyncProgress {
@@ -107,6 +109,7 @@ impl SyncProgress {
             phase: "idle".into(), direction: "idle".into(),
             bytes_transferred: 0, bytes_total: 0,
             started_at: 0,
+            role: "undecided".into(),
         }
     }
 }
@@ -179,14 +182,12 @@ impl LanSyncState {
         *guard = Some(Instant::now());
     }
 
-    /// Unfreeze the database.
+    /// Unfreeze the database (does NOT reset progress — call reset_progress() separately).
     pub fn unfreeze(&self) {
         self.db_frozen.store(false, Ordering::SeqCst);
         self.sync_in_progress.store(false, Ordering::SeqCst);
         let mut guard = self.frozen_at.lock().unwrap_or_else(|e| e.into_inner());
         *guard = None;
-        drop(guard);
-        self.reset_progress();
     }
 
     /// Check if frozen for too long and auto-unfreeze if needed.
@@ -200,6 +201,7 @@ impl LanSyncState {
                 drop(guard);
                 log::warn!("Auto-unfreezing database after {:?} timeout", AUTO_UNFREEZE_TIMEOUT);
                 self.unfreeze();
+                self.reset_progress();
                 self.set_role("undecided");
                 return true;
             }
@@ -267,8 +269,9 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
         match listener.accept() {
             Ok((stream, addr)) => {
                 let state = sync_state.clone();
+                let stop = stop_signal.clone();
                 thread::spawn(move || {
-                    if let Err(e) = handle_connection(stream, &state) {
+                    if let Err(e) = handle_connection(stream, state, stop) {
                         log::debug!("LAN server: connection error from {}: {}", addr, e);
                     }
                 });
@@ -290,7 +293,8 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
 
 fn handle_connection(
     mut stream: std::net::TcpStream,
-    state: &LanSyncState,
+    state: Arc<LanSyncState>,
+    stop_signal: Arc<AtomicBool>,
 ) -> Result<(), String> {
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
@@ -337,17 +341,18 @@ fn handle_connection(
 
     // Route
     let (status, response_body) = match (method, path) {
-        ("GET", "/lan/ping") => handle_ping(state),
-        ("GET", "/lan/sync-progress") => handle_sync_progress(state),
+        ("GET", "/lan/ping") => handle_ping(&state),
+        ("GET", "/lan/sync-progress") => handle_sync_progress(&state),
         ("POST", "/lan/status") => handle_status(&body),
-        ("POST", "/lan/negotiate") => handle_negotiate(state, &body),
-        ("POST", "/lan/freeze-ack") => handle_freeze_ack(state),
-        ("POST", "/lan/upload-db") => handle_upload_db(state, &body),
+        ("POST", "/lan/negotiate") => handle_negotiate(&state, &body),
+        ("POST", "/lan/freeze-ack") => handle_freeze_ack(&state),
+        ("POST", "/lan/upload-db") => handle_upload_db(&state, &body),
         ("POST", "/lan/upload-ack") => (200, json_ok()),
-        ("POST", "/lan/db-ready") => handle_db_ready(state),
+        ("POST", "/lan/db-ready") => handle_db_ready(&state),
         ("GET", "/lan/download-db") => handle_download_db(),
-        ("POST", "/lan/verify-ack") => handle_verify_ack(state),
-        ("POST", "/lan/unfreeze") => handle_unfreeze(state),
+        ("POST", "/lan/verify-ack") => handle_verify_ack(&state),
+        ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
+        ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body),
         // Legacy endpoints (backward compat with existing Tauri client)
         ("POST", "/lan/pull") => handle_pull(&body),
         ("POST", "/lan/push") => handle_push(&body),
@@ -372,6 +377,7 @@ fn status_text(code: u16) -> &'static str {
         200 => "OK",
         400 => "Bad Request",
         404 => "Not Found",
+        409 => "Conflict",
         500 => "Internal Server Error",
         _ => "Unknown",
     }
@@ -408,30 +414,33 @@ fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
 }
 
 fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
+    use std::hash::{Hash, Hasher};
     let sql = match table {
         "projects" => {
-            "SELECT COALESCE(hex(sha256(group_concat(name || '|' || updated_at, ';'))), '') \
+            "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
              FROM (SELECT name, updated_at FROM projects ORDER BY name)"
         }
         "applications" => {
-            "SELECT COALESCE(hex(sha256(group_concat(executable_name || '|' || updated_at, ';'))), '') \
+            "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
              FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)"
         }
         "sessions" => {
-            "SELECT COALESCE(hex(sha256(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'))), '') \
+            "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
              FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
                    FROM sessions s JOIN applications a ON s.app_id = a.id \
                    ORDER BY a.executable_name, s.start_time)"
         }
         "manual_sessions" => {
-            "SELECT COALESCE(hex(sha256(group_concat(title || '|' || start_time || '|' || updated_at, ';'))), '') \
+            "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
              FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)"
         }
         _ => return String::new(),
     };
-    conn.query_row(sql, [], |row| row.get(0))
-        .unwrap_or_else(|_| String::new())
-        .to_lowercase()
+    let concat: String = conn.query_row(sql, [], |row| row.get(0))
+        .unwrap_or_else(|_| String::new());
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    concat.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
@@ -471,10 +480,38 @@ fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
     .ok()
 }
 
+/// Write timestamped line to lan_sync.log (visible in dashboard UI).
+fn sync_log(msg: &str) {
+    log::info!("{}", msg);
+    if let Ok(dir) = config::config_dir() {
+        let path = dir.join("lan_sync.log");
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "[{}] {}", ts, msg);
+        }
+    }
+}
+
 // ── Endpoint handlers ──
 
 fn handle_sync_progress(state: &LanSyncState) -> (u16, String) {
-    let progress = state.get_progress();
+    let mut progress = state.get_progress();
+    progress.role = state.get_role();
+
+    // Auto-reset "completed" to idle after 5 seconds
+    if progress.phase == "completed" && progress.started_at > 0 {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        if now.saturating_sub(progress.started_at) > 5000 {
+            state.reset_progress();
+            progress = state.get_progress();
+            progress.role = state.get_role();
+        }
+    }
+
     let json = serde_json::to_string(&progress).unwrap_or_else(|_| r#"{"step":0}"#.to_string());
     (200, json)
 }
@@ -525,11 +562,6 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
-    log::info!(
-        "LAN server: /lan/negotiate from master={}, marker={:?}",
-        req.master_device_id,
-        req.master_marker_hash
-    );
 
     let local_marker = open_dashboard_db_readonly()
         .ok()
@@ -542,6 +574,8 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
 
     // Accept slave role when master negotiates
     state.set_role("slave");
+    state.set_progress(3, "negotiating", "local");
+    sync_log(&format!("[SLAVE] Master {} rozpoczyna sync — tryb: {}", req.master_device_id, mode));
 
     let resp = NegotiateResponse {
         ok: true,
@@ -553,7 +587,8 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
 
 fn handle_freeze_ack(state: &LanSyncState) -> (u16, String) {
     state.freeze();
-    log::info!("LAN server: database frozen for sync");
+    state.set_progress(5, "freezing", "local");
+    sync_log("[SLAVE] Baza zamrozona — oczekiwanie na dane...");
 
     let resp = FreezeAckResponse {
         ok: true,
@@ -567,7 +602,10 @@ fn handle_upload_db(state: &LanSyncState, body: &str) -> (u16, String) {
         return (400, json_error("Database not frozen — call /lan/freeze-ack first"));
     }
 
-    // Save received data to a temp file for the orchestrator to process
+    state.set_progress(9, "merging", "download");
+    let kb = body.len() as f64 / 1024.0;
+    sync_log(&format!("[SLAVE] Odebrano {:.1} KB danych od mastera", kb));
+
     let dir = match config::config_dir() {
         Ok(d) => d,
         Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
@@ -577,8 +615,6 @@ fn handle_upload_db(state: &LanSyncState, body: &str) -> (u16, String) {
         return (500, json_error(&format!("Failed to write incoming data: {}", e)));
     }
 
-    log::info!("LAN server: received {} bytes of sync data", body.len());
-
     let resp = UploadAckResponse {
         ok: true,
         bytes_received: body.len(),
@@ -587,6 +623,9 @@ fn handle_upload_db(state: &LanSyncState, body: &str) -> (u16, String) {
 }
 
 fn handle_db_ready(state: &LanSyncState) -> (u16, String) {
+    state.set_progress(11, "slave_downloading", "download");
+    sync_log("[SLAVE] Master zakonczyl scalanie — pobieram scalone dane...");
+
     let marker_hash = state
         .latest_marker_hash
         .lock()
@@ -603,27 +642,29 @@ fn handle_db_ready(state: &LanSyncState) -> (u16, String) {
 }
 
 fn handle_download_db() -> (u16, String) {
-    // Serve the merged database as JSON delta
     let dir = match config::config_dir() {
         Ok(d) => d,
         Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
     };
     let merged_path = dir.join("lan_sync_merged.json");
     match std::fs::read_to_string(&merged_path) {
-        Ok(data) => (200, data),
+        Ok(data) => {
+            let kb = data.len() as f64 / 1024.0;
+            sync_log(&format!("[SLAVE] Wysylam {:.1} KB scalonych danych do mastera", kb));
+            (200, data)
+        },
         Err(e) => (500, json_error(&format!("No merged data available: {}", e))),
     }
 }
 
 fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
-    log::info!("LAN server: slave verified merged database");
-    // Clean up temp files
+    state.set_progress(12, "verifying", "local");
+    sync_log("[SLAVE] Weryfikacja scalonych danych...");
     let dir = config::config_dir().ok();
     if let Some(d) = &dir {
         let _ = std::fs::remove_file(d.join("lan_sync_incoming.json"));
         let _ = std::fs::remove_file(d.join("lan_sync_merged.json"));
     }
-    // Don't fully unfreeze here — unfreeze happens in step 13 (/lan/unfreeze)
     state.sync_in_progress.store(false, Ordering::SeqCst);
     (200, json_ok())
 }
@@ -631,7 +672,9 @@ fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
 fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
     state.unfreeze();
     state.set_role("undecided");
-    log::info!("LAN server: database unfrozen, sync complete");
+    sync_log("[SLAVE] Baza odmrozona — synchronizacja zakonczona!");
+    // Set completed — UI will auto-dismiss after seeing this phase
+    state.set_progress(13, "completed", "local");
     (200, json_ok())
 }
 
@@ -639,6 +682,7 @@ fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
 
 fn handle_pull(body: &str) -> (u16, String) {
     #[derive(Deserialize)]
+    #[allow(dead_code)]
     struct PullRequest {
         device_id: String,
         since: String,
@@ -647,7 +691,7 @@ fn handle_pull(body: &str) -> (u16, String) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
-    log::debug!("LAN server: /lan/pull from device_id={}, since={}", req.device_id, req.since);
+    sync_log(&format!("[SLAVE] Master pobiera dane (since={})...", req.since));
 
     let conn = match open_dashboard_db_readonly() {
         Ok(c) => c,
@@ -655,8 +699,15 @@ fn handle_pull(body: &str) -> (u16, String) {
     };
 
     match build_delta_for_pull(&conn, &req.since) {
-        Ok(json) => (200, json),
-        Err(e) => (500, json_error(&e)),
+        Ok(json) => {
+            let kb = json.len() as f64 / 1024.0;
+            sync_log(&format!("[SLAVE] Wyslano {:.1} KB danych do mastera", kb));
+            (200, json)
+        },
+        Err(e) => {
+            sync_log(&format!("[SLAVE] BLAD przygotowania danych: {}", e));
+            (500, json_error(&e))
+        },
     }
 }
 
@@ -671,6 +722,38 @@ fn handle_push(body: &str) -> (u16, String) {
         Ok(summary) => (200, summary),
         Err(e) => (500, json_error(&e)),
     }
+}
+
+fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>, body: &str) -> (u16, String) {
+    #[derive(Deserialize)]
+    struct TriggerReq {
+        peer_ip: String,
+        peer_port: u16,
+        peer_device_id: String,
+        #[serde(default)]
+        force: bool,
+    }
+    let req: TriggerReq = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
+    };
+
+    if state.sync_in_progress.load(Ordering::Relaxed) {
+        return (409, json_error("Sync already in progress"));
+    }
+
+    log::info!("LAN trigger-sync: dashboard requested sync with {}:{}{}", req.peer_ip, req.peer_port, if req.force { " [FORCE]" } else { "" });
+
+    let peer = crate::lan_sync_orchestrator::PeerTarget {
+        ip: req.peer_ip,
+        port: req.peer_port,
+        device_id: req.peer_device_id,
+    };
+
+    state.set_role("master");
+    crate::lan_sync_orchestrator::run_sync_as_master_with_options(peer, state.clone(), stop_signal.clone(), req.force);
+
+    (200, r#"{"ok":true,"message":"sync started"}"#.to_string())
 }
 
 /// Public wrapper for the orchestrator to call.

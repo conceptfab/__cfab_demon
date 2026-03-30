@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-dashboard"
-version = "0.1.547"
+version = "0.1.553"
 description = "TimeFlow Dashboard"
 authors = ["you"]
 license = ""
@@ -27,7 +27,7 @@ tauri-plugin-dialog = "2"
 
 tauri-plugin-fs = "2"
 rusqlite = { version = "0.31", features = ["bundled"] }
-tokio = { version = "1", features = ["time"] }
+tokio = { version = "1", features = ["time", "rt"] }
 # Required by BugHunter: direct SMTP transport with attachments and no extra HTTP backend.
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder", "hostname"] }
 rfd = "0.14"

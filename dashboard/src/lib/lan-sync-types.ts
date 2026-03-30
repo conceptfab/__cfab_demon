@@ -4,6 +4,7 @@ export interface LanSyncSettings {
   autoSyncOnPeerFound: boolean;
   syncIntervalHours: number;        // 0 = manual only, 4/8/12/24/48
   discoveryDurationMinutes: number;  // how long to search for peers
+  forcedRole: string;               // "" or "auto" = election, "master" / "slave" = forced
 }
 
 export interface LanPeer {
@@ -62,6 +63,7 @@ export interface SyncProgress {
   bytes_transferred: number;
   bytes_total: number;
   started_at: number;
+  role: string;  // "master" | "slave" | "undecided"
 }
 
 export const LAN_SYNC_SETTINGS_KEY = 'timeflow.settings.lan-sync';
@@ -74,4 +76,5 @@ export const DEFAULT_LAN_SYNC_SETTINGS: LanSyncSettings = {
   autoSyncOnPeerFound: true,
   syncIntervalHours: 12,
   discoveryDurationMinutes: 5,
+  forcedRole: '',
 };

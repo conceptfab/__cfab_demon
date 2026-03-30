@@ -40,6 +40,9 @@ struct BeaconPacket {
     sync_marker_hash: Option<String>,
     #[serde(default)]
     sync_ready: bool,
+    /// Seconds since this daemon started (used for master election — longer uptime wins)
+    #[serde(default)]
+    uptime_secs: u64,
 }
 
 fn default_role() -> String {
@@ -76,6 +79,8 @@ pub struct PeerInfo {
     pub dashboard_running: bool,
     #[serde(default = "default_role")]
     pub role: String,
+    #[serde(default)]
+    pub uptime_secs: u64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -185,6 +190,7 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     let device_id = get_or_create_device_id();
     let machine_name = get_machine_name();
     let version_str = crate::VERSION.trim().to_string();
+    let started_at = Instant::now();
 
     log::info!(
         "LAN discovery: device_id={}, machine={}, binding UDP port {}",
@@ -211,25 +217,152 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     }
 
     let mut peers: HashMap<String, PeerInfo> = HashMap::new();
-    let mut last_beacon = Instant::now() - BEACON_INTERVAL; // send immediately
     let mut peers_dirty = false;
     let mut last_peers_write = Instant::now();
     let mut last_status_log = Instant::now();
-    // Role assignment: after 2 beacon cycles (60s) without peers → become master
-    let mut role_decision_at: Option<Instant> = Some(Instant::now() + Duration::from_secs(60));
 
-    // Send initial discover packet
-    log::info!("LAN discovery: sending initial discover broadcast");
-    send_discover(&socket, &device_id);
+    // ── Role assignment: forced or elected ──
+    let lan_settings = config::load_lan_sync_settings();
+    let forced = match lan_settings.forced_role.as_str() {
+        "master" | "slave" => {
+            if let Some(ref state) = sync_state {
+                state.set_role(&lan_settings.forced_role);
+                log::info!("LAN discovery: role FORCED to {} by settings", lan_settings.forced_role);
+                log::logger().flush();
+            }
+            true
+        }
+        _ => false,
+    };
+
+    // Startup election: discover existing master in ≤5s (skipped if forced)
+    if !forced {
+        log::info!("LAN discovery: starting election — searching for existing master...");
+        log::logger().flush();
+        let election_start = Instant::now();
+        let election_timeout = Duration::from_secs(5);
+        let burst_interval = Duration::from_secs(1);
+        let mut bursts_sent = 0u32;
+        let mut found_master = false;
+        let mut election_buf = [0u8; 2048];
+
+        while election_start.elapsed() < election_timeout {
+            if stop_signal.load(Ordering::Relaxed) {
+                return;
+            }
+            // Send discover bursts at 0s, 1s, 2s
+            if bursts_sent < 3 && election_start.elapsed() >= burst_interval.saturating_mul(bursts_sent) {
+                send_discover(&socket, &device_id);
+                // Also send beacon as undecided so existing master sees us
+                send_beacon(&socket, &device_id, &machine_name, is_dashboard_running(),
+                    &version_str, "undecided", 0);
+                bursts_sent += 1;
+                log::info!("LAN discovery: election burst {}/3 sent", bursts_sent);
+            }
+            // Listen for responses
+            match socket.recv_from(&mut election_buf) {
+                Ok((len, src_addr)) => {
+                    if let Ok(text) = std::str::from_utf8(&election_buf[..len]) {
+                        if let Ok(InboundPacket::Beacon(beacon)) = serde_json::from_str::<InboundPacket>(text) {
+                            if beacon.device_id != device_id {
+                                let peer = PeerInfo {
+                                    device_id: beacon.device_id.clone(),
+                                    machine_name: beacon.machine_name,
+                                    ip: src_addr.ip().to_string(),
+                                    dashboard_port: beacon.dashboard_port,
+                                    last_seen: Utc::now().to_rfc3339(),
+                                    dashboard_running: beacon.dashboard_running,
+                                    role: beacon.role.clone(),
+                                    uptime_secs: beacon.uptime_secs,
+                                };
+                                peers.insert(beacon.device_id.clone(), peer);
+                                peers_dirty = true;
+
+                                if beacon.role == "master" {
+                                    found_master = true;
+                                    log::info!(
+                                        "LAN discovery: found existing MASTER {} at {} (uptime {}s) — becoming SLAVE",
+                                        beacon.device_id, src_addr.ip(), beacon.uptime_secs
+                                    );
+                                    if let Some(ref state) = sync_state {
+                                        state.set_role("slave");
+                                    }
+                                    break;
+                                } else {
+                                    log::info!(
+                                        "LAN discovery: found peer {} at {} (role={}, uptime {}s)",
+                                        beacon.device_id, src_addr.ip(), beacon.role, beacon.uptime_secs
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(_) => {}
+            }
+        }
+
+        if !found_master {
+            // No master in the network — elect one
+            if let Some(ref state) = sync_state {
+                let my_uptime = started_at.elapsed().as_secs();
+                // Check if any peer has been running longer than us
+                let older_peer = peers.values().any(|p| {
+                    p.uptime_secs > my_uptime
+                        || (p.uptime_secs == my_uptime && p.device_id.as_str() < device_id.as_str())
+                });
+
+                if peers.is_empty() {
+                    state.set_role("master");
+                    log::info!("LAN discovery: no peers found in {}s — becoming MASTER",
+                        election_start.elapsed().as_secs());
+                } else if older_peer {
+                    state.set_role("slave");
+                    log::info!("LAN discovery: found older peer(s) among {} — becoming SLAVE (my uptime {}s)",
+                        peers.len(), my_uptime);
+                } else {
+                    state.set_role("master");
+                    log::info!("LAN discovery: longest uptime ({}s) among {} peer(s) — becoming MASTER",
+                        my_uptime, peers.len());
+                }
+            }
+        }
+
+        if peers_dirty {
+            write_peers_file(&peers);
+            peers_dirty = false;
+        }
+
+        // Announce our role immediately after election
+        if let Some(ref state) = sync_state {
+            let role = state.get_role();
+            send_beacon(&socket, &device_id, &machine_name, is_dashboard_running(),
+                &version_str, &role, started_at.elapsed().as_secs());
+            log::info!("LAN discovery: election complete — role={}, peers={}", role, peers.len());
+            log::logger().flush();
+        }
+    } // end if !forced
+
+    // Announce role immediately (forced or elected)
+    if let Some(ref state) = sync_state {
+        let role = state.get_role();
+        send_beacon(&socket, &device_id, &machine_name, is_dashboard_running(),
+            &version_str, &role, started_at.elapsed().as_secs());
+    }
+
+    let mut last_beacon = Instant::now();
 
     let mut buf = [0u8; 2048];
     let mut sync_handle: Option<JoinHandle<()>> = None;
-    let mut last_sync_attempt = Instant::now() - Duration::from_secs(3600); // allow immediate first sync
-    let mut last_settings_reload = Instant::now() - Duration::from_secs(300);
+    let mut last_sync_attempt = Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or(Instant::now()); // allow immediate first sync
+    let mut last_settings_reload = Instant::now().checked_sub(Duration::from_secs(300)).unwrap_or(Instant::now());
     let mut lan_settings = config::load_lan_sync_settings();
     // Track when the next sync window should open
     let mut next_sync_window = Instant::now(); // first window starts immediately
     let mut discovery_active = true;
+    let mut role_is_forced = forced;
 
     loop {
         if stop_signal.load(Ordering::Relaxed) {
@@ -240,6 +373,23 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
         if last_settings_reload.elapsed() >= Duration::from_secs(60) {
             lan_settings = config::load_lan_sync_settings();
             last_settings_reload = Instant::now();
+
+            // Apply forced role changes from settings (user toggled in UI)
+            match lan_settings.forced_role.as_str() {
+                "master" | "slave" => {
+                    if let Some(ref state) = sync_state {
+                        let current = state.get_role();
+                        if current != lan_settings.forced_role {
+                            state.set_role(&lan_settings.forced_role);
+                            log::info!("LAN discovery: role changed to {} by settings", lan_settings.forced_role);
+                        }
+                    }
+                    role_is_forced = true;
+                }
+                _ => {
+                    role_is_forced = false;
+                }
+            }
 
             if !lan_settings.enabled {
                 if discovery_active {
@@ -322,24 +472,12 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                 dashboard_up,
                 &version_str,
                 &current_role,
+                started_at.elapsed().as_secs(),
             );
             last_beacon = Instant::now();
         }
 
-        // Role assignment: if undecided and no peers found after 60s → become master
-        if let Some(deadline) = role_decision_at {
-            if Instant::now() >= deadline {
-                if peers.is_empty() {
-                    if let Some(ref state) = sync_state {
-                        if state.get_role() == "undecided" {
-                            state.set_role("master");
-                            log::info!("LAN discovery: no peers found — assuming MASTER role");
-                        }
-                    }
-                }
-                role_decision_at = None;
-            }
-        }
+        // Role is decided during startup election — no delayed assignment needed
 
         // Periodic status log (every 60s) so user sees discovery is alive
         if last_status_log.elapsed() >= Duration::from_secs(60) {
@@ -368,6 +506,8 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                         &mut peers,
                         &mut peers_dirty,
                         &sync_state,
+                        started_at.elapsed().as_secs(),
+                        role_is_forced,
                     );
                 }
             }
@@ -422,6 +562,7 @@ fn send_beacon(
     dashboard_running: bool,
     version: &str,
     role: &str,
+    uptime_secs: u64,
 ) {
     let packet = BeaconPacket {
         packet_type: "timeflow_beacon".to_string(),
@@ -434,6 +575,7 @@ fn send_beacon(
         role: role.to_string(),
         sync_marker_hash: None,
         sync_ready: true,
+        uptime_secs,
     };
     if let Ok(json) = serde_json::to_string(&packet) {
         let target = format!("255.255.255.255:{}", DISCOVERY_PORT);
@@ -467,6 +609,8 @@ fn handle_packet(
     peers: &mut HashMap<String, PeerInfo>,
     dirty: &mut bool,
     sync_state: &Option<Arc<LanSyncState>>,
+    my_uptime_secs: u64,
+    role_is_forced: bool,
 ) {
     let packet: InboundPacket = match serde_json::from_str(text) {
         Ok(p) => p,
@@ -487,41 +631,59 @@ fn handle_packet(
                 last_seen: Utc::now().to_rfc3339(),
                 dashboard_running: beacon.dashboard_running,
                 role: beacon.role.clone(),
+                uptime_secs: beacon.uptime_secs,
             };
             peers.insert(beacon.device_id.clone(), peer);
             *dirty = true;
 
-            // Role assignment logic
-            if let Some(ref state) = sync_state {
+            // Role assignment logic (including master-master conflict resolution)
+            // Skipped when role is forced by user in settings.
+            if role_is_forced {
+                // Forced role — no automatic changes
+            } else if let Some(ref state) = sync_state {
                 let my_role = state.get_role();
-                if my_role == "undecided" {
-                    match beacon.role.as_str() {
-                        "master" => {
-                            // Peer is master → we become slave
+                let i_win_election = my_uptime_secs > beacon.uptime_secs
+                    || (my_uptime_secs == beacon.uptime_secs && my_device_id < beacon.device_id.as_str());
+
+                match (my_role.as_str(), beacon.role.as_str()) {
+                    ("undecided", "master") => {
+                        state.set_role("slave");
+                        log::info!(
+                            "LAN discovery: peer {} is MASTER (uptime {}s) — assuming SLAVE role",
+                            beacon.device_id, beacon.uptime_secs
+                        );
+                    }
+                    ("undecided", "undecided") | ("undecided", "slave") => {
+                        if i_win_election {
+                            state.set_role("master");
+                            log::info!(
+                                "LAN discovery: election with {} — assuming MASTER (my uptime {}s > peer {}s)",
+                                beacon.device_id, my_uptime_secs, beacon.uptime_secs
+                            );
+                        } else {
                             state.set_role("slave");
                             log::info!(
-                                "LAN discovery: peer {} is MASTER — assuming SLAVE role",
-                                beacon.device_id
+                                "LAN discovery: election with {} — assuming SLAVE (my uptime {}s <= peer {}s)",
+                                beacon.device_id, my_uptime_secs, beacon.uptime_secs
                             );
                         }
-                        "undecided" => {
-                            // Both undecided — lower device_id becomes master
-                            if my_device_id < beacon.device_id.as_str() {
-                                state.set_role("master");
-                                log::info!(
-                                    "LAN discovery: tie-break with {} — assuming MASTER role (lower device_id)",
-                                    beacon.device_id
-                                );
-                            } else {
-                                state.set_role("slave");
-                                log::info!(
-                                    "LAN discovery: tie-break with {} — assuming SLAVE role (higher device_id)",
-                                    beacon.device_id
-                                );
-                            }
-                        }
-                        _ => {}
                     }
+                    ("master", "master") => {
+                        // Conflict! Two masters — longer uptime keeps master
+                        if i_win_election {
+                            log::info!(
+                                "LAN discovery: MASTER-MASTER conflict with {} — keeping MASTER (my uptime {}s > peer {}s)",
+                                beacon.device_id, my_uptime_secs, beacon.uptime_secs
+                            );
+                        } else {
+                            state.set_role("slave");
+                            log::info!(
+                                "LAN discovery: MASTER-MASTER conflict with {} — yielding to SLAVE (my uptime {}s <= peer {}s)",
+                                beacon.device_id, my_uptime_secs, beacon.uptime_secs
+                            );
+                        }
+                    }
+                    _ => {}
                 }
             }
 
@@ -545,6 +707,7 @@ fn handle_packet(
                 is_dashboard_running(),
                 my_version,
                 &current_role,
+                my_uptime_secs,
             );
         }
     }

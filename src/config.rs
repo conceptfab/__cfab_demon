@@ -109,6 +109,9 @@ pub struct LanSyncSettings {
     pub discovery_duration_minutes: u32,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    /// Manual role override: "auto" (default) = election decides, "master" / "slave" = forced.
+    #[serde(default)]
+    pub forced_role: String,
 }
 
 fn default_sync_interval() -> u32 { 12 }
@@ -121,6 +124,7 @@ impl Default for LanSyncSettings {
             sync_interval_hours: default_sync_interval(),
             discovery_duration_minutes: default_discovery_duration(),
             enabled: default_enabled(),
+            forced_role: String::new(),
         }
     }
 }

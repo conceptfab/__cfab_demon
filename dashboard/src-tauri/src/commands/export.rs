@@ -275,6 +275,7 @@ fn build_export_archive(
             let t_rows = stmt
                 .query_map([&start], |row| {
                     Ok(crate::commands::types::Tombstone {
+                        id: None,
                         table_name: row.get(0)?,
                         record_id: row.get(1)?,
                         record_uuid: row.get(2)?,

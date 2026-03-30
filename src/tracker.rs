@@ -616,7 +616,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // Wait for next tick — either woken by foreground hook or timeout
         let elapsed_since_tick = last_tracking_tick.elapsed();
         if elapsed_since_tick < poll_interval {
-            let remain = poll_interval - elapsed_since_tick;
+            let remain = poll_interval.saturating_sub(elapsed_since_tick);
             if let Some(ref signal) = foreground_signal {
                 // Event-driven: wake immediately on foreground window change
                 if signal.wait_timeout(remain) {

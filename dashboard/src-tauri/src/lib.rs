@@ -9,13 +9,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .build(),
+            )?;
 
             // Initialize database (sync — rusqlite has no async IO)
             let app_handle = app.handle().clone();
@@ -188,6 +186,8 @@ pub fn run() {
             commands::get_lan_peers,
             commands::get_lan_sync_progress,
             commands::build_table_hashes_only,
+            commands::ping_lan_peer,
+            commands::get_local_ips,
             commands::run_lan_sync,
             commands::start_lan_server,
             commands::stop_lan_server,
@@ -195,7 +195,9 @@ pub fn run() {
             commands::insert_sync_marker,
             commands::get_latest_sync_marker,
             commands::markers_match,
-            commands::backup_before_sync
+            commands::backup_before_sync,
+            commands::upsert_lan_peer,
+            commands::get_lan_sync_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

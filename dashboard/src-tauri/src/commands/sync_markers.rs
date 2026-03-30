@@ -18,20 +18,18 @@ pub struct SyncMarker {
     pub full_sync: bool,
 }
 
-/// Generate a deterministic marker hash using SQLite's hex(sha256()).
+/// Generate a deterministic marker hash.
 pub(crate) fn generate_marker_hash(
-    conn: &rusqlite::Connection,
+    _conn: &rusqlite::Connection,
     tables_hash: &str,
     timestamp: &str,
     device_id: &str,
 ) -> Result<String, String> {
+    use std::hash::{Hash, Hasher};
     let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    conn.query_row(
-        "SELECT lower(hex(sha256(?1)))",
-        [&input],
-        |row| row.get::<_, String>(0),
-    )
-    .map_err(|e| format!("Failed to generate marker hash: {}", e))
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    input.hash(&mut hasher);
+    Ok(format!("{:016x}", hasher.finish()))
 }
 
 #[tauri::command]

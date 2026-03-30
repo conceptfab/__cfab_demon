@@ -12,6 +12,19 @@ use std::time::{Duration, Instant};
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Write timestamped line to lan_sync.log (visible in dashboard UI).
+fn sync_log(msg: &str) {
+    log::info!("{}", msg);
+    if let Ok(dir) = config::config_dir() {
+        let path = dir.join("lan_sync.log");
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+            let _ = writeln!(f, "[{}] {}", ts, msg);
+        }
+    }
+}
+
 // ── Sync types ──
 
 #[derive(Debug, Clone)]
@@ -161,34 +174,44 @@ pub fn run_sync_as_master(
     sync_state: Arc<LanSyncState>,
     stop_signal: Arc<AtomicBool>,
 ) -> JoinHandle<()> {
+    run_sync_as_master_with_options(peer, sync_state, stop_signal, false)
+}
+
+pub fn run_sync_as_master_with_options(
+    peer: PeerTarget,
+    sync_state: Arc<LanSyncState>,
+    stop_signal: Arc<AtomicBool>,
+    force: bool,
+) -> JoinHandle<()> {
     thread::spawn(move || {
-        log::info!("Sync orchestrator: starting as MASTER with peer {}:{}", peer.ip, peer.port);
-        let start = Instant::now();
+        sync_log(&format!("=== START SYNC z {}:{} {} ===",
+            peer.ip, peer.port, if force { "[FORCE]" } else { "" }));
+        sync_state.set_progress(1, "starting", "local");
+        let _start = Instant::now();
 
         let mut last_err = String::new();
         for attempt in 1..=MAX_RETRIES {
             if stop_signal.load(Ordering::Relaxed) {
+                sync_log("[!] Stop signal — przerywam sync");
                 break;
             }
-            match execute_master_sync(&peer, &sync_state, &stop_signal) {
+            if attempt > 1 {
+                sync_log(&format!("[!] Ponowna proba {}/{}", attempt, MAX_RETRIES));
+            }
+            match execute_master_sync(&peer, &sync_state, &stop_signal, force) {
                 Ok(()) => {
-                    log::info!(
-                        "Sync orchestrator: completed successfully in {:.1}s (attempt {})",
-                        start.elapsed().as_secs_f64(),
-                        attempt,
-                    );
                     last_err.clear();
                     break;
                 }
                 Err(e) => {
-                    log::error!("Sync orchestrator: attempt {}/{} failed — {}", attempt, MAX_RETRIES, e);
+                    sync_log(&format!("[!] Proba {}/{} nieudana: {}", attempt, MAX_RETRIES, e));
                     sync_state.unfreeze();
+                    sync_state.reset_progress();
                     last_err = e;
 
                     if attempt < MAX_RETRIES {
-                        // Exponential backoff: 5s, 15s, 45s
                         let backoff = Duration::from_secs(5 * 3u64.pow(attempt - 1));
-                        log::info!("Sync orchestrator: retrying in {:?}", backoff);
+                        sync_log(&format!("[!] Ponowienie za {:?}...", backoff));
                         thread::sleep(backoff);
                     }
                 }
@@ -196,10 +219,9 @@ pub fn run_sync_as_master(
         }
 
         if !last_err.is_empty() {
-            log::error!("Sync orchestrator: all {} attempts failed, last error: {}", MAX_RETRIES, last_err);
+            sync_log(&format!("=== SYNC NIEUDANY po {} probach: {} ===", MAX_RETRIES, last_err));
         }
 
-        // Reset role after sync
         sync_state.set_role("undecided");
     })
 }
@@ -208,13 +230,14 @@ fn execute_master_sync(
     peer: &PeerTarget,
     sync_state: &LanSyncState,
     stop_signal: &AtomicBool,
+    force: bool,
 ) -> Result<(), String> {
     let base_url = format!("http://{}:{}", peer.ip, peer.port);
     let sync_start = Instant::now();
 
-    // Step 3: Request database — negotiate with SLAVE
+    // Step 3: Negotiate with SLAVE
     sync_state.set_progress(3, "negotiating", "local");
-    log::info!("Sync orchestrator: step 3 — requesting database from slave");
+    sync_log(&format!("[3/13] Negocjacja z peerem {}:{} ...", peer.ip, peer.port));
     let device_id = get_device_id();
     let local_marker = get_local_marker_hash();
 
@@ -226,7 +249,7 @@ fn execute_master_sync(
     let negotiate_resp = http_post(
         &format!("{}/lan/negotiate", base_url),
         &negotiate_body.to_string(),
-    )?;
+    ).map_err(|e| { sync_log(&format!("[3/13] BLAD negocjacji: {}", e)); e })?;
 
     #[derive(Deserialize)]
     struct NegResp {
@@ -235,38 +258,46 @@ fn execute_master_sync(
         slave_marker_hash: Option<String>,
     }
     let neg: NegResp = serde_json::from_str(&negotiate_resp)
-        .map_err(|e| format!("Negotiate parse error: {}", e))?;
+        .map_err(|e| { sync_log(&format!("[3/13] BLAD parsowania: {}", e)); format!("Negotiate parse error: {}", e) })?;
 
     if !neg.ok {
+        sync_log("[3/13] Peer odrzucil negocjacje");
         return Err("Slave rejected negotiation".to_string());
     }
 
-    let transfer_mode = neg.mode.clone();
+    // Step 4: Mode established
+    let transfer_mode = if force {
+        sync_log("[4/13] FORCE MODE — wymuszam pelny transfer");
+        "full".to_string()
+    } else {
+        neg.mode.clone()
+    };
     sync_state.set_progress(4, "negotiated", "local");
-    log::info!("Sync orchestrator: step 4 — negotiated mode={}", transfer_mode);
+    sync_log(&format!("[4/13] Tryb: {} | marker local={:?} remote={:?}",
+        transfer_mode, local_marker, neg.slave_marker_hash));
 
-    // Check timeout
     if sync_start.elapsed() > SYNC_TIMEOUT || stop_signal.load(Ordering::Relaxed) {
+        sync_log("[!] Timeout lub stop signal");
         return Err("Sync timeout or stop signal".to_string());
     }
 
     // Step 5: Freeze both databases
     sync_state.set_progress(5, "freezing", "local");
-    log::info!("Sync orchestrator: step 5 — freezing databases");
+    sync_log("[5/13] Zamrazanie baz danych (master + slave)...");
     sync_state.freeze();
-
-    let freeze_resp = http_post(&format!("{}/lan/freeze-ack", base_url), "{}")?;
-    log::debug!("Sync orchestrator: slave freeze response: {}", freeze_resp);
+    http_post(&format!("{}/lan/freeze-ack", base_url), "{}")
+        .map_err(|e| { sync_log(&format!("[5/13] BLAD freeze slave: {}", e)); e })?;
+    sync_log("[5/13] Obie bazy zamrozone");
 
     // Step 6: Pull data from SLAVE
     sync_state.set_progress(6, "downloading_from_slave", "download");
-    log::info!("Sync orchestrator: step 6 — pulling data from slave");
     let since = match transfer_mode.as_str() {
         "delta" => neg.slave_marker_hash.as_deref()
             .and_then(|_| get_local_marker_created_at())
             .unwrap_or_else(|| "1970-01-01 00:00:00".to_string()),
         _ => "1970-01-01 00:00:00".to_string(),
     };
+    sync_log(&format!("[6/13] Pobieranie danych z peera (since={})...", since));
 
     let pull_body = serde_json::json!({
         "device_id": device_id,
@@ -279,48 +310,57 @@ fn execute_master_sync(
         |transferred, total| {
             sync_state.update_transfer_bytes(transferred, total);
         },
-    )?;
+    ).map_err(|e| { sync_log(&format!("[6/13] BLAD pobierania: {}", e)); e })?;
 
     sync_state.set_progress(7, "received_from_slave", "local");
-    log::info!("Sync orchestrator: step 7 — received {} bytes from slave", slave_data.len());
+    let slave_kb = slave_data.len() as f64 / 1024.0;
+    sync_log(&format!("[7/13] Odebrano {:.1} KB danych z peera", slave_kb));
 
     // Step 8: Backup
     sync_state.set_progress(8, "backing_up", "local");
-    log::info!("Sync orchestrator: step 8 — backing up database");
-    backup_database()?;
+    sync_log("[8/13] Tworzenie kopii zapasowej bazy...");
+    backup_database().map_err(|e| { sync_log(&format!("[8/13] BLAD backup: {}", e)); e })?;
+    sync_log("[8/13] Kopia zapasowa utworzona");
 
     // Step 9: Merge
     sync_state.set_progress(9, "merging", "local");
-    log::info!("Sync orchestrator: step 9 — merging slave data into master");
+    sync_log("[9/13] Scalanie danych peera z lokalna baza...");
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     std::fs::write(dir.join("lan_sync_incoming.json"), &slave_data)
         .map_err(|e| format!("Failed to write incoming data: {}", e))?;
 
-    // The actual merge is done via the dashboard DB
-    merge_incoming_data(&slave_data)?;
+    merge_incoming_data(&slave_data)
+        .map_err(|e| { sync_log(&format!("[9/13] BLAD scalania: {}", e)); e })?;
+    sync_log("[9/13] Scalanie zakonczone");
 
     // Step 10: Verify
     sync_state.set_progress(10, "verifying", "local");
-    log::info!("Sync orchestrator: step 10 — verifying merge integrity");
-    verify_merge_integrity()?;
+    sync_log("[10/13] Weryfikacja integralnosci bazy...");
+    verify_merge_integrity()
+        .map_err(|e| { sync_log(&format!("[10/13] BLAD weryfikacji: {}", e)); e })?;
+    sync_log("[10/13] Baza zweryfikowana — OK");
 
-    // Generate new marker
+    // Generate new sync marker
     let new_tables_hash = compute_tables_hash_string()?;
     let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let new_marker = generate_marker_hash_simple(&new_tables_hash, &now, &device_id);
     insert_sync_marker_db(&new_marker, &now, &device_id, Some(&peer.device_id), &new_tables_hash,
         transfer_mode == "full")?;
+    sync_log(&format!("[10/13] Nowy marker: {}", &new_marker[..16.min(new_marker.len())]));
 
     {
         let mut guard = sync_state.latest_marker_hash.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(new_marker.clone());
     }
 
-    // Step 11: Distribute merged data to SLAVE
+    // Step 11: Upload merged data to SLAVE
     sync_state.set_progress(11, "uploading_to_slave", "upload");
-    log::info!("Sync orchestrator: step 11 — distributing merged database to slave");
-    // Build full export for slave
-    let merged_export = build_full_export()?;
+    sync_log("[11/13] Budowanie pelnego eksportu dla peera...");
+    let merged_export = build_full_export()
+        .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?;
+    let export_kb = merged_export.len() as f64 / 1024.0;
+    sync_log(&format!("[11/13] Wysylanie {:.1} KB do peera...", export_kb));
+
     std::fs::write(dir.join("lan_sync_merged.json"), &merged_export)
         .map_err(|e| e.to_string())?;
 
@@ -328,27 +368,30 @@ fn execute_master_sync(
         "marker_hash": new_marker,
         "transfer_mode": transfer_mode,
     });
-    // Report merged export size for progress visibility
     sync_state.update_transfer_bytes(merged_export.len() as u64, merged_export.len() as u64);
+    http_post(&format!("{}/lan/db-ready", base_url), &ready_body.to_string())
+        .map_err(|e| { sync_log(&format!("[11/13] BLAD wysylania db-ready: {}", e)); e })?;
+    sync_log("[11/13] Peer poinformowany — dane gotowe do pobrania");
 
-    http_post(&format!("{}/lan/db-ready", base_url), &ready_body.to_string())?;
-
-    // SLAVE downloads via GET /lan/download-db (from our server)
-    // Wait for slave to verify
+    // Step 12: Wait for slave to download and verify
     sync_state.set_progress(12, "slave_downloading", "upload");
-    log::info!("Sync orchestrator: step 12 — waiting for slave verification");
-    // The slave will call /lan/verify-ack on our server when done
+    sync_log("[12/13] Peer pobiera i importuje dane...");
 
-    // Step 13: Unfreeze
-    sync_state.set_progress(13, "completed", "local");
-    log::info!("Sync orchestrator: step 13 — unfreezing databases");
+    // Step 13: Unfreeze + cleanup
+    sync_log("[13/13] Odmrazanie baz danych...");
     sync_state.unfreeze();
+    http_post(&format!("{}/lan/unfreeze", base_url), "{}").ok();
+    sync_log("[13/13] Bazy odmrozone — zbieranie danych wznowione");
 
-    http_post(&format!("{}/lan/unfreeze", base_url), "{}").ok(); // Best-effort
-
-    // Clean up
+    // Clean up temp files
     let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
     let _ = std::fs::remove_file(dir.join("lan_sync_merged.json"));
+
+    let elapsed = sync_start.elapsed().as_secs_f64();
+    sync_log(&format!("=== SYNC ZAKONCZONY w {:.1}s (tryb: {}) ===", elapsed, transfer_mode));
+
+    // Set completed AFTER unfreeze — stays visible for UI polling
+    sync_state.set_progress(13, "completed", "local");
 
     Ok(())
 }
@@ -444,6 +487,12 @@ fn backup_database() -> Result<(), String> {
 fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
     let archive: serde_json::Value = serde_json::from_str(slave_data)
         .map_err(|e| format!("Failed to parse slave data: {}", e))?;
+
+    // Log counts for visibility
+    let count = |path: &str| archive.pointer(path).and_then(|v| v.as_array()).map(|a| a.len()).unwrap_or(0);
+    sync_log(&format!("  Dane peera: {} projektow, {} aplikacji, {} sesji, {} sesji manualnych, {} tombstones",
+        count("/data/projects"), count("/data/applications"), count("/data/sessions"),
+        count("/data/manual_sessions"), count("/data/tombstones")));
 
     let mut conn = open_dashboard_db()?;
     let tx = conn.transaction().map_err(|e| e.to_string())?;
@@ -602,6 +651,70 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
         }
     }
 
+    // Merge manual_sessions
+    if let Some(manual_sessions) = archive.pointer("/data/manual_sessions").and_then(|v| v.as_array()) {
+        log::info!("Sync orchestrator: merging {} manual sessions", manual_sessions.len());
+        for ms in manual_sessions {
+            let title = ms.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let start_time = ms.get("start_time").and_then(|v| v.as_str()).unwrap_or("");
+            let updated_at = ms.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+            let project_id = json_i64_opt(ms, "project_id");
+            if title.is_empty() || start_time.is_empty() {
+                continue;
+            }
+
+            let existing: Option<(i64, Option<String>)> = tx
+                .query_row(
+                    "SELECT id, updated_at FROM manual_sessions WHERE title = ?1 AND start_time = ?2",
+                    rusqlite::params![title, start_time],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .ok();
+
+            match existing {
+                Some((id, local_ts)) => {
+                    let local = local_ts.as_deref().unwrap_or("");
+                    if updated_at > local {
+                        tx.execute(
+                            "UPDATE manual_sessions SET session_type = ?1, project_id = ?2, \
+                             app_id = ?3, end_time = ?4, duration_seconds = ?5, \
+                             date = ?6, updated_at = ?7 WHERE id = ?8",
+                            rusqlite::params![
+                                json_str_opt(ms, "session_type"),
+                                project_id,
+                                json_i64_opt(ms, "app_id"),
+                                json_str_opt(ms, "end_time"),
+                                json_i64(ms, "duration_seconds"),
+                                json_str_opt(ms, "date"),
+                                updated_at,
+                                id,
+                            ],
+                        ).map_err(|e| e.to_string())?;
+                    }
+                }
+                None => {
+                    tx.execute(
+                        "INSERT INTO manual_sessions (title, session_type, project_id, app_id, \
+                         start_time, end_time, duration_seconds, date, created_at, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        rusqlite::params![
+                            title,
+                            json_str_opt(ms, "session_type"),
+                            project_id,
+                            json_i64_opt(ms, "app_id"),
+                            start_time,
+                            json_str_opt(ms, "end_time"),
+                            json_i64(ms, "duration_seconds"),
+                            json_str_opt(ms, "date"),
+                            json_str_opt(ms, "created_at"),
+                            updated_at,
+                        ],
+                    ).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+    }
+
     // Merge tombstones
     if let Some(tombstones) = archive.pointer("/data/tombstones").and_then(|v| v.as_array()) {
         for ts in tombstones {
@@ -642,7 +755,7 @@ fn merge_incoming_data(slave_data: &str) -> Result<(), String> {
     }
 
     tx.commit().map_err(|e| e.to_string())?;
-    log::info!("Sync orchestrator: merge completed successfully");
+    sync_log("  Scalanie zakonczone — commit transakcji");
     Ok(())
 }
 
@@ -696,24 +809,26 @@ fn compute_tables_hash_string() -> Result<String, String> {
 }
 
 fn compute_single_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
+    use std::hash::{Hash, Hasher};
     let sql = match table {
-        "projects" => "SELECT COALESCE(hex(sha256(group_concat(name || '|' || updated_at, ';'))), '') FROM (SELECT name, updated_at FROM projects ORDER BY name)",
-        "applications" => "SELECT COALESCE(hex(sha256(group_concat(executable_name || '|' || updated_at, ';'))), '') FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)",
-        "sessions" => "SELECT COALESCE(hex(sha256(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'))), '') FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at FROM sessions s JOIN applications a ON s.app_id = a.id ORDER BY a.executable_name, s.start_time)",
-        "manual_sessions" => "SELECT COALESCE(hex(sha256(group_concat(title || '|' || start_time || '|' || updated_at, ';'))), '') FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)",
+        "projects" => "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') FROM (SELECT name, updated_at FROM projects ORDER BY name)",
+        "applications" => "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)",
+        "sessions" => "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at FROM sessions s JOIN applications a ON s.app_id = a.id ORDER BY a.executable_name, s.start_time)",
+        "manual_sessions" => "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)",
         _ => return String::new(),
     };
-    conn.query_row(sql, [], |row| row.get(0)).unwrap_or_default()
+    let concat: String = conn.query_row(sql, [], |row| row.get(0)).unwrap_or_default();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    concat.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn generate_marker_hash_simple(tables_hash: &str, timestamp: &str, device_id: &str) -> String {
-    let conn = match open_dashboard_db() {
-        Ok(c) => c,
-        Err(_) => return "unknown".to_string(),
-    };
+    use std::hash::{Hash, Hasher};
     let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    conn.query_row("SELECT lower(hex(sha256(?1)))", [&input], |row| row.get::<_, String>(0))
-        .unwrap_or_else(|_| "unknown".to_string())
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn insert_sync_marker_db(
