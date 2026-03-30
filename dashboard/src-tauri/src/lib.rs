@@ -197,7 +197,12 @@ pub fn run() {
             commands::markers_match,
             commands::backup_before_sync,
             commands::upsert_lan_peer,
-            commands::get_lan_sync_log
+            commands::get_lan_sync_log,
+            commands::get_online_sync_settings,
+            commands::save_online_sync_settings,
+            commands::run_online_sync,
+            commands::get_online_sync_progress,
+            commands::cancel_online_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
