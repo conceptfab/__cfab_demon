@@ -354,6 +354,9 @@ fn handle_connection(
         ("POST", "/lan/verify-ack") => handle_verify_ack(&state),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
         ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body),
+        // Online sync endpoints
+        ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal),
+        ("GET", "/online/sync-progress") => handle_sync_progress(&state),
         // Legacy endpoints (backward compat with existing Tauri client)
         ("POST", "/lan/pull") => handle_pull(&body),
         ("POST", "/lan/push") => handle_push(&body),
@@ -701,6 +704,30 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
     crate::lan_sync_orchestrator::run_sync_as_master_with_options(peer, state.clone(), stop_signal.clone(), req.force);
 
     (200, r#"{"ok":true,"message":"sync started"}"#.to_string())
+}
+
+fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>) -> (u16, String) {
+    if state.sync_in_progress.load(Ordering::Relaxed) {
+        return (409, json_error("Sync already in progress"));
+    }
+
+    let settings = crate::config::load_online_sync_settings();
+    if !settings.enabled {
+        return (400, json_error("Online sync is not enabled"));
+    }
+    if settings.server_url.is_empty() || settings.auth_token.is_empty() {
+        return (400, json_error("Online sync not configured (missing server_url or auth_token)"));
+    }
+
+    log::info!("Online trigger-sync: dashboard requested online sync");
+
+    let state_clone = state.clone();
+    let stop_clone = stop_signal.clone();
+    std::thread::spawn(move || {
+        crate::online_sync::run_online_sync(settings, state_clone, stop_clone);
+    });
+
+    (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())
 }
 
 /// Public wrapper for the orchestrator to call.

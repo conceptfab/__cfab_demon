@@ -84,6 +84,25 @@ fn main() {
     // Start LAN HTTP server (sync endpoints — works even without dashboard)
     let lan_server_handle = lan_server::start(stop_signal.clone(), sync_state.clone());
 
+    // Optionally trigger online sync on startup
+    {
+        let online_settings = config::load_online_sync_settings();
+        if online_settings.enabled && online_settings.auto_sync_on_startup
+            && !online_settings.server_url.is_empty() && !online_settings.auth_token.is_empty()
+        {
+            let sync_state_clone = sync_state.clone();
+            let stop_signal_clone = stop_signal.clone();
+            std::thread::spawn(move || {
+                // Wait 10 seconds for daemon to fully start up
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                if !stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                    log::info!("Auto-starting online sync on startup");
+                    online_sync::run_online_sync(online_settings, sync_state_clone, stop_signal_clone);
+                }
+            });
+        }
+    }
+
     // Start tray icon event loop (pass sync_state for sync icon)
     let tray_action = tray::run(stop_signal.clone(), Some(sync_state.clone()));
 
