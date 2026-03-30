@@ -45,6 +45,13 @@ winapi = { version = "0.3", features = [
     "processthreadsapi", "winbase", "tlhelp32", "minwindef", "shellapi",
 ] }
 
+# Online sync
+ssh2 = "0.9"
+aes-gcm = "0.10"
+flate2 = "1.0"
+hkdf = "0.12"
+sha2 = "0.10"
+
 [target.'cfg(windows)'.dependencies]
 wmi = "0.13"
 
