@@ -323,6 +323,22 @@ export function useSettingsFormState({
     const savedSession = saveSessionSettings(sessionSettings);
     const uiApiToken = onlineSyncSettings.apiToken;
     const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
+
+    // Also persist settings to daemon's online_sync_settings.json
+    void import('@/lib/tauri/online-sync').then(({ saveDaemonOnlineSyncSettings }) =>
+      saveDaemonOnlineSyncSettings({
+        enabled: savedOnlineSync.enabled,
+        server_url: savedOnlineSync.serverUrl,
+        auth_token: uiApiToken,
+        device_id: savedOnlineSync.deviceId,
+        encryption_key: savedOnlineSync.encryptionKey ?? '',
+        sync_interval_hours: Math.floor(savedOnlineSync.autoSyncIntervalMinutes / 60),
+        auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
+      }).catch((err) => {
+        console.warn('Failed to persist online sync settings to daemon:', err);
+      })
+    ).catch(() => { /* Daemon not available — ignore */ });
+
     const savedFreeze = saveFreezeSettings(freezeSettings);
     const savedCurrency = saveCurrencySettings(currencySettings);
     const savedLanguage = saveLanguageSettings(languageSettings);
@@ -441,6 +457,22 @@ export function useSettingsFormState({
         const uiToken = onlineSyncSettings.apiToken;
         const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
         setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
+
+        // Also persist settings to daemon's online_sync_settings.json
+        try {
+          const { saveDaemonOnlineSyncSettings } = await import('@/lib/tauri/online-sync');
+          await saveDaemonOnlineSyncSettings({
+            enabled: savedOnlineSync.enabled,
+            server_url: savedOnlineSync.serverUrl,
+            auth_token: uiToken,
+            device_id: savedOnlineSync.deviceId,
+            encryption_key: savedOnlineSync.encryptionKey ?? '',
+            sync_interval_hours: Math.floor(savedOnlineSync.autoSyncIntervalMinutes / 60),
+            auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
+          });
+        } catch {
+          // Daemon not available — ignore
+        }
 
         const result = await runOnlineSyncOnce({ ignoreStartupToggle: true });
         setManualSyncResult(result);

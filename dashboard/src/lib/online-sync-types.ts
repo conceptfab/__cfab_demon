@@ -7,6 +7,7 @@ export interface OnlineSyncSettings {
   serverUrl: string;
   userId: string;
   apiToken: string;
+  encryptionKey: string;
   deviceId: string;
   requestTimeoutMs: number;
   enableLogging: boolean;
