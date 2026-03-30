@@ -17,6 +17,7 @@ mod lan_sync_orchestrator;
 mod sync_common;
 mod sync_encryption;
 mod sftp_client;
+mod online_sync;
 mod monitor;
 mod single_instance;
 mod storage;
