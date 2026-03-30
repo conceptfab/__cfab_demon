@@ -95,7 +95,9 @@ fn main() {
             std::thread::spawn(move || {
                 // Wait 10 seconds for daemon to fully start up
                 std::thread::sleep(std::time::Duration::from_secs(10));
-                if !stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                if !sync_state_clone.sync_in_progress.load(std::sync::atomic::Ordering::Relaxed)
+                    && !stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed)
+                {
                     log::info!("Auto-starting online sync on startup");
                     online_sync::run_online_sync(online_settings, sync_state_clone, stop_signal_clone);
                 }

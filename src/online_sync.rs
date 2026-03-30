@@ -74,123 +74,27 @@ struct HeartbeatResponse {
     ok: bool,
 }
 
-// ── HTTP client using raw TcpStream (same pattern as LAN sync) ──
-
-fn http_request_with_auth(
-    method: &str,
-    url: &str,
-    auth_token: &str,
-    body: Option<&str>,
-) -> Result<String, String> {
-    use std::io::{BufRead, BufReader, Read, Write};
-
-    // Parse URL into host:port and path
-    let without_scheme = url
-        .strip_prefix("https://")
-        .or_else(|| url.strip_prefix("http://"))
-        .unwrap_or(url);
-    let (host_port, path) = match without_scheme.find('/') {
-        Some(i) => (&without_scheme[..i], &without_scheme[i..]),
-        None => (without_scheme, "/"),
-    };
-
-    let addr: std::net::SocketAddr = host_port
-        .parse()
-        .or_else(|_| format!("{}:443", host_port).parse())
-        .or_else(|_: std::net::AddrParseError| format!("{}:80", host_port).parse())
-        .map_err(|e| format!("Invalid address {}: {}", host_port, e))?;
-
-    let stream = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs(30))
-        .map_err(|e| format!("Connect failed: {}", e))?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .ok();
-    stream
-        .set_write_timeout(Some(Duration::from_secs(30)))
-        .ok();
-
-    let content_length = body.map(|b| b.len()).unwrap_or(0);
-    let mut request = format!(
-        "{method} {path} HTTP/1.1\r\nHost: {host}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n",
-        method = method,
-        path = path,
-        host = host_port,
-        token = auth_token,
-    );
-    if body.is_some() {
-        request.push_str(&format!(
-            "Content-Type: application/json\r\nContent-Length: {}\r\n",
-            content_length
-        ));
-    }
-    request.push_str("\r\n");
-    if let Some(b) = body {
-        request.push_str(b);
-    }
-
-    let mut writer = &stream;
-    writer
-        .write_all(request.as_bytes())
-        .map_err(|e| e.to_string())?;
-    writer.flush().map_err(|e| e.to_string())?;
-
-    let mut reader = BufReader::new(&stream);
-
-    // Read status line
-    let mut status_line = String::new();
-    reader
-        .read_line(&mut status_line)
-        .map_err(|e| e.to_string())?;
-
-    // Check HTTP status
-    let status_code = status_line
-        .split_whitespace()
-        .nth(1)
-        .unwrap_or("0")
-        .parse::<u16>()
-        .unwrap_or(0);
-
-    // Read headers
-    let mut response_content_length: usize = 0;
-    loop {
-        let mut line = String::new();
-        reader.read_line(&mut line).map_err(|e| e.to_string())?;
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            break;
-        }
-        let lower = trimmed.to_ascii_lowercase();
-        if let Some(val) = lower.strip_prefix("content-length:") {
-            response_content_length = val.trim().parse().unwrap_or(0);
-        }
-    }
-
-    // Read body
-    let body_str = if response_content_length > 0 {
-        let mut buf = vec![0u8; response_content_length];
-        reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
-        String::from_utf8(buf).map_err(|e| e.to_string())?
-    } else {
-        let mut buf = String::new();
-        reader.read_to_string(&mut buf).ok();
-        buf
-    };
-
-    if status_code >= 400 {
-        return Err(format!("HTTP {}: {}", status_code, body_str.trim()));
-    }
-
-    Ok(body_str)
-}
+// ── HTTP client using ureq (supports TLS, DNS, chunked encoding) ──
 
 fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<String, String> {
     let url = format!("{}{}", server_url.trim_end_matches('/'), path);
-    http_request_with_auth("POST", &url, token, Some(body))
+    let resp = ureq::post(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(30))
+        .send_string(body)
+        .map_err(|e| format!("HTTP POST failed: {}", e))?;
+    resp.into_string().map_err(|e| format!("Read response: {}", e))
 }
 
 fn server_get(server_url: &str, path: &str, token: &str) -> Result<String, String> {
     let url = format!("{}{}", server_url.trim_end_matches('/'), path);
-    http_request_with_auth("GET", &url, token, None)
+    let resp = ureq::get(&url)
+        .set("Authorization", &format!("Bearer {}", token))
+        .timeout(std::time::Duration::from_secs(30))
+        .call()
+        .map_err(|e| format!("HTTP GET failed: {}", e))?;
+    resp.into_string().map_err(|e| format!("Read response: {}", e))
 }
 
 // ── Server API wrappers ──
@@ -508,9 +412,12 @@ fn execute_online_sync(
         )?
     };
 
-    // Decrypt SFTP credentials
+    // Decrypt SFTP credentials using encryption_key (NOT the auth_token)
+    if settings.encryption_key.is_empty() {
+        return Err("encryption_key not configured in online sync settings".to_string());
+    }
     let decrypted =
-        sync_encryption::decrypt_credentials(&sftp_creds.encrypted, &session_id, token)?;
+        sync_encryption::decrypt_credentials(&sftp_creds.encrypted, &session_id, &settings.encryption_key)?;
     sync_log(&format!(
         "[4/13] Kredencjały SFTP odszyfrowane | host: {}",
         decrypted.host
@@ -572,18 +479,33 @@ fn execute_online_sync(
     // Step 13: Unfreeze
     sync_log("[13/13] Odmrażanie bazy...");
     sync_state.unfreeze();
-    report_step(
-        server_url,
-        token,
-        &session_id,
-        13,
-        "db_unfrozen",
-        &device_id,
-        serde_json::json!({}),
-        "ok",
-    )
-    .ok();
-    sync_state.set_progress(13, "completed", "local");
+    if result.is_ok() {
+        report_step(
+            server_url,
+            token,
+            &session_id,
+            13,
+            "db_unfrozen",
+            &device_id,
+            serde_json::json!({}),
+            "ok",
+        )
+        .ok();
+        sync_state.set_progress(13, "completed", "local");
+    } else {
+        report_step(
+            server_url,
+            token,
+            &session_id,
+            13,
+            "sync_failed",
+            &device_id,
+            serde_json::json!({}),
+            "error",
+        )
+        .ok();
+        sync_state.reset_progress();
+    }
 
     result
 }

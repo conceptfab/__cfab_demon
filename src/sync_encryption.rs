@@ -124,19 +124,10 @@ pub fn encrypt_file_data(data: &[u8], key_base64: &str) -> Result<Vec<u8>, Strin
         ));
     }
 
-    // 3. Generate 12-byte IV from current time (key is already random, so this is safe)
-    let iv_arr: [u8; 12] = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let mut buf = [0u8; 12];
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        for (i, b) in buf.iter_mut().enumerate() {
-            *b = ((seed >> (i * 8)) & 0xFF) as u8;
-        }
-        buf
-    };
+    // 3. Generate cryptographically random 12-byte IV
+    let mut iv_arr = [0u8; 12];
+    getrandom::getrandom(&mut iv_arr)
+        .map_err(|e| format!("Failed to generate random IV: {}", e))?;
 
     // 4. AES-256-GCM encrypt
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);

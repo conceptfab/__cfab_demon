@@ -22,6 +22,10 @@ pub struct OnlineSyncSettings {
     pub enabled: bool,
     pub server_url: String,
     pub auth_token: String,
+    #[serde(default)]
+    pub device_id: String,
+    #[serde(default)]
+    pub encryption_key: String,
     pub sync_interval_hours: u32,
     pub auto_sync_on_startup: bool,
 }
@@ -32,6 +36,8 @@ impl Default for OnlineSyncSettings {
             enabled: false,
             server_url: String::new(),
             auth_token: String::new(),
+            device_id: String::new(),
+            encryption_key: String::new(),
             sync_interval_hours: 0,
             auto_sync_on_startup: false,
         }
