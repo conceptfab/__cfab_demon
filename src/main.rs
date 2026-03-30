@@ -15,6 +15,8 @@ mod lan_discovery;
 mod lan_server;
 mod lan_sync_orchestrator;
 mod sync_common;
+mod sync_encryption;
+mod sftp_client;
 mod monitor;
 mod single_instance;
 mod storage;
