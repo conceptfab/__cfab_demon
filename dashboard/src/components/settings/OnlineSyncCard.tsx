@@ -1,8 +1,9 @@
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type {
+  LicenseInfo,
   OnlineSyncRunResult,
   OnlineSyncSettings,
   OnlineSyncState,
@@ -17,6 +18,19 @@ interface OnlineSyncCardProps {
   manualSyncing: boolean;
   demoModeSyncDisabled: boolean;
   showToken: boolean;
+  licenseInfo: LicenseInfo | null;
+  licenseKeyInput: string;
+  licenseActivating: boolean;
+  licenseError: string | null;
+  licenseTitle: string;
+  licenseKeyPlaceholder: string;
+  licenseActivateLabel: string;
+  licenseActivatingLabel: string;
+  licensePlanLabel: string;
+  licenseGroupLabel: string;
+  licenseDevicesLabel: string;
+  licenseExpiresLabel: string;
+  licenseActiveLabel: string;
   title: string;
   description: string;
   enableSyncTitle: string;
@@ -69,6 +83,8 @@ interface OnlineSyncCardProps {
   onApiTokenChange: (token: string) => void;
   onShowTokenChange: (show: boolean) => void;
   onSyncNow: () => void;
+  onLicenseKeyChange: (key: string) => void;
+  onActivateLicense: () => void;
 }
 
 export function OnlineSyncCard({
@@ -132,6 +148,8 @@ export function OnlineSyncCard({
   onApiTokenChange,
   onShowTokenChange,
   onSyncNow,
+  onLicenseKeyChange,
+  onActivateLicense,
 }: OnlineSyncCardProps) {
   return (
     <Card>
@@ -140,6 +158,66 @@ export function OnlineSyncCard({
         <p className="text-sm text-muted-foreground">{description}</p>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* License activation section */}
+        <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">{licenseTitle}</span>
+          </div>
+          {licenseInfo ? (
+            <div className="grid gap-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                  {licenseActiveLabel}
+                </span>
+                <span className="font-mono text-muted-foreground">
+                  {licenseInfo.plan.toUpperCase()}
+                </span>
+              </div>
+              <div className="text-muted-foreground">
+                {licenseGroupLabel}: <span className="text-foreground">{licenseInfo.groupName}</span>
+              </div>
+              <div className="text-muted-foreground">
+                {licenseDevicesLabel}: <span className="text-foreground">{licenseInfo.activeDevices}/{licenseInfo.maxDevices}</span>
+              </div>
+              {licenseInfo.expiresAt && (
+                <div className="text-muted-foreground">
+                  {licenseExpiresLabel}: <span className="text-foreground">{new Date(licenseInfo.expiresAt).toLocaleDateString()}</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-sm shadow-sm placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  placeholder={licenseKeyPlaceholder}
+                  value={licenseKeyInput}
+                  onChange={(e) => onLicenseKeyChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && licenseKeyInput.trim()) {
+                      onActivateLicense();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 whitespace-nowrap"
+                  onClick={onActivateLicense}
+                  disabled={licenseActivating || !licenseKeyInput.trim()}
+                >
+                  {licenseActivating ? licenseActivatingLabel : licenseActivateLabel}
+                </Button>
+              </div>
+              {licenseError && (
+                <p className="text-xs text-destructive">{licenseError}</p>
+              )}
+            </div>
+          )}
+        </div>
+
         <label
           htmlFor="onlineSyncEnabled"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"

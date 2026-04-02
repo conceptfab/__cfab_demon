@@ -806,6 +806,7 @@ export function Help() {
                   t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
                   t18n('help_page.online_sync_daemon_mode'),
                   t18n('help_page.delta_sync_description'),
+                  t18n('help_page.license_activation'),
                   t18n('help_page.demo_mode_and_sync_when_switched_to_the_demo_database_on'),
                 ]}
               >
@@ -912,6 +913,7 @@ export function Help() {
                   t18n('help_page.online_sync_status_panel_shows_revision_hash_and_retr'),
                   t18n('help_page.server_snapshot_pruned_scenario_if_the_server_payload_wa'),
                   t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
+                  t18n('help_page.license_activation'),
                   t18n('help_page.demo_mode_switch_to_a_demo_database_test_without_affecti'),
                   t18n('help_page.demo_mode_and_sync_when_switched_to_the_demo_database_on'),
                   t18n('help_page.demo_mode_uses_a_separate_sqlite_file_and_reads_live_dai'),

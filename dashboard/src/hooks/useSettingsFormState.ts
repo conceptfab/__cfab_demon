@@ -4,11 +4,15 @@ import { sessionsApi, settingsApi } from '@/lib/tauri';
 import { normalizeHexColor } from '@/lib/normalize';
 import { splitTime } from '@/lib/form-validation';
 import {
+  activateLicense,
+  loadLicenseInfo,
   loadOnlineSyncState,
   loadOnlineSyncSettings,
   loadSecureApiToken,
   runOnlineSyncOnce,
+  saveLicenseInfo,
   saveOnlineSyncSettings,
+  type LicenseInfo,
   type OnlineSyncSettings,
   type OnlineSyncRunResult,
   type OnlineSyncState,
@@ -121,6 +125,12 @@ export function useSettingsFormState({
     loadOnlineSyncState(),
   );
   const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
+  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(() =>
+    loadLicenseInfo(),
+  );
+  const [licenseKeyInput, setLicenseKeyInput] = useState('');
+  const [licenseActivating, setLicenseActivating] = useState(false);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
 
   useEffect(() => {
     loadSecureApiToken().then((token) => {
@@ -502,6 +512,62 @@ export function useSettingsFormState({
     setManualSyncResult(null);
   }, []);
 
+  const handleActivateLicense = useCallback(
+    async () => {
+      const key = licenseKeyInput.trim();
+      if (!key) return;
+
+      const serverUrl = onlineSyncSettings.serverUrl;
+      if (!serverUrl) {
+        setLicenseError(t('settings.license.no_server_url'));
+        return;
+      }
+
+      setLicenseActivating(true);
+      setLicenseError(null);
+
+      try {
+        const deviceId = onlineSyncSettings.deviceId || crypto.randomUUID();
+        const deviceName = `${navigator.platform || 'Desktop'} — TIMEFLOW`;
+
+        const result = await activateLicense(serverUrl, key, deviceId, deviceName);
+
+        if (!result.ok) {
+          setLicenseError(result.error || 'Activation failed');
+          return;
+        }
+
+        const info: LicenseInfo = {
+          licenseKey: key,
+          licenseId: result.licenseId!,
+          plan: result.plan!,
+          status: result.status!,
+          groupId: result.groupId!,
+          groupName: result.groupName!,
+          maxDevices: result.maxDevices!,
+          activeDevices: result.activeDevices!,
+          expiresAt: result.expiresAt ?? null,
+          activatedAt: new Date().toISOString(),
+        };
+        saveLicenseInfo(info);
+        setLicenseInfo(info);
+        setLicenseKeyInput('');
+
+        // Auto-fill deviceId if empty
+        if (!onlineSyncSettings.deviceId) {
+          setOnlineSyncSettings((prev) => ({ ...prev, deviceId }));
+        }
+
+        showInfo(t('settings.license.activated_success'));
+      } catch (e) {
+        setLicenseError(getErrorMessage(e, t('ui.common.unknown_error')));
+      } finally {
+        setLicenseActivating(false);
+      }
+    },
+    [licenseKeyInput, onlineSyncSettings, t, showInfo],
+  );
+
   return {
     clearing,
     clearArmed,
@@ -549,5 +615,11 @@ export function useSettingsFormState({
     handleClearData,
     handleSyncNow,
     resetManualSyncResult,
+    licenseInfo,
+    licenseKeyInput,
+    licenseActivating,
+    licenseError,
+    setLicenseKeyInput,
+    handleActivateLicense,
   };
 }

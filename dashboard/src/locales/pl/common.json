@@ -1194,6 +1194,19 @@
       "useRailwayDefault": "Użyj domyślnego Railway",
       "syncDisabledInDemo": "Sync wyłączony w demo"
     },
+    "license": {
+      "title": "Licencja",
+      "key_placeholder": "Wklej klucz licencji...",
+      "activate": "Aktywuj",
+      "activating": "Aktywacja...",
+      "plan": "Plan",
+      "group": "Grupa",
+      "devices": "Urządzenia",
+      "expires": "Wygasa",
+      "active": "Aktywna",
+      "activated_success": "Licencja aktywowana pomyślnie!",
+      "no_server_url": "Ustaw adres serwera przed aktywacją licencji."
+    },
     "lan_sync": {
       "title": "LAN Sync",
       "description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej.",
@@ -1724,6 +1737,7 @@
     "online_sync_setup_limitations": "Ograniczenia i konsekwencje: tryb demo wyłącza synchronizację, błędny token zablokuje push/pull, a po komunikacie o reseed trzeba odbudować stan lokalnym eksportem lub nowym seedem.",
     "online_sync_daemon_mode": "Synchronizacja przez daemon (protokół LAN Sync): Gdy daemon TIMEFLOW jest uruchomiony, synchronizacja online może użyć 13-krokowego protokołu sesji z transferem SFTP. Zapewnia szyfrowany transfer plików, śledzenie postępu i automatyczne scalanie — ten sam protokół co synchronizacja LAN, ale przez zdalny serwer. Skonfiguruj klucz szyfrowania w ustawieniach synchronizacji.",
     "delta_sync_description": "Od wersji z Delta Sync: system przesyła tylko zmodyfikowane pakiety synchronizacji dla starych i nowych sesji, oszczędzając do 95% zużycia łącza.",
+    "license_activation": "Aktywacja licencji: wklej klucz licencji w sekcji Online Sync → Licencja i kliknij Aktywuj. Urządzenie zostanie zarejestrowane w grupie na serwerze. Po aktywacji dashboard wyświetla plan, grupę, liczbę urządzeń i datę wygaśnięcia.",
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej, bez pośredniczącego serwera.",
     "lan_sync_udp_discovery": "Wykrywanie UDP – TIMEFLOW automatycznie rozgłasza swoją obecność w sieci lokalnej (port 47892) co 30 sekund. Inne instancje są wykrywane bez ręcznej konfiguracji.",

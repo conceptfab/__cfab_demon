@@ -297,8 +297,10 @@ function useJobPool() {
   const nextRefreshRef = useRef(0);
   const nextSigCheckRef = useRef(0);
   const nextAutoSplitRef = useRef(0);
-  const nextSyncIntervalRef = useRef(0);
-  const nextSyncPollRef = useRef(0);
+  // Start with a delay so the 'startup' sync runs first without duplicates
+  // from the interval/poll triggers firing immediately on the first tick.
+  const nextSyncIntervalRef = useRef(Date.now() + 30_000);
+  const nextSyncPollRef = useRef(Date.now() + 120_000);
 
   const syncSettingsRef = useRef(loadOnlineSyncSettings());
   const syncFailCountRef = useRef(0);
@@ -443,7 +445,7 @@ function useJobPool() {
       nextSigCheckRef.current = 0;
       nextAutoSplitRef.current = Date.now() + AUTO_SPLIT_INTERVAL_MS;
       nextSyncIntervalRef.current = 0;
-      nextSyncPollRef.current = 0;
+      nextSyncPollRef.current = Date.now() + 120_000;
       void runRefresh();
     }, 500);
   });

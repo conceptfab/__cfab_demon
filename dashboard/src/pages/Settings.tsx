@@ -88,6 +88,12 @@ export function Settings() {
     handleClearData,
     handleSyncNow,
     resetManualSyncResult,
+    licenseInfo,
+    licenseKeyInput,
+    licenseActivating,
+    licenseError,
+    setLicenseKeyInput,
+    handleActivateLicense,
   } = useSettingsFormState({
     confirm,
     i18n,
@@ -569,6 +575,21 @@ export function Settings() {
           onSyncNow={() => {
             void handleSyncNow(demoModeSyncDisabled);
           }}
+          licenseInfo={licenseInfo}
+          licenseKeyInput={licenseKeyInput}
+          licenseActivating={licenseActivating}
+          licenseError={licenseError}
+          licenseTitle={t('settings.license.title')}
+          licenseKeyPlaceholder={t('settings.license.key_placeholder')}
+          licenseActivateLabel={t('settings.license.activate')}
+          licenseActivatingLabel={t('settings.license.activating')}
+          licensePlanLabel={t('settings.license.plan')}
+          licenseGroupLabel={t('settings.license.group')}
+          licenseDevicesLabel={t('settings.license.devices')}
+          licenseExpiresLabel={t('settings.license.expires')}
+          licenseActiveLabel={t('settings.license.active')}
+          onLicenseKeyChange={setLicenseKeyInput}
+          onActivateLicense={handleActivateLicense}
         />
 
         <ProjectFreezeCard

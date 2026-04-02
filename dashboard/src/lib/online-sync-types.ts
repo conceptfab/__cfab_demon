@@ -182,3 +182,31 @@ export type SyncHttpErrorKind =
   | 'unknown';
 
 export type OnlineSyncStatusListener = (snapshot: OnlineSyncIndicatorSnapshot) => void;
+
+export interface LicenseActivationResult {
+  ok: boolean;
+  licenseId?: string;
+  plan?: string;
+  status?: string;
+  groupId?: string;
+  groupName?: string;
+  deviceId?: string;
+  maxDevices?: number;
+  activeDevices?: number;
+  expiresAt?: string | null;
+  error?: string;
+  code?: string;
+}
+
+export interface LicenseInfo {
+  licenseKey: string;
+  licenseId: string;
+  plan: string;
+  status: string;
+  groupId: string;
+  groupName: string;
+  maxDevices: number;
+  activeDevices: number;
+  expiresAt: string | null;
+  activatedAt: string;
+}
