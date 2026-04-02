@@ -992,29 +992,6 @@ export function Projects() {
         </button>
       </div>
 
-      <ExcludedProjectsList
-        isOpen={sectionOpen.excluded}
-        onToggle={toggleSection('excluded')}
-        projects={visibleExcludedProjects}
-        totalExcludedCount={excludedProjects.length}
-        hiddenCount={hiddenExcludedProjectsCount}
-        renderDuplicateMarker={renderDuplicateMarker}
-        isDeleting={(projectId) => busy === `delete-project:${projectId}`}
-        isDeletingAll={busy === 'delete-all-excluded'}
-        onRestore={(projectId) => {
-          void handleRestore(projectId);
-        }}
-        onDelete={(project) => {
-          void handleDeleteProject(project);
-        }}
-        onDeleteAll={() => {
-          void handleDeleteAllExcluded();
-        }}
-        onLoadMore={() =>
-          loadMoreProjects('excluded', filteredExcludedProjects.length)
-        }
-      />
-
       <ProjectDiscoveryPanel
         sectionOpen={{
           folders: sectionOpen.folders,
@@ -1071,6 +1048,29 @@ export function Projects() {
           void handleClearAllDetected();
         }}
         isClearingAllDetected={busy === 'clear-all-detected'}
+      />
+
+      <ExcludedProjectsList
+        isOpen={sectionOpen.excluded}
+        onToggle={toggleSection('excluded')}
+        projects={visibleExcludedProjects}
+        totalExcludedCount={excludedProjects.length}
+        hiddenCount={hiddenExcludedProjectsCount}
+        renderDuplicateMarker={renderDuplicateMarker}
+        isDeleting={(projectId) => busy === `delete-project:${projectId}`}
+        isDeletingAll={busy === 'delete-all-excluded'}
+        onRestore={(projectId) => {
+          void handleRestore(projectId);
+        }}
+        onDelete={(project) => {
+          void handleDeleteProject(project);
+        }}
+        onDeleteAll={() => {
+          void handleDeleteAllExcluded();
+        }}
+        onLoadMore={() =>
+          loadMoreProjects('excluded', filteredExcludedProjects.length)
+        }
       />
 
       <Dialog

@@ -22,6 +22,7 @@ pub struct EncryptedCredentials {
 }
 
 /// Decrypted SFTP credentials.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SftpCredentials {
