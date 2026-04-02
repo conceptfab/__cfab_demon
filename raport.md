@@ -1,461 +1,382 @@
-# TIMEFLOW — Raport analizy kodu (2026-03-30)
+# TIMEFLOW — Raport audytu kodu
 
-Analiza obejmuje daemon Rust, komendy Tauri i dashboard React/TypeScript ze szczegolnym uwzglednieniem systemu synchronizacji LAN.
-
----
-
-## Spis tresci
-
-1. [Problemy krytyczne (bezpieczenstwo i utrata danych)](#1-problemy-krytyczne)
-2. [Problemy logiki synchronizacji](#2-problemy-logiki-synchronizacji)
-3. [Duplikacja kodu (DRY)](#3-duplikacja-kodu)
-4. [Wydajnosc i optymalizacje](#4-wydajnosc-i-optymalizacje)
-5. [Jakosc kodu (Rust)](#5-jakosc-kodu-rust)
-6. [Jakosc kodu (React/TypeScript)](#6-jakosc-kodu-react-typescript)
-7. [Brakujace tlumaczenia](#7-brakujace-tlumaczenia)
-8. [Braki w dokumentacji Help](#8-braki-w-dokumentacji-help)
-9. [Dead code](#9-dead-code)
-10. [Podsumowanie priorytetow](#10-podsumowanie-priorytetow)
+**Data:** 2026-04-02
+**Zakres:** Daemon (Rust) + Dashboard (React/TypeScript) + Tłumaczenia + Pokrycie Help
 
 ---
 
-## 1. Problemy krytyczne
+## Spis treści
 
-### 1.1 SQL Injection w `build_delta_for_pull` [KRYTYCZNY]
+1. [Podsumowanie](#podsumowanie)
+2. [Daemon (Rust) — problemy](#daemon-rust)
+3. [Dashboard (React/TS) — problemy](#dashboard-reactts)
+4. [Tłumaczenia — brakujące/hardcoded](#tłumaczenia)
+5. [Pokrycie Help.tsx — brakujące opisy funkcji](#pokrycie-helptsx)
 
-**Plik:** `src/lan_server.rs:776-796`
+---
 
-Funkcja buduje zapytania SQL przez `format!()` z parametrem `since`, ktory pochodzi bezposrednio z HTTP request body od peera w sieci LAN:
+## Podsumowanie
+
+| Obszar | Krytyczne | Wysokie | Średnie | Niskie | Razem |
+|--------|-----------|---------|---------|--------|-------|
+| Daemon (Rust) | 3 | 6 | 8 | 4 | **21** |
+| Dashboard (React/TS) | 2 | 5 | 1 | 3 | **11** |
+| Tłumaczenia | 1 | 1 | 0 | 2 | **4** |
+| Help — pokrycie | 0 | 1 | 1 | 0 | **2** |
+| **Razem** | **6** | **13** | **10** | **9** | **38** |
+
+---
+
+## Daemon (Rust)
+
+### KRYTYCZNE
+
+#### D-CRIT-1: `DefaultHasher` jest niedeterministyczny — delta sync nigdy nie działa
+
+**Plik:** `src/lan_common.rs:89-91, 105-109`
+
+`compute_table_hash` i `generate_marker_hash` używają `std::collections::hash_map::DefaultHasher`. Od Rust 1.36 jest on losowo seedowany przy każdym uruchomieniu procesu (SipHash z losowym kluczem). Ten sam zestaw danych generuje **różny hash** między uruchomieniami i na różnych maszynach.
+
+**Skutek:** Mechanizm delta vs full sync porównuje `local_marker` z `remote_marker_hash` w `lan_sync_orchestrator.rs:521`. Nawet gdy obie maszyny mają identyczne dane, markery nigdy nie będą równe — sync **zawsze** działa w trybie full, nigdy delta.
 
 ```rust
-let sessions = fetch_all_rows(conn, &format!(
-    "SELECT ... FROM sessions s WHERE s.updated_at >= '{}' ORDER BY s.start_time",
-    since_ref
-))?;
+// Obecne — niedeterministyczne:
+let mut hasher = std::collections::hash_map::DefaultHasher::new();
+concat.hash(&mut hasher);
+format!("{:016x}", hasher.finish())
 ```
 
-Ten sam wzorzec powtarza sie dla `manual_sessions` (linia 784) i `tombstones` (linia 792).
-
-Atakujacy w sieci LAN moze wstrzyknac dowolny SQL. Dla porownania — dashboardowa wersja w `delta_export.rs` poprawnie uzywa parametryzowanych zapytan (`?1`).
-
-**Rozwiazanie:** Zamienic `format!()` na `rusqlite::params![]` z `?1`.
-
-### 1.2 Merge sesji uzywa bezposrednich `app_id` z peera [KRYTYCZNY — utrata danych]
-
-**Plik:** `src/lan_sync_orchestrator.rs:596-609`
-
-Daemon kopiuje `app_id` z peera i uzywa go bezposrednio w zapytaniach:
+**Naprawa:** Zastąpić `DefaultHasher` deterministycznym hasherem (FNV-1a bez nowych zależności lub SHA-256 z `sha2` już w projekcie):
 
 ```rust
-let app_id = sess.get("app_id").and_then(|v| v.as_i64()).unwrap_or(0);
-// ...
-"SELECT id, updated_at FROM sessions WHERE app_id = ?1 AND start_time = ?2",
+fn fnv1a_64(data: &[u8]) -> u64 {
+    let mut hash: u64 = 14695981039346656037;
+    for byte in data {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    hash
+}
 ```
 
-Problem: `app_id` to autoincrement — na roznych maszynach ta sama aplikacja ma rozne ID. Sesje albo wskaza na zla aplikacje, albo `INSERT` nie powiedzie sie przez FK constraint i zostana skasowane przez `verify_merge_integrity` (linia 780-785).
-
-**To jest scenariusz utraty danych!**
-
-Tauri wersja (`dashboard/src-tauri/src/commands/lan_sync.rs:454`) poprawnie uzywa `app_id_map` do mapowania zdalnych ID na lokalne. Daemon tego nie robi.
-
-Ten sam problem dotyczy `project_id` (linia 636) — daemon wstawia zdalne `project_id` bez mapowania.
-
-**Rozwiazanie:** Zaimplementowac mapowanie ID (jak w wersji Tauri) lub ujednolicic obie implementacje merge.
-
 ---
 
-## 2. Problemy logiki synchronizacji
+#### D-CRIT-2: Race condition — `sync_in_progress` sprawdzany bez blokady
 
-### 2.1 Slave nigdy nie pobiera scalonych danych [WYSOKI]
+**Plik:** `src/lan_server.rs:691-704`, `src/online_sync.rs:709-730`
 
-**Plik:** `src/lan_sync_orchestrator.rs:356-384`
+Wzorzec check-then-act nie jest atomowy. `sync_in_progress` jest sprawdzane z `Ordering::Relaxed`, a `freeze()` (ustawiające flagę na `true`) jest wywoływane dopiero wewnątrz `execute_master_sync` po kilku krokach HTTP. Dwa równoczesne żądania `/lan/trigger-sync` mogą oba przejść przez sprawdzenie i uruchomić dwa synchronizatory jednocześnie.
 
-Master buduje pelny eksport (`build_full_export`), zapisuje go do `lan_sync_merged.json` (linia 364), wysyla `db-ready` do slave'a (linia 372). Ale slave w `handle_db_ready` (`lan_server.rs:625-642`) jedynie ustawia progress na "slave_downloading" — **nie inicjuje zadnego pobierania danych**.
-
-Master tez nie pushuje danych do slave'a — jedynie informuje go ze sa "gotowe". Slave jest pasywny (reaguje na HTTP) i nie ma kodu, ktory aktywnie pobiera scalone dane.
-
-**Rozwiazanie:** Slave powinien po `db-ready` aktywnie pobrac dane z mastera (GET `/lan/download-db`), albo master powinien pushowac dane bezposrednio w ramach `db-ready`.
-
-### 2.2 `DefaultHasher` nie jest deterministyczny cross-platform [WYSOKI]
-
-**Pliki:** `src/lan_server.rs:441-443`, `src/lan_sync_orchestrator.rs:821-823`, `dashboard/src-tauri/src/commands/helpers.rs:100-102`
-
-`std::collections::hash_map::DefaultHasher` nie gwarantuje stabilnosci miedzy wersjami Rust ani platformami. Uzycie go do porownywania hashow miedzy maszynami moze powodowac false-positive roznice (niepotrzebne synce), nawet gdy dane sa identyczne.
-
-**Rozwiazanie:** Uzyc deterministycznego hashu (np. SHA-256 z crate `sha2`, albo chociaz `xxhash` / `fnv`).
-
-### 2.3 Race condition w elekcji master/slave [SREDNI]
-
-**Plik:** `src/lan_discovery.rs:310-329`
-
-Dwa wezly startujace jednoczesnie (np. po awarii zasilania) oba maja `uptime_secs=0` i `peers.is_empty()=true`, wiec oba staja sie MASTER. Obsluga konfliktu (linia 671-685) wymaga odebrania beaconu od drugiego mastera (broadcast co 30s) — w tym oknie oba moga zainicjowac sync.
-
-Tie-breaker po `device_id` (linia 314) dziala tylko gdy peer jest juz w tabeli `peers`.
-
-**Rozwiazanie:** Wydluzyc okno nasluchu elekcji, albo dodac randomowy jitter przed deklaracja roli.
-
-### 2.4 Brak atomowosci freeze/unfreeze [SREDNI]
-
-**Plik:** `src/lan_sync_orchestrator.rs:287-289`
-
-Jesli freeze mastera sie powiedzie, ale freeze slave'a nie (timeout sieci), master jest zamrozony ale slave kontynuuje prace. Auto-unfreeze po 5 min przywraca mastera, ale przez ten czas tracker bufferuje dane bez zapisu na dysk.
-
-**Rozwiazanie:** Dodac rollback — jesli freeze slave'a nie powiedzie sie, natychmiast odmrozic mastera.
-
-### 2.5 Port w UI jest fikcyjny [SREDNI]
-
-**Pliki:** `dashboard/src/components/settings/LanSyncCard.tsx:298-314` vs `src/lan_server.rs:15`
-
-UI pozwala na zmiane portu, ale daemon hardkoduje `DEFAULT_LAN_PORT = 47891`. Zmiana portu w UI nie ma efektu na dzialanie serwera ani discovery.
-
-**Rozwiazanie:** Albo usunac pole portu z UI, albo zaimplementowac odczyt portu z konfiguracji w daemonie.
-
-### 2.6 `handle_push` / `import_push_data` nie importuje danych [NISKI]
-
-**Plik:** `src/lan_server.rs:850-864`
-
-Funkcja parsuje JSON ale jedynie zapisuje go do `lan_sync_push_pending.json`. Nie ma kodu przetwarzajacego ten plik.
-
----
-
-## 3. Duplikacja kodu
-
-### 3.1 Funkcje zduplikowane 3 razy (daemon)
-
-| Funkcja | Plik 1 | Plik 2 | Plik 3 |
-|---------|--------|--------|--------|
-| `get_device_id()` | `lan_discovery.rs:94` | `lan_server.rs:455` | `lan_sync_orchestrator.rs:401` |
-| `get_machine_name()` | `lan_discovery.rs:124` | `lan_server.rs:470` | `lan_sync_orchestrator.rs:416` |
-| `sync_log()` | `lan_server.rs:484` | `lan_sync_orchestrator.rs:16` | Tauri `lan_sync.rs:12` |
-| `compute_table_hash()` | `lan_server.rs:416` | `lan_sync_orchestrator.rs:811` | Tauri `helpers.rs:74` |
-
-**Rozwiazanie:** Wyodrebnic do wspolnego modulu `lan_common.rs` lub do `config.rs`.
-
-### 3.2 Funkcje zduplikowane 2 razy
-
-| Funkcja | Plik 1 | Plik 2 |
-|---------|--------|--------|
-| `open_dashboard_db()` | `lan_server.rs:400` | `lan_sync_orchestrator.rs:440` |
-| `build_table_hashes()` | `lan_server.rs:446` | Tauri `helpers.rs:105` |
-| `backup_database()` | `lan_sync_orchestrator.rs:449` | Tauri `sync_markers.rs:94` |
-| `generate_marker_hash()` | `lan_sync_orchestrator.rs:826` | Tauri `sync_markers.rs:22` |
-
-### 3.3 Dwie niezalezne implementacje merge [KRYTYCZNA duplikacja]
-
-| Aspekt | Daemon (`lan_sync_orchestrator.rs:487-760`) | Tauri (`lan_sync.rs:314-661`) |
-|--------|----------------------------------------------|-------------------------------|
-| Typ danych | `serde_json::Value` | Typowane struktury |
-| Mapowanie ID | **Brak** (uzywa zdalnych ID) | `resolve_project_id_cached()` |
-| Tombstone manual_sessions | **Brak** | Obsluguje |
-| Tombstone sessions po sync_key | **Brak** | Obsluguje |
-| Status | Aktywna | `#[allow(dead_code)]` |
-
-Bugi naprawione w jednej implementacji nie sa przenoszone do drugiej. Logika tombstone juz teraz jest niespojana.
-
-### 3.4 Polling progressu sync w TypeScript — 2 identyczne kopie
-
-Identyczna petla (`deadline = 300_000`, `setTimeout(r, 800)`, sprawdzenie `phase === 'completed'`):
-- `dashboard/src/pages/Settings.tsx:198-213`
-- `dashboard/src/components/layout/Sidebar.tsx:162-175`
-
-**Rozwiazanie:** Wyodrebnic do wspolnej funkcji w `lib/tauri/lan-sync.ts`.
-
-### 3.5 `is_dashboard_running()` — 2 rozne implementacje
-
-- `src/tray.rs:502-514` — sprawdza procesy systemowe
-- `src/lan_discovery.rs:155-172` — czyta `heartbeat.txt`
-
----
-
-## 4. Wydajnosc i optymalizacje
-
-### 4.1 8 oddzielnych polaczen DB w jednym sync flow [WYSOKI]
-
-**Plik:** `src/lan_sync_orchestrator.rs`
-
-W jednej sesji sync otwieranych jest 8 polaczen SQLite sekwencyjnie:
-- `get_local_marker_hash()` (linia 421)
-- `get_local_marker_created_at()` (linia 430)
-- `backup_database()` (linia 449)
-- `merge_incoming_data()` (linia 487)
-- `verify_merge_integrity()` (linia 762)
-- `compute_tables_hash_string()` (linia 800)
-- `insert_sync_marker_db()` (linia 834)
-- `build_full_export()` (linia 852)
-
-Kazde otwarcie = syscall + SQLite init.
-
-**Rozwiazanie:** Otworzyc jedno polaczenie na poczatku `execute_master_sync()` i przekazac `&Connection` do funkcji.
-
-### 4.2 `compute_table_hash` concatenuje WSZYSTKIE rekordy [WYSOKI]
-
-**Plik:** `src/lan_server.rs:416-444`
-
-```sql
-SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '')
-FROM (SELECT ... FROM sessions s JOIN applications a ...)
-```
-
-Dla bazy z 50K sesji tworzy ogromny string w pamieci SQLite i Rust, tylko po to zeby go zhashowac. Wywolywane przy kazdym `/lan/status`, `/lan/ping`.
-
-**Rozwiazanie:** Hashowac wiersz-po-wierszu (streaming hash) lub cache'owac hash z invalidacja po zmianach.
-
-### 4.3 Pelny eksport nawet przy "delta" sync [WYSOKI]
-
-**Plik:** `src/lan_sync_orchestrator.rs:358-359`
+**Naprawa:** Użyć `compare_exchange` atomowego:
 
 ```rust
-let merged_export = build_full_export()?;
+if state.sync_in_progress.compare_exchange(
+    false, true, Ordering::SeqCst, Ordering::SeqCst
+).is_err() {
+    return (409, json_error("Sync already in progress"));
+}
 ```
-
-Po scaleniu master buduje pelny eksport (od `1970-01-01`) niezaleznie od trybu. To neguje korzysc trybu delta.
-
-### 4.4 Podwojny polling progressu z React [SREDNI]
-
-Gdy sync jest aktywny, daemon dostaje zapytania:
-- Co 600ms/3000ms z `LanSyncCard.tsx` (linia 147-188)
-- Co 800ms z `Settings.tsx:handleLanSync` (linia 198-213)
-
-Lacznie 2-3 requesty/s zamiast 1.
-
-**Rozwiazanie:** Usunac polling z `handleLanSync` — `LanSyncCard` juz monitoruje progress.
-
-### 4.5 Czytanie calego log-pliku co 500ms [SREDNI]
-
-**Plik:** `dashboard/src/components/settings/LanSyncCard.tsx:191-205`
-
-`getLanSyncLog(50)` czyta caly `lan_sync.log` z dysku (moze rosnac bez limitu), splituje na linie i zwraca 50 ostatnich. Powtarzane co 500ms.
-
-**Rozwiazanie:** Ring buffer w pamieci lub `seek` do konca pliku.
-
-### 4.6 Brak kompresji transferu sieciowego [SREDNI]
-
-Caly protokol LAN sync przesyla dane jako raw JSON bez kompresji. JSON z danymi sesji jest bardzo powtarzalny — gzip daje typowo 80-90% redukcje.
-
-### 4.7 Nowe polaczenie TCP dla kazdego kroku sync [NISKI]
-
-`execute_master_sync` otwiera 5+ nowych polaczen TCP (negotiate, freeze-ack, pull, db-ready, unfreeze). Kazde z `Connection: close`.
-
-### 4.8 `loadLanSyncState()` wywolywane w kazdym renderze [NISKI]
-
-**Plik:** `dashboard/src/pages/Settings.tsx:408`
-
-```tsx
-lastSyncAt={loadLanSyncState().lastSyncAt}
-```
-
-Czyta z `localStorage` i parsuje JSON przy kazdym renderze.
-
-### 4.9 `JSON.stringify` jako deep-compare peerow [NISKI]
-
-**Plik:** `dashboard/src/pages/Settings.tsx:148-156`
-
-```typescript
-JSON.stringify(prev) !== JSON.stringify(peers) ? peers : prev
-```
-
-Co 5s serializuje dwie tablice do JSON tylko po to, zeby sprawdzic zmiane.
 
 ---
 
-## 5. Jakosc kodu (Rust)
+#### D-CRIT-3: Potencjalny deadlock — zagnieżdżone blokowanie muteksów w `LanSyncState`
 
-### 5.1 Role jako surowe stringi zamiast enum [SREDNI]
+**Plik:** `src/lan_server.rs:195-211`
 
-**Plik:** `src/lan_server.rs:121`
+W `check_auto_unfreeze()` blokada `frozen_at` jest zwalniana przez `drop(guard)`, a potem `unfreeze()` ponownie blokuje `frozen_at`. Choć `drop` jest przed wywołaniem, wzorzec jest kruchy i podatny na regresję. Dodatkowo `reset_progress()` wywoływane po `unfreeze()` blokuje `progress` — niekonwencjonalna kolejność.
 
-```rust
-pub role: std::sync::Mutex<String>, // "master", "slave", "undecided"
-```
-
-Porownania stringow rozrzucone po calym kodzie (`lan_discovery.rs`, `lan_server.rs`, `lan_sync_orchestrator.rs`). Literowka nie zostanie wykryta w compile time.
-
-To samo dotyczy faz synchronizacji (`phase: String` z 13 roznymi wartosciami) i trybu transferu (`mode: String` — "delta"/"full").
-
-**Rozwiazanie:** Zdefiniowac enum z `#[derive(Serialize)]`.
-
-### 5.2 Brak timeout na backoff sleep [SREDNI]
-
-**Plik:** `src/lan_sync_orchestrator.rs:213-214`
-
-```rust
-let backoff = Duration::from_secs(5 * 3u64.pow(attempt - 1));
-thread::sleep(backoff);
-```
-
-Przy `attempt=3`: 45 sekund sleepu bez sprawdzania `stop_signal`. Daemon nie moze byc zatrzymany.
-
-### 5.3 Plik `lan_sync.log` rosnie bez limitu [SREDNI]
-
-**Pliki:** `src/lan_server.rs:484-494`, `src/lan_sync_orchestrator.rs:16-26`
-
-`sync_log` otwiera plik w trybie `append` bez rotacji.
-
-**Rozwiazanie:** Rotacja logu (np. max 100KB, trim przy starcie sync).
-
-### 5.4 Nieuzywany parametr `_device_id` [NISKI]
-
-**Plik:** `src/lan_server.rs:760`
-
-```rust
-pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str, _device_id: &str)
-```
-
-### 5.5 Blokujacy I/O w `async` Tauri commands [NISKI]
-
-**Plik:** `dashboard/src-tauri/src/commands/lan_sync.rs:104-113`
-
-```rust
-pub async fn get_lan_peers() -> Result<Vec<LanPeer>, String> {
-    let content = std::fs::read_to_string(&path) // blocking in async
-```
-
-`get_lan_peers`, `upsert_lan_peer`, `get_lan_sync_log` — wszystkie uzywaja blokujacego `std::fs` w async kontekscie.
+**Naprawa:** Scalić stan `frozen_at` i `db_frozen` w jedną strukturę chronioną jednym muteksem.
 
 ---
 
-## 6. Jakosc kodu (React/TypeScript)
+### WYSOKIE
 
-### 6.1 `lanPeers` w dependency array bez uzycia [SREDNI]
+#### D-HIGH-1: Brak limitu wątków — `handle_connection` tworzy nieograniczoną liczbę
 
-**Plik:** `dashboard/src/pages/Settings.tsx:224`
+**Plik:** `src/lan_server.rs:270-279`
 
-```typescript
-}, [lanPeers, triggerRefresh]);
-```
+Każde połączenie TCP tworzy nowy wątek bez limitu. Serwer nasłuchuje na `0.0.0.0:47891` (dostępny z sieci LAN) — DoS lub błędny klient może otworzyć tysiące połączeń.
 
-`lanPeers` jest w zaleznosci `useCallback` ale nie jest uzywany w ciele callbacka `handleLanSync`. Powoduje niepotrzebne odtwarzanie referencji przy kazdej zmianie listy peerow (co 5s).
-
-### 6.2 `syncPhaseLabels` tworzony inline w renderze [NISKI]
-
-**Plik:** `dashboard/src/pages/Settings.tsx:465-478`
-
-Obiekt z 13 kluczami tlumaczebnymi tworzony przy kazdym renderze. Powoduje niepotrzebny re-render `LanSyncCard`.
-
-**Rozwiazanie:** Wyodrebnic do `useMemo` z zaleznoscia od `t`.
+**Naprawa:** Dodać semafor lub pulę wątków (np. `Arc<Semaphore>` z limitem 16-32).
 
 ---
 
-## 7. Brakujace tlumaczenia
+#### D-HIGH-2: Brak walidacji odpowiedzi HTTP w kliencie LAN
 
-### 7.1 Hardcoded polski tekst — slave info
+**Plik:** `src/lan_sync_orchestrator.rs:102-157`
 
-**Plik:** `dashboard/src/components/settings/LanSyncCard.tsx:429-431`
+`http_request` odczytuje `status_line` ale nie parsuje kodu statusu. Odpowiedź HTTP 4xx/5xx jest zwracana jako `Ok(body)`, a caller próbuje parsować JSON z treścią błędu jako odpowiedź sukcesu.
 
-```tsx
-<p className="text-xs text-muted-foreground italic">
-  To urządzenie jest w trybie slave — synchronizacja jest inicjowana przez mastera.
-</p>
-```
-
-Brak klucza i18n — nie uzywa `t()`.
-
-### 7.2 Hardcoded angielski tekst — Show/Hide Log
-
-**Plik:** `dashboard/src/components/settings/LanSyncCard.tsx:546`
-
-```tsx
-{showLog ? 'Hide Log' : 'Show Log'}
-```
-
-### 7.3 Hardcoded angielski tekst — no log entries
-
-**Plik:** `dashboard/src/components/settings/LanSyncCard.tsx:555`
-
-```tsx
-{syncLog || '(no log entries yet)'}
-```
-
-### 7.4 Hardcoded angielski tekst — force merge tooltip
-
-**Plik:** `dashboard/src/components/settings/LanSyncCard.tsx:503`
-
-```tsx
-title="Force merge — ignores hash comparison"
-```
-
-**Rozwiazanie:** Dodac klucze do `en/common.json` i `pl/common.json`, uzyc `t()`.
-
-Uwaga: Sekcje `settings.lan_sync` oraz `help_page.lan_sync_*` w obu plikach tlumaczebnowych sa **kompletne** (42 + 22 klucze, identyczne zestawy w EN i PL).
+**Naprawa:** Parsować kod statusu i zwracać `Err` dla kodów >= 400.
 
 ---
 
-## 8. Braki w dokumentacji Help
+#### D-HIGH-3: Nieograniczony wzrost `title_history` w pamięci
 
-### 8.1 Discovery Duration Minutes
+**Plik:** `src/tracker.rs:161-170`
 
-Ustawienie `discoveryDurationMinutes` jest w `LanSyncSettings` i persystowane do pliku, ale Help.tsx nie wspomina o konfiguracji czasu okna discovery.
+`push_title_history` nie ma limitu — rośnie bez ograniczeń do momentu zapisu na dysk (co 5 min). Limit `MAX_TITLE_HISTORY_LEN = 12` stosowany dopiero w `prepare_daily_for_storage`.
 
-### 8.2 Sync Log viewer
-
-Przycisk "Show Log" w `LanSyncCard` nie jest opisany w Help.tsx. Uzytkownik moze nie wiedziec, ze moze przegladac logi synchronizacji.
+**Naprawa:** Wymusić limit bezpośrednio w `push_title_history`.
 
 ---
 
-## 9. Dead code
+#### D-HIGH-4: `save_daily` opóźniany w nieskończoność przy `db_frozen = true`
 
-### 9.1 `import_delta_into_db` — 350 linii z `#[allow(dead_code)]`
+**Plik:** `src/tracker.rs:597-607`
 
-**Plik:** `dashboard/src-tauri/src/commands/lan_sync.rs:313-661`
+Gdy baza jest zamrożona, kod pomija zapis ale nie aktualizuje `last_save`. Podczas długiego zamrożenia (do 5 min — `AUTO_UNFREEZE_TIMEOUT`) dane gromadzone w pamięci mogą zostać utracone przy crashu.
 
-Cala rozbudowana funkcja importu z lepsza logika mapowania ID (patrz punkt 1.2). Paradoksalnie ta wersja jest poprawniejsza niz aktywna wersja w daemonie.
-
-### 9.2 `verify_and_cleanup_after_merge` — dead code
-
-**Plik:** `dashboard/src-tauri/src/commands/lan_sync.rs:664-698`
-
-### 9.3 Wiele nieuzywanych typow w `lan_sync.rs`
-
-**Plik:** `dashboard/src-tauri/src/commands/lan_sync.rs` — linie 61, 68, 76, 704, 727
+**Naprawa:** Wywołać `save_daily` bezpośrednio po odmrożeniu lub buforować na dysku.
 
 ---
 
-## 10. Podsumowanie priorytetow
+#### D-HIGH-5: `backup_database` otwiera nowe połączenie przy zamrożonej bazie
 
-### Krytyczne (natychmiastowa naprawa)
+**Plik:** `src/sync_common.rs:57`
 
-| # | Problem | Plik | Wplyw |
-|---|---------|------|-------|
-| 1 | SQL Injection w `build_delta_for_pull` | `lan_server.rs:776-796` | Bezpieczenstwo — wykonanie dowolnego SQL z sieci LAN |
-| 2 | Merge uzywa zdalnych `app_id`/`project_id` bez mapowania | `lan_sync_orchestrator.rs:596` | Utrata danych — sesje przypisane do zlych apps/projektow lub kasowane |
+`backup_database()` wywołuje `open_dashboard_db()` wewnątrz, podczas gdy orchestrator trzyma otwarte `conn`. `VACUUM INTO` wymaga wyłączności odczytu — może kończyć się `SQLITE_BUSY`.
 
-### Wysokie (powinny byc naprawione przed release)
-
-| # | Problem | Plik | Wplyw |
-|---|---------|------|-------|
-| 3 | Slave nigdy nie pobiera scalonych danych | `lan_sync_orchestrator.rs:372` | Sync jest jednostronny — slave nie otrzymuje danych |
-| 4 | `DefaultHasher` niestabilny cross-platform | 3 pliki | Niepotrzebne synce, bledne porownania hashow |
-| 5 | 8 polaczen DB w jednym sync flow | `lan_sync_orchestrator.rs` | Wydajnosc sync |
-| 6 | `compute_table_hash` — `group_concat` calej tabeli | `lan_server.rs:416` | Pamiec/CPU przy duzych bazach |
-| 7 | Pelny eksport nawet przy delta sync | `lan_sync_orchestrator.rs:359` | Transfer sieciowy |
-
-### Srednie (plan naprawy)
-
-| # | Problem | Wplyw |
-|---|---------|-------|
-| 8 | 3x duplikacja `get_device_id`, `get_machine_name`, `sync_log`, `compute_table_hash` | Utrzymywalnosc |
-| 9 | 2 niezalezne implementacje merge (z niespojana logika tombstone) | Spojnosc danych |
-| 10 | Race condition w elekcji (jednoczesny start) | Podwojna elekcja master |
-| 11 | Brak atomowosci freeze/unfreeze | Buforowanie danych do 5 min |
-| 12 | Port w UI fikcyjny (daemon hardkoduje) | UX — zmiana bez efektu |
-| 13 | Podwojny polling progressu | Nadmiarowe requesty |
-| 14 | `lan_sync.log` bez rotacji | Zuzycie dysku |
-| 15 | Brak kompresji transferu | Predkosc sync |
-| 16 | Role/fazy jako stringi zamiast enum | Bezpieczenstwo typow |
-| 17 | 4 hardcoded stringi w LanSyncCard (brak i18n) | Lokalizacja |
-
-### Niskie (nice-to-have)
-
-| # | Problem | Wplyw |
-|---|---------|-------|
-| 18 | `loadLanSyncState()` w kazdym renderze | Drobna nieefektywnosc |
-| 19 | `syncPhaseLabels` inline w renderze | React re-render |
-| 20 | `lanPeers` w dependency array bez uzycia | Niepotrzebne re-tworzenie callbacka |
-| 21 | `JSON.stringify` jako deep-compare | Drobna nieefektywnosc |
-| 22 | Blokujacy I/O w async Tauri commands | Anti-pattern |
-| 23 | 350 linii dead code (`import_delta_into_db`) | Czytelnosc |
-| 24 | Brakujace opisy w Help (discovery duration, sync log) | Dokumentacja |
+**Naprawa:** Przekazać istniejące połączenie `conn` zamiast otwierać nowe.
 
 ---
 
-*Raport wygenerowany automatycznie na podstawie analizy 3 agentow (Code Reuse, Code Quality, Efficiency).*
+#### D-HIGH-6: Path traversal / brak weryfikacji JSON w `handle_download_db`
+
+**Plik:** `src/lan_server.rs:563-564, 599-607`
+
+Plik `lan_sync_merged.json` jest zwracany verbatim bez weryfikacji formatu. Jeśli plik zostałby zastąpiony przez inny proces, serwer zwróci dowolną treść.
+
+**Naprawa:** Weryfikować że zwracana treść jest poprawnym JSON.
+
+---
+
+### ŚREDNIE
+
+| # | Plik | Problem |
+|---|------|---------|
+| D-MED-1 | `sftp_client.rs:81-115` | `download_data` buforuje cały plik SFTP bez limitu rozmiaru — ryzyko OOM |
+| D-MED-2 | `lan_common.rs:33-40` | `sync_log` czyta cały plik przy rotacji — O(n) dla każdego wpisu po 100KB |
+| D-MED-3 | `lan_server.rs:329-340` | Brak limitu na liczbę nagłówków HTTP — pętla `loop { read_line }` bez ograniczenia |
+| D-MED-4 | `sync_common.rs:122-123, 179, 283-284` | Timestampy porównywane jako stringi — błąd gdy format ISO vs `YYYY-MM-DD HH:MM:SS` |
+| D-MED-5 | `lan_server.rs:664-675, 832-847` | `handle_push`/`import_push_data` — stub, nie importuje danych, ale zwraca sukces |
+| D-MED-6 | `sftp_client.rs:12-17`, `sync_encryption.rs:27-36` | Hasła i klucze przechowywane jako zwykłe `String` — brak zerowania z pamięci |
+| D-MED-7 | `lan_discovery.rs:46-47, 651` | Master election: `uptime_secs` może być sfałszowane przez złośliwy node |
+| D-MED-8 | `lan_server.rs:268` | `check_auto_unfreeze` wywoływane co 500ms — zbyt częste blokowanie mutexu |
+
+### NISKIE
+
+| # | Plik | Problem |
+|---|------|---------|
+| D-LOW-1 | `lan_discovery.rs:112-119` | `generate_device_id` — kolizja przy wielokrotnym uruchomieniu w tej samej milisekundzie |
+| D-LOW-2 | `i18n.rs:93-118` | `load_language` — TOCTOU na cache muteksie, może użyć przestarzałego języka |
+| D-LOW-3 | `lan_discovery.rs:631` | Nieużywana zmienna `is_new` — niespójna logika zapisu `peers_dirty` |
+| D-LOW-4 | `config.rs:95`, `lan_common.rs:58` | `SQLITE_OPEN_NO_MUTEX` — wymaga dokumentacji że każdy wątek musi mieć osobne połączenie |
+
+---
+
+## Dashboard (React/TS)
+
+### KRYTYCZNE
+
+#### FE-CRIT-1: Błędny regex w `normalizeApiToken` — `bearer` nigdy nie jest usuwany
+
+**Plik:** `dashboard/src/lib/sync/sync-storage.ts:40-41`
+
+Regex `/^bearer\\s+/i` w literale regex szuka dosłownego `\s` (backslash + litera s), nie whitespace. Token z prefiksem `Bearer ` nie zostanie oczyszczony — pełny ciąg trafi jako token autoryzacyjny.
+
+```ts
+// Obecne (błędne):
+if (/^bearer\\s+/i.test(value)) {
+
+// Poprawne:
+if (/^bearer\s+/i.test(value)) {
+```
+
+---
+
+#### FE-CRIT-2: `isLoadingRef` blokuje ponowne ładowanie przy zmianie parametrów
+
+**Plik:** `dashboard/src/hooks/useSessionsData.ts:67-84`
+
+Gdy efekt uruchomi się ponownie (zmiana `buildFetchParams`), sprawdza `if (isLoadingRef.current) return` — jeśli poprzednia odpowiedź nie wróciła, drugi efekt **wycofuje się bez załadowania danych** dla nowych parametrów. Użytkownik widzi stare dane dla starego zakresu dat.
+
+**Naprawa:** Flaga in-flight powinna być per-efekt (AbortController), nie globalna ref:
+
+```ts
+useEffect(() => {
+  let cancelled = false;
+  sessionsApi.getSessions(buildFetchParams(0)).then((data) => {
+    if (cancelled) return;
+    replaceSessionsPage(data);
+  });
+  return () => { cancelled = true; };
+}, [buildFetchParams, reloadVersion]);
+```
+
+---
+
+### WYSOKIE
+
+#### FE-HIGH-1: `lastSyncAt` — `useMemo` z nieprawidłową zależnością
+
+**Plik:** `dashboard/src/pages/Settings.tsx:129`
+
+```ts
+const lastSyncAt = useMemo(() => loadLanSyncState().lastSyncAt, [lanSyncing]);
+```
+
+`useMemo` z zależnością `[lanSyncing]` odczytuje `localStorage` tylko gdy `lanSyncing` zmienia wartość. Jeśli sync kończy się błędem (oba stany `false`), memo się nie przelicza.
+
+**Naprawa:** Użyć `useState` + aktualizacja po zakończeniu sync.
+
+---
+
+#### FE-HIGH-2: Wyciek stanu `loadMore` przy zmianie filtrów
+
+**Plik:** `dashboard/src/hooks/useSessionsData.ts:109-128`
+
+Gdy `buildFetchParams` się zmienia, ale nowy efekt jeszcze nie zadziałał, `loadMore` wykonuje zapytanie z offsetem starej listy do nowego backendu — appenduje dane z nowym filtrem do starej listy.
+
+**Naprawa:** Zresetować `sessionsRef` i `hasMore` przy zmianie parametrów przed nowym efektem.
+
+---
+
+#### FE-HIGH-3: Race condition w `useSessionSplitAnalysis`
+
+**Plik:** `dashboard/src/hooks/useSessionSplitAnalysis.ts:182-192`
+
+Rekurencyjne `setTimeout` w `runBatch` nie sprawdza `cancelled` w `finally` — po cleanup efektu kolejne wywołanie `setSplitEligibilityBySession` może zaktualizować stary efekt.
+
+**Naprawa:** Dodać `if (cancelled) return;` na początku `finally`.
+
+---
+
+#### FE-HIGH-4: `handleSaveSettings` nie persystuje `splitSettings` w transakcji zapisu
+
+**Plik:** `dashboard/src/hooks/useSettingsFormState.ts:368`
+
+`splitSettings` jest zapisywany natychmiast przez `updateSplitSetting` (poza cyklem zapisu). Zmiana nie jest chroniona przez mechanizm "unsaved changes" — nie pojawia się w dialogu "Masz niezapisane zmiany".
+
+---
+
+#### FE-HIGH-5: `groupedByProject` przeliczane przy każdej zmianie `t` referencji
+
+**Plik:** `dashboard/src/pages/Sessions.tsx:411`
+
+`t` jest zależnością `useMemo`. Funkcja `t` z `react-i18next` może zmieniać referencję — powoduje pełne przeliczenie grupy sesji. Wyciągnąć stałą wartość "unassigned" poza memo.
+
+---
+
+### ŚREDNIE
+
+#### FE-MED-1: Podwójne nasłuchiwanie na `PROJECTS_ALL_TIME_INVALIDATED_EVENT`
+
+**Plik:** `dashboard/src/hooks/useProjectsData.ts:119-136`
+
+Ten sam event jest obsługiwany globalnie przez `projects-cache-store.ts` — listener w `useProjectsData` powoduje podwójne odświeżanie.
+
+---
+
+### NISKIE
+
+| # | Plik | Problem |
+|---|------|---------|
+| FE-LOW-1 | `pages/Reports.tsx:281-284` | `crypto.randomUUID` — zbędne sprawdzanie (zawsze dostępne w Tauri/Chromium) |
+| FE-LOW-2 | `pages/Settings.tsx:221` | Wynik LAN sync (`"Force sync — OK"` itd.) — hardcoded po angielsku zamiast `t()` |
+| FE-LOW-3 | `lib/inline-i18n.ts` | `createInlineTranslator` — martwy kod, nigdzie nie importowany |
+
+---
+
+## Tłumaczenia
+
+### KRYTYCZNE
+
+#### I18N-CRIT-1: Hardcoded string PL w Help.tsx
+
+**Plik:** `dashboard/src/pages/Help.tsx:808`
+
+```
+'Od wersji z Delta Sync: system przesyła tylko zmodyfikowane pakiety synchronizacji...'
+```
+
+Wstawiony bezpośrednio jako literał — brak odpowiednika EN. Użytkownicy anglojęzyczni widzą ten tekst po polsku.
+
+**Naprawa:** Wyekstrahować do klucza JSON z parą PL + EN.
+
+---
+
+### WYSOKIE
+
+#### I18N-HIGH-1: Tytuł PDF po polsku
+
+**Plik:** `dashboard/src/pages/ReportView.tsx:38`
+
+```ts
+document.title = `timeflow_raport_${safeName}`;
+```
+
+Prefix `timeflow_raport_` jest po polsku. Użytkownicy EN dostają `timeflow_raport_ProjectName.pdf`.
+
+**Naprawa:** Użyć tłumaczenia: `timeflow_report_` (EN) / `timeflow_raport_` (PL).
+
+---
+
+### NISKIE
+
+| # | Plik | Problem |
+|---|------|---------|
+| I18N-LOW-1 | `components/sync/SyncProgressOverlay.tsx:122` | Fallback `'Synchronizacja LAN'` po polsku zamiast EN (klucz JSON istnieje, więc nie jest widoczny) |
+| I18N-LOW-2 | `locales/{en,pl}/common.json` | 2 klucze `help_page.*` zdefiniowane ale nieużywane (font selection, files/activity section) |
+
+---
+
+## Pokrycie Help.tsx
+
+### WYSOKIE
+
+#### HELP-HIGH-1: Overlay postępu sync online — brak opisu
+
+**Komponent:** `dashboard/src/components/sync/SyncProgressOverlay.tsx`
+
+`SyncProgressOverlay` działa zarówno dla LAN jak i Online sync (parametr `syncType`), ale Help.tsx opisuje go **tylko** w kontekście LAN. Sekcja `online-sync` nie wspomina o overlayie postępu.
+
+**Naprawa:** Dodać opis overlay postępu do sekcji `online-sync` w Help.tsx.
+
+---
+
+### ŚREDNIE
+
+#### HELP-MED-1: Sekcja "Pliki/aktywność" w raportach — brak opisu
+
+**Komponent:** `dashboard/src/pages/Reports.tsx` (sekcja `files` w edytorze szablonu)
+
+Sekcja `files` jest dostępna w liście `ALL_SECTIONS` edytora szablonu, ale Help.tsx nie opisuje co ta sekcja zawiera w raporcie. Klucze JSON z opisem istnieją (`help_page.files_activity_section_...`), ale nie są użyte.
+
+**Naprawa:** Dodać klucz `files_activity_section_...` do tablicy `features[]` w sekcji `reports` Help.tsx.
+
+---
+
+## Rekomendacje priorytetowe
+
+### Do naprawy natychmiast (blokery funkcjonalności):
+
+1. **D-CRIT-1** — `DefaultHasher` niedeterministyczny → delta sync nie działa nigdy
+2. **D-CRIT-2** — Race condition na `sync_in_progress` → ryzyko równoległego zapisu do bazy
+3. **FE-CRIT-1** — Błędny regex `bearer\\s+` → token z prefiksem Bearer powoduje błąd auth
+4. **D-HIGH-2** — Brak parsowania kodu HTTP → błędy serwera traktowane jako sukces
+
+### Do naprawy w następnym sprincie:
+
+5. **FE-CRIT-2** — `isLoadingRef` blokuje ponowne ładowanie → stare dane po zmianie filtrów
+6. **D-HIGH-1** — Brak limitu wątków serwera HTTP → DoS z sieci LAN
+7. **D-HIGH-4** — Utrata danych przy crashu w trakcie zamrożenia bazy
+8. **D-CRIT-3** — Potencjalny deadlock w `LanSyncState`
+9. **I18N-CRIT-1** — Hardcoded PL w Help.tsx → widoczny bug dla użytkowników EN
+
+### Optymalizacje i dług techniczny:
+
+10. **D-MED-4** — Porównanie timestampów jako stringi (potencjalne błędy przy różnych formatach)
+11. **FE-HIGH-5** — `groupedByProject` przeliczane zbyt często
+12. **FE-LOW-3** — Martwy kod `createInlineTranslator`
+13. **D-MED-2** — Rotacja logów O(n) przy każdym wpisie
