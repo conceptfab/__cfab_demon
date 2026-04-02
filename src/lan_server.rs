@@ -196,16 +196,16 @@ impl LanSyncState {
         if !self.db_frozen.load(Ordering::Relaxed) {
             return false;
         }
-        let guard = self.frozen_at.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(frozen_at) = *guard {
-            if frozen_at.elapsed() > AUTO_UNFREEZE_TIMEOUT {
-                drop(guard);
-                log::warn!("Auto-unfreezing database after {:?} timeout", AUTO_UNFREEZE_TIMEOUT);
-                self.unfreeze();
-                self.reset_progress();
-                self.set_role("undecided");
-                return true;
-            }
+        let should_unfreeze = {
+            let guard = self.frozen_at.lock().unwrap_or_else(|e| e.into_inner());
+            guard.map_or(false, |t| t.elapsed() > AUTO_UNFREEZE_TIMEOUT)
+        };
+        if should_unfreeze {
+            log::warn!("Auto-unfreezing database after {:?} timeout", AUTO_UNFREEZE_TIMEOUT);
+            self.unfreeze();
+            self.reset_progress();
+            self.set_role("undecided");
+            return true;
         }
         false
     }
@@ -688,7 +688,9 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
-    if state.sync_in_progress.load(Ordering::Relaxed) {
+    if state.sync_in_progress.compare_exchange(
+        false, true, Ordering::SeqCst, Ordering::SeqCst
+    ).is_err() {
         return (409, json_error("Sync already in progress"));
     }
 
@@ -707,7 +709,9 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
 }
 
 fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>) -> (u16, String) {
-    if state.sync_in_progress.load(Ordering::Relaxed) {
+    if state.sync_in_progress.compare_exchange(
+        false, true, Ordering::SeqCst, Ordering::SeqCst
+    ).is_err() {
         return (409, json_error("Sync already in progress"));
     }
 
