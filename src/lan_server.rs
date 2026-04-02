@@ -340,12 +340,17 @@ fn handle_connection(
 
     // Parse headers (case-insensitive)
     let mut content_length: usize = 0;
+    let mut header_count = 0;
     loop {
         let mut header_line = String::new();
         reader.read_line(&mut header_line).map_err(|e| e.to_string())?;
         let trimmed = header_line.trim();
         if trimmed.is_empty() {
             break;
+        }
+        header_count += 1;
+        if header_count > 100 {
+            return Err("Too many headers".to_string());
         }
         let lower = trimmed.to_ascii_lowercase();
         if let Some(value) = lower.strip_prefix("content-length:") {
@@ -621,6 +626,9 @@ fn handle_download_db() -> (u16, String) {
     let merged_path = dir.join("lan_sync_merged.json");
     match std::fs::read_to_string(&merged_path) {
         Ok(data) => {
+            if serde_json::from_str::<serde_json::Value>(&data).is_err() {
+                return (500, json_error("Merged JSON file is corrupted"));
+            }
             let kb = data.len() as f64 / 1024.0;
             sync_log(&format!("[SLAVE] Wysylam {:.1} KB scalonych danych do mastera", kb));
             (200, data)
