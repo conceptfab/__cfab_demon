@@ -37,8 +37,8 @@ export function normalizeApiToken(input: unknown): string {
     value = value.slice(1, -1).trim();
   }
 
-  if (/^bearer\\s+/i.test(value)) {
-    value = value.replace(/^bearer\\s+/i, '').trim();
+  if (/^bearer\s+/i.test(value)) {
+    value = value.replace(/^bearer\s+/i, '').trim();
   }
 
   return value;
