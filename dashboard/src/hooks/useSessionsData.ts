@@ -66,8 +66,9 @@ export function useSessionsData(params: {
 
   useEffect(() => {
     let cancelled = false;
-    if (isLoadingRef.current) return;
     isLoadingRef.current = true;
+    sessionsRef.current = [];
+    hasMoreRef.current = true;
     sessionsApi
       .getSessions(buildFetchParams(0))
       .then((data) => {
@@ -76,7 +77,9 @@ export function useSessionsData(params: {
       })
       .catch(console.error)
       .finally(() => {
-        isLoadingRef.current = false;
+        if (!cancelled) {
+          isLoadingRef.current = false;
+        }
       });
     return () => {
       cancelled = true;
