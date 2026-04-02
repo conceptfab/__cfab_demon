@@ -8,13 +8,21 @@ use crate::lan_common;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const DEFAULT_LAN_PORT: u16 = 47891;
 const MAX_REQUEST_BODY: usize = 50 * 1024 * 1024; // 50MB
+const MAX_CONNECTIONS: usize = 32;
+
+struct ConnectionGuard(Arc<AtomicUsize>);
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
 
 // ── Types ──
 
@@ -259,6 +267,8 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
         .set_nonblocking(true)
         .unwrap_or_else(|e| log::warn!("LAN server: set_nonblocking failed: {}", e));
 
+    let active_connections = Arc::new(AtomicUsize::new(0));
+
     loop {
         if stop_signal.load(Ordering::Relaxed) {
             break;
@@ -269,9 +279,21 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
 
         match listener.accept() {
             Ok((stream, addr)) => {
+                let conn_count = active_connections.clone();
+                if conn_count.load(Ordering::Relaxed) >= MAX_CONNECTIONS {
+                    log::warn!(
+                        "LAN server: max connections ({}) reached, dropping {}",
+                        MAX_CONNECTIONS,
+                        addr
+                    );
+                    drop(stream);
+                    continue;
+                }
+                conn_count.fetch_add(1, Ordering::Relaxed);
                 let state = sync_state.clone();
                 let stop = stop_signal.clone();
                 thread::spawn(move || {
+                    let _decrement = ConnectionGuard(conn_count);
                     if let Err(e) = handle_connection(stream, state, stop) {
                         log::debug!("LAN server: connection error from {}: {}", addr, e);
                     }
