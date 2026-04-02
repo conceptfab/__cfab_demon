@@ -35,7 +35,6 @@ import { useConfirm } from '@/components/ui/confirm-dialog';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import { useProjectsData, PROJECT_FOLDERS_LOAD_ERROR } from '@/hooks/useProjectsData';
 import type {
-  DetectedProject,
   ProjectWithStats,
 } from '@/lib/db-types';
 import { ProjectsList } from '@/components/projects/ProjectsList';
@@ -49,14 +48,6 @@ const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
 const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
 const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
 const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
-
-function inferDetectedProjectName(fileName: string): string {
-  const trimmed = fileName.trim();
-  if (!trimmed) return fileName;
-  const parts = trimmed.split(' - ');
-  const candidate = parts[parts.length - 1]?.trim();
-  return candidate || trimmed;
-}
 
 function normalizeProjectDuplicateKey(name: string): string {
   return name.trim().toLowerCase().replace(/[_-]+/g, '').replace(/\s+/g, '');
@@ -436,6 +427,67 @@ export function Projects() {
     }
   };
 
+  const handleDeleteAllExcluded = async () => {
+    if (!await confirm(t('projects.confirm.delete_all_excluded'))) {
+      return;
+    }
+    setBusy('delete-all-excluded');
+    try {
+      await projectsApi.deleteAllExcludedProjects();
+    } catch (e) {
+      logTauriError('delete all excluded projects', e);
+      showError(getErrorMessage(e, t('ui.common.unknown_error')));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleClearCandidates = async () => {
+    if (visibleFolderCandidates.length === 0) return;
+    if (!await confirm(t('projects.confirm.clear_candidates'))) {
+      return;
+    }
+    setBusy('clear-candidates');
+    try {
+      const names = visibleFolderCandidates.map((c) => c.name);
+      await projectsApi.blacklistProjectNames(names);
+    } catch (e) {
+      logTauriError('blacklist candidates', e);
+      showError(getErrorMessage(e, t('ui.common.unknown_error')));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleBlacklistDetected = async (name: string) => {
+    setBusy(`blacklist:${name}`);
+    try {
+      await projectsApi.blacklistProjectNames([name]);
+    } catch (e) {
+      logTauriError('blacklist detected project', e);
+      showError(getErrorMessage(e, t('ui.common.unknown_error')));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleClearAllDetected = async () => {
+    const names = detectedCandidatesView.visible.map((c) => c.project_name);
+    if (names.length === 0) return;
+    if (!await confirm(t('projects.confirm.clear_all_detected'))) {
+      return;
+    }
+    setBusy('clear-all-detected');
+    try {
+      await projectsApi.blacklistProjectNames(names);
+    } catch (e) {
+      logTauriError('blacklist all detected', e);
+      showError(getErrorMessage(e, t('ui.common.unknown_error')));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleAutoCreateDetected = async () => {
     setBusy('auto-detect');
     try {
@@ -555,55 +607,17 @@ export function Projects() {
     folderCandidates.length - visibleFolderCandidates.length;
 
   const detectedCandidatesView = useMemo(() => {
-    const existingNames = new Set(projects.map((p) => p.name.toLowerCase()));
-    const excludedNames = new Set(
-      excludedProjects.map((p) => p.name.toLowerCase()),
-    );
-    const seenCandidateNames = new Set<string>();
-
-    const visible: Array<
-      DetectedProject & {
-        inferredProjectName: string;
-      }
-    > = [];
-    let hiddenExisting = 0;
-    let hiddenExcluded = 0;
-    let hiddenDuplicates = 0;
-
-    for (const d of detectedProjects) {
-      const inferredProjectName = inferDetectedProjectName(d.file_name);
-      const key = inferredProjectName.toLowerCase();
-
-      if (existingNames.has(key)) {
-        hiddenExisting += 1;
-        continue;
-      }
-      if (excludedNames.has(key)) {
-        hiddenExcluded += 1;
-        continue;
-      }
-      if (seenCandidateNames.has(key)) {
-        hiddenDuplicates += 1;
-        continue;
-      }
-
-      seenCandidateNames.add(key);
-      visible.push({ ...d, inferredProjectName });
-    }
-
-    const cap = isDemoMode ? 8 : visible.length;
-    const visibleCapped = visible.slice(0, cap);
-    const hiddenOverflow = Math.max(0, visible.length - visibleCapped.length);
+    // Backend already filters: only folder-based candidates, no existing/excluded/blacklisted
+    const cap = isDemoMode ? 8 : detectedProjects.length;
+    const visible = detectedProjects.slice(0, cap);
+    const hiddenOverflow = Math.max(0, detectedProjects.length - visible.length);
 
     return {
-      visible: visibleCapped,
-      hiddenExisting,
-      hiddenExcluded,
-      hiddenDuplicates,
+      visible,
       hiddenOverflow,
-      totalCandidateCount: visible.length,
+      totalCandidateCount: detectedProjects.length,
     };
-  }, [detectedProjects, projects, excludedProjects, isDemoMode]);
+  }, [detectedProjects, isDemoMode]);
 
   const projectsByFolder = useMemo(() => {
     const rootByProjectName = new Map<string, string>();
@@ -950,6 +964,16 @@ export function Projects() {
         renderProjectList={renderProjectList}
       />
 
+      {projectFolders.length === 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <span className="mt-0.5 text-lg leading-none">!</span>
+          <div>
+            <p className="font-semibold">{t('projects.warnings.no_folders_title')}</p>
+            <p className="mt-0.5 text-xs text-amber-300/80">{t('projects.warnings.no_folders_defined')}</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <button
           type="button"
@@ -967,24 +991,6 @@ export function Projects() {
           {t('projects.actions.collapse_all')}
         </button>
       </div>
-
-      <ExcludedProjectsList
-        isOpen={sectionOpen.excluded}
-        onToggle={toggleSection('excluded')}
-        projects={visibleExcludedProjects}
-        hiddenCount={hiddenExcludedProjectsCount}
-        renderDuplicateMarker={renderDuplicateMarker}
-        isDeleting={(projectId) => busy === `delete-project:${projectId}`}
-        onRestore={(projectId) => {
-          void handleRestore(projectId);
-        }}
-        onDelete={(project) => {
-          void handleDeleteProject(project);
-        }}
-        onLoadMore={() =>
-          loadMoreProjects('excluded', filteredExcludedProjects.length)
-        }
-      />
 
       <ProjectDiscoveryPanel
         sectionOpen={{
@@ -1031,6 +1037,40 @@ export function Projects() {
         onAutoCreateDetected={() => {
           void handleAutoCreateDetected();
         }}
+        onClearCandidates={() => {
+          void handleClearCandidates();
+        }}
+        isClearingCandidates={busy === 'clear-candidates'}
+        onBlacklistDetected={(name) => {
+          void handleBlacklistDetected(name);
+        }}
+        onClearAllDetected={() => {
+          void handleClearAllDetected();
+        }}
+        isClearingAllDetected={busy === 'clear-all-detected'}
+      />
+
+      <ExcludedProjectsList
+        isOpen={sectionOpen.excluded}
+        onToggle={toggleSection('excluded')}
+        projects={visibleExcludedProjects}
+        totalExcludedCount={excludedProjects.length}
+        hiddenCount={hiddenExcludedProjectsCount}
+        renderDuplicateMarker={renderDuplicateMarker}
+        isDeleting={(projectId) => busy === `delete-project:${projectId}`}
+        isDeletingAll={busy === 'delete-all-excluded'}
+        onRestore={(projectId) => {
+          void handleRestore(projectId);
+        }}
+        onDelete={(project) => {
+          void handleDeleteProject(project);
+        }}
+        onDeleteAll={() => {
+          void handleDeleteAllExcluded();
+        }}
+        onLoadMore={() =>
+          loadMoreProjects('excluded', filteredExcludedProjects.length)
+        }
       />
 
       <Dialog

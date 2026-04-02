@@ -310,6 +310,7 @@ pub struct AutoImportResult {
 #[derive(Serialize)]
 pub struct DetectedProject {
     pub file_name: String,
+    pub project_name: String,
     pub total_seconds: i64,
     pub occurrence_count: i64,
     pub apps: Vec<String>,

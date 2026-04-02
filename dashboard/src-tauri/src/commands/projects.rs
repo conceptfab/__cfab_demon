@@ -264,6 +264,14 @@ fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> 
     None
 }
 
+/// Public wrapper for `infer_project_from_path` (used by import.rs).
+pub(crate) fn infer_project_from_path_pub(
+    file_path: &str,
+    project_roots: &[ProjectFolder],
+) -> Option<String> {
+    infer_project_from_path(file_path, project_roots)
+}
+
 /// Attempts to extract the project name from the file title.
 fn infer_project_name_from_file_title(
     title: &str,
@@ -901,6 +909,60 @@ pub async fn delete_project(app: AppHandle, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn blacklist_project_names(app: AppHandle, names: Vec<String>) -> Result<usize, String> {
+    run_db_blocking(app, move |conn| {
+        let mut count = 0usize;
+        for name in &names {
+            if let Some(name_key) = normalized_project_name_key(name) {
+                let inserted = conn
+                    .execute(
+                        "INSERT OR IGNORE INTO project_name_blacklist (name_key) VALUES (?1)",
+                        [&name_key],
+                    )
+                    .map_err(|e| e.to_string())?;
+                if inserted > 0 {
+                    count += 1;
+                }
+            }
+        }
+        Ok(count)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_all_excluded_projects(app: AppHandle) -> Result<usize, String> {
+    run_db_blocking(app, move |conn| {
+        let ids: Vec<i64> = {
+            let mut stmt = conn
+                .prepare_cached("SELECT id FROM projects WHERE excluded_at IS NOT NULL")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?
+        };
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for id in &ids {
+            tx.execute(
+                "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
+                [id],
+            )
+            .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM projects WHERE id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(ids.len())
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn assign_app_to_project(
     app: AppHandle,
     app_id: i64,
@@ -1169,6 +1231,12 @@ pub async fn auto_create_projects_from_detection(
     min_occurrences: i64,
 ) -> Result<usize, String> {
     run_db_blocking(app, move |conn| {
+        let project_roots = load_project_folders_from_db(conn)?;
+        if project_roots.is_empty() {
+            // No project folders configured — nothing to auto-detect from.
+            return Ok(0);
+        }
+
         let threshold = min_occurrences.max(2);
         let mut stmt = conn
             .prepare_cached(
@@ -1187,41 +1255,23 @@ pub async fn auto_create_projects_from_detection(
             )
             .map_err(|e| e.to_string())?;
 
-        let app_names: HashSet<String> = {
-            let mut stmt = conn
-                .prepare_cached("SELECT LOWER(display_name) FROM applications")
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map([], |row| row.get::<_, String>(0))
-                .map_err(|e| e.to_string())?;
-            rows.collect::<Result<HashSet<_>, _>>()
-                .map_err(|e| format!("Failed to read application display_name row: {}", e))?
-        };
-
         let mut created = 0usize;
         for file_name in rows {
             let file_name =
                 file_name.map_err(|e| format!("Failed to read file_activities row: {}", e))?;
             let candidate = file_name.trim();
-            if candidate.is_empty()
-                || candidate.len() > 200
-                || candidate.contains(['/', '\\', '\0'])
-            {
+            if candidate.is_empty() || candidate.len() > 200 {
                 continue;
             }
 
-            let project_name = match infer_project_name_from_file_title(candidate, &[]) {
-                Some(name) => name,
-                None => continue,
-            };
-
-            if project_name.contains('.') && !project_name.contains(['/', '\\']) {
-                continue;
-            }
-
-            if app_names.contains(&project_name.to_lowercase()) {
-                continue;
-            }
+            // Only accept candidates that resolve to an actual project folder.
+            // This prevents window titles like "Copy Settings", "Fill" etc. from
+            // being created as projects.
+            let project_name =
+                match infer_project_from_path(candidate, &project_roots) {
+                    Some(name) => name,
+                    None => continue,
+                };
 
             if create_project_if_missing(conn, &project_name)? {
                 created += 1;

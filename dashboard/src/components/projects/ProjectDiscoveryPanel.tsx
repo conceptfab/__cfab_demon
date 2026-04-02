@@ -1,9 +1,8 @@
-import { CircleOff, Plus, RefreshCw, Wand2 } from 'lucide-react';
+import { CircleOff, FolderOpen, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { CollapsibleSection } from '@/components/project/CollapsibleSection';
 import { AppTooltip } from '@/components/ui/app-tooltip';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type {
@@ -14,14 +13,7 @@ import type {
 import { formatDuration, formatPathForDisplay } from '@/lib/utils';
 
 type DetectedCandidatesView = {
-  visible: Array<
-    DetectedProject & {
-      inferredProjectName: string;
-    }
-  >;
-  hiddenExisting: number;
-  hiddenExcluded: number;
-  hiddenDuplicates: number;
+  visible: DetectedProject[];
   hiddenOverflow: number;
   totalCandidateCount: number;
 };
@@ -53,6 +45,11 @@ type ProjectDiscoveryPanelProps = {
   detectedCandidatesView: DetectedCandidatesView;
   isDemoMode: boolean;
   onAutoCreateDetected: () => void;
+  onClearCandidates: () => void;
+  isClearingCandidates: boolean;
+  onBlacklistDetected: (name: string) => void;
+  onClearAllDetected: () => void;
+  isClearingAllDetected: boolean;
 };
 
 export function ProjectDiscoveryPanel({
@@ -78,6 +75,11 @@ export function ProjectDiscoveryPanel({
   detectedCandidatesView,
   isDemoMode,
   onAutoCreateDetected,
+  onClearCandidates,
+  isClearingCandidates,
+  onBlacklistDetected,
+  onClearAllDetected,
+  isClearingAllDetected,
 }: ProjectDiscoveryPanelProps) {
   const { t } = useTranslation();
 
@@ -128,6 +130,17 @@ export function ProjectDiscoveryPanel({
             <p className="text-xs text-emerald-400">{folderInfo}</p>
           )}
 
+          <div className="flex justify-start">
+            <Button
+              size="sm"
+              onClick={onSyncFolders}
+              disabled={busy === 'sync-folders' || projectFolders.length === 0}
+            >
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+              {t('projects_page.sync_subfolders_as_projects')}
+            </Button>
+          </div>
+
           {projectFolders.length > 0 ? (
             <div className="space-y-1">
               {projectFolders.map((folder) => (
@@ -156,22 +169,16 @@ export function ProjectDiscoveryPanel({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              {t('projects.empty.no_folders_configured')}
-            </p>
+            <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 py-6">
+              <FolderOpen className="h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                {t('projects.empty.no_folders_configured')}
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                {t('projects.empty.no_folders_configured_hint')}
+              </p>
+            </div>
           )}
-
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onSyncFolders}
-              disabled={busy === 'sync-folders'}
-            >
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              {t('projects_page.sync_subfolders_as_projects')}
-            </Button>
-          </div>
         </div>
       </CollapsibleSection>
 
@@ -219,6 +226,20 @@ export function ProjectDiscoveryPanel({
             {hiddenRegisteredFolderCandidatesCount}
           </p>
         )}
+        {visibleFolderCandidates.length > 0 && (
+          <div className="flex justify-end pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              onClick={onClearCandidates}
+              disabled={isClearingCandidates}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              {t('projects.actions.exclude_all_candidates', { count: visibleFolderCandidates.length })}
+            </Button>
+          </div>
+        )}
       </CollapsibleSection>
 
       <CollapsibleSection
@@ -237,12 +258,12 @@ export function ProjectDiscoveryPanel({
             <div className="max-h-52 space-y-1 overflow-y-auto">
               {detectedCandidatesView.visible.map((candidate) => (
                 <div
-                  key={candidate.file_name}
+                  key={candidate.project_name}
                   className="flex items-center justify-between gap-2 py-1 text-xs"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-medium">
-                      {candidate.inferredProjectName}
+                      {candidate.project_name}
                     </p>
                     <p className="truncate text-muted-foreground">
                       {t('projects_page.detected_project_opens_duration', {
@@ -250,7 +271,7 @@ export function ProjectDiscoveryPanel({
                         duration: formatDuration(candidate.total_seconds),
                       })}
                     </p>
-                    {candidate.inferredProjectName !== candidate.file_name && (
+                    {candidate.project_name !== candidate.file_name && (
                       <p
                         className="truncate text-muted-foreground/80"
                         title={candidate.file_name}
@@ -259,51 +280,43 @@ export function ProjectDiscoveryPanel({
                       </p>
                     )}
                   </div>
-                  <Badge variant="outline">{t('projects_page.candidate')}</Badge>
+                  <AppTooltip content={t('projects.actions.blacklist_detected_tooltip')}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0 text-destructive"
+                      onClick={() => onBlacklistDetected(candidate.project_name)}
+                    >
+                      <CircleOff className="h-3.5 w-3.5" />
+                    </Button>
+                  </AppTooltip>
                 </div>
               ))}
             </div>
           )}
-          {(detectedCandidatesView.hiddenExisting > 0 ||
-            detectedCandidatesView.hiddenExcluded > 0 ||
-            detectedCandidatesView.hiddenDuplicates > 0 ||
-            detectedCandidatesView.hiddenOverflow > 0) && (
+          {detectedCandidatesView.hiddenOverflow > 0 && (
             <p className="text-xs text-muted-foreground">
-              {t('projects.labels.hidden_prefix')}{' '}
-              {detectedCandidatesView.hiddenExisting > 0 &&
-                t('projects.labels.hidden_existing', {
-                  count: detectedCandidatesView.hiddenExisting,
-                })}
-              {detectedCandidatesView.hiddenExisting > 0 &&
-                (detectedCandidatesView.hiddenExcluded > 0 ||
-                  detectedCandidatesView.hiddenDuplicates > 0 ||
-                  detectedCandidatesView.hiddenOverflow > 0) &&
-                ' | '}
-              {detectedCandidatesView.hiddenExcluded > 0 &&
-                t('projects.labels.hidden_excluded', {
-                  count: detectedCandidatesView.hiddenExcluded,
-                })}
-              {detectedCandidatesView.hiddenExcluded > 0 &&
-                (detectedCandidatesView.hiddenDuplicates > 0 ||
-                  detectedCandidatesView.hiddenOverflow > 0) &&
-                ' | '}
-              {detectedCandidatesView.hiddenDuplicates > 0 &&
-                t('projects.labels.duplicate_names', {
-                  count: detectedCandidatesView.hiddenDuplicates,
-                })}
-              {detectedCandidatesView.hiddenDuplicates > 0 &&
-                detectedCandidatesView.hiddenOverflow > 0 &&
-                ' | '}
-              {detectedCandidatesView.hiddenOverflow > 0 &&
-                t(
-                  isDemoMode
-                    ? 'projects.labels.extra_candidates_demo_cap'
-                    : 'projects.labels.extra_candidates',
-                  { count: detectedCandidatesView.hiddenOverflow },
-                )}
+              {t(
+                isDemoMode
+                  ? 'projects.labels.extra_candidates_demo_cap'
+                  : 'projects.labels.extra_candidates',
+                { count: detectedCandidatesView.hiddenOverflow },
+              )}
             </p>
           )}
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {detectedCandidatesView.totalCandidateCount > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive"
+                onClick={onClearAllDetected}
+                disabled={isClearingAllDetected}
+              >
+                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                {t('projects.actions.blacklist_all_detected', { count: detectedCandidatesView.totalCandidateCount })}
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

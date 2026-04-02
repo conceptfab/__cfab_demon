@@ -21,6 +21,7 @@ fn sync_log(msg: &str) {
 
 // ── Server response types ──
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct SessionCreateResponse {
     ok: bool,
@@ -36,6 +37,7 @@ struct SessionCreateResponse {
     sync_mode: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct SessionStatusResponse {
     ok: bool,
@@ -59,6 +61,7 @@ struct StorageCredentialsWrapper {
     encrypted: sync_encryption::EncryptedCredentials,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct ReportResponse {
     ok: bool,

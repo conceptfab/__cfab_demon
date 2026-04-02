@@ -538,7 +538,10 @@
       "reset_project_time": "Reset tracked time for this project? This cannot be undone.",
       "compact_project_data": "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
       "remove_project_root": "Remove folder from project roots? {{path}}",
-      "delete_project_permanent": "Permanently delete project \"{{projectLabel}}\"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone."
+      "delete_project_permanent": "Permanently delete project \"{{projectLabel}}\"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone.",
+      "delete_all_excluded": "Permanently delete ALL excluded projects? This cannot be undone.",
+      "clear_candidates": "Blacklist all visible folder candidates? They will no longer appear as suggestions.",
+      "clear_all_detected": "Blacklist all visible detected candidates? They will no longer appear as suggestions."
     },
     "dialogs": {
       "select_assigned_project_folder": "Select Assigned Project Folder",
@@ -552,7 +555,11 @@
       "expand_all": "Expand all",
       "collapse_all": "Collapse all",
       "add": "Add",
-      "create": "Create"
+      "create": "Create",
+      "delete_all_excluded": "Delete all ({{count}})",
+      "exclude_all_candidates": "Blacklist all ({{count}})",
+      "blacklist_detected_tooltip": "Blacklist — hide this candidate permanently",
+      "blacklist_all_detected": "Blacklist all ({{count}})"
     },
     "sections": {
       "excluded_projects": "Excluded Projects",
@@ -561,7 +568,12 @@
     "empty": {
       "no_excluded_projects": "No excluded projects",
       "no_folders_configured": "No folders configured",
+      "no_folders_configured_hint": "Add a folder above to scan for projects",
       "no_subfolder_candidates": "No subfolder candidates found"
+    },
+    "warnings": {
+      "no_folders_title": "Project folders not configured",
+      "no_folders_defined": "Add at least one project folder to enable automatic project detection. Without folders, TIMEFLOW cannot match file activity to projects."
     },
     "placeholders": {
       "project_folder_path": "C:\\projects\\clients"

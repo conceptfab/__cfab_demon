@@ -62,6 +62,8 @@ pub fn run() {
             commands::exclude_project,
             commands::restore_project,
             commands::delete_project,
+            commands::delete_all_excluded_projects,
+            commands::blacklist_project_names,
             commands::freeze_project,
             commands::unfreeze_project,
             commands::get_project_extra_info,

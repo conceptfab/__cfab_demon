@@ -345,17 +345,17 @@ pub(crate) fn import_delta_into_db(
                 // Local is newer or equal — skip
             }
             Some(_) => {
-                // Remote is newer — update
+                // Remote is newer — update metadata but keep local assigned_folder_path
+                // (each machine has its own folder layout)
                 tx.execute(
                     "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
-                     frozen_at = ?4, assigned_folder_path = ?5, updated_at = ?6 \
-                     WHERE name = ?7",
+                     frozen_at = ?4, updated_at = ?5 \
+                     WHERE name = ?6",
                     rusqlite::params![
                         project.color,
                         project.hourly_rate,
                         project.excluded_at,
                         project.frozen_at,
-                        project.assigned_folder_path,
                         project.updated_at,
                         project.name,
                     ],
@@ -364,11 +364,12 @@ pub(crate) fn import_delta_into_db(
                 summary.projects_merged += 1;
             }
             None => {
-                // New project — insert
+                // New project from remote — insert without assigned_folder_path
+                // (folder paths are machine-specific, not transferable)
                 tx.execute(
                     "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, \
-                     frozen_at, assigned_folder_path, is_imported, updated_at) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8)",
+                     frozen_at, is_imported, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7)",
                     rusqlite::params![
                         project.name,
                         project.color,
@@ -376,7 +377,6 @@ pub(crate) fn import_delta_into_db(
                         project.created_at,
                         project.excluded_at,
                         project.frozen_at,
-                        project.assigned_folder_path,
                         project.updated_at,
                     ],
                 )

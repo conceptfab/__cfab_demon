@@ -188,6 +188,7 @@ pub fn load_online_sync_settings() -> OnlineSyncSettings {
 }
 
 /// Save online sync settings to disk.
+#[allow(dead_code)]
 pub fn save_online_sync_settings(settings: &OnlineSyncSettings) -> Result<()> {
     let dir = config_dir()?;
     let path = dir.join("online_sync_settings.json");
