@@ -1239,7 +1239,10 @@
       "sync_phase_verifying": "Verifying integrity...",
       "sync_phase_uploading": "Uploading data to peer...",
       "sync_phase_slave_downloading": "Peer downloading data...",
-      "sync_phase_completed": "Synchronization complete!"
+      "sync_phase_completed": "Synchronization complete!",
+      "force_sync_label": "Force sync",
+      "full_sync_label": "Full sync",
+      "sync_label": "Sync"
     }
   },
   "help": {
@@ -1319,7 +1322,8 @@
     "multiplier": "Multiplier",
     "manual_sessions": "Manual sessions",
     "title": "Title",
-    "type": "Type"
+    "type": "Type",
+    "pdf_prefix": "timeflow_report"
   },
   "settings_page": {
     "please_use_a_valid_hh_mm_time": "Please use a valid HH:mm time.",
@@ -1721,6 +1725,7 @@
     "online_sync_setup_when_to_use": "When to use: enable it when you want off-device backups or want to sync work between multiple machines.",
     "online_sync_setup_limitations": "Limitations and consequences: Demo Mode disables sync, an invalid token blocks push/pull, and a reseed warning means you need to rebuild state with a local export or a fresh seed.",
     "online_sync_daemon_mode": "Daemon-based sync (LAN Sync Protocol): When the TIMEFLOW daemon is running, online sync can use the 13-step session protocol with SFTP transfer. This provides encrypted file transfer, progress tracking, and automatic merge — same protocol as LAN sync but through a remote server. Configure the encryption key in sync settings.",
+    "delta_sync_description": "Since the Delta Sync version: the system transmits only modified synchronization packets for old and new sessions, saving up to 95% of bandwidth usage.",
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Peer-to-peer synchronization between TIMEFLOW instances on the same local network, without an intermediary server.",
     "lan_sync_udp_discovery": "UDP Discovery – TIMEFLOW automatically broadcasts its presence on the local network (port 47892) every 30 seconds. Other instances are detected without manual configuration.",

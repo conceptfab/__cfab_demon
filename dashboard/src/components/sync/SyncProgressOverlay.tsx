@@ -119,7 +119,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan' }: Sy
           <span className="text-sm font-medium truncate">
             {syncType === 'online'
               ? t('sync_progress.online_title', 'Online Synchronization')
-              : t('sync_progress.title', 'Synchronizacja LAN')}
+              : t('sync_progress.title', 'LAN Synchronization')}
           </span>
           <span className="text-xs text-muted-foreground ml-auto shrink-0">
             {progress.step}/{progress.total_steps}

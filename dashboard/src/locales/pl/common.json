@@ -1239,7 +1239,10 @@
       "sync_phase_verifying": "Weryfikacja integralno\u015bci...",
       "sync_phase_uploading": "Wysy\u0142anie danych do peera...",
       "sync_phase_slave_downloading": "Peer pobiera dane...",
-      "sync_phase_completed": "Synchronizacja zako\u0144czona!"
+      "sync_phase_completed": "Synchronizacja zakończona!",
+      "force_sync_label": "Wymuszona synchronizacja",
+      "full_sync_label": "Pełna synchronizacja",
+      "sync_label": "Synchronizacja"
     }
   },
   "help": {
@@ -1319,7 +1322,8 @@
     "multiplier": "Mnożnik",
     "manual_sessions": "Sesje ręczne",
     "title": "Tytuł",
-    "type": "Typ"
+    "type": "Typ",
+    "pdf_prefix": "timeflow_raport"
   },
   "settings_page": {
     "please_use_a_valid_hh_mm_time": "Użyj poprawnego czasu HH:mm.",
@@ -1721,6 +1725,7 @@
     "online_sync_setup_when_to_use": "Kiedy użyć: włącz to, gdy chcesz mieć kopie danych poza lokalną bazą lub synchronizować pracę między maszynami.",
     "online_sync_setup_limitations": "Ograniczenia i konsekwencje: tryb demo wyłącza synchronizację, błędny token zablokuje push/pull, a po komunikacie o reseed trzeba odbudować stan lokalnym eksportem lub nowym seedem.",
     "online_sync_daemon_mode": "Synchronizacja przez daemon (protokół LAN Sync): Gdy daemon TIMEFLOW jest uruchomiony, synchronizacja online może użyć 13-krokowego protokołu sesji z transferem SFTP. Zapewnia szyfrowany transfer plików, śledzenie postępu i automatyczne scalanie — ten sam protokół co synchronizacja LAN, ale przez zdalny serwer. Skonfiguruj klucz szyfrowania w ustawieniach synchronizacji.",
+    "delta_sync_description": "Od wersji z Delta Sync: system przesyła tylko zmodyfikowane pakiety synchronizacji dla starych i nowych sesji, oszczędzając do 95% zużycia łącza.",
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej, bez pośredniczącego serwera.",
     "lan_sync_udp_discovery": "Wykrywanie UDP – TIMEFLOW automatycznie rozgłasza swoją obecność w sieci lokalnej (port 47892) co 30 sekund. Inne instancje są wykrywane bez ręcznej konfiguracji.",

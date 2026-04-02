@@ -221,7 +221,11 @@ export function Settings() {
       await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since, force);
       // LanSyncCard already polls progress — no duplicate polling here.
       recordPeerSync(peer);
-      const label = force ? 'Force sync' : fullSync ? 'Full sync' : 'Sync';
+      const label = force
+        ? t('settings.lan_sync.force_sync_label', 'Force sync')
+        : fullSync
+          ? t('settings.lan_sync.full_sync_label', 'Full sync')
+          : t('settings.lan_sync.sync_label', 'Sync');
       setLanSyncResult({ text: `${label} — OK`, success: true });
       triggerRefresh('lan_sync_pull');
     } catch (e) {

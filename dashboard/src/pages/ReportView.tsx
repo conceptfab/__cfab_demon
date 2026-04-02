@@ -35,7 +35,7 @@ export function ReportView() {
     if (!report) return;
     const originalTitle = document.title;
     const safeName = report.project.name.replace(/[^a-zA-Z0-9_\-\s]/g, '_');
-    document.title = `timeflow_raport_${safeName}`;
+    document.title = `${t('report_view.pdf_prefix', 'timeflow_report')}_${safeName}`;
     if (report.sessions.length <= SCREEN_LIMIT && report.manual_sessions.length <= SCREEN_LIMIT) {
       window.print();
       document.title = originalTitle;
