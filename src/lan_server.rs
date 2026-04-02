@@ -769,7 +769,15 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     let state_clone = state.clone();
     let stop_clone = stop_signal.clone();
     std::thread::spawn(move || {
-        crate::online_sync::run_online_sync(settings, state_clone, stop_clone);
+        match settings.sync_mode.as_str() {
+            "async" if !settings.group_id.is_empty() => {
+                let group_id = settings.group_id.clone();
+                crate::online_sync::run_async_delta_sync(settings, state_clone, &group_id);
+            }
+            _ => {
+                crate::online_sync::run_online_sync(settings, state_clone, stop_clone);
+            }
+        }
     });
 
     (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())

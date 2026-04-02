@@ -160,6 +160,16 @@ pub struct OnlineSyncSettings {
     pub sync_interval_hours: u32,
     #[serde(default)]
     pub auto_sync_on_startup: bool,
+    /// Sync mode: "session" (13-step), "async" (store-and-forward delta), "auto" (auto-detect)
+    #[serde(default = "default_sync_mode")]
+    pub sync_mode: String,
+    /// Group ID for license-based features (async delta, etc.)
+    #[serde(default)]
+    pub group_id: String,
+}
+
+fn default_sync_mode() -> String {
+    "session".to_string()
 }
 
 impl Default for OnlineSyncSettings {
@@ -172,6 +182,8 @@ impl Default for OnlineSyncSettings {
             encryption_key: String::new(),
             sync_interval_hours: 0,
             auto_sync_on_startup: false,
+            sync_mode: "session".to_string(),
+            group_id: String::new(),
         }
     }
 }

@@ -90,6 +90,64 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
     Ok(())
 }
 
+/// Restore the most recent sync backup by copying it over the current database.
+/// Uses file copy since the backup feature may not be enabled in rusqlite.
+pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String> {
+    let dir = config::config_dir().map_err(|e| e.to_string())?;
+    let backup_dir = dir.join("sync_backups");
+
+    let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&backup_dir)
+        .map_err(|e| format!("Cannot read backup dir: {}", e))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with("timeflow_sync_backup_"))
+                .unwrap_or(false)
+        })
+        .collect();
+    backups.sort();
+
+    let latest = backups.last().ok_or("No backup files found")?;
+    let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
+
+    // Checkpoint WAL to ensure backup is consistent, then restore via file copy
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
+
+    // Close the connection's internal cache so file copy is safe
+    conn.cache_flush()
+        .map_err(|e| format!("Cache flush failed: {}", e))?;
+
+    std::fs::copy(latest, &db_path)
+        .map_err(|e| format!("File copy restore failed: {}", e))?;
+
+    log::info!("Database restored from backup: {:?}", latest);
+    Ok(())
+}
+
+// ── Delta export for async sync ──
+
+/// Build a delta export containing only records changed since `since_ts`.
+/// Returns (json_string, byte_count). If since_ts is None, exports everything.
+pub fn build_delta_export(conn: &rusqlite::Connection, since_ts: Option<&str>) -> Result<(String, usize), String> {
+    let since = since_ts.unwrap_or("1970-01-01 00:00:00");
+    let json = lan_server::build_delta_for_pull_public(conn, since)?;
+    let size = json.len();
+    Ok((json, size))
+}
+
+/// Get the timestamp of the last successful sync marker, or None if never synced.
+pub fn get_last_sync_timestamp(conn: &rusqlite::Connection) -> Option<String> {
+    conn.query_row(
+        "SELECT created_at FROM sync_markers ORDER BY created_at DESC LIMIT 1",
+        [],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
 // ── Timestamp normalization ──
 
 /// Normalize ISO/mixed timestamps to `YYYY-MM-DD HH:MM:SS` for safe string comparison.

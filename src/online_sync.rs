@@ -12,8 +12,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
-const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min
-const MAX_POLL_ATTEMPTS: u32 = 100; // ~5 min at 3s intervals
+const SYNC_TIMEOUT: Duration = Duration::from_secs(1800); // 30 min
+#[allow(dead_code)]
+const STEP_TIMEOUT: Duration = Duration::from_secs(600); // 10 min per step
+const MAX_POLL_ATTEMPTS: u32 = 200; // ~10 min at 3s intervals
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
+const MAX_RETRIES: u32 = 3;
+const RETRY_BASE_DELAY: Duration = Duration::from_secs(5);
 
 fn sync_log(msg: &str) {
     sync_common::sync_log(msg);
@@ -75,6 +80,70 @@ struct ReportResponse {
 #[derive(Deserialize)]
 struct HeartbeatResponse {
     ok: bool,
+}
+
+// ── Retry helper ──
+
+fn with_retry<T, F: Fn() -> Result<T, String>>(label: &str, f: F) -> Result<T, String> {
+    let mut last_err = String::new();
+    for attempt in 0..MAX_RETRIES {
+        match f() {
+            Ok(v) => return Ok(v),
+            Err(e) => {
+                last_err = e.clone();
+                if attempt + 1 < MAX_RETRIES {
+                    let delay = RETRY_BASE_DELAY * 3u32.pow(attempt); // 5s, 15s, 45s
+                    sync_log(&format!(
+                        "[retry] {} attempt {}/{} failed: {} — retrying in {:?}",
+                        label, attempt + 1, MAX_RETRIES, e, delay
+                    ));
+                    thread::sleep(delay);
+                }
+            }
+        }
+    }
+    Err(format!("{} failed after {} retries: {}", label, MAX_RETRIES, last_err))
+}
+
+// ── Heartbeat thread ──
+
+struct HeartbeatGuard {
+    stop: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl HeartbeatGuard {
+    fn start(
+        server_url: String,
+        token: String,
+        session_id: String,
+        device_id: String,
+    ) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let handle = thread::spawn(move || {
+            while !stop_clone.load(Ordering::Relaxed) {
+                thread::sleep(HEARTBEAT_INTERVAL);
+                if stop_clone.load(Ordering::Relaxed) {
+                    break;
+                }
+                send_heartbeat(&server_url, &token, &session_id, &device_id).ok();
+            }
+        });
+        Self {
+            stop,
+            handle: Some(handle),
+        }
+    }
+}
+
+impl Drop for HeartbeatGuard {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(h) = self.handle.take() {
+            h.join().ok();
+        }
+    }
 }
 
 // ── HTTP client using ureq (supports TLS, DNS, chunked encoding) ──
@@ -188,10 +257,18 @@ fn cancel_session(
 
 fn check_timeout_and_stop(start: Instant, stop: &AtomicBool) -> Result<(), String> {
     if start.elapsed() > SYNC_TIMEOUT {
-        return Err("Online sync timeout".to_string());
+        return Err("Online sync timeout (30 min)".to_string());
     }
     if stop.load(Ordering::Relaxed) {
         return Err("Stop signal received".to_string());
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn check_step_timeout(step_start: Instant) -> Result<(), String> {
+    if step_start.elapsed() > STEP_TIMEOUT {
+        return Err("Step timeout (10 min)".to_string());
     }
     Ok(())
 }
@@ -266,6 +343,402 @@ fn wait_for_step(
         }
     }
     Err(format!("Timeout waiting for step {}", target_step))
+}
+
+// ── Async delta types ──
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct AsyncPushResponse {
+    ok: bool,
+    #[serde(rename = "packageId")]
+    package_id: String,
+    #[serde(rename = "storagePath")]
+    storage_path: String,
+    #[serde(rename = "storageCredentials")]
+    storage_credentials: Option<StorageCredentialsWrapper>,
+    #[serde(rename = "expiresAt")]
+    expires_at: String,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct AsyncPendingPackage {
+    id: String,
+    #[serde(rename = "groupId")]
+    group_id: String,
+    #[serde(rename = "fromDeviceId")]
+    from_device_id: String,
+    #[serde(rename = "baseMarkerHash")]
+    base_marker_hash: Option<String>,
+    #[serde(rename = "newMarkerHash")]
+    new_marker_hash: String,
+    #[serde(rename = "storagePath")]
+    storage_path: String,
+    #[serde(rename = "fileSizeBytes")]
+    file_size_bytes: u64,
+    #[serde(rename = "expiresAt")]
+    expires_at: String,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct AsyncPendingResponse {
+    ok: bool,
+    packages: Vec<AsyncPendingPackage>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct AsyncAckResponse {
+    ok: bool,
+    acknowledged: bool,
+}
+
+// ── Async delta API wrappers ──
+
+fn async_push(
+    server_url: &str,
+    token: &str,
+    device_id: &str,
+    group_id: &str,
+    base_marker_hash: Option<&str>,
+    new_marker_hash: &str,
+    file_size_bytes: usize,
+) -> Result<AsyncPushResponse, String> {
+    let body = serde_json::json!({
+        "deviceId": device_id,
+        "groupId": group_id,
+        "baseMarkerHash": base_marker_hash,
+        "newMarkerHash": new_marker_hash,
+        "fileSizeBytes": file_size_bytes,
+    });
+    let resp = server_post(server_url, "/api/sync/async/push", token, &body.to_string())?;
+    serde_json::from_str(&resp).map_err(|e| format!("Parse async push response: {}", e))
+}
+
+fn async_pending(
+    server_url: &str,
+    token: &str,
+    device_id: &str,
+    group_id: &str,
+) -> Result<AsyncPendingResponse, String> {
+    let body = serde_json::json!({
+        "deviceId": device_id,
+        "groupId": group_id,
+    });
+    let resp = server_post(server_url, "/api/sync/async/pending", token, &body.to_string())?;
+    serde_json::from_str(&resp).map_err(|e| format!("Parse async pending response: {}", e))
+}
+
+fn async_ack(
+    server_url: &str,
+    token: &str,
+    device_id: &str,
+    package_id: &str,
+) -> Result<AsyncAckResponse, String> {
+    let body = serde_json::json!({
+        "deviceId": device_id,
+        "packageId": package_id,
+    });
+    let resp = server_post(server_url, "/api/sync/async/ack", token, &body.to_string())?;
+    serde_json::from_str(&resp).map_err(|e| format!("Parse async ack response: {}", e))
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct AsyncCredentialsResponse {
+    ok: bool,
+    #[serde(rename = "storageCredentials")]
+    storage_credentials: Option<StorageCredentialsWrapper>,
+}
+
+fn async_get_credentials(
+    server_url: &str,
+    token: &str,
+    device_id: &str,
+    package_id: &str,
+) -> Result<AsyncCredentialsResponse, String> {
+    let body = serde_json::json!({
+        "deviceId": device_id,
+        "packageId": package_id,
+    });
+    let resp = server_post(server_url, "/api/sync/async/credentials", token, &body.to_string())?;
+    serde_json::from_str(&resp).map_err(|e| format!("Parse async credentials response: {}", e))
+}
+
+fn async_reject(
+    server_url: &str,
+    token: &str,
+    device_id: &str,
+    package_id: &str,
+    reason: &str,
+) -> Result<(), String> {
+    let body = serde_json::json!({
+        "deviceId": device_id,
+        "packageId": package_id,
+        "reason": reason,
+    });
+    server_post(server_url, "/api/sync/async/reject", token, &body.to_string())?;
+    Ok(())
+}
+
+// ── Async delta orchestrator ──
+
+/// Execute async delta push: export local changes, encrypt, upload to storage.
+fn execute_async_push(
+    settings: &config::OnlineSyncSettings,
+    sync_state: &LanSyncState,
+    group_id: &str,
+) -> Result<(), String> {
+    let server_url = &settings.server_url;
+    let token = &settings.auth_token;
+    let device_id = if settings.device_id.is_empty() {
+        sync_common::get_device_id()
+    } else {
+        settings.device_id.clone()
+    };
+
+    let conn = sync_common::open_dashboard_db()?;
+
+    // Build delta since last sync
+    let last_sync_ts = sync_common::get_last_sync_timestamp(&conn);
+    sync_log(&format!("[async-push] Last sync: {:?}", last_sync_ts));
+
+    let (delta_json, delta_size) = sync_common::build_delta_export(&conn, last_sync_ts.as_deref())?;
+    if delta_size == 0 {
+        sync_log("[async-push] No changes to push");
+        return Ok(());
+    }
+
+    // Compute new marker hash
+    let tables_hash = sync_common::compute_tables_hash_string_conn(&conn);
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let new_marker = sync_common::generate_marker_hash_simple(&tables_hash, &timestamp, &device_id);
+
+    let local_marker = conn
+        .query_row(
+            "SELECT marker_hash FROM sync_markers ORDER BY created_at DESC LIMIT 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+
+    // Register package on server
+    sync_state.set_progress(1, "async_push_registering", "upload");
+    sync_log("[async-push] Registering delta package on server...");
+    let push_resp = async_push(
+        server_url,
+        token,
+        &device_id,
+        group_id,
+        local_marker.as_deref(),
+        &new_marker,
+        delta_size,
+    )?;
+
+    // Decrypt storage credentials and upload
+    if let Some(creds_wrapper) = &push_resp.storage_credentials {
+        let creds = sync_encryption::decrypt_credentials(
+            &creds_wrapper.encrypted,
+            &push_resp.package_id,
+            &settings.encryption_key,
+        )?;
+
+        // Encrypt delta data
+        let file_key = &creds.file_encryption_key;
+        let encrypted_delta = sync_encryption::encrypt_file_data(delta_json.as_bytes(), file_key)?;
+
+        // Upload via SFTP
+        sync_state.set_progress(2, "async_push_uploading", "upload");
+        sync_log(&format!("[async-push] Uploading {} bytes to storage...", encrypted_delta.len()));
+        let sftp = SftpClient::new(&creds.host, creds.port, &creds.username, &creds.password);
+        let remote_path = format!("{}delta.enc", creds.upload_path);
+        with_retry("SFTP upload (async delta)", || {
+            sftp.upload_data(&encrypted_delta, &remote_path, |sent, total| {
+                sync_state.update_transfer_bytes(sent, total);
+            })
+        })?;
+        sync_log("[async-push] Upload complete");
+    } else {
+        return Err("No storage credentials returned for async push".to_string());
+    }
+
+    // Insert sync marker
+    sync_common::insert_sync_marker_db(
+        &conn,
+        &new_marker,
+        &timestamp,
+        &device_id,
+        None,
+        &tables_hash,
+        false,
+    )?;
+
+    sync_log(&format!("[async-push] Delta package {} registered, marker: {}", &push_resp.package_id[..8], &new_marker[..16]));
+    Ok(())
+}
+
+/// Execute async delta pull: check for pending packages, download, decrypt, merge.
+fn execute_async_pull(
+    settings: &config::OnlineSyncSettings,
+    sync_state: &LanSyncState,
+    group_id: &str,
+) -> Result<bool, String> {
+    let server_url = &settings.server_url;
+    let token = &settings.auth_token;
+    let device_id = if settings.device_id.is_empty() {
+        sync_common::get_device_id()
+    } else {
+        settings.device_id.clone()
+    };
+
+    // Check for pending packages
+    sync_state.set_progress(1, "async_pull_checking", "download");
+    sync_log("[async-pull] Checking for pending packages...");
+    let pending = async_pending(server_url, token, &device_id, group_id)?;
+
+    if pending.packages.is_empty() {
+        sync_log("[async-pull] No pending packages");
+        return Ok(false);
+    }
+
+    sync_log(&format!("[async-pull] Found {} pending package(s)", pending.packages.len()));
+
+    let mut conn = sync_common::open_dashboard_db()?;
+
+    for pkg in &pending.packages {
+        sync_log(&format!("[async-pull] Processing package {} from device {}", &pkg.id[..8], &pkg.from_device_id[..8.min(pkg.from_device_id.len())]));
+
+        // Check base marker compatibility
+        let local_marker: Option<String> = conn
+            .query_row(
+                "SELECT marker_hash FROM sync_markers ORDER BY created_at DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .ok();
+
+        if let Some(ref base) = pkg.base_marker_hash {
+            if local_marker.as_deref() != Some(base) {
+                sync_log(&format!("[async-pull] Base marker mismatch — rejecting package {}", &pkg.id[..8]));
+                async_reject(server_url, token, &device_id, &pkg.id, "base_marker_mismatch")?;
+                // Signal that caller should fall back to session sync
+                return Err("base_marker_mismatch — fallback to session sync needed".to_string());
+            }
+        }
+
+        // Backup before merge
+        sync_state.set_progress(2, "async_pull_backup", "local");
+        sync_common::backup_database(&conn)?;
+
+        // Request credentials for this package via server
+        sync_state.set_progress(3, "async_pull_downloading", "download");
+        sync_log("[async-pull] Requesting storage credentials...");
+
+        let creds_resp = async_get_credentials(server_url, token, &device_id, &pkg.id)?;
+        let creds = match creds_resp.storage_credentials {
+            Some(cw) => sync_encryption::decrypt_credentials(
+                &cw.encrypted,
+                &pkg.id,
+                &settings.encryption_key,
+            )?,
+            None => return Err("No storage credentials for async pull".to_string()),
+        };
+
+        sync_log("[async-pull] Downloading delta from storage...");
+        let sftp = SftpClient::new(&creds.host, creds.port, &creds.username, &creds.password);
+        let remote_path = format!("{}delta.enc", creds.upload_path);
+        let encrypted = with_retry("SFTP download (async delta)", || {
+            sftp.download_data(&remote_path, |sent, total| {
+                sync_state.update_transfer_bytes(sent, total);
+            })
+        })?;
+        let file_key = &creds.file_encryption_key;
+        let delta_data = sync_encryption::decrypt_file_data(&encrypted, file_key)?;
+
+        // Merge delta
+        sync_state.set_progress(4, "async_pull_merging", "local");
+        sync_log("[async-pull] Merging delta data...");
+        let delta_str = String::from_utf8(delta_data)
+            .map_err(|e| format!("Invalid UTF-8 in delta: {}", e))?;
+
+        if let Err(e) = sync_common::merge_incoming_data(&mut conn, &delta_str) {
+            sync_log(&format!("[async-pull] Merge failed: {} — restoring backup", e));
+            sync_common::restore_database_backup(&conn)?;
+            async_reject(server_url, token, &device_id, &pkg.id, &format!("merge_failed: {}", e))?;
+            return Err(format!("Async merge failed: {}", e));
+        }
+
+        // Verify integrity
+        if let Err(e) = sync_common::verify_merge_integrity(&conn) {
+            sync_log(&format!("[async-pull] Integrity check failed: {} — restoring backup", e));
+            sync_common::restore_database_backup(&conn)?;
+            async_reject(server_url, token, &device_id, &pkg.id, &format!("integrity_failed: {}", e))?;
+            return Err(format!("Async integrity check failed: {}", e));
+        }
+
+        // Insert new sync marker
+        let tables_hash = sync_common::compute_tables_hash_string_conn(&conn);
+        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        let new_marker = sync_common::generate_marker_hash_simple(&tables_hash, &timestamp, &device_id);
+        sync_common::insert_sync_marker_db(
+            &conn,
+            &new_marker,
+            &timestamp,
+            &device_id,
+            Some(&pkg.from_device_id),
+            &tables_hash,
+            false,
+        )?;
+
+        // Acknowledge package
+        async_ack(server_url, token, &device_id, &pkg.id)?;
+        sync_log(&format!("[async-pull] Package {} applied and acknowledged", &pkg.id[..8]));
+    }
+
+    Ok(true)
+}
+
+/// Run async delta sync: pull pending packages first, then push local changes.
+pub fn run_async_delta_sync(
+    settings: config::OnlineSyncSettings,
+    sync_state: Arc<LanSyncState>,
+    group_id: &str,
+) {
+    sync_log("=== START ASYNC DELTA SYNC ===");
+    sync_state.set_progress(1, "async_delta", "local");
+
+    match execute_async_pull(&settings, &sync_state, group_id) {
+        Ok(had_packages) => {
+            if had_packages {
+                sync_log("[async] Pull complete, now pushing local changes...");
+            }
+        }
+        Err(e) if e.contains("base_marker_mismatch") => {
+            sync_log("[async] Base marker mismatch — falling back to session sync");
+            sync_state.reset_progress();
+            run_online_sync(settings, sync_state, Arc::new(AtomicBool::new(false)));
+            return;
+        }
+        Err(e) => {
+            sync_log(&format!("[async] Pull error: {}", e));
+            sync_state.unfreeze();
+            sync_state.reset_progress();
+            return;
+        }
+    }
+
+    match execute_async_push(&settings, &sync_state, group_id) {
+        Ok(()) => {
+            sync_log("=== ASYNC DELTA SYNC ZAKOŃCZONY ===");
+        }
+        Err(e) => {
+            sync_log(&format!("[async] Push error: {}", e));
+        }
+    }
+
+    sync_state.reset_progress();
 }
 
 // ── Main orchestrator ──
@@ -463,6 +936,14 @@ fn execute_online_sync(
         "ok",
     )?;
 
+    // Start heartbeat thread to keep session alive during long transfers
+    let _heartbeat = HeartbeatGuard::start(
+        server_url.to_string(),
+        token.to_string(),
+        session_id.clone(),
+        device_id.clone(),
+    );
+
     // From here on, ensure unfreeze on error
     let result = execute_sync_steps(
         server_url,
@@ -543,9 +1024,16 @@ fn execute_sync_steps(
             "[6/13] Wysyłanie {} KB na SFTP...",
             encrypted.len() / 1024
         ));
-        sftp.upload_data(&encrypted, &remote_file, |sent, total| {
-            sync_state.update_transfer_bytes(sent, total);
-        })?;
+        {
+            let sftp_ref = sftp;
+            let remote_ref = &remote_file;
+            let encrypted_ref = &encrypted;
+            with_retry("SFTP upload (slave)", || {
+                sftp_ref.upload_data(encrypted_ref, remote_ref, |sent, total| {
+                    sync_state.update_transfer_bytes(sent, total);
+                })
+            })?;
+        }
         report_step(
             server_url,
             token,
@@ -576,19 +1064,31 @@ fn execute_sync_steps(
         sync_state.set_progress(12, "downloading_from_storage", "download");
         let remote_merged = format!("{}data.enc", creds.download_path);
         sync_log("[12/13] Pobieranie scalonych danych z SFTP...");
-        let merged_encrypted =
-            sftp.download_data(&remote_merged, |recv, total| {
-                sync_state.update_transfer_bytes(recv, total);
-            })?;
+        let merged_encrypted = {
+            let sftp_ref = sftp;
+            let remote_ref = &remote_merged;
+            with_retry("SFTP download (slave)", || {
+                sftp_ref.download_data(remote_ref, |recv, total| {
+                    sync_state.update_transfer_bytes(recv, total);
+                })
+            })?
+        };
         let merged_data =
             sync_encryption::decrypt_file_data(&merged_encrypted, file_key)?;
         let merged_str = String::from_utf8(merged_data).map_err(|e| e.to_string())?;
 
-        // Import merged data
+        // Import merged data with backup restore on error
         sync_log("[12/13] Importowanie scalonych danych...");
         sync_common::backup_database(conn)?;
-        sync_common::merge_incoming_data(conn, &merged_str)?;
-        sync_common::verify_merge_integrity(conn)?;
+        if let Err(e) = sync_common::merge_incoming_data(conn, &merged_str)
+            .and_then(|_| sync_common::verify_merge_integrity(conn))
+        {
+            sync_log(&format!("[12/13] Merge/verify failed: {} — restoring backup", e));
+            sync_common::restore_database_backup(conn).map_err(|re| {
+                format!("Merge failed: {} AND backup restore failed: {}", e, re)
+            })?;
+            return Err(format!("Merge failed (backup restored): {}", e));
+        }
 
         // Generate new marker
         let new_hash = sync_common::compute_tables_hash_string_conn(conn);
@@ -637,10 +1137,15 @@ fn execute_sync_steps(
         sync_state.set_progress(7, "downloading_from_storage", "download");
         let remote_file = format!("{}data.enc", creds.upload_path); // slave uploaded here
         sync_log("[7/13] Pobieranie danych slave'a z SFTP...");
-        let slave_encrypted =
-            sftp.download_data(&remote_file, |recv, total| {
-                sync_state.update_transfer_bytes(recv, total);
-            })?;
+        let slave_encrypted = {
+            let sftp_ref = sftp;
+            let remote_ref = &remote_file;
+            with_retry("SFTP download (master)", || {
+                sftp_ref.download_data(remote_ref, |recv, total| {
+                    sync_state.update_transfer_bytes(recv, total);
+                })
+            })?
+        };
         let slave_data =
             sync_encryption::decrypt_file_data(&slave_encrypted, file_key)?;
         let slave_str = String::from_utf8(slave_data).map_err(|e| e.to_string())?;
@@ -675,10 +1180,16 @@ fn execute_sync_steps(
             "ok",
         )?;
 
-        // Step 9: Merge
+        // Step 9: Merge with backup restore on error
         sync_state.set_progress(9, "merging", "local");
         sync_log("[9/13] Scalanie danych...");
-        sync_common::merge_incoming_data(conn, &slave_str)?;
+        if let Err(e) = sync_common::merge_incoming_data(conn, &slave_str) {
+            sync_log(&format!("[9/13] Merge failed: {} — restoring backup", e));
+            sync_common::restore_database_backup(conn).map_err(|re| {
+                format!("Merge failed: {} AND backup restore failed: {}", e, re)
+            })?;
+            return Err(format!("Merge failed (backup restored): {}", e));
+        }
         report_step(
             server_url,
             token,
@@ -690,10 +1201,16 @@ fn execute_sync_steps(
             "ok",
         )?;
 
-        // Step 10: Verify
+        // Step 10: Verify with backup restore on error
         sync_state.set_progress(10, "verifying", "local");
         sync_log("[10/13] Weryfikacja...");
-        sync_common::verify_merge_integrity(conn)?;
+        if let Err(e) = sync_common::verify_merge_integrity(conn) {
+            sync_log(&format!("[10/13] Verify failed: {} — restoring backup", e));
+            sync_common::restore_database_backup(conn).map_err(|re| {
+                format!("Verify failed: {} AND backup restore failed: {}", e, re)
+            })?;
+            return Err(format!("Verify failed (backup restored): {}", e));
+        }
 
         // Generate marker
         let new_hash = sync_common::compute_tables_hash_string_conn(conn);
@@ -729,9 +1246,16 @@ fn execute_sync_steps(
         let merged_encrypted =
             sync_encryption::encrypt_file_data(merged_export.as_bytes(), file_key)?;
         let remote_merged = format!("{}data.enc", creds.download_path);
-        sftp.upload_data(&merged_encrypted, &remote_merged, |sent, total| {
-            sync_state.update_transfer_bytes(sent, total);
-        })?;
+        {
+            let sftp_ref = sftp;
+            let remote_ref = &remote_merged;
+            let encrypted_ref = &merged_encrypted;
+            with_retry("SFTP upload (master merged)", || {
+                sftp_ref.upload_data(encrypted_ref, remote_ref, |sent, total| {
+                    sync_state.update_transfer_bytes(sent, total);
+                })
+            })?;
+        }
         report_step(
             server_url,
             token,
