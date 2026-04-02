@@ -1,7 +1,16 @@
 //! Shared utilities for LAN sync modules (server, orchestrator, discovery).
 
 use crate::config;
-use std::hash::{Hash, Hasher};
+
+/// Deterministic FNV-1a 64-bit hash (same result across processes/machines).
+fn fnv1a_64(data: &[u8]) -> u64 {
+    let mut hash: u64 = 14695981039346656037;
+    for byte in data {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    hash
+}
 
 /// Read device_id from config dir, fallback to machine name.
 pub fn get_device_id() -> String {
@@ -86,9 +95,7 @@ pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let concat: String = conn
         .query_row(sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    concat.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    format!("{:016x}", fnv1a_64(concat.as_bytes()))
 }
 
 /// Compute hashes for all 4 sync tables, concatenated.
@@ -104,7 +111,5 @@ pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
 /// Generate a marker hash from tables_hash + timestamp + device_id.
 pub fn generate_marker_hash(tables_hash: &str, timestamp: &str, device_id: &str) -> String {
     let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    input.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    format!("{:016x}", fnv1a_64(input.as_bytes()))
 }
