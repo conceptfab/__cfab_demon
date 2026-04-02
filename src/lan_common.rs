@@ -38,13 +38,15 @@ pub fn sync_log(msg: &str) {
     log::info!("{}", msg);
     if let Ok(dir) = config::config_dir() {
         let path = dir.join("lan_sync.log");
-        // Rotate if > 100KB
+        // Rotate if > 100KB — read only the tail instead of O(n) full read
         if let Ok(meta) = std::fs::metadata(&path) {
             if meta.len() > 100_000 {
+                let keep_bytes = 50_000usize; // keep ~50KB tail
                 if let Ok(content) = std::fs::read_to_string(&path) {
-                    let lines: Vec<&str> = content.lines().collect();
-                    let keep = lines.len().saturating_sub(200);
-                    let _ = std::fs::write(&path, lines[keep..].join("\n"));
+                    let start = content.len().saturating_sub(keep_bytes);
+                    // Find next newline after cut point to avoid partial lines
+                    let start = content[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+                    let _ = std::fs::write(&path, &content[start..]);
                 }
             }
         }
@@ -57,6 +59,9 @@ pub fn sync_log(msg: &str) {
 }
 
 /// Open the dashboard SQLite DB in read-write mode.
+///
+/// SAFETY: Uses `SQLITE_OPEN_NO_MUTEX` (multi-thread mode) for performance.
+/// Each thread must use its own `Connection` — never share a connection across threads.
 pub fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
     let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
     if !db_path.exists() {

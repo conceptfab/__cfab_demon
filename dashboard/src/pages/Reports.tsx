@@ -278,9 +278,7 @@ export function Reports() {
 
   const handleNewTemplate = () => {
     const newTpl: ReportTemplate = {
-      id: crypto.randomUUID
-        ? crypto.randomUUID()
-        : `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: crypto.randomUUID(),
       name: t('reports_page.template.new_template'),
       sections: [...DEFAULT_IDS],
       showLogo: true,

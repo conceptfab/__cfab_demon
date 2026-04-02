@@ -319,6 +319,7 @@ export function Sessions() {
   }, [ctxMenu, resolveContextMenuPlacement]);
 
   // Close context menus on click outside or Escape
+  // TODO: Extract to a reusable useClickOutsideDismiss hook (shared with ProjectDayTimeline)
   useEffect(() => {
     if (!ctxMenu && !projectCtxMenu) return;
     const handleClick = (e: MouseEvent) => {

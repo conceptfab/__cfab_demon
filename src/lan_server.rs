@@ -260,22 +260,26 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
         .set_nonblocking(false)
         .unwrap_or_else(|e| log::warn!("LAN server: set_nonblocking failed: {}", e));
 
-    // Set SO_RCVTIMEO equivalent via std — accept will time out and we can check stop_signal
-    // On Windows, TcpListener doesn't support set_read_timeout directly,
-    // so we use non-blocking + short sleep instead (but with 500ms instead of 100ms).
+    // On Windows, TcpListener doesn't support set_read_timeout directly and full
+    // IOCP integration would be too invasive. Instead we use non-blocking accept
+    // with a short sleep to check stop_signal periodically.
     listener
         .set_nonblocking(true)
         .unwrap_or_else(|e| log::warn!("LAN server: set_nonblocking failed: {}", e));
 
     let active_connections = Arc::new(AtomicUsize::new(0));
+    let mut last_unfreeze_check = std::time::Instant::now();
 
     loop {
         if stop_signal.load(Ordering::Relaxed) {
             break;
         }
 
-        // Safety net: auto-unfreeze if frozen for too long
-        sync_state.check_auto_unfreeze();
+        // Safety net: auto-unfreeze if frozen for too long (check every ~5s, not every 500ms)
+        if last_unfreeze_check.elapsed() >= Duration::from_secs(5) {
+            sync_state.check_auto_unfreeze();
+            last_unfreeze_check = std::time::Instant::now();
+        }
 
         match listener.accept() {
             Ok((stream, addr)) => {
@@ -300,11 +304,11 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
                 });
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(500));
+                thread::sleep(Duration::from_millis(100));
             }
             Err(e) => {
                 log::warn!("LAN server: accept error: {}", e);
-                thread::sleep(Duration::from_millis(500));
+                thread::sleep(Duration::from_millis(100));
             }
         }
     }
@@ -626,8 +630,10 @@ fn handle_download_db() -> (u16, String) {
     let merged_path = dir.join("lan_sync_merged.json");
     match std::fs::read_to_string(&merged_path) {
         Ok(data) => {
-            if serde_json::from_str::<serde_json::Value>(&data).is_err() {
-                return (500, json_error("Merged JSON file is corrupted"));
+            // Validate JSON once; the raw string is sent as the response body
+            match serde_json::from_str::<serde_json::Value>(&data) {
+                Err(_) => return (500, json_error("Merged JSON file is corrupted")),
+                Ok(_) => {}
             }
             let kb = data.len() as f64 / 1024.0;
             sync_log(&format!("[SLAVE] Wysylam {:.1} KB scalonych danych do mastera", kb));
@@ -692,15 +698,20 @@ fn handle_pull(body: &str) -> (u16, String) {
 }
 
 fn handle_push(body: &str) -> (u16, String) {
-    let conn = match open_dashboard_db() {
+    let mut conn = match open_dashboard_db() {
         Ok(c) => c,
         Err(e) => return (500, json_error(&e)),
     };
 
-    // Import the delta archive directly
-    match import_push_data(&conn, body) {
-        Ok(summary) => (200, summary),
-        Err(e) => (500, json_error(&e)),
+    match crate::sync_common::merge_incoming_data(&mut conn, body) {
+        Ok(()) => {
+            sync_log("[SLAVE] Push data merged successfully");
+            (200, r#"{"ok":true}"#.to_string())
+        }
+        Err(e) => {
+            sync_log(&format!("[SLAVE] Push merge failed: {}", e));
+            (500, json_error(&e))
+        }
     }
 }
 
@@ -863,22 +874,6 @@ fn fetch_all_rows_params(
     Ok(result)
 }
 
-fn import_push_data(_conn: &rusqlite::Connection, body: &str) -> Result<String, String> {
-    // Parse the delta archive and apply it
-    // This is a simplified import — the full merge logic lives in the dashboard Tauri commands.
-    // For the daemon server, we accept the data and write it directly.
-    let _archive: serde_json::Value = serde_json::from_str(body)
-        .map_err(|e| format!("Invalid push data: {}", e))?;
-
-    // Save to temp file for dashboard to process on next sync cycle
-    let dir = config::config_dir().map_err(|e| e.to_string())?;
-    let path = dir.join("lan_sync_push_pending.json");
-    std::fs::write(&path, body).map_err(|e| format!("Failed to save push data: {}", e))?;
-
-    log::info!("LAN server: saved push data ({} bytes) for processing", body.len());
-
-    Ok(r#"{"ok":true,"imported":{"projects_merged":0,"apps_merged":0,"sessions_merged":0,"manual_sessions_merged":0,"tombstones_applied":0}}"#.to_string())
-}
 
 // ── PartialEq for TableHashes ──
 

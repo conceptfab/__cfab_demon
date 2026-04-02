@@ -95,9 +95,14 @@ fn main() {
             std::thread::spawn(move || {
                 // Wait 10 seconds for daemon to fully start up
                 std::thread::sleep(std::time::Duration::from_secs(10));
-                if !sync_state_clone.sync_in_progress.load(std::sync::atomic::Ordering::Relaxed)
-                    && !stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed)
-                {
+                if stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                if sync_state_clone.sync_in_progress.compare_exchange(
+                    false, true,
+                    std::sync::atomic::Ordering::SeqCst,
+                    std::sync::atomic::Ordering::Relaxed,
+                ).is_ok() {
                     log::info!("Auto-starting online sync on startup");
                     online_sync::run_online_sync(online_settings, sync_state_clone, stop_signal_clone);
                 }
@@ -112,10 +117,18 @@ fn main() {
     stop_signal.store(true, Ordering::SeqCst);
     // Wake tracker so it exits without waiting for poll timeout
     foreground_signal.notify();
-    let _ = monitor_handle.join();
-    let _ = hook_handle.join();
-    let _ = discovery_handle.join();
-    let _ = lan_server_handle.join();
+    if monitor_handle.join().is_err() {
+        log::error!("Monitor thread panicked");
+    }
+    if hook_handle.join().is_err() {
+        log::error!("Foreground hook thread panicked");
+    }
+    if discovery_handle.join().is_err() {
+        log::error!("LAN discovery thread panicked");
+    }
+    if lan_server_handle.join().is_err() {
+        log::error!("LAN server thread panicked");
+    }
 
     log::info!("{} - stopped", APP_NAME);
     log::logger().flush();

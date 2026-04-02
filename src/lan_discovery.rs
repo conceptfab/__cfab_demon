@@ -41,10 +41,14 @@ struct BeaconPacket {
     sync_marker_hash: Option<String>,
     #[serde(default)]
     sync_ready: bool,
-    /// Seconds since this daemon started (used for master election — longer uptime wins)
+    /// Seconds since this daemon started (used for master election — longer uptime wins).
+    /// Capped at MAX_UPTIME_SECS to limit spoofing impact.
     #[serde(default)]
     uptime_secs: u64,
 }
+
+/// Cap uptime at 30 days — any value beyond is likely spoofed or a bug.
+const MAX_UPTIME_SECS: u64 = 30 * 24 * 3600;
 
 fn default_role() -> String {
     "undecided".to_string()
@@ -113,9 +117,11 @@ fn generate_device_id() -> String {
     let machine = std::env::var("COMPUTERNAME").unwrap_or_default();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
+        .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("{}-{:x}", machine, ts)
+    // Include process ID to avoid collisions when multiple instances start simultaneously
+    let pid = std::process::id();
+    format!("{}-{:x}-{:x}", machine, ts, pid)
 }
 
 fn fallback_device_id() -> String {
@@ -198,14 +204,24 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
         device_id, machine_name, DISCOVERY_PORT
     );
 
-    let socket = match UdpSocket::bind(format!("0.0.0.0:{}", DISCOVERY_PORT)) {
-        Ok(s) => {
-            log::info!("LAN discovery: UDP socket bound to port {}", DISCOVERY_PORT);
-            s
-        }
-        Err(e) => {
-            log::error!("LAN discovery: failed to bind UDP port {}: {}", DISCOVERY_PORT, e);
-            return;
+    let socket = {
+        let mut attempts = 0;
+        loop {
+            match UdpSocket::bind(format!("0.0.0.0:{}", DISCOVERY_PORT)) {
+                Ok(s) => {
+                    log::info!("LAN discovery: UDP socket bound to port {}", DISCOVERY_PORT);
+                    break s;
+                }
+                Err(e) => {
+                    attempts += 1;
+                    if attempts >= 3 {
+                        log::error!("LAN discovery: failed to bind UDP port {} after {} attempts: {}", DISCOVERY_PORT, attempts, e);
+                        return;
+                    }
+                    log::warn!("LAN discovery: bind attempt {}/3 failed: {}, retrying in 2s...", attempts, e);
+                    thread::sleep(Duration::from_secs(2));
+                }
+            }
         }
     };
     if let Err(e) = socket.set_broadcast(true) {
@@ -556,6 +572,11 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
         }
     }
 
+    // Join any outstanding sync handle before exiting
+    if let Some(handle) = sync_handle.take() {
+        let _ = handle.join();
+    }
+
     // Clear peers file on shutdown
     peers.clear();
     write_peers_file(&peers);
@@ -648,8 +669,11 @@ fn handle_packet(
                 // Forced role — no automatic changes
             } else if let Some(ref state) = sync_state {
                 let my_role = state.get_role();
-                let i_win_election = my_uptime_secs > beacon.uptime_secs
-                    || (my_uptime_secs == beacon.uptime_secs && my_device_id < beacon.device_id.as_str());
+                // Cap both uptimes to prevent spoofing from dominating election
+                let my_up = my_uptime_secs.min(MAX_UPTIME_SECS);
+                let peer_up = beacon.uptime_secs.min(MAX_UPTIME_SECS);
+                let i_win_election = my_up > peer_up
+                    || (my_up == peer_up && my_device_id < beacon.device_id.as_str());
 
                 match (my_role.as_str(), beacon.role.as_str()) {
                     ("undecided", "master") => {

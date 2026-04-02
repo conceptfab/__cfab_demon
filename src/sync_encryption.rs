@@ -36,6 +36,18 @@ pub struct SftpCredentials {
     pub file_encryption_key: String, // base64 key
 }
 
+impl Drop for SftpCredentials {
+    fn drop(&mut self) {
+        // Best-effort zeroing of sensitive fields
+        unsafe {
+            for field in [&mut self.password, &mut self.username, &mut self.file_encryption_key] {
+                let bytes = field.as_mut_vec();
+                for b in bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
+            }
+        }
+    }
+}
+
 /// HMAC-based key derivation matching the server's algorithm.
 /// prk = HMAC-SHA256(master_key, session_id)
 /// okm = HMAC-SHA256(prk, purpose)

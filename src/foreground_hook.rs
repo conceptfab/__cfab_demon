@@ -122,7 +122,11 @@ pub fn start(stop_signal: Arc<AtomicBool>) -> (Arc<ForegroundSignal>, thread::Jo
                 if stop_signal.load(Ordering::Relaxed) {
                     break;
                 }
-                MsgWaitForMultipleObjects(0, std::ptr::null(), 0, 1_000, QS_ALLEVENTS);
+                let wait_result = MsgWaitForMultipleObjects(0, std::ptr::null(), 0, 1_000, QS_ALLEVENTS);
+                if wait_result == 0xFFFFFFFF {
+                    // WAIT_FAILED
+                    log::error!("MsgWaitForMultipleObjects failed (WAIT_FAILED)");
+                }
                 while PeekMessageW(&mut msg, std::ptr::null_mut(), 0, 0, PM_REMOVE) != 0 {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);

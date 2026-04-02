@@ -84,6 +84,7 @@ pub(crate) fn dashboard_db_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("timeflow_dashboard.db"))
 }
 
+/// SAFETY: Uses `SQLITE_OPEN_NO_MUTEX` (multi-thread mode) — each thread must use its own connection.
 pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection> {
     let db_path = dashboard_db_path()?;
     if !db_path.exists() {
@@ -296,6 +297,8 @@ pub fn load() -> Config {
     let json_mtime = config_path().ok().and_then(|p| file_mtime(&p));
     let db_mtime = dashboard_db_path().ok().and_then(|p| file_mtime(&p));
 
+    // NOTE: Loose consistency — file may change between mtime check and cache return.
+    // This is acceptable as config is re-read on next call.
     if let Ok(guard) = CONFIG_CACHE.lock() {
         if let Some(cached) = guard.as_ref() {
             if cached.json_mtime == json_mtime && cached.db_mtime == db_mtime {

@@ -90,11 +90,14 @@ pub fn load_language() -> Lang {
         Some(t) => t,
         None => return Lang::Pl,
     };
-    if let Ok(guard) = LANG_CACHE.lock() {
-        if let Some((cached_mtime, cached_lang)) = guard.as_ref() {
-            if *cached_mtime == mtime {
-                return *cached_lang;
-            }
+    // Hold the lock for the entire check-read-update cycle to avoid TOCTOU
+    let mut guard = match LANG_CACHE.lock() {
+        Ok(g) => g,
+        Err(_) => return Lang::Pl,
+    };
+    if let Some((cached_mtime, cached_lang)) = guard.as_ref() {
+        if *cached_mtime == mtime {
+            return *cached_lang;
         }
     }
     let content = match std::fs::read_to_string(&path) {
@@ -114,8 +117,6 @@ pub fn load_language() -> Lang {
     } else {
         Lang::Pl
     };
-    if let Ok(mut guard) = LANG_CACHE.lock() {
-        *guard = Some((mtime, lang));
-    }
+    *guard = Some((mtime, lang));
     lang
 }

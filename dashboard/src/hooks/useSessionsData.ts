@@ -65,6 +65,7 @@ export function useSessionsData(params: {
   });
 
   useEffect(() => {
+    if (isLoadingRef.current) return;
     let cancelled = false;
     isLoadingRef.current = true;
     sessionsRef.current = [];

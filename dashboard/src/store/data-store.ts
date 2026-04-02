@@ -110,6 +110,14 @@ export const useDataStore = create<DataState>((set) => {
     increment: () => void,
   ) => {
     const now = Date.now();
+    // Clean up stale dedup entries (older than 10 minutes)
+    const TEN_MINUTES = 10 * 60 * 1000;
+    for (const [key, timestamp] of lastRefreshAtByReason) {
+      if (now - timestamp > TEN_MINUTES) {
+        lastRefreshAtByReason.delete(key);
+      }
+    }
+
     if (reason) {
       const lastReasonRefreshAt = lastRefreshAtByReason.get(reason);
       if (
@@ -193,8 +201,8 @@ export const useDataStore = create<DataState>((set) => {
             return {};
         }
 
-        const cappedEnd = minDate([newEnd, today]);
         if (newStart > today) return {};
+        const cappedEnd = minDate([newEnd, today]);
 
         const nextDateRange = {
           start: format(newStart, 'yyyy-MM-dd'),

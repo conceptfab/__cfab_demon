@@ -293,6 +293,7 @@ export function useSettingsFormState({
   const updateSplitSetting = useCallback(
     <K extends keyof SplitSettings>(key: K, value: SplitSettings[K]) => {
       setSplitSettings((prev) => saveSplitSettings({ ...prev, [key]: value }));
+      setSavedSettings(false);
     },
     [],
   );

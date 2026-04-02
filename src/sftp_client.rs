@@ -8,12 +8,28 @@ use std::time::Duration;
 
 const CHUNK_SIZE: usize = 64 * 1024; // 64 KB
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024; // 50 MB — safety limit for SFTP downloads
 
 pub struct SftpClient {
     pub host: String,
     pub port: u16,
     pub username: String,
     pub password: String,
+}
+
+impl Drop for SftpClient {
+    fn drop(&mut self) {
+        // Best-effort zeroing of sensitive fields to reduce memory exposure window.
+        // SAFETY: This is not cryptographically guaranteed (compiler may optimize out),
+        // but reduces the practical attack surface for memory scraping.
+        unsafe {
+            let pw_bytes = self.password.as_mut_vec();
+            std::ptr::write_volatile(pw_bytes.as_mut_ptr(), 0);
+            for b in pw_bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
+            let user_bytes = self.username.as_mut_vec();
+            for b in user_bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
+        }
+    }
 }
 
 impl SftpClient {
@@ -95,6 +111,13 @@ impl SftpClient {
         let mut remote_file = sftp.open(Path::new(remote_path))
             .map_err(|e| format!("SFTP open failed: {}", e))?;
 
+        if total > MAX_DOWNLOAD_SIZE {
+            return Err(format!(
+                "SFTP download aborted: file size {} bytes exceeds {} MB limit",
+                total, MAX_DOWNLOAD_SIZE / (1024 * 1024)
+            ));
+        }
+
         let mut result = Vec::with_capacity(total as usize);
         let mut buf = [0u8; CHUNK_SIZE];
         let mut received: u64 = 0;
@@ -103,8 +126,14 @@ impl SftpClient {
             match remote_file.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
-                    result.extend_from_slice(&buf[..n]);
                     received += n as u64;
+                    if received > MAX_DOWNLOAD_SIZE {
+                        return Err(format!(
+                            "SFTP download aborted: received {} bytes exceeds limit",
+                            received
+                        ));
+                    }
+                    result.extend_from_slice(&buf[..n]);
                     cb(received, total);
                 }
                 Err(e) => return Err(format!("SFTP read failed: {}", e)),

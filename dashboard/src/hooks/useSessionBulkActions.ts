@@ -74,13 +74,11 @@ export function useSessionBulkActions({
       try {
         await updateSessionComments(missingIds, normalized);
         const missingSet = new Set(missingIds);
-        setSessions((prev) => {
-          const next = prev.map((s) =>
+        setSessions((prev) =>
+          prev.map((s) =>
             missingSet.has(s.id) ? { ...s, comment: normalized } : s,
-          );
-          sessionsRef.current = next;
-          return next;
-        });
+          ),
+        );
         return true;
       } catch (err) {
         logTauriError('save required boost comment', err);
@@ -92,7 +90,7 @@ export function useSessionBulkActions({
         return false;
       }
     },
-    [mergedSessions, sessionsRef, setPromptConfig, setSessions, showError, t, updateSessionComments],
+    [mergedSessions, setPromptConfig, setSessions, showError, t, updateSessionComments],
   );
 
   const handleAcceptSuggestion = useCallback(
@@ -126,8 +124,8 @@ export function useSessionBulkActions({
           next.add(session.id);
           return next;
         });
-        setSessions((prev) => {
-          const next = prev.map((item) =>
+        setSessions((prev) =>
+          prev.map((item) =>
             item.id === session.id
               ? {
                   ...item,
@@ -136,15 +134,13 @@ export function useSessionBulkActions({
                   suggested_confidence: undefined,
                 }
               : item,
-          );
-          sessionsRef.current = next;
-          return next;
-        });
+          ),
+        );
       } catch (err) {
         logTauriError('reject AI suggestion', err);
       }
     },
-    [assignSessions, sessionsRef, setDismissedSuggestions, setSessions],
+    [assignSessions, setDismissedSuggestions, setSessions],
   );
 
   return {

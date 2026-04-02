@@ -85,7 +85,6 @@ export function useSessionScoreBreakdown({
             next.set(sessionId, value);
           }
         });
-        aiBreakdownsRef.current = next;
         return next;
       });
       setLoadingBreakdownIds((prev) => {
@@ -117,7 +116,6 @@ export function useSessionScoreBreakdown({
             if (prev.has(sessionId)) return prev;
             const next = new Map(prev);
             next.set(sessionId, cached);
-            aiBreakdownsRef.current = next;
             return next;
           });
         }
@@ -148,7 +146,6 @@ export function useSessionScoreBreakdown({
             if (prev.has(sessionId)) return prev;
             const next = new Map(prev);
             next.set(sessionId, data);
-            aiBreakdownsRef.current = next;
             return next;
           });
           return data;

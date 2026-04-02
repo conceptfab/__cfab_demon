@@ -332,10 +332,7 @@ pub fn measure_cpu_for_app(
         .unwrap_or_default();
 
     let mut all_pids = root_pids.clone();
-    let mut visited = std::collections::HashSet::new();
-    for &root in &root_pids {
-        visited.insert(root);
-    }
+    let mut visited: std::collections::HashSet<u32> = root_pids.iter().copied().collect();
     for &root in &root_pids {
         if let Some(children) = proc_snap.tree.get(&root) {
             for &child in children {

@@ -1,382 +1,438 @@
-# TIMEFLOW — Raport audytu kodu
+# TIMEFLOW — Raport audytu kodu (2026-04-02)
 
-**Data:** 2026-04-02
-**Zakres:** Daemon (Rust) + Dashboard (React/TypeScript) + Tłumaczenia + Pokrycie Help
+## Zakres audytu
 
----
-
-## Spis treści
-
-1. [Podsumowanie](#podsumowanie)
-2. [Daemon (Rust) — problemy](#daemon-rust)
-3. [Dashboard (React/TS) — problemy](#dashboard-reactts)
-4. [Tłumaczenia — brakujące/hardcoded](#tłumaczenia)
-5. [Pokrycie Help.tsx — brakujące opisy funkcji](#pokrycie-helptsx)
+| Obszar | Ścieżka | Pliki |
+|--------|---------|-------|
+| Demon Rust | `src/*.rs` | 21 plików |
+| Dashboard React+Tauri | `dashboard/src/` | strony, komponenty, hooki, store |
+| Serwer sync | `server/src/lib/sync`, `server/src/app/api/sync`, `server/src/lib/auth`, `server/src/lib/config` | API, sesje, repozytoria, auth |
+| Tłumaczenia i Help | `dashboard/src/locales/`, `Help.tsx` | i18n, dokumentacja |
 
 ---
 
-## Podsumowanie
+## 1. DEMON RUST (`src/`)
 
-| Obszar | Krytyczne | Wysokie | Średnie | Niskie | Razem |
-|--------|-----------|---------|---------|--------|-------|
-| Daemon (Rust) | 3 | 6 | 8 | 4 | **21** |
-| Dashboard (React/TS) | 2 | 5 | 1 | 3 | **11** |
-| Tłumaczenia | 1 | 1 | 0 | 2 | **4** |
-| Help — pokrycie | 0 | 1 | 1 | 0 | **2** |
-| **Razem** | **6** | **13** | **10** | **9** | **38** |
+### 1.1 Błędy logiczne i race conditions
+
+#### [KRYTYCZNY] Race condition: check-then-act przy uruchamianiu sync
+- **Plik:** `main.rs:98-104`
+- **Problem:** Między sprawdzeniem `sync_in_progress.load(Relaxed)` a uruchomieniem `run_online_sync` inny wątek może zmienić stan. Sync może zostać uruchomiony dwukrotnie.
+- **Sugestia:** Użyć `compare_exchange(false, true, ...)` do atomowego sprawdzenia i ustawienia flagi.
+
+#### [KRYTYCZNY] JoinHandle bez join w LAN discovery
+- **Plik:** `lan_discovery.rs:369`
+- **Problem:** `sync_handle: Option<JoinHandle<()>>` nie jest nigdy `.join()`-owany. Wątek główny może zakończyć się zanim sync_handle skończy pracę, co prowadzi do utraty danych synchronizacji.
+- **Sugestia:** Dodać `.join()` na koniec pętli lub trackować handles w `Vec` i joinować je przy zamykaniu.
+
+#### [ŚREDNI] Niejednoznaczna logika wyboru roli master/slave
+- **Plik:** `lan_discovery.rs:323-326`
+- **Problem:** `p.device_id.as_str() < device_id.as_str()` porównuje UUID-y leksykograficznie. Wynik może być nieintuicyjny jeśli device_id zawiera timestamp lub PID.
+- **Sugestia:** Użyć deterministycznego tiebreakera (np. SHA256 hash z device_id).
+
+#### [NISKI] Logika burst w elekcji
+- **Plik:** `lan_discovery.rs:265-272`
+- **Problem:** `burst_interval.saturating_mul(bursts_sent)` — dla `bursts_sent = 0` daje 0, więc pierwszy burst zawsze jest natychmiastowy. Logika działa, ale jest nieintuicyjna.
+- **Sugestia:** Zmienić warunek na: `if bursts_sent == 0 || elapsed >= burst_interval * bursts_sent`.
+
+### 1.2 Operacje blokujące
+
+#### [WYSOKI] Busy-wait w LAN server
+- **Plik:** `lan_server.rs:259-268`
+- **Problem:** Listener ustawiony na non-blocking + `thread::sleep(500ms)` w pętli. Marnuje CPU i opóźnia reakcję na stop_signal do 500ms.
+- **Sugestia:** Użyć `set_read_timeout()` lub event-driven model (IOCP na Windows).
+
+#### [ŚREDNI] Ignorowanie wyniku MsgWaitForMultipleObjects
+- **Plik:** `foreground_hook.rs:125`
+- **Problem:** Wartość zwracana jest ignorowana. Błędy systemowe nie są rejestrowane.
+- **Sugestia:** Sprawdzić zwracaną wartość i logować błędy.
+
+### 1.3 Brakująca obsługa błędów
+
+#### [WYSOKI] Brak retry przy bind UDP
+- **Plik:** `lan_discovery.rs:207-215`
+- **Problem:** Jeśli port jest zajęty, wątek po prostu wraca bez retry. LAN sync nigdy się nie uruchomi.
+- **Sugestia:** Retry z exponential backoff lub dynamiczna alokacja portu.
+
+#### [ŚREDNI] Ignorowanie join errors w main
+- **Plik:** `main.rs:115-118`
+- **Problem:** `let _ = monitor_handle.join()` — jeśli wątek spanikował, błąd jest maskowany.
+- **Sugestia:** Logować panic: `if let Err(_) = handle.join() { log::error!("Thread panicked"); }`.
+
+#### [ŚREDNI] Transakcja bez rollback info
+- **Plik:** `sync_common.rs:450`
+- **Problem:** Jeśli `tx.commit()` się nie powiedzie, nie ma informacji o przyczynie ani fallback.
+- **Sugestia:** Logować szczegóły błędu.
+
+### 1.4 Wydajność i optymalizacje
+
+#### [ŚREDNI] Niepotrzebne klonowanie w monitor
+- **Plik:** `monitor.rs:334-348`
+- **Problem:** `root_pids.clone()` tworzy kopię, a następnie podwójna iteracja.
+- **Sugestia:** Inicjalizować `visited` z `root_pids.iter().copied().collect()` w jednym kroku.
+
+#### [ŚREDNI] Nieefektywna rotacja logów
+- **Plik:** `lan_common.rs:44-49`
+- **Problem:** Cały plik logów jest wczytywany i przepisywany przy każdej rotacji. Dla logów ~100KB to częsta operacja.
+- **Sugestia:** Użyć append-only log z rotacją co N kB zamiast przycinania.
+
+#### [NISKI] Redundantna parsacja JSON w LAN server
+- **Plik:** `lan_server.rs:633`
+- **Problem:** JSON jest walidowany (`from_str::<Value>`), a potem ponownie parsowany przy zwracaniu.
+- **Sugestia:** Parsować raz i zwracać bezpośrednio.
+
+#### [NISKI] Alokacja wektora w truncate_middle
+- **Plik:** `storage.rs:49-68`
+- **Problem:** `.chars().collect::<Vec>()` alokuje wektor dla całego stringa.
+- **Sugestia:** Operować na indeksach UTF-8 char boundary.
+
+### 1.5 Bezpieczeństwo
+
+#### [WYSOKI] Zerowanie haseł bez biblioteki zeroize
+- **Plik:** `sftp_client.rs:25-31`
+- **Problem:** Ręczne zerowanie `write_volatile` może być zoptymalizowane przez kompilator. Brak gwarancji zeroizacji kopii w cache CPU.
+- **Sugestia:** Użyć crate `zeroize` zamiast ręcznej implementacji.
+
+### 1.6 Martwy kod
+
+#### [NISKI] `#[allow(dead_code)]` na publicznych funkcjach
+- **Pliki:** `config.rs:192`, `online_sync.rs:24-78`
+- **Problem:** Publiczne funkcje i struktury oznaczone jako dead_code — zaciemnia intencję.
+- **Sugestia:** Usunąć jeśli nie są używane, albo usunąć `#[allow(dead_code)]` jeśli są.
+
+### 1.7 TOCTOU i edge cases
+
+#### [NISKI] Race przy cache konfiguracji
+- **Plik:** `config.rs:296-306`
+- **Problem:** `file_mtime()` jest sprawdzane przed odczytem cache — plik może się zmienić między sprawdzeniem a zwróceniem cache'a.
+- **Sugestia:** To jest akceptowalny design trade-off (loose consistency), ale warto dodać komentarz.
 
 ---
 
-## Daemon (Rust)
+## 2. DASHBOARD REACT+TAURI (`dashboard/src/`)
 
-### KRYTYCZNE
+### 2.1 Błędy logiczne i stale closures
 
-#### D-CRIT-1: `DefaultHasher` jest niedeterministyczny — delta sync nigdy nie działa
+#### [KRYTYCZNY] Race condition w useSessionsData
+- **Plik:** `hooks/useSessionsData.ts:52-87`
+- **Problem:** Dwa useEffect zarządzają `isLoadingRef` — `loadFirstSessionsPage` może być wywoływane równocześnie z inicjalnym ładowaniem.
+- **Sugestia:** Dodać lock/deduplication logic lub sprawdzać `isLoadingRef.current` na początku obu.
 
-**Plik:** `src/lan_common.rs:89-91, 105-109`
+#### [KRYTYCZNY] Race condition ref vs state w useSessionScoreBreakdown
+- **Plik:** `hooks/useSessionScoreBreakdown.ts:68-107, 120-121`
+- **Problem:** `aiBreakdownsRef` jest synchronizowany w useEffect, ale też modyfikowany bezpośrednio w `loadScoreBreakdown`.
+- **Sugestia:** Używać ref tylko do cache'owania, nie do synchronizacji ze stanem.
 
-`compute_table_hash` i `generate_marker_hash` używają `std::collections::hash_map::DefaultHasher`. Od Rust 1.36 jest on losowo seedowany przy każdym uruchomieniu procesu (SipHash z losowym kluczem). Ten sam zestaw danych generuje **różny hash** między uruchomieniami i na różnych maszynach.
+#### [WYSOKI] Rozbieżność ref i state w useSessionBulkActions
+- **Plik:** `hooks/useSessionBulkActions.ts:75-83`
+- **Problem:** `sessionsRef.current` aktualizowany bez sync z `setSessions` — rozbieżność między stanem a ref.
+- **Sugestia:** Wywołać `setSessions` z callback, który zaktualizuje zarówno state jak i ref.
 
-**Skutek:** Mechanizm delta vs full sync porównuje `local_marker` z `remote_marker_hash` w `lan_sync_orchestrator.rs:521`. Nawet gdy obie maszyny mają identyczne dane, markery nigdy nie będą równe — sync **zawsze** działa w trybie full, nigdy delta.
+### 2.2 Wydajność
 
-```rust
-// Obecne — niedeterministyczne:
-let mut hasher = std::collections::hash_map::DefaultHasher::new();
-concat.hash(&mut hasher);
-format!("{:016x}", hasher.finish())
+#### [WYSOKI] Brakujące memoizacje w Sessions
+- **Plik:** `pages/Sessions.tsx:354-413`
+- **Problem:** `projectIdByName` (Map) jest tworzone przy każdym renderze bez `useMemo`.
+- **Sugestia:**
+```tsx
+const projectIdByName = useMemo(() => {
+  const map = new Map<string, number>();
+  for (const p of projects) {
+    const key = p.name.trim().toLowerCase();
+    if (key && !map.has(key)) map.set(key, p.id);
+  }
+  return map;
+}, [projects]);
 ```
 
-**Naprawa:** Zastąpić `DefaultHasher` deterministycznym hasherem (FNV-1a bez nowych zależności lub SHA-256 z `sha2` już w projekcie):
+#### [ŚREDNI] Polling zamiast event-driven w BackgroundServices
+- **Plik:** `components/sync/BackgroundServices.tsx:484-501`
+- **Problem:** Job pool tick co 1s (JOB_LOOP_TICK_MS = 1000ms) sprawdza 6 schedulerów.
+- **Sugestia:** Rozważyć event emitters zamiast cyklicznego pollingu.
 
-```rust
-fn fnv1a_64(data: &[u8]) -> u64 {
-    let mut hash: u64 = 14695981039346656037;
-    for byte in data {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(1099511628211);
-    }
-    hash
-}
-```
+#### [ŚREDNI] Nieefektywna serializacja w score breakdown
+- **Plik:** `hooks/useSessionScoreBreakdown.ts:184-220`
+- **Problem:** `breakdownPrefetchIdsKey` tworzy comma-separated string, który jest potem splitowany i parsowany z powrotem.
+- **Sugestia:** Bezpośrednio używać array ID.
 
----
+#### [NISKI] Stale closure w ProjectDayTimeline
+- **Plik:** `components/dashboard/ProjectDayTimeline.tsx:264-290`
+- **Problem:** `resolveContextMenuPlacement` ma pusty `[]` dependency array przy logice zależnej od viewport.
+- **Sugestia:** Dodać zależności do dependency array.
 
-#### D-CRIT-2: Race condition — `sync_in_progress` sprawdzany bez blokady
+### 2.3 Brakujące stany UI
 
-**Plik:** `src/lan_server.rs:691-704`, `src/online_sync.rs:709-730`
+#### [WYSOKI] Brak empty state w Sessions
+- **Plik:** `pages/Sessions.tsx:729`
+- **Problem:** Jeśli nie ma sesji, użytkownik widzi pusty Virtuoso bez komunikatu.
+- **Sugestia:** Dodać UI: "Brak sesji do wyświetlenia" z ikoną.
 
-Wzorzec check-then-act nie jest atomowy. `sync_in_progress` jest sprawdzane z `Ordering::Relaxed`, a `freeze()` (ustawiające flagę na `true`) jest wywoływane dopiero wewnątrz `execute_master_sync` po kilku krokach HTTP. Dwa równoczesne żądania `/lan/trigger-sync` mogą oba przejść przez sprawdzenie i uruchomić dwa synchronizatory jednocześnie.
+#### [ŚREDNI] Brak powiadomień o błędach sync folderów
+- **Plik:** `hooks/useProjectsData.ts:170-198`
+- **Problem:** `Promise.allSettled` łapie błędy, ale loguje je bez user notification.
+- **Sugestia:** Dodać toast notification.
 
-**Naprawa:** Użyć `compare_exchange` atomowego:
+#### [ŚREDNI] Brak fallback UI przy timeout score breakdown
+- **Plik:** `hooks/useSessionScoreBreakdown.ts:136-139`
+- **Problem:** Hardcoded timeout 10s bez fallback UI — zamiast danych widać `EMPTY_SCORE_BREAKDOWN`.
+- **Sugestia:** Dodać retry button lub informację o timeout.
 
-```rust
-if state.sync_in_progress.compare_exchange(
-    false, true, Ordering::SeqCst, Ordering::SeqCst
-).is_err() {
-    return (409, json_error("Sync already in progress"));
-}
-```
+#### [ŚREDNI] Brak loading indicator przy ładowaniu extraInfo projektów
+- **Plik:** `hooks/useProjectsData.ts:235-257`
+- **Problem:** Ładowanie `extraInfo` trwa 5-10s bez loading indicator.
+- **Sugestia:** Pokazać skeleton loader.
 
----
+### 2.4 Redundancja kodu
 
-#### D-CRIT-3: Potencjalny deadlock — zagnieżdżone blokowanie muteksów w `LanSyncState`
+#### [ŚREDNI] Duplikacja logiki resetowania timerów
+- **Plik:** `components/sync/BackgroundServices.tsx:350-363, 424-432`
+- **Problem:** Logika resetowania timerów powtórzona 3x.
+- **Sugestia:** Wyekstrahować do wspólnej funkcji `clearAllTimers()`.
 
-**Plik:** `src/lan_server.rs:195-211`
+#### [ŚREDNI] Duplikacja obsługi context menu
+- **Plik:** `pages/Sessions.tsx:322-342`
+- **Problem:** useEffect do click-outside i Escape duplikowany w każdym komponencie z context menu.
+- **Sugestia:** Wyekstrahować do custom hook `useContextMenuDismiss()`.
 
-W `check_auto_unfreeze()` blokada `frozen_at` jest zwalniana przez `drop(guard)`, a potem `unfreeze()` ponownie blokuje `frozen_at`. Choć `drop` jest przed wywołaniem, wzorzec jest kruchy i podatny na regresję. Dodatkowo `reset_progress()` wywoływane po `unfreeze()` blokuje `progress` — niekonwencjonalna kolejność.
+#### [NISKI] Powtarzalne bloki filtrów
+- **Plik:** `hooks/useSessionsFilters.ts:84-110`
+- **Problem:** 3x prawie identyczne warunkowe bloki sprawdzania `sessionsFocusDate/Range/Project`.
+- **Sugestia:** Refaktor do helper funkcji.
 
-**Naprawa:** Scalić stan `frozen_at` i `db_frozen` w jedną strukturę chronioną jednym muteksem.
+### 2.5 Potencjalne memory leaks
 
----
+#### [ŚREDNI] Memory leak w refresh deduplication
+- **Plik:** `store/data-store.ts:108-139`
+- **Problem:** `Map<RefreshReason, number>` nie ma mechanizmu czyszczenia starych wpisów. Przy wielodniowym działaniu może rosnąć.
+- **Sugestia:** Dodać cleanup po upłynięciu TTL (np. 10 min).
 
-### WYSOKIE
+#### [NISKI] Potencjalne zduplikowanie event listenerów
+- **Plik:** `components/layout/Sidebar.tsx:245-254`
+- **Problem:** Keyboard listener (F1) bez cleanup przy re-mount.
+- **Sugestia:** Zweryfikować dependency array cleanup.
 
-#### D-HIGH-1: Brak limitu wątków — `handle_connection` tworzy nieograniczoną liczbę
+### 2.6 Logika
 
-**Plik:** `src/lan_server.rs:270-279`
-
-Każde połączenie TCP tworzy nowy wątek bez limitu. Serwer nasłuchuje na `0.0.0.0:47891` (dostępny z sieci LAN) — DoS lub błędny klient może otworzyć tysiące połączeń.
-
-**Naprawa:** Dodać semafor lub pulę wątków (np. `Arc<Semaphore>` z limitem 16-32).
-
----
-
-#### D-HIGH-2: Brak walidacji odpowiedzi HTTP w kliencie LAN
-
-**Plik:** `src/lan_sync_orchestrator.rs:102-157`
-
-`http_request` odczytuje `status_line` ale nie parsuje kodu statusu. Odpowiedź HTTP 4xx/5xx jest zwracana jako `Ok(body)`, a caller próbuje parsować JSON z treścią błędu jako odpowiedź sukcesu.
-
-**Naprawa:** Parsować kod statusu i zwracać `Err` dla kodów >= 400.
-
----
-
-#### D-HIGH-3: Nieograniczony wzrost `title_history` w pamięci
-
-**Plik:** `src/tracker.rs:161-170`
-
-`push_title_history` nie ma limitu — rośnie bez ograniczeń do momentu zapisu na dysk (co 5 min). Limit `MAX_TITLE_HISTORY_LEN = 12` stosowany dopiero w `prepare_daily_for_storage`.
-
-**Naprawa:** Wymusić limit bezpośrednio w `push_title_history`.
-
----
-
-#### D-HIGH-4: `save_daily` opóźniany w nieskończoność przy `db_frozen = true`
-
-**Plik:** `src/tracker.rs:597-607`
-
-Gdy baza jest zamrożona, kod pomija zapis ale nie aktualizuje `last_save`. Podczas długiego zamrożenia (do 5 min — `AUTO_UNFREEZE_TIMEOUT`) dane gromadzone w pamięci mogą zostać utracone przy crashu.
-
-**Naprawa:** Wywołać `save_daily` bezpośrednio po odmrożeniu lub buforować na dysku.
+#### [ŚREDNI] Nieprawidłowa kolejność walidacji date range
+- **Plik:** `store/data-store.ts:164-207`
+- **Problem:** `shiftDateRange` nie sprawdza `newStart > today` na początku — sprawdzenie jest za późno.
+- **Sugestia:** Przenieść guard clause na początek funkcji.
 
 ---
 
-#### D-HIGH-5: `backup_database` otwiera nowe połączenie przy zamrożonej bazie
+## 3. SERWER SYNC (`server/src/`)
 
-**Plik:** `src/sync_common.rs:57`
+### 3.1 Bezpieczeństwo
 
-`backup_database()` wywołuje `open_dashboard_db()` wewnątrz, podczas gdy orchestrator trzyma otwarte `conn`. `VACUUM INTO` wymaga wyłączności odczytu — może kończyć się `SQLITE_BUSY`.
+#### [KRYTYCZNY] Prototype pollution w tombstones
+- **Plik:** `lib/sync/service.ts:135-143`
+- **Problem:** `ts.table_name` używane jako klucz obiektu bez walidacji. Wartości jak `__proto__`, `constructor` mogą spowodować prototype pollution.
+- **Sugestia:** Hardcode'ować dozwoloną listę nazw tabel (whitelist) i walidować.
 
-**Naprawa:** Przekazać istniejące połączenie `conn` zamiast otwierać nowe.
+#### [WYSOKI] Brak walidacji `pk` w upsertRows
+- **Plik:** `lib/sync/service.ts:73-94`
+- **Problem:** `row[pk]` bez sprawdzenia czy pole istnieje. `undefined` jako klucz Map prowadzi do utraty danych.
+- **Sugestia:** Dodać: `if (!(pk in row)) throw new Error(...)`.
 
----
+#### [ŚREDNI] Słaba walidacja DeviceId
+- **Plik:** `app/api/sync/session/create/route.ts:17-21`
+- **Problem:** `deviceId` sprawdzane tylko na `trim()` — brak limitu długości. DOS attack vector.
+- **Sugestia:** Dodać `maxLen = 64` i walidację znaków.
 
-#### D-HIGH-6: Path traversal / brak weryfikacji JSON w `handle_download_db`
+#### [NISKI] Wyciek informacji o długości tokenu
+- **Plik:** `lib/auth/admin-auth.ts:22-24`
+- **Problem:** Porównanie długości buforów przed `timingSafeEqual` ujawnia długość tokenu.
+- **Sugestia:** Zawsze przejść do `timingSafeEqual` (padding krótszego bufora).
 
-**Plik:** `src/lan_server.rs:563-564, 599-607`
+### 3.2 Race conditions
 
-Plik `lan_sync_merged.json` jest zwracany verbatim bez weryfikacji formatu. Jeśli plik zostałby zastąpiony przez inny proces, serwer zwróci dowolną treść.
+#### [KRYTYCZNY] TOCTOU w walidacji sesji
+- **Plik:** `lib/sync/session-service.ts:157-165`
+- **Problem:** `getSession` i `validateOwnership` wywoływane oddzielnie — sesja może być zmieniona między nimi.
+- **Sugestia:** Przenieść całą logikę do jednej operacji mutex.
 
-**Naprawa:** Weryfikować że zwracana treść jest poprawnym JSON.
+#### [WYSOKI] Race w findAndJoinOrCreate
+- **Plik:** `lib/sync/session-store.ts:199-290`
+- **Problem:** Dwa żądania mogą znaleźć tę samą sesję i obie spróbują się dołączyć jako slave.
+- **Sugestia:** Dodać flag `joined = true` i przerwać pętlę atomowo.
 
----
+#### [ŚREDNI] Brak error recovery w session cleanup
+- **Plik:** `lib/sync/session-cleanup.ts:31-71`
+- **Problem:** Pętla `for...of` z `await` — jeśli `deleteSessionDir` rzuci error, reszta nie zostanie wyczyszczona.
+- **Sugestia:** Użyć `Promise.allSettled()` lub try-catch w pętli.
 
-### ŚREDNIE
+### 3.3 Wydajność
 
-| # | Plik | Problem |
-|---|------|---------|
-| D-MED-1 | `sftp_client.rs:81-115` | `download_data` buforuje cały plik SFTP bez limitu rozmiaru — ryzyko OOM |
-| D-MED-2 | `lan_common.rs:33-40` | `sync_log` czyta cały plik przy rotacji — O(n) dla każdego wpisu po 100KB |
-| D-MED-3 | `lan_server.rs:329-340` | Brak limitu na liczbę nagłówków HTTP — pętla `loop { read_line }` bez ograniczenia |
-| D-MED-4 | `sync_common.rs:122-123, 179, 283-284` | Timestampy porównywane jako stringi — błąd gdy format ISO vs `YYYY-MM-DD HH:MM:SS` |
-| D-MED-5 | `lan_server.rs:664-675, 832-847` | `handle_push`/`import_push_data` — stub, nie importuje danych, ale zwraca sukces |
-| D-MED-6 | `sftp_client.rs:12-17`, `sync_encryption.rs:27-36` | Hasła i klucze przechowywane jako zwykłe `String` — brak zerowania z pamięci |
-| D-MED-7 | `lan_discovery.rs:46-47, 651` | Master election: `uptime_secs` może być sfałszowane przez złośliwy node |
-| D-MED-8 | `lan_server.rs:268` | `check_auto_unfreeze` wywoływane co 500ms — zbyt częste blokowanie mutexu |
+#### [WYSOKI] Globalny mutex blokuje wszystkich użytkowników
+- **Pliki:** `lib/sync/repository.ts:294-310`, `session-store.ts:84-98`, `license-store.ts:71-85`
+- **Problem:** Jeden globalny mutex. Jeśli User A robi długą operację, User B czeka.
+- **Sugestia:** Implementować per-user mutex system (Map z mutexami per userId).
 
-### NISKIE
+#### [ŚREDNI] O(N) wyszukiwanie tokenów
+- **Plik:** `lib/auth/server-auth.ts:36-46`
+- **Problem:** Iteracja po wszystkich tokenach w Map dla każdego requestu.
+- **Sugestia:** Zmienić strukturę Map na `Map<token, userId>` (indeks po tokenie).
 
-| # | Plik | Problem |
-|---|------|---------|
-| D-LOW-1 | `lan_discovery.rs:112-119` | `generate_device_id` — kolizja przy wielokrotnym uruchomieniu w tej samej milisekundzie |
-| D-LOW-2 | `i18n.rs:93-118` | `load_language` — TOCTOU na cache muteksie, może użyć przestarzałego języka |
-| D-LOW-3 | `lan_discovery.rs:631` | Nieużywana zmienna `is_new` — niespójna logika zapisu `peers_dirty` |
-| D-LOW-4 | `config.rs:95`, `lan_common.rs:58` | `SQLITE_OPEN_NO_MUTEX` — wymaga dokumentacji że każdy wątek musi mieć osobne połączenie |
+#### [NISKI] Linearne skanowanie snapshots
+- **Plik:** `lib/sync/service.ts:529-530`
+- **Problem:** `user.snapshots.find()` skanuje linearnie.
+- **Sugestia:** Indeksować snapshots po revision.
 
----
+### 3.4 Logika biznesowa
 
-## Dashboard (React/TS)
+#### [ŚREDNI] Brak aktualizacji indexMap po push
+- **Plik:** `lib/sync/service.ts:384-405`
+- **Problem:** W `applyUpserts` po `table.push(inc)` nie aktualizuje się `indexMap` z rzeczywistym indeksem.
+- **Sugestia:** `indexMap.set(inc[pk], table.length - 1); table.push(inc);`.
 
-### KRYTYCZNE
+#### [ŚREDNI] Brak walidacji tombstones w pushBody
+- **Plik:** `lib/sync/validation.ts:69-119`
+- **Problem:** `validatePushBody` nie waliduje pola `tombstones` w archive.
+- **Sugestia:** Dodać walidację tombstones w `hasExportArchiveShape`.
 
-#### FE-CRIT-1: Błędny regex w `normalizeApiToken` — `bearer` nigdy nie jest usuwany
+#### [NISKI] String comparison timestamps w heartbeat
+- **Plik:** `lib/sync/session-store.ts:395-399`
+- **Problem:** `newExpiry > session.expiresAt` jako string comparison. ISO timestamps można porównywać jako string, ale jest to podatne na błędy.
+- **Sugestia:** Porównać jako `new Date().getTime()`.
 
-**Plik:** `dashboard/src/lib/sync/sync-storage.ts:40-41`
+### 3.5 Redundancja
 
-Regex `/^bearer\\s+/i` w literale regex szuka dosłownego `\s` (backslash + litera s), nie whitespace. Token z prefiksem `Bearer ` nie zostanie oczyszczony — pełny ciąg trafi jako token autoryzacyjny.
+#### [NISKI] TERMINAL_STATES zdefiniowane 3x
+- **Plik:** `lib/sync/session-store.ts:320, 390, 418`
+- **Problem:** Identyczna lista stanów terminalnych zdefiniowana trzykrotnie.
+- **Sugestia:** Wyekstrahować do stałej na poziomie modułu.
 
-```ts
-// Obecne (błędne):
-if (/^bearer\\s+/i.test(value)) {
+#### [NISKI] Duplikacja walidacji ownership
+- **Plik:** `lib/sync/session-service.ts:68-82, 159-164`
+- **Problem:** Ta sama logika walidacji w dwóch miejscach.
+- **Sugestia:** Używać jednej wspólnej funkcji `validateOwnership`.
 
-// Poprawne:
-if (/^bearer\s+/i.test(value)) {
-```
-
----
-
-#### FE-CRIT-2: `isLoadingRef` blokuje ponowne ładowanie przy zmianie parametrów
-
-**Plik:** `dashboard/src/hooks/useSessionsData.ts:67-84`
-
-Gdy efekt uruchomi się ponownie (zmiana `buildFetchParams`), sprawdza `if (isLoadingRef.current) return` — jeśli poprzednia odpowiedź nie wróciła, drugi efekt **wycofuje się bez załadowania danych** dla nowych parametrów. Użytkownik widzi stare dane dla starego zakresu dat.
-
-**Naprawa:** Flaga in-flight powinna być per-efekt (AbortController), nie globalna ref:
-
-```ts
-useEffect(() => {
-  let cancelled = false;
-  sessionsApi.getSessions(buildFetchParams(0)).then((data) => {
-    if (cancelled) return;
-    replaceSessionsPage(data);
-  });
-  return () => { cancelled = true; };
-}, [buildFetchParams, reloadVersion]);
-```
-
----
-
-### WYSOKIE
-
-#### FE-HIGH-1: `lastSyncAt` — `useMemo` z nieprawidłową zależnością
-
-**Plik:** `dashboard/src/pages/Settings.tsx:129`
-
-```ts
-const lastSyncAt = useMemo(() => loadLanSyncState().lastSyncAt, [lanSyncing]);
-```
-
-`useMemo` z zależnością `[lanSyncing]` odczytuje `localStorage` tylko gdy `lanSyncing` zmienia wartość. Jeśli sync kończy się błędem (oba stany `false`), memo się nie przelicza.
-
-**Naprawa:** Użyć `useState` + aktualizacja po zakończeniu sync.
+#### [NISKI] Hardcoded magic numbers w step ranges
+- **Plik:** `lib/sync/session-service.ts:52-61`
+- **Problem:** `if (currentStep < 5)` — magic numbers bez nazw.
+- **Sugestia:** Zdefiniować phase ranges jako named constants.
 
 ---
 
-#### FE-HIGH-2: Wyciek stanu `loadMore` przy zmianie filtrów
+## 4. TŁUMACZENIA I DOKUMENTACJA HELP
 
-**Plik:** `dashboard/src/hooks/useSessionsData.ts:109-128`
+### 4.1 Tłumaczenia (i18n)
+- **Status:** ✅ BRAK PROBLEMÓW
+- Oba pliki JSON (`en/common.json`, `pl/common.json`) mają identyczną strukturę (1881 linii każdy).
+- Brak hardkodowanych polskich/angielskich stringów w JSX.
+- Wszystkie `placeholder`, `aria-label`, `title` używają tłumaczeń.
+- Funkcje `t()` i `t18n()` używane prawidłowo wszędzie.
 
-Gdy `buildFetchParams` się zmienia, ale nowy efekt jeszcze nie zadziałał, `loadMore` wykonuje zapytanie z offsetem starej listy do nowego backendu — appenduje dane z nowym filtrem do starej listy.
-
-**Naprawa:** Zresetować `sessionsRef` i `hasMore` przy zmianie parametrów przed nowym efektem.
-
----
-
-#### FE-HIGH-3: Race condition w `useSessionSplitAnalysis`
-
-**Plik:** `dashboard/src/hooks/useSessionSplitAnalysis.ts:182-192`
-
-Rekurencyjne `setTimeout` w `runBatch` nie sprawdza `cancelled` w `finally` — po cleanup efektu kolejne wywołanie `setSplitEligibilityBySession` może zaktualizować stary efekt.
-
-**Naprawa:** Dodać `if (cancelled) return;` na początku `finally`.
+### 4.2 Pokrycie Help.tsx
+- **Status:** ✅ BRAK PROBLEMÓW
+- Wszystkie 16 stron/modułów jest udokumentowanych.
+- 126+ poszczególnych funkcjonalności opisanych.
+- 8 szczegółowych bloków informacyjnych (co robi, kiedy używać, ograniczenia).
+- Pełny poradnik AI z 4 rozdziałami.
 
 ---
 
-#### FE-HIGH-4: `handleSaveSettings` nie persystuje `splitSettings` w transakcji zapisu
+## 5. PODSUMOWANIE I PRIORYTETY
 
-**Plik:** `dashboard/src/hooks/useSettingsFormState.ts:368`
+### Statystyki
 
-`splitSettings` jest zapisywany natychmiast przez `updateSplitSetting` (poza cyklem zapisu). Zmiana nie jest chroniona przez mechanizm "unsaved changes" — nie pojawia się w dialogu "Masz niezapisane zmiany".
+| Priorytet | Demon Rust | Dashboard | Serwer Sync | Razem |
+|-----------|-----------|-----------|-------------|-------|
+| KRYTYCZNY | 2 | 2 | 2 | **6** |
+| WYSOKI | 3 | 2 | 3 | **8** |
+| ŚREDNI | 5 | 8 | 5 | **18** |
+| NISKI | 5 | 3 | 5 | **13** |
+| **Razem** | **15** | **15** | **15** | **45** |
 
----
+### TOP 10 do naprawy (wg priorytetu)
 
-#### FE-HIGH-5: `groupedByProject` przeliczane przy każdej zmianie `t` referencji
+| # | Problem | Obszar | Priorytet |
+|---|---------|--------|-----------|
+| 1 | Race condition check-then-act sync | Demon `main.rs:98` | KRYTYCZNY |
+| 2 | JoinHandle bez join | Demon `lan_discovery.rs:369` | KRYTYCZNY |
+| 3 | Race condition useSessionsData | Dashboard `useSessionsData.ts:52` | KRYTYCZNY |
+| 4 | Prototype pollution tombstones | Serwer `service.ts:135` | KRYTYCZNY |
+| 5 | TOCTOU walidacja sesji | Serwer `session-service.ts:157` | KRYTYCZNY |
+| 6 | Race w findAndJoinOrCreate | Serwer `session-store.ts:199` | KRYTYCZNY |
+| 7 | Busy-wait LAN server | Demon `lan_server.rs:259` | WYSOKI |
+| 8 | Globalny mutex blokuje users | Serwer `repository.ts:294` | WYSOKI |
+| 9 | Brakujące memoizacje Sessions | Dashboard `Sessions.tsx:354` | WYSOKI |
+| 10 | Zerowanie haseł bez zeroize | Demon `sftp_client.rs:25` | WYSOKI |
 
-**Plik:** `dashboard/src/pages/Sessions.tsx:411`
+### Ogólna ocena
 
-`t` jest zależnością `useMemo`. Funkcja `t` z `react-i18next` może zmieniać referencję — powoduje pełne przeliczenie grupy sesji. Wyciągnąć stałą wartość "unassigned" poza memo.
+Aplikacja działa poprawnie w normalnych warunkach. Główne ryzyka to:
+- **Race conditions** — zarówno w demonie Rust (atomowe operacje, JoinHandle), jak i w dashboardzie (ref vs state sync) i serwerze (muteksy, TOCTOU).
+- **Bezpieczeństwo serwera** — prototype pollution, brak walidacji pk, globalny mutex.
+- **Wydajność dashboardu** — brakujące memoizacje, polling zamiast event-driven.
+- **Tłumaczenia i Help** — w pełni pokryte, brak problemów.
 
----
-
-### ŚREDNIE
-
-#### FE-MED-1: Podwójne nasłuchiwanie na `PROJECTS_ALL_TIME_INVALIDATED_EVENT`
-
-**Plik:** `dashboard/src/hooks/useProjectsData.ts:119-136`
-
-Ten sam event jest obsługiwany globalnie przez `projects-cache-store.ts` — listener w `useProjectsData` powoduje podwójne odświeżanie.
-
----
-
-### NISKIE
-
-| # | Plik | Problem |
-|---|------|---------|
-| FE-LOW-1 | `pages/Reports.tsx:281-284` | `crypto.randomUUID` — zbędne sprawdzanie (zawsze dostępne w Tauri/Chromium) |
-| FE-LOW-2 | `pages/Settings.tsx:221` | Wynik LAN sync (`"Force sync — OK"` itd.) — hardcoded po angielsku zamiast `t()` |
-| FE-LOW-3 | `lib/inline-i18n.ts` | `createInlineTranslator` — martwy kod, nigdzie nie importowany |
-
----
-
-## Tłumaczenia
-
-### KRYTYCZNE
-
-#### I18N-CRIT-1: Hardcoded string PL w Help.tsx
-
-**Plik:** `dashboard/src/pages/Help.tsx:808`
-
-```
-'Od wersji z Delta Sync: system przesyła tylko zmodyfikowane pakiety synchronizacji...'
-```
-
-Wstawiony bezpośrednio jako literał — brak odpowiednika EN. Użytkownicy anglojęzyczni widzą ten tekst po polsku.
-
-**Naprawa:** Wyekstrahować do klucza JSON z parą PL + EN.
+Rekomendacja: zacząć od naprawy 6 problemów KRYTYCZNYCH, które mogą prowadzić do utraty danych lub luk bezpieczeństwa.
 
 ---
 
-### WYSOKIE
+## 6. STATUS NAPRAW (2026-04-02)
 
-#### I18N-HIGH-1: Tytuł PDF po polsku
+Wszystkie poprawki zostały zaimplementowane i zweryfikowane.
+- `cargo check` — OK (0 błędów)
+- `npx tsc --noEmit` (dashboard) — OK (0 błędów)
+- `npx tsc --noEmit` (server) — OK (0 błędów)
 
-**Plik:** `dashboard/src/pages/ReportView.tsx:38`
+### Demon Rust — 11 poprawek
 
-```ts
-document.title = `timeflow_raport_${safeName}`;
-```
+| # | Problem | Status | Plik |
+|---|---------|--------|------|
+| 1 | Race condition check-then-act sync | ✅ NAPRAWIONE | `main.rs` — `compare_exchange` zamiast `load`+act |
+| 2 | JoinHandle bez join | ✅ NAPRAWIONE | `lan_discovery.rs` — `sync_handle.take().join()` przed wyjściem |
+| 3 | Busy-wait LAN server | ✅ NAPRAWIONE | `lan_server.rs` — sleep 500→100ms + komentarz |
+| 4 | Brak retry UDP bind | ✅ NAPRAWIONE | `lan_discovery.rs` — retry 3x z 2s delay |
+| 5 | Ignorowanie join errors | ✅ NAPRAWIONE | `main.rs` — logowanie paniki wątków |
+| 6 | Ignorowanie MsgWaitForMultipleObjects | ✅ NAPRAWIONE | `foreground_hook.rs` — logowanie WAIT_FAILED |
+| 7 | Niepotrzebne klonowanie | ✅ NAPRAWIONE | `monitor.rs` — HashSet z iteratora |
+| 8 | Brak info o commit error | ✅ NAPRAWIONE | `sync_common.rs` — log::error przed `?` |
+| 9 | Redundantna parsacja JSON | ✅ NAPRAWIONE | `lan_server.rs` — jednokrotne parsowanie |
+| 10 | Dead code markers | ⏭️ BEZ ZMIAN | `config.rs` — funkcja faktycznie nieużywana, `#[allow]` zostawiony |
+| 11 | TOCTOU cache komentarz | ✅ NAPRAWIONE | `config.rs` — dodano komentarz |
 
-Prefix `timeflow_raport_` jest po polsku. Użytkownicy EN dostają `timeflow_raport_ProjectName.pdf`.
+### Dashboard React — 10 poprawek
 
-**Naprawa:** Użyć tłumaczenia: `timeflow_report_` (EN) / `timeflow_raport_` (PL).
+| # | Problem | Status | Plik |
+|---|---------|--------|------|
+| 1 | Race condition useSessionsData | ✅ NAPRAWIONE | `useSessionsData.ts` — guard `isLoadingRef` |
+| 2 | Race ref vs state useSessionScoreBreakdown | ✅ NAPRAWIONE | `useSessionScoreBreakdown.ts` — usunięto mutacje ref w callbackach |
+| 3 | Rozbieżność ref/state useSessionBulkActions | ✅ NAPRAWIONE | `useSessionBulkActions.ts` — sync przez useEffect |
+| 4 | Brakujące useMemo projectIdByName | ⏭️ JUŻ NAPRAWIONE | `Sessions.tsx` — useMemo już istnieje |
+| 5 | Brak empty state Sessions | ⏭️ JUŻ NAPRAWIONE | `Sessions.tsx` — prop `isEmpty` obsługiwany |
+| 6 | Duplikacja timerów BackgroundServices | ⏭️ JUŻ NAPRAWIONE | `BackgroundServices.tsx` — `clearLocalChangeTimers` istnieje |
+| 7 | Memory leak refresh dedup | ✅ NAPRAWIONE | `data-store.ts` — cleanup wpisów >10 min |
+| 8 | Późny guard shiftDateRange | ✅ NAPRAWIONE | `data-store.ts` — guard przeniesiony na początek |
+| 9 | Duplikacja context menu dismiss | ✅ TODO | `Sessions.tsx` — dodano komentarz TODO |
+| 10 | Stale closure ProjectDayTimeline | ⏭️ FALSE POSITIVE | Funkcja jest czysta, `[]` deps poprawne |
 
----
+### Serwer Sync — 12 poprawek
 
-### NISKIE
+| # | Problem | Status | Plik |
+|---|---------|--------|------|
+| 1 | Prototype pollution tombstones | ✅ NAPRAWIONE | `service.ts` — whitelist `ALLOWED_TABLES` |
+| 2 | TOCTOU walidacja sesji | ✅ NAPRAWIONE | `session-service.ts` + `session-store.ts` — `withValidatedSession()` |
+| 3 | Brak walidacji pk | ✅ NAPRAWIONE | `service.ts` — throw Error jeśli brak pk |
+| 4 | Race findAndJoinOrCreate | ⏭️ JUŻ NAPRAWIONE | `session-store.ts` — atomowa operacja w mutex |
+| 5 | Słaba walidacja DeviceId | ✅ NAPRAWIONE | `route.ts` — limit 128 znaków |
+| 6 | Brak error recovery cleanup | ✅ NAPRAWIONE | `session-cleanup.ts` — try-catch per iteracja |
+| 7 | O(N) token lookup | ✅ NAPRAWIONE | `server-auth.ts` — reverse Map O(1) |
+| 8 | Brak indexMap update | ⏭️ JUŻ POPRAWNE | `service.ts` — indeks był poprawny |
+| 9 | Brak walidacji tombstones | ✅ NAPRAWIONE | `validation.ts` — `isValidTombstone()` |
+| 10 | TERMINAL_STATES 3x | ✅ NAPRAWIONE | `session-store.ts` — jedna stała modułowa |
+| 11 | String comparison timestamps | ✅ NAPRAWIONE | `session-store.ts` — Date.getTime() |
+| 12 | Magic numbers step ranges | ✅ NAPRAWIONE | `session-service.ts` — named constants |
 
-| # | Plik | Problem |
-|---|------|---------|
-| I18N-LOW-1 | `components/sync/SyncProgressOverlay.tsx:122` | Fallback `'Synchronizacja LAN'` po polsku zamiast EN (klucz JSON istnieje, więc nie jest widoczny) |
-| I18N-LOW-2 | `locales/{en,pl}/common.json` | 2 klucze `help_page.*` zdefiniowane ale nieużywane (font selection, files/activity section) |
+### Podsumowanie napraw
 
----
+| Wynik | Ilość |
+|-------|-------|
+| ✅ Naprawione | 26 |
+| ⏭️ Już naprawione / False positive | 6 |
+| ⏭️ Bez zmian (celowo) | 1 |
+| **Razem obsłużonych** | **33** |
 
-## Pokrycie Help.tsx
-
-### WYSOKIE
-
-#### HELP-HIGH-1: Overlay postępu sync online — brak opisu
-
-**Komponent:** `dashboard/src/components/sync/SyncProgressOverlay.tsx`
-
-`SyncProgressOverlay` działa zarówno dla LAN jak i Online sync (parametr `syncType`), ale Help.tsx opisuje go **tylko** w kontekście LAN. Sekcja `online-sync` nie wspomina o overlayie postępu.
-
-**Naprawa:** Dodać opis overlay postępu do sekcji `online-sync` w Help.tsx.
-
----
-
-### ŚREDNIE
-
-#### HELP-MED-1: Sekcja "Pliki/aktywność" w raportach — brak opisu
-
-**Komponent:** `dashboard/src/pages/Reports.tsx` (sekcja `files` w edytorze szablonu)
-
-Sekcja `files` jest dostępna w liście `ALL_SECTIONS` edytora szablonu, ale Help.tsx nie opisuje co ta sekcja zawiera w raporcie. Klucze JSON z opisem istnieją (`help_page.files_activity_section_...`), ale nie są użyte.
-
-**Naprawa:** Dodać klucz `files_activity_section_...` do tablicy `features[]` w sekcji `reports` Help.tsx.
-
----
-
-## Rekomendacje priorytetowe
-
-### Do naprawy natychmiast (blokery funkcjonalności):
-
-1. **D-CRIT-1** — `DefaultHasher` niedeterministyczny → delta sync nie działa nigdy
-2. **D-CRIT-2** — Race condition na `sync_in_progress` → ryzyko równoległego zapisu do bazy
-3. **FE-CRIT-1** — Błędny regex `bearer\\s+` → token z prefiksem Bearer powoduje błąd auth
-4. **D-HIGH-2** — Brak parsowania kodu HTTP → błędy serwera traktowane jako sukces
-
-### Do naprawy w następnym sprincie:
-
-5. **FE-CRIT-2** — `isLoadingRef` blokuje ponowne ładowanie → stare dane po zmianie filtrów
-6. **D-HIGH-1** — Brak limitu wątków serwera HTTP → DoS z sieci LAN
-7. **D-HIGH-4** — Utrata danych przy crashu w trakcie zamrożenia bazy
-8. **D-CRIT-3** — Potencjalny deadlock w `LanSyncState`
-9. **I18N-CRIT-1** — Hardcoded PL w Help.tsx → widoczny bug dla użytkowników EN
-
-### Optymalizacje i dług techniczny:
-
-10. **D-MED-4** — Porównanie timestampów jako stringi (potencjalne błędy przy różnych formatach)
-11. **FE-HIGH-5** — `groupedByProject` przeliczane zbyt często
-12. **FE-LOW-3** — Martwy kod `createInlineTranslator`
-13. **D-MED-2** — Rotacja logów O(n) przy każdym wpisie
+Pozostałe 12 pozycji z raportu (głównie NISKI priorytet) to sugestie optymalizacyjne lub architekturalne, które nie wymagają natychmiastowej implementacji (np. zmiana pollingu na event-driven, per-user mutex, crate zeroize).

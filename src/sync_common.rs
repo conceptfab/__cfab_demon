@@ -90,6 +90,21 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
     Ok(())
 }
 
+// ── Timestamp normalization ──
+
+/// Normalize ISO/mixed timestamps to `YYYY-MM-DD HH:MM:SS` for safe string comparison.
+/// Handles `2024-01-02T15:04:05`, `2024-01-02T15:04:05Z`, `2024-01-02 15:04:05`, etc.
+fn normalize_ts(ts: &str) -> String {
+    let s = ts.replace('T', " ");
+    // Strip timezone suffix (Z, +00:00, etc.)
+    let s = if let Some(pos) = s.find('Z') { &s[..pos] } else { &s };
+    let s = if let Some(pos) = s.rfind('+') {
+        if pos > 10 { &s[..pos] } else { s }
+    } else { s };
+    // Truncate to 19 chars: "YYYY-MM-DD HH:MM:SS"
+    if s.len() >= 19 { s[..19].to_string() } else { s.to_string() }
+}
+
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
@@ -118,7 +133,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 .ok();
 
             match existing {
-                Some(local_ts) if local_ts >= updated_at.to_string() => {}
+                Some(local_ts) if normalize_ts(&local_ts) >= normalize_ts(updated_at) => {}
                 Some(_) => {
                     tx.execute(
                         "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
@@ -175,7 +190,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             match existing {
                 Some((_id, local_ts)) => {
                     let local = local_ts.as_deref().unwrap_or("");
-                    if updated_at > local {
+                    if normalize_ts(updated_at) > normalize_ts(local) {
                         tx.execute(
                             "UPDATE applications SET display_name = ?1, updated_at = ?2 WHERE executable_name = ?3",
                             rusqlite::params![
@@ -280,7 +295,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             match existing {
                 Some((id, local_ts)) => {
                     let local = local_ts.as_deref().unwrap_or("");
-                    if updated_at > local {
+                    if normalize_ts(updated_at) > normalize_ts(local) {
                         tx.execute(
                             "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, \
                              rate_multiplier = ?3, comment = ?4, is_hidden = ?5, \
@@ -352,7 +367,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             match existing {
                 Some((id, local_ts)) => {
                     let local = local_ts.as_deref().unwrap_or("");
-                    if updated_at > local {
+                    if normalize_ts(updated_at) > normalize_ts(local) {
                         tx.execute(
                             "UPDATE manual_sessions SET session_type = ?1, project_id = ?2, \
                              app_id = ?3, end_time = ?4, duration_seconds = ?5, \
@@ -432,7 +447,10 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         }
     }
 
-    tx.commit().map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| {
+        log::error!("Transaction commit failed: {}", e);
+        e.to_string()
+    })?;
     lan_common::sync_log("  Scalanie zakonczone — commit transakcji");
     Ok(())
 }
