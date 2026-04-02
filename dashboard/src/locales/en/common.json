@@ -568,6 +568,7 @@
     "empty": {
       "no_excluded_projects": "No excluded projects",
       "no_folders_configured": "No folders configured",
+      "no_folders_configured_hint": "Add a folder above to scan for projects",
       "no_subfolder_candidates": "No subfolder candidates found"
     },
     "warnings": {

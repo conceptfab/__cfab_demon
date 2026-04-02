@@ -1,4 +1,4 @@
-import { CircleOff, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react';
+import { CircleOff, FolderOpen, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { CollapsibleSection } from '@/components/project/CollapsibleSection';
@@ -130,6 +130,17 @@ export function ProjectDiscoveryPanel({
             <p className="text-xs text-emerald-400">{folderInfo}</p>
           )}
 
+          <div className="flex justify-start">
+            <Button
+              size="sm"
+              onClick={onSyncFolders}
+              disabled={busy === 'sync-folders' || projectFolders.length === 0}
+            >
+              <RefreshCw className="mr-1.5 h-4 w-4" />
+              {t('projects_page.sync_subfolders_as_projects')}
+            </Button>
+          </div>
+
           {projectFolders.length > 0 ? (
             <div className="space-y-1">
               {projectFolders.map((folder) => (
@@ -158,22 +169,16 @@ export function ProjectDiscoveryPanel({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">
-              {t('projects.empty.no_folders_configured')}
-            </p>
+            <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 py-6">
+              <FolderOpen className="h-8 w-8 text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground">
+                {t('projects.empty.no_folders_configured')}
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                {t('projects.empty.no_folders_configured_hint')}
+              </p>
+            </div>
           )}
-
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onSyncFolders}
-              disabled={busy === 'sync-folders'}
-            >
-              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-              {t('projects_page.sync_subfolders_as_projects')}
-            </Button>
-          </div>
         </div>
       </CollapsibleSection>
 
