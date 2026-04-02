@@ -147,6 +147,16 @@ export const getDetectedProjects = (dateRange: DateRange) =>
 export const resetProjectTime = (projectId: number) =>
   invokeMutation<void>('reset_project_time', { projectId });
 
+export const deleteAllExcludedProjects = () =>
+  invokeMutation<number>('delete_all_excluded_projects', undefined, {
+    notify: (count) => count > 0,
+  });
+
+export const blacklistProjectNames = (names: string[]) =>
+  invokeMutation<number>('blacklist_project_names', { names }, {
+    notify: (count) => count > 0,
+  });
+
 export const projectsApi = {
   getProjects,
   getProject,
@@ -174,4 +184,6 @@ export const projectsApi = {
   autoCreateProjectsFromDetection,
   getDetectedProjects,
   resetProjectTime,
+  deleteAllExcludedProjects,
+  blacklistProjectNames,
 } as const;

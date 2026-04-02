@@ -1,4 +1,4 @@
-import { CircleOff, Plus, RefreshCw, Wand2 } from 'lucide-react';
+import { AlertTriangle, CircleOff, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { CollapsibleSection } from '@/components/project/CollapsibleSection';
@@ -53,6 +53,8 @@ type ProjectDiscoveryPanelProps = {
   detectedCandidatesView: DetectedCandidatesView;
   isDemoMode: boolean;
   onAutoCreateDetected: () => void;
+  onClearCandidates: () => void;
+  isClearingCandidates: boolean;
 };
 
 export function ProjectDiscoveryPanel({
@@ -78,6 +80,8 @@ export function ProjectDiscoveryPanel({
   detectedCandidatesView,
   isDemoMode,
   onAutoCreateDetected,
+  onClearCandidates,
+  isClearingCandidates,
 }: ProjectDiscoveryPanelProps) {
   const { t } = useTranslation();
 
@@ -126,6 +130,13 @@ export function ProjectDiscoveryPanel({
           )}
           {folderInfo && !folderError && (
             <p className="text-xs text-emerald-400">{folderInfo}</p>
+          )}
+
+          {projectFolders.length === 0 && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-400">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{t('projects.warnings.no_folders_defined')}</span>
+            </div>
           )}
 
           {projectFolders.length > 0 ? (
@@ -218,6 +229,20 @@ export function ProjectDiscoveryPanel({
             {t('projects_page.hidden_already_registered_folders')}{' '}
             {hiddenRegisteredFolderCandidatesCount}
           </p>
+        )}
+        {visibleFolderCandidates.length > 0 && (
+          <div className="flex justify-end pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              onClick={onClearCandidates}
+              disabled={isClearingCandidates}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              {t('projects.actions.exclude_all_candidates', { count: visibleFolderCandidates.length })}
+            </Button>
+          </div>
         )}
       </CollapsibleSection>
 

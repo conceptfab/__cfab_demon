@@ -436,6 +436,38 @@ export function Projects() {
     }
   };
 
+  const handleDeleteAllExcluded = async () => {
+    if (!await confirm(t('projects.confirm.delete_all_excluded'))) {
+      return;
+    }
+    setBusy('delete-all-excluded');
+    try {
+      await projectsApi.deleteAllExcludedProjects();
+    } catch (e) {
+      logTauriError('delete all excluded projects', e);
+      showError(getErrorMessage(e, t('ui.common.unknown_error')));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleClearCandidates = async () => {
+    if (visibleFolderCandidates.length === 0) return;
+    if (!await confirm(t('projects.confirm.clear_candidates'))) {
+      return;
+    }
+    setBusy('clear-candidates');
+    try {
+      const names = visibleFolderCandidates.map((c) => c.name);
+      await projectsApi.blacklistProjectNames(names);
+    } catch (e) {
+      logTauriError('blacklist candidates', e);
+      showError(getErrorMessage(e, t('ui.common.unknown_error')));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const handleAutoCreateDetected = async () => {
     setBusy('auto-detect');
     try {
@@ -972,14 +1004,19 @@ export function Projects() {
         isOpen={sectionOpen.excluded}
         onToggle={toggleSection('excluded')}
         projects={visibleExcludedProjects}
+        totalExcludedCount={excludedProjects.length}
         hiddenCount={hiddenExcludedProjectsCount}
         renderDuplicateMarker={renderDuplicateMarker}
         isDeleting={(projectId) => busy === `delete-project:${projectId}`}
+        isDeletingAll={busy === 'delete-all-excluded'}
         onRestore={(projectId) => {
           void handleRestore(projectId);
         }}
         onDelete={(project) => {
           void handleDeleteProject(project);
+        }}
+        onDeleteAll={() => {
+          void handleDeleteAllExcluded();
         }}
         onLoadMore={() =>
           loadMoreProjects('excluded', filteredExcludedProjects.length)
@@ -1031,6 +1068,10 @@ export function Projects() {
         onAutoCreateDetected={() => {
           void handleAutoCreateDetected();
         }}
+        onClearCandidates={() => {
+          void handleClearCandidates();
+        }}
+        isClearingCandidates={busy === 'clear-candidates'}
       />
 
       <Dialog

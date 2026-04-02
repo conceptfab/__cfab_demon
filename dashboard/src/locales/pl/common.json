@@ -538,7 +538,9 @@
       "reset_project_time": "Zresetować śledzony czas dla tego projektu? Tej operacji nie można cofnąć.",
       "compact_project_data": "Skondensować dane tego projektu? Szczegółowa historia aktywności plików zostanie usunięta, ale sesje i łączny czas zostaną zachowane. Tej operacji nie można cofnąć.",
       "remove_project_root": "Usunąć folder z korzeni projektów? {{path}}",
-      "delete_project_permanent": "Trwale usunąć projekt \"{{projectLabel}}\"? Usunie to rekord projektu, odepnie powiązane elementy i skasuje ręczne sesje. Tej operacji nie można cofnąć."
+      "delete_project_permanent": "Trwale usunąć projekt \"{{projectLabel}}\"? Usunie to rekord projektu, odepnie powiązane elementy i skasuje ręczne sesje. Tej operacji nie można cofnąć.",
+      "delete_all_excluded": "Trwale usunąć WSZYSTKIE wykluczone projekty? Tej operacji nie można cofnąć.",
+      "clear_candidates": "Dodać wszystkich widocznych kandydatów na czarną listę? Nie będą się już pojawiać jako sugestie."
     },
     "dialogs": {
       "select_assigned_project_folder": "Wybierz przypisany folder projektu",
@@ -552,7 +554,9 @@
       "expand_all": "Rozwiń wszystkie",
       "collapse_all": "Zwiń wszystkie",
       "add": "Dodaj",
-      "create": "Utwórz"
+      "create": "Utwórz",
+      "delete_all_excluded": "Usuń wszystkie ({{count}})",
+      "exclude_all_candidates": "Czarna lista ({{count}})"
     },
     "sections": {
       "excluded_projects": "Wykluczone projekty",
@@ -562,6 +566,9 @@
       "no_excluded_projects": "Brak wykluczonych projektów",
       "no_folders_configured": "Brak skonfigurowanych folderów",
       "no_subfolder_candidates": "Nie znaleziono kandydatów podfolderów"
+    },
+    "warnings": {
+      "no_folders_defined": "Brak zdefiniowanych folderów projektów. Dodaj co najmniej jeden folder, aby włączyć automatyczne wykrywanie projektów ze ścieżek plików."
     },
     "placeholders": {
       "project_folder_path": "C:\\projekty\\klienci"

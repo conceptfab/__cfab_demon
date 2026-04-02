@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Trash2 } from 'lucide-react';
 
 import { CollapsibleSection } from '@/components/project/CollapsibleSection';
 import { AppTooltip } from '@/components/ui/app-tooltip';
@@ -10,11 +11,14 @@ type ExcludedProjectsListProps = {
   isOpen: boolean;
   onToggle: () => void;
   projects: ProjectWithStats[];
+  totalExcludedCount: number;
   hiddenCount: number;
   renderDuplicateMarker: (project: ProjectWithStats) => ReactNode;
   isDeleting: (projectId: number) => boolean;
+  isDeletingAll: boolean;
   onRestore: (projectId: number) => void;
   onDelete: (project: ProjectWithStats) => void;
+  onDeleteAll: () => void;
   onLoadMore: () => void;
 };
 
@@ -22,11 +26,14 @@ export function ExcludedProjectsList({
   isOpen,
   onToggle,
   projects,
+  totalExcludedCount,
   hiddenCount,
   renderDuplicateMarker,
   isDeleting,
+  isDeletingAll,
   onRestore,
   onDelete,
+  onDeleteAll,
   onLoadMore,
 }: ExcludedProjectsListProps) {
   const { t } = useTranslation();
@@ -85,6 +92,18 @@ export function ExcludedProjectsList({
               </Button>
             </div>
           )}
+          <div className="flex justify-end pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive"
+              onClick={onDeleteAll}
+              disabled={isDeletingAll}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              {t('projects.actions.delete_all_excluded', { count: totalExcludedCount })}
+            </Button>
+          </div>
         </div>
       )}
     </CollapsibleSection>

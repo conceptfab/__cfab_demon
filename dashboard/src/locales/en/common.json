@@ -538,7 +538,9 @@
       "reset_project_time": "Reset tracked time for this project? This cannot be undone.",
       "compact_project_data": "Compact this project's data? This will remove detailed file activity history, but will keep sessions and total time. This cannot be undone.",
       "remove_project_root": "Remove folder from project roots? {{path}}",
-      "delete_project_permanent": "Permanently delete project \"{{projectLabel}}\"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone."
+      "delete_project_permanent": "Permanently delete project \"{{projectLabel}}\"? This will remove the project record, unassign linked apps/sessions/file activities, and delete manual sessions. This cannot be undone.",
+      "delete_all_excluded": "Permanently delete ALL excluded projects? This cannot be undone.",
+      "clear_candidates": "Blacklist all visible folder candidates? They will no longer appear as suggestions."
     },
     "dialogs": {
       "select_assigned_project_folder": "Select Assigned Project Folder",
@@ -552,7 +554,9 @@
       "expand_all": "Expand all",
       "collapse_all": "Collapse all",
       "add": "Add",
-      "create": "Create"
+      "create": "Create",
+      "delete_all_excluded": "Delete all ({{count}})",
+      "exclude_all_candidates": "Blacklist all ({{count}})"
     },
     "sections": {
       "excluded_projects": "Excluded Projects",
@@ -562,6 +566,9 @@
       "no_excluded_projects": "No excluded projects",
       "no_folders_configured": "No folders configured",
       "no_subfolder_candidates": "No subfolder candidates found"
+    },
+    "warnings": {
+      "no_folders_defined": "No project folders defined. Add at least one folder to enable automatic project detection from file paths."
     },
     "placeholders": {
       "project_folder_path": "C:\\projects\\clients"
