@@ -690,7 +690,26 @@ pub async fn get_detected_projects(
     app: AppHandle,
     date_range: DateRange,
 ) -> Result<Vec<DetectedProject>, String> {
+    use super::projects::{infer_project_from_path_pub, project_name_is_blacklisted};
+
     run_db_blocking(app, move |conn| {
+        let project_roots = load_project_folders_from_db(conn)?;
+        if project_roots.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Collect existing project names (active + excluded) for filtering
+        let existing_project_names: HashSet<String> = {
+            let mut stmt = conn
+                .prepare_cached("SELECT LOWER(name) FROM projects")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<HashSet<_>, _>>()
+                .map_err(|e| format!("Failed to read projects: {}", e))?
+        };
+
         let mut stmt = conn
             .prepare_cached(
                 "SELECT
@@ -711,26 +730,60 @@ pub async fn get_detected_projects(
 
         let rows = stmt
             .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
-                Ok(DetectedProject {
-                    file_name: row.get(0)?,
-                    total_seconds: row.get(1)?,
-                    occurrence_count: row.get(2)?,
-                    apps: row
-                        .get::<_, String>(3)
-                        .unwrap_or_default()
-                        .split(',')
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                        .collect(),
-                    first_seen: row.get::<_, String>(4).unwrap_or_default(),
-                    last_seen: row.get::<_, String>(5).unwrap_or_default(),
-                })
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3).unwrap_or_default(),
+                    row.get::<_, String>(4).unwrap_or_default(),
+                    row.get::<_, String>(5).unwrap_or_default(),
+                ))
             })
             .map_err(|e| e.to_string())?;
 
-        Ok(rows
-            .filter_map(|r| r.map_err(|e| log::warn!("Row error: {}", e)).ok())
-            .collect())
+        let mut seen_names = HashSet::new();
+        let mut results = Vec::new();
+
+        for row in rows {
+            let (file_name, total_seconds, occurrence_count, apps_csv, first_seen, last_seen) =
+                row.map_err(|e| format!("Row error: {}", e))?;
+
+            // Only keep entries whose file_name resolves to a real project folder
+            let project_name = match infer_project_from_path_pub(&file_name, &project_roots) {
+                Some(name) => name,
+                None => continue,
+            };
+            let key = project_name.to_lowercase();
+
+            // Skip if already an existing project
+            if existing_project_names.contains(&key) {
+                continue;
+            }
+            // Skip blacklisted names
+            if project_name_is_blacklisted(conn, &project_name) {
+                continue;
+            }
+            // Skip duplicates (aggregate by project_name)
+            if !seen_names.insert(key) {
+                continue;
+            }
+
+            results.push(DetectedProject {
+                file_name,
+                project_name,
+                total_seconds,
+                occurrence_count,
+                apps: apps_csv
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect(),
+                first_seen,
+                last_seen,
+            });
+        }
+
+        Ok(results)
     })
     .await
 }

@@ -540,7 +540,8 @@
       "remove_project_root": "Usunąć folder z korzeni projektów? {{path}}",
       "delete_project_permanent": "Trwale usunąć projekt \"{{projectLabel}}\"? Usunie to rekord projektu, odepnie powiązane elementy i skasuje ręczne sesje. Tej operacji nie można cofnąć.",
       "delete_all_excluded": "Trwale usunąć WSZYSTKIE wykluczone projekty? Tej operacji nie można cofnąć.",
-      "clear_candidates": "Dodać wszystkich widocznych kandydatów na czarną listę? Nie będą się już pojawiać jako sugestie."
+      "clear_candidates": "Dodać wszystkich widocznych kandydatów na czarną listę? Nie będą się już pojawiać jako sugestie.",
+      "clear_all_detected": "Dodać wszystkich wykrytych kandydatów na czarną listę? Nie będą się już pojawiać jako sugestie."
     },
     "dialogs": {
       "select_assigned_project_folder": "Wybierz przypisany folder projektu",
@@ -556,7 +557,9 @@
       "add": "Dodaj",
       "create": "Utwórz",
       "delete_all_excluded": "Usuń wszystkie ({{count}})",
-      "exclude_all_candidates": "Czarna lista ({{count}})"
+      "exclude_all_candidates": "Czarna lista ({{count}})",
+      "blacklist_detected_tooltip": "Czarna lista — ukryj tego kandydata na stałe",
+      "blacklist_all_detected": "Czarna lista ({{count}})"
     },
     "sections": {
       "excluded_projects": "Wykluczone projekty",
@@ -568,7 +571,8 @@
       "no_subfolder_candidates": "Nie znaleziono kandydatów podfolderów"
     },
     "warnings": {
-      "no_folders_defined": "Brak zdefiniowanych folderów projektów. Dodaj co najmniej jeden folder, aby włączyć automatyczne wykrywanie projektów ze ścieżek plików."
+      "no_folders_title": "Foldery projektów nie skonfigurowane",
+      "no_folders_defined": "Dodaj co najmniej jeden folder projektów, aby włączyć automatyczne wykrywanie. Bez folderów TIMEFLOW nie może przypisywać aktywności plików do projektów."
     },
     "placeholders": {
       "project_folder_path": "C:\\projekty\\klienci"

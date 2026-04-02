@@ -390,6 +390,7 @@ export interface MonitoredAppsSyncResult {
 
 export interface DetectedProject {
   file_name: string;
+  project_name: string;
   total_seconds: number;
   occurrence_count: number;
   apps: string[];

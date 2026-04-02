@@ -264,6 +264,14 @@ fn infer_project_from_path(file_path: &str, project_roots: &[ProjectFolder]) -> 
     None
 }
 
+/// Public wrapper for `infer_project_from_path` (used by import.rs).
+pub(crate) fn infer_project_from_path_pub(
+    file_path: &str,
+    project_roots: &[ProjectFolder],
+) -> Option<String> {
+    infer_project_from_path(file_path, project_roots)
+}
+
 /// Attempts to extract the project name from the file title.
 fn infer_project_name_from_file_title(
     title: &str,
