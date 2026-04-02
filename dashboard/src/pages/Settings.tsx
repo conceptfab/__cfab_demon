@@ -126,7 +126,10 @@ export function Settings() {
   const [latestMarker, setLatestMarker] = useState<SyncMarker | null>(null);
   const [myIp, setMyIp] = useState('');
 
-  const lastSyncAt = useMemo(() => loadLanSyncState().lastSyncAt, [lanSyncing]);
+  const [lastSyncAt, setLastSyncAt] = useState(() => loadLanSyncState().lastSyncAt);
+  useEffect(() => {
+    setLastSyncAt(loadLanSyncState().lastSyncAt);
+  }, [lanSyncing]);
 
   const syncPhaseLabels = useMemo(() => ({
     sync_phase_idle: t('settings.lan_sync.sync_phase_idle'),
