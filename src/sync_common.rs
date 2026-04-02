@@ -53,8 +53,7 @@ pub fn build_full_export(conn: &rusqlite::Connection) -> Result<String, String> 
 
 // ── Backup ──
 
-pub fn backup_database() -> Result<(), String> {
-    let conn = open_dashboard_db()?;
+pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     let backup_dir = dir.join("sync_backups");
     if !backup_dir.exists() {

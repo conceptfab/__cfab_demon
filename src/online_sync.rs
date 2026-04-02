@@ -586,7 +586,7 @@ fn execute_sync_steps(
 
         // Import merged data
         sync_log("[12/13] Importowanie scalonych danych...");
-        sync_common::backup_database()?;
+        sync_common::backup_database(conn)?;
         sync_common::merge_incoming_data(conn, &merged_str)?;
         sync_common::verify_merge_integrity(conn)?;
 
@@ -663,7 +663,7 @@ fn execute_sync_steps(
         // Step 8: Backup
         sync_state.set_progress(8, "backing_up", "local");
         sync_log("[8/13] Kopia zapasowa...");
-        sync_common::backup_database()?;
+        sync_common::backup_database(conn)?;
         report_step(
             server_url,
             token,

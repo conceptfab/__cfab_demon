@@ -337,7 +337,7 @@ fn execute_master_sync(
     // Step 8: Backup
     sync_state.set_progress(8, "backing_up", "local");
     sync_log("[8/13] Tworzenie kopii zapasowej bazy...");
-    sync_common::backup_database().map_err(|e| { sync_log(&format!("[8/13] BLAD backup: {}", e)); e })?;
+    sync_common::backup_database(&conn).map_err(|e| { sync_log(&format!("[8/13] BLAD backup: {}", e)); e })?;
     sync_log("[8/13] Kopia zapasowa utworzona");
 
     // Step 9: Merge
