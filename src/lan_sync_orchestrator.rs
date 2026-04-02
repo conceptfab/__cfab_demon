@@ -102,6 +102,11 @@ fn http_request(
     // Read status line
     let mut status_line = String::new();
     reader.read_line(&mut status_line).map_err(|e| e.to_string())?;
+    let status_code: u16 = status_line
+        .split_whitespace()
+        .nth(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
 
     // Read headers
     let mut response_content_length: usize = 0;
@@ -134,7 +139,11 @@ fn http_request(
                 cb(read_so_far as u64, total);
             }
         }
-        String::from_utf8(buf).map_err(|e| e.to_string())
+        let body = String::from_utf8(buf).map_err(|e| e.to_string())?;
+        if status_code >= 400 {
+            return Err(format!("HTTP {}: {}", status_code, body.chars().take(200).collect::<String>()));
+        }
+        Ok(body)
     } else {
         // Read until connection close — report progress periodically
         let mut buf = Vec::new();
@@ -153,7 +162,11 @@ fn http_request(
                 Err(e) => return Err(e.to_string()),
             }
         }
-        String::from_utf8(buf).map_err(|e| e.to_string())
+        let body = String::from_utf8(buf).map_err(|e| e.to_string())?;
+        if status_code >= 400 {
+            return Err(format!("HTTP {}: {}", status_code, body.chars().take(200).collect::<String>()));
+        }
+        Ok(body)
     }
 }
 
