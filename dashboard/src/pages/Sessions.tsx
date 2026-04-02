@@ -362,10 +362,12 @@ export function Sessions() {
     return map;
   }, [projects]);
 
+  const unassignedLabel = t('sessions.menu.unassigned');
+
   const groupedByProject = useMemo(() => {
     const groups = new Map<string, GroupedProject>();
     for (const session of mergedSessions) {
-      const projectName = session.project_name ?? t('sessions.menu.unassigned');
+      const projectName = session.project_name ?? unassignedLabel;
       const normalizedProjectName = projectName.trim().toLowerCase();
       const inferredProjectId =
         session.project_id ??
@@ -408,7 +410,7 @@ export function Sessions() {
       if (aUnassigned !== bUnassigned) return aUnassigned ? -1 : 1;
       return b.totalSeconds - a.totalSeconds;
     });
-  }, [mergedSessions, t, projectIdByName]);
+  }, [mergedSessions, unassignedLabel, projectIdByName]);
 
   const handleProjectContextMenu = useCallback(
     (e: React.MouseEvent, projectId: number | null, projectName: string) => {
