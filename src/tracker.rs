@@ -158,6 +158,8 @@ pub fn start(
     })
 }
 
+const MAX_TITLE_HISTORY_LEN: usize = 12;
+
 fn push_title_history(history: &mut Vec<String>, window_title: &str) {
     let normalized = storage::sanitize_title_history_entry(window_title);
     if normalized.is_empty() {
@@ -165,6 +167,9 @@ fn push_title_history(history: &mut Vec<String>, window_title: &str) {
     }
     if history.iter().any(|entry| entry == &normalized) {
         return;
+    }
+    if history.len() >= MAX_TITLE_HISTORY_LEN {
+        history.remove(0);
     }
     history.push(normalized);
 }
@@ -405,6 +410,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
     let mut current_date = Local::now().date_naive();
 
     let mut last_save = Instant::now();
+    let mut save_skipped_while_frozen = false;
     let mut last_cache_evict = Instant::now();
     let mut last_config_reload = Instant::now();
     let mut last_heartbeat = Instant::now();
@@ -598,11 +604,24 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
             let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Relaxed));
             if is_frozen {
                 log::debug!("Skipping periodic save — database frozen for sync");
+                save_skipped_while_frozen = true;
             } else {
                 if let Err(e) = storage::save_daily(&mut daily_data) {
                     log::error!("Error saving daily data: {}", e);
                     log::logger().flush();
                 }
+                save_skipped_while_frozen = false;
+                last_save = Instant::now();
+            }
+        } else if save_skipped_while_frozen {
+            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Relaxed));
+            if !is_frozen {
+                log::info!("Database unfrozen — saving skipped data now");
+                if let Err(e) = storage::save_daily(&mut daily_data) {
+                    log::error!("Error saving daily data: {}", e);
+                    log::logger().flush();
+                }
+                save_skipped_while_frozen = false;
                 last_save = Instant::now();
             }
         }
