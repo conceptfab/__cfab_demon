@@ -60,6 +60,34 @@ export function normalizeRequestError(error: unknown): SyncHttpError {
   );
 }
 
+async function compressGzip(data: Uint8Array): Promise<Uint8Array> {
+  if (typeof CompressionStream === 'undefined') {
+    return data; // fallback: send uncompressed
+  }
+  const cs = new CompressionStream('gzip');
+  const writer = cs.writable.getWriter();
+  writer.write(data);
+  writer.close();
+  const reader = cs.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+  }
+  let totalLen = 0;
+  for (const c of chunks) totalLen += c.length;
+  const result = new Uint8Array(totalLen);
+  let offset = 0;
+  for (const c of chunks) {
+    result.set(c, offset);
+    offset += c.length;
+  }
+  return result;
+}
+
+const GZIP_THRESHOLD = 1024; // compress payloads > 1 KB
+
 export async function postJson<T>(
   baseUrl: string,
   path: string,
@@ -70,9 +98,20 @@ export async function postJson<T>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const jsonStr = JSON.stringify(body);
+    const rawBytes = new TextEncoder().encode(jsonStr);
+
+    const useGzip =
+      rawBytes.length > GZIP_THRESHOLD &&
+      typeof CompressionStream !== 'undefined';
+    const payload = useGzip ? await compressGzip(rawBytes) : rawBytes;
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+    if (useGzip) {
+      headers['Content-Encoding'] = 'gzip';
+    }
     if (apiToken && apiToken.trim()) {
       headers.Authorization = `Bearer ${apiToken.trim()}`;
     }
@@ -82,7 +121,7 @@ export async function postJson<T>(
       response = await fetch(`${baseUrl}${path}`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(body),
+        body: payload,
         signal: controller.signal,
       });
     } catch (error) {
