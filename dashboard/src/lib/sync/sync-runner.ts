@@ -797,6 +797,24 @@ async function runOnlineSyncOnceImpl(
         );
       }
 
+      // Skip delta-push when there are no actual changes to send
+      if (!local.hasReseedData) {
+        log?.info('Delta is empty — skipping push, treating as noop');
+        state.lastSyncAt = new Date().toISOString();
+        saveOnlineSyncState(state, settings);
+
+        const result: OnlineSyncRunResult = {
+          ok: true,
+          action: 'none',
+          reason: 'empty_delta_skip',
+          serverRevision: status.serverRevision ?? null,
+        };
+        log?.info('Sync finished: empty delta skip', { reason: result.reason });
+        updateIndicatorFromRunResult(result);
+        await log?.flush();
+        return result;
+      }
+
       const pushPayloadSize = JSON.stringify(local.archive).length;
       log?.info('Pushing delta to server', {
         knownServerRevision: status.serverRevision ?? null,
