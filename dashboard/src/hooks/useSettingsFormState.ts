@@ -583,17 +583,30 @@ export function useSettingsFormState({
     setTestRoundtripResult(null);
 
     try {
-      const { postJson } = await import('@/lib/sync/sync-http');
+      const { postJson, getLocalDatasetState } = await import('@/lib/sync/sync-http');
       const token = onlineSyncSettings.apiToken || (await loadSecureApiToken()) || '';
       const deviceId = onlineSyncSettings.deviceId || 'test-device';
+      const syncState = loadOnlineSyncState();
+
+      // Export real data archive for realistic test
+      setTestRoundtripResult('Eksport danych...');
+      const local = await getLocalDatasetState(syncState);
+      const archive = local.archive;
+      const archiveSize = archive ? JSON.stringify(archive).length : 0;
 
       const testPayload = {
         timestamp: new Date().toISOString(),
-        random: Math.random().toString(36).slice(2, 10),
-        message: 'TIMEFLOW sync test',
+        archiveSizeBytes: archiveSize,
+        exportOk: local.exportOk,
+        hasData: local.hasReseedData,
+        hash: local.payloadSha256?.substring(0, 12) ?? null,
+        // Send the real archive as payload to test full transfer
+        archive: archive ?? { data: {} },
       };
 
+      setTestRoundtripResult(`Wysyłanie ${(archiveSize / 1024).toFixed(1)} KB...`);
       const t0 = Date.now();
+      const timeoutMs = Math.max(30000, Math.ceil(archiveSize / 1024) * 20);
       const result = await postJson<{
         ok: boolean;
         steps: {
@@ -608,14 +621,16 @@ export function useSettingsFormState({
         userId: onlineSyncSettings.userId,
         deviceId,
         testPayload,
-      }, 15000, token);
+      }, timeoutMs, token);
 
       const clientMs = Date.now() - t0;
       const allOk = result.steps.write.success && result.steps.read.success && result.steps.read.matches;
+      const sizeMB = (result.steps.write.sizeBytes / (1024 * 1024)).toFixed(2);
+      const speedKBs = clientMs > 0 ? ((result.steps.write.sizeBytes / 1024) / (clientMs / 1000)).toFixed(0) : '?';
 
       if (allOk) {
         setTestRoundtripResult(
-          `OK | write: ${result.steps.write.sizeBytes}B | server: ${result.roundtripMs}ms | total: ${clientMs}ms | echo match: ${result.steps.read.matches}`
+          `OK | ${sizeMB} MB | server: ${result.roundtripMs}ms | total: ${clientMs}ms | ${speedKBs} KB/s | match: OK`
         );
         setTestRoundtripSuccess(true);
       } else {
