@@ -91,6 +91,8 @@ interface OnlineSyncCardProps {
   testRoundtripLabel: string;
   testingRoundtripLabel: string;
   onTestRoundtrip: () => void;
+  forceSyncLabel: string;
+  onForceSyncNow: () => void;
 }
 
 export function OnlineSyncCard({
@@ -175,6 +177,8 @@ export function OnlineSyncCard({
   testRoundtripLabel,
   testingRoundtripLabel,
   onTestRoundtrip,
+  forceSyncLabel,
+  onForceSyncNow,
 }: OnlineSyncCardProps) {
   return (
     <Card>
@@ -488,6 +492,15 @@ export function OnlineSyncCard({
                 disabled={testingRoundtrip}
               >
                 {testingRoundtrip ? testingRoundtripLabel : testRoundtripLabel}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-fit border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                onClick={onForceSyncNow}
+                disabled={manualSyncing || demoModeSyncDisabled}
+              >
+                {forceSyncLabel}
               </Button>
               {testRoundtripResult && (
                 <div

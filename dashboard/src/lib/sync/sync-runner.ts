@@ -424,6 +424,58 @@ async function runOnlineSyncOnceImpl(
       needsReseed: state.needsReseed,
     });
 
+    // Force full push — skip status/delta, push entire archive
+    if (options.forceFullPush) {
+      log?.info('Force full push requested');
+      const fullLocal = await getLocalDatasetState(state);
+      if (!fullLocal.archive || !fullLocal.hasReseedData) {
+        log?.error('Force push impossible: no local data', {
+          exportOk: fullLocal.exportOk,
+          exportError: fullLocal.exportError ?? null,
+        });
+        throw new Error(fullLocal.exportError ?? 'No local data for force push');
+      }
+
+      const pushT0 = Date.now();
+      const push = await pushFullArchiveWithRetry(
+        settings,
+        fullLocal.archive,
+        state.serverRevision ?? null,
+        secureApiToken,
+        log,
+      );
+
+      if (push.accepted === false) {
+        log?.error('Force push rejected', { reason: push.reason });
+        throw new Error(`Force push rejected: ${push.reason}`);
+      }
+
+      log?.info('Force push accepted', {
+        revision: push.revision,
+        noOp: push.noOp ?? false,
+        durationMs: Date.now() - pushT0,
+      });
+
+      state.localRevision = push.revision;
+      state.localHash = push.payloadSha256;
+      state.serverRevision = push.revision;
+      state.serverHash = push.payloadSha256;
+      state.needsReseed = false;
+      state.lastSyncAt = new Date().toISOString();
+      saveOnlineSyncState(state, settings);
+
+      const result: OnlineSyncRunResult = {
+        ok: true,
+        action: push.noOp ? 'noop' : 'push',
+        reason: 'force_full_push',
+        serverRevision: push.revision,
+      };
+      log?.info('Sync finished: force full push', { reason: result.reason });
+      updateIndicatorFromRunResult(result);
+      await log?.flush();
+      return result;
+    }
+
     log?.info('Exporting local dataset as delta');
     const exportT0 = Date.now();
     const local = await getLocalDeltaState(state);

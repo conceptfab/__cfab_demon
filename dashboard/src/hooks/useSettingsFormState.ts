@@ -511,6 +511,38 @@ export function useSettingsFormState({
     [onlineSyncSettings, onlineSyncState.serverRevision, t, triggerRefresh],
   );
 
+  const handleForceSyncNow = useCallback(
+    async (demoModeEnabled: boolean) => {
+      if (demoModeEnabled) return;
+
+      setManualSyncing(true);
+      setManualSyncResult(null);
+      try {
+        const uiToken = onlineSyncSettings.apiToken;
+        const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
+        setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
+
+        const result = await runOnlineSyncOnce({
+          ignoreStartupToggle: true,
+          forceFullPush: true,
+        });
+        setManualSyncResult(result);
+        setOnlineSyncState(loadOnlineSyncState());
+      } catch (e) {
+        setManualSyncResult({
+          ok: false,
+          action: 'none',
+          reason: 'force_sync_failed',
+          serverRevision: onlineSyncState.serverRevision,
+          error: getErrorMessage(e, t('ui.common.unknown_error')),
+        });
+      } finally {
+        setManualSyncing(false);
+      }
+    },
+    [onlineSyncSettings, onlineSyncState.serverRevision, t],
+  );
+
   const resetManualSyncResult = useCallback(() => {
     setManualSyncResult(null);
   }, []);
@@ -695,6 +727,7 @@ export function useSettingsFormState({
     handleRebuildSessions,
     handleClearData,
     handleSyncNow,
+    handleForceSyncNow,
     resetManualSyncResult,
     licenseInfo,
     licenseKeyInput,

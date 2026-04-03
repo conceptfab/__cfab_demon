@@ -98,6 +98,7 @@ export function Settings() {
     testRoundtripResult,
     testRoundtripSuccess,
     handleTestRoundtrip,
+    handleForceSyncNow,
   } = useSettingsFormState({
     confirm,
     i18n,
@@ -600,6 +601,10 @@ export function Settings() {
           testRoundtripLabel={t('settings_page.test_roundtrip')}
           testingRoundtripLabel={t('settings_page.testing_roundtrip')}
           onTestRoundtrip={handleTestRoundtrip}
+          forceSyncLabel={t('settings_page.force_full_sync')}
+          onForceSyncNow={() => {
+            void handleForceSyncNow(demoModeSyncDisabled);
+          }}
         />
 
         <ProjectFreezeCard
