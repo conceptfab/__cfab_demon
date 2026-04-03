@@ -1412,6 +1412,8 @@
     "server_payload_was_cleaned_up_after_acks_local_reseed_ex": "Payload serwera został wyczyszczony po ACK. Wymagany lokalny reseed/eksport.",
     "syncing": "Synchronizacja...",
     "sync_now": "Synchronizuj teraz",
+    "test_roundtrip": "Test połączenia",
+    "testing_roundtrip": "Testowanie...",
     "project_freezing": "Zamrażanie projektów",
     "projects_inactive_for_a_set_period_are_automatically_fro": "Projekty nieaktywne przez zadany okres są automatycznie zamrażane i ukrywane na listach przypisań sesji.",
     "inactivity_threshold": "Próg nieaktywności",

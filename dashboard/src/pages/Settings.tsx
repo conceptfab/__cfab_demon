@@ -94,6 +94,10 @@ export function Settings() {
     licenseError,
     setLicenseKeyInput,
     handleActivateLicense,
+    testingRoundtrip,
+    testRoundtripResult,
+    testRoundtripSuccess,
+    handleTestRoundtrip,
   } = useSettingsFormState({
     confirm,
     i18n,
@@ -590,6 +594,12 @@ export function Settings() {
           licenseActiveLabel={t('settings.license.active')}
           onLicenseKeyChange={setLicenseKeyInput}
           onActivateLicense={handleActivateLicense}
+          testingRoundtrip={testingRoundtrip}
+          testRoundtripResult={testRoundtripResult}
+          testRoundtripSuccess={testRoundtripSuccess}
+          testRoundtripLabel={t('settings_page.test_roundtrip')}
+          testingRoundtripLabel={t('settings_page.testing_roundtrip')}
+          onTestRoundtrip={handleTestRoundtrip}
         />
 
         <ProjectFreezeCard

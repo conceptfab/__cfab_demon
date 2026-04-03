@@ -131,6 +131,9 @@ export function useSettingsFormState({
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
   const [licenseActivating, setLicenseActivating] = useState(false);
   const [licenseError, setLicenseError] = useState<string | null>(null);
+  const [testingRoundtrip, setTestingRoundtrip] = useState(false);
+  const [testRoundtripResult, setTestRoundtripResult] = useState<string | null>(null);
+  const [testRoundtripSuccess, setTestRoundtripSuccess] = useState(false);
 
   useEffect(() => {
     loadSecureApiToken().then((token) => {
@@ -568,6 +571,69 @@ export function useSettingsFormState({
     [licenseKeyInput, onlineSyncSettings, t, showInfo],
   );
 
+  const handleTestRoundtrip = useCallback(async () => {
+    const serverUrl = onlineSyncSettings.serverUrl;
+    if (!serverUrl) {
+      setTestRoundtripResult('Brak adresu serwera / No server URL');
+      setTestRoundtripSuccess(false);
+      return;
+    }
+
+    setTestingRoundtrip(true);
+    setTestRoundtripResult(null);
+
+    try {
+      const { postJson } = await import('@/lib/sync/sync-http');
+      const token = onlineSyncSettings.apiToken || (await loadSecureApiToken()) || '';
+      const deviceId = onlineSyncSettings.deviceId || 'test-device';
+
+      const testPayload = {
+        timestamp: new Date().toISOString(),
+        random: Math.random().toString(36).slice(2, 10),
+        message: 'TIMEFLOW sync test',
+      };
+
+      const t0 = Date.now();
+      const result = await postJson<{
+        ok: boolean;
+        steps: {
+          write: { success: boolean; sizeBytes: number };
+          read: { success: boolean; matches: boolean };
+          cleanup: { success: boolean };
+        };
+        echoPayload: Record<string, unknown>;
+        serverTimestamp: string;
+        roundtripMs: number;
+      }>(serverUrl, '/api/sync/test-roundtrip', {
+        userId: onlineSyncSettings.userId,
+        deviceId,
+        testPayload,
+      }, 15000, token);
+
+      const clientMs = Date.now() - t0;
+      const allOk = result.steps.write.success && result.steps.read.success && result.steps.read.matches;
+
+      if (allOk) {
+        setTestRoundtripResult(
+          `OK | write: ${result.steps.write.sizeBytes}B | server: ${result.roundtripMs}ms | total: ${clientMs}ms | echo match: ${result.steps.read.matches}`
+        );
+        setTestRoundtripSuccess(true);
+      } else {
+        setTestRoundtripResult(
+          `FAIL | write: ${result.steps.write.success} | read: ${result.steps.read.success} | match: ${result.steps.read.matches}`
+        );
+        setTestRoundtripSuccess(false);
+      }
+    } catch (e) {
+      setTestRoundtripResult(
+        `ERROR: ${e instanceof Error ? e.message : String(e)}`
+      );
+      setTestRoundtripSuccess(false);
+    } finally {
+      setTestingRoundtrip(false);
+    }
+  }, [onlineSyncSettings]);
+
   return {
     clearing,
     clearArmed,
@@ -621,5 +687,9 @@ export function useSettingsFormState({
     licenseError,
     setLicenseKeyInput,
     handleActivateLicense,
+    testingRoundtrip,
+    testRoundtripResult,
+    testRoundtripSuccess,
+    handleTestRoundtrip,
   };
 }

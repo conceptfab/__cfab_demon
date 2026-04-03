@@ -1412,6 +1412,8 @@
     "server_payload_was_cleaned_up_after_acks_local_reseed_ex": "Server payload was cleaned up after ACKs. Local reseed/export is required.",
     "syncing": "Syncing...",
     "sync_now": "Sync now",
+    "test_roundtrip": "Test connection",
+    "testing_roundtrip": "Testing...",
     "project_freezing": "Project Freezing",
     "projects_inactive_for_a_set_period_are_automatically_fro": "Projects inactive for a set period are automatically frozen and hidden from session assignment lists.",
     "inactivity_threshold": "Inactivity threshold",

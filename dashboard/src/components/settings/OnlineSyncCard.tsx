@@ -85,6 +85,12 @@ interface OnlineSyncCardProps {
   onSyncNow: () => void;
   onLicenseKeyChange: (key: string) => void;
   onActivateLicense: () => void;
+  testingRoundtrip: boolean;
+  testRoundtripResult: string | null;
+  testRoundtripSuccess: boolean;
+  testRoundtripLabel: string;
+  testingRoundtripLabel: string;
+  onTestRoundtrip: () => void;
 }
 
 export function OnlineSyncCard({
@@ -163,6 +169,12 @@ export function OnlineSyncCard({
   licenseActiveLabel,
   onLicenseKeyChange,
   onActivateLicense,
+  testingRoundtrip,
+  testRoundtripResult,
+  testRoundtripSuccess,
+  testRoundtripLabel,
+  testingRoundtripLabel,
+  onTestRoundtrip,
 }: OnlineSyncCardProps) {
   return (
     <Card>
@@ -454,19 +466,37 @@ export function OnlineSyncCard({
               )}
             </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              className="h-8 w-fit"
-              onClick={onSyncNow}
-              disabled={manualSyncing || demoModeSyncDisabled}
-            >
-              {manualSyncing
-                ? syncingLabel
-                : demoModeSyncDisabled
-                  ? syncDisabledInDemoLabel
-                  : syncNowLabel}
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-fit"
+                onClick={onSyncNow}
+                disabled={manualSyncing || demoModeSyncDisabled}
+              >
+                {manualSyncing
+                  ? syncingLabel
+                  : demoModeSyncDisabled
+                    ? syncDisabledInDemoLabel
+                    : syncNowLabel}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-8 w-fit"
+                onClick={onTestRoundtrip}
+                disabled={testingRoundtrip}
+              >
+                {testingRoundtrip ? testingRoundtripLabel : testRoundtripLabel}
+              </Button>
+              {testRoundtripResult && (
+                <div
+                  className={`text-xs font-mono break-all ${testRoundtripSuccess ? 'text-emerald-400' : 'text-destructive'}`}
+                >
+                  {testRoundtripResult}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </CardContent>
