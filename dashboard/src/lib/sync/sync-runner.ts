@@ -940,7 +940,8 @@ async function runOnlineSyncOnceImpl(
     if (
       status.reason === 'same_hash' ||
       status.reason === 'same_revision_hash_not_provided' ||
-      status.reason === 'same_revision_hash_drift'
+      status.reason === 'same_revision_hash_drift' ||
+      status.reason === 'single_device'
     ) {
       state.localRevision = status.serverRevision;
       state.localHash = status.serverHash;
