@@ -106,8 +106,6 @@ pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection> {
 pub struct LanSyncSettings {
     #[serde(default = "default_sync_interval")]
     pub sync_interval_hours: u32,
-    #[serde(default = "default_discovery_duration")]
-    pub discovery_duration_minutes: u32,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
     /// Manual role override: "auto" (default) = election decides, "master" / "slave" = forced.
@@ -116,14 +114,12 @@ pub struct LanSyncSettings {
 }
 
 fn default_sync_interval() -> u32 { 12 }
-fn default_discovery_duration() -> u32 { 5 }
 fn default_enabled() -> bool { true }
 
 impl Default for LanSyncSettings {
     fn default() -> Self {
         Self {
             sync_interval_hours: default_sync_interval(),
-            discovery_duration_minutes: default_discovery_duration(),
             enabled: default_enabled(),
             forced_role: String::new(),
         }
