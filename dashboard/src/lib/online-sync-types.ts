@@ -119,6 +119,7 @@ export interface SyncDeltaPushResponse {
   ok: true;
   accepted: boolean;
   revision: number;
+  snapshotHash: string | null;
   serverTableHashes: TableHashes;
   reason: string;
 }

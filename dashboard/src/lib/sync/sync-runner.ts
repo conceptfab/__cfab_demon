@@ -905,10 +905,16 @@ async function runOnlineSyncOnceImpl(
 
       log?.info('Delta push accepted', {
         revision: push.revision,
+        snapshotHash: push.snapshotHash?.substring(0, 12) ?? null,
         durationMs: Date.now() - pushT0,
       });
 
       state.localRevision = push.revision;
+      // Sync snapshot hash from server so next status check won't get hash_mismatch
+      if (push.snapshotHash) {
+        state.localHash = push.snapshotHash;
+        state.serverHash = push.snapshotHash;
+      }
 
       // Update local storage representation after push applied on server
       state.serverRevision = push.revision;
