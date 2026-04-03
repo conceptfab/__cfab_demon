@@ -476,37 +476,10 @@ async function runOnlineSyncOnceImpl(
       return result;
     }
 
-    log?.info('Exporting local dataset as delta');
-    const exportT0 = Date.now();
-    const local = await getLocalDeltaState(state);
-    log?.info('Local dataset delta state', {
-      exportOk: local.exportOk,
-      hasArchive: local.archive !== null,
-      hasDeltaData: local.hasReseedData,
-      revision: local.revision,
-      hash: local.payloadSha256?.substring(0, 12) ?? null,
-      exportError: local.exportError ?? null,
-      durationMs: Date.now() - exportT0,
-    });
-    if (local.exportOk) {
-      state.localRevision = local.revision;
-      // Only update localHash when delta has actual data to push.
-      // Delta hash ≠ full snapshot hash — overwriting localHash with an
-      // empty-delta hash causes a false mismatch on the next status check,
-      // triggering an unnecessary push cycle that always fails.
-      if (local.hasReseedData) {
-        state.localHash = local.payloadSha256;
-      }
-      saveOnlineSyncState(state, settings);
-    }
-
-    // When delta is empty, use stored hash (matches server after pull/ack)
-    const clientHashForStatus = (local.exportOk && local.hasReseedData)
-      ? local.payloadSha256
-      : state.localHash;
+    // Step 1: Lightweight status check (heartbeat / presence)
     log?.info('Checking server status', {
       clientRevision: state.localRevision,
-      clientHash: clientHashForStatus?.substring(0, 12) ?? null,
+      clientHash: state.localHash?.substring(0, 12) ?? null,
     });
     const statusT0 = Date.now();
     const status = await postJson<SyncStatusResponse>(
@@ -516,8 +489,7 @@ async function runOnlineSyncOnceImpl(
         userId: settings.userId,
         deviceId: settings.deviceId,
         clientRevision: state.localRevision,
-        clientHash: clientHashForStatus,
-        tableHashes: local.tableHashes ?? undefined,
+        clientHash: state.localHash,
       },
       settings.requestTimeoutMs,
       secureApiToken,
@@ -542,6 +514,53 @@ async function runOnlineSyncOnceImpl(
     state.serverRevision = Math.max(0, Math.floor(status.serverRevision || 0));
     state.serverHash = status.serverHash ?? null;
     saveOnlineSyncState(state, settings);
+
+    // Single device — just a heartbeat, no data exchange needed
+    if (
+      status.reason === 'single_device' ||
+      status.reason === 'in_sync' ||
+      status.reason === 'same_revision_hash_drift' ||
+      status.reason === 'table_hashes_match'
+    ) {
+      if (status.serverHash) {
+        state.localHash = status.serverHash;
+        state.localRevision = status.serverRevision;
+      }
+      state.lastSyncAt = new Date().toISOString();
+      saveOnlineSyncState(state, settings);
+
+      const result: OnlineSyncRunResult = {
+        ok: true,
+        action: 'none',
+        reason: status.reason,
+        serverRevision: status.serverRevision ?? null,
+      };
+      log?.info('Sync finished: no action needed', { reason: status.reason });
+      updateIndicatorFromRunResult(result);
+      await log?.flush();
+      return result;
+    }
+
+    // Step 2: Export local delta (only when server says sync is needed)
+    log?.info('Exporting local dataset as delta');
+    const exportT0 = Date.now();
+    const local = await getLocalDeltaState(state);
+    log?.info('Local dataset delta state', {
+      exportOk: local.exportOk,
+      hasArchive: local.archive !== null,
+      hasDeltaData: local.hasReseedData,
+      revision: local.revision,
+      hash: local.payloadSha256?.substring(0, 12) ?? null,
+      exportError: local.exportError ?? null,
+      durationMs: Date.now() - exportT0,
+    });
+    if (local.exportOk) {
+      state.localRevision = local.revision;
+      if (local.hasReseedData) {
+        state.localHash = local.payloadSha256;
+      }
+      saveOnlineSyncState(state, settings);
+    }
 
     if (status.reason === 'server_snapshot_pruned') {
       log?.warn('Server snapshot pruned, handling reseed');
