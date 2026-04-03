@@ -28,6 +28,13 @@ fn rule_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn delete_rule(name: &str) {
+    let _ = Command::new("netsh")
+        .args(["advfirewall", "firewall", "delete", "rule", &format!("name={}", name)])
+        .creation_flags(0x08000000)
+        .output();
+}
+
 fn add_rule(rule: &FirewallRule) -> Result<(), String> {
     let exe_path = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
@@ -65,31 +72,43 @@ fn add_rule(rule: &FirewallRule) -> Result<(), String> {
     }
 }
 
-/// Ensure all TIMEFLOW firewall rules exist. Logs results, never panics.
+/// Ensure all TIMEFLOW firewall rules exist with correct settings.
+/// Deletes and recreates rules to ensure profile=any (fixes stale rules from older versions).
 pub fn ensure_firewall_rules() {
-    let mut missing = Vec::new();
+    // Always delete and recreate to ensure correct profile (older versions used private,domain)
+    let mut recreated = 0;
+    let mut created = 0;
 
     for rule in RULES {
-        if !rule_exists(rule.name) {
-            missing.push(rule);
+        if rule_exists(rule.name) {
+            delete_rule(rule.name);
+            match add_rule(rule) {
+                Ok(()) => {
+                    recreated += 1;
+                    log::info!("Firewall: recreated rule '{}' (profile=any)", rule.name);
+                }
+                Err(e) => log::warn!("Firewall: cannot recreate '{}' — {}", rule.name, e),
+            }
+        } else {
+            match add_rule(rule) {
+                Ok(()) => {
+                    created += 1;
+                    log::info!("Firewall: added rule '{}'", rule.name);
+                }
+                Err(e) => log::warn!(
+                    "Firewall: cannot add '{}' — {}. LAN discovery may not work. \
+                     Run the daemon as administrator once, or manually allow UDP {} and TCP {} in Windows Firewall.",
+                    rule.name, e, 47892, 47891
+                ),
+            }
         }
     }
 
-    if missing.is_empty() {
-        log::info!("Firewall: all {} rules already exist", RULES.len());
-        return;
-    }
-
-    log::info!("Firewall: {} rule(s) missing, attempting to add...", missing.len());
-
-    for rule in &missing {
-        match add_rule(rule) {
-            Ok(()) => log::info!("Firewall: added rule '{}'", rule.name),
-            Err(e) => log::warn!(
-                "Firewall: cannot add '{}' — {}. LAN discovery may not work. \
-                 Run the daemon as administrator once, or manually allow UDP {} and TCP {} in Windows Firewall.",
-                rule.name, e, 47892, 47891
-            ),
-        }
+    if recreated > 0 {
+        log::info!("Firewall: recreated {} rule(s), created {} new", recreated, created);
+    } else if created > 0 {
+        log::info!("Firewall: created {} new rule(s)", created);
+    } else {
+        log::info!("Firewall: all {} rules up to date", RULES.len());
     }
 }

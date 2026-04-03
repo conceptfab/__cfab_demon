@@ -235,12 +235,24 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
         return;
     }
 
-    // Log broadcast addresses at startup for diagnostics
+    // Log broadcast addresses and unicast scan ranges at startup
     let bcast_addrs = get_subnet_broadcast_addresses();
+    let local_ifaces = get_local_interfaces();
     if bcast_addrs.is_empty() {
         log::warn!("LAN discovery: NO subnet broadcast addresses found — only 255.255.255.255 will be used");
     } else {
         log::info!("LAN discovery: broadcast targets: [255.255.255.255, {}]", bcast_addrs.join(", "));
+    }
+    for iface in &local_ifaces {
+        log::info!(
+            "LAN discovery: unicast scan: {}.{}.{}.{}/{}.{}.{}.{} ({} hosts)",
+            iface.ip[0], iface.ip[1], iface.ip[2], iface.ip[3],
+            iface.mask[0], iface.mask[1], iface.mask[2], iface.mask[3],
+            iface.host_count(),
+        );
+    }
+    if local_ifaces.is_empty() {
+        log::warn!("LAN discovery: NO real LAN interfaces found for unicast scan");
     }
 
     let mut peers: HashMap<String, PeerInfo> = HashMap::new();
@@ -665,18 +677,140 @@ fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
     ])
 }
 
-/// Send data to 255.255.255.255 + subnet broadcast addresses for better compatibility.
+/// Represents a local network interface with IP and mask.
+struct LocalInterface {
+    ip: [u8; 4],
+    mask: [u8; 4],
+}
+
+impl LocalInterface {
+    /// Number of host addresses in the subnet (excluding network and broadcast).
+    fn host_count(&self) -> u32 {
+        let mask_bits = u32::from_be_bytes(self.mask);
+        let host_bits = !mask_bits;
+        if host_bits < 2 { 0 } else { host_bits - 1 }
+    }
+
+    /// Iterate all host IPs in the subnet (excludes network and broadcast address).
+    fn iter_hosts(&self) -> Vec<[u8; 4]> {
+        let ip_u32 = u32::from_be_bytes(self.ip);
+        let mask_u32 = u32::from_be_bytes(self.mask);
+        let network = ip_u32 & mask_u32;
+        let broadcast = network | !mask_u32;
+        let mut hosts = Vec::new();
+        // network+1 .. broadcast-1
+        let start = network.wrapping_add(1);
+        let end = broadcast; // exclusive
+        if start >= end {
+            return hosts;
+        }
+        for addr in start..end {
+            hosts.push(addr.to_be_bytes());
+        }
+        hosts
+    }
+
+    /// Is this a "real" LAN interface? Filters out loopback, link-local, and virtual adapters.
+    fn is_real_lan(&self) -> bool {
+        let o = self.ip;
+        // Skip loopback
+        if o[0] == 127 { return false; }
+        // Skip link-local (169.254.x.x)
+        if o[0] == 169 && o[1] == 254 { return false; }
+        // Skip Hyper-V/WSL default ranges (172.16-31.x.x with /20 mask = virtual adapters)
+        // Real 172.16.x.x LANs typically use /16 or /24, not /20
+        if o[0] == 172 && o[1] >= 16 && o[1] <= 31 && self.mask == [255, 255, 240, 0] {
+            return false;
+        }
+        true
+    }
+}
+
+/// Parse local interfaces from `ipconfig` output. Returns only real LAN interfaces.
+fn get_local_interfaces() -> Vec<LocalInterface> {
+    let mut interfaces = Vec::new();
+
+    let output = match std::process::Command::new("ipconfig")
+        .creation_flags(0x08000000)
+        .output()
+    {
+        Ok(o) => o,
+        Err(_) => return interfaces,
+    };
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut current_ip: Option<[u8; 4]> = None;
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if (trimmed.contains("IPv4") || trimmed.contains("IP Address")) && trimmed.contains(':') {
+            if let Some(ip_str) = trimmed.split(':').last().map(|s| s.trim()) {
+                current_ip = parse_ipv4(ip_str);
+            }
+        }
+        if (trimmed.contains("Subnet Mask") || trimmed.contains("Maska podsieci")) && trimmed.contains(':') {
+            if let (Some(ip), Some(mask_str)) =
+                (current_ip.take(), trimmed.split(':').last().map(|s| s.trim()))
+            {
+                if let Some(mask) = parse_ipv4(mask_str) {
+                    let iface = LocalInterface { ip, mask };
+                    if iface.is_real_lan() {
+                        interfaces.push(iface);
+                    }
+                }
+            }
+        }
+    }
+
+    interfaces
+}
+
+/// Send data to broadcast addresses + unicast scan of local subnets.
+/// Unicast scan is the primary mechanism — broadcast is unreliable on Windows
+/// with multiple network interfaces (Hyper-V, WSL, VPN adapters).
+/// Track when the last unicast scan was done (scan is expensive, do it less often).
+static LAST_UNICAST_SCAN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+const UNICAST_SCAN_INTERVAL_SECS: u64 = 120; // scan every 2 minutes
+
 fn broadcast_to_all(socket: &UdpSocket, data: &[u8]) {
-    // Global broadcast (may be blocked by some routers/firewalls)
+    // 1. Global broadcast (often blocked but try anyway)
     let global = format!("255.255.255.255:{}", DISCOVERY_PORT);
     if let Err(e) = socket.send_to(data, &global) {
         log::warn!("LAN discovery: failed to send to global broadcast: {}", e);
     }
-    // Subnet-specific broadcast (more reliable on most networks)
+    // 2. Subnet-specific broadcast
     for addr in get_subnet_broadcast_addresses() {
         let target = format!("{}:{}", addr, DISCOVERY_PORT);
         if let Err(e) = socket.send_to(data, &target) {
             log::warn!("LAN discovery: failed to send to subnet {}: {}", target, e);
+        }
+    }
+    // 3. Unicast scan of real LAN subnets (most reliable on Windows)
+    //    Done every 2 minutes to avoid flooding (254 packets per /24 subnet)
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let last_scan = LAST_UNICAST_SCAN.load(std::sync::atomic::Ordering::Relaxed);
+    if now_secs.saturating_sub(last_scan) >= UNICAST_SCAN_INTERVAL_SECS {
+        LAST_UNICAST_SCAN.store(now_secs, std::sync::atomic::Ordering::Relaxed);
+        let mut total_sent = 0u32;
+        for iface in get_local_interfaces() {
+            let host_count = iface.host_count();
+            if host_count > 254 {
+                continue; // skip /16 etc.
+            }
+            for ip in iface.iter_hosts() {
+                if ip == iface.ip {
+                    continue; // skip self
+                }
+                let target = format!("{}.{}.{}.{}:{}", ip[0], ip[1], ip[2], ip[3], DISCOVERY_PORT);
+                let _ = socket.send_to(data, &target);
+                total_sent += 1;
+            }
+        }
+        if total_sent > 0 {
+            log::info!("LAN discovery: unicast scan sent {} probes", total_sent);
         }
     }
 }
