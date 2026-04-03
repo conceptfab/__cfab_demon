@@ -150,6 +150,8 @@ struct TrayState {
     menu_restart: RefCell<nwg::MenuItem>,
     menu_dashboard: RefCell<nwg::MenuItem>,
     menu_sync_status: RefCell<nwg::MenuItem>,
+    menu_sync_delta: RefCell<nwg::MenuItem>,
+    menu_sync_force: RefCell<nwg::MenuItem>,
     icon: nwg::Icon,
     icon_attention: nwg::Icon,
     icon_sync: Option<nwg::Icon>,
@@ -158,12 +160,15 @@ struct TrayState {
     attention_state: RefCell<AttentionState>,
     last_tray_click: Cell<Option<Instant>>,
     action: Cell<TrayExitAction>,
+    was_syncing: Cell<bool>,
     // Stored handles for comparisons in the event handler
     tray_handle: nwg::ControlHandle,
     tip_timer_handle: nwg::ControlHandle,
     exit_handle: nwg::ControlHandle,
     restart_handle: nwg::ControlHandle,
     dashboard_handle: nwg::ControlHandle,
+    sync_delta_handle: nwg::ControlHandle,
+    sync_force_handle: nwg::ControlHandle,
 }
 
 impl TrayState {
@@ -242,6 +247,8 @@ impl TrayState {
                     &self.menu_dashboard.borrow(),
                     new_lang.t(TrayText::OpenDashboard),
                 );
+                set_menu_item_text(&self.menu_sync_delta.borrow(), new_lang.t(TrayText::SyncDelta));
+                set_menu_item_text(&self.menu_sync_force.borrow(), new_lang.t(TrayText::SyncForceFull));
             }
 
             let lang = self.current_lang.get();
@@ -249,7 +256,7 @@ impl TrayState {
             let tray = self.tray.borrow_mut();
             self.update_tray_appearance(&tray, attention, lang);
 
-            // Update sync status menu item
+            // Update sync status menu item + enable/disable sync buttons
             if let Some(ref state) = self.sync_state {
                 let role = state.get_role();
                 let syncing = state.sync_in_progress.load(Ordering::Relaxed);
@@ -260,6 +267,62 @@ impl TrayState {
                     format!("Sync: {}", role)
                 };
                 set_menu_item_text(&self.menu_sync_status.borrow(), &status);
+
+                // Enable/disable sync menu items based on sync state
+                let flag = if syncing {
+                    winapi::um::winuser::MF_GRAYED
+                } else {
+                    winapi::um::winuser::MF_ENABLED
+                };
+                if let Some((hmenu, id)) = self.menu_sync_delta.borrow().handle.hmenu_item() {
+                    unsafe {
+                        winapi::um::winuser::EnableMenuItem(
+                            hmenu,
+                            id,
+                            winapi::um::winuser::MF_BYCOMMAND | flag,
+                        );
+                    }
+                }
+                if let Some((hmenu, id)) = self.menu_sync_force.borrow().handle.hmenu_item() {
+                    unsafe {
+                        winapi::um::winuser::EnableMenuItem(
+                            hmenu,
+                            id,
+                            winapi::um::winuser::MF_BYCOMMAND | flag,
+                        );
+                    }
+                }
+
+                // Detect sync completion and show balloon notification
+                let currently_syncing = self.is_syncing();
+                let was = self.was_syncing.get();
+                if was && !currently_syncing {
+                    let p = state.get_progress();
+                    match p.phase.as_str() {
+                        "completed" => {
+                            self.show_sync_notification(
+                                APP_NAME,
+                                lang.t(TrayText::SyncCompleted),
+                                nwg::TrayNotificationFlags::INFO_ICON,
+                            );
+                        }
+                        "not_needed" => {
+                            self.show_sync_notification(
+                                APP_NAME,
+                                lang.t(TrayText::SyncNotNeeded),
+                                nwg::TrayNotificationFlags::INFO_ICON,
+                            );
+                        }
+                        _ => {
+                            self.show_sync_notification(
+                                APP_NAME,
+                                lang.t(TrayText::SyncFailed),
+                                nwg::TrayNotificationFlags::WARNING_ICON,
+                            );
+                        }
+                    }
+                }
+                self.was_syncing.set(currently_syncing);
             }
         }
     }
@@ -277,7 +340,90 @@ impl TrayState {
         } else if handle == self.dashboard_handle {
             log::info!("Launching Dashboard from tray menu");
             launch_dashboard(self.current_lang.get());
+        } else if handle == self.sync_delta_handle {
+            self.trigger_sync(false);
+        } else if handle == self.sync_force_handle {
+            self.trigger_sync(true);
         }
+    }
+
+    fn trigger_sync(&self, force: bool) {
+        let sync_state = match &self.sync_state {
+            Some(s) => s.clone(),
+            None => return,
+        };
+
+        // Don't start if already syncing
+        if sync_state
+            .sync_in_progress
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
+            .is_err()
+        {
+            return;
+        }
+
+        // Try online sync first (if configured)
+        let online_settings = crate::config::load_online_sync_settings();
+        if online_settings.enabled
+            && !online_settings.server_url.is_empty()
+            && !online_settings.auth_token.is_empty()
+        {
+            let state = sync_state.clone();
+            std::thread::spawn(move || {
+                if force {
+                    crate::online_sync::run_online_sync_forced(online_settings, state, force);
+                } else {
+                    match online_settings.sync_mode.as_str() {
+                        "async" if !online_settings.group_id.is_empty() => {
+                            let gid = online_settings.group_id.clone();
+                            crate::online_sync::run_async_delta_sync(
+                                online_settings,
+                                state,
+                                &gid,
+                            );
+                        }
+                        _ => {
+                            crate::online_sync::run_online_sync(
+                                online_settings,
+                                state,
+                                Arc::new(AtomicBool::new(false)),
+                            );
+                        }
+                    }
+                }
+            });
+            return;
+        }
+
+        // Fallback: try LAN sync (find first peer)
+        let lan_settings = crate::config::load_lan_sync_settings();
+        if lan_settings.enabled {
+            let state = sync_state.clone();
+            std::thread::spawn(move || {
+                match crate::lan_discovery::find_first_peer() {
+                    Some(peer) => {
+                        state.set_role("master");
+                        let stop = Arc::new(AtomicBool::new(false));
+                        crate::lan_sync_orchestrator::run_sync_as_master_with_options(
+                            peer, state, stop, force,
+                        );
+                    }
+                    None => {
+                        log::warn!("No LAN peer found for tray-triggered sync");
+                        state.sync_in_progress.store(false, Ordering::SeqCst);
+                    }
+                }
+            });
+            return;
+        }
+
+        // Nothing configured — release lock
+        sync_state.sync_in_progress.store(false, Ordering::SeqCst);
+    }
+
+    fn show_sync_notification(&self, title: &str, message: &str, flags: nwg::TrayNotificationFlags) {
+        let tray = self.tray.borrow();
+        tray.show(message, Some(title), Some(flags), None);
     }
 }
 
@@ -408,6 +554,33 @@ pub fn run(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<crate::lan_serve
         "Sync status menu item"
     );
 
+    let mut menu_sep_sync = nwg::MenuSeparator::default();
+    try_build!(
+        nwg::MenuSeparator::builder().parent(&menu),
+        &mut menu_sep_sync,
+        "sync separator"
+    );
+
+    let mut menu_sync_delta = nwg::MenuItem::default();
+    try_build!(
+        nwg::MenuItem::builder()
+            .text(initial_lang.t(TrayText::SyncDelta))
+            .parent(&menu),
+        &mut menu_sync_delta,
+        "Sync delta menu item"
+    );
+    let sync_delta_handle = menu_sync_delta.handle;
+
+    let mut menu_sync_force = nwg::MenuItem::default();
+    try_build!(
+        nwg::MenuItem::builder()
+            .text(initial_lang.t(TrayText::SyncForceFull))
+            .parent(&menu),
+        &mut menu_sync_force,
+        "Sync force menu item"
+    );
+    let sync_force_handle = menu_sync_force.handle;
+
     let mut menu_sep = nwg::MenuSeparator::default();
     try_build!(
         nwg::MenuSeparator::builder().parent(&menu),
@@ -454,6 +627,8 @@ pub fn run(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<crate::lan_serve
         menu_restart: RefCell::new(menu_restart),
         menu_dashboard: RefCell::new(menu_dashboard),
         menu_sync_status: RefCell::new(menu_sync_status),
+        menu_sync_delta: RefCell::new(menu_sync_delta),
+        menu_sync_force: RefCell::new(menu_sync_force),
         icon,
         icon_attention,
         icon_sync,
@@ -466,11 +641,14 @@ pub fn run(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<crate::lan_serve
         }),
         last_tray_click: Cell::new(None),
         action: Cell::new(TrayExitAction::Exit),
+        was_syncing: Cell::new(false),
         tray_handle,
         tip_timer_handle,
         exit_handle,
         restart_handle,
         dashboard_handle,
+        sync_delta_handle,
+        sync_force_handle,
     });
 
     let state_clone = state.clone();

@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { ArrowDown, ArrowUp, Loader2, CheckCircle2, XCircle, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { lanSyncApi } from '@/lib/tauri';
-import { getDaemonOnlineSyncProgress } from '@/lib/tauri/online-sync';
+import { getDaemonOnlineSyncProgress, triggerDaemonOnlineSync } from '@/lib/tauri/online-sync';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 
 const POLL_MS = 500;
@@ -26,9 +26,11 @@ interface SyncProgressOverlayProps {
   onFinished?: (success: boolean) => void;
   /** Which sync backend to poll — defaults to "lan" */
   syncType?: 'lan' | 'online';
+  /** Called to retry after error — if provided, shows retry button instead of auto-dismiss */
+  onRetry?: () => void;
 }
 
-export function SyncProgressOverlay({ active, onFinished, syncType = 'lan' }: SyncProgressOverlayProps) {
+export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRetry }: SyncProgressOverlayProps) {
   const { t } = useTranslation();
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [speed, setSpeed] = useState(0);
@@ -73,10 +75,17 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan' }: Sy
         prevBytesRef.current = p.bytes_transferred;
         prevTimeRef.current = now;
 
-        // Detect completion
-        if (p.phase === 'completed' && !finishedRef.current) {
+        // Detect completion (including "not_needed" — databases already identical)
+        if ((p.phase === 'completed' || p.phase === 'not_needed') && !finishedRef.current) {
           finishedRef.current = true;
           setTimeout(() => onFinished?.(true), 1500);
+        }
+        if (p.phase.startsWith('error') && !finishedRef.current) {
+          finishedRef.current = true;
+          if (!onRetry) {
+            setTimeout(() => onFinished?.(false), 2500);
+          }
+          // When onRetry is provided, overlay stays visible with retry button
         }
       } catch {
         // Daemon not reachable — ignore
@@ -95,7 +104,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan' }: Sy
     : null;
 
   const isTransfer = progress.direction === 'upload' || progress.direction === 'download';
-  const isCompleted = progress.phase === 'completed';
+  const isCompleted = progress.phase === 'completed' || progress.phase === 'not_needed';
   const isError = progress.phase.startsWith('error');
 
   const phaseLabel = t(`sync_progress.${progress.phase}`, progress.phase);
@@ -130,6 +139,33 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan' }: Sy
         <p className="text-xs text-muted-foreground mb-2 truncate">
           {phaseLabel}
         </p>
+
+        {/* Retry button on error */}
+        {isError && onRetry && (
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              onClick={() => {
+                finishedRef.current = false;
+                setProgress(null);
+                setSpeed(0);
+                setEta(null);
+                prevBytesRef.current = 0;
+                prevTimeRef.current = Date.now();
+                onRetry();
+              }}
+              className="flex items-center gap-1.5 text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              {t('sync_progress.retry', 'Retry')}
+            </button>
+            <button
+              onClick={() => onFinished?.(false)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors ml-auto"
+            >
+              {t('sync_progress.dismiss', 'Dismiss')}
+            </button>
+          </div>
+        )}
 
         {/* Progress bar — only for transfer phases */}
         {isTransfer && (

@@ -177,11 +177,13 @@ fn create_session(
     device_id: &str,
     marker_hash: Option<&str>,
     table_hashes: Option<&str>,
+    force_full: bool,
 ) -> Result<SessionCreateResponse, String> {
     let body = serde_json::json!({
         "deviceId": device_id,
         "markerHash": marker_hash,
         "tableHashes": table_hashes.map(|h| serde_json::json!({"combined": h})),
+        "forceFullSync": force_full,
     });
     let resp = server_post(
         server_url,
@@ -785,11 +787,65 @@ pub fn run_online_sync(
     sync_state.set_role("undecided");
 }
 
+/// Run online sync with forced full mode. Used when user explicitly requests force sync from tray menu.
+pub fn run_online_sync_forced(
+    settings: config::OnlineSyncSettings,
+    sync_state: Arc<LanSyncState>,
+    force_full: bool,
+) {
+    sync_log(&format!(
+        "=== START ONLINE SYNC (force_full={}) ===",
+        force_full
+    ));
+    sync_state.set_progress(1, "creating_session", "local");
+
+    let server_url = settings.server_url.clone();
+    let token = settings.auth_token.clone();
+    let device_id = if settings.device_id.is_empty() {
+        sync_common::get_device_id()
+    } else {
+        settings.device_id.clone()
+    };
+
+    let mut session_id_for_cleanup: Option<String> = None;
+
+    match execute_online_sync_inner(
+        &settings,
+        &sync_state,
+        &AtomicBool::new(false),
+        &mut session_id_for_cleanup,
+        force_full,
+    ) {
+        Ok(()) => {
+            sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
+        }
+        Err(e) => {
+            sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
+            sync_state.unfreeze();
+            sync_state.reset_progress();
+            if let Some(sid) = &session_id_for_cleanup {
+                cancel_session(&server_url, &token, sid, &device_id, &e).ok();
+            }
+        }
+    }
+    sync_state.set_role("undecided");
+}
+
 fn execute_online_sync(
     settings: &config::OnlineSyncSettings,
     sync_state: &LanSyncState,
     stop_signal: &AtomicBool,
     session_id_out: &mut Option<String>,
+) -> Result<(), String> {
+    execute_online_sync_inner(settings, sync_state, stop_signal, session_id_out, false)
+}
+
+fn execute_online_sync_inner(
+    settings: &config::OnlineSyncSettings,
+    sync_state: &LanSyncState,
+    stop_signal: &AtomicBool,
+    session_id_out: &mut Option<String>,
+    force_full: bool,
 ) -> Result<(), String> {
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
@@ -814,16 +870,30 @@ fn execute_online_sync(
         .ok();
     let tables_hash = sync_common::compute_tables_hash_string_conn(&conn);
 
-    sync_log("[1/13] Tworzenie sesji na serwerze...");
+    sync_log(&format!(
+        "[1/13] Tworzenie sesji na serwerze{} ...",
+        if force_full { " (force full)" } else { "" }
+    ));
     let create_resp = create_session(
         server_url,
         token,
         &device_id,
         local_marker.as_deref(),
         Some(&tables_hash),
+        force_full,
     )?;
     if !create_resp.ok {
         return Err("Server rejected session creation".to_string());
+    }
+
+    // Check if server says sync is not needed (databases already identical)
+    if create_resp.status == "completed"
+        || create_resp.sync_mode.as_deref() == Some("none")
+    {
+        sync_log("[1/13] Sync niepotrzebna — bazy identyczne");
+        sync_state.set_progress(13, "not_needed", "local");
+        sync_state.sync_in_progress.store(false, Ordering::SeqCst);
+        return Ok(());
     }
 
     let session_id = create_resp.session_id;
@@ -865,6 +935,14 @@ fn execute_online_sync(
                 .unwrap_or_else(|| "full".to_string()),
             creds,
         )
+    };
+
+    // Override sync mode if force_full requested
+    let sync_mode = if force_full {
+        sync_log("[2/13] Force full override — wymuszam tryb 'full'");
+        "full".to_string()
+    } else {
+        sync_mode
     };
 
     // Step 3-4: Negotiate — get SFTP credentials
@@ -1107,6 +1185,10 @@ fn execute_sync_steps(
             sync_mode == "full",
         )?;
 
+        sync_log(&format!(
+            "[12/13] Weryfikacja: lokalny marker = {}",
+            &new_marker[..16.min(new_marker.len())]
+        ));
         report_step(
             server_url,
             token,
@@ -1114,7 +1196,10 @@ fn execute_sync_steps(
             12,
             "slave_imported",
             device_id,
-            serde_json::json!({"marker": &new_marker[..16.min(new_marker.len())]}),
+            serde_json::json!({
+                "marker": &new_marker[..16.min(new_marker.len())],
+                "tablesHash": &new_hash,
+            }),
             "ok",
         )?;
         sync_log("[12/13] Import zakończony");
@@ -1228,6 +1313,10 @@ fn execute_sync_steps(
             &new_hash,
             sync_mode == "full",
         )?;
+        sync_log(&format!(
+            "[10/13] Marker po merge: {}",
+            &new_marker[..16.min(new_marker.len())]
+        ));
         report_step(
             server_url,
             token,
@@ -1235,7 +1324,10 @@ fn execute_sync_steps(
             10,
             "verify_complete",
             device_id,
-            serde_json::json!({"marker": &new_marker[..16.min(new_marker.len())]}),
+            serde_json::json!({
+                "marker": &new_marker[..16.min(new_marker.len())],
+                "tablesHash": &new_hash,
+            }),
             "ok",
         )?;
 

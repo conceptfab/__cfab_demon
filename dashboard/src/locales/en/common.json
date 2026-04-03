@@ -1792,7 +1792,10 @@
     "downloading_from_storage": "Downloading merged data...",
     "uploading_merged": "Uploading merged data...",
     "waiting_for_upload": "Waiting for peer upload...",
-    "waiting_for_download": "Waiting for peer download..."
+    "waiting_for_download": "Waiting for peer download...",
+    "retry": "Retry",
+    "dismiss": "Dismiss",
+    "not_needed": "Synchronization not needed — databases identical"
   },
   "projects_page": {
     "load_more_projects": "Load more projects",

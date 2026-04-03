@@ -163,6 +163,23 @@ fn normalize_ts(ts: &str) -> String {
     if s.len() >= 19 { s[..19].to_string() } else { s.to_string() }
 }
 
+// ── Merge conflict logging ──
+
+fn log_merge_conflict(
+    tx: &rusqlite::Transaction,
+    table_name: &str,
+    record_key: &str,
+    local_updated_at: &str,
+    remote_updated_at: &str,
+    winner: &str,
+) {
+    let _ = tx.execute(
+        "INSERT INTO sync_merge_log (table_name, record_key, resolution, local_updated_at, remote_updated_at, winner) \
+         VALUES (?1, ?2, 'last_writer_wins', ?3, ?4, ?5)",
+        rusqlite::params![table_name, record_key, local_updated_at, remote_updated_at, winner],
+    );
+}
+
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
@@ -191,8 +208,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 .ok();
 
             match existing {
-                Some(local_ts) if normalize_ts(&local_ts) >= normalize_ts(updated_at) => {}
-                Some(_) => {
+                Some(local_ts) if normalize_ts(&local_ts) >= normalize_ts(updated_at) => {
+                    // Local wins — log only if timestamps differ (actual conflict)
+                    if normalize_ts(&local_ts) != normalize_ts(updated_at) {
+                        log_merge_conflict(&tx, "projects", name, &local_ts, updated_at, "local");
+                    }
+                }
+                Some(ref local_ts) => {
+                    log_merge_conflict(&tx, "projects", name, local_ts, updated_at, "remote");
                     tx.execute(
                         "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
                          frozen_at = ?4, assigned_folder_path = ?5, updated_at = ?6 WHERE name = ?7",
@@ -249,6 +272,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 Some((_id, local_ts)) => {
                     let local = local_ts.as_deref().unwrap_or("");
                     if normalize_ts(updated_at) > normalize_ts(local) {
+                        log_merge_conflict(&tx, "applications", exe_name, local, updated_at, "remote");
                         tx.execute(
                             "UPDATE applications SET display_name = ?1, updated_at = ?2 WHERE executable_name = ?3",
                             rusqlite::params![
@@ -354,6 +378,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 Some((id, local_ts)) => {
                     let local = local_ts.as_deref().unwrap_or("");
                     if normalize_ts(updated_at) > normalize_ts(local) {
+                        let key = format!("app_id={}|start_time={}", local_app_id, start_time);
+                        log_merge_conflict(&tx, "sessions", &key, local, updated_at, "remote");
                         tx.execute(
                             "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, \
                              rate_multiplier = ?3, comment = ?4, is_hidden = ?5, \
@@ -426,6 +452,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 Some((id, local_ts)) => {
                     let local = local_ts.as_deref().unwrap_or("");
                     if normalize_ts(updated_at) > normalize_ts(local) {
+                        let key = format!("title={}|start_time={}", title, start_time);
+                        log_merge_conflict(&tx, "manual_sessions", &key, local, updated_at, "remote");
                         tx.execute(
                             "UPDATE manual_sessions SET session_type = ?1, project_id = ?2, \
                              app_id = ?3, end_time = ?4, duration_seconds = ?5, \

@@ -19,6 +19,7 @@ import {
 import { loadLanSyncSettings, loadLanSyncState } from '@/lib/lan-sync';
 import { lanSyncApi } from '@/lib/tauri';
 import { connectSSE, disconnectSSE } from '@/lib/sync/sync-sse';
+import { DaemonSyncOverlay } from '@/components/sync/DaemonSyncOverlay';
 import { LanPeerNotification } from '@/components/sync/LanPeerNotification';
 import {
   LOCAL_DATA_CHANGED_EVENT,
@@ -737,6 +738,11 @@ export function BackgroundServices() {
     };
   }, []);
 
-  return <LanPeerNotification />;
+  return (
+    <>
+      <LanPeerNotification />
+      <DaemonSyncOverlay />
+    </>
+  );
 }
 

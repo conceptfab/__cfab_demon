@@ -1006,3 +1006,22 @@ fn handle_packet(
         }
     }
 }
+
+/// Read lan_peers.json and return the first active peer with dashboard running.
+pub fn find_first_peer() -> Option<lan_sync_orchestrator::PeerTarget> {
+    let path = peers_file_path()?;
+    let content = std::fs::read_to_string(&path).ok()?;
+    let file: PeersFile = serde_json::from_str(&content).ok()?;
+
+    for p in file.peers {
+        if !p.dashboard_running {
+            continue;
+        }
+        return Some(lan_sync_orchestrator::PeerTarget {
+            ip: p.ip,
+            port: p.dashboard_port,
+            device_id: p.device_id,
+        });
+    }
+    None
+}

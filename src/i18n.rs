@@ -49,6 +49,21 @@ impl Lang {
             (Lang::En, TrayText::AlreadyRunning) => {
                 "Another TIMEFLOW Daemon instance is already running."
             }
+
+            (Lang::Pl, TrayText::SyncDelta) => "Synchronizuj",
+            (Lang::En, TrayText::SyncDelta) => "Synchronize",
+
+            (Lang::Pl, TrayText::SyncForceFull) => "Synchronizuj (pełna)",
+            (Lang::En, TrayText::SyncForceFull) => "Synchronize (full)",
+
+            (Lang::Pl, TrayText::SyncCompleted) => "Synchronizacja zakończona pomyślnie",
+            (Lang::En, TrayText::SyncCompleted) => "Synchronization completed successfully",
+
+            (Lang::Pl, TrayText::SyncNotNeeded) => "Synchronizacja niepotrzebna \u{2014} bazy są identyczne",
+            (Lang::En, TrayText::SyncNotNeeded) => "Synchronization not needed \u{2014} databases are identical",
+
+            (Lang::Pl, TrayText::SyncFailed) => "Synchronizacja nie powiodła się",
+            (Lang::En, TrayText::SyncFailed) => "Synchronization failed",
         }
     }
 }
@@ -65,6 +80,11 @@ pub enum TrayText {
     VersionErrorTitle,
     DemonErrorTitle,
     AlreadyRunning,
+    SyncDelta,
+    SyncForceFull,
+    SyncCompleted,
+    SyncNotNeeded,
+    SyncFailed,
 }
 
 fn language_file_path() -> Option<PathBuf> {

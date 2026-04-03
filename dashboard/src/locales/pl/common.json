@@ -1792,7 +1792,10 @@
     "downloading_from_storage": "Pobieranie scalonych danych...",
     "uploading_merged": "Wysyłanie scalonych danych...",
     "waiting_for_upload": "Oczekiwanie na wysłanie przez peera...",
-    "waiting_for_download": "Oczekiwanie na pobranie przez peera..."
+    "waiting_for_download": "Oczekiwanie na pobranie przez peera...",
+    "retry": "Ponów",
+    "dismiss": "Zamknij",
+    "not_needed": "Synchronizacja niepotrzebna — bazy identyczne"
   },
   "projects_page": {
     "load_more_projects": "Wczytaj więcej projektów",
