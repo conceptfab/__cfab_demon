@@ -404,110 +404,112 @@ export function OnlineSyncCard({
             <p className="text-xs text-muted-foreground">{deviceIdHint}</p>
           </div>
 
-          <div className="grid gap-3 rounded-md border border-border/70 bg-background/20 p-3 sm:grid-cols-[1fr_auto] sm:items-start">
-            <div className="min-w-0 space-y-2">
-              <div>
-                <p className="text-sm font-medium">{statusTitle}</p>
-                <p className="text-xs text-muted-foreground">
-                  {lastSuccessfulLabel} {lastSyncLabel}
-                </p>
-              </div>
-
-              {demoModeSyncDisabled && (
-                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-300">
-                  {demoModeDisabledWarning}
-                </div>
-              )}
-
-              <div className="grid gap-1 text-xs text-muted-foreground">
-                <div>
-                  {serverRevisionLabel}{' '}
-                  <span className="font-mono text-foreground">
-                    {state.serverRevision}
-                  </span>
-                </div>
-                <div>
-                  {serverHashLabel}{' '}
-                  <span className="font-mono text-foreground break-all">
-                    {shortHash}
-                  </span>
-                </div>
-                <div>
-                  {localRevisionHashLabel}{' '}
-                  <span className="font-mono text-foreground">
-                    {state.localRevision ?? notAvailableLabel} / {localHashShort}
-                  </span>
-                </div>
-                {state.pendingAck && (
-                  <div className="text-amber-500">
-                    {pendingAckLabel}{' '}
-                    <span className="font-mono text-foreground">
-                      r{state.pendingAck.revision} / {pendingAckHashShort}
-                    </span>
-                    {state.pendingAck.retries > 0 && (
-                      <>
-                        {' '}
-                        ({retriesLabel}: {state.pendingAck.retries})
-                      </>
-                    )}
-                  </div>
-                )}
-                {state.needsReseed && (
-                  <div className="text-amber-500">{reseedWarning}</div>
-                )}
-              </div>
-
-              {manualSyncResult && manualSyncResultText && (
-                <div
-                  className={
-                    manualSyncResultSuccess
-                      ? 'text-xs text-emerald-400'
-                      : 'text-xs text-destructive'
-                  }
+          <div className="grid gap-3 rounded-md border border-border/70 bg-background/20 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-medium">{statusTitle}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8"
+                  onClick={onSyncNow}
+                  disabled={manualSyncing || demoModeSyncDisabled}
                 >
-                  {manualSyncResultText}
-                </div>
-              )}
+                  {manualSyncing
+                    ? syncingLabel
+                    : demoModeSyncDisabled
+                      ? syncDisabledInDemoLabel
+                      : syncNowLabel}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8"
+                  onClick={onTestRoundtrip}
+                  disabled={testingRoundtrip}
+                >
+                  {testingRoundtrip ? testingRoundtripLabel : testRoundtripLabel}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
+                  onClick={onForceSyncNow}
+                  disabled={manualSyncing || demoModeSyncDisabled}
+                >
+                  {forceSyncLabel}
+                </Button>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 w-fit"
-                onClick={onSyncNow}
-                disabled={manualSyncing || demoModeSyncDisabled}
-              >
-                {manualSyncing
-                  ? syncingLabel
-                  : demoModeSyncDisabled
-                    ? syncDisabledInDemoLabel
-                    : syncNowLabel}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 w-fit"
-                onClick={onTestRoundtrip}
-                disabled={testingRoundtrip}
-              >
-                {testingRoundtrip ? testingRoundtripLabel : testRoundtripLabel}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-8 w-fit border-amber-500/30 text-amber-300 hover:bg-amber-500/10"
-                onClick={onForceSyncNow}
-                disabled={manualSyncing || demoModeSyncDisabled}
-              >
-                {forceSyncLabel}
-              </Button>
-              {testRoundtripResult && (
-                <div
-                  className={`text-xs font-mono break-all ${testRoundtripSuccess ? 'text-emerald-400' : 'text-destructive'}`}
-                >
-                  {testRoundtripResult}
+            <p className="text-xs text-muted-foreground">
+              {lastSuccessfulLabel} {lastSyncLabel}
+            </p>
+
+            {demoModeSyncDisabled && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-300">
+                {demoModeDisabledWarning}
+              </div>
+            )}
+
+            {(testRoundtripResult || (manualSyncResult && manualSyncResultText)) && (
+              <div className="grid gap-1 rounded-md border border-border/50 bg-background/30 p-2">
+                {testRoundtripResult && (
+                  <div
+                    className={`text-xs font-mono break-all ${testRoundtripSuccess ? 'text-emerald-400' : 'text-destructive'}`}
+                  >
+                    {testRoundtripResult}
+                  </div>
+                )}
+                {manualSyncResult && manualSyncResultText && (
+                  <div
+                    className={
+                      manualSyncResultSuccess
+                        ? 'text-xs text-emerald-400'
+                        : 'text-xs text-destructive'
+                    }
+                  >
+                    {manualSyncResultText}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="grid gap-1 text-xs text-muted-foreground">
+              <div>
+                {serverRevisionLabel}{' '}
+                <span className="font-mono text-foreground">
+                  {state.serverRevision}
+                </span>
+              </div>
+              <div>
+                {serverHashLabel}{' '}
+                <span className="font-mono text-foreground break-all">
+                  {shortHash}
+                </span>
+              </div>
+              <div>
+                {localRevisionHashLabel}{' '}
+                <span className="font-mono text-foreground">
+                  {state.localRevision ?? notAvailableLabel} / {localHashShort}
+                </span>
+              </div>
+              {state.pendingAck && (
+                <div className="text-amber-500">
+                  {pendingAckLabel}{' '}
+                  <span className="font-mono text-foreground">
+                    r{state.pendingAck.revision} / {pendingAckHashShort}
+                  </span>
+                  {state.pendingAck.retries > 0 && (
+                    <>
+                      {' '}
+                      ({retriesLabel}: {state.pendingAck.retries})
+                    </>
+                  )}
                 </div>
+              )}
+              {state.needsReseed && (
+                <div className="text-amber-500">{reseedWarning}</div>
               )}
             </div>
           </div>
