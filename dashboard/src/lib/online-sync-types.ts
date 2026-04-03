@@ -106,13 +106,18 @@ export interface OnlineSyncIndicatorSnapshot {
   needsReseed: boolean;
 }
 
+export type SyncCommand = 'idle' | 'send_delta' | 'send_full' | 'pull';
+
 export interface SyncStatusResponse {
   ok: true;
+  command: SyncCommand;
   serverRevision: number;
   serverHash: string | null;
+  onlineDevices: number;
+  reason: string;
+  // Legacy compat
   shouldPush: boolean;
   shouldPull: boolean;
-  reason: string;
 }
 
 export interface SyncDeltaPushResponse {

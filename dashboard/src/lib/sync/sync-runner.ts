@@ -476,11 +476,8 @@ async function runOnlineSyncOnceImpl(
       return result;
     }
 
-    // Step 1: Lightweight status check (heartbeat / presence)
-    log?.info('Checking server status', {
-      clientRevision: state.localRevision,
-      clientHash: state.localHash?.substring(0, 12) ?? null,
-    });
+    // ── Heartbeat: report presence, receive command from server ──
+    log?.info('Heartbeat', { revision: state.localRevision });
     const statusT0 = Date.now();
     const status = await postJson<SyncStatusResponse>(
       settings.serverUrl,
@@ -495,19 +492,19 @@ async function runOnlineSyncOnceImpl(
       secureApiToken,
     );
 
-    log?.info('Server status response', {
+    const cmd = status.command ?? (status.shouldPull ? 'pull' : status.shouldPush ? 'send_delta' : 'idle');
+    log?.info('Server command', {
+      command: cmd,
       reason: status.reason,
-      shouldPull: status.shouldPull,
-      shouldPush: status.shouldPush,
+      onlineDevices: status.onlineDevices,
       serverRevision: status.serverRevision,
-      serverHash: shortHash(status.serverHash),
       durationMs: Date.now() - statusT0,
     });
 
     logSyncDiagnostic('status', {
+      command: cmd,
       reason: status.reason,
-      shouldPull: status.shouldPull,
-      shouldPush: status.shouldPush,
+      onlineDevices: status.onlineDevices,
       serverRevision: status.serverRevision,
     });
 
@@ -515,13 +512,8 @@ async function runOnlineSyncOnceImpl(
     state.serverHash = status.serverHash ?? null;
     saveOnlineSyncState(state, settings);
 
-    // Single device — just a heartbeat, no data exchange needed
-    if (
-      status.reason === 'single_device' ||
-      status.reason === 'in_sync' ||
-      status.reason === 'same_revision_hash_drift' ||
-      status.reason === 'table_hashes_match'
-    ) {
+    // ── IDLE: nothing to do, align hash and wait ──
+    if (cmd === 'idle') {
       if (status.serverHash) {
         state.localHash = status.serverHash;
         state.localRevision = status.serverRevision;
@@ -535,7 +527,7 @@ async function runOnlineSyncOnceImpl(
         reason: status.reason,
         serverRevision: status.serverRevision ?? null,
       };
-      log?.info('Sync finished: no action needed', { reason: status.reason });
+      log?.info('Idle', { reason: status.reason, onlineDevices: status.onlineDevices });
       updateIndicatorFromRunResult(result);
       await log?.flush();
       return result;
@@ -581,7 +573,7 @@ async function runOnlineSyncOnceImpl(
       return result;
     }
 
-    if (status.shouldPull) {
+    if (cmd === 'pull') {
       log?.info('Pulling from server', { clientRevision: state.localRevision });
       const pullT0 = Date.now();
       const pull = await postJson<SyncPullResponse>(
@@ -747,9 +739,9 @@ async function runOnlineSyncOnceImpl(
       return result;
     }
 
-    if (status.shouldPush) {
-      // When server has no snapshot, we must do a full push (not delta)
-      const needsFullPush = status.reason === 'server_has_no_snapshot' || (status.serverRevision ?? 0) === 0;
+    if (cmd === 'send_delta' || cmd === 'send_full') {
+      // Server commands what to send
+      const needsFullPush = cmd === 'send_full' || status.reason === 'server_has_no_snapshot' || (status.serverRevision ?? 0) === 0;
 
       if (needsFullPush) {
         log?.info('Server has no snapshot, performing full push instead of delta');
