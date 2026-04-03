@@ -636,7 +636,27 @@ export function useSettingsFormState({
         archive: archive ?? { data: {} },
       };
 
-      setTestRoundtripResult(`Wysyłanie ${(archiveSize / 1024).toFixed(1)} KB...`);
+      // Measure compression locally
+      const rawJsonStr = JSON.stringify({
+        userId: onlineSyncSettings.userId,
+        deviceId,
+        testPayload,
+      });
+      const rawBytes = new TextEncoder().encode(rawJsonStr);
+      const { compressGzip } = await import('@/lib/sync/sync-http');
+      const gzipAvailable = typeof CompressionStream !== 'undefined';
+      let compressedSize = rawBytes.length;
+      if (gzipAvailable) {
+        const compressed = await compressGzip(rawBytes);
+        compressedSize = compressed.length;
+      }
+      const ratio = ((1 - compressedSize / rawBytes.length) * 100).toFixed(0);
+
+      setTestRoundtripResult(
+        gzipAvailable
+          ? `Wysyłanie ${(compressedSize / 1024).toFixed(0)} KB (gzip ${ratio}% kompresji z ${(rawBytes.length / 1024).toFixed(0)} KB)...`
+          : `Wysyłanie ${(rawBytes.length / 1024).toFixed(0)} KB (brak kompresji)...`
+      );
       const t0 = Date.now();
       const timeoutMs = Math.max(30000, Math.ceil(archiveSize / 1024) * 20);
       const result = await postJson<{
@@ -657,12 +677,16 @@ export function useSettingsFormState({
 
       const clientMs = Date.now() - t0;
       const allOk = result.steps.write.success && result.steps.read.success && result.steps.read.matches;
-      const sizeMB = (result.steps.write.sizeBytes / (1024 * 1024)).toFixed(2);
-      const speedKBs = clientMs > 0 ? ((result.steps.write.sizeBytes / 1024) / (clientMs / 1000)).toFixed(0) : '?';
+      const dataMB = (result.steps.write.sizeBytes / (1024 * 1024)).toFixed(2);
+      const transferKB = (compressedSize / 1024).toFixed(0);
+      const speedKBs = clientMs > 0 ? ((compressedSize / 1024) / (clientMs / 1000)).toFixed(0) : '?';
 
       if (allOk) {
+        const gzipInfo = gzipAvailable
+          ? `gzip: ${transferKB} KB/${(rawBytes.length / 1024).toFixed(0)} KB (${ratio}%)`
+          : 'bez kompresji';
         setTestRoundtripResult(
-          `OK | ${sizeMB} MB | server: ${result.roundtripMs}ms | total: ${clientMs}ms | ${speedKBs} KB/s | match: OK`
+          `OK | dane: ${dataMB} MB | ${gzipInfo} | ${speedKBs} KB/s | ${clientMs}ms | dekompresja+match: OK`
         );
         setTestRoundtripSuccess(true);
       } else {

@@ -60,7 +60,7 @@ export function normalizeRequestError(error: unknown): SyncHttpError {
   );
 }
 
-async function compressGzip(data: Uint8Array): Promise<Uint8Array> {
+export async function compressGzip(data: Uint8Array): Promise<Uint8Array> {
   if (typeof CompressionStream === 'undefined') {
     return data; // fallback: send uncompressed
   }
