@@ -537,8 +537,11 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                 }
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock
-                || e.kind() == std::io::ErrorKind::TimedOut => {
-                // Normal timeout — continue loop
+                || e.kind() == std::io::ErrorKind::TimedOut
+                || e.kind() == std::io::ErrorKind::ConnectionReset => {
+                // WouldBlock/TimedOut = normal timeout
+                // ConnectionReset (10054) = ICMP port-unreachable from unicast scan targets
+                //   that don't have TIMEFLOW running — expected and harmless
             }
             Err(e) => {
                 log::warn!("LAN discovery: recv error: {}", e);
