@@ -114,11 +114,24 @@ export function LanPeerNotification() {
 
       const state = loadLanSyncState();
       const since = state.peerSyncTimes?.[peer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z';
-      const result = await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since);
-      recordPeerSync(peer);
-      if (result.pulled || result.pushed) {
-        triggerRefresh('lan_sync_pull');
+      await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since);
+
+      // Poll daemon progress until sync completes (max 5 min)
+      const deadline = Date.now() + 300_000;
+      let lastPhase = '';
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          const p = await lanSyncApi.getLanSyncProgress();
+          if (p.phase !== lastPhase) lastPhase = p.phase;
+          if (p.phase === 'completed' || (p.phase === 'idle' && p.step === 0 && lastPhase !== '')) {
+            break;
+          }
+        } catch { /* daemon unreachable */ }
       }
+
+      recordPeerSync(peer);
+      triggerRefresh('lan_sync_pull');
       setSyncError(null);
       setVisiblePeer(null);
       dismissPeer(peer.device_id);

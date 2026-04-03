@@ -394,7 +394,9 @@ async function runOnlineSyncOnceImpl(
       state = loadOnlineSyncState(settings);
     }
 
-    if (!options.ignoreStartupToggle && !settings.autoSyncOnStartup) {
+    // autoSyncOnStartup only gates the very first sync after app launch.
+    // Interval, poll, SSE, and manual syncs should always proceed.
+    if (options.isStartupSync && !settings.autoSyncOnStartup) {
       if (pendingAckResult.accepted) {
         state.lastSyncAt = new Date().toISOString();
         saveOnlineSyncState(state, settings);

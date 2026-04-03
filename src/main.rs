@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 mod activity;
 mod config;
+mod firewall;
 mod foreground_hook;
 mod i18n;
 mod lan_common;
@@ -60,6 +61,9 @@ fn main() {
     if let Err(e) = config::ensure_app_dirs() {
         log::warn!("Failed to create application directories: {}", e);
     }
+
+    // Ensure Windows Firewall allows LAN discovery and sync traffic
+    firewall::ensure_firewall_rules();
 
     // Monitor thread control signal
     let stop_signal = Arc::new(AtomicBool::new(false));

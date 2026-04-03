@@ -16,8 +16,9 @@ import {
   runOnlineSyncOnce,
   type OnlineSyncRunResult,
 } from '@/lib/online-sync';
-import { loadLanSyncSettings } from '@/lib/lan-sync';
+import { loadLanSyncSettings, loadLanSyncState } from '@/lib/lan-sync';
 import { lanSyncApi } from '@/lib/tauri';
+import { connectSSE, disconnectSSE } from '@/lib/sync/sync-sse';
 import { LanPeerNotification } from '@/components/sync/LanPeerNotification';
 import {
   LOCAL_DATA_CHANGED_EVENT,
@@ -301,6 +302,9 @@ function useJobPool() {
   // from the interval/poll triggers firing immediately on the first tick.
   const nextSyncIntervalRef = useRef(Date.now() + 30_000);
   const nextSyncPollRef = useRef(Date.now() + 120_000);
+  // LAN sync interval — delayed 60s to let discovery find peers first
+  const nextLanSyncRef = useRef(Date.now() + 60_000);
+  const isLanSyncingRef = useRef(false);
 
   const syncSettingsRef = useRef(loadOnlineSyncSettings());
   const syncFailCountRef = useRef(0);
@@ -372,6 +376,58 @@ function useJobPool() {
     );
   }, [autoImportDone]);
 
+  const runLanSyncInterval = useCallback(async () => {
+    if (isLanSyncingRef.current || !isDocumentVisible()) return;
+    const lanSettings = loadLanSyncSettings();
+    if (!lanSettings.enabled || lanSettings.syncIntervalHours === 0) {
+      // Manual-only or disabled — reschedule check in 5 min
+      nextLanSyncRef.current = Date.now() + 300_000;
+      return;
+    }
+
+    // Reschedule for next interval
+    nextLanSyncRef.current = Date.now() + lanSettings.syncIntervalHours * 3600_000;
+
+    // Find an online peer
+    try {
+      const peers = await lanSyncApi.getLanPeers();
+      const activePeer = peers.find((p) => p.dashboard_running);
+      if (!activePeer) return;
+
+      isLanSyncingRef.current = true;
+      console.log(`[useJobPool] Running LAN sync interval with peer ${activePeer.machine_name}`);
+
+      // Ensure our server is running
+      try {
+        const status = await lanSyncApi.getLanServerStatus();
+        if (!status.running) await lanSyncApi.startLanServer(lanSettings.serverPort);
+      } catch { /* ignore */ }
+
+      const state = loadLanSyncState();
+      const since = state.peerSyncTimes?.[activePeer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z';
+      await lanSyncApi.runLanSync(activePeer.ip, activePeer.dashboard_port, since);
+
+      // Poll progress until done (max 5 min)
+      const deadline = Date.now() + 300_000;
+      let lastPhase = '';
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 800));
+        try {
+          const p = await lanSyncApi.getLanSyncProgress();
+          if (p.phase !== lastPhase) lastPhase = p.phase;
+          if (p.phase === 'completed' || (p.phase === 'idle' && p.step === 0 && lastPhase !== '')) break;
+        } catch { /* daemon unreachable */ }
+      }
+
+      dispatchLanSyncDone(activePeer.machine_name);
+      triggerRefresh('background_lan_sync_interval');
+    } catch (e) {
+      console.warn('[useJobPool] LAN sync interval failed:', e);
+    } finally {
+      isLanSyncingRef.current = false;
+    }
+  }, [triggerRefresh]);
+
   const runSync = useCallback(
     async (reason: string, isAuto = true) => {
       if (isSyncingRef.current) return;
@@ -382,13 +438,16 @@ function useJobPool() {
 
       try {
         console.log(`[useJobPool] Running online sync (reason: ${reason})`);
-        const result = await runOnlineSyncOnce();
+        const result = await runOnlineSyncOnce({
+          isStartupSync: reason === 'startup',
+        });
         if (result.action === 'pull') {
           emitProjectsAllTimeInvalidated('online_sync_pull');
         }
         if (shouldRefreshAfterOnlineSync(result)) {
           triggerRefresh(`background_sync_${reason}`);
         }
+        dispatchOnlineSyncDone(result.action, reason);
         syncFailCountRef.current = 0; // Reset na sukces
       } catch (e) {
         console.warn('Sync failed:', e);
@@ -493,12 +552,14 @@ function useJobPool() {
         nextAutoSplitRef,
         nextSyncIntervalRef,
         nextSyncPollRef,
+        nextLanSyncRef,
         syncSettingsRef,
         refreshDiagnostics: handleDiagnosticsRefresh,
         runRefresh,
         checkFileChange,
         runAutoSplit,
         runSync,
+        runLanSyncInterval,
       });
     }, JOB_LOOP_TICK_MS);
 
@@ -511,6 +572,7 @@ function useJobPool() {
     runAutoSplit,
     runRefresh,
     runSync,
+    runLanSyncInterval,
   ]);
 
   useEffect(() => {
@@ -555,6 +617,22 @@ function useJobPool() {
 }
 
 const AI_ASSIGNMENT_DONE_EVENT = 'timeflow:ai-assignment-done';
+const ONLINE_SYNC_DONE_EVENT = 'timeflow:online-sync-done';
+const LAN_SYNC_DONE_EVENT = 'timeflow:lan-sync-done';
+
+function dispatchOnlineSyncDone(action: string, reason: string) {
+  if (action !== 'none') {
+    window.dispatchEvent(
+      new CustomEvent(ONLINE_SYNC_DONE_EVENT, { detail: { action, reason } }),
+    );
+  }
+}
+
+function dispatchLanSyncDone(peerName: string) {
+  window.dispatchEvent(
+    new CustomEvent(LAN_SYNC_DONE_EVENT, { detail: { peerName } }),
+  );
+}
 
 function dispatchAiAssignmentDone(result: AiAssignmentResult) {
   const total = result.deterministicAssigned + result.aiAssigned;
@@ -579,12 +657,56 @@ function useLanSyncServerStartup() {
   }, []);
 }
 
+function useOnlineSyncSSE() {
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+
+  useEffect(() => {
+    const settings = loadOnlineSyncSettings();
+    if (!settings.enabled) return;
+
+    void connectSSE(async (event) => {
+      console.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering pull`);
+      try {
+        const result = await runOnlineSyncOnce();
+        if (result.action === 'pull') {
+          emitProjectsAllTimeInvalidated('sse_sync_pull');
+          triggerRefresh('sse_sync_pull');
+          dispatchOnlineSyncDone('pull', 'sse_notification');
+        }
+      } catch (e) {
+        console.warn('[SSE] Auto-sync after notification failed:', e);
+      }
+    });
+
+    const handleSettingsChange = () => {
+      const updated = loadOnlineSyncSettings();
+      if (!updated.enabled) {
+        disconnectSSE();
+      }
+      // Reconnect handled by next mount cycle
+    };
+    window.addEventListener(
+      ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
+      handleSettingsChange,
+    );
+
+    return () => {
+      disconnectSSE();
+      window.removeEventListener(
+        ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
+        handleSettingsChange,
+      );
+    };
+  }, [triggerRefresh]);
+}
+
 export function BackgroundServices() {
   useAutoImporter();
   useAutoSessionRebuild();
   useStartupProjectSyncAndAiAssignment();
   useJobPool();
   useLanSyncServerStartup();
+  useOnlineSyncSSE();
 
   const { t } = useTranslation();
   const { showInfo } = useToast();
@@ -592,9 +714,27 @@ export function BackgroundServices() {
     const count = (e as CustomEvent<number>).detail;
     showInfo(t('background.ai_assigned_sessions', { count }));
   });
+  const handleOnlineSyncDone = useEffectEvent((e: Event) => {
+    const { action, reason } = (e as CustomEvent<{ action: string; reason: string }>).detail;
+    if (action === 'pull') {
+      showInfo(t('background.online_sync_pulled', { defaultValue: 'Dane zsynchronizowane z serwera' }));
+    } else if (action === 'push') {
+      showInfo(t('background.online_sync_pushed', { defaultValue: 'Dane wysłane na serwer' }));
+    }
+  });
+  const handleLanSyncDone = useEffectEvent((e: Event) => {
+    const { peerName } = (e as CustomEvent<{ peerName: string }>).detail;
+    showInfo(t('background.lan_sync_done', { peer: peerName, defaultValue: `LAN sync z ${peerName} zakończony` }));
+  });
   useEffect(() => {
     window.addEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
-    return () => window.removeEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
+    window.addEventListener(ONLINE_SYNC_DONE_EVENT, handleOnlineSyncDone);
+    window.addEventListener(LAN_SYNC_DONE_EVENT, handleLanSyncDone);
+    return () => {
+      window.removeEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
+      window.removeEventListener(ONLINE_SYNC_DONE_EVENT, handleOnlineSyncDone);
+      window.removeEventListener(LAN_SYNC_DONE_EVENT, handleLanSyncDone);
+    };
   }, []);
 
   return <LanPeerNotification />;

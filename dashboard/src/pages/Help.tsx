@@ -806,6 +806,7 @@ export function Help() {
                   t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
                   t18n('help_page.online_sync_daemon_mode'),
                   t18n('help_page.delta_sync_description'),
+                  t18n('help_page.online_sync_sse_realtime'),
                   t18n('help_page.license_activation'),
                   t18n('help_page.demo_mode_and_sync_when_switched_to_the_demo_database_on'),
                 ]}
@@ -844,6 +845,9 @@ export function Help() {
                   t18n('help_page.lan_sync_progress'),
                   t18n('help_page.lan_sync_force_sync'),
                   t18n('help_page.lan_sync_auto_sync'),
+                  t18n('help_page.lan_sync_firewall'),
+                  t18n('help_page.lan_sync_subnet_broadcast'),
+                  t18n('help_page.lan_sync_background_interval'),
                   t18n('help_page.lan_sync_peer_notification'),
                   t18n('help_page.lan_sync_sidebar_indicator'),
                   t18n('help_page.lan_sync_port_config'),

@@ -11,6 +11,8 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use std::os::windows::process::CommandExt;
+
 use crate::config;
 use crate::lan_common;
 use crate::lan_server::LanSyncState;
@@ -233,6 +235,14 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
         return;
     }
 
+    // Log broadcast addresses at startup for diagnostics
+    let bcast_addrs = get_subnet_broadcast_addresses();
+    if bcast_addrs.is_empty() {
+        log::warn!("LAN discovery: NO subnet broadcast addresses found — only 255.255.255.255 will be used");
+    } else {
+        log::info!("LAN discovery: broadcast targets: [255.255.255.255, {}]", bcast_addrs.join(", "));
+    }
+
     let mut peers: HashMap<String, PeerInfo> = HashMap::new();
     let mut peers_dirty = false;
     let mut last_peers_write = Instant::now();
@@ -380,8 +390,6 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     let mut last_sync_attempt = Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or(Instant::now()); // allow immediate first sync
     let mut last_settings_reload = Instant::now().checked_sub(Duration::from_secs(300)).unwrap_or(Instant::now());
     let mut lan_settings = config::load_lan_sync_settings();
-    // Track when the next sync window should open
-    let mut next_sync_window = Instant::now(); // first window starts immediately
     let mut discovery_active = true;
     let mut role_is_forced = forced;
 
@@ -420,39 +428,18 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             }
         }
 
-        // Scheduled discovery: check if we're in the active window
-        if lan_settings.enabled && lan_settings.sync_interval_hours > 0 {
-            let now = Instant::now();
-            if now >= next_sync_window {
-                if !discovery_active {
-                    log::info!("LAN discovery: sync window opened");
-                    discovery_active = true;
-                }
-                // Discovery window duration
-                let window_duration = Duration::from_secs(lan_settings.discovery_duration_minutes as u64 * 60);
-                if now > next_sync_window + window_duration {
-                    // Window closed, schedule next
-                    let interval = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
-                    next_sync_window = now + interval;
-                    if peers.is_empty() {
-                        discovery_active = false;
-                        log::info!("LAN discovery: window closed, next in {}h", lan_settings.sync_interval_hours);
-                    }
-                    // If sync was successful, also deactivate
-                    if let Some(ref state) = sync_state {
-                        if !state.sync_in_progress.load(Ordering::Relaxed) {
-                            let role = state.get_role();
-                            if role != "undecided" {
-                                discovery_active = false;
-                                state.set_role("undecided");
-                            }
-                        }
-                    }
-                }
+        // Discovery stays active as long as LAN sync is enabled.
+        // Beacons must be sent continuously so peers can always find each other.
+        // The sync_interval_hours controls how often SYNC is triggered, not discovery.
+        if lan_settings.enabled {
+            if !discovery_active {
+                log::info!("LAN discovery: re-enabled by settings");
+                discovery_active = true;
+                // Force immediate beacon when re-activated
+                last_beacon = Instant::now().checked_sub(BEACON_INTERVAL).unwrap_or(Instant::now());
             }
-        } else if lan_settings.sync_interval_hours == 0 && lan_settings.enabled {
-            // Manual only — still listen for beacons but don't send proactively
-            discovery_active = true;
+        } else if discovery_active {
+            // Already logged "disabled by settings" above
         }
 
         // Check if we should trigger sync as master
@@ -461,7 +448,12 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             let in_progress = state.sync_in_progress.load(Ordering::Relaxed);
             let handle_done = sync_handle.as_ref().map_or(true, |h| h.is_finished());
 
-            if role == "master" && !in_progress && handle_done && last_sync_attempt.elapsed() >= Duration::from_secs(60) {
+            let sync_cooldown = if lan_settings.sync_interval_hours > 0 {
+                Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600)
+            } else {
+                Duration::from_secs(60) // manual mode: 60s minimum between auto-syncs
+            };
+            if role == "master" && !in_progress && handle_done && last_sync_attempt.elapsed() >= sync_cooldown {
                 // Find a slave peer to sync with
                 if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
                     log::info!("LAN discovery: triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
@@ -582,6 +574,113 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     write_peers_file(&peers);
 }
 
+/// Compute subnet broadcast addresses from local network interfaces.
+/// Uses `ipconfig` on Windows to get real IP + subnet mask, then calculates
+/// the correct broadcast address (IP | ~mask). Falls back to /24 heuristic.
+fn get_subnet_broadcast_addresses() -> Vec<String> {
+    let mut addrs = Vec::new();
+
+    // Try parsing ipconfig output for accurate subnet masks
+    if let Ok(output) = std::process::Command::new("ipconfig")
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .output()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut current_ip: Option<[u8; 4]> = None;
+
+        for line in text.lines() {
+            let trimmed = line.trim();
+            // Match IPv4 address lines (works for both EN and PL Windows)
+            if (trimmed.contains("IPv4") || trimmed.contains("IP Address"))
+                && trimmed.contains(':')
+            {
+                if let Some(ip_str) = trimmed.split(':').last().map(|s| s.trim()) {
+                    current_ip = parse_ipv4(ip_str);
+                }
+            }
+            // Match subnet mask line
+            if (trimmed.contains("Subnet Mask") || trimmed.contains("Maska podsieci"))
+                && trimmed.contains(':')
+            {
+                if let (Some(ip), Some(mask_str)) =
+                    (current_ip.take(), trimmed.split(':').last().map(|s| s.trim()))
+                {
+                    if let Some(mask) = parse_ipv4(mask_str) {
+                        // broadcast = ip | ~mask
+                        let bcast = format!(
+                            "{}.{}.{}.{}",
+                            ip[0] | !mask[0],
+                            ip[1] | !mask[1],
+                            ip[2] | !mask[2],
+                            ip[3] | !mask[3],
+                        );
+                        // Skip loopback, link-local, and 255.255.255.255
+                        if ip[0] != 127 && ip[0] != 169 && bcast != "255.255.255.255" {
+                            if !addrs.contains(&bcast) {
+                                log::info!("LAN discovery: interface {}.{}.{}.{}/{}.{}.{}.{} → broadcast {}",
+                                    ip[0], ip[1], ip[2], ip[3],
+                                    mask[0], mask[1], mask[2], mask[3],
+                                    bcast);
+                                addrs.push(bcast);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: UDP connect trick (needs internet but gets the default route IP)
+    if addrs.is_empty() {
+        if let Ok(sock) = std::net::UdpSocket::bind("0.0.0.0:0") {
+            if sock.connect("8.8.8.8:80").is_ok() {
+                if let Ok(local) = sock.local_addr() {
+                    if let std::net::IpAddr::V4(ipv4) = local.ip() {
+                        let o = ipv4.octets();
+                        let bcast = format!("{}.{}.{}.255", o[0], o[1], o[2]);
+                        log::info!("LAN discovery: fallback broadcast {} (from default route, assuming /24)", bcast);
+                        addrs.push(bcast);
+                    }
+                }
+            }
+        }
+    }
+
+    if addrs.is_empty() {
+        log::warn!("LAN discovery: could not determine any subnet broadcast address");
+    }
+    addrs
+}
+
+fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
+    let parts: Vec<&str> = s.split('.').collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    Some([
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        parts[2].parse().ok()?,
+        parts[3].parse().ok()?,
+    ])
+}
+
+/// Send data to 255.255.255.255 + subnet broadcast addresses for better compatibility.
+fn broadcast_to_all(socket: &UdpSocket, data: &[u8]) {
+    // Global broadcast (may be blocked by some routers/firewalls)
+    let global = format!("255.255.255.255:{}", DISCOVERY_PORT);
+    if let Err(e) = socket.send_to(data, &global) {
+        log::warn!("LAN discovery: failed to send to global broadcast: {}", e);
+    }
+    // Subnet-specific broadcast (more reliable on most networks)
+    for addr in get_subnet_broadcast_addresses() {
+        let target = format!("{}:{}", addr, DISCOVERY_PORT);
+        if let Err(e) = socket.send_to(data, &target) {
+            log::warn!("LAN discovery: failed to send to subnet {}: {}", target, e);
+        }
+    }
+}
+
 fn send_beacon(
     socket: &UdpSocket,
     device_id: &str,
@@ -605,9 +704,38 @@ fn send_beacon(
         uptime_secs,
     };
     if let Ok(json) = serde_json::to_string(&packet) {
-        let target = format!("255.255.255.255:{}", DISCOVERY_PORT);
+        broadcast_to_all(socket, json.as_bytes());
+    }
+}
+
+/// Send beacon directly to a specific IP (unicast) — used for discover responses.
+fn send_beacon_to(
+    socket: &UdpSocket,
+    device_id: &str,
+    machine_name: &str,
+    dashboard_running: bool,
+    version: &str,
+    role: &str,
+    uptime_secs: u64,
+    target_ip: &str,
+) {
+    let packet = BeaconPacket {
+        packet_type: "timeflow_beacon".to_string(),
+        version: PROTOCOL_VERSION,
+        device_id: device_id.to_string(),
+        machine_name: machine_name.to_string(),
+        dashboard_port: DASHBOARD_PORT_DEFAULT,
+        dashboard_running,
+        timeflow_version: version.to_string(),
+        role: role.to_string(),
+        sync_marker_hash: None,
+        sync_ready: true,
+        uptime_secs,
+    };
+    if let Ok(json) = serde_json::to_string(&packet) {
+        let target = format!("{}:{}", target_ip, DISCOVERY_PORT);
         if let Err(e) = socket.send_to(json.as_bytes(), &target) {
-            log::warn!("LAN discovery: failed to send beacon: {}", e);
+            log::warn!("LAN discovery: failed to send beacon to {}: {}", target, e);
         }
     }
 }
@@ -619,10 +747,7 @@ fn send_discover(socket: &UdpSocket, device_id: &str) {
         device_id: device_id.to_string(),
     };
     if let Ok(json) = serde_json::to_string(&packet) {
-        let target = format!("255.255.255.255:{}", DISCOVERY_PORT);
-        if let Err(e) = socket.send_to(json.as_bytes(), &target) {
-            log::warn!("LAN discovery: failed to send discover: {}", e);
-        }
+        broadcast_to_all(socket, json.as_bytes());
     }
 }
 
@@ -730,7 +855,8 @@ fn handle_packet(
             let current_role = sync_state.as_ref()
                 .map(|s| s.get_role())
                 .unwrap_or_else(|| "undecided".to_string());
-            send_beacon(
+            // Respond directly to the requester's IP (unicast) — broadcast may be blocked
+            send_beacon_to(
                 socket,
                 my_device_id,
                 my_machine_name,
@@ -738,6 +864,7 @@ fn handle_packet(
                 my_version,
                 &current_role,
                 my_uptime_secs,
+                src_ip,
             );
         }
     }

@@ -77,6 +77,8 @@ export interface OnlineSyncRunResult {
 
 export interface RunOnlineSyncOptions {
   ignoreStartupToggle?: boolean;
+  /** When true, autoSyncOnStartup=false will block this sync. Only set for the initial startup sync. */
+  isStartupSync?: boolean;
 }
 
 export type OnlineSyncIndicatorStatus =

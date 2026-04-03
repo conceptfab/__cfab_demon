@@ -135,12 +135,14 @@ export function runJobPoolTick(options: {
   nextAutoSplitRef: MutableRefObject<number>;
   nextSyncIntervalRef: MutableRefObject<number>;
   nextSyncPollRef: MutableRefObject<number>;
+  nextLanSyncRef: MutableRefObject<number>;
   syncSettingsRef: MutableRefObject<OnlineSyncSettings>;
   refreshDiagnostics: () => void | Promise<unknown>;
   runRefresh: () => Promise<void>;
   checkFileChange: () => Promise<void>;
   runAutoSplit: () => Promise<void>;
   runSync: (reason: string, isAuto?: boolean) => Promise<void>;
+  runLanSyncInterval: () => Promise<void>;
 }): void {
   const {
     autoImportDone,
@@ -151,12 +153,14 @@ export function runJobPoolTick(options: {
     nextAutoSplitRef,
     nextSyncIntervalRef,
     nextSyncPollRef,
+    nextLanSyncRef,
     syncSettingsRef,
     refreshDiagnostics,
     runRefresh,
     checkFileChange,
     runAutoSplit,
     runSync,
+    runLanSyncInterval,
   } = options;
 
   if (autoImportDone && now >= nextAutoSplitRef.current) {
@@ -182,6 +186,13 @@ export function runJobPoolTick(options: {
   }
 
   if (!autoImportDone) return;
+
+  // LAN sync interval (independent of online sync settings)
+  if (now >= nextLanSyncRef.current) {
+    // Re-schedule will be set by the callback after reading LAN settings
+    nextLanSyncRef.current = now + 60_000; // temporary; callback reschedules properly
+    void runLanSyncInterval();
+  }
 
   const syncSettings = syncSettingsRef.current;
   if (!syncSettings.enabled) return;

@@ -1747,6 +1747,10 @@
     "lan_sync_peer_notification": "Peer notification – a floating notification appears when a new TIMEFLOW instance is detected. You can sync immediately or dismiss the notification.",
     "lan_sync_sidebar_indicator": "Sidebar indicator – the LAN status in the sidebar shows the name of a discovered peer (or 'No peers'). Click it to open LAN Sync settings.",
     "lan_sync_port_config": "Server port – configurable port for the embedded HTTP server (1024–65535). Both devices must be on the same LAN/Wi-Fi.",
+    "lan_sync_firewall": "Automatic Firewall – on first startup, the daemon creates Windows Firewall rules for UDP 47892 (discovery) and TCP 47891 (sync server) for ALL network profiles (private, public, domain). If the daemon lacks admin privileges, a warning is logged and you may need to add the rules manually.",
+    "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery reads actual subnet masks from network interfaces and calculates correct broadcast addresses. Discover responses are sent directly to the requester (unicast) for reliability when broadcast is blocked.",
+    "lan_sync_background_interval": "Background Sync Interval – when a sync interval is configured (4h/8h/12h/24h/48h), TIMEFLOW automatically syncs with the first available online peer in the background, even without manual action.",
+    "online_sync_sse_realtime": "Real-time Notifications – when online sync is enabled, TIMEFLOW maintains a live connection to the server. When another device pushes data, your device is instantly notified and pulls the update automatically.",
     "lan_sync_setup_title": "First LAN Sync setup",
     "lan_sync_setup_what_it_does": "What it does: LAN Sync exchanges data directly between two TIMEFLOW instances on the same network — no server, no cloud, no account needed.",
     "lan_sync_setup_how_to_start": "How to start: enable LAN Sync in Settings on both machines, make sure they are on the same LAN/Wi-Fi, and wait for peer discovery (up to 30 seconds).",
@@ -1885,7 +1889,10 @@
     }
   },
   "background": {
-    "ai_assigned_sessions": "AI auto-assigned {{count}} session(s)"
+    "ai_assigned_sessions": "AI auto-assigned {{count}} session(s)",
+    "online_sync_pulled": "Data synchronized from server",
+    "online_sync_pushed": "Data sent to server",
+    "lan_sync_done": "LAN sync with {{peer}} completed"
   },
   "dashboard_page": {
     "empty_state_title": "No tracked activity yet",

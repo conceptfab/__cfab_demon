@@ -1747,6 +1747,10 @@
     "lan_sync_peer_notification": "Powiadomienie o peer – pływające powiadomienie pojawia się po wykryciu nowej instancji TIMEFLOW. Możesz zsynchronizować natychmiast lub odrzucić powiadomienie.",
     "lan_sync_sidebar_indicator": "Wskaźnik w pasku bocznym – status LAN w sidebarze pokazuje nazwę wykrytego peera (lub 'Brak peerów'). Kliknij, aby otworzyć ustawienia LAN Sync.",
     "lan_sync_port_config": "Port serwera – konfigurowalny port wbudowanego serwera HTTP (1024–65535). Oba urządzenia muszą być w tej samej sieci LAN/Wi-Fi.",
+    "lan_sync_firewall": "Automatyczny Firewall – przy pierwszym uruchomieniu daemon tworzy reguły Windows Firewall dla UDP 47892 (discovery) i TCP 47891 (serwer sync) dla wszystkich profili sieciowych (prywatna, publiczna, domena). Jeśli daemon nie ma uprawnień administratora, ostrzeżenie jest logowane — reguły trzeba dodać ręcznie.",
+    "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery automatycznie odczytuje maski podsieci z interfejsów sieciowych i oblicza poprawny adres broadcast. Odpowiedzi na zapytania discover są wysyłane bezpośrednio do pytającego (unicast) dla niezawodności gdy broadcast jest blokowany.",
+    "lan_sync_background_interval": "Automatyczny sync w tle – gdy ustawiony jest interwał (4h/8h/12h/24h/48h), TIMEFLOW automatycznie synchronizuje się z pierwszym dostępnym peerem w tle, bez konieczności ręcznej akcji.",
+    "online_sync_sse_realtime": "Powiadomienia w czasie rzeczywistym – gdy online sync jest włączony, TIMEFLOW utrzymuje połączenie z serwerem. Gdy inne urządzenie wyśle dane, Twoje urządzenie jest natychmiast powiadamiane i automatycznie pobiera aktualizację.",
     "lan_sync_setup_title": "Pierwsza konfiguracja LAN Sync",
     "lan_sync_setup_what_it_does": "Co robi: LAN Sync wymienia dane bezpośrednio między dwiema instancjami TIMEFLOW w tej samej sieci — bez serwera, chmury ani konta.",
     "lan_sync_setup_how_to_start": "Jak zacząć: włącz LAN Sync w Ustawieniach na obu maszynach, upewnij się że są w tej samej sieci LAN/Wi-Fi i poczekaj na wykrycie peera (do 30 sekund).",
@@ -1885,7 +1889,10 @@
     }
   },
   "background": {
-    "ai_assigned_sessions": "AI automatycznie przypisał {{count}} sesji"
+    "ai_assigned_sessions": "AI automatycznie przypisał {{count}} sesji",
+    "online_sync_pulled": "Dane zsynchronizowane z serwera",
+    "online_sync_pushed": "Dane wysłane na serwer",
+    "lan_sync_done": "LAN sync z {{peer}} zakończony"
   },
   "dashboard_page": {
     "empty_state_title": "Brak zarejestrowanej aktywności",
