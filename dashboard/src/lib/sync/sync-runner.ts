@@ -939,10 +939,12 @@ async function runOnlineSyncOnceImpl(
 
     if (
       status.reason === 'same_hash' ||
-      status.reason === 'same_revision_hash_not_provided'
+      status.reason === 'same_revision_hash_not_provided' ||
+      status.reason === 'same_revision_hash_drift'
     ) {
       state.localRevision = status.serverRevision;
       state.localHash = status.serverHash;
+      state.serverHash = status.serverHash;
     }
     state.lastSyncAt = new Date().toISOString();
     saveOnlineSyncState(state, settings);
