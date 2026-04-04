@@ -2,8 +2,11 @@
 
 use crate::config;
 use std::sync::Mutex;
+use std::time::Instant;
 
 static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
+static LOG_SETTINGS_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
+const LOG_SETTINGS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Deterministic FNV-1a 64-bit hash (same result across processes/machines).
 fn fnv1a_64(data: &[u8]) -> u64 {
@@ -66,8 +69,24 @@ pub fn sync_log(msg: &str) {
             }
         }
     };
-    let log_settings = config::load_log_settings();
-    let max_bytes = (log_settings.max_log_size_kb as u64) * 1024;
+    let max_bytes = {
+        let cached = LOG_SETTINGS_CACHE.lock().ok().and_then(|g| {
+            g.as_ref().and_then(|(ts, val)| {
+                if ts.elapsed() < LOG_SETTINGS_CACHE_TTL { Some(*val) } else { None }
+            })
+        });
+        match cached {
+            Some(v) => v,
+            None => {
+                let settings = config::load_log_settings();
+                let v = (settings.max_log_size_kb as u64) * 1024;
+                if let Ok(mut g) = LOG_SETTINGS_CACHE.lock() {
+                    *g = Some((Instant::now(), v));
+                }
+                v
+            }
+        }
+    };
     // Rotate if exceeds max size
     if let Ok(meta) = std::fs::metadata(&path) {
         if meta.len() > max_bytes {
