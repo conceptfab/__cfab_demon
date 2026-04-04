@@ -30,6 +30,7 @@ export function ReportView() {
   const [showAll, setShowAll] = useState(false);
   const template = useMemo(() => getTemplate(reportTemplateId || 'default'), [reportTemplateId]);
   const SCREEN_LIMIT = 100;
+  const [generatedAt] = useState(() => format(new Date(), 'yyyy-MM-dd HH:mm'));
 
   const handlePrint = useCallback(() => {
     if (!report) return;
@@ -48,10 +49,9 @@ export function ReportView() {
         });
       });
     }
-  }, [report]);
+  }, [report, t]);
   const sections = template.sections;
   const has = (id: string) => sections.includes(id);
-  const generatedAt = format(new Date(), 'yyyy-MM-dd HH:mm');
 
   useEffect(() => {
     if (!projectPageId) return;

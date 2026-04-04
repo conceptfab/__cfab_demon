@@ -330,7 +330,7 @@ export function ProjectDayTimeline({
       }
     });
     setCtxMenu(null);
-  }, [ctxMenu, onUpdateSessionComment]);
+  }, [ctxMenu, onUpdateSessionComment, t]);
 
   const handleOpenClusterDetails = useCallback(() => {
     if (!ctxMenu || ctxMenu.type !== "assign") return;

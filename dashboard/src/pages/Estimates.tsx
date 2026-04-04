@@ -30,18 +30,13 @@ import { getErrorMessage } from '@/lib/utils';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import { useTranslation } from 'react-i18next';
 import { formatRateInput, parseRateInput } from '@/lib/form-validation';
-import {
-  APP_REFRESH_EVENT,
-  LOCAL_DATA_CHANGED_EVENT,
-  type AppRefreshDetail,
-  type LocalDataChangedDetail,
-} from '@/lib/sync-events';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { shouldRefreshEstimatesPage } from '@/lib/page-refresh-reasons';
 
 const MAX_RATE = 100000;
 
 export function Estimates() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { setCurrentPage, setSessionsFocusRange, setSessionsFocusProject } =
     useUIStore();
   const {
@@ -68,60 +63,30 @@ export function Estimates() {
   const [tableError, setTableError] = useState<string | null>(null);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
 
+  const locale = i18n.resolvedLanguage;
   const currency = useMemo(
     () =>
-      new Intl.NumberFormat(undefined, {
+      new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: currencyCode,
         maximumFractionDigits: 2,
       }),
-    [currencyCode],
+    [currencyCode, locale],
   );
   const decimal = useMemo(
     () =>
-      new Intl.NumberFormat(undefined, {
+      new Intl.NumberFormat(locale, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       }),
-    [],
+    [locale],
   );
 
-  useEffect(() => {
-    const handleLocalDataChange = (event: Event) => {
-      const customEvent = event as CustomEvent<LocalDataChangedDetail>;
-      const reason = customEvent.detail?.reason;
-      if (!reason || !shouldRefreshEstimatesPage(reason)) {
-        return;
-      }
+  usePageRefreshListener((reasons) => {
+    if (reasons.some((reason) => shouldRefreshEstimatesPage(reason))) {
       setDataReloadVersion((prev) => prev + 1);
-    };
-
-    const handleAppRefresh = (event: Event) => {
-      const customEvent = event as CustomEvent<AppRefreshDetail>;
-      const reasons = customEvent.detail?.reasons ?? [];
-      if (!reasons.some((reason) => shouldRefreshEstimatesPage(reason))) {
-        return;
-      }
-      setDataReloadVersion((prev) => prev + 1);
-    };
-
-    window.addEventListener(
-      LOCAL_DATA_CHANGED_EVENT,
-      handleLocalDataChange as EventListener,
-    );
-    window.addEventListener(APP_REFRESH_EVENT, handleAppRefresh as EventListener);
-
-    return () => {
-      window.removeEventListener(
-        LOCAL_DATA_CHANGED_EVENT,
-        handleLocalDataChange as EventListener,
-      );
-      window.removeEventListener(
-        APP_REFRESH_EVENT,
-        handleAppRefresh as EventListener,
-      );
-    };
-  }, []);
+    }
+  });
 
   useEffect(() => {
     let cancelled = false;

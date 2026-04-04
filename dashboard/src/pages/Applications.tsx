@@ -389,7 +389,7 @@ export function Applications() {
               placeholder={t('applications_page.monitored.exe_placeholder')}
               value={newExe}
               onChange={(e) => setNewExe(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleAddApp(); }}
             />
             <input
               className="flex h-8 flex-1 rounded-md border bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
@@ -399,7 +399,7 @@ export function Applications() {
               )}
               value={newDisplay}
               onChange={(e) => setNewDisplay(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddApp()}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleAddApp(); }}
             />
             <Button
               size="sm"

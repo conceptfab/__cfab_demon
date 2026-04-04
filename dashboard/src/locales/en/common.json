@@ -1726,6 +1726,7 @@
     "danger_zone_two_step_confirmation_first_arm_the_button_t": "Danger Zone – two-step confirmation: first \"arm\" the button, then click to confirm. Protects against accidental database wipe.",
     "manual_session_rebuild_button_in_the_session_management": "Manual session rebuild – button in the Session Management card forces session re-merge (gap fill) without restarting the app.",
     "unsaved_changes_warning_before_leaving_settings": "Unsaved changes in Settings – when you try to leave without saving, TIMEFLOW asks for confirmation. Closing or refreshing the window also triggers the browser warning.",
+    "dev_log_management_centralized_log_viewer": "Dev / Log Management – centralized log viewer and configuration for all daemon channels (Daemon, LAN Sync, Online Sync, Dashboard). Set log levels, max file size with auto-rotation, view live log content, and clear individual log files.",
     "project_page_detail_title": "ProjectPage in practice",
     "project_page_detail_what_it_does": "What it does: ProjectPage combines the project timeline, recent comments, manual sessions, data compaction, time reset, and report generation in one view.",
     "project_page_detail_when_to_use": "When to use: open this view when you want to review one project end-to-end instead of jumping between multiple screens.",
@@ -1905,5 +1906,19 @@
     "empty_state_title": "No tracked activity yet",
     "empty_state_description": "Start the daemon to begin tracking your work",
     "go_to_daemon": "Go to Daemon"
+  },
+  "dev_settings": {
+    "title": "DEV — Log Management",
+    "description": "Centralized log viewer and configuration. All logs are stored in the logs/ folder.",
+    "log_levels": "Log Levels",
+    "max_log_size": "Max log file size",
+    "max_log_size_desc": "Per file, auto-rotated when exceeded",
+    "log_files": "Log Files",
+    "open_folder": "Open Folder",
+    "empty": "empty",
+    "clear_log": "Clear log",
+    "auto_scroll": "Auto-scroll",
+    "refresh": "Refresh",
+    "empty_content": "(empty)"
   }
 }

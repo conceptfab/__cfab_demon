@@ -185,7 +185,8 @@ impl TrayState {
 
     fn update_tray_appearance(&self, tray: &nwg::TrayNotification, attention: i64, lang: Lang) {
         if self.is_syncing() {
-            tray.set_tip(&format!("{} - LAN Sync...", APP_NAME));
+            let lang = self.current_lang.get();
+            tray.set_tip(&format!("{} - {}", APP_NAME, lang.t(TrayText::LanSyncInProgress)));
             if let Some(ref icon_sync) = self.icon_sync {
                 tray.set_icon(icon_sync);
             }
@@ -263,10 +264,12 @@ impl TrayState {
                 let role = state.get_role();
                 let syncing = state.sync_in_progress.load(Ordering::Relaxed);
                 let frozen = state.db_frozen.load(Ordering::Relaxed);
+                let prefix = lang.t(TrayText::SyncStatusPrefix);
                 let status = if syncing {
-                    format!("Sync: {} (frozen={})", role, frozen)
+                    let frozen_label = lang.t(TrayText::SyncFrozenSuffix);
+                    format!("{}: {} ({}={})", prefix, role, frozen_label, frozen)
                 } else {
-                    format!("Sync: {}", role)
+                    format!("{}: {}", prefix, role)
                 };
                 set_menu_item_text(&self.menu_sync_status.borrow(), &status);
 
@@ -549,7 +552,7 @@ pub fn run(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<crate::lan_serve
     let mut menu_sync_status = nwg::MenuItem::default();
     try_build!(
         nwg::MenuItem::builder()
-            .text("Sync: idle")
+            .text(initial_lang.t(TrayText::SyncIdle))
             .disabled(true)
             .parent(&menu),
         &mut menu_sync_status,

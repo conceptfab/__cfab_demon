@@ -5,8 +5,10 @@
 
 /requesting-code-review Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń oraz funkcjonalności nie opisanej w zakładkach help/pomoc. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 
-- smtp maila dla bug huntera
+<!-- - smtp maila dla bug huntera -->
 
+
+data.md #8 (File activity spans) — zmiana modelu danych StoredFileEntry z kaskadowym wpływem na dashboard, sync, migrację. To osobny plan. Pomijam w tym planie.
 ---
 
 ISSUE-8: podwójne parsowanie ipconfig (wymaga cache warstwy)

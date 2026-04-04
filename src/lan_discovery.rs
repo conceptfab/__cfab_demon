@@ -18,6 +18,30 @@ use crate::lan_common;
 use crate::lan_server::LanSyncState;
 use crate::lan_sync_orchestrator;
 
+/// Cached ipconfig output to avoid spawning the process on every beacon (every 30s).
+/// TTL: 120 seconds.
+static IPCONFIG_CACHE: std::sync::Mutex<Option<(Instant, String)>> = std::sync::Mutex::new(None);
+const IPCONFIG_CACHE_TTL: Duration = Duration::from_secs(120);
+
+fn get_ipconfig_output() -> Option<String> {
+    if let Ok(guard) = IPCONFIG_CACHE.lock() {
+        if let Some((ts, ref cached)) = *guard {
+            if ts.elapsed() < IPCONFIG_CACHE_TTL {
+                return Some(cached.clone());
+            }
+        }
+    }
+    let output = std::process::Command::new("ipconfig")
+        .creation_flags(0x08000000)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout).into_owned();
+    if let Ok(mut guard) = IPCONFIG_CACHE.lock() {
+        *guard = Some((Instant::now(), text.clone()));
+    }
+    Some(text)
+}
+
 const DISCOVERY_PORT: u16 = 47892;
 const DASHBOARD_PORT_DEFAULT: u16 = 47891;
 const BEACON_INTERVAL: Duration = Duration::from_secs(30);
@@ -641,12 +665,8 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
 fn get_subnet_broadcast_addresses() -> Vec<String> {
     let mut addrs = Vec::new();
 
-    // Try parsing ipconfig output for accurate subnet masks
-    if let Ok(output) = std::process::Command::new("ipconfig")
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
-        .output()
-    {
-        let text = String::from_utf8_lossy(&output.stdout);
+    // Try parsing ipconfig output for accurate subnet masks (cached)
+    if let Some(text) = get_ipconfig_output() {
         let mut current_ip: Option<[u8; 4]> = None;
 
         for line in text.lines() {
@@ -785,15 +805,10 @@ impl LocalInterface {
 fn get_local_interfaces() -> Vec<LocalInterface> {
     let mut interfaces = Vec::new();
 
-    let output = match std::process::Command::new("ipconfig")
-        .creation_flags(0x08000000)
-        .output()
-    {
-        Ok(o) => o,
-        Err(_) => return interfaces,
+    let text = match get_ipconfig_output() {
+        Some(t) => t,
+        None => return interfaces,
     };
-
-    let text = String::from_utf8_lossy(&output.stdout);
     let mut current_ip: Option<[u8; 4]> = None;
 
     for line in text.lines() {

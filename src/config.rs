@@ -338,6 +338,18 @@ pub fn load() -> Config {
                 "Failed to read monitored_apps from dashboard DB (fallback to JSON): {}",
                 e
             );
+            // If DB read failed and JSON also returned default, prefer cached config
+            // to avoid losing monitored apps during a concurrent write
+            if cfg.apps.is_empty() {
+                if let Ok(guard) = CONFIG_CACHE.lock() {
+                    if let Some(cached) = guard.as_ref() {
+                        if !cached.config.apps.is_empty() {
+                            log::info!("Using previously cached config (DB and JSON both empty/failed)");
+                            return cached.config.clone();
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -748,14 +748,14 @@ export function BackgroundServices() {
   const handleOnlineSyncDone = useEffectEvent((e: Event) => {
     const { action, reason } = (e as CustomEvent<{ action: string; reason: string }>).detail;
     if (action === 'pull') {
-      showInfo(t('background.online_sync_pulled', { defaultValue: 'Dane zsynchronizowane z serwera' }));
+      showInfo(t('background.online_sync_pulled', { defaultValue: 'Data synchronized from server' }));
     } else if (action === 'push') {
-      showInfo(t('background.online_sync_pushed', { defaultValue: 'Dane wysłane na serwer' }));
+      showInfo(t('background.online_sync_pushed', { defaultValue: 'Data sent to server' }));
     }
   });
   const handleLanSyncDone = useEffectEvent((e: Event) => {
     const { peerName } = (e as CustomEvent<{ peerName: string }>).detail;
-    showInfo(t('background.lan_sync_done', { peer: peerName, defaultValue: `LAN sync z ${peerName} zakończony` }));
+    showInfo(t('background.lan_sync_done', { peer: peerName, defaultValue: `LAN sync with ${peerName} completed` }));
   });
   useEffect(() => {
     window.addEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);

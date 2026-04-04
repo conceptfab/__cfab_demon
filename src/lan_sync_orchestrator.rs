@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_RESPONSE_BODY: usize = 100 * 1024 * 1024; // 100 MB — prevent OOM from malicious Content-Length
 
 // ── Sync types ──
 
@@ -141,6 +142,12 @@ fn http_request_with_timeout(
     }
 
     // Read body — chunked with progress reporting
+    if response_content_length > MAX_RESPONSE_BODY {
+        return Err(format!(
+            "Response too large: {} bytes (max {})",
+            response_content_length, MAX_RESPONSE_BODY
+        ));
+    }
     if response_content_length > 0 {
         let total = response_content_length as u64;
         let mut buf = vec![0u8; response_content_length];
@@ -227,7 +234,9 @@ pub fn run_sync_as_master_with_options(
                 }
                 Err(e) => {
                     sync_log(&format!("[!] Proba {}/{} nieudana: {}", attempt, MAX_RETRIES, e));
-                    sync_state.unfreeze();
+                    // Unfreeze DB but keep sync_in_progress = true to prevent
+                    // another thread from starting a concurrent sync during backoff.
+                    sync_state.db_frozen.store(false, Ordering::SeqCst);
                     // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (5 min)
                     let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer.ip, peer.port);
                     if let Err(ue) = http_post(&slave_unfreeze_url, "{}") {
@@ -343,7 +352,7 @@ fn execute_master_sync(
     sync_state.set_progress(6, "downloading_from_slave", "download");
     let since = match transfer_mode.as_str() {
         "delta" => neg.slave_marker_hash.as_deref()
-            .and_then(|_| get_local_marker_created_at_with_conn(&conn))
+            .and_then(|hash| get_marker_created_at_by_hash(&conn, hash))
             .unwrap_or_else(|| "1970-01-01 00:00:00".to_string()),
         _ => "1970-01-01 00:00:00".to_string(),
     };
@@ -533,5 +542,19 @@ fn get_local_marker_created_at_with_conn(conn: &rusqlite::Connection) -> Option<
         |row| row.get(0),
     )
     .ok()
+}
+
+/// Find the created_at timestamp for a specific marker hash.
+/// Used to determine the correct `since` for delta sync — we need
+/// the date of the marker matching the remote peer's hash, not our latest.
+fn get_marker_created_at_by_hash(conn: &rusqlite::Connection, hash: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT created_at FROM sync_markers WHERE marker_hash = ?1 LIMIT 1",
+        [hash],
+        |row| row.get(0),
+    )
+    .ok()
+    // Fallback to latest marker if hash not found locally
+    .or_else(|| get_local_marker_created_at_with_conn(conn))
 }
 

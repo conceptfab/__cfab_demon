@@ -64,6 +64,18 @@ impl Lang {
 
             (Lang::Pl, TrayText::SyncFailed) => "Synchronizacja nie powiodła się",
             (Lang::En, TrayText::SyncFailed) => "Synchronization failed",
+
+            (Lang::Pl, TrayText::SyncIdle) => "Sync: bezczynny",
+            (Lang::En, TrayText::SyncIdle) => "Sync: idle",
+
+            (Lang::Pl, TrayText::SyncStatusPrefix) => "Sync",
+            (Lang::En, TrayText::SyncStatusPrefix) => "Sync",
+
+            (Lang::Pl, TrayText::SyncFrozenSuffix) => "zamrożony",
+            (Lang::En, TrayText::SyncFrozenSuffix) => "frozen",
+
+            (Lang::Pl, TrayText::LanSyncInProgress) => "LAN Sync...",
+            (Lang::En, TrayText::LanSyncInProgress) => "LAN Sync...",
         }
     }
 }
@@ -85,6 +97,10 @@ pub enum TrayText {
     SyncCompleted,
     SyncNotNeeded,
     SyncFailed,
+    SyncIdle,
+    SyncStatusPrefix,
+    SyncFrozenSuffix,
+    LanSyncInProgress,
 }
 
 fn language_file_path() -> Option<PathBuf> {

@@ -14,8 +14,6 @@ use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const SYNC_TIMEOUT: Duration = Duration::from_secs(1800); // 30 min
-#[allow(dead_code)]
-const STEP_TIMEOUT: Duration = Duration::from_secs(600); // 10 min per step
 const MAX_POLL_ATTEMPTS: u32 = 200; // ~10 min at 3s intervals
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RETRIES: u32 = 3;
@@ -260,14 +258,6 @@ fn check_timeout_and_stop(start: Instant, stop: &AtomicBool) -> Result<(), Strin
     }
     if stop.load(Ordering::Relaxed) {
         return Err("Stop signal received".to_string());
-    }
-    Ok(())
-}
-
-#[allow(dead_code)]
-fn check_step_timeout(step_start: Instant) -> Result<(), String> {
-    if step_start.elapsed() > STEP_TIMEOUT {
-        return Err("Step timeout (10 min)".to_string());
     }
     Ok(())
 }
@@ -737,6 +727,7 @@ pub fn run_async_delta_sync(
         }
     }
 
+    sync_state.sync_in_progress.store(false, Ordering::SeqCst);
     sync_state.reset_progress();
 }
 
@@ -781,6 +772,8 @@ pub fn run_online_sync(
             }
         }
     }
+    // Ensure sync_in_progress is always reset, even on success
+    sync_state.sync_in_progress.store(false, Ordering::SeqCst);
     sync_state.set_role("undecided");
 }
 
@@ -825,6 +818,8 @@ pub fn run_online_sync_forced(
             }
         }
     }
+    // Ensure sync_in_progress is always reset, even on success
+    sync_state.sync_in_progress.store(false, Ordering::SeqCst);
     sync_state.set_role("undecided");
 }
 

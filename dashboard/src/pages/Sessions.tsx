@@ -251,7 +251,7 @@ export function Sessions() {
   }, []);
 
   useEffect(() => {
-    void loadProjectsAllTime().catch(console.error);
+    void loadProjectsAllTime();
   }, []);
 
   const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{

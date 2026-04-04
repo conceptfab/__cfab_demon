@@ -1726,6 +1726,7 @@
     "danger_zone_two_step_confirmation_first_arm_the_button_t": "Danger Zone (Strefa zagrożenia) – dwuetapowe potwierdzenie: najpierw „uzbrojenie\" przyciskiem, potem kliknięcie potwierdzenia. Chroni przed przypadkowym wyczyszczeniem bazy.",
     "manual_session_rebuild_button_in_the_session_management": "Ręczny rebuild sesji – przycisk w karcie Session Management wymusza ponowne scalenie sesji (gap fill) bez restartu aplikacji.",
     "unsaved_changes_warning_before_leaving_settings": "Niezapisane zmiany w ustawieniach – przy próbie opuszczenia ekranu bez zapisu TIMEFLOW poprosi o potwierdzenie. Zamknięcie lub odświeżenie okna także wywoła ostrzeżenie przeglądarki.",
+    "dev_log_management_centralized_log_viewer": "Dev / Zarządzanie logami – centralny podgląd i konfiguracja logów dla wszystkich kanałów demona (Daemon, LAN Sync, Online Sync, Dashboard). Ustaw poziomy logów, maks. rozmiar pliku z auto-rotacją, podglądaj logi na żywo i czyść poszczególne pliki logów.",
     "project_page_detail_title": "ProjectPage w praktyce",
     "project_page_detail_what_it_does": "Co robi: ProjectPage zbiera w jednym widoku timeline projektu, ostatnie komentarze, sesje ręczne, kompaktowanie danych, reset czasu i generowanie raportu.",
     "project_page_detail_when_to_use": "Kiedy użyć: otwórz ten widok, gdy chcesz przeanalizować jeden projekt end-to-end zamiast przeskakiwać między zakładkami.",
@@ -1905,5 +1906,19 @@
     "empty_state_title": "Brak zarejestrowanej aktywności",
     "empty_state_description": "Uruchom demona, aby rozpocząć śledzenie pracy",
     "go_to_daemon": "Przejdź do Demona"
+  },
+  "dev_settings": {
+    "title": "DEV — Zarządzanie logami",
+    "description": "Centralny podgląd i konfiguracja logów. Wszystkie logi znajdują się w folderze logs/.",
+    "log_levels": "Poziomy logów",
+    "max_log_size": "Maksymalny rozmiar pliku logu",
+    "max_log_size_desc": "Na plik, automatyczna rotacja po przekroczeniu",
+    "log_files": "Pliki logów",
+    "open_folder": "Otwórz folder",
+    "empty": "pusty",
+    "clear_log": "Wyczyść log",
+    "auto_scroll": "Auto-przewijanie",
+    "refresh": "Odśwież",
+    "empty_content": "(pusty)"
   }
 }

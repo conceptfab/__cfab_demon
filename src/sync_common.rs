@@ -88,6 +88,11 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
 
 /// Restore the most recent sync backup by copying it over the current database.
 /// Uses file copy since the backup feature may not be enabled in rusqlite.
+///
+/// SAFETY NOTE: The caller's connection remains open during the file copy.
+/// We mitigate this by checkpointing WAL, flushing cache, and removing WAL/SHM
+/// files after copy. Callers should ideally re-open the connection after restore,
+/// but this is not enforced by the API to avoid a large refactor across all call sites.
 pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     let backup_dir = dir.join("sync_backups");
@@ -118,6 +123,12 @@ pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String
 
     std::fs::copy(latest, &db_path)
         .map_err(|e| format!("File copy restore failed: {}", e))?;
+
+    // Remove WAL and SHM files that may reference the old database state
+    let wal_path = db_path.with_extension("db-wal");
+    let shm_path = db_path.with_extension("db-shm");
+    let _ = std::fs::remove_file(&wal_path);
+    let _ = std::fs::remove_file(&shm_path);
 
     log::info!("Database restored from backup: {:?}", latest);
     Ok(())

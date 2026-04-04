@@ -547,6 +547,7 @@ export function Help() {
                   t18n('help_page.reset_ai_knowledge_button_that_clears_all_learned_model'),
                   t18n('help_page.how_to_train_and_configure_card_built_in_guide_with_thre'),
                   t18n('help_page.ai_status_uses_central_background_diagnostics_and_the_me'),
+                  t18n('help_page.training_blacklists_exclude_selected_applications_and_fo'),
                 ]}
               >
                 <div className="text-sm space-y-4 text-foreground/90 leading-relaxed">
@@ -930,6 +931,7 @@ export function Help() {
                   t18n('help_page.danger_zone_two_step_confirmation_first_arm_the_button_t'),
                   t18n('help_page.manual_session_rebuild_button_in_the_session_management'),
                   t18n('help_page.unsaved_changes_warning_before_leaving_settings'),
+                  t18n('help_page.dev_log_management_centralized_log_viewer'),
                 ]}
               >
                 <HelpDetailsBlock

@@ -245,15 +245,22 @@ export function useProjectsData(projectDialogId: number | null) {
       setLoadingExtra(false);
       return;
     }
+    let cancelled = false;
     setLoadingExtra(true);
     projectsApi
       .getProjectExtraInfo(projectDialogId, ALL_TIME_DATE_RANGE)
       .then((info) => {
+        if (cancelled) return;
         projectExtraInfoCacheRef.current[projectDialogId] = info;
         setExtraInfo(info);
       })
       .catch(console.error)
-      .finally(() => setLoadingExtra(false));
+      .finally(() => {
+        if (!cancelled) setLoadingExtra(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [projectDialogId, projectExtraInfoCacheVersion]);
 
   return {

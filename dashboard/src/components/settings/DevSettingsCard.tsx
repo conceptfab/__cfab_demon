@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Terminal, FolderOpen, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,6 +23,7 @@ function formatBytes(bytes: number): string {
 }
 
 export function DevSettingsCard() {
+  const { t } = useTranslation();
   const [settings, setSettings] = useState<LogSettings | null>(null);
   const [files, setFiles] = useState<LogFileInfo[]>([]);
   const [activeLog, setActiveLog] = useState<string | null>(null);
@@ -109,17 +111,16 @@ export function DevSettingsCard() {
       <CardHeader className="pb-4">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
           <Terminal className="h-4 w-4 text-amber-400" />
-          DEV — Log Management
+          {t('dev_settings.title')}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Centralized log viewer and configuration. All logs are stored in the{' '}
-          <code className="text-xs bg-black/20 px-1 rounded">logs/</code> folder.
+          {t('dev_settings.description')}
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Log Levels */}
         <div className="space-y-2">
-          <p className="text-sm font-medium">Log Levels</p>
+          <p className="text-sm font-medium">{t('dev_settings.log_levels')}</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {LOG_CHANNELS.map((ch) => (
               <div
@@ -149,8 +150,8 @@ export function DevSettingsCard() {
         {/* Max log size */}
         <div className="flex items-center justify-between rounded-md border border-border/70 bg-background/35 p-2.5">
           <div>
-            <p className="text-sm font-medium">Max log file size</p>
-            <p className="text-xs text-muted-foreground">Per file, auto-rotated when exceeded</p>
+            <p className="text-sm font-medium">{t('dev_settings.max_log_size')}</p>
+            <p className="text-xs text-muted-foreground">{t('dev_settings.max_log_size_desc')}</p>
           </div>
           <div className="relative">
             <select
@@ -171,7 +172,7 @@ export function DevSettingsCard() {
         {/* Log Files */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">Log Files</p>
+            <p className="text-sm font-medium">{t('dev_settings.log_files')}</p>
             <Button
               type="button"
               variant="ghost"
@@ -180,7 +181,7 @@ export function DevSettingsCard() {
               onClick={() => logManagementApi.openLogsFolder().catch(() => {})}
             >
               <FolderOpen className="h-3 w-3 mr-1" />
-              Open Folder
+              {t('dev_settings.open_folder')}
             </Button>
           </div>
           <div className="grid gap-1.5">
@@ -204,7 +205,7 @@ export function DevSettingsCard() {
                   />
                   <span className="text-sm font-mono truncate">{file.name}</span>
                   <span className="text-[10px] text-muted-foreground">
-                    {file.exists ? formatBytes(file.size_bytes) : 'empty'}
+                    {file.exists ? formatBytes(file.size_bytes) : t('dev_settings.empty')}
                   </span>
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -217,7 +218,7 @@ export function DevSettingsCard() {
                       e.stopPropagation();
                       handleClear(file.key);
                     }}
-                    title="Clear log"
+                    title={t('dev_settings.clear_log')}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -242,7 +243,7 @@ export function DevSettingsCard() {
                     checked={autoScroll}
                     onChange={(e) => setAutoScroll(e.target.checked)}
                   />
-                  Auto-scroll
+                  {t('dev_settings.auto_scroll')}
                 </label>
                 <Button
                   type="button"
@@ -257,7 +258,7 @@ export function DevSettingsCard() {
                   }}
                 >
                   <RefreshCw className="h-3 w-3 mr-1" />
-                  Refresh
+                  {t('dev_settings.refresh')}
                 </Button>
               </div>
             </div>
@@ -265,7 +266,7 @@ export function DevSettingsCard() {
               ref={logRef}
               className="max-h-72 overflow-auto rounded-md border border-border/50 bg-black/40 p-2.5 text-[10px] font-mono leading-relaxed text-muted-foreground whitespace-pre-wrap select-all"
             >
-              {logContent || '(empty)'}
+              {logContent || t('dev_settings.empty_content')}
             </pre>
           </div>
         )}
