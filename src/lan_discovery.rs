@@ -413,8 +413,8 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             break;
         }
 
-        // Reload LAN sync settings periodically (every 60s)
-        if last_settings_reload.elapsed() >= Duration::from_secs(60) {
+        // Reload LAN sync settings frequently for responsive UI (every 5s)
+        if last_settings_reload.elapsed() >= Duration::from_secs(5) {
             lan_settings = config::load_lan_sync_settings();
             last_settings_reload = Instant::now();
 
@@ -616,9 +616,11 @@ fn get_subnet_broadcast_addresses() -> Vec<String> {
                     current_ip = parse_ipv4(ip_str);
                 }
             }
-            // Match subnet mask line
-            if (trimmed.contains("Subnet Mask") || trimmed.contains("Maska podsieci"))
+            // Match subnet mask line — use ASCII-safe prefix "Mask" to handle OEM codepage
+            // garbling of non-ASCII chars (e.g. Polish "Maska podsieci" → "Maska podsie�i")
+            if (trimmed.contains("Subnet Mask") || trimmed.contains("Maska podsieci") || trimmed.contains("Mask"))
                 && trimmed.contains(':')
+                && !trimmed.contains("IPv4")
             {
                 if let (Some(ip), Some(mask_str)) =
                     (current_ip.take(), trimmed.split(':').last().map(|s| s.trim()))
@@ -728,6 +730,10 @@ impl LocalInterface {
         if o[0] == 172 && o[1] >= 16 && o[1] <= 31 && self.mask == [255, 255, 240, 0] {
             return false;
         }
+        // Skip Docker default bridge (172.17.0.x/16)
+        if o[0] == 172 && o[1] == 17 && self.mask == [255, 255, 0, 0] {
+            return false;
+        }
         true
     }
 }
@@ -776,7 +782,7 @@ fn get_local_interfaces() -> Vec<LocalInterface> {
 /// with multiple network interfaces (Hyper-V, WSL, VPN adapters).
 /// Track when the last unicast scan was done (scan is expensive, do it less often).
 static LAST_UNICAST_SCAN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-const UNICAST_SCAN_INTERVAL_SECS: u64 = 120; // scan every 2 minutes
+const UNICAST_SCAN_INTERVAL_SECS: u64 = 30; // scan every 30s (aligned with beacon interval)
 
 fn broadcast_to_all(socket: &UdpSocket, data: &[u8]) {
     // 1. Global broadcast (often blocked but try anyway)

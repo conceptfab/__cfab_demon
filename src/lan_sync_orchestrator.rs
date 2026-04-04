@@ -1,7 +1,7 @@
 // LAN Sync Orchestrator — state machine implementing the 13-step sync protocol.
 // Runs as a sub-thread spawned when peers are discovered and roles assigned.
 
-use crate::lan_common::{self, sync_log};
+use crate::lan_common::sync_log;
 use crate::lan_server::LanSyncState;
 use crate::sync_common;
 use serde::Deserialize;
@@ -228,6 +228,11 @@ pub fn run_sync_as_master_with_options(
                 Err(e) => {
                     sync_log(&format!("[!] Proba {}/{} nieudana: {}", attempt, MAX_RETRIES, e));
                     sync_state.unfreeze();
+                    // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (5 min)
+                    let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer.ip, peer.port);
+                    if let Err(ue) = http_post(&slave_unfreeze_url, "{}") {
+                        sync_log(&format!("[!] Nie udalo sie odmrozic slave: {}", ue));
+                    }
                     sync_state.reset_progress();
                     last_err = e;
 
@@ -430,14 +435,36 @@ fn execute_master_sync(
         "master_device_id": device_id,
     });
 
-    // db-ready now blocks until slave finishes import — use long timeout
-    let db_ready_resp = http_post_with_timeout(
-        &format!("{}/lan/db-ready", base_url),
-        &ready_body.to_string(),
-        Duration::from_secs(120),
-    ).map_err(|e| {
-        sync_log(&format!("[12/13] BLAD — slave nie zakonczyl importu: {}", e));
-        // Restore backup on master since slave failed
+    // db-ready now blocks until slave finishes import — use long timeout with retry
+    let db_ready_url = format!("{}/lan/db-ready", base_url);
+    let db_ready_body = ready_body.to_string();
+    let db_ready_timeouts = [180u64, 180, 180]; // 3 attempts × 180s each
+    let mut db_ready_resp = Err("db-ready not attempted".to_string());
+
+    for (i, &timeout_secs) in db_ready_timeouts.iter().enumerate() {
+        if stop_signal.load(Ordering::Relaxed) {
+            return Err("Stop signal during db-ready".to_string());
+        }
+        sync_log(&format!("[12/13] Proba db-ready {}/{}...", i + 1, db_ready_timeouts.len()));
+        match http_post_with_timeout(&db_ready_url, &db_ready_body, Duration::from_secs(timeout_secs)) {
+            Ok(resp) => {
+                db_ready_resp = Ok(resp);
+                break;
+            }
+            Err(e) => {
+                sync_log(&format!("[12/13] db-ready proba {}/{} nieudana: {}", i + 1, db_ready_timeouts.len(), e));
+                db_ready_resp = Err(e);
+                if i + 1 < db_ready_timeouts.len() {
+                    let backoff = Duration::from_secs(10 * (i as u64 + 1));
+                    sync_log(&format!("[12/13] Ponowienie db-ready za {:?}...", backoff));
+                    thread::sleep(backoff);
+                }
+            }
+        }
+    }
+
+    let db_ready_resp = db_ready_resp.map_err(|e| {
+        sync_log(&format!("[12/13] BLAD — slave nie zakonczyl importu po {} probach: {}", db_ready_timeouts.len(), e));
         if let Err(re) = sync_common::restore_database_backup(&conn) {
             sync_log(&format!("[12/13] BLAD przywracania backupu master: {}", re));
         }

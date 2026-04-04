@@ -606,7 +606,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         Err(e) => return (400, json_error(&format!("Invalid db-ready request: {}", e))),
     };
 
-    state.set_progress(11, "slave_importing", "local");
+    state.set_progress(12, "slave_importing", "local");
     sync_log("[SLAVE] Master zakonczyl scalanie — importuje dane...");
 
     // Read the merged data that was sent via /lan/upload-db earlier

@@ -14,23 +14,6 @@ const SYNC_INTERVAL_OPTIONS = [
   { value: 48, label: '48h' },
 ];
 
-/** Map daemon progress phase keys to translation keys */
-const PHASE_LABELS: Record<string, string> = {
-  idle: 'sync_phase_idle',
-  starting: 'sync_phase_starting',
-  negotiating: 'sync_phase_negotiating',
-  negotiated: 'sync_phase_negotiated',
-  freezing: 'sync_phase_freezing',
-  downloading_from_slave: 'sync_phase_downloading',
-  received_from_slave: 'sync_phase_received',
-  backing_up: 'sync_phase_backup',
-  merging: 'sync_phase_merging',
-  verifying: 'sync_phase_verifying',
-  uploading_to_slave: 'sync_phase_uploading',
-  slave_downloading: 'sync_phase_slave_downloading',
-  completed: 'sync_phase_completed',
-};
-
 interface LanSyncCardProps {
   settings: LanSyncSettings;
   peers: LanPeer[];
@@ -66,7 +49,6 @@ interface LanSyncCardProps {
   myIpLabel: string;
   myIp: string;
   labelClassName: string;
-  syncPhaseLabels?: Record<string, string>;
   slaveInfoText?: string;
   showLogLabel?: string;
   hideLogLabel?: string;
@@ -117,7 +99,6 @@ export function LanSyncCard({
   myIpLabel,
   myIp,
   labelClassName,
-  syncPhaseLabels,
   slaveInfoText,
   showLogLabel,
   hideLogLabel,
@@ -244,53 +225,9 @@ export function LanSyncCard({
     }
   };
 
-  const getPhaseLabel = (phase: string): string => {
-    const key = PHASE_LABELS[phase];
-    if (key && syncPhaseLabels?.[key]) return syncPhaseLabels[key];
-    // Fallback: humanize the phase key
-    return phase.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  };
-
-  const progressPercent = progress && progress.total_steps > 0
-    ? Math.round((progress.step / progress.total_steps) * 100)
-    : 0;
-
   return (
     <Card className="relative">
-      {/* ── Sync overlay (shows on master AND slave) ── */}
-      {isBusy && (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-lg bg-background/90 backdrop-blur-sm">
-          <Loader2 className="h-8 w-8 animate-spin text-sky-400" />
-          <div className="text-center space-y-2 px-6">
-            <p className="text-sm font-semibold text-foreground">
-              {syncingLabel}
-            </p>
-            {progress && progress.phase !== 'idle' && (
-              <>
-                <p className="text-xs text-muted-foreground">
-                  {getPhaseLabel(progress.phase)}
-                  <span className="ml-2 font-mono text-sky-400">
-                    ({progress.step}/{progress.total_steps})
-                  </span>
-                </p>
-                {/* Progress bar */}
-                <div className="w-48 h-1.5 bg-border/50 rounded-full overflow-hidden mx-auto">
-                  <div
-                    className="h-full bg-sky-400 rounded-full transition-all duration-500"
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-                {progress.bytes_transferred > 0 && (
-                  <p className="text-[10px] font-mono text-muted-foreground">
-                    {formatBytes(progress.bytes_transferred)}
-                    {progress.bytes_total > 0 && ` / ${formatBytes(progress.bytes_total)}`}
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Sync progress overlay is handled globally by DaemonSyncOverlay */}
 
       <CardHeader className="pb-4">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -657,8 +594,3 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
   );
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
