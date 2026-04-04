@@ -9,14 +9,16 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_LAN_PORT: u16 = 47891;
 const MAX_REQUEST_BODY: usize = 50 * 1024 * 1024; // 50MB
 const MAX_CONNECTIONS: usize = 32;
+/// Minimum seconds after a completed sync before accepting a new manual trigger.
+const TRIGGER_SYNC_COOLDOWN_SECS: u64 = 30;
 
 struct ConnectionGuard(Arc<AtomicUsize>);
 impl Drop for ConnectionGuard {
@@ -136,6 +138,8 @@ pub struct LanSyncState {
     pub frozen_at: std::sync::Mutex<Option<Instant>>,
     /// Current sync progress for UI polling.
     pub progress: std::sync::Mutex<SyncProgress>,
+    /// Unix timestamp (seconds) of last completed sync — used for cooldown.
+    pub last_sync_completed: AtomicU64,
 }
 
 const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
@@ -149,7 +153,30 @@ impl LanSyncState {
             latest_marker_hash: std::sync::Mutex::new(None),
             frozen_at: std::sync::Mutex::new(None),
             progress: std::sync::Mutex::new(SyncProgress::idle()),
+            last_sync_completed: AtomicU64::new(0),
         }
+    }
+
+    /// Record that a sync just completed (for cooldown logic).
+    pub fn mark_sync_completed(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.last_sync_completed.store(now, Ordering::Relaxed);
+    }
+
+    /// Seconds since last completed sync.
+    pub fn secs_since_last_sync(&self) -> u64 {
+        let last = self.last_sync_completed.load(Ordering::Relaxed);
+        if last == 0 {
+            return u64::MAX; // never synced
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        now.saturating_sub(last)
     }
 
     /// Update sync progress (called by orchestrator).
@@ -470,6 +497,16 @@ fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
     .ok()
 }
 
+/// Check if a marker hash exists in our history; return its timestamp if found.
+fn find_marker_timestamp(conn: &rusqlite::Connection, marker_hash: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT created_at FROM sync_markers WHERE marker_hash = ?1 LIMIT 1",
+        rusqlite::params![marker_hash],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
 // ── Endpoint handlers ──
 
 fn handle_sync_progress(state: &LanSyncState) -> (u16, String) {
@@ -540,12 +577,19 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
-    let local_marker = open_dashboard_db_readonly()
-        .ok()
-        .and_then(|conn| get_latest_marker_hash(&conn));
+    let db = open_dashboard_db_readonly().ok();
+    let local_marker = db.as_ref().and_then(|conn| get_latest_marker_hash(conn));
 
     let mode = match (&local_marker, &req.master_marker_hash) {
         (Some(local), Some(remote)) if local == remote => "delta",
+        (_, Some(remote)) => {
+            // Check if remote marker exists in our history — allows delta from a common ancestor
+            if db.as_ref().and_then(|conn| find_marker_timestamp(conn, remote)).is_some() {
+                "delta"
+            } else {
+                "full"
+            }
+        }
         _ => "full",
     };
 
@@ -734,6 +778,10 @@ fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
 fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
     state.unfreeze();
     state.set_role("undecided");
+    state.mark_sync_completed();
+
+    crate::sync_common::run_gc_tombstones();
+
     sync_log("[SLAVE] Baza odmrozona — synchronizacja zakonczona!");
     // Set completed — UI will auto-dismiss after seeing this phase
     state.set_progress(13, "completed", "local");
@@ -804,6 +852,10 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
+
+    if !req.force && state.secs_since_last_sync() < TRIGGER_SYNC_COOLDOWN_SECS {
+        return (429, json_error("Sync completed recently, wait before retrying"));
+    }
 
     if state.sync_in_progress.compare_exchange(
         false, true, Ordering::SeqCst, Ordering::SeqCst

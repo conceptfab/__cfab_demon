@@ -283,9 +283,30 @@ async function pushFullArchiveWithRetry(
 
 let syncRunning = false;
 
+// ── Idle backoff: increase delay after consecutive idle responses ──
+const IDLE_BACKOFF_STEPS_MS = [30_000, 60_000, 120_000, 300_000]; // 30s, 1m, 2m, 5m
+let consecutiveIdles = 0;
+let nextSyncAfter = 0; // Date.now() timestamp — skip sync before this
+
+// ── Debounce: minimum 5s between sync triggers ──
+const MIN_SYNC_INTERVAL_MS = 5_000;
+let lastSyncTriggerAt = 0;
+
 export async function runOnlineSyncOnce(
   options: RunOnlineSyncOptions = {},
 ): Promise<OnlineSyncRunResult> {
+  const now = Date.now();
+
+  // Debounce: skip if called too soon after last trigger
+  if (now - lastSyncTriggerAt < MIN_SYNC_INTERVAL_MS) {
+    return { ok: true, skipped: true, action: 'none', reason: 'debounce', serverRevision: null };
+  }
+
+  // Idle backoff: skip if we're in a backoff window
+  if (now < nextSyncAfter) {
+    return { ok: true, skipped: true, action: 'none', reason: 'idle_backoff', serverRevision: null };
+  }
+
   if (syncRunning) {
     console.info('[online-sync] Skipped: already running');
     return {
@@ -297,6 +318,7 @@ export async function runOnlineSyncOnce(
     };
   }
   syncRunning = true;
+  lastSyncTriggerAt = now;
   try {
     return await runOnlineSyncOnceImpl(options);
   } finally {
@@ -521,17 +543,26 @@ async function runOnlineSyncOnceImpl(
       state.lastSyncAt = new Date().toISOString();
       saveOnlineSyncState(state, settings);
 
+      // Idle backoff: increase delay after consecutive idles
+      consecutiveIdles++;
+      const backoffMs = IDLE_BACKOFF_STEPS_MS[Math.min(consecutiveIdles - 1, IDLE_BACKOFF_STEPS_MS.length - 1)];
+      nextSyncAfter = Date.now() + backoffMs;
+
       const result: OnlineSyncRunResult = {
         ok: true,
         action: 'none',
         reason: status.reason,
         serverRevision: status.serverRevision ?? null,
       };
-      log?.info('Idle', { reason: status.reason, onlineDevices: status.onlineDevices });
+      log?.info('Idle', { reason: status.reason, onlineDevices: status.onlineDevices, backoffMs, consecutiveIdles });
       updateIndicatorFromRunResult(result);
       await log?.flush();
       return result;
     }
+
+    // Non-idle command: reset backoff
+    consecutiveIdles = 0;
+    nextSyncAfter = 0;
 
     // Step 2: Export local delta (only when server says sync is needed)
     log?.info('Exporting local dataset as delta');

@@ -260,6 +260,9 @@ pub fn run_sync_as_master_with_options(
         // This prevents the "stuck in syncing" state if any step panics or errors
         // without proper cleanup.
         sync_state.unfreeze();
+        if last_err.is_empty() {
+            sync_state.mark_sync_completed();
+        }
         // Small delay so UI can see "completed" phase before reset
         thread::sleep(Duration::from_secs(3));
         sync_state.reset_progress();
@@ -500,6 +503,8 @@ fn execute_master_sync(
     // Clean up temp files
     let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
     let _ = std::fs::remove_file(dir.join("lan_sync_merged.json"));
+
+    sync_common::run_gc_tombstones();
 
     let elapsed = sync_start.elapsed().as_secs_f64();
     sync_log(&format!("=== SYNC ZAKONCZONY w {:.1}s (tryb: {}) ===", elapsed, transfer_mode));

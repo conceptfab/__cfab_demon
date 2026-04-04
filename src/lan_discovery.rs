@@ -24,6 +24,8 @@ const BEACON_INTERVAL: Duration = Duration::from_secs(30);
 const PEER_EXPIRY: Duration = Duration::from_secs(120);
 const RECV_TIMEOUT: Duration = Duration::from_secs(1);
 const PROTOCOL_VERSION: u32 = 1;
+/// Minimum seconds after a completed sync before auto-triggering another.
+const AUTO_SYNC_COOLDOWN_SECS: u64 = 60;
 
 // ── Beacon / Discovery packets ──
 
@@ -400,6 +402,7 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
 
     let mut last_beacon = Instant::now();
     let mut last_http_scan = Instant::now().checked_sub(Duration::from_secs(600)).unwrap_or(Instant::now()); // allow immediate first scan
+    let mut last_full_scan = Instant::now().checked_sub(Duration::from_secs(600)).unwrap_or(Instant::now()); // allow immediate first full scan
 
     let mut buf = [0u8; 2048];
     let mut sync_handle: Option<JoinHandle<()>> = None;
@@ -472,7 +475,8 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
 
             if should_auto_sync {
                 let sync_cooldown = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
-                if role == "master" && !in_progress && handle_done && last_sync_attempt.elapsed() >= sync_cooldown {
+                let completed_cooldown_ok = state.secs_since_last_sync() >= AUTO_SYNC_COOLDOWN_SECS;
+                if role == "master" && !in_progress && handle_done && completed_cooldown_ok && last_sync_attempt.elapsed() >= sync_cooldown {
                     // Find a slave peer to sync with
                     if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
                         log::info!("LAN discovery: auto-triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
@@ -510,16 +514,30 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             last_beacon = Instant::now();
         }
 
-        // HTTP-based peer scan (TCP fallback — works even when UDP is blocked)
-        // Runs every 30s when no peers are known, every 120s otherwise.
+        // HTTP-based peer scan: health-check known peers (30s) or full subnet scan (300s).
+        // When peers are known, most scans only ping them (1-2 probes instead of 253).
+        let use_health_check = !peers.is_empty() && last_full_scan.elapsed() < Duration::from_secs(300);
         let http_scan_interval = if peers.is_empty() {
             Duration::from_secs(30)
+        } else if use_health_check {
+            Duration::from_secs(30)  // health checks are cheap
         } else {
             Duration::from_secs(120)
         };
         if discovery_active && last_http_scan.elapsed() >= http_scan_interval {
             last_http_scan = Instant::now();
-            let found = http_scan_subnet(&device_id);
+
+            let found = if use_health_check {
+                // Health check: only ping known peer IPs
+                let known_ips: Vec<String> = peers.values().map(|p| p.ip.clone()).collect();
+                log::debug!("LAN discovery: health-check {} known peer(s)", known_ips.len());
+                http_ping_known_peers(&device_id, &known_ips)
+            } else {
+                // Full subnet scan
+                last_full_scan = Instant::now();
+                http_scan_subnet(&device_id)
+            };
+
             for (peer_device_id, peer_info) in found {
                 if !peers.contains_key(&peer_device_id) {
                     log::info!(
@@ -1044,8 +1062,63 @@ fn handle_packet(
     }
 }
 
+/// Ping a single IP on the LAN server port. Returns (device_id, PeerInfo) if a peer responds.
+fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
+    let addr = format!("{}:{}", ip, DASHBOARD_PORT_DEFAULT);
+    let stream = std::net::TcpStream::connect_timeout(
+        &addr.parse().ok()?,
+        Duration::from_millis(800),
+    ).ok()?;
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
+    let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
+    let mut stream = std::io::BufWriter::new(stream);
+    use std::io::Write;
+    let req = format!("GET /lan/ping HTTP/1.0\r\nHost: {}\r\n\r\n", addr);
+    stream.write_all(req.as_bytes()).ok()?;
+    stream.flush().ok()?;
+
+    let mut reader = std::io::BufReader::new(stream.into_inner().ok()?);
+    let mut response = String::new();
+    use std::io::Read;
+    reader.read_to_string(&mut response).ok()?;
+
+    let body = response.split("\r\n\r\n").nth(1)?;
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let device_id = parsed.get("device_id")?.as_str()?.to_string();
+    if device_id == my_device_id {
+        return None;
+    }
+    let machine_name = parsed.get("machine_name")?.as_str()?.to_string();
+    let role = parsed.get("role").and_then(|v| v.as_str()).unwrap_or("undecided").to_string();
+
+    Some((
+        device_id.clone(),
+        PeerInfo {
+            device_id,
+            machine_name,
+            ip,
+            dashboard_port: DASHBOARD_PORT_DEFAULT,
+            last_seen: Utc::now().to_rfc3339(),
+            dashboard_running: true,
+            role,
+            uptime_secs: 0,
+        },
+    ))
+}
+
+/// Health-check: ping only known peer IPs sequentially (fast for 1-2 peers).
+fn http_ping_known_peers(my_device_id: &str, known_ips: &[String]) -> HashMap<String, PeerInfo> {
+    let mut found = HashMap::new();
+    for ip in known_ips {
+        if let Some((id, peer)) = http_ping_one(ip.clone(), my_device_id) {
+            found.insert(id, peer);
+        }
+    }
+    found
+}
+
 /// HTTP-based subnet scan — pings each host on TCP 47891 (LAN server).
-/// This is far more reliable than UDP on Windows. Runs synchronously with short timeouts.
+/// Far more reliable than UDP on Windows. Uses threads for parallel probing.
 fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
     let mut found = HashMap::new();
 
@@ -1065,10 +1138,8 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
     };
 
     let interfaces = get_local_interfaces();
-    // Collect all host IPs to scan (deduplicated)
     let mut targets: Vec<String> = Vec::new();
     if interfaces.is_empty() {
-        // Fallback: assume /24 from default route IP
         if let Some(prefix) = my_ip.rsplitn(2, '.').nth(1) {
             for i in 1..=254u8 {
                 let ip = format!("{}.{}", prefix, i);
@@ -1100,58 +1171,12 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
 
     log::info!("LAN discovery: HTTP scan starting — {} targets", targets.len());
 
-    // Use threads for parallel HTTP pings with raw TcpStream (short timeout, no extra deps)
     let my_id = my_device_id.to_string();
     let handles: Vec<_> = targets
         .into_iter()
         .map(|ip| {
             let my_id = my_id.clone();
-            thread::spawn(move || {
-                let addr = format!("{}:{}", ip, DASHBOARD_PORT_DEFAULT);
-                let stream = match std::net::TcpStream::connect_timeout(
-                    &addr.parse().ok()?,
-                    Duration::from_millis(800),
-                ) {
-                    Ok(s) => s,
-                    Err(_) => return None,
-                };
-                let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
-                let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
-                let mut stream = std::io::BufWriter::new(stream);
-                use std::io::Write;
-                let req = format!("GET /lan/ping HTTP/1.0\r\nHost: {}\r\n\r\n", addr);
-                stream.write_all(req.as_bytes()).ok()?;
-                stream.flush().ok()?;
-
-                let mut reader = std::io::BufReader::new(stream.into_inner().ok()?);
-                let mut response = String::new();
-                use std::io::Read;
-                reader.read_to_string(&mut response).ok()?;
-
-                // Find JSON body after \r\n\r\n
-                let body = response.split("\r\n\r\n").nth(1)?;
-                let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
-                let device_id = parsed.get("device_id")?.as_str()?.to_string();
-                if device_id == my_id {
-                    return None;
-                }
-                let machine_name = parsed.get("machine_name")?.as_str()?.to_string();
-                let role = parsed.get("role").and_then(|v| v.as_str()).unwrap_or("undecided").to_string();
-
-                Some((
-                    device_id.clone(),
-                    PeerInfo {
-                        device_id,
-                        machine_name,
-                        ip,
-                        dashboard_port: DASHBOARD_PORT_DEFAULT,
-                        last_seen: Utc::now().to_rfc3339(),
-                        dashboard_running: true,
-                        role,
-                        uptime_secs: 0,
-                    },
-                ))
-            })
+            thread::spawn(move || http_ping_one(ip, &my_id))
         })
         .collect();
 

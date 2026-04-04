@@ -537,6 +537,32 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     Ok(())
 }
 
+// ── Tombstone garbage collection ──
+
+/// Delete tombstones older than `max_age_days`. Returns number of deleted rows.
+pub fn gc_tombstones(conn: &rusqlite::Connection, max_age_days: u32) -> Result<usize, String> {
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days as i64);
+    let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
+    conn.execute(
+        "DELETE FROM tombstones WHERE deleted_at < ?1",
+        rusqlite::params![cutoff_str],
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// Run tombstone GC using settings from lan_sync_settings.json. Opens its own DB connection.
+pub fn run_gc_tombstones() {
+    let gc_days = config::load_lan_sync_settings().tombstone_max_age_days;
+    if let Ok(conn) = lan_common::open_dashboard_db() {
+        match gc_tombstones(&conn, gc_days) {
+            Ok(deleted) if deleted > 0 => {
+                lan_common::sync_log(&format!("GC: usunięto {} starych tombstones", deleted));
+            }
+            _ => {}
+        }
+    }
+}
+
 // ── Integrity check ──
 
 pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String> {

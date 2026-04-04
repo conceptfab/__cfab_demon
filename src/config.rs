@@ -117,10 +117,14 @@ pub struct LanSyncSettings {
     /// When true, daemon auto-triggers sync when a peer is found. When false, sync is manual only.
     #[serde(default)]
     pub auto_sync_on_peer_found: bool,
+    /// Max age (days) for tombstones before GC removes them. Default: 90.
+    #[serde(default = "default_tombstone_max_age_days")]
+    pub tombstone_max_age_days: u32,
 }
 
 fn default_sync_interval() -> u32 { 12 }
 fn default_enabled() -> bool { true }
+fn default_tombstone_max_age_days() -> u32 { 90 }
 
 impl Default for LanSyncSettings {
     fn default() -> Self {
@@ -129,6 +133,7 @@ impl Default for LanSyncSettings {
             enabled: default_enabled(),
             forced_role: String::new(),
             auto_sync_on_peer_found: false,
+            tombstone_max_age_days: default_tombstone_max_age_days(),
         }
     }
 }

@@ -1,6 +1,9 @@
 //! Shared utilities for LAN sync modules (server, orchestrator, discovery).
 
 use crate::config;
+use std::sync::Mutex;
+
+static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
 /// Deterministic FNV-1a 64-bit hash (same result across processes/machines).
 fn fnv1a_64(data: &[u8]) -> u64 {
@@ -43,8 +46,15 @@ pub fn get_machine_name() -> String {
 }
 
 /// Append timestamped line to logs/lan_sync.log (max size from log settings).
+/// Protected by SYNC_LOG_MUTEX to prevent corrupted lines from concurrent writes.
 pub fn sync_log(msg: &str) {
     log::info!("{}", msg);
+
+    let _guard = match SYNC_LOG_MUTEX.lock() {
+        Ok(g) => g,
+        Err(_) => return, // poisoned mutex — skip log write
+    };
+
     let path = match config::logs_dir() {
         Ok(d) => d.join("lan_sync.log"),
         Err(_) => {
