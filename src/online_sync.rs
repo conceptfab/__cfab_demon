@@ -21,7 +21,6 @@ const RETRY_BASE_DELAY: Duration = Duration::from_secs(5);
 
 // ── Server response types ──
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct SessionCreateResponse {
     ok: bool,
@@ -29,29 +28,17 @@ struct SessionCreateResponse {
     session_id: String,
     role: String,
     status: String,
-    #[serde(rename = "peerDeviceId")]
-    peer_device_id: Option<String>,
-    #[serde(rename = "peerMarkerHash")]
-    peer_marker_hash: Option<String>,
     #[serde(rename = "syncMode")]
     sync_mode: Option<String>,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct SessionStatusResponse {
-    ok: bool,
     status: String,
-    #[serde(rename = "myRole")]
-    my_role: String,
     #[serde(rename = "currentStep")]
     current_step: u32,
     #[serde(rename = "syncMode")]
     sync_mode: Option<String>,
-    #[serde(rename = "peerReady")]
-    peer_ready: bool,
-    #[serde(rename = "nextAction")]
-    next_action: Option<String>,
     #[serde(rename = "storageCredentials")]
     storage_credentials: Option<StorageCredentialsWrapper>,
 }
@@ -61,21 +48,8 @@ struct StorageCredentialsWrapper {
     encrypted: sync_encryption::EncryptedCredentials,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
-struct ReportResponse {
-    ok: bool,
-    #[serde(rename = "currentStep")]
-    current_step: u32,
-    #[serde(rename = "sessionStatus")]
-    session_status: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-struct HeartbeatResponse {
-    ok: bool,
-}
+struct ReportResponse {}
 
 // ── Retry helper ──
 
@@ -336,53 +310,30 @@ fn wait_for_step(
 
 // ── Async delta types ──
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct AsyncPushResponse {
-    ok: bool,
     #[serde(rename = "packageId")]
     package_id: String,
-    #[serde(rename = "storagePath")]
-    storage_path: String,
     #[serde(rename = "storageCredentials")]
     storage_credentials: Option<StorageCredentialsWrapper>,
-    #[serde(rename = "expiresAt")]
-    expires_at: String,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct AsyncPendingPackage {
     id: String,
-    #[serde(rename = "groupId")]
-    group_id: String,
     #[serde(rename = "fromDeviceId")]
     from_device_id: String,
     #[serde(rename = "baseMarkerHash")]
     base_marker_hash: Option<String>,
-    #[serde(rename = "newMarkerHash")]
-    new_marker_hash: String,
-    #[serde(rename = "storagePath")]
-    storage_path: String,
-    #[serde(rename = "fileSizeBytes")]
-    file_size_bytes: u64,
-    #[serde(rename = "expiresAt")]
-    expires_at: String,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct AsyncPendingResponse {
-    ok: bool,
     packages: Vec<AsyncPendingPackage>,
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
-struct AsyncAckResponse {
-    ok: bool,
-    acknowledged: bool,
-}
+struct AsyncAckResponse {}
 
 // ── Async delta API wrappers ──
 
@@ -434,10 +385,8 @@ fn async_ack(
     serde_json::from_str(&resp).map_err(|e| format!("Parse async ack response: {}", e))
 }
 
-#[allow(dead_code)]
 #[derive(Deserialize)]
 struct AsyncCredentialsResponse {
-    ok: bool,
     #[serde(rename = "storageCredentials")]
     storage_credentials: Option<StorageCredentialsWrapper>,
 }
