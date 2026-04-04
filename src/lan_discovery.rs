@@ -763,22 +763,16 @@ impl LocalInterface {
     }
 
     /// Iterate all host IPs in the subnet (excludes network and broadcast address).
-    fn iter_hosts(&self) -> Vec<[u8; 4]> {
+    fn iter_hosts(&self) -> impl Iterator<Item = [u8; 4]> {
         let ip_u32 = u32::from_be_bytes(self.ip);
         let mask_u32 = u32::from_be_bytes(self.mask);
         let network = ip_u32 & mask_u32;
         let broadcast = network | !mask_u32;
-        let mut hosts = Vec::new();
         // network+1 .. broadcast-1
         let start = network.wrapping_add(1);
         let end = broadcast; // exclusive
-        if start >= end {
-            return hosts;
-        }
-        for addr in start..end {
-            hosts.push(addr.to_be_bytes());
-        }
-        hosts
+        // if start >= end the range is empty — no allocation needed
+        (start..end).map(|addr| addr.to_be_bytes())
     }
 
     /// Is this a "real" LAN interface? Filters out loopback, link-local, and virtual adapters.
