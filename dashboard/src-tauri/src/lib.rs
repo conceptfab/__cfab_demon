@@ -5,6 +5,27 @@ pub const VERSION: &str = env!("TIMEFLOW_VERSION");
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Load .env file (SMTP credentials, etc.)
+    // Search: next to exe → CWD → parent dirs (for dev mode where CWD is dashboard/src-tauri/)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let _ = dotenvy::from_path(dir.join(".env"));
+        }
+    }
+    if dotenvy::dotenv().is_err() {
+        // Walk up from CWD to find .env in project root
+        if let Ok(mut dir) = std::env::current_dir() {
+            for _ in 0..5 {
+                let env_path = dir.join(".env");
+                if env_path.exists() {
+                    let _ = dotenvy::from_path(env_path);
+                    break;
+                }
+                if !dir.pop() { break; }
+            }
+        }
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())

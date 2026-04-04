@@ -1,9 +1,8 @@
 // LAN Sync — Tauri commands for peer-to-peer synchronization over local network.
 // Reads lan_peers.json (written by demon discovery), runs sync with a peer via HTTP.
 
-use super::delta_export::{DeltaArchive, TableHashes};
+use super::delta_export::TableHashes;
 use super::helpers::{build_table_hashes, timeflow_data_dir};
-use super::types::Project;
 use crate::db;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
