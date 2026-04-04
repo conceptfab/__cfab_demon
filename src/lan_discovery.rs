@@ -399,6 +399,7 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     }
 
     let mut last_beacon = Instant::now();
+    let mut last_http_scan = Instant::now().checked_sub(Duration::from_secs(600)).unwrap_or(Instant::now()); // allow immediate first scan
 
     let mut buf = [0u8; 2048];
     let mut sync_handle: Option<JoinHandle<()>> = None;
@@ -457,32 +458,36 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             // Already logged "disabled by settings" above
         }
 
-        // Check if we should trigger sync as master
+        // Check if we should trigger sync as master.
+        // Respects user settings: sync_interval_hours=0 means MANUAL ONLY (no auto-sync).
+        // auto_sync_on_peer_found must be true for daemon to auto-trigger.
         if let Some(ref state) = sync_state {
             let role = state.get_role();
             let in_progress = state.sync_in_progress.load(Ordering::Relaxed);
             let handle_done = sync_handle.as_ref().map_or(true, |h| h.is_finished());
 
-            let sync_cooldown = if lan_settings.sync_interval_hours > 0 {
-                Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600)
-            } else {
-                Duration::from_secs(60) // manual mode: 60s minimum between auto-syncs
-            };
-            if role == "master" && !in_progress && handle_done && last_sync_attempt.elapsed() >= sync_cooldown {
-                // Find a slave peer to sync with
-                if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
-                    log::info!("LAN discovery: triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
-                    last_sync_attempt = Instant::now();
-                    let target = lan_sync_orchestrator::PeerTarget {
-                        ip: slave.ip.clone(),
-                        port: slave.dashboard_port,
-                        device_id: slave.device_id.clone(),
-                    };
-                    sync_handle = Some(lan_sync_orchestrator::run_sync_as_master(
-                        target,
-                        Arc::clone(state),
-                        stop_signal.clone(),
-                    ));
+            // Only auto-sync if: interval > 0 AND auto_sync_on_peer_found is enabled
+            let should_auto_sync = lan_settings.auto_sync_on_peer_found
+                && lan_settings.sync_interval_hours > 0;
+
+            if should_auto_sync {
+                let sync_cooldown = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
+                if role == "master" && !in_progress && handle_done && last_sync_attempt.elapsed() >= sync_cooldown {
+                    // Find a slave peer to sync with
+                    if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
+                        log::info!("LAN discovery: auto-triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
+                        last_sync_attempt = Instant::now();
+                        let target = lan_sync_orchestrator::PeerTarget {
+                            ip: slave.ip.clone(),
+                            port: slave.dashboard_port,
+                            device_id: slave.device_id.clone(),
+                        };
+                        sync_handle = Some(lan_sync_orchestrator::run_sync_as_master(
+                            target,
+                            Arc::clone(state),
+                            stop_signal.clone(),
+                        ));
+                    }
                 }
             }
         }
@@ -505,7 +510,27 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             last_beacon = Instant::now();
         }
 
-        // Role is decided during startup election — no delayed assignment needed
+        // HTTP-based peer scan (TCP fallback — works even when UDP is blocked)
+        // Runs every 30s when no peers are known, every 120s otherwise.
+        let http_scan_interval = if peers.is_empty() {
+            Duration::from_secs(30)
+        } else {
+            Duration::from_secs(120)
+        };
+        if discovery_active && last_http_scan.elapsed() >= http_scan_interval {
+            last_http_scan = Instant::now();
+            let found = http_scan_subnet(&device_id);
+            for (peer_device_id, peer_info) in found {
+                if !peers.contains_key(&peer_device_id) {
+                    log::info!(
+                        "LAN discovery: HTTP scan found NEW peer {} ({}) at {}",
+                        peer_info.machine_name, peer_device_id, peer_info.ip
+                    );
+                }
+                peers.insert(peer_device_id, peer_info);
+                peers_dirty = true;
+            }
+        }
 
         // Periodic status log (every 60s) so user sees discovery is alive
         if last_status_log.elapsed() >= Duration::from_secs(60) {
@@ -760,7 +785,10 @@ fn get_local_interfaces() -> Vec<LocalInterface> {
                 current_ip = parse_ipv4(ip_str);
             }
         }
-        if (trimmed.contains("Subnet Mask") || trimmed.contains("Maska podsieci")) && trimmed.contains(':') {
+        if (trimmed.contains("Subnet Mask") || trimmed.contains("Maska podsieci") || trimmed.contains("Mask"))
+            && trimmed.contains(':')
+            && !trimmed.contains("IPv4")
+        {
             if let (Some(ip), Some(mask_str)) =
                 (current_ip.take(), trimmed.split(':').last().map(|s| s.trim()))
             {
@@ -1014,6 +1042,131 @@ fn handle_packet(
             );
         }
     }
+}
+
+/// HTTP-based subnet scan — pings each host on TCP 47891 (LAN server).
+/// This is far more reliable than UDP on Windows. Runs synchronously with short timeouts.
+fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
+    let mut found = HashMap::new();
+
+    let my_ip = match std::net::UdpSocket::bind("0.0.0.0:0") {
+        Ok(sock) => {
+            if sock.connect("8.8.8.8:80").is_ok() {
+                if let Ok(addr) = sock.local_addr() {
+                    addr.ip().to_string()
+                } else {
+                    return found;
+                }
+            } else {
+                return found;
+            }
+        }
+        Err(_) => return found,
+    };
+
+    let interfaces = get_local_interfaces();
+    // Collect all host IPs to scan (deduplicated)
+    let mut targets: Vec<String> = Vec::new();
+    if interfaces.is_empty() {
+        // Fallback: assume /24 from default route IP
+        if let Some(prefix) = my_ip.rsplitn(2, '.').nth(1) {
+            for i in 1..=254u8 {
+                let ip = format!("{}.{}", prefix, i);
+                if ip != my_ip {
+                    targets.push(ip);
+                }
+            }
+        }
+    } else {
+        for iface in &interfaces {
+            if iface.host_count() > 254 {
+                continue;
+            }
+            for ip_bytes in iface.iter_hosts() {
+                if ip_bytes == iface.ip {
+                    continue;
+                }
+                let ip = format!("{}.{}.{}.{}", ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]);
+                if ip != my_ip && !targets.contains(&ip) {
+                    targets.push(ip);
+                }
+            }
+        }
+    }
+
+    if targets.is_empty() {
+        return found;
+    }
+
+    log::info!("LAN discovery: HTTP scan starting — {} targets", targets.len());
+
+    // Use threads for parallel HTTP pings with raw TcpStream (short timeout, no extra deps)
+    let my_id = my_device_id.to_string();
+    let handles: Vec<_> = targets
+        .into_iter()
+        .map(|ip| {
+            let my_id = my_id.clone();
+            thread::spawn(move || {
+                let addr = format!("{}:{}", ip, DASHBOARD_PORT_DEFAULT);
+                let stream = match std::net::TcpStream::connect_timeout(
+                    &addr.parse().ok()?,
+                    Duration::from_millis(800),
+                ) {
+                    Ok(s) => s,
+                    Err(_) => return None,
+                };
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(800)));
+                let _ = stream.set_write_timeout(Some(Duration::from_millis(800)));
+                let mut stream = std::io::BufWriter::new(stream);
+                use std::io::Write;
+                let req = format!("GET /lan/ping HTTP/1.0\r\nHost: {}\r\n\r\n", addr);
+                stream.write_all(req.as_bytes()).ok()?;
+                stream.flush().ok()?;
+
+                let mut reader = std::io::BufReader::new(stream.into_inner().ok()?);
+                let mut response = String::new();
+                use std::io::Read;
+                reader.read_to_string(&mut response).ok()?;
+
+                // Find JSON body after \r\n\r\n
+                let body = response.split("\r\n\r\n").nth(1)?;
+                let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+                let device_id = parsed.get("device_id")?.as_str()?.to_string();
+                if device_id == my_id {
+                    return None;
+                }
+                let machine_name = parsed.get("machine_name")?.as_str()?.to_string();
+                let role = parsed.get("role").and_then(|v| v.as_str()).unwrap_or("undecided").to_string();
+
+                Some((
+                    device_id.clone(),
+                    PeerInfo {
+                        device_id,
+                        machine_name,
+                        ip,
+                        dashboard_port: DASHBOARD_PORT_DEFAULT,
+                        last_seen: Utc::now().to_rfc3339(),
+                        dashboard_running: true,
+                        role,
+                        uptime_secs: 0,
+                    },
+                ))
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        if let Ok(Some((id, peer))) = handle.join() {
+            log::info!(
+                "LAN discovery: HTTP scan found {} ({}) at {}",
+                peer.machine_name, id, peer.ip
+            );
+            found.insert(id, peer);
+        }
+    }
+
+    log::info!("LAN discovery: HTTP scan complete — {} peer(s)", found.len());
+    found
 }
 
 /// Read lan_peers.json and return the first active peer with dashboard running.

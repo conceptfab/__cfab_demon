@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useBackgroundStatusStore } from "@/store/background-status-store";
-import { daemonApi } from "@/lib/tauri";
+import { daemonApi, readLogFile } from "@/lib/tauri";
 import { useCancellableAsync } from "@/lib/async-utils";
 import { useTranslation } from "react-i18next";
 import { formatPathForDisplay, cn, logTauriError } from "@/lib/utils";
@@ -39,7 +39,7 @@ export function DaemonControl() {
 
   const refreshLogs = useCallback(() => {
     void refreshAsync(
-      async () => daemonApi.getDaemonLogs(200),
+      async () => readLogFile("daemon", 200),
       {
         onSuccess: (nextLogs) => {
           setLogs(nextLogs);
@@ -56,7 +56,7 @@ export function DaemonControl() {
       void refreshDiagnostics();
       if (!includeLogs) return;
       void refreshAsync(
-        async () => daemonApi.getDaemonLogs(200),
+        async () => readLogFile("daemon", 200),
         {
         onSuccess: (nextLogs) => {
           setLogs(nextLogs);

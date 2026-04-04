@@ -317,6 +317,12 @@ fn handle_connection(
     state: Arc<LanSyncState>,
     stop_signal: Arc<AtomicBool>,
 ) -> Result<(), String> {
+    // On Windows, streams accepted from a non-blocking listener inherit non-blocking mode.
+    // We must explicitly switch to blocking mode before setting timeouts, otherwise
+    // read_exact on large payloads (e.g. upload-db with ~6MB) fails with WSAEWOULDBLOCK.
+    stream
+        .set_nonblocking(false)
+        .map_err(|e| e.to_string())?;
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
         .map_err(|e| e.to_string())?;

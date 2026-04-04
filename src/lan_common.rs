@@ -42,28 +42,37 @@ pub fn get_machine_name() -> String {
     std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
 }
 
-/// Append timestamped line to lan_sync.log (max ~100KB with rotation).
+/// Append timestamped line to logs/lan_sync.log (max size from log settings).
 pub fn sync_log(msg: &str) {
     log::info!("{}", msg);
-    if let Ok(dir) = config::config_dir() {
-        let path = dir.join("lan_sync.log");
-        // Rotate if > 100KB — read only the tail instead of O(n) full read
-        if let Ok(meta) = std::fs::metadata(&path) {
-            if meta.len() > 100_000 {
-                let keep_bytes = 50_000usize; // keep ~50KB tail
-                if let Ok(content) = std::fs::read_to_string(&path) {
-                    let start = content.len().saturating_sub(keep_bytes);
-                    // Find next newline after cut point to avoid partial lines
-                    let start = content[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
-                    let _ = std::fs::write(&path, &content[start..]);
-                }
+    let path = match config::logs_dir() {
+        Ok(d) => d.join("lan_sync.log"),
+        Err(_) => {
+            // Fallback to legacy location
+            if let Ok(dir) = config::config_dir() {
+                dir.join("lan_sync.log")
+            } else {
+                return;
             }
         }
-        use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-            let _ = writeln!(f, "[{}] {}", ts, msg);
+    };
+    let log_settings = config::load_log_settings();
+    let max_bytes = (log_settings.max_log_size_kb as u64) * 1024;
+    // Rotate if exceeds max size
+    if let Ok(meta) = std::fs::metadata(&path) {
+        if meta.len() > max_bytes {
+            let keep_bytes = (max_bytes / 2) as usize;
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let start = content.len().saturating_sub(keep_bytes);
+                let start = content[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
+                let _ = std::fs::write(&path, &content[start..]);
+            }
         }
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let _ = writeln!(f, "[{}] {}", ts, msg);
     }
 }
 

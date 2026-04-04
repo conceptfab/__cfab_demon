@@ -256,6 +256,13 @@ pub fn run_sync_as_master_with_options(
             sync_log(&format!("=== SYNC NIEUDANY po {} probach: {} ===", MAX_RETRIES, last_err));
         }
 
+        // Guarantee cleanup: always unfreeze + reset progress when thread exits.
+        // This prevents the "stuck in syncing" state if any step panics or errors
+        // without proper cleanup.
+        sync_state.unfreeze();
+        // Small delay so UI can see "completed" phase before reset
+        thread::sleep(Duration::from_secs(3));
+        sync_state.reset_progress();
         sync_state.set_role("undecided");
     })
 }

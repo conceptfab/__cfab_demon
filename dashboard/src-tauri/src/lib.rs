@@ -30,11 +30,25 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
-            app.handle().plugin(
-                tauri_plugin_log::Builder::default()
-                    .level(log::LevelFilter::Info)
-                    .build(),
-            )?;
+            // Setup dashboard logging to %APPDATA%/TimeFlow/logs/dashboard.log
+            {
+                let base = commands::helpers::timeflow_data_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                let logs_dir = base.join("logs");
+                let _ = std::fs::create_dir_all(&logs_dir);
+
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .target(tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::Folder {
+                                path: logs_dir,
+                                file_name: Some("dashboard".into()),
+                            },
+                        ))
+                        .build(),
+                )?;
+            }
 
             // Initialize database (sync — rusqlite has no async IO)
             let app_handle = app.handle().clone();
@@ -226,7 +240,13 @@ pub fn run() {
             commands::save_online_sync_settings,
             commands::run_online_sync,
             commands::get_online_sync_progress,
-            commands::cancel_online_sync
+            commands::cancel_online_sync,
+            commands::get_log_settings,
+            commands::save_log_settings,
+            commands::get_log_files_info,
+            commands::read_log_file,
+            commands::clear_log_file,
+            commands::open_logs_folder
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

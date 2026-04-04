@@ -113,6 +113,7 @@ pub async fn persist_lan_sync_settings_for_daemon(
     discovery_duration_minutes: u32,
     enabled: bool,
     forced_role: Option<String>,
+    auto_sync_on_peer_found: Option<bool>,
 ) -> Result<(), String> {
     let base_dir = timeflow_data_dir()?;
     let path = base_dir.join("lan_sync_settings.json");
@@ -121,6 +122,7 @@ pub async fn persist_lan_sync_settings_for_daemon(
         "discovery_duration_minutes": discovery_duration_minutes,
         "enabled": enabled,
         "forced_role": forced_role.unwrap_or_default(),
+        "auto_sync_on_peer_found": auto_sync_on_peer_found.unwrap_or(false),
     });
     std::fs::write(&path, content.to_string())
         .map_err(|e| format!("Failed to write lan_sync_settings.json: {}", e))

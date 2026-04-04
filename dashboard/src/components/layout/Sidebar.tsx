@@ -137,6 +137,7 @@ export function Sidebar() {
   const [lanSyncStatus, setLanSyncStatus] = useState<'idle' | 'ok' | 'error'>('idle');
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
   const [lanIsSlave, setLanIsSlave] = useState(false);
+  const [lanScanning, setLanScanning] = useState(false);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
 
   const handleLanSync = useCallback(async () => {
@@ -199,6 +200,26 @@ export function Sidebar() {
       setLanSyncing(false);
     }
   }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t]);
+
+  const handleLanScan = useCallback(async () => {
+    if (lanScanning || lanSyncing) return;
+    setLanScanning(true);
+    setLanSyncMessage(t('layout.status.lan_scanning'));
+    try {
+      const results = await lanSyncApi.scanLanSubnet();
+      if (results.length > 0) {
+        // Re-poll peers to pick up discovered ones
+        const peers = await lanSyncApi.getLanPeers();
+        const online = peers.find((p) => p.dashboard_running);
+        setLanPeer(online ?? null);
+      }
+    } catch {
+      // scan failed silently
+    } finally {
+      setLanScanning(false);
+      setLanSyncMessage(null);
+    }
+  }, [lanScanning, lanSyncing, t]);
 
   const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
   const openContextHelp = useCallback(() => {
@@ -381,25 +402,33 @@ export function Sidebar() {
               lanSyncMessage
                 ?? (lanPeer
                   ? t('layout.status.lan_peer_found', { name: lanPeer.machine_name })
-                  : t('layout.status.lan_no_peers'))
+                  : lanScanning
+                    ? t('layout.status.lan_scanning')
+                    : t('layout.status.lan_no_peers'))
             }
             colorClass={
               lanSyncStatus === 'error'
                 ? 'text-red-400'
                 : lanSyncStatus === 'ok'
                   ? 'text-emerald-500'
-                  : lanSyncing
+                  : lanSyncing || lanScanning
                     ? 'text-amber-400'
                     : lanPeer
                       ? 'text-sky-400'
                       : 'text-muted-foreground/35'
             }
-            pulse={lanSyncing}
-            onClick={lanPeer && !lanIsSlave ? () => void handleLanSync() : undefined}
+            pulse={lanSyncing || lanScanning}
+            onClick={
+              lanPeer && !lanIsSlave
+                ? () => void handleLanSync()
+                : !lanPeer && !lanScanning
+                  ? () => void handleLanScan()
+                  : undefined
+            }
             title={
               lanPeer
                 ? t('layout.tooltips.lan_peer_ip', { name: lanPeer.machine_name, ip: lanPeer.ip })
-                : undefined
+                : t('layout.tooltips.lan_click_to_scan')
             }
           />
 

@@ -7,11 +7,13 @@ use crate::db;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-/// Write a line to lan_sync.log in the TimeFlow data dir (visible to user).
+/// Write a line to logs/lan_sync.log in the TimeFlow data dir (visible to user).
 fn sync_log(msg: &str) {
     log::info!("{}", msg);
     if let Ok(dir) = timeflow_data_dir() {
-        let path = dir.join("lan_sync.log");
+        let logs_dir = dir.join("logs");
+        let _ = std::fs::create_dir_all(&logs_dir);
+        let path = logs_dir.join("lan_sync.log");
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
@@ -117,10 +119,19 @@ pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), String> {
     Ok(())
 }
 
-/// Read the last N lines from lan_sync.log.
+/// Read the last N lines from logs/lan_sync.log.
 #[tauri::command]
 pub fn get_lan_sync_log(lines: Option<usize>) -> Result<String, String> {
-    let path = timeflow_data_dir()?.join("lan_sync.log");
+    let dir = timeflow_data_dir()?;
+    // Try new location first, fall back to legacy
+    let path = {
+        let new_path = dir.join("logs").join("lan_sync.log");
+        if new_path.exists() {
+            new_path
+        } else {
+            dir.join("lan_sync.log")
+        }
+    };
     if !path.exists() {
         return Ok(String::new());
     }

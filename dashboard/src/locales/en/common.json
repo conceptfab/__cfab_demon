@@ -80,6 +80,7 @@
       "unassigned_short": "{{count}} unassigned",
       "new_assignments_since_training": "{{count}} new assignments since last training",
       "lan_peer_ip": "{{name}} ({{ip}})",
+      "lan_click_to_scan": "Click to scan for LAN peers",
       "last_backup": "Last backup: {{date}}",
       "never": "Never",
       "version_incompatibility": "VERSION INCOMPATIBILITY! Daemon: v{{version}}",

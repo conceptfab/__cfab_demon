@@ -349,6 +349,17 @@ class RustBuilder(CargoProjectBase):
                     shutil.copy2(built_path, final_path)
                     size_mb = final_path.stat().st_size / (1024 * 1024)
                     print(f"   Skopiowano: {built_exe} ({size_mb:.2f} MB)")
+                except PermissionError:
+                    # Plik zablokowany (demon dziala) — kopiuj jako _new
+                    stem = built_path.stem
+                    suffix = built_path.suffix or (".exe" if os.name == "nt" else "")
+                    new_name = f"{stem}_new{suffix}"
+                    new_path = out_path / new_name
+                    shutil.copy2(built_path, new_path)
+                    size_mb = new_path.stat().st_size / (1024 * 1024)
+                    print(f"   UWAGA: {built_exe} zablokowany (demon dziala)")
+                    print(f"   Skopiowano jako: {new_name} ({size_mb:.2f} MB)")
+                    print(f"   -> Zatrzymaj demona i zamien recznie, lub uruchom build ponownie.")
                 except Exception as e:
                     print(f"   BLAD: Kopiowanie {built_exe} nie powiodlo sie: {e}")
                     return False

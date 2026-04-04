@@ -60,12 +60,15 @@ pub fn ensure_app_dirs() -> Result<()> {
     let data = base.join("data");
     let import = base.join("import");
     let archive = base.join("archive");
+    let logs = base.join("logs");
     std::fs::create_dir_all(&data)
         .with_context(|| format!("Failed to create data directory: {:?}", data))?;
     std::fs::create_dir_all(&import)
         .with_context(|| format!("Failed to create import directory: {:?}", import))?;
     std::fs::create_dir_all(&archive)
         .with_context(|| format!("Failed to create archive directory: {:?}", archive))?;
+    std::fs::create_dir_all(&logs)
+        .with_context(|| format!("Failed to create logs directory: {:?}", logs))?;
     Ok(())
 }
 
@@ -111,6 +114,9 @@ pub struct LanSyncSettings {
     /// Manual role override: "auto" (default) = election decides, "master" / "slave" = forced.
     #[serde(default)]
     pub forced_role: String,
+    /// When true, daemon auto-triggers sync when a peer is found. When false, sync is manual only.
+    #[serde(default)]
+    pub auto_sync_on_peer_found: bool,
 }
 
 fn default_sync_interval() -> u32 { 12 }
@@ -122,6 +128,7 @@ impl Default for LanSyncSettings {
             sync_interval_hours: default_sync_interval(),
             enabled: default_enabled(),
             forced_role: String::new(),
+            auto_sync_on_peer_found: false,
         }
     }
 }
@@ -490,6 +497,55 @@ pub fn intervals(config: &Config) -> ResolvedIntervals {
         session_gap_secs,
         config_reload_secs,
         cpu_threshold,
+    }
+}
+
+// ── Logging ──
+
+/// Returns the centralized logs directory: %APPDATA%/TimeFlow/logs
+pub fn logs_dir() -> Result<PathBuf> {
+    Ok(config_dir()?.join("logs"))
+}
+
+/// Log level settings persisted by dashboard, read by daemon.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LogSettings {
+    #[serde(default = "default_log_level")]
+    pub daemon_level: String,
+    #[serde(default = "default_log_level")]
+    pub lan_sync_level: String,
+    #[serde(default = "default_log_level")]
+    pub online_sync_level: String,
+    #[serde(default = "default_log_level")]
+    pub dashboard_level: String,
+    /// Max size per log file in KB (default 1024 = 1 MB)
+    #[serde(default = "default_max_log_size_kb")]
+    pub max_log_size_kb: u32,
+}
+
+fn default_log_level() -> String { "info".to_string() }
+fn default_max_log_size_kb() -> u32 { 1024 }
+
+impl Default for LogSettings {
+    fn default() -> Self {
+        Self {
+            daemon_level: default_log_level(),
+            lan_sync_level: default_log_level(),
+            online_sync_level: default_log_level(),
+            dashboard_level: default_log_level(),
+            max_log_size_kb: default_max_log_size_kb(),
+        }
+    }
+}
+
+pub fn load_log_settings() -> LogSettings {
+    let path = match config_dir() {
+        Ok(d) => d.join("log_settings.json"),
+        Err(_) => return LogSettings::default(),
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => LogSettings::default(),
     }
 }
 

@@ -11,6 +11,7 @@ venv/
 *.egg
 
 # Node (root level)
+__logs
 node_modules/
 __timeflow_server/
 

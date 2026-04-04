@@ -80,6 +80,7 @@
       "unassigned_short": "{{count}} nieprzypisanych",
       "new_assignments_since_training": "{{count}} nowych przypisań od ostatniego treningu",
       "lan_peer_ip": "{{name}} ({{ip}})",
+      "lan_click_to_scan": "Kliknij, aby wyszukać peery w sieci",
       "last_backup": "Ostatnia kopia: {{date}}",
       "never": "Nigdy",
       "version_incompatibility": "NIEZGODNOŚĆ WERSJI! Demon: v{{version}}",

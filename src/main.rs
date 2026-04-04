@@ -192,19 +192,33 @@ fn install_panic_hook() {
     }));
 }
 
-/// Initialize file logging in the directory next to the exe.
+/// Initialize file logging to %APPDATA%/TimeFlow/logs/daemon.log.
+/// Falls back to exe directory if config_dir is unavailable.
 fn init_logging() {
     use std::fs;
 
-    let log_path = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join("timeflow_demon.log")))
-        .unwrap_or_else(|| std::path::PathBuf::from("timeflow_demon.log"));
+    let log_settings = config::load_log_settings();
+    let max_bytes = (log_settings.max_log_size_kb as u64) * 1024;
+    let level = parse_log_level(&log_settings.daemon_level);
 
-    // Truncate log file if > 1 MB
+    let log_path = config::logs_dir()
+        .map(|d| d.join("daemon.log"))
+        .unwrap_or_else(|_| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.join("timeflow_demon.log")))
+                .unwrap_or_else(|| std::path::PathBuf::from("timeflow_demon.log"))
+        });
+
+    // Ensure logs directory exists
+    if let Some(parent) = log_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    // Truncate log file if > max size
     if log_path.exists() {
         if let Ok(meta) = fs::metadata(&log_path) {
-            if meta.len() > 1_000_000 {
+            if meta.len() > max_bytes {
                 let _ = fs::OpenOptions::new()
                     .write(true)
                     .truncate(true)
@@ -221,19 +235,33 @@ fn init_logging() {
     if let Ok(file) = file {
         let _ = log::set_boxed_logger(Box::new(FileLogger {
             writer: std::sync::Mutex::new(std::io::BufWriter::new(file)),
+            level,
         }));
-        log::set_max_level(log::LevelFilter::Info);
+        log::set_max_level(level);
+    }
+}
+
+fn parse_log_level(s: &str) -> log::LevelFilter {
+    match s.to_lowercase().as_str() {
+        "trace" => log::LevelFilter::Trace,
+        "debug" => log::LevelFilter::Debug,
+        "info" => log::LevelFilter::Info,
+        "warn" => log::LevelFilter::Warn,
+        "error" => log::LevelFilter::Error,
+        "off" => log::LevelFilter::Off,
+        _ => log::LevelFilter::Info,
     }
 }
 
 /// Minimal file logger with buffering
 struct FileLogger {
     writer: std::sync::Mutex<std::io::BufWriter<std::fs::File>>,
+    level: log::LevelFilter,
 }
 
 impl log::Log for FileLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        metadata.level() <= log::Level::Info
+        metadata.level() <= self.level
     }
 
     fn log(&self, record: &log::Record) {

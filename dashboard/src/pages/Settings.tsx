@@ -19,6 +19,7 @@ import { SessionManagementCard } from '@/components/settings/SessionManagementCa
 import { SessionSplitCard } from '@/components/settings/SessionSplitCard';
 import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
 import { LanSyncCard } from '@/components/settings/LanSyncCard';
+import { DevSettingsCard } from '@/components/settings/DevSettingsCard';
 import { useSettingsFormState } from '@/hooks/useSettingsFormState';
 import { useSettingsDemoMode } from '@/hooks/useSettingsDemoMode';
 import { lanSyncApi, settingsApi } from '@/lib/tauri';
@@ -129,6 +130,9 @@ export function Settings() {
     },
   });
 
+  // ── Tab state ──
+  const [activeTab, setActiveTab] = useState<'general' | 'dev'>('general');
+
   // ── LAN Sync state ──
   const [lanSettings, setLanSettings] = useState<LanSyncSettingsType>(loadLanSyncSettings);
   const [lanPeers, setLanPeers] = useState<LanPeer[]>([]);
@@ -229,6 +233,7 @@ export function Settings() {
         next.discoveryDurationMinutes,
         next.enabled,
         next.forcedRole,
+        next.autoSyncOnPeerFound,
       ).catch((e) => console.warn('Failed to persist LAN sync settings for daemon:', e));
       return next;
     });
@@ -301,6 +306,36 @@ export function Settings() {
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-8 pb-20">
+      {/* Tab Navigation */}
+      <div className="flex gap-1 border-b border-border/50 px-1">
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === 'general'
+              ? 'border-sky-400 text-sky-400'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('general')}
+        >
+          {t('settings_page.general_settings')}
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+            activeTab === 'dev'
+              ? 'border-amber-400 text-amber-400'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+          onClick={() => setActiveTab('dev')}
+        >
+          DEV
+        </button>
+      </div>
+
+      {activeTab === 'dev' ? (
+        <div className="space-y-4">
+          <DevSettingsCard />
+        </div>
+      ) : (
+      <>
       <div className="space-y-4">
         <h2 className="text-xl font-bold tracking-tight px-1">
           {t('settings_page.general_settings')}
@@ -679,6 +714,8 @@ export function Settings() {
           }}
         />
       </div>
+      </>
+      )}
 
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
         {!savedSettings && (
