@@ -189,6 +189,7 @@ pub fn run() {
             commands::get_lan_sync_progress,
             commands::build_table_hashes_only,
             commands::ping_lan_peer,
+            commands::scan_lan_subnet,
             commands::get_local_ips,
             commands::run_lan_sync,
             commands::start_lan_server,

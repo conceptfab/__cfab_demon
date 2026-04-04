@@ -170,12 +170,13 @@ export function Settings() {
     lanSyncApi.getLatestSyncMarker().then(setLatestMarker).catch(() => {});
   }, [lanSyncing]); // Refresh after sync completes
 
-  // Poll peers every 5s
+  // Poll peers every 5s; auto-scan subnet once if no peers found after 10s
   useEffect(() => {
     if (!lanSettings.enabled) {
       setLanPeers([]);
       return;
     }
+    let autoScanned = false;
     const poll = () => {
       lanSyncApi.getLanPeers().then((peers) => {
         setLanPeers((prev) => {
@@ -191,7 +192,20 @@ export function Settings() {
     };
     poll();
     const id = window.setInterval(poll, 5_000);
-    return () => clearInterval(id);
+    // Auto-scan subnet if daemon discovery hasn't found anyone after 10s
+    const scanTimer = window.setTimeout(() => {
+      if (autoScanned) return;
+      lanSyncApi.getLanPeers().then((peers) => {
+        if (peers.length === 0 && !autoScanned) {
+          autoScanned = true;
+          lanSyncApi.scanLanSubnet().catch(() => {});
+        }
+      }).catch(() => {});
+    }, 10_000);
+    return () => {
+      clearInterval(id);
+      clearTimeout(scanTimer);
+    };
   }, [lanSettings.enabled]);
 
   // Start/stop LAN server based on enabled setting

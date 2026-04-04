@@ -200,6 +200,84 @@ pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, S
     })
 }
 
+/// Scan the local /24 subnet for TIMEFLOW peers by pinging port 47891 on each IP.
+/// Returns all peers that responded. Runs up to 254 requests in parallel with a short timeout.
+#[tauri::command]
+pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, String> {
+    // 1. Determine our own IP (default route)
+    let my_ip = {
+        let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+        socket.connect("8.8.8.8:80").map_err(|e| e.to_string())?;
+        socket.local_addr().map_err(|e| e.to_string())?.ip().to_string()
+    };
+
+    let octets: Vec<&str> = my_ip.split('.').collect();
+    if octets.len() != 4 {
+        return Err(format!("Cannot parse local IP: {}", my_ip));
+    }
+    let prefix = format!("{}.{}.{}", octets[0], octets[1], octets[2]);
+
+    sync_log(&format!("LAN scan: scanning {}.1-254 on port 47891 (my IP: {})", prefix, my_ip));
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(800))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // 2. Ping all 254 hosts in parallel
+    let mut handles = Vec::with_capacity(254);
+    for i in 1..=254u8 {
+        let ip = format!("{}.{}", prefix, i);
+        if ip == my_ip {
+            continue;
+        }
+        let client = client.clone();
+        handles.push(tokio::spawn(async move {
+            let url = format!("http://{}:47891/lan/ping", ip);
+            let resp = match client.get(&url).send().await {
+                Ok(r) if r.status().is_success() => r,
+                _ => return None,
+            };
+            #[derive(Deserialize)]
+            struct PingResp {
+                device_id: String,
+                machine_name: String,
+                role: String,
+                version: String,
+            }
+            let ping: PingResp = resp.json().await.ok()?;
+            Some(PingLanPeerResult {
+                device_id: ping.device_id,
+                machine_name: ping.machine_name,
+                ip,
+                dashboard_port: 47891,
+                role: ping.role,
+                version: ping.version,
+            })
+        }));
+    }
+
+    let mut found = Vec::new();
+    for handle in handles {
+        if let Ok(Some(peer)) = handle.await {
+            sync_log(&format!("LAN scan: found peer {} ({}) at {}", peer.machine_name, peer.device_id, peer.ip));
+            // Also persist to lan_peers.json so the UI picks it up immediately
+            let _ = upsert_lan_peer(LanPeer {
+                device_id: peer.device_id.clone(),
+                machine_name: peer.machine_name.clone(),
+                ip: peer.ip.clone(),
+                dashboard_port: peer.dashboard_port,
+                last_seen: chrono::Utc::now().to_rfc3339(),
+                dashboard_running: true,
+            });
+            found.push(peer);
+        }
+    }
+
+    sync_log(&format!("LAN scan: complete — {} peer(s) found", found.len()));
+    Ok(found)
+}
+
 #[tauri::command]
 pub async fn get_lan_sync_progress() -> Result<SyncProgress, String> {
     let client = reqwest::Client::builder()

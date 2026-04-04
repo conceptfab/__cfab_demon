@@ -26,6 +26,9 @@ export interface PingLanPeerResult {
 export const pingLanPeer = (ip: string, port: number) =>
   invoke<PingLanPeerResult>('ping_lan_peer', { ip, port });
 
+export const scanLanSubnet = () =>
+  invoke<PingLanPeerResult[]>('scan_lan_subnet');
+
 export const buildTableHashesOnly = () =>
   invoke<TableHashes>('build_table_hashes_only');
 
@@ -66,6 +69,7 @@ export const lanSyncApi = {
   getLanPeers,
   getLocalIps,
   pingLanPeer,
+  scanLanSubnet,
   upsertLanPeer,
   getLanSyncLog,
   buildTableHashesOnly,

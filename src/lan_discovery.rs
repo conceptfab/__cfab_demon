@@ -159,6 +159,24 @@ fn write_peers_file(peers: &HashMap<String, PeerInfo>) {
     }
 }
 
+/// Load IP addresses from the previous peers file (before clearing it).
+/// Used to immediately probe known peers on daemon restart.
+fn load_previous_peer_ips() -> Vec<String> {
+    let path = match peers_file_path() {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let file: PeersFile = match serde_json::from_str(&content) {
+        Ok(f) => f,
+        Err(_) => return Vec::new(),
+    };
+    file.peers.iter().map(|p| p.ip.clone()).collect()
+}
+
 // ── Check if dashboard is running (heartbeat file heuristic) ──
 
 fn is_dashboard_running() -> bool {
@@ -261,7 +279,23 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     let mut last_status_log = Instant::now();
     let mut last_expiry_check = Instant::now();
 
-    // Clear stale peers file from previous daemon session on startup
+    // Load previous peers and probe their known IPs immediately (unicast).
+    // This dramatically speeds up re-discovery after daemon restart because
+    // peers usually keep the same LAN IP.
+    let previous_ips = load_previous_peer_ips();
+    if !previous_ips.is_empty() {
+        log::info!("LAN discovery: probing {} known IP(s) from previous session: {:?}", previous_ips.len(), previous_ips);
+        let probe_packet = serde_json::to_string(&DiscoverPacket {
+            packet_type: "timeflow_discover".to_string(),
+            version: PROTOCOL_VERSION,
+            device_id: device_id.clone(),
+        }).unwrap_or_default();
+        for ip in &previous_ips {
+            let target = format!("{}:{}", ip, DISCOVERY_PORT);
+            let _ = socket.send_to(probe_packet.as_bytes(), &target);
+        }
+    }
+    // Clear file after reading — will be repopulated as peers respond
     write_peers_file(&peers);
 
     // ── Role assignment: forced or elected ──

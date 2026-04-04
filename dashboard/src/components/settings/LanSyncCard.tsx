@@ -135,6 +135,7 @@ export function LanSyncCard({
   const [manualIp, setManualIp] = useState('');
   const [pinging, setPinging] = useState(false);
   const [pingError, setPingError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [syncLog, setSyncLog] = useState('');
   const [showLog, setShowLog] = useState(false);
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -222,6 +223,17 @@ export function LanSyncCard({
       setPingError(e instanceof Error ? e.message : String(e));
     } finally {
       setPinging(false);
+    }
+  };
+
+  const handleScanSubnet = async () => {
+    setScanning(true);
+    try {
+      await lanSyncApi.scanLanSubnet();
+    } catch (e) {
+      console.warn('LAN scan failed:', e);
+    } finally {
+      setScanning(false);
     }
   };
 
@@ -404,7 +416,24 @@ export function LanSyncCard({
 
         <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-3">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-medium">{peersTitle}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium">{peersTitle}</p>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+                disabled={scanning}
+                onClick={handleScanSubnet}
+              >
+                {scanning ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <Search className="h-3 w-3 mr-1" />
+                )}
+                {scanning ? 'Scanning…' : 'Scan LAN'}
+              </Button>
+            </div>
             {isSlave && (
               <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 font-medium uppercase tracking-wide">
                 Slave mode
