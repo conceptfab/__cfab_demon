@@ -3,10 +3,11 @@
 // Signals the tracker thread immediately on foreground window change
 // so it can react faster than the default polling interval.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use winapi::shared::minwindef::DWORD;
 use winapi::shared::ntdef::LONG;
@@ -24,6 +25,8 @@ const WINEVENT_OUTOFCONTEXT: DWORD = 0x0000;
 pub struct ForegroundSignal {
     mutex: Mutex<bool>,
     condvar: Condvar,
+    /// Timestamps of foreground switch events (consumed by tracker each tick).
+    switch_times: Mutex<VecDeque<Instant>>,
 }
 
 impl ForegroundSignal {
@@ -31,14 +34,31 @@ impl ForegroundSignal {
         Self {
             mutex: Mutex::new(false),
             condvar: Condvar::new(),
+            switch_times: Mutex::new(VecDeque::new()),
         }
     }
 
-    /// Signal a foreground change. Also used to wake the tracker on shutdown.
+    /// Signal a foreground change and record the instant.
     pub fn notify(&self) {
+        {
+            let mut times = self.switch_times.lock().unwrap_or_else(|p| p.into_inner());
+            // Cap at 50 to prevent unbounded growth if tracker is slow
+            if times.len() < 50 {
+                times.push_back(Instant::now());
+            }
+        }
         let mut changed = self.mutex.lock().unwrap_or_else(|p| p.into_inner());
         *changed = true;
         self.condvar.notify_one();
+    }
+
+    /// Drain all recorded switch timestamps since last call.
+    pub fn drain_switch_times(&self) -> Vec<Instant> {
+        self.switch_times
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .drain(..)
+            .collect()
     }
 
     /// Wait for a signal or timeout. Returns `true` if signaled (foreground changed).

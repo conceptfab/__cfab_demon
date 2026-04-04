@@ -480,6 +480,29 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         let now = Instant::now();
         let max_elapsed = poll_interval.saturating_mul(3);
         let actual_elapsed = now.duration_since(last_tracking_tick).min(max_elapsed);
+
+        // Drain foreground switch timestamps for time-splitting.
+        // If a switch happened mid-tick, the CURRENT foreground app only gets
+        // time from the last switch to now; previous app(s) got their share
+        // from last_tick to the switch.
+        let switch_times: Vec<Instant> = foreground_signal
+            .as_ref()
+            .map(|s| s.drain_switch_times())
+            .unwrap_or_default();
+
+        // Determine the effective elapsed for the current foreground app.
+        // If a switch happened, the current app only gets time since the last switch.
+        let effective_elapsed = if let Some(&last_switch) = switch_times.last() {
+            // Clamp: last_switch must be between last_tracking_tick and now
+            if last_switch > last_tracking_tick && last_switch < now {
+                now.duration_since(last_switch).min(actual_elapsed)
+            } else {
+                actual_elapsed
+            }
+        } else {
+            actual_elapsed
+        };
+
         last_tracking_tick = now;
 
         // Poll foreground window
@@ -517,7 +540,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                         window_title: &info.window_title,
                         detected_path: info.detected_path.as_deref(),
                         activity_type: info.activity_type,
-                        elapsed: actual_elapsed,
+                        elapsed: effective_elapsed,
                         session_gap,
                     },
                     &cfg,
