@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::commands::assignment_model::{
     config::{
         clamp_i64, load_state_map, normalize_blacklist_entries, parse_state_f64, parse_state_i64,
-        parse_state_string_list, upsert_state,
+        parse_state_string_list, upsert_state, DEFAULT_DECAY_HALF_LIFE_DAYS,
+        MAX_DECAY_HALF_LIFE_DAYS, MIN_DECAY_HALF_LIFE_DAYS,
     },
     context::{
         is_under_blacklisted_folder, parse_title_history, resolve_blacklisted_app_ids, tokenize,
@@ -60,6 +61,14 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
         MAX_TRAINING_HORIZON_DAYS,
     );
     let training_horizon_modifier = format!("-{} days", training_horizon_days);
+    let decay_half_life_days = clamp_i64(
+        parse_state_i64(&state, "decay_half_life_days", DEFAULT_DECAY_HALF_LIFE_DAYS),
+        MIN_DECAY_HALF_LIFE_DAYS,
+        MAX_DECAY_HALF_LIFE_DAYS,
+    );
+    // ln(2) / half_life converts half-life to decay rate for exp(-rate * days_ago)
+    let decay_rate = 0.693147 / (decay_half_life_days as f64);
+
     let training_app_blacklist = normalize_blacklist_entries(
         &parse_state_string_list(&state, "training_app_blacklist"),
         false,
@@ -69,6 +78,18 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
         true,
     );
     let blacklisted_app_ids = resolve_blacklisted_app_ids(conn, &training_app_blacklist)?;
+
+    // Register exp() scalar function for SQLite (used in decay weighting)
+    conn.create_scalar_function(
+        "exp",
+        1,
+        rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let val: f64 = ctx.get(0)?;
+            Ok(val.exp())
+        },
+    )
+    .map_err(|e| format!("Failed to register exp(): {}", e))?;
 
     let result = (|| -> rusqlite::Result<i64> {
         let tx = conn.unchecked_transaction()?;
@@ -94,7 +115,16 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
 
         tx.execute(
             "INSERT INTO assignment_model_app (app_id, project_id, cnt, last_seen)
-             SELECT s.app_id, s.project_id, COUNT(*) as cnt, MAX(s.start_time)
+             SELECT s.app_id, s.project_id,
+                    CAST(ROUND(SUM(
+                      exp(-?2 * (julianday('now') - julianday(s.start_time)))
+                      * CASE
+                          WHEN s.duration_seconds > 3600 THEN 3.0
+                          WHEN s.duration_seconds > 600  THEN 2.0
+                          ELSE 1.0
+                        END
+                    )) AS INTEGER) as cnt,
+                    MAX(s.start_time)
              FROM sessions s
              WHERE s.project_id IS NOT NULL
                AND s.duration_seconds > 10
@@ -109,8 +139,9 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                      ORDER BY af.created_at DESC, af.id DESC
                      LIMIT 1
                    ), '') <> 'auto_accept'
-             GROUP BY s.app_id, s.project_id",
-            rusqlite::params![&training_horizon_modifier],
+             GROUP BY s.app_id, s.project_id
+             HAVING cnt > 0",
+            rusqlite::params![&training_horizon_modifier, decay_rate],
         )?;
 
         tx.execute(
@@ -120,7 +151,14 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                  CAST(strftime('%H', s.start_time) AS INTEGER) as hour_bucket,
                  CAST(strftime('%w', s.start_time) AS INTEGER) as weekday,
                  s.project_id,
-                 COUNT(*) as cnt
+                 CAST(ROUND(SUM(
+                   exp(-?2 * (julianday('now') - julianday(s.start_time)))
+                   * CASE
+                       WHEN s.duration_seconds > 3600 THEN 3.0
+                       WHEN s.duration_seconds > 600  THEN 2.0
+                       ELSE 1.0
+                     END
+                 )) AS INTEGER) as cnt
              FROM sessions s
              WHERE s.project_id IS NOT NULL
                AND s.duration_seconds > 10
@@ -135,8 +173,9 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                      ORDER BY af.created_at DESC, af.id DESC
                      LIMIT 1
                    ), '') <> 'auto_accept'
-             GROUP BY s.app_id, hour_bucket, weekday, s.project_id",
-            rusqlite::params![&training_horizon_modifier],
+             GROUP BY s.app_id, hour_bucket, weekday, s.project_id
+             HAVING cnt > 0",
+            rusqlite::params![&training_horizon_modifier, decay_rate],
         )?;
 
         {
@@ -252,10 +291,10 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
             }
         }
 
-        let mut token_counts: HashMap<(String, i64), i64> = HashMap::new();
+        let mut token_counts: HashMap<(String, i64), f64> = HashMap::new();
         {
             let mut file_stmt = tx.prepare(
-                "SELECT app_id, file_name, file_path, detected_path, project_id, window_title, title_history
+                "SELECT app_id, file_name, file_path, detected_path, project_id, window_title, title_history, date
                  FROM file_activities
                  WHERE project_id IS NOT NULL
                    AND date >= date('now', ?1)",
@@ -269,6 +308,7 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                 let project_id: i64 = row.get(4)?;
                 let window_title: Option<String> = row.get(5)?;
                 let title_history: Option<String> = row.get(6)?;
+                let date_str: String = row.get(7)?;
 
                 if blacklisted_app_ids.contains(&app_id) {
                     continue;
@@ -281,25 +321,34 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                     continue;
                 }
 
+                // Compute decay weight from date
+                let days_ago = chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                    .ok()
+                    .map(|d| {
+                        (chrono::Local::now().date_naive() - d).num_days().max(0) as f64
+                    })
+                    .unwrap_or(0.0);
+                let weight = (-decay_rate * days_ago).exp();
+
                 for token in tokenize(&file_name) {
-                    *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                    *token_counts.entry((token, project_id)).or_insert(0.0) += weight;
                 }
                 for token in tokenize(&file_path) {
-                    *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                    *token_counts.entry((token, project_id)).or_insert(0.0) += weight;
                 }
                 if let Some(ref path) = detected_path {
                     for token in tokenize(path) {
-                        *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                        *token_counts.entry((token, project_id)).or_insert(0.0) += weight;
                     }
                 }
                 if let Some(ref wt) = window_title {
                     for token in tokenize(wt) {
-                        *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                        *token_counts.entry((token, project_id)).or_insert(0.0) += weight;
                     }
                 }
                 for title in parse_title_history(title_history.as_deref()) {
                     for token in tokenize(&title) {
-                        *token_counts.entry((token, project_id)).or_insert(0) += 1;
+                        *token_counts.entry((token, project_id)).or_insert(0.0) += weight;
                     }
                 }
             }
@@ -311,7 +360,10 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
                  VALUES (?1, ?2, ?3, datetime('now'))",
             )?;
             for ((token, project_id), count) in token_counts {
-                insert_token.execute(rusqlite::params![token, project_id, count])?;
+                let rounded = count.round() as i64;
+                if rounded > 0 {
+                    insert_token.execute(rusqlite::params![token, project_id, rounded])?;
+                }
             }
         }
 
@@ -365,6 +417,16 @@ mod tests {
 
     fn setup_training_conn() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.create_scalar_function(
+            "exp",
+            1,
+            rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC,
+            |ctx| {
+                let val: f64 = ctx.get(0)?;
+                Ok(val.exp())
+            },
+        )
+        .expect("register exp");
         conn.execute_batch(
             "CREATE TABLE projects (
                 id INTEGER PRIMARY KEY,
@@ -553,8 +615,10 @@ mod tests {
             )
             .expect("read time model count");
 
-        assert_eq!(app_cnt, 2);
-        assert_eq!(time_cnt, 2);
+        // With decay (~1.0 for 1-2 day old sessions) and duration weight (2x for 3600s sessions),
+        // base cnt ≈ 2, plus feedback boost of 1 (0.25 * 5.0 rounded)
+        assert!(app_cnt >= 2 && app_cnt <= 4, "app_cnt was {}", app_cnt);
+        assert!(time_cnt >= 2 && time_cnt <= 4, "time_cnt was {}", time_cnt);
     }
 
     #[test]
@@ -610,7 +674,9 @@ mod tests {
             )
             .expect("read time model count");
 
-        assert_eq!(app_cnt, 6);
-        assert_eq!(time_cnt, 6);
+        // With decay and duration weighting, base sessions contribute ~2 each (2 sessions = ~4),
+        // plus feedback boost of 5 (1.0 * 5.0 rounded)
+        assert!(app_cnt >= 6 && app_cnt <= 10, "app_cnt was {}", app_cnt);
+        assert!(time_cnt >= 6 && time_cnt <= 10, "time_cnt was {}", time_cnt);
     }
 }

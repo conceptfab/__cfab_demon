@@ -9,6 +9,9 @@ pub const DEFAULT_FEEDBACK_WEIGHT: f64 = 5.0;
 pub const MIN_TRAINING_HORIZON_DAYS: i64 = 30;
 pub const MAX_TRAINING_HORIZON_DAYS: i64 = 730;
 pub const DEFAULT_TRAINING_HORIZON_DAYS: i64 = 730;
+pub const DEFAULT_DECAY_HALF_LIFE_DAYS: i64 = 90;
+pub const MIN_DECAY_HALF_LIFE_DAYS: i64 = 14;
+pub const MAX_DECAY_HALF_LIFE_DAYS: i64 = 365;
 
 pub fn parse_state_f64(state: &HashMap<String, String>, key: &str, default: f64) -> f64 {
     state
