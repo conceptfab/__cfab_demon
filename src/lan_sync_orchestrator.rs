@@ -1,7 +1,7 @@
 // LAN Sync Orchestrator — state machine implementing the 13-step sync protocol.
 // Runs as a sub-thread spawned when peers are discovered and roles assigned.
 
-use crate::lan_common;
+use crate::lan_common::{self, sync_log};
 use crate::lan_server::LanSyncState;
 use crate::sync_common;
 use serde::Deserialize;
@@ -12,10 +12,6 @@ use std::time::{Duration, Instant};
 
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
-
-fn sync_log(msg: &str) {
-    lan_common::sync_log(msg);
-}
 
 // ── Sync types ──
 
@@ -35,6 +31,16 @@ fn http_post(url: &str, body: &str) -> Result<String, String> {
     )
     .map_err(|e| format!("Connect failed: {}", e))?;
     http_request(stream, "POST", url, Some(body), None)
+}
+
+/// HTTP POST with custom timeout — used when slave needs more time (e.g. import).
+fn http_post_with_timeout(url: &str, body: &str, timeout: Duration) -> Result<String, String> {
+    let stream = std::net::TcpStream::connect_timeout(
+        &url_to_addr(url)?,
+        timeout,
+    )
+    .map_err(|e| format!("Connect failed: {}", e))?;
+    http_request_with_timeout(stream, "POST", url, Some(body), None, timeout)
 }
 
 /// HTTP POST with progress callback — used for large data transfers.
@@ -68,16 +74,27 @@ fn url_path(url: &str) -> &str {
 }
 
 fn http_request(
-    mut stream: std::net::TcpStream,
+    stream: std::net::TcpStream,
     method: &str,
     url: &str,
     body: Option<&str>,
     on_progress: Option<&dyn Fn(u64, u64)>,
 ) -> Result<String, String> {
+    http_request_with_timeout(stream, method, url, body, on_progress, HTTP_TIMEOUT)
+}
+
+fn http_request_with_timeout(
+    mut stream: std::net::TcpStream,
+    method: &str,
+    url: &str,
+    body: Option<&str>,
+    on_progress: Option<&dyn Fn(u64, u64)>,
+    timeout: Duration,
+) -> Result<String, String> {
     use std::io::{BufRead, BufReader, Read, Write};
 
-    stream.set_read_timeout(Some(HTTP_TIMEOUT)).map_err(|e| e.to_string())?;
-    stream.set_write_timeout(Some(HTTP_TIMEOUT)).map_err(|e| e.to_string())?;
+    stream.set_read_timeout(Some(timeout)).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(timeout)).map_err(|e| e.to_string())?;
 
     let path = url_path(url);
     let content_length = body.map(|b| b.len()).unwrap_or(0);
@@ -348,14 +365,26 @@ fn execute_master_sync(
         .map_err(|e| format!("Failed to write incoming data: {}", e))?;
 
     sync_common::merge_incoming_data(&mut conn, &slave_data)
-        .map_err(|e| { sync_log(&format!("[9/13] BLAD scalania: {}", e)); e })?;
+        .map_err(|e| {
+            sync_log(&format!("[9/13] BLAD scalania: {} — przywracam backup", e));
+            if let Err(re) = sync_common::restore_database_backup(&conn) {
+                sync_log(&format!("[9/13] BLAD przywracania backupu: {}", re));
+            }
+            e
+        })?;
     sync_log("[9/13] Scalanie zakonczone");
 
     // Step 10: Verify
     sync_state.set_progress(10, "verifying", "local");
     sync_log("[10/13] Weryfikacja integralnosci bazy...");
     sync_common::verify_merge_integrity(&conn)
-        .map_err(|e| { sync_log(&format!("[10/13] BLAD weryfikacji: {}", e)); e })?;
+        .map_err(|e| {
+            sync_log(&format!("[10/13] BLAD weryfikacji: {} — przywracam backup", e));
+            if let Err(re) = sync_common::restore_database_backup(&conn) {
+                sync_log(&format!("[10/13] BLAD przywracania backupu: {}", re));
+            }
+            e
+        })?;
     sync_log("[10/13] Baza zweryfikowana — OK");
 
     // Generate new sync marker
@@ -382,18 +411,51 @@ fn execute_master_sync(
     std::fs::write(dir.join("lan_sync_merged.json"), &merged_export)
         .map_err(|e| e.to_string())?;
 
+    // Send merged data to slave via /lan/upload-db
+    http_post_with_progress(
+        &format!("{}/lan/upload-db", base_url),
+        &merged_export,
+        |transferred, total| {
+            sync_state.update_transfer_bytes(transferred, total);
+        },
+    ).map_err(|e| { sync_log(&format!("[11/13] BLAD wysylania danych do peera: {}", e)); e })?;
+    sync_log("[11/13] Dane wyslane do peera");
+
+    // Step 12: Tell slave to merge + verify + insert marker
+    sync_state.set_progress(12, "slave_importing", "upload");
+    sync_log("[12/13] Polecenie importu dla peera (db-ready)...");
     let ready_body = serde_json::json!({
         "marker_hash": new_marker,
         "transfer_mode": transfer_mode,
+        "master_device_id": device_id,
     });
-    sync_state.update_transfer_bytes(merged_export.len() as u64, merged_export.len() as u64);
-    http_post(&format!("{}/lan/db-ready", base_url), &ready_body.to_string())
-        .map_err(|e| { sync_log(&format!("[11/13] BLAD wysylania db-ready: {}", e)); e })?;
-    sync_log("[11/13] Peer poinformowany — dane gotowe do pobrania");
 
-    // Step 12: Wait for slave to download and verify
-    sync_state.set_progress(12, "slave_downloading", "upload");
-    sync_log("[12/13] Peer pobiera i importuje dane...");
+    // db-ready now blocks until slave finishes import — use long timeout
+    let db_ready_resp = http_post_with_timeout(
+        &format!("{}/lan/db-ready", base_url),
+        &ready_body.to_string(),
+        Duration::from_secs(120),
+    ).map_err(|e| {
+        sync_log(&format!("[12/13] BLAD — slave nie zakonczyl importu: {}", e));
+        // Restore backup on master since slave failed
+        if let Err(re) = sync_common::restore_database_backup(&conn) {
+            sync_log(&format!("[12/13] BLAD przywracania backupu master: {}", re));
+        }
+        e
+    })?;
+
+    // Verify slave response
+    if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&db_ready_resp) {
+        if resp.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            let err_msg = resp.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
+            sync_log(&format!("[12/13] Slave zglosil blad importu: {}", err_msg));
+            if let Err(re) = sync_common::restore_database_backup(&conn) {
+                sync_log(&format!("[12/13] BLAD przywracania backupu master: {}", re));
+            }
+            return Err(format!("Slave import failed: {}", err_msg));
+        }
+    }
+    sync_log("[12/13] Peer zakonczyl import — dane scalone");
 
     // Step 13: Unfreeze + cleanup
     sync_log("[13/13] Odmrazanie baz danych...");

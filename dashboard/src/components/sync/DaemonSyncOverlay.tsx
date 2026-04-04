@@ -64,6 +64,17 @@ export function DaemonSyncOverlay() {
     }
   }, []);
 
+  // Prevent window close during active sync
+  useEffect(() => {
+    if (activeSyncType === null) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [activeSyncType]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -104,11 +115,15 @@ export function DaemonSyncOverlay() {
   if (activeSyncType === null) return null;
 
   return (
-    <SyncProgressOverlay
-      active
-      syncType={activeSyncType}
-      onFinished={handleFinished}
-      onRetry={handleRetry}
-    />
+    <>
+      {/* Fullscreen blocking overlay — prevents all UI interaction during sync */}
+      <div className="fixed inset-0 z-[9998] bg-black/50 backdrop-blur-sm" />
+      <SyncProgressOverlay
+        active
+        syncType={activeSyncType}
+        onFinished={handleFinished}
+        onRetry={handleRetry}
+      />
+    </>
   );
 }

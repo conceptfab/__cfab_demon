@@ -143,6 +143,13 @@ export function LanSyncCard({
   const completedTimerRef = useRef<number | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
 
+  // Context menu state for right-click on sync button
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    peer: LanPeer;
+  } | null>(null);
+
   // The card is "busy" when either the UI triggered sync OR daemon is syncing (slave case)
   const isBusy = syncing || daemonSyncing;
 
@@ -448,7 +455,24 @@ export function LanSyncCard({
           )}
 
           {peers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">{noPeersText}</p>
+            <>
+              <p className="text-xs text-muted-foreground">{noPeersText}</p>
+              {settings.enabled && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+                  <div className="flex items-start gap-2">
+                    <Shield className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="text-xs text-amber-300/80 space-y-1">
+                      <p className="font-medium">Brak widocznych peerów — sprawdź zaporę sieciową</p>
+                      <p>Jeśli demon nie miał uprawnień administratora, reguły firewall mogły nie zostać dodane. Dodaj je ręcznie:</p>
+                      <pre className="text-[10px] bg-black/20 rounded p-1.5 overflow-x-auto whitespace-pre-wrap">
+{`netsh advfirewall firewall add rule name="TIMEFLOW LAN Discovery" dir=in action=allow protocol=UDP localport=47892
+netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=allow protocol=TCP localport=47891`}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <div className="space-y-2">
               {peers.map((peer) => (
@@ -488,6 +512,10 @@ export function LanSyncCard({
                           className="h-7 px-2.5 text-xs"
                           disabled={isBusy || !peer.dashboard_running}
                           onClick={() => onSyncWithPeer(peer)}
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            setContextMenu({ x: e.clientX, y: e.clientY, peer });
+                          }}
                         >
                           {isBusy ? (
                             <Loader2 className="h-3 w-3 animate-spin mr-1" />
@@ -572,6 +600,59 @@ export function LanSyncCard({
           </pre>
         )}
       </CardContent>
+
+      {/* Context menu for right-click on sync button */}
+      {contextMenu && (
+        <div
+          className="fixed inset-0 z-[100]"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+        >
+          <div
+            className="absolute rounded-md border border-border bg-popover shadow-lg py-1 min-w-[160px]"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+              disabled={isBusy}
+              onClick={() => {
+                onSyncWithPeer(contextMenu.peer);
+                setContextMenu(null);
+              }}
+            >
+              <RefreshCw className="h-3 w-3 mr-2 inline" />
+              Delta sync
+            </button>
+            {onFullSyncWithPeer && (
+              <button
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+                disabled={isBusy}
+                onClick={() => {
+                  onFullSyncWithPeer(contextMenu.peer);
+                  setContextMenu(null);
+                }}
+              >
+                <RefreshCw className="h-3 w-3 mr-2 inline" />
+                Full sync
+              </button>
+            )}
+            {onForceSyncWithPeer && (
+              <button
+                className="w-full text-left px-3 py-1.5 text-xs text-amber-400 hover:bg-accent disabled:opacity-50"
+                disabled={isBusy}
+                onClick={() => {
+                  onForceSyncWithPeer(contextMenu.peer);
+                  setContextMenu(null);
+                }}
+              >
+                <Zap className="h-3 w-3 mr-2 inline" />
+                Force sync
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

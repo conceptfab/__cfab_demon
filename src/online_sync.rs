@@ -1,6 +1,7 @@
 //! Online Sync Orchestrator — 13-step state machine using server coordination + SFTP transfer.
 
 use crate::config;
+use crate::lan_common::sync_log;
 use crate::lan_server::LanSyncState;
 use crate::sftp_client::SftpClient;
 use crate::sync_common;
@@ -19,10 +20,6 @@ const MAX_POLL_ATTEMPTS: u32 = 200; // ~10 min at 3s intervals
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RETRIES: u32 = 3;
 const RETRY_BASE_DELAY: Duration = Duration::from_secs(5);
-
-fn sync_log(msg: &str) {
-    sync_common::sync_log(msg);
-}
 
 // ── Server response types ──
 

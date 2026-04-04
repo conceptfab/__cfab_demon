@@ -110,8 +110,8 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
   const phaseLabel = t(`sync_progress.${progress.phase}`, progress.phase);
 
   return (
-    <div className="fixed bottom-20 right-6 z-50 w-80 animate-in slide-in-from-bottom-4 duration-300">
-      <div className="rounded-lg border border-sky-500/30 bg-background/95 backdrop-blur-sm px-4 py-3 shadow-lg shadow-sky-500/10">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+      <div className="rounded-lg border border-sky-500/30 bg-background/95 backdrop-blur-sm px-6 py-5 shadow-lg shadow-sky-500/10 w-96 pointer-events-auto animate-in zoom-in-95 duration-300">
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           {isCompleted ? (
@@ -165,6 +165,13 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
               {t('sync_progress.dismiss', 'Dismiss')}
             </button>
           </div>
+        )}
+
+        {/* Freeze notice */}
+        {!isCompleted && !isError && (
+          <p className="text-[11px] text-amber-400/80 mb-2">
+            {t('sync_progress.frozen_notice', 'Rejestrowanie wpisów jest wstrzymane. Proszę nie zamykać aplikacji.')}
+          </p>
         )}
 
         {/* Progress bar — only for transfer phases */}

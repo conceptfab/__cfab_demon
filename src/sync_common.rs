@@ -22,10 +22,6 @@ pub fn generate_marker_hash_simple(tables_hash: &str, timestamp: &str, device_id
     lan_common::generate_marker_hash(tables_hash, timestamp, device_id)
 }
 
-pub fn sync_log(msg: &str) {
-    lan_common::sync_log(msg);
-}
-
 // ── Database helpers ──
 
 pub fn insert_sync_marker_db(
@@ -216,15 +212,15 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 }
                 Some(ref local_ts) => {
                     log_merge_conflict(&tx, "projects", name, local_ts, updated_at, "remote");
+                    // Note: assigned_folder_path is machine-specific — never overwrite from remote
                     tx.execute(
                         "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
-                         frozen_at = ?4, assigned_folder_path = ?5, updated_at = ?6 WHERE name = ?7",
+                         frozen_at = ?4, updated_at = ?5 WHERE name = ?6",
                         rusqlite::params![
                             json_str(proj, "color"),
                             json_f64(proj, "hourly_rate"),
                             json_str_opt(proj, "excluded_at"),
                             json_str_opt(proj, "frozen_at"),
-                            json_str_opt(proj, "assigned_folder_path"),
                             updated_at,
                             name,
                         ],

@@ -97,38 +97,7 @@ pub struct PeersFile {
 }
 
 // ── Device ID ──
-
-fn get_or_create_device_id() -> String {
-    let dir = match config::config_dir() {
-        Ok(d) => d,
-        Err(_) => return fallback_device_id(),
-    };
-    let path = dir.join("device_id.txt");
-    if let Ok(id) = std::fs::read_to_string(&path) {
-        let trimmed = id.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
-        }
-    }
-    let id = generate_device_id();
-    let _ = std::fs::write(&path, &id);
-    id
-}
-
-fn generate_device_id() -> String {
-    let machine = std::env::var("COMPUTERNAME").unwrap_or_default();
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    // Include process ID to avoid collisions when multiple instances start simultaneously
-    let pid = std::process::id();
-    format!("{}-{:x}-{:x}", machine, ts, pid)
-}
-
-fn fallback_device_id() -> String {
-    lan_common::get_machine_name()
-}
+// Unified: uses lan_common::get_device_id() which creates the file if missing.
 
 fn get_machine_name() -> String {
     lan_common::get_machine_name()
@@ -214,7 +183,7 @@ pub fn start(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>
 }
 
 fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>) {
-    let device_id = get_or_create_device_id();
+    let device_id = lan_common::get_device_id();
     let machine_name = get_machine_name();
     let version_str = crate::VERSION.trim().to_string();
     let started_at = Instant::now();

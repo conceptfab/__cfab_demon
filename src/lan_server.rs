@@ -4,7 +4,8 @@
 // This server runs even when the dashboard is closed.
 
 use crate::config;
-use crate::lan_common;
+use crate::lan_common::{self, sync_log};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -255,14 +256,7 @@ fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
         }
     };
 
-    // Use blocking accept with a timeout so we can check stop_signal periodically
-    listener
-        .set_nonblocking(false)
-        .unwrap_or_else(|e| log::warn!("LAN server: set_nonblocking failed: {}", e));
-
-    // On Windows, TcpListener doesn't support set_read_timeout directly and full
-    // IOCP integration would be too invasive. Instead we use non-blocking accept
-    // with a short sleep to check stop_signal periodically.
+    // Non-blocking accept with short sleep to check stop_signal periodically.
     listener
         .set_nonblocking(true)
         .unwrap_or_else(|e| log::warn!("LAN server: set_nonblocking failed: {}", e));
@@ -380,7 +374,7 @@ fn handle_connection(
         ("POST", "/lan/freeze-ack") => handle_freeze_ack(&state),
         ("POST", "/lan/upload-db") => handle_upload_db(&state, &body),
         ("POST", "/lan/upload-ack") => (200, json_ok()),
-        ("POST", "/lan/db-ready") => handle_db_ready(&state),
+        ("POST", "/lan/db-ready") => handle_db_ready(&state, &body),
         ("GET", "/lan/download-db") => handle_download_db(),
         ("POST", "/lan/verify-ack") => handle_verify_ack(&state),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
@@ -468,10 +462,6 @@ fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
         |row| row.get(0),
     )
     .ok()
-}
-
-fn sync_log(msg: &str) {
-    lan_common::sync_log(msg);
 }
 
 // ── Endpoint handlers ──
@@ -603,21 +593,101 @@ fn handle_upload_db(state: &LanSyncState, body: &str) -> (u16, String) {
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }
 
-fn handle_db_ready(state: &LanSyncState) -> (u16, String) {
-    state.set_progress(11, "slave_downloading", "download");
-    sync_log("[SLAVE] Master zakonczyl scalanie — pobieram scalone dane...");
+fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
+    #[derive(Deserialize)]
+    struct DbReadyRequest {
+        marker_hash: String,
+        transfer_mode: String,
+        #[serde(default)]
+        master_device_id: String,
+    }
+    let req: DbReadyRequest = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid db-ready request: {}", e))),
+    };
 
-    let marker_hash = state
-        .latest_marker_hash
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
-        .unwrap_or_default();
+    state.set_progress(11, "slave_importing", "local");
+    sync_log("[SLAVE] Master zakonczyl scalanie — importuje dane...");
+
+    // Read the merged data that was sent via /lan/upload-db earlier
+    let dir = match config::config_dir() {
+        Ok(d) => d,
+        Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
+    };
+    let incoming_path = dir.join("lan_sync_incoming.json");
+    let merged_data = match std::fs::read_to_string(&incoming_path) {
+        Ok(data) => data,
+        Err(e) => {
+            sync_log(&format!("[SLAVE] BLAD — brak danych do importu: {}", e));
+            return (500, json_error(&format!("No incoming data file: {}", e)));
+        }
+    };
+
+    let data_kb = merged_data.len() as f64 / 1024.0;
+    sync_log(&format!("[SLAVE] Importuje {:.1} KB scalonych danych...", data_kb));
+
+    // Open DB connection
+    let mut conn = match open_dashboard_db() {
+        Ok(c) => c,
+        Err(e) => return (500, json_error(&format!("DB open error: {}", e))),
+    };
+
+    // Backup before merge
+    sync_log("[SLAVE] Tworzenie kopii zapasowej...");
+    if let Err(e) = crate::sync_common::backup_database(&conn) {
+        sync_log(&format!("[SLAVE] BLAD backup: {}", e));
+        return (500, json_error(&format!("Backup failed: {}", e)));
+    }
+
+    // Merge incoming data
+    sync_log("[SLAVE] Scalanie danych...");
+    if let Err(e) = crate::sync_common::merge_incoming_data(&mut conn, &merged_data) {
+        sync_log(&format!("[SLAVE] BLAD scalania: {} — przywracam backup", e));
+        if let Err(re) = crate::sync_common::restore_database_backup(&conn) {
+            sync_log(&format!("[SLAVE] BLAD przywracania backupu: {}", re));
+        }
+        return (500, json_error(&format!("Merge failed: {}", e)));
+    }
+
+    // Verify integrity
+    sync_log("[SLAVE] Weryfikacja integralnosci...");
+    if let Err(e) = crate::sync_common::verify_merge_integrity(&conn) {
+        sync_log(&format!("[SLAVE] BLAD weryfikacji: {} — przywracam backup", e));
+        if let Err(re) = crate::sync_common::restore_database_backup(&conn) {
+            sync_log(&format!("[SLAVE] BLAD przywracania backupu: {}", re));
+        }
+        return (500, json_error(&format!("Verify failed: {}", e)));
+    }
+
+    // Insert the SAME sync marker as master
+    let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let device_id = get_device_id();
+    let tables_hash = lan_common::compute_tables_hash_string(&conn);
+    if let Err(e) = crate::sync_common::insert_sync_marker_db(
+        &conn, &req.marker_hash, &now, &device_id,
+        Some(&req.master_device_id), &tables_hash,
+        req.transfer_mode == "full",
+    ) {
+        sync_log(&format!("[SLAVE] BLAD zapisu markera: {}", e));
+        return (500, json_error(&format!("Marker insert failed: {}", e)));
+    }
+
+    // Update shared state with new marker
+    {
+        let mut guard = state.latest_marker_hash.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = Some(req.marker_hash.clone());
+    }
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(&incoming_path);
+
+    state.set_progress(12, "slave_import_done", "local");
+    sync_log("[SLAVE] Import zakonczony — dane scalone i zweryfikowane");
 
     let resp = DbReadyResponse {
         ok: true,
-        marker_hash,
-        transfer_mode: "json".to_string(),
+        marker_hash: req.marker_hash,
+        transfer_mode: req.transfer_mode,
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }

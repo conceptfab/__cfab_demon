@@ -71,8 +71,17 @@ pub(crate) fn disambiguate_name(
     }
 }
 
+/// FNV-1a 64-bit hash — deterministic, matches daemon's lan_common::fnv1a_64.
+fn fnv1a_64(data: &[u8]) -> u64 {
+    let mut hash: u64 = 14695981039346656037;
+    for byte in data {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(1099511628211);
+    }
+    hash
+}
+
 pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    use std::hash::{Hash, Hasher};
     let sql = match table {
         "projects" => {
             "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
@@ -96,10 +105,7 @@ pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> St
     };
     let concat: String = conn.query_row(sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
-    // Hash in Rust (SQLite doesn't have native sha256)
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    concat.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    format!("{:016x}", fnv1a_64(concat.as_bytes()))
 }
 
 pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_export::TableHashes {

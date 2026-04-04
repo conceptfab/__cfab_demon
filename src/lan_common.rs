@@ -12,7 +12,7 @@ fn fnv1a_64(data: &[u8]) -> u64 {
     hash
 }
 
-/// Read device_id from config dir, fallback to machine name.
+/// Read device_id from config dir; create if missing. Fallback to machine name.
 pub fn get_device_id() -> String {
     let dir = match config::config_dir() {
         Ok(d) => d,
@@ -25,7 +25,16 @@ pub fn get_device_id() -> String {
             return trimmed;
         }
     }
-    get_machine_name()
+    // Generate and persist a unique device ID
+    let machine = get_machine_name();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let pid = std::process::id();
+    let id = format!("{}-{:x}-{:x}", machine, ts, pid);
+    let _ = std::fs::write(&path, &id);
+    id
 }
 
 /// Get machine name from COMPUTERNAME env var.

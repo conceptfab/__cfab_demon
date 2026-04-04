@@ -377,6 +377,26 @@ function useJobPool() {
     );
   }, [autoImportDone]);
 
+  // Periodically trigger daemon online sync (handles async delta pull from SFTP)
+  const nextDaemonOnlineSyncRef = useRef(Date.now() + 90_000);
+  const isDaemonOnlineSyncingRef = useRef(false);
+
+  const runDaemonOnlineSyncInterval = useCallback(async () => {
+    if (isDaemonOnlineSyncingRef.current || !isDocumentVisible()) return;
+    isDaemonOnlineSyncingRef.current = true;
+
+    // Reschedule for next interval (60s)
+    nextDaemonOnlineSyncRef.current = Date.now() + 60_000;
+
+    try {
+      await triggerDaemonOnlineSync();
+    } catch {
+      // Daemon unreachable or sync not configured — ignore
+    } finally {
+      isDaemonOnlineSyncingRef.current = false;
+    }
+  }, []);
+
   const runLanSyncInterval = useCallback(async () => {
     if (isLanSyncingRef.current || !isDocumentVisible()) return;
     const lanSettings = loadLanSyncSettings();
@@ -544,9 +564,10 @@ function useJobPool() {
 
     // Universal Event Loop (1 second tick)
     loopRef.current = window.setInterval(() => {
+      const now = Date.now();
       runJobPoolTick({
         autoImportDone,
-        now: Date.now(),
+        now,
         nextDiagnosticsRef,
         nextRefreshRef,
         nextSigCheckRef,
@@ -562,6 +583,11 @@ function useJobPool() {
         runSync,
         runLanSyncInterval,
       });
+
+      // Daemon async delta pull (SFTP) — triggers independently of dashboard sync
+      if (autoImportDone && now >= nextDaemonOnlineSyncRef.current) {
+        void runDaemonOnlineSyncInterval();
+      }
     }, JOB_LOOP_TICK_MS);
 
     return () => {
@@ -574,6 +600,7 @@ function useJobPool() {
     runRefresh,
     runSync,
     runLanSyncInterval,
+    runDaemonOnlineSyncInterval,
   ]);
 
   useEffect(() => {
@@ -668,6 +695,7 @@ function useOnlineSyncSSE() {
     void connectSSE(async (event) => {
       console.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering pull`);
       try {
+        // Trigger dashboard-side sync (push/pull archive)
         const result = await runOnlineSyncOnce();
         if (result.action === 'pull') {
           emitProjectsAllTimeInvalidated('sse_sync_pull');
@@ -677,6 +705,8 @@ function useOnlineSyncSSE() {
       } catch (e) {
         console.warn('[SSE] Auto-sync after notification failed:', e);
       }
+      // Also trigger daemon async delta pull (SFTP) — daemon decides if applicable
+      triggerDaemonOnlineSync().catch(() => {});
     });
 
     const handleSettingsChange = () => {
