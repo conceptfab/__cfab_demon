@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { FileDropzone } from "@/components/import/FileDropzone";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,10 +16,10 @@ export function ImportPage() {
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const loadImportData = () => {
+  const loadImportData = useCallback(() => {
     getImportedFiles().then(setImported).catch(console.error);
     getArchiveFiles().then(setArchive).catch(console.error);
-  };
+  }, []);
 
   useEffect(() => {
     loadImportData();
