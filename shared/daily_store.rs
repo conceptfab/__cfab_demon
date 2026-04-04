@@ -20,7 +20,8 @@ pub use read::{get_day_signature, load_day_snapshot, load_range_snapshots};
 pub use schema::{ensure_schema, open_store, store_db_path};
 pub(crate) use types::{dedupe_files_preserving_last, detected_path_key};
 pub use types::{
-    DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry, StoredSession,
+    extend_activity_spans, DaySignature, StoredAppDailyData, StoredDailyData, StoredFileEntry,
+    StoredSession,
 };
 pub use write::replace_day_snapshot;
 #[cfg(test)]

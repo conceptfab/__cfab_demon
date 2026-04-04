@@ -175,6 +175,7 @@ CREATE TABLE IF NOT EXISTS file_activities (
     detected_path TEXT,
     title_history TEXT,
     activity_type TEXT,
+    activity_spans TEXT NOT NULL DEFAULT '[]',
     FOREIGN KEY (app_id) REFERENCES applications(id),
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
     UNIQUE(app_id, date, file_path)

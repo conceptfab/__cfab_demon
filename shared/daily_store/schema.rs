@@ -71,6 +71,7 @@ pub fn ensure_schema(conn: &Connection) -> Result<(), String> {
              detected_path TEXT NOT NULL DEFAULT '',
              title_history_json TEXT NOT NULL DEFAULT '[]',
              activity_type TEXT,
+             activity_spans_json TEXT NOT NULL DEFAULT '[]',
              PRIMARY KEY (date, exe_name, file_name, detected_path),
              FOREIGN KEY (date, exe_name) REFERENCES daily_apps(date, exe_name) ON DELETE CASCADE
          );
@@ -136,6 +137,22 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
     let needs_migration =
         detected_path_pk != 4 || !detected_path_not_null || detected_path_default != "''";
     if !needs_migration {
+        // Even when the primary-key migration is not needed, the activity_spans_json column
+        // might be absent on databases created before this feature was added.
+        let has_activity_spans: bool = conn
+            .prepare_cached(
+                "SELECT COUNT(*) FROM pragma_table_info('daily_files') WHERE name='activity_spans_json'",
+            )
+            .map_err(|e| format!("Failed to check activity_spans_json column: {}", e))?
+            .query_row([], |row| row.get::<_, i64>(0))
+            .map(|c| c > 0)
+            .map_err(|e| format!("Failed to query activity_spans_json column: {}", e))?;
+        if !has_activity_spans {
+            conn.execute_batch(
+                "ALTER TABLE daily_files ADD COLUMN activity_spans_json TEXT NOT NULL DEFAULT '[]'",
+            )
+            .map_err(|e| format!("Failed to add activity_spans_json column: {}", e))?;
+        }
         return Ok(());
     }
 
@@ -159,6 +176,11 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
     } else {
         "NULL"
     };
+    let select_activity_spans = if columns.contains_key("activity_spans_json") {
+        "COALESCE(activity_spans_json, '[]')"
+    } else {
+        "'[]'"
+    };
     let migration_sql = format!(
         "BEGIN TRANSACTION;
          CREATE TABLE daily_files_new (
@@ -173,12 +195,13 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
              detected_path TEXT NOT NULL DEFAULT '',
              title_history_json TEXT NOT NULL DEFAULT '[]',
              activity_type TEXT,
+             activity_spans_json TEXT NOT NULL DEFAULT '[]',
              PRIMARY KEY (date, exe_name, file_name, detected_path),
              FOREIGN KEY (date, exe_name) REFERENCES daily_apps(date, exe_name) ON DELETE CASCADE
          );
          INSERT INTO daily_files_new (
              date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
-             window_title, detected_path, title_history_json, activity_type
+             window_title, detected_path, title_history_json, activity_type, activity_spans_json
          )
          SELECT
              date,
@@ -191,7 +214,8 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
              {select_window_title},
              {select_detected_path},
              {select_title_history},
-             {select_activity_type}
+             {select_activity_type},
+             {select_activity_spans}
          FROM daily_files;
          DROP TABLE daily_files;
          ALTER TABLE daily_files_new RENAME TO daily_files;
@@ -200,5 +224,23 @@ fn migrate_daily_files_schema(conn: &Connection) -> Result<(), String> {
          COMMIT;"
     );
     conn.execute_batch(&migration_sql)
-        .map_err(|e| format!("Failed to migrate daily_files schema: {}", e))
+        .map_err(|e| format!("Failed to migrate daily_files schema: {}", e))?;
+
+    // Check if activity_spans_json column exists (for DBs that passed the needs_migration check
+    // but were created before this column was added).
+    let has_activity_spans: bool = conn
+        .prepare_cached(
+            "SELECT COUNT(*) FROM pragma_table_info('daily_files') WHERE name='activity_spans_json'",
+        )
+        .map_err(|e| format!("Failed to check activity_spans_json column: {}", e))?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|c| c > 0)
+        .map_err(|e| format!("Failed to query activity_spans_json column: {}", e))?;
+    if !has_activity_spans {
+        conn.execute_batch(
+            "ALTER TABLE daily_files ADD COLUMN activity_spans_json TEXT NOT NULL DEFAULT '[]'",
+        )
+        .map_err(|e| format!("Failed to add activity_spans_json column: {}", e))?;
+    }
+    Ok(())
 }

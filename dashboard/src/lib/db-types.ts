@@ -42,6 +42,7 @@ export interface FileActivity {
   project_id?: number | null;
   project_name?: string | null;
   project_color?: string | null;
+  activity_spans?: [string, string][];
 }
 
 export interface ImportedFile {

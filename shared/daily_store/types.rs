@@ -41,6 +41,8 @@ pub struct StoredFileEntry {
     pub title_history: Vec<String>,
     #[serde(default)]
     pub activity_type: Option<String>,
+    #[serde(default)]
+    pub activity_spans: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,4 +76,62 @@ pub(crate) fn decode_detected_path(value: String) -> Option<String> {
     } else {
         Some(value)
     }
+}
+
+const SPAN_MERGE_GAP_SECS: i64 = 30;
+const MAX_SPANS_PER_FILE: usize = 100;
+
+fn parse_rfc3339(s: &str) -> Option<chrono::DateTime<chrono::FixedOffset>> {
+    chrono::DateTime::parse_from_rfc3339(s).ok()
+}
+
+fn rfc3339_diff_secs(a: &str, b: &str) -> i64 {
+    match (parse_rfc3339(a), parse_rfc3339(b)) {
+        (Some(da), Some(db)) => da.signed_duration_since(db).num_seconds(),
+        _ => i64::MAX,
+    }
+}
+
+/// Extend spans with a new interval, merging adjacent spans (gap < 30s).
+/// Caps at MAX_SPANS_PER_FILE by merging the two shortest-gap neighbors.
+pub fn extend_activity_spans(
+    spans: &[(String, String)],
+    new_start: &str,
+    new_end: &str,
+) -> Vec<(String, String)> {
+    let mut result: Vec<(String, String)> = spans.to_vec();
+    result.push((new_start.to_string(), new_end.to_string()));
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut merged: Vec<(String, String)> = Vec::with_capacity(result.len());
+    for span in result {
+        if let Some(last) = merged.last_mut() {
+            if rfc3339_diff_secs(&span.0, &last.1) <= SPAN_MERGE_GAP_SECS {
+                if span.1 > last.1 {
+                    last.1 = span.1;
+                }
+                continue;
+            }
+        }
+        merged.push(span);
+    }
+
+    while merged.len() > MAX_SPANS_PER_FILE {
+        let mut min_gap = i64::MAX;
+        let mut min_idx = 0;
+        for i in 0..merged.len() - 1 {
+            let gap = rfc3339_diff_secs(&merged[i + 1].0, &merged[i].1);
+            if gap < min_gap {
+                min_gap = gap;
+                min_idx = i;
+            }
+        }
+        let next_end = merged[min_idx + 1].1.clone();
+        if next_end > merged[min_idx].1 {
+            merged[min_idx].1 = next_end;
+        }
+        merged.remove(min_idx + 1);
+    }
+
+    merged
 }

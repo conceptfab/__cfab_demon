@@ -184,7 +184,7 @@ pub fn build_session_context(
     let mut file_stmt = conn
         .prepare_cached(
             "SELECT file_name, file_path, detected_path, project_id, window_title, title_history,
-                    first_seen, last_seen
+                    activity_spans, first_seen, last_seen
              FROM file_activities
              WHERE app_id = ?1 AND date = ?2
                AND last_seen > ?3 AND first_seen < ?4",
@@ -211,8 +211,30 @@ pub fn build_session_context(
         let project_id: Option<i64> = row.get(3).map_err(|e| e.to_string())?;
         let window_title: Option<String> = row.get(4).map_err(|e| e.to_string())?;
         let title_history: Option<String> = row.get(5).map_err(|e| e.to_string())?;
-        let file_first_seen: String = row.get(6).map_err(|e| e.to_string())?;
-        let file_last_seen: String = row.get(7).map_err(|e| e.to_string())?;
+        let activity_spans_json: String = row.get::<_, String>(6).unwrap_or_else(|_| "[]".to_string());
+        let activity_spans: Vec<(String, String)> =
+            serde_json::from_str(&activity_spans_json).unwrap_or_default();
+        let file_first_seen: String = row.get(7).map_err(|e| e.to_string())?;
+        let file_last_seen: String = row.get(8).map_err(|e| e.to_string())?;
+
+        // If spans exist, verify at least one overlaps with the session window
+        if !activity_spans.is_empty() {
+            let has_overlap = activity_spans.iter().any(|(s, e)| {
+                if let (Some(span_s), Some(span_e)) = (parse_timestamp(s), parse_timestamp(e)) {
+                    if let (Some(ss), Some(se)) = (parse_timestamp(&start_time), parse_timestamp(&end_time)) {
+                        span_s < se && span_e > ss
+                    } else {
+                        true
+                    }
+                } else {
+                    true // unparseable → keep for safety
+                }
+            });
+            if !has_overlap {
+                continue; // skip this file — no span actually overlaps
+            }
+        }
+
         for token in tokenize(&file_name) {
             if uniq_tokens.insert(token.clone()) {
                 tokens.push(token);

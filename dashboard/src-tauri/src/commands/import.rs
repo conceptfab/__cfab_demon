@@ -218,9 +218,10 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
     };
     let mut file_stmt = match tx.prepare_cached(
         "INSERT INTO file_activities (
-            app_id, date, file_name, file_path, total_seconds, first_seen, last_seen, project_id, window_title, detected_path, title_history, activity_type
+            app_id, date, file_name, file_path, total_seconds, first_seen, last_seen,
+            project_id, window_title, detected_path, title_history, activity_type, activity_spans
          )
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
          ON CONFLICT(app_id, date, file_path) DO UPDATE SET
            file_name = excluded.file_name,
            total_seconds = excluded.total_seconds,
@@ -230,7 +231,11 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
            window_title = COALESCE(excluded.window_title, file_activities.window_title),
            detected_path = COALESCE(excluded.detected_path, file_activities.detected_path),
            title_history = COALESCE(excluded.title_history, file_activities.title_history),
-           activity_type = COALESCE(excluded.activity_type, file_activities.activity_type)",
+           activity_type = COALESCE(excluded.activity_type, file_activities.activity_type),
+           activity_spans = CASE
+               WHEN excluded.activity_spans != '[]' THEN excluded.activity_spans
+               ELSE file_activities.activity_spans
+           END",
     ) {
         Ok(s) => s,
         Err(e) => {
@@ -328,6 +333,11 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 .as_deref()
                 .map(str::trim)
                 .filter(|value| !value.is_empty());
+            let activity_spans_param = if file.activity_spans.is_empty() {
+                "[]".to_string()
+            } else {
+                serde_json::to_string(&file.activity_spans).unwrap_or_else(|_| "[]".to_string())
+            };
             if let Err(e) = file_stmt.execute(rusqlite::params![
                 app_id,
                 file_date,
@@ -340,7 +350,8 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 window_title_param,
                 detected_path_param,
                 title_history_param.as_deref(),
-                activity_type_param
+                activity_type_param,
+                activity_spans_param
             ]) {
                 log::warn!(
                     "Failed to upsert file activity for app_id {} file '{}': {}",

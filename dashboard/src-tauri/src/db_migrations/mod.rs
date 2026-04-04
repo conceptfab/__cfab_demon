@@ -13,8 +13,9 @@ mod m12_delta_sync;
 mod m13_fix_updated_at;
 mod m14_sync_markers;
 mod m15_sync_merge_log;
+mod m16_file_activity_spans;
 
-const LATEST_SCHEMA_VERSION: i64 = 15;
+const LATEST_SCHEMA_VERSION: i64 = 16;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -83,6 +84,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 15 {
         m15_sync_merge_log::run(&tx)?;
+    }
+    if current_version < 16 {
+        m16_file_activity_spans::run(&tx)?;
     }
 
     tx.execute(

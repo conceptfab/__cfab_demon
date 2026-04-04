@@ -60,7 +60,8 @@ export function areFileActivitiesEqual(
     left.last_seen === right.last_seen &&
     (left.project_id ?? null) === (right.project_id ?? null) &&
     (left.project_name ?? null) === (right.project_name ?? null) &&
-    (left.project_color ?? null) === (right.project_color ?? null)
+    (left.project_color ?? null) === (right.project_color ?? null) &&
+    JSON.stringify(left.activity_spans ?? []) === JSON.stringify(right.activity_spans ?? [])
   );
 }
 

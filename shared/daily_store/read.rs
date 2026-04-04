@@ -8,6 +8,10 @@ fn parse_title_history_json(title_history_json: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(title_history_json).unwrap_or_default()
 }
 
+fn parse_activity_spans_json(json: &str) -> Vec<(String, String)> {
+    serde_json::from_str::<Vec<(String, String)>>(json).unwrap_or_default()
+}
+
 pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredDailyData>, String> {
     let generated_at = conn
         .query_row(
@@ -87,7 +91,8 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
     let mut file_stmt = conn
         .prepare_cached(
             "SELECT exe_name, file_name, total_seconds, first_seen, last_seen,
-                    window_title, detected_path, title_history_json, activity_type
+                    window_title, detected_path, title_history_json, activity_type,
+                    activity_spans_json
              FROM daily_files
              WHERE date = ?1
              ORDER BY exe_name COLLATE NOCASE, ordinal ASC",
@@ -105,6 +110,7 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
                 row.get::<_, String>(6)?,
                 row.get::<_, String>(7)?,
                 row.get::<_, Option<String>>(8)?,
+                row.get::<_, String>(9).unwrap_or_else(|_| "[]".to_string()),
             ))
         })
         .map_err(|e| format!("Failed to query daily files for {}: {}", date, e))?;
@@ -119,6 +125,7 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
             detected_path,
             title_history_json,
             activity_type,
+            activity_spans_json,
         ) = row.map_err(|e| format!("Failed to map daily file row for {}: {}", date, e))?;
         let title_history = parse_title_history_json(&title_history_json);
         if let Some(app) = apps.get_mut(&exe_name) {
@@ -131,6 +138,7 @@ pub fn load_day_snapshot(conn: &Connection, date: &str) -> Result<Option<StoredD
                 detected_path: decode_detected_path(detected_path),
                 title_history,
                 activity_type,
+                activity_spans: parse_activity_spans_json(&activity_spans_json),
             });
         }
     }
@@ -240,7 +248,8 @@ pub fn load_range_snapshots(
     let mut file_stmt = conn
         .prepare_cached(
             "SELECT date, exe_name, file_name, total_seconds, first_seen, last_seen,
-                    window_title, detected_path, title_history_json, activity_type
+                    window_title, detected_path, title_history_json, activity_type,
+                    activity_spans_json
              FROM daily_files
              WHERE date >= ?1 AND date <= ?2
              ORDER BY date ASC, exe_name COLLATE NOCASE, ordinal ASC",
@@ -259,6 +268,7 @@ pub fn load_range_snapshots(
                 row.get::<_, String>(7)?,
                 row.get::<_, String>(8)?,
                 row.get::<_, Option<String>>(9)?,
+                row.get::<_, String>(10).unwrap_or_else(|_| "[]".to_string()),
             ))
         })
         .map_err(|e| format!("Failed to query daily file range: {}", e))?;
@@ -274,6 +284,7 @@ pub fn load_range_snapshots(
             detected_path,
             title_history_json,
             activity_type,
+            activity_spans_json,
         ) = row.map_err(|e| format!("Failed to map daily file range row: {}", e))?;
         if let Some(snapshot) = snapshots.get_mut(&date) {
             if let Some(app) = snapshot.apps.get_mut(&exe_name) {
@@ -286,6 +297,7 @@ pub fn load_range_snapshots(
                     detected_path: decode_detected_path(detected_path),
                     title_history: parse_title_history_json(&title_history_json),
                     activity_type,
+                    activity_spans: parse_activity_spans_json(&activity_spans_json),
                 });
             }
         }

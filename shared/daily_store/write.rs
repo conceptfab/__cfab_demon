@@ -104,8 +104,8 @@ pub fn replace_day_snapshot(
         .prepare_cached(
             "INSERT OR REPLACE INTO daily_files (
                  date, exe_name, file_name, ordinal, total_seconds, first_seen, last_seen,
-                 window_title, detected_path, title_history_json, activity_type
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 window_title, detected_path, title_history_json, activity_type, activity_spans_json
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         )
         .map_err(|e| format!("Failed to prepare daily file insert: {}", e))?;
     tx.execute_batch(
@@ -197,6 +197,13 @@ pub fn replace_day_snapshot(
                     file.name, snapshot.date, e
                 )
             })?;
+            let activity_spans_json =
+                serde_json::to_string(&file.activity_spans).map_err(|e| {
+                    format!(
+                        "Failed to serialize activity spans for '{}' on {}: {}",
+                        file.name, snapshot.date, e
+                    )
+                })?;
             insert_file_key_stmt
                 .execute(params![file.name, detected_path.as_str()])
                 .map_err(|e| {
@@ -217,7 +224,8 @@ pub fn replace_day_snapshot(
                     file.window_title,
                     detected_path.as_str(),
                     title_history_json,
-                    file.activity_type
+                    file.activity_type,
+                    activity_spans_json
                 ])
                 .map_err(|e| {
                     format!(

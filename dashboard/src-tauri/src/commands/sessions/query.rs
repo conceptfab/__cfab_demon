@@ -14,6 +14,7 @@ struct IndexedFileActivity {
     activity: FileActivity,
     first_seen_ms: Option<i64>,
     last_seen_ms: Option<i64>,
+    parsed_spans: Vec<(i64, i64)>,
 }
 
 struct TempFileActivityKeysCleanup<'a> {
@@ -28,14 +29,36 @@ impl Drop for TempFileActivityKeysCleanup<'_> {
 
 impl IndexedFileActivity {
     fn new(activity: FileActivity) -> Self {
+        let parsed_spans: Vec<(i64, i64)> = activity
+            .activity_spans
+            .iter()
+            .filter_map(|(s, e)| {
+                Some((parse_datetime_ms_opt(s)?, parse_datetime_ms_opt(e)?))
+            })
+            .collect();
+
         Self {
             first_seen_ms: parse_datetime_ms_opt(&activity.first_seen),
             last_seen_ms: parse_datetime_ms_opt(&activity.last_seen),
             activity,
+            parsed_spans,
         }
     }
 
     fn overlap_ms(&self, session_start_ms: i64, session_end_ms: i64) -> Option<i64> {
+        // If we have spans, use them for precise overlap
+        if !self.parsed_spans.is_empty() {
+            let total: i64 = self
+                .parsed_spans
+                .iter()
+                .filter_map(|&(span_start, span_end)| {
+                    compute_overlap_ms(session_start_ms, session_end_ms, span_start, span_end)
+                })
+                .sum();
+            return if total > 0 { Some(total) } else { None };
+        }
+
+        // Fallback to first_seen/last_seen for legacy data
         compute_overlap_ms(
             session_start_ms,
             session_end_ms,
@@ -309,7 +332,7 @@ pub async fn get_sessions(
             let mut fstmt = conn
                 .prepare_cached(
                     "SELECT fa.id, fa.app_id, fa.date, fa.file_name, fa.total_seconds, fa.first_seen, fa.last_seen,
-                            fa.project_id, p.name, p.color
+                            fa.project_id, p.name, p.color, fa.activity_spans
                      FROM file_activities fa
                      LEFT JOIN projects p ON p.id = fa.project_id
                      INNER JOIN _fa_keys k ON fa.app_id = k.app_id AND fa.date = k.date",
@@ -330,6 +353,10 @@ pub async fn get_sessions(
                             project_id: row.get(7)?,
                             project_name: row.get(8)?,
                             project_color: row.get(9)?,
+                            activity_spans: {
+                                let json: String = row.get::<_, String>(10).unwrap_or_else(|_| "[]".to_string());
+                                serde_json::from_str(&json).unwrap_or_default()
+                            },
                         },
                     ))
                 })
@@ -596,6 +623,7 @@ mod tests {
             project_id: None,
             project_name: None,
             project_color: None,
+            activity_spans: vec![],
         })
     }
 

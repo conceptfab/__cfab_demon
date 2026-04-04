@@ -210,6 +210,11 @@ fn update_file_entry(
 ) {
     file_entry.total_seconds += elapsed_seconds;
     file_entry.last_seen = now_str.to_string();
+    file_entry.activity_spans = crate::daily_store::extend_activity_spans(
+        &file_entry.activity_spans,
+        now_str,
+        now_str,
+    );
 
     // Keep the latest title because it carries the richest AI context.
     if !window_title.is_empty() {
@@ -244,6 +249,7 @@ fn build_new_file_entry(
         detected_path: detected_path.map(str::to_string),
         title_history,
         activity_type: activity_type.map(str::to_string),
+        activity_spans: vec![(now_str.to_string(), now_str.to_string())],
     }
 }
 

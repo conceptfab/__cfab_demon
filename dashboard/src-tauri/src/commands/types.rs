@@ -98,6 +98,7 @@ pub struct FileActivity {
     pub project_id: Option<i64>,
     pub project_name: Option<String>,
     pub project_color: Option<String>,
+    pub activity_spans: Vec<(String, String)>,
 }
 
 #[derive(Serialize)]
