@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Button } from '@/components/ui/button';
@@ -22,51 +23,6 @@ interface OnlineSyncCardProps {
   licenseKeyInput: string;
   licenseActivating: boolean;
   licenseError: string | null;
-  licenseTitle: string;
-  licenseKeyPlaceholder: string;
-  licenseActivateLabel: string;
-  licenseActivatingLabel: string;
-  licensePlanLabel: string;
-  licenseGroupLabel: string;
-  licenseDevicesLabel: string;
-  licenseExpiresLabel: string;
-  licenseActiveLabel: string;
-  title: string;
-  description: string;
-  enableSyncTitle: string;
-  enableSyncDescription: string;
-  syncOnStartupTitle: string;
-  syncOnStartupDescription: string;
-  autoSyncIntervalTitle: string;
-  autoSyncIntervalDescription: string;
-  minutesLabel: string;
-  enableLoggingTitle: string;
-  enableLoggingDescription: string;
-  serverUrlLabel: string;
-  useDefaultServerLabel: string;
-  userIdLabel: string;
-  userIdPlaceholder: string;
-  apiTokenLabel: string;
-  apiTokenPlaceholder: string;
-  showTokenLabel: string;
-  hideTokenLabel: string;
-  apiTokenHint: string;
-  deviceIdLabel: string;
-  generatedOnSaveLabel: string;
-  deviceIdHint: string;
-  statusTitle: string;
-  lastSuccessfulLabel: string;
-  demoModeDisabledWarning: string;
-  serverRevisionLabel: string;
-  serverHashLabel: string;
-  localRevisionHashLabel: string;
-  pendingAckLabel: string;
-  retriesLabel: string;
-  reseedWarning: string;
-  syncingLabel: string;
-  syncDisabledInDemoLabel: string;
-  syncNowLabel: string;
-  notAvailableLabel: string;
   defaultServerUrl: string;
   labelClassName: string;
   lastSyncLabel: string;
@@ -88,10 +44,7 @@ interface OnlineSyncCardProps {
   testingRoundtrip: boolean;
   testRoundtripResult: string | null;
   testRoundtripSuccess: boolean;
-  testRoundtripLabel: string;
-  testingRoundtripLabel: string;
   onTestRoundtrip: () => void;
-  forceSyncLabel: string;
   onForceSyncNow: () => void;
 }
 
@@ -104,42 +57,6 @@ export function OnlineSyncCard({
   manualSyncing,
   demoModeSyncDisabled,
   showToken,
-  title,
-  description,
-  enableSyncTitle,
-  enableSyncDescription,
-  syncOnStartupTitle,
-  syncOnStartupDescription,
-  autoSyncIntervalTitle,
-  autoSyncIntervalDescription,
-  minutesLabel,
-  enableLoggingTitle,
-  enableLoggingDescription,
-  serverUrlLabel,
-  useDefaultServerLabel,
-  userIdLabel,
-  userIdPlaceholder,
-  apiTokenLabel,
-  apiTokenPlaceholder,
-  showTokenLabel,
-  hideTokenLabel,
-  apiTokenHint,
-  deviceIdLabel,
-  generatedOnSaveLabel,
-  deviceIdHint,
-  statusTitle,
-  lastSuccessfulLabel,
-  demoModeDisabledWarning,
-  serverRevisionLabel,
-  serverHashLabel,
-  localRevisionHashLabel,
-  pendingAckLabel,
-  retriesLabel,
-  reseedWarning,
-  syncingLabel,
-  syncDisabledInDemoLabel,
-  syncNowLabel,
-  notAvailableLabel,
   defaultServerUrl,
   labelClassName,
   lastSyncLabel,
@@ -160,58 +77,48 @@ export function OnlineSyncCard({
   licenseKeyInput,
   licenseActivating,
   licenseError,
-  licenseTitle,
-  licenseKeyPlaceholder,
-  licenseActivateLabel,
-  licenseActivatingLabel,
-  licensePlanLabel,
-  licenseGroupLabel,
-  licenseDevicesLabel,
-  licenseExpiresLabel,
-  licenseActiveLabel,
   onLicenseKeyChange,
   onActivateLicense,
   testingRoundtrip,
   testRoundtripResult,
   testRoundtripSuccess,
-  testRoundtripLabel,
-  testingRoundtripLabel,
   onTestRoundtrip,
-  forceSyncLabel,
   onForceSyncNow,
 }: OnlineSyncCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader className="pb-4">
-        <CardTitle className="text-base font-semibold">{title}</CardTitle>
-        <p className="text-sm text-muted-foreground">{description}</p>
+        <CardTitle className="text-base font-semibold">{t('settings_page.online_sync')}</CardTitle>
+        <p className="text-sm text-muted-foreground">{t('settings_page.startup_synchronization_with_remote_server_using_snapsho')}</p>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* License activation section */}
         <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{licenseTitle}</span>
+            <span className="text-sm font-medium">{t('settings.license.title')}</span>
           </div>
           {licenseInfo ? (
             <div className="grid gap-1.5 text-xs">
               <div className="flex items-center gap-2">
                 <span className="inline-flex items-center rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                  {licenseActiveLabel}
+                  {t('settings.license.active')}
                 </span>
                 <span className="font-mono text-muted-foreground">
                   {licenseInfo.plan.toUpperCase()}
                 </span>
               </div>
               <div className="text-muted-foreground">
-                {licenseGroupLabel}: <span className="text-foreground">{licenseInfo.groupName}</span>
+                {t('settings.license.group')}: <span className="text-foreground">{licenseInfo.groupName}</span>
               </div>
               <div className="text-muted-foreground">
-                {licenseDevicesLabel}: <span className="text-foreground">{licenseInfo.activeDevices}/{licenseInfo.maxDevices}</span>
+                {t('settings.license.devices')}: <span className="text-foreground">{licenseInfo.activeDevices}/{licenseInfo.maxDevices}</span>
               </div>
               {licenseInfo.expiresAt && (
                 <div className="text-muted-foreground">
-                  {licenseExpiresLabel}: <span className="text-foreground">{new Date(licenseInfo.expiresAt).toLocaleDateString()}</span>
+                  {t('settings.license.expires')}: <span className="text-foreground">{new Date(licenseInfo.expiresAt).toLocaleDateString()}</span>
                 </div>
               )}
             </div>
@@ -221,7 +128,7 @@ export function OnlineSyncCard({
                 <input
                   type="text"
                   className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 font-mono text-sm shadow-sm placeholder:text-muted-foreground/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                  placeholder={licenseKeyPlaceholder}
+                  placeholder={t('settings.license.key_placeholder')}
                   value={licenseKeyInput}
                   onChange={(e) => onLicenseKeyChange(e.target.value)}
                   onKeyDown={(e) => {
@@ -237,7 +144,7 @@ export function OnlineSyncCard({
                   onClick={onActivateLicense}
                   disabled={licenseActivating || !licenseKeyInput.trim()}
                 >
-                  {licenseActivating ? licenseActivatingLabel : licenseActivateLabel}
+                  {licenseActivating ? t('settings.license.activating') : t('settings.license.activate')}
                 </Button>
               </div>
               {licenseError && (
@@ -252,9 +159,9 @@ export function OnlineSyncCard({
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
-            <p className="text-sm font-medium">{enableSyncTitle}</p>
+            <p className="text-sm font-medium">{t('settings.online_sync.enableTitle')}</p>
             <p className="text-xs leading-5 break-words text-muted-foreground">
-              {enableSyncDescription}
+              {t('settings_page.allows_the_dashboard_to_exchange_data_snapshots_with_the')}
             </p>
           </div>
           <input
@@ -271,9 +178,9 @@ export function OnlineSyncCard({
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
-            <p className="text-sm font-medium">{syncOnStartupTitle}</p>
+            <p className="text-sm font-medium">{t('settings_page.sync_on_startup')}</p>
             <p className="text-xs leading-5 break-words text-muted-foreground">
-              {syncOnStartupDescription}
+              {t('settings_page.runs_status_pull_push_after_local_auto_import_finishes')}
             </p>
           </div>
           <input
@@ -287,9 +194,9 @@ export function OnlineSyncCard({
 
         <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center">
           <div className="min-w-0">
-            <p className="text-sm font-medium">{autoSyncIntervalTitle}</p>
+            <p className="text-sm font-medium">{t('settings_page.auto_sync_interval')}</p>
             <p className="text-xs leading-5 break-words text-muted-foreground">
-              {autoSyncIntervalDescription}
+              {t('settings_page.periodic_sync_after_app_startup_default_is_every_30_minu')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -307,7 +214,7 @@ export function OnlineSyncCard({
                 }
               }}
             />
-            <span className="text-sm text-muted-foreground">{minutesLabel}</span>
+            <span className="text-sm text-muted-foreground">{t('settings_page.min')}</span>
           </div>
         </div>
 
@@ -316,9 +223,9 @@ export function OnlineSyncCard({
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
-            <p className="text-sm font-medium">{enableLoggingTitle}</p>
+            <p className="text-sm font-medium">{t('settings.online_sync.loggingTitle')}</p>
             <p className="text-xs leading-5 break-words text-muted-foreground">
-              {enableLoggingDescription}
+              {t('settings_page.save_detailed_sync_operations_to_log_file_for_debugging')}
             </p>
           </div>
           <input
@@ -332,7 +239,7 @@ export function OnlineSyncCard({
 
         <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
           <label className="grid gap-1.5 text-sm">
-            <span className={labelClassName}>{serverUrlLabel}</span>
+            <span className={labelClassName}>{t('settings_page.server_url')}</span>
             <input
               type="text"
               className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
@@ -347,7 +254,7 @@ export function OnlineSyncCard({
                 className="h-7 px-2 text-xs"
                 onClick={onResetServerUrl}
               >
-                {useDefaultServerLabel}
+                {t('settings.online_sync.useRailwayDefault')}
               </Button>
               <span className="text-xs text-muted-foreground break-all">
                 {defaultServerUrl}
@@ -356,34 +263,34 @@ export function OnlineSyncCard({
           </label>
 
           <label className="grid gap-1.5 text-sm">
-            <span className={labelClassName}>{userIdLabel}</span>
+            <span className={labelClassName}>{t('settings_page.user_id')}</span>
             <input
               type="text"
               className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-              placeholder={userIdPlaceholder}
+              placeholder={t('settings_page.user_id_placeholder')}
               value={settings.userId}
               onChange={(e) => onUserIdChange(e.target.value)}
             />
           </label>
 
           <label className="grid gap-1.5 text-sm">
-            <span className={labelClassName}>{apiTokenLabel}</span>
+            <span className={labelClassName}>{t('settings_page.api_token_bearer')}</span>
             <div className="flex items-center gap-2">
               <input
                 type={showToken ? 'text' : 'password'}
                 autoComplete="off"
                 className="h-9 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                placeholder={apiTokenPlaceholder}
+                placeholder={t('settings_page.paste_the_raw_token_without_bearer_prefix_and_without_qu')}
                 value={settings.apiToken}
                 onChange={(e) => onApiTokenChange(e.target.value)}
               />
-              <AppTooltip content={showToken ? hideTokenLabel : showTokenLabel}>
+              <AppTooltip content={showToken ? t('settings_page.hide_token') : t('settings_page.show_token')}>
                 <Button
                   type="button"
                   variant="outline"
                   className="h-9 w-10 px-0"
                   onClick={() => onShowTokenChange(!showToken)}
-                  aria-label={showToken ? hideTokenLabel : showTokenLabel}
+                  aria-label={showToken ? t('settings_page.hide_token') : t('settings_page.show_token')}
                 >
                   {showToken ? (
                     <EyeOff className="h-4 w-4" />
@@ -393,20 +300,20 @@ export function OnlineSyncCard({
                 </Button>
               </AppTooltip>
             </div>
-            <p className="text-xs text-muted-foreground">{apiTokenHint}</p>
+            <p className="text-xs text-muted-foreground">{t('settings_page.enter_the_raw_token_the_app_will_add_the_bearer_header_a')}</p>
           </label>
 
           <div className="grid gap-1.5 text-sm">
-            <span className={labelClassName}>{deviceIdLabel}</span>
+            <span className={labelClassName}>{t('settings_page.device_id')}</span>
             <div className="rounded-md border border-input bg-muted/30 px-3 py-2 font-mono text-xs break-all">
-              {settings.deviceId || generatedOnSaveLabel}
+              {settings.deviceId || t('settings_page.generated_on_save')}
             </div>
-            <p className="text-xs text-muted-foreground">{deviceIdHint}</p>
+            <p className="text-xs text-muted-foreground">{t('settings_page.generated_automatically_and_used_to_identify_this_machin')}</p>
           </div>
 
           <div className="grid gap-3 rounded-md border border-border/70 bg-background/20 p-3">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm font-medium">{statusTitle}</p>
+              <p className="text-sm font-medium">{t('settings_page.last_sync_status')}</p>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -416,10 +323,10 @@ export function OnlineSyncCard({
                   disabled={manualSyncing || demoModeSyncDisabled}
                 >
                   {manualSyncing
-                    ? syncingLabel
+                    ? t('settings_page.syncing')
                     : demoModeSyncDisabled
-                      ? syncDisabledInDemoLabel
-                      : syncNowLabel}
+                      ? t('settings.online_sync.syncDisabledInDemo')
+                      : t('settings_page.sync_now')}
                 </Button>
                 <Button
                   type="button"
@@ -428,7 +335,7 @@ export function OnlineSyncCard({
                   onClick={onTestRoundtrip}
                   disabled={testingRoundtrip}
                 >
-                  {testingRoundtrip ? testingRoundtripLabel : testRoundtripLabel}
+                  {testingRoundtrip ? t('settings_page.testing_roundtrip') : t('settings_page.test_roundtrip')}
                 </Button>
                 <Button
                   type="button"
@@ -437,18 +344,18 @@ export function OnlineSyncCard({
                   onClick={onForceSyncNow}
                   disabled={manualSyncing || demoModeSyncDisabled}
                 >
-                  {forceSyncLabel}
+                  {t('settings_page.force_full_sync')}
                 </Button>
               </div>
             </div>
 
             <p className="text-xs text-muted-foreground">
-              {lastSuccessfulLabel} {lastSyncLabel}
+              {t('settings_page.last_successful_check_sync')} {lastSyncLabel}
             </p>
 
             {demoModeSyncDisabled && (
               <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-xs text-amber-300">
-                {demoModeDisabledWarning}
+                {t('settings_page.online_sync_is_disabled_while_demo_mode_is_active')}
               </div>
             )}
 
@@ -477,39 +384,39 @@ export function OnlineSyncCard({
 
             <div className="grid gap-1 text-xs text-muted-foreground">
               <div>
-                {serverRevisionLabel}{' '}
+                {t('settings_page.server_revision')}{' '}
                 <span className="font-mono text-foreground">
                   {state.serverRevision}
                 </span>
               </div>
               <div>
-                {serverHashLabel}{' '}
+                {t('settings_page.server_hash')}{' '}
                 <span className="font-mono text-foreground break-all">
                   {shortHash}
                 </span>
               </div>
               <div>
-                {localRevisionHashLabel}{' '}
+                {t('settings_page.local_rev_hash')}{' '}
                 <span className="font-mono text-foreground">
-                  {state.localRevision ?? notAvailableLabel} / {localHashShort}
+                  {state.localRevision ?? t('ui.common.not_available')} / {localHashShort}
                 </span>
               </div>
               {state.pendingAck && (
                 <div className="text-amber-500">
-                  {pendingAckLabel}{' '}
+                  {t('settings_page.pending_ack')}{' '}
                   <span className="font-mono text-foreground">
                     r{state.pendingAck.revision} / {pendingAckHashShort}
                   </span>
                   {state.pendingAck.retries > 0 && (
                     <>
                       {' '}
-                      ({retriesLabel}: {state.pendingAck.retries})
+                      ({t('settings_page.retries')}: {state.pendingAck.retries})
                     </>
                   )}
                 </div>
               )}
               {state.needsReseed && (
-                <div className="text-amber-500">{reseedWarning}</div>
+                <div className="text-amber-500">{t('settings_page.server_payload_was_cleaned_up_after_acks_local_reseed_ex')}</div>
               )}
             </div>
           </div>
