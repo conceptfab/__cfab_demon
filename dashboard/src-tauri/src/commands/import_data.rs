@@ -326,15 +326,13 @@ fn import_archive_into_tx(
                     "UPDATE projects
                      SET color = ?1,
                          hourly_rate = COALESCE(?2, hourly_rate),
-                         assigned_folder_path = COALESCE(?3, assigned_folder_path),
-                         frozen_at = COALESCE(?4, frozen_at),
-                         excluded_at = COALESCE(?5, excluded_at),
-                         updated_at = ?6
-                     WHERE id = ?7",
+                         frozen_at = COALESCE(?3, frozen_at),
+                         excluded_at = COALESCE(?4, excluded_at),
+                         updated_at = ?5
+                     WHERE id = ?6",
                     rusqlite::params![
                         p.color,
                         p.hourly_rate,
-                        p.assigned_folder_path,
                         p.frozen_at,
                         p.excluded_at,
                         p.updated_at,
@@ -346,8 +344,8 @@ fn import_archive_into_tx(
             id
         } else {
             tx.execute(
-                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8)",
-                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.assigned_folder_path, p.frozen_at, p.updated_at]
+                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?7)",
+                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.frozen_at, p.updated_at]
             ).map_err(|e| e.to_string())?;
             summary.projects_created += 1;
             let new_id = tx.last_insert_rowid();
