@@ -1,6 +1,7 @@
 // LAN Sync Orchestrator — state machine implementing the 13-step sync protocol.
 // Runs as a sub-thread spawned when peers are discovered and roles assigned.
 
+use crate::lan_common;
 use crate::lan_common::sync_log;
 use crate::lan_server::LanSyncState;
 use crate::sync_common;
@@ -289,12 +290,12 @@ fn execute_master_sync(
     let sync_start = Instant::now();
 
     // Open single DB connection for entire sync flow
-    let mut conn = sync_common::open_dashboard_db()?;
+    let mut conn = lan_common::open_dashboard_db()?;
 
     // Step 3: Negotiate with SLAVE
     sync_state.set_progress(3, "negotiating", "local");
     sync_log(&format!("[3/13] Negocjacja z peerem {}:{} ...", peer.ip, peer.port));
-    let device_id = sync_common::get_device_id();
+    let device_id = lan_common::get_device_id();
     let local_marker = get_local_marker_hash_with_conn(&conn);
 
     let negotiate_body = serde_json::json!({

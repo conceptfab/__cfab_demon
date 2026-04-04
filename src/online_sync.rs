@@ -1,6 +1,7 @@
 //! Online Sync Orchestrator — 13-step state machine using server coordination + SFTP transfer.
 
 use crate::config;
+use crate::lan_common;
 use crate::lan_common::sync_log;
 use crate::lan_server::LanSyncState;
 use crate::sftp_client::SftpClient;
@@ -432,12 +433,12 @@ fn execute_async_push(
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
     let device_id = if settings.device_id.is_empty() {
-        sync_common::get_device_id()
+        lan_common::get_device_id()
     } else {
         settings.device_id.clone()
     };
 
-    let conn = sync_common::open_dashboard_db()?;
+    let conn = lan_common::open_dashboard_db()?;
 
     // Build delta since last sync
     let last_sync_ts = sync_common::get_last_sync_timestamp(&conn);
@@ -526,7 +527,7 @@ fn execute_async_pull(
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
     let device_id = if settings.device_id.is_empty() {
-        sync_common::get_device_id()
+        lan_common::get_device_id()
     } else {
         settings.device_id.clone()
     };
@@ -543,7 +544,7 @@ fn execute_async_pull(
 
     sync_log(&format!("[async-pull] Found {} pending package(s)", pending.packages.len()));
 
-    let mut conn = sync_common::open_dashboard_db()?;
+    let mut conn = lan_common::open_dashboard_db()?;
 
     for pkg in &pending.packages {
         sync_log(&format!("[async-pull] Processing package {} from device {}", &pkg.id[..8], &pkg.from_device_id[..8.min(pkg.from_device_id.len())]));
@@ -694,7 +695,7 @@ pub fn run_online_sync(
     let server_url = settings.server_url.clone();
     let token = settings.auth_token.clone();
     let device_id = if settings.device_id.is_empty() {
-        sync_common::get_device_id()
+        lan_common::get_device_id()
     } else {
         settings.device_id.clone()
     };
@@ -741,7 +742,7 @@ pub fn run_online_sync_forced(
     let server_url = settings.server_url.clone();
     let token = settings.auth_token.clone();
     let device_id = if settings.device_id.is_empty() {
-        sync_common::get_device_id()
+        lan_common::get_device_id()
     } else {
         settings.device_id.clone()
     };
@@ -791,14 +792,14 @@ fn execute_online_sync_inner(
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
     let device_id = if settings.device_id.is_empty() {
-        sync_common::get_device_id()
+        lan_common::get_device_id()
     } else {
         settings.device_id.clone()
     };
     let sync_start = Instant::now();
 
     // Open DB connection
-    let mut conn = sync_common::open_dashboard_db()?;
+    let mut conn = lan_common::open_dashboard_db()?;
 
     // Step 1-2: Create session on server
     sync_state.set_progress(1, "creating_session", "local");

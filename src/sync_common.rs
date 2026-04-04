@@ -4,16 +4,6 @@ use crate::config;
 use crate::lan_common;
 use crate::lan_server;
 
-// ── Re-exported thin wrappers ──
-
-pub fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
-    lan_common::open_dashboard_db()
-}
-
-pub fn get_device_id() -> String {
-    lan_common::get_device_id()
-}
-
 pub fn compute_tables_hash_string_conn(conn: &rusqlite::Connection) -> String {
     lan_common::compute_tables_hash_string(conn)
 }
