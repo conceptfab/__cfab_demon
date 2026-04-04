@@ -206,7 +206,7 @@ impl TrayState {
             // Scope the borrow so it's released before popup() — popup() runs
             // a nested message loop where timer ticks can fire and also borrow tray.
             {
-                let tray = self.tray.borrow_mut();
+                let tray = self.tray.borrow();
                 self.update_tray_appearance(&tray, attention, lang);
             }
             let (x, y) = nwg::GlobalCursor::position();
@@ -253,8 +253,10 @@ impl TrayState {
 
             let lang = self.current_lang.get();
             let attention = refresh_attention_state(&self.attention_state, false);
-            let tray = self.tray.borrow_mut();
-            self.update_tray_appearance(&tray, attention, lang);
+            {
+                let tray = self.tray.borrow();
+                self.update_tray_appearance(&tray, attention, lang);
+            } // drop borrow before show_sync_notification can re-borrow
 
             // Update sync status menu item + enable/disable sync buttons
             if let Some(ref state) = self.sync_state {
