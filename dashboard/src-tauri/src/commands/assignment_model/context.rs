@@ -14,15 +14,46 @@ pub struct SessionContext {
     pub file_project_ids: Vec<i64>,
 }
 
+/// Tokens considered too common to carry project-discriminating signal.
+const STOP_TOKENS: &[&str] = &[
+    // filesystem / code structure
+    "src", "lib", "app", "bin", "pkg", "cmd", "api", "dist", "build", "out",
+    "node_modules", "vendor", "target", "debug", "release",
+    "index", "main", "mod", "init", "setup", "config", "utils", "helpers",
+    "test", "tests", "spec", "specs", "bench",
+    "tmp", "temp", "cache", "log", "logs",
+    // common file extensions leaked as tokens
+    "rs", "ts", "js", "tsx", "jsx", "py", "go", "css", "html", "json", "toml", "yaml", "yml",
+    "md", "txt", "xml", "svg", "png", "jpg",
+    // English function words
+    "the", "and", "for", "with", "from", "into", "that", "this", "not", "but",
+    "all", "are", "was", "were", "been", "have", "has", "had", "will", "would",
+    "new", "old", "get", "set", "add", "del", "run", "use",
+    // common IDE / UI labels
+    "file", "edit", "view", "window", "help", "tools", "terminal", "output",
+    "untitled", "welcome", "settings", "preferences",
+];
+
 pub fn tokenize(text: &str) -> Vec<String> {
     let separators = [
         ' ', '-', '_', '.', '/', '\\', '|', ',', ':', ';', '(', ')', '[', ']', '{', '}',
     ];
-    text.to_lowercase()
+    let raw_tokens: Vec<String> = text
+        .to_lowercase()
         .split(&separators[..])
         .filter(|t| t.len() >= 2 && t.chars().any(|c| c.is_alphabetic()))
+        .filter(|t| !STOP_TOKENS.contains(t))
         .map(|t| t.to_string())
-        .collect()
+        .collect();
+
+    // Generate bigrams from consecutive tokens for compound names
+    // e.g. ["user", "service"] → also produces "user~service"
+    let mut result = raw_tokens.clone();
+    for window in raw_tokens.windows(2) {
+        let bigram = format!("{}~{}", window[0], window[1]);
+        result.push(bigram);
+    }
+    result
 }
 
 pub fn parse_title_history(raw: Option<&str>) -> Vec<String> {
@@ -216,4 +247,40 @@ pub fn build_session_context(
         tokens,
         file_project_ids: file_project_set.into_iter().collect(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenize_filters_stop_words() {
+        let tokens = tokenize("src/app/user_service.rs");
+        assert!(!tokens.contains(&"src".to_string()));
+        assert!(!tokens.contains(&"app".to_string()));
+        assert!(!tokens.contains(&"rs".to_string()));
+        assert!(tokens.contains(&"user".to_string()));
+        assert!(tokens.contains(&"service".to_string()));
+    }
+
+    #[test]
+    fn tokenize_generates_bigrams() {
+        let tokens = tokenize("user-service");
+        assert!(tokens.contains(&"user".to_string()));
+        assert!(tokens.contains(&"service".to_string()));
+        assert!(tokens.contains(&"user~service".to_string()));
+    }
+
+    #[test]
+    fn tokenize_no_bigram_for_single_token() {
+        let tokens = tokenize("dashboard");
+        assert!(tokens.contains(&"dashboard".to_string()));
+        assert_eq!(tokens.len(), 1);
+    }
+
+    #[test]
+    fn tokenize_handles_empty_and_short() {
+        assert!(tokenize("").is_empty());
+        assert!(tokenize("a").is_empty()); // too short
+    }
 }
