@@ -436,6 +436,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
     // Idle threshold: 2 minutes without keyboard/mouse input
     const IDLE_THRESHOLD_MS: u64 = 120_000;
+    let mut was_idle = false;
 
     loop {
         // Check stop signal
@@ -529,6 +530,22 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         let idle_ms = monitor::get_idle_time_ms();
         let is_idle = idle_ms >= IDLE_THRESHOLD_MS;
 
+        // When transitioning from idle to active, estimate the active portion:
+        // idle_ms tells us how long since last input (should be < IDLE_THRESHOLD_MS).
+        let effective_elapsed_for_foreground = if !is_idle && was_idle {
+            let active_portion_ms = idle_ms.min(effective_elapsed.as_millis() as u64);
+            let active_duration = Duration::from_millis(active_portion_ms);
+            log::debug!(
+                "Idle→active transition: recording {}ms of {}ms tick",
+                active_portion_ms,
+                effective_elapsed.as_millis()
+            );
+            active_duration.max(Duration::from_secs(1)) // at least 1s
+        } else {
+            effective_elapsed
+        };
+        was_idle = is_idle;
+
         // Foreground tracking (skip when idle — don't count time without user input)
         if !is_idle {
             if let Some(ref info) = foreground_exe {
@@ -540,7 +557,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                         window_title: &info.window_title,
                         detected_path: info.detected_path.as_deref(),
                         activity_type: info.activity_type,
-                        elapsed: effective_elapsed,
+                        elapsed: effective_elapsed_for_foreground,
                         session_gap,
                     },
                     &cfg,
