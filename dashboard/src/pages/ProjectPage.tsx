@@ -39,6 +39,7 @@ import { useSessionActions } from '@/hooks/useSessionActions';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import {
   findSessionIdsMissingComment,
+  manualToSessionRow,
   requiresCommentForMultiplierBoost,
 } from '@/lib/session-utils';
 import { parsePositiveRateMultiplierInput } from '@/lib/rate-utils';
@@ -185,20 +186,6 @@ export function ProjectPage() {
     `${count} ${
       count === 1 ? t('project_page.text.app') : t('project_page.text.apps')
     }`;
-  const toManualSessionRow = (
-    session: ManualSessionWithProject,
-  ): ManualSessionRow => ({
-    ...session,
-    app_id: session.app_id ?? 0,
-    app_name: t('project_page.text.manual_session'),
-    executable_name: 'manual',
-    project_id: session.project_id,
-    project_name: session.project_name,
-    project_color: session.project_color,
-    comment: session.title,
-    files: [],
-    isManual: true,
-  });
 
   const groupedSessions = useMemo(() => {
     const groups: {
@@ -214,18 +201,9 @@ export function ProjectPage() {
     manualSessions.forEach((m) => {
       const date = m.start_time.substring(0, 10);
       if (!groups[date]) groups[date] = [];
-      groups[date].push({
-        ...m,
-        app_id: m.app_id ?? 0,
-        app_name: t('project_page.text.manual_session'),
-        executable_name: 'manual',
-        project_id: m.project_id,
-        project_name: m.project_name,
-        project_color: m.project_color,
-        comment: m.title,
-        files: [],
-        isManual: true as const,
-      });
+      groups[date].push(
+        manualToSessionRow(m, t('project_page.text.manual_session')),
+      );
     });
 
     return Object.entries(groups)
@@ -807,7 +785,7 @@ export function ProjectPage() {
             .map((s) => ({ ...s, isManual: false as const }));
           const dayManualSessions: ProjectSessionRow[] = manualSessions
             .filter((s) => s.start_time.startsWith(date))
-            .map(toManualSessionRow);
+            .map((m) => manualToSessionRow(m, t('project_page.text.manual_session')));
           const daySessions = [...dayLogSessions, ...dayManualSessions];
           setCtxMenu({
             type: 'chart',

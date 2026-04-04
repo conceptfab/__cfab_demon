@@ -40,6 +40,7 @@ import { useSessionActions } from '@/hooks/useSessionActions';
 import { useSessionsData } from '@/hooks/useSessionsData';
 import { useSessionsFilters } from '@/hooks/useSessionsFilters';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
+import { manualToSessionRow } from '@/lib/session-utils';
 import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
 import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
 import {
@@ -175,23 +176,9 @@ export function Sessions() {
 
   const mergedSessions = useMemo(() => {
     if (manualSessions.length === 0) return sessions;
-    const manualAsSession: SessionWithApp[] = manualSessions.map((m) => ({
-      id: m.id,
-      app_id: m.app_id ?? 0,
-      start_time: m.start_time,
-      end_time: m.end_time,
-      date: m.date,
-      duration_seconds: m.duration_seconds,
-      app_name: t('project_page.text.manual_session', 'Manual Session'),
-      executable_name: 'manual',
-      project_id: m.project_id,
-      project_name: m.project_name,
-      project_color: m.project_color,
-      comment: m.title,
-      files: [],
-      isManual: true,
-      session_type: m.session_type,
-    } as SessionWithApp & { isManual: true; session_type: string }));
+    const manualAsSession = manualSessions.map((m) =>
+      manualToSessionRow(m, t('project_page.text.manual_session', 'Manual Session')),
+    );
     return [...sessions, ...manualAsSession].sort((a, b) =>
       b.start_time.localeCompare(a.start_time),
     );

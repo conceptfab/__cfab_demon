@@ -1,4 +1,23 @@
-import type { SessionWithApp } from '@/lib/db-types';
+import type { ManualSessionWithProject, SessionWithApp } from '@/lib/db-types';
+
+/**
+ * Convert a ManualSessionWithProject into a shape compatible with SessionWithApp.
+ * Used by Sessions and ProjectPage to merge manual sessions into session lists.
+ */
+export function manualToSessionRow(
+  session: ManualSessionWithProject,
+  label: string,
+) {
+  return {
+    ...session,
+    app_id: session.app_id ?? 0,
+    app_name: label,
+    executable_name: 'manual',
+    comment: session.title,
+    files: [] as SessionWithApp['files'],
+    isManual: true as const,
+  };
+}
 
 export const SESSION_PAGE_SIZE = 100;
 
