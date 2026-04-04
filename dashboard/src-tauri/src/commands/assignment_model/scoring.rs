@@ -140,10 +140,10 @@ pub fn compute_score_breakdowns(
     let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
     let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
 
-    // Layer 0: direct file-activity project evidence
-    for &pid in &context.file_project_ids {
+    // Layer 0: direct file-activity project evidence (weighted by overlap fraction)
+    for (&pid, &weight) in &context.file_project_weights {
         if is_project_active_cached(conn, &mut active_project_cache, pid) {
-            *layer0.entry(pid).or_insert(0.0) += 0.80;
+            *layer0.entry(pid).or_insert(0.0) += 0.80 * weight;
             *candidate_evidence.entry(pid).or_insert(0) += 2;
         }
     }
@@ -151,7 +151,7 @@ pub fn compute_score_breakdowns(
     // Layer 1: app
     // For background apps (no file evidence), boost evidence from +1 to +2
     // so that the evidence_factor grows at a comparable rate to file-based apps.
-    let is_background_app = context.file_project_ids.is_empty();
+    let is_background_app = context.file_project_weights.is_empty();
     let layer1_evidence_weight: i64 = if is_background_app { 2 } else { 1 };
     let mut stmt = conn
         .prepare_cached("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
@@ -277,7 +277,9 @@ pub fn compute_score_breakdowns(
         let second_score = candidates.get(1).map(|c| c.total_score).unwrap_or(0.0);
         let margin = (best.total_score - second_score).max(0.0);
         let evidence_factor = 1.0 - (-(best.evidence_count as f64) / 2.0).exp();
-        let sigmoid_margin = 1.0 / (1.0 + (-margin).exp());
+        // Shifted sigmoid: requires margin > ~0.3 to cross 0.5
+        // At margin=0 → ~0.23, at margin=0.3 → ~0.50, at margin=1.0 → ~0.94
+        let sigmoid_margin = 1.0 / (1.0 + (-(margin - 0.3) * 4.0).exp());
         let confidence = sigmoid_margin * evidence_factor;
 
         let breakdown = SuggestionBreakdown {
@@ -437,4 +439,32 @@ pub fn suggest_projects_for_sessions_unfiltered(
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod confidence_tests {
+    #[test]
+    fn zero_margin_gives_low_confidence() {
+        let margin = 0.0;
+        let sigmoid = 1.0 / (1.0 + (-(margin - 0.3) * 4.0_f64).exp());
+        assert!(sigmoid < 0.30, "sigmoid at margin=0 was {}", sigmoid);
+    }
+
+    #[test]
+    fn high_margin_gives_high_confidence() {
+        let margin = 1.0;
+        let sigmoid = 1.0 / (1.0 + (-(margin - 0.3) * 4.0_f64).exp());
+        assert!(sigmoid > 0.90, "sigmoid at margin=1.0 was {}", sigmoid);
+    }
+
+    #[test]
+    fn moderate_margin_is_around_half() {
+        let margin = 0.3;
+        let sigmoid = 1.0 / (1.0 + (-(margin - 0.3) * 4.0_f64).exp());
+        assert!(
+            (sigmoid - 0.5).abs() < 0.01,
+            "sigmoid at margin=0.3 was {}",
+            sigmoid
+        );
+    }
 }

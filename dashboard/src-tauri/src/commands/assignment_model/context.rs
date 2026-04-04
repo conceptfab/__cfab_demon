@@ -1,6 +1,6 @@
 use chrono::{Datelike, Timelike};
 use rusqlite::OptionalExtension;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::commands::datetime::parse_datetime_fixed;
 
@@ -10,8 +10,8 @@ pub struct SessionContext {
     pub hour_bucket: i64,
     pub weekday: i64,
     pub tokens: Vec<String>,
-    /// project_ids found on overlapping file_activities (direct evidence)
-    pub file_project_ids: Vec<i64>,
+    /// project_ids with their overlap weight (0.0..1.0) relative to session duration
+    pub file_project_weights: HashMap<i64, f64>,
 }
 
 /// Tokens considered too common to carry project-discriminating signal.
@@ -183,7 +183,8 @@ pub fn build_session_context(
     // Filter file_activities to only those overlapping with the session time window
     let mut file_stmt = conn
         .prepare_cached(
-            "SELECT file_name, file_path, detected_path, project_id, window_title, title_history
+            "SELECT file_name, file_path, detected_path, project_id, window_title, title_history,
+                    first_seen, last_seen
              FROM file_activities
              WHERE app_id = ?1 AND date = ?2
                AND last_seen > ?3 AND first_seen < ?4",
@@ -194,7 +195,15 @@ pub fn build_session_context(
         .map_err(|e| e.to_string())?;
     let mut uniq_tokens = HashSet::new();
     let mut tokens = Vec::new();
-    let mut file_project_set = HashSet::new();
+    let mut file_project_overlap: HashMap<i64, f64> = HashMap::new();
+
+    let session_start_ts = parse_timestamp(&start_time);
+    let session_end_ts = parse_timestamp(&end_time);
+    let session_duration_secs = session_start_ts
+        .zip(session_end_ts)
+        .map(|(s, e)| (e - s).num_seconds().max(1) as f64)
+        .unwrap_or(1.0);
+
     while let Some(row) = file_rows.next().map_err(|e| e.to_string())? {
         let file_name: String = row.get(0).map_err(|e| e.to_string())?;
         let file_path: String = row.get(1).map_err(|e| e.to_string())?;
@@ -202,6 +211,8 @@ pub fn build_session_context(
         let project_id: Option<i64> = row.get(3).map_err(|e| e.to_string())?;
         let window_title: Option<String> = row.get(4).map_err(|e| e.to_string())?;
         let title_history: Option<String> = row.get(5).map_err(|e| e.to_string())?;
+        let file_first_seen: String = row.get(6).map_err(|e| e.to_string())?;
+        let file_last_seen: String = row.get(7).map_err(|e| e.to_string())?;
         for token in tokenize(&file_name) {
             if uniq_tokens.insert(token.clone()) {
                 tokens.push(token);
@@ -235,7 +246,21 @@ pub fn build_session_context(
             }
         }
         if let Some(pid) = project_id {
-            file_project_set.insert(pid);
+            let overlap = if let (Some(ss), Some(se), Some(fs), Some(fe)) = (
+                session_start_ts,
+                session_end_ts,
+                parse_timestamp(&file_first_seen),
+                parse_timestamp(&file_last_seen),
+            ) {
+                let overlap_start = ss.max(fs);
+                let overlap_end = se.min(fe);
+                let overlap_secs = (overlap_end - overlap_start).num_seconds().max(0) as f64;
+                (overlap_secs / session_duration_secs).clamp(0.05, 1.0)
+            } else {
+                1.0 // fallback: full weight if timestamps can't be parsed
+            };
+            let entry = file_project_overlap.entry(pid).or_insert(0.0);
+            *entry = (*entry).max(overlap); // take the max overlap for this project
         }
     }
 
@@ -245,7 +270,7 @@ pub fn build_session_context(
         hour_bucket,
         weekday,
         tokens,
-        file_project_ids: file_project_set.into_iter().collect(),
+        file_project_weights: file_project_overlap,
     }))
 }
 
