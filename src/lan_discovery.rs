@@ -1180,22 +1180,27 @@ fn http_scan_subnet(my_device_id: &str) -> HashMap<String, PeerInfo> {
 
     log::info!("LAN discovery: HTTP scan starting — {} targets", targets.len());
 
+    const BATCH_SIZE: usize = 48;
     let my_id = my_device_id.to_string();
-    let handles: Vec<_> = targets
-        .into_iter()
-        .map(|ip| {
-            let my_id = my_id.clone();
-            thread::spawn(move || http_ping_one(ip, &my_id))
-        })
-        .collect();
 
-    for handle in handles {
-        if let Ok(Some((id, peer))) = handle.join() {
-            log::info!(
-                "LAN discovery: HTTP scan found {} ({}) at {}",
-                peer.machine_name, id, peer.ip
-            );
-            found.insert(id, peer);
+    for batch in targets.chunks(BATCH_SIZE) {
+        let handles: Vec<_> = batch
+            .iter()
+            .map(|ip| {
+                let my_id = my_id.clone();
+                let ip = ip.clone();
+                thread::spawn(move || http_ping_one(ip, &my_id))
+            })
+            .collect();
+
+        for handle in handles {
+            if let Ok(Some((id, peer))) = handle.join() {
+                log::info!(
+                    "LAN discovery: HTTP scan found {} ({}) at {}",
+                    peer.machine_name, id, peer.ip
+                );
+                found.insert(id, peer);
+            }
         }
     }
 
