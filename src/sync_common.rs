@@ -150,14 +150,10 @@ pub fn get_last_sync_timestamp(conn: &rusqlite::Connection) -> Option<String> {
 /// Normalize ISO/mixed timestamps to `YYYY-MM-DD HH:MM:SS` for safe string comparison.
 /// Handles `2024-01-02T15:04:05`, `2024-01-02T15:04:05Z`, `2024-01-02 15:04:05`, etc.
 fn normalize_ts(ts: &str) -> String {
-    let s = ts.replace('T', " ");
-    // Strip timezone suffix (Z, +00:00, etc.)
-    let s = if let Some(pos) = s.find('Z') { &s[..pos] } else { &s };
-    let s = if let Some(pos) = s.rfind('+') {
-        if pos > 10 { &s[..pos] } else { s }
-    } else { s };
-    // Truncate to 19 chars: "YYYY-MM-DD HH:MM:SS"
-    if s.len() >= 19 { s[..19].to_string() } else { s.to_string() }
+    chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S"))
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|_| ts.to_string())
 }
 
 // ── Merge conflict logging ──
