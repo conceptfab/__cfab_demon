@@ -113,47 +113,7 @@ function areMetricsEqual(
   next: AssignmentModelMetrics,
 ): boolean {
   if (!current) return false;
-  if (current.window_days !== next.window_days) return false;
-
-  if (
-    current.summary.feedback_total !== next.summary.feedback_total ||
-    current.summary.feedback_accepted !== next.summary.feedback_accepted ||
-    current.summary.feedback_rejected !== next.summary.feedback_rejected ||
-    current.summary.feedback_manual_change !== next.summary.feedback_manual_change ||
-    current.summary.feedback_precision !== next.summary.feedback_precision ||
-    current.summary.auto_runs !== next.summary.auto_runs ||
-    current.summary.auto_assigned !== next.summary.auto_assigned ||
-    current.summary.auto_rollbacks !== next.summary.auto_rollbacks ||
-    current.summary.coverage_total_entries !== next.summary.coverage_total_entries ||
-    current.summary.coverage_detected_path_ratio !==
-      next.summary.coverage_detected_path_ratio ||
-    current.summary.coverage_title_history_ratio !==
-      next.summary.coverage_title_history_ratio ||
-    current.summary.coverage_activity_type_ratio !==
-      next.summary.coverage_activity_type_ratio
-  ) {
-    return false;
-  }
-
-  if (current.points.length !== next.points.length) return false;
-
-  return current.points.every((point, index) => {
-    const nextPoint = next.points[index];
-    return (
-      point.date === nextPoint.date &&
-      point.feedback_total === nextPoint.feedback_total &&
-      point.feedback_accepted === nextPoint.feedback_accepted &&
-      point.feedback_rejected === nextPoint.feedback_rejected &&
-      point.feedback_manual_change === nextPoint.feedback_manual_change &&
-      point.auto_runs === nextPoint.auto_runs &&
-      point.auto_assigned === nextPoint.auto_assigned &&
-      point.auto_rollbacks === nextPoint.auto_rollbacks &&
-      point.coverage_total_entries === nextPoint.coverage_total_entries &&
-      point.coverage_with_detected_path === nextPoint.coverage_with_detected_path &&
-      point.coverage_with_title_history === nextPoint.coverage_with_title_history &&
-      point.coverage_with_activity_type === nextPoint.coverage_with_activity_type
-    );
-  });
+  return JSON.stringify(current) === JSON.stringify(next);
 }
 
 export function AIPage() {
