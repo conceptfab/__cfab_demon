@@ -7,9 +7,11 @@
 
 <!-- - smtp maila dla bug huntera -->
 
+------------------
 
 data.md #8 (File activity spans) — zmiana modelu danych StoredFileEntry z kaskadowym wpływem na dashboard, sync, migrację. To osobny plan. Pomijam w tym planie.
----
+
+---------------------------------
 
 ISSUE-8: podwójne parsowanie ipconfig (wymaga cache warstwy)
 ISSUE-9a: peak RAM 200MB+ na merge (wymaga typowanych struktur Deserialize zamiast serde_json::Value)
