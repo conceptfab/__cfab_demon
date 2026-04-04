@@ -771,7 +771,7 @@ fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
         let _ = std::fs::remove_file(d.join("lan_sync_incoming.json"));
         let _ = std::fs::remove_file(d.join("lan_sync_merged.json"));
     }
-    state.sync_in_progress.store(false, Ordering::SeqCst);
+    state.unfreeze();
     (200, json_ok())
 }
 
