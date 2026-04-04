@@ -575,6 +575,7 @@ export function Projects() {
   const toggleFolders = () => {
     const next = !useFolders;
     setUseFolders(next);
+    localStorage.setItem(FOLDERS_STORAGE_KEY, String(next));
   };
 
   const handleSaveDefaults = () => {
