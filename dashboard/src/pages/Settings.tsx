@@ -132,7 +132,15 @@ export function Settings() {
   });
 
   // ── Tab state ──
-  const [activeTab, setActiveTab] = useState<'general' | 'dev'>('general');
+  type SettingsTab = 'general' | 'sessions' | 'sync' | 'advanced';
+  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+
+  const tabMeta: Record<SettingsTab, { label: string; active: string }> = {
+    general:  { label: t('settings_page.tab_general'),  active: 'border-sky-400 text-sky-400' },
+    sessions: { label: t('settings_page.tab_sessions'), active: 'border-violet-400 text-violet-400' },
+    sync:     { label: t('settings_page.tab_sync'),     active: 'border-emerald-400 text-emerald-400' },
+    advanced: { label: t('settings_page.tab_advanced'),  active: 'border-amber-400 text-amber-400' },
+  };
 
   // ── LAN Sync state ──
   const [lanSettings, setLanSettings] = useState<LanSyncSettingsType>(loadLanSyncSettings);
@@ -309,39 +317,24 @@ export function Settings() {
     <div className="mx-auto w-full max-w-3xl space-y-8 pb-20">
       {/* Tab Navigation */}
       <div className="flex gap-1 border-b border-border/50 px-1">
-        <button
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-            activeTab === 'general'
-              ? 'border-sky-400 text-sky-400'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('general')}
-        >
-          {t('settings_page.general_settings')}
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
-            activeTab === 'dev'
-              ? 'border-amber-400 text-amber-400'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-          onClick={() => setActiveTab('dev')}
-        >
-          DEV
-        </button>
+        {(Object.keys(tabMeta) as SettingsTab[]).map((id) => (
+          <button
+            key={id}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              activeTab === id
+                ? tabMeta[id].active
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab(id)}
+          >
+            {tabMeta[id].label}
+          </button>
+        ))}
       </div>
 
-      {activeTab === 'dev' ? (
-        <div className="space-y-4">
-          <DevSettingsCard />
-        </div>
-      ) : (
-      <>
+      {/* ── Tab: Ogolne ── */}
+      {activeTab === 'general' && (
       <div className="space-y-4">
-        <h2 className="text-xl font-bold tracking-tight px-1">
-          {t('settings_page.general_settings')}
-        </h2>
-
         <WorkingHoursCard
           title={t('settings_page.working_hours')}
           description={t('settings_page.used_to_highlight_expected_work_window_on_timeline')}
@@ -403,12 +396,11 @@ export function Settings() {
           }}
         />
       </div>
+      )}
 
+      {/* ── Tab: Sesje ── */}
+      {activeTab === 'sessions' && (
       <div className="space-y-4">
-        <h2 className="text-xl font-bold tracking-tight px-1 mt-8 text-sky-400">
-          {t('settings_page.advanced_algorithms')}
-        </h2>
-
         <SessionManagementCard
           title={t('settings_page.session_management')}
           description={t('settings_page.rules_for_automatic_merging_of_nearby_sessions')}
@@ -474,71 +466,27 @@ export function Settings() {
           }}
         />
 
-        <LanSyncCard
-          settings={lanSettings}
-          peers={lanPeers}
-          syncing={lanSyncing}
-          lastSyncAt={lastSyncAt}
-          lastSyncResult={lanSyncResult?.text ?? null}
-          lastSyncSuccess={lanSyncResult?.success ?? false}
-          latestMarker={latestMarker}
-          title={t('settings.lan_sync.title')}
-          description={t('settings.lan_sync.description')}
-          enableTitle={t('settings.lan_sync.enable_title')}
-          enableDescription={t('settings.lan_sync.enable_description')}
-          autoSyncTitle={t('settings.lan_sync.auto_sync_title')}
-          autoSyncDescription={t('settings.lan_sync.auto_sync_description')}
-          syncIntervalLabel={t('settings.lan_sync.sync_interval')}
-          syncMarkerLabel={t('settings.lan_sync.sync_marker')}
-          peersTitle={t('settings.lan_sync.peers_title')}
-          noPeersText={t('settings.lan_sync.no_peers')}
-          syncButtonLabel={t('settings.lan_sync.sync_button')}
-          syncingLabel={t('settings.lan_sync.syncing')}
-          lastSyncLabel={t('settings.lan_sync.last_sync')}
-          dashboardRunningLabel={t('settings.lan_sync.dashboard_running')}
-          dashboardOfflineLabel={t('settings.lan_sync.dashboard_offline')}
-          roleLabel={t('settings.lan_sync.role_label')}
-          roleAutoLabel={t('settings.lan_sync.role_auto')}
-          roleMasterLabel={t('settings.lan_sync.role_master')}
-          roleSlaveLabel={t('settings.lan_sync.role_slave')}
-          manualSearchLabel={t('settings.lan_sync.my_ip_label')}
-          manualSearchPlaceholder={t('settings.lan_sync.manual_search_placeholder')}
-          manualSearchButton={t('settings.lan_sync.manual_search_button')}
-          myIpLabel={t('settings.lan_sync.my_ip_label')}
-          myIp={myIp}
-          onManualPing={handleManualPing}
-          labelClassName={labelClassName}
-          onEnabledChange={(enabled) => {
-            updateLanSettings((prev) => ({ ...prev, enabled }));
+        <ProjectFreezeCard
+          thresholdDays={freezeSettings.thresholdDays}
+          title={t('settings_page.project_freezing')}
+          description={t('settings_page.projects_inactive_for_a_set_period_are_automatically_fro')}
+          thresholdTitle={t('settings_page.inactivity_threshold')}
+          thresholdDescription={t('settings_page.number_of_days_without_activity_after_which_a_project_is')}
+          thresholdAriaLabel={t('settings_page.freeze_threshold_in_days')}
+          daysLabel={t('settings_page.days')}
+          onThresholdChange={(val) => {
+            updateFreezeSettings((prev) => ({
+              ...prev,
+              thresholdDays: val,
+            }));
           }}
-          onAutoSyncChange={(autoSyncOnPeerFound) => {
-            updateLanSettings((prev) => ({ ...prev, autoSyncOnPeerFound }));
-          }}
-          onSyncIntervalChange={(syncIntervalHours) => {
-            updateLanSettings((prev) => ({ ...prev, syncIntervalHours }));
-          }}
-          onForcedRoleChange={(forcedRole) => {
-            updateLanSettings((prev) => ({ ...prev, forcedRole }));
-          }}
-          onSyncWithPeer={(peer) => {
-            void handleLanSync(peer);
-          }}
-          onFullSyncWithPeer={(peer) => {
-            void handleLanSync(peer, true);
-          }}
-          onForceSyncWithPeer={(peer) => {
-            void handleLanSync(peer, true, true);
-          }}
-          fullSyncButtonLabel={t('settings.lan_sync.full_sync')}
-          forceSyncButtonLabel={t('settings.lan_sync.force_sync')}
-          slaveInfoText={t('settings.lan_sync.slave_info')}
-          showLogLabel={t('settings.lan_sync.show_log')}
-          hideLogLabel={t('settings.lan_sync.hide_log')}
-          noLogEntriesText={t('settings.lan_sync.no_log_entries')}
-          forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
-          syncPhaseLabels={syncPhaseLabels}
         />
+      </div>
+      )}
 
+      {/* ── Tab: Synchronizacja ── */}
+      {activeTab === 'sync' && (
+      <div className="space-y-4">
         <OnlineSyncCard
           settings={onlineSyncSettings}
           state={onlineSyncState}
@@ -610,22 +558,76 @@ export function Settings() {
           }}
         />
 
-        <ProjectFreezeCard
-          thresholdDays={freezeSettings.thresholdDays}
-          title={t('settings_page.project_freezing')}
-          description={t('settings_page.projects_inactive_for_a_set_period_are_automatically_fro')}
-          thresholdTitle={t('settings_page.inactivity_threshold')}
-          thresholdDescription={t('settings_page.number_of_days_without_activity_after_which_a_project_is')}
-          thresholdAriaLabel={t('settings_page.freeze_threshold_in_days')}
-          daysLabel={t('settings_page.days')}
-          onThresholdChange={(val) => {
-            updateFreezeSettings((prev) => ({
-              ...prev,
-              thresholdDays: val,
-            }));
+        <LanSyncCard
+          settings={lanSettings}
+          peers={lanPeers}
+          syncing={lanSyncing}
+          lastSyncAt={lastSyncAt}
+          lastSyncResult={lanSyncResult?.text ?? null}
+          lastSyncSuccess={lanSyncResult?.success ?? false}
+          latestMarker={latestMarker}
+          title={t('settings.lan_sync.title')}
+          description={t('settings.lan_sync.description')}
+          enableTitle={t('settings.lan_sync.enable_title')}
+          enableDescription={t('settings.lan_sync.enable_description')}
+          autoSyncTitle={t('settings.lan_sync.auto_sync_title')}
+          autoSyncDescription={t('settings.lan_sync.auto_sync_description')}
+          syncIntervalLabel={t('settings.lan_sync.sync_interval')}
+          syncMarkerLabel={t('settings.lan_sync.sync_marker')}
+          peersTitle={t('settings.lan_sync.peers_title')}
+          noPeersText={t('settings.lan_sync.no_peers')}
+          syncButtonLabel={t('settings.lan_sync.sync_button')}
+          syncingLabel={t('settings.lan_sync.syncing')}
+          lastSyncLabel={t('settings.lan_sync.last_sync')}
+          dashboardRunningLabel={t('settings.lan_sync.dashboard_running')}
+          dashboardOfflineLabel={t('settings.lan_sync.dashboard_offline')}
+          roleLabel={t('settings.lan_sync.role_label')}
+          roleAutoLabel={t('settings.lan_sync.role_auto')}
+          roleMasterLabel={t('settings.lan_sync.role_master')}
+          roleSlaveLabel={t('settings.lan_sync.role_slave')}
+          manualSearchLabel={t('settings.lan_sync.my_ip_label')}
+          manualSearchPlaceholder={t('settings.lan_sync.manual_search_placeholder')}
+          manualSearchButton={t('settings.lan_sync.manual_search_button')}
+          myIpLabel={t('settings.lan_sync.my_ip_label')}
+          myIp={myIp}
+          onManualPing={handleManualPing}
+          labelClassName={labelClassName}
+          onEnabledChange={(enabled) => {
+            updateLanSettings((prev) => ({ ...prev, enabled }));
           }}
+          onAutoSyncChange={(autoSyncOnPeerFound) => {
+            updateLanSettings((prev) => ({ ...prev, autoSyncOnPeerFound }));
+          }}
+          onSyncIntervalChange={(syncIntervalHours) => {
+            updateLanSettings((prev) => ({ ...prev, syncIntervalHours }));
+          }}
+          onForcedRoleChange={(forcedRole) => {
+            updateLanSettings((prev) => ({ ...prev, forcedRole }));
+          }}
+          onSyncWithPeer={(peer) => {
+            void handleLanSync(peer);
+          }}
+          onFullSyncWithPeer={(peer) => {
+            void handleLanSync(peer, true);
+          }}
+          onForceSyncWithPeer={(peer) => {
+            void handleLanSync(peer, true, true);
+          }}
+          fullSyncButtonLabel={t('settings.lan_sync.full_sync')}
+          forceSyncButtonLabel={t('settings.lan_sync.force_sync')}
+          slaveInfoText={t('settings.lan_sync.slave_info')}
+          showLogLabel={t('settings.lan_sync.show_log')}
+          hideLogLabel={t('settings.lan_sync.hide_log')}
+          noLogEntriesText={t('settings.lan_sync.no_log_entries')}
+          forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
+          syncPhaseLabels={syncPhaseLabels}
         />
+      </div>
+      )}
 
+      {/* ── Tab: Zaawansowane ── */}
+      {activeTab === 'advanced' && (
+      <div className="space-y-4">
         <DemoModeCard
           demoModeStatus={demoModeStatus}
           demoModeLoading={demoModeLoading}
@@ -667,8 +669,9 @@ export function Settings() {
             void handleClearData();
           }}
         />
+
+        <DevSettingsCard />
       </div>
-      </>
       )}
 
       <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2">
