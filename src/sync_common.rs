@@ -77,13 +77,18 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
 }
 
 /// Restore the most recent sync backup by copying it over the current database.
+/// Restore result indicating caller MUST re-open the database connection.
+pub struct RestoreResult {
+    pub restored_from: std::path::PathBuf,
+}
+
 /// Uses file copy since the backup feature may not be enabled in rusqlite.
 ///
 /// SAFETY NOTE: The caller's connection remains open during the file copy.
 /// We mitigate this by checkpointing WAL, flushing cache, and removing WAL/SHM
-/// files after copy. Callers should ideally re-open the connection after restore,
-/// but this is not enforced by the API to avoid a large refactor across all call sites.
-pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String> {
+/// files after copy. Callers MUST re-open the connection after restore — the
+/// returned `RestoreResult` enforces awareness of this requirement.
+pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<RestoreResult, String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     let backup_dir = dir.join("sync_backups");
 
@@ -100,7 +105,7 @@ pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String
         .collect();
     backups.sort();
 
-    let latest = backups.last().ok_or("No backup files found")?;
+    let latest = backups.last().ok_or("No backup files found")?.clone();
     let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
 
     // Checkpoint WAL to ensure backup is consistent, then restore via file copy
@@ -111,7 +116,9 @@ pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String
     conn.cache_flush()
         .map_err(|e| format!("Cache flush failed: {}", e))?;
 
-    std::fs::copy(latest, &db_path)
+    conn.execute_batch("PRAGMA optimize;").ok();
+
+    std::fs::copy(&latest, &db_path)
         .map_err(|e| format!("File copy restore failed: {}", e))?;
 
     // Remove WAL and SHM files that may reference the old database state
@@ -120,8 +127,8 @@ pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<(), String
     let _ = std::fs::remove_file(&wal_path);
     let _ = std::fs::remove_file(&shm_path);
 
-    log::info!("Database restored from backup: {:?}", latest);
-    Ok(())
+    log::warn!("Database restored from backup: {:?}. Caller MUST re-open connection.", latest);
+    Ok(RestoreResult { restored_from: latest })
 }
 
 // ── Delta export for async sync ──
