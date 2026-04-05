@@ -46,7 +46,23 @@ pub fn reset_assignment_model_knowledge_sync(
 }
 
 pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String> {
-    upsert_state(conn, "is_training", "true")?;
+    // Atomically set is_training=true only if not already training
+    let rows = conn.execute(
+        "UPDATE assignment_model_state SET value = 'true', updated_at = datetime('now') WHERE key = 'is_training' AND value = 'false'",
+        [],
+    ).map_err(|e| e.to_string())?;
+    if rows == 0 {
+        // Either no row exists (first run) or already training — try insert for first run
+        let existing: Option<String> = conn.query_row(
+            "SELECT value FROM assignment_model_state WHERE key = 'is_training'",
+            [],
+            |row| row.get(0),
+        ).ok();
+        match existing.as_deref() {
+            Some("true") => return Err("Training already in progress".to_string()),
+            _ => { upsert_state(conn, "is_training", "true")?; }
+        }
+    }
     let start_time = std::time::Instant::now();
 
     let state = load_state_map(conn).unwrap_or_default();
