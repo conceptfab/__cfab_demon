@@ -1208,7 +1208,8 @@
       "expires": "Expires",
       "active": "Active",
       "activated_success": "License activated successfully!",
-      "no_server_url": "Set the server URL before activating a license."
+      "no_server_url": "Set the server URL before activating a license.",
+      "deactivate": "Change license"
     },
     "lan_sync": {
       "title": "LAN Sync",

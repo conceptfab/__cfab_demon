@@ -95,6 +95,7 @@ export function Settings() {
     licenseError,
     setLicenseKeyInput,
     handleActivateLicense,
+    handleDeactivateLicense,
     testingRoundtrip,
     testRoundtripResult,
     testRoundtripSuccess,
@@ -599,6 +600,7 @@ export function Settings() {
           licenseError={licenseError}
           onLicenseKeyChange={setLicenseKeyInput}
           onActivateLicense={handleActivateLicense}
+          onDeactivateLicense={handleDeactivateLicense}
           testingRoundtrip={testingRoundtrip}
           testRoundtripResult={testRoundtripResult}
           testRoundtripSuccess={testRoundtripSuccess}

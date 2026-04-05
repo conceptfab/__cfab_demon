@@ -41,6 +41,7 @@ interface OnlineSyncCardProps {
   onSyncNow: () => void;
   onLicenseKeyChange: (key: string) => void;
   onActivateLicense: () => void;
+  onDeactivateLicense: () => void;
   testingRoundtrip: boolean;
   testRoundtripResult: string | null;
   testRoundtripSuccess: boolean;
@@ -79,6 +80,7 @@ export function OnlineSyncCard({
   licenseError,
   onLicenseKeyChange,
   onActivateLicense,
+  onDeactivateLicense,
   testingRoundtrip,
   testRoundtripResult,
   testRoundtripSuccess,
@@ -109,6 +111,13 @@ export function OnlineSyncCard({
                 <span className="font-mono text-muted-foreground">
                   {licenseInfo.plan.toUpperCase()}
                 </span>
+                <button
+                  type="button"
+                  className="ml-auto rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400 hover:border-red-500/50 hover:text-red-400 transition-colors"
+                  onClick={onDeactivateLicense}
+                >
+                  {t('settings.license.deactivate', 'Zmien licencje')}
+                </button>
               </div>
               <div className="text-muted-foreground">
                 {t('settings.license.group')}: <span className="text-foreground">{licenseInfo.groupName}</span>

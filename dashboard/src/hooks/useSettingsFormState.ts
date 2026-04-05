@@ -5,6 +5,7 @@ import { normalizeHexColor } from '@/lib/normalize';
 import { splitTime } from '@/lib/form-validation';
 import {
   activateLicense,
+  clearLicenseInfo,
   loadLicenseInfo,
   loadOnlineSyncState,
   loadOnlineSyncSettings,
@@ -613,6 +614,11 @@ export function useSettingsFormState({
     [licenseKeyInput, onlineSyncSettings, t, showInfo],
   );
 
+  const handleDeactivateLicense = useCallback(() => {
+    clearLicenseInfo();
+    setLicenseInfo(null);
+  }, []);
+
   const handleTestRoundtrip = useCallback(async () => {
     const serverUrl = onlineSyncSettings.serverUrl;
     if (!serverUrl) {
@@ -769,6 +775,7 @@ export function useSettingsFormState({
     licenseError,
     setLicenseKeyInput,
     handleActivateLicense,
+    handleDeactivateLicense,
     testingRoundtrip,
     testRoundtripResult,
     testRoundtripSuccess,

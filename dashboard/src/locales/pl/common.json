@@ -1208,7 +1208,8 @@
       "expires": "Wygasa",
       "active": "Aktywna",
       "activated_success": "Licencja aktywowana pomyślnie!",
-      "no_server_url": "Ustaw adres serwera przed aktywacją licencji."
+      "no_server_url": "Ustaw adres serwera przed aktywacją licencji.",
+      "deactivate": "Zmien licencje"
     },
     "lan_sync": {
       "title": "LAN Sync",
