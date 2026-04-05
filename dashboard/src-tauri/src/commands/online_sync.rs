@@ -111,10 +111,10 @@ pub async fn get_online_sync_progress() -> Result<super::lan_sync::SyncProgress,
     Ok(progress)
 }
 
-/// Cancel online sync (currently just resets by reporting error to daemon — placeholder).
+/// Cancel online sync — placeholder until daemon exposes /online/cancel-sync endpoint.
 #[tauri::command]
 pub fn cancel_online_sync() -> Result<(), String> {
-    // Online sync cancellation is handled through the stop_signal in the daemon.
-    // For now, this is a placeholder — the dashboard can poll progress to detect completion.
+    log::warn!("cancel_online_sync called but daemon endpoint not yet implemented");
+    // TODO: implement /online/cancel-sync endpoint in daemon
     Ok(())
 }
