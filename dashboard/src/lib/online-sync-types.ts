@@ -7,7 +7,8 @@ export interface OnlineSyncSettings {
   serverUrl: string;
   userId: string;
   apiToken: string;
-  encryptionKey: string;
+  /** Reserved for future client-side encryption. Not yet implemented — do not show in UI. */
+  encryptionKey?: string;
   deviceId: string;
   requestTimeoutMs: number;
   enableLogging: boolean;
