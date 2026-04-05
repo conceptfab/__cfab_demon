@@ -58,8 +58,11 @@ pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, String> {
 }
 
 /// Save online sync settings to file.
+/// auth_token is stripped before writing — it should be stored in Tauri secure storage only.
 #[tauri::command]
-pub fn save_online_sync_settings(settings: OnlineSyncSettings) -> Result<(), String> {
+pub fn save_online_sync_settings(mut settings: OnlineSyncSettings) -> Result<(), String> {
+    // auth_token must not be persisted in plaintext JSON
+    settings.auth_token = String::new();
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
