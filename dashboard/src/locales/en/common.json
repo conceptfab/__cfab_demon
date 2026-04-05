@@ -1822,7 +1822,8 @@
     "waiting_for_download": "Waiting for peer download...",
     "retry": "Retry",
     "dismiss": "Dismiss",
-    "not_needed": "Synchronization not needed — databases identical"
+    "not_needed": "Synchronization not needed — databases identical",
+    "frozen_notice": "Session recording is paused. Please do not close the application."
   },
   "projects_page": {
     "load_more_projects": "Load more projects",

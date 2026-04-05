@@ -1822,7 +1822,8 @@
     "waiting_for_download": "Oczekiwanie na pobranie przez peera...",
     "retry": "Ponów",
     "dismiss": "Zamknij",
-    "not_needed": "Synchronizacja niepotrzebna — bazy identyczne"
+    "not_needed": "Synchronizacja niepotrzebna — bazy identyczne",
+    "frozen_notice": "Rejestrowanie wpisów jest wstrzymane. Proszę nie zamykać aplikacji."
   },
   "projects_page": {
     "load_more_projects": "Wczytaj więcej projektów",
