@@ -155,8 +155,17 @@ pub fn get_last_sync_timestamp(conn: &rusqlite::Connection) -> Option<String> {
 // ── Timestamp normalization ──
 
 /// Normalize ISO/mixed timestamps to `YYYY-MM-DD HH:MM:SS` for safe string comparison.
-/// Handles `2024-01-02T15:04:05`, `2024-01-02T15:04:05Z`, `2024-01-02 15:04:05`, etc.
+/// Handles timezone-aware formats (RFC3339, explicit offset) by converting to UTC,
+/// and naive formats (`2024-01-02T15:04:05`, `2024-01-02 15:04:05`).
 fn normalize_ts(ts: &str) -> String {
+    // Try timezone-aware formats first (convert to UTC for comparison)
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts) {
+        return dt.naive_utc().format("%Y-%m-%d %H:%M:%S").to_string();
+    }
+    if let Ok(dt) = chrono::DateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S%z") {
+        return dt.naive_utc().format("%Y-%m-%d %H:%M:%S").to_string();
+    }
+    // Fallback: naive (no timezone) — assume same timezone
     chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%dT%H:%M:%S")
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(ts, "%Y-%m-%d %H:%M:%S"))
         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
