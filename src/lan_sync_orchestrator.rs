@@ -178,6 +178,12 @@ fn http_request_with_timeout(
                 Ok(0) => break,
                 Ok(n) => {
                     buf.extend_from_slice(&tmp[..n]);
+                    if buf.len() > MAX_RESPONSE_BODY {
+                        return Err(format!(
+                            "Response body without Content-Length exceeded {} bytes limit",
+                            MAX_RESPONSE_BODY
+                        ));
+                    }
                     if let Some(cb) = &on_progress {
                         cb(buf.len() as u64, 0); // total unknown
                     }
