@@ -21,7 +21,7 @@ interface Props {
   onUpdated: () => void;
 }
 
-const STATUS_OPTIONS = ['Aktywny', 'Nieaktywny', 'Archiwalny'];
+const STATUS_OPTIONS = ['active', 'inactive', 'archived'];
 
 export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated }: Props) {
   const { t } = useTranslation();
@@ -141,7 +141,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
                   <select className={inputClass} value={form.prj_status}
                     onChange={(e) => setForm({ ...form, prj_status: e.target.value })}>
                     {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
+                      <option key={s} value={s}>{t(`pm.status.${s}`, s)}</option>
                     ))}
                   </select>
                 </div>
@@ -153,7 +153,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
                 <span className="font-medium">{project.prj_client}</span>
                 <span className="text-muted-foreground">—</span>
                 <span>{project.prj_name}</span>
-                <Badge variant="outline" className="ml-auto text-[10px]">{project.prj_status}</Badge>
+                <Badge variant="outline" className="ml-auto text-[10px]">{t(`pm.status.${project.prj_status}`, project.prj_status)}</Badge>
               </div>
               {project.prj_desc && (
                 <p className="text-xs text-muted-foreground">{project.prj_desc}</p>

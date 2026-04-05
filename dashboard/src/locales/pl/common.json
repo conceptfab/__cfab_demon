@@ -1966,7 +1966,9 @@
     "status": {
       "active": "Aktywny",
       "inactive": "Nieaktywny",
-      "archived": "Archiwalny"
+      "archived": "Archiwalny",
+      "frozen": "Zamrożony",
+      "excluded": "Wykluczony"
     },
     "create": {
       "title": "Nowy Projekt PM",

@@ -30,13 +30,13 @@ function formatValue(value: number): string {
 
 function statusColor(status: string): string {
   switch (status) {
-    case 'Aktywny':
+    case 'active':
       return 'bg-green-500/15 text-green-400 border-green-500/30';
-    case 'Zamrożony':
+    case 'frozen':
       return 'bg-blue-500/15 text-blue-400 border-blue-500/30';
-    case 'Wykluczony':
+    case 'excluded':
       return 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30';
-    case 'Archiwalny':
+    case 'archived':
       return 'bg-muted text-muted-foreground border-border';
     default:
       return '';
@@ -245,7 +245,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
         {/* Status filter */}
         <select className={selectClass} value={filterStatus} onChange={(e) => setAndStoreStatus(e.target.value)}>
           <option value="">{t('pm.filter.all_statuses')}</option>
-          {uniqueStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
+          {uniqueStatuses.map((s) => <option key={s} value={s}>{t(`pm.status.${s}`, s)}</option>)}
         </select>
 
         {/* Sort field */}
@@ -362,7 +362,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                 </td>
                 <td className="px-3 py-2">
                   <Badge variant="outline" className={cn('text-[10px]', statusColor(p.prj_status))}>
-                    {p.prj_status}
+                    {t(`pm.status.${p.prj_status}`, p.prj_status)}
                   </Badge>
                 </td>
                 <td className="px-3 py-2 text-right font-mono text-xs">{formatDuration(tfMatches[p.prj_code]?.totalSeconds || 0)}</td>
@@ -374,7 +374,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                   </span>
                 </td>
                 <td className="px-1 py-2 text-center">
-                  {p.prj_status !== 'Archiwalny' && (
+                  {p.prj_status !== 'archived' && (
                     <Monitor className="h-3.5 w-3.5 text-primary/40" />
                   )}
                 </td>
@@ -437,7 +437,7 @@ function StatusBar({ projects, clientGroupOf, t }: { projects: PmProject[]; clie
       {Object.entries(stats.byStatus).map(([status, count]) => (
         <span key={status} className="flex items-center gap-1">
           <Badge variant="outline" className={cn('text-[9px] px-1 py-0', statusColor(status))}>
-            {status}
+            {t(`pm.status.${status}`, status)}
           </Badge>
           <span className="font-medium text-foreground/80">{count}</span>
         </span>

@@ -91,8 +91,8 @@ function buildTfMatch(
   estimates: Map<number, EstimateProjectRow>,
   hotIds: Set<number>,
 ): PmTfMatch {
-  if (!match) return { status: 'Archiwalny', totalSeconds: 0, estimatedValue: 0, hasRate: false, isHot: false, tfProjectId: null };
-  const status = match.excluded_at ? 'Wykluczony' : match.frozen_at ? 'Zamrożony' : 'Aktywny';
+  if (!match) return { status: 'archived', totalSeconds: 0, estimatedValue: 0, hasRate: false, isHot: false, tfProjectId: null };
+  const status = match.excluded_at ? 'excluded' : match.frozen_at ? 'frozen' : 'active';
   const est = estimates.get(match.id);
   return {
     status,
