@@ -1259,7 +1259,9 @@
       "sync_phase_completed": "Synchronization complete!",
       "force_sync_label": "Force sync",
       "full_sync_label": "Full sync",
-      "sync_label": "Sync"
+      "sync_label": "Sync",
+      "firewall_hint_title": "No visible peers — check your firewall",
+      "firewall_hint_description": "If the daemon did not have administrator privileges, firewall rules may not have been added. Add them manually:"
     }
   },
   "help": {

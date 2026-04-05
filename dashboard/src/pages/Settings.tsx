@@ -619,6 +619,8 @@ export function Settings() {
           showLogLabel={t('settings.lan_sync.show_log')}
           hideLogLabel={t('settings.lan_sync.hide_log')}
           noLogEntriesText={t('settings.lan_sync.no_log_entries')}
+          firewallHintTitle={t('settings.lan_sync.firewall_hint_title')}
+          firewallHintDescription={t('settings.lan_sync.firewall_hint_description')}
           forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
           syncPhaseLabels={syncPhaseLabels}
         />

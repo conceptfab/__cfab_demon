@@ -1259,7 +1259,9 @@
       "sync_phase_completed": "Synchronizacja zakończona!",
       "force_sync_label": "Wymuszona synchronizacja",
       "full_sync_label": "Pełna synchronizacja",
-      "sync_label": "Synchronizacja"
+      "sync_label": "Synchronizacja",
+      "firewall_hint_title": "Brak widocznych peerów — sprawdź zaporę sieciową",
+      "firewall_hint_description": "Jeśli demon nie miał uprawnień administratora, reguły firewall mogły nie zostać dodane. Dodaj je ręcznie:"
     }
   },
   "help": {

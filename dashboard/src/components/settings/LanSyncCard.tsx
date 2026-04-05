@@ -53,6 +53,8 @@ interface LanSyncCardProps {
   showLogLabel?: string;
   hideLogLabel?: string;
   noLogEntriesText?: string;
+  firewallHintTitle?: string;
+  firewallHintDescription?: string;
   forceMergeTooltip?: string;
   onEnabledChange: (enabled: boolean) => void;
   onAutoSyncChange: (enabled: boolean) => void;
@@ -103,6 +105,8 @@ export function LanSyncCard({
   showLogLabel,
   hideLogLabel,
   noLogEntriesText,
+  firewallHintTitle,
+  firewallHintDescription,
   forceMergeTooltip,
   onEnabledChange,
   onAutoSyncChange,
@@ -399,8 +403,8 @@ export function LanSyncCard({
                   <div className="flex items-start gap-2">
                     <Shield className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
                     <div className="text-xs text-amber-300/80 space-y-1">
-                      <p className="font-medium">Brak widocznych peerów — sprawdź zaporę sieciową</p>
-                      <p>Jeśli demon nie miał uprawnień administratora, reguły firewall mogły nie zostać dodane. Dodaj je ręcznie:</p>
+                      <p className="font-medium">{firewallHintTitle ?? 'No visible peers — check your firewall'}</p>
+                      <p>{firewallHintDescription ?? 'If the daemon did not have administrator privileges, firewall rules may not have been added. Add them manually:'}</p>
                       <pre className="text-[10px] bg-black/20 rounded p-1.5 overflow-x-auto whitespace-pre-wrap">
 {`netsh advfirewall firewall add rule name="TIMEFLOW LAN Discovery" dir=in action=allow protocol=UDP localport=47892
 netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=allow protocol=TCP localport=47891`}
