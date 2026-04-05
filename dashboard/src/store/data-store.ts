@@ -34,7 +34,7 @@ interface DataState {
   dismissDiscoveredProjects: () => void;
 }
 
-const REFRESH_THROTTLE_MS = 250;
+const REFRESH_THROTTLE_MS = 150;
 const REASON_REFRESH_DEDUPE_MS = 1_000;
 
 function presetToRange(preset: TimePreset): DateRange {
