@@ -857,14 +857,13 @@ async function runOnlineSyncOnceImpl(
         return result;
       }
 
-      const pushPayloadSize = JSON.stringify(local.archive).length;
+      const deltaArchive = local.archive as DeltaArchive;
+      const pushPayloadSize = JSON.stringify(deltaArchive.data).length;
       log?.info('Pushing delta to server', {
         knownServerRevision: status.serverRevision ?? null,
         payloadSizeKB: Math.round(pushPayloadSize / 1024),
         timeoutMs: settings.requestTimeoutMs,
       });
-
-      const deltaArchive = local.archive as DeltaArchive;
 
       const pushT0 = Date.now();
       const push = await postJson<SyncDeltaPushResponse>(
