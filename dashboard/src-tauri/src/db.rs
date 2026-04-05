@@ -329,6 +329,18 @@ pub fn set_system_setting(app: &AppHandle, key: &str, value: &str) -> Result<(),
     Ok(())
 }
 
+pub fn set_system_setting_conn(conn: &rusqlite::Connection, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+        [key, value],
+    )
+    .map_err(|e| {
+        log::error!("DB Error: failed to set {}: {}", key, e);
+        e.to_string()
+    })?;
+    Ok(())
+}
+
 pub fn perform_backup_internal(
     db: &rusqlite::Connection,
     backup_dir: &str,

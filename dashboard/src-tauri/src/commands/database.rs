@@ -159,24 +159,17 @@ pub async fn update_database_settings(
         vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, normalized_auto_optimize_interval_hours);
 
     run_app_blocking(app, move |app| {
-        db::set_system_setting(&app, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
-        db::set_system_setting(&app, "backup_enabled", &backup_enabled.to_string())?;
-        db::set_system_setting(&app, "backup_path", &backup_path)?;
-        db::set_system_setting(
-            &app,
-            "backup_interval_days",
-            &backup_interval_days.to_string(),
-        )?;
-        db::set_system_setting(
-            &app,
-            "auto_optimize_enabled",
-            &auto_optimize_enabled.to_string(),
-        )?;
-        db::set_system_setting(
-            &app,
-            "auto_optimize_interval_hours",
-            &normalized_auto_optimize_interval_hours.to_string(),
-        )?;
+        let conn = db::get_connection(&app)?;
+        let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+        db::set_system_setting_conn(&tx, "vacuum_on_startup", &vacuum_on_startup.to_string())?;
+        db::set_system_setting_conn(&tx, "backup_enabled", &backup_enabled.to_string())?;
+        db::set_system_setting_conn(&tx, "backup_path", &backup_path)?;
+        db::set_system_setting_conn(&tx, "backup_interval_days", &backup_interval_days.to_string())?;
+        db::set_system_setting_conn(&tx, "auto_optimize_enabled", &auto_optimize_enabled.to_string())?;
+        db::set_system_setting_conn(&tx, "auto_optimize_interval_hours", &normalized_auto_optimize_interval_hours.to_string())?;
+
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(())
     })
     .await
