@@ -10,6 +10,7 @@ export interface AiSettingsFormValues {
   autoConf: number;
   autoEvidence: number;
   trainingHorizonDays: number;
+  decayHalfLifeDays: number;
   feedbackWeight: number;
 }
 
@@ -129,6 +130,34 @@ export function AiSettingsForm({
               />
               <span className="min-w-[5rem] text-right text-xs text-muted-foreground">
                 {values.trainingHorizonDays} {tr('ai_page.text.days')}
+              </span>
+            </div>
+          </label>
+
+          <label className="space-y-1.5 text-sm md:col-span-2">
+            <span className="text-xs text-muted-foreground">
+              {tr('ai_page.text.decay_half_life_days')}
+            </span>
+            <p className="text-[11px] text-muted-foreground/70">
+              {tr('ai_page.text.decay_half_life_description')}
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={14}
+                max={365}
+                step={1}
+                className="h-9 w-full"
+                value={values.decayHalfLifeDays}
+                onChange={(e) => {
+                  const next = Number.parseInt(e.target.value, 10);
+                  onChange({
+                    decayHalfLifeDays: Number.isNaN(next) ? 90 : next,
+                  });
+                }}
+              />
+              <span className="min-w-[5rem] text-right text-xs text-muted-foreground">
+                {values.decayHalfLifeDays} {tr('ai_page.text.days')}
               </span>
             </div>
           </label>

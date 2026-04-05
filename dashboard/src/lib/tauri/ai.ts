@@ -38,6 +38,9 @@ export const setTrainingHorizonDays = (days: number) =>
     days,
   });
 
+export const setDecayHalfLifeDays = (days: number) =>
+  invokeMutation<AssignmentModelStatus>('set_decay_half_life_days', { days });
+
 export const setTrainingBlacklists = (
   appBlacklist: string[],
   folderBlacklist: string[],
@@ -92,6 +95,7 @@ export const aiApi = {
   setAssignmentMode,
   setAssignmentModelCooldown,
   setTrainingHorizonDays,
+  setDecayHalfLifeDays,
   setTrainingBlacklists,
   resetAssignmentModelKnowledge,
   trainAssignmentModel,

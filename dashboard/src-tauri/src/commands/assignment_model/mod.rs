@@ -30,6 +30,7 @@ pub struct AssignmentModelStatus {
     pub min_confidence_auto: f64,
     pub min_evidence_auto: i64,
     pub training_horizon_days: i64,
+    pub decay_half_life_days: i64,
     pub training_app_blacklist: Vec<String>,
     pub training_folder_blacklist: Vec<String>,
     pub last_train_at: Option<String>,
@@ -163,6 +164,11 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
             MIN_TRAINING_HORIZON_DAYS,
             MAX_TRAINING_HORIZON_DAYS,
         );
+        let decay_half_life_days = clamp_i64(
+            parse_state_i64(&state, "decay_half_life_days", DEFAULT_DECAY_HALF_LIFE_DAYS),
+            MIN_DECAY_HALF_LIFE_DAYS,
+            MAX_DECAY_HALF_LIFE_DAYS,
+        );
         let training_app_blacklist = normalize_blacklist_entries(
             &parse_state_string_list(&state, "training_app_blacklist"),
             false,
@@ -195,6 +201,7 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
                 DEFAULT_MIN_EVIDENCE_AUTO,
             ),
             training_horizon_days,
+            decay_half_life_days,
             training_app_blacklist,
             training_folder_blacklist,
             last_train_at: parse_state_opt_string(&state, "last_train_at"),
@@ -517,6 +524,19 @@ pub async fn set_training_horizon_days(
     run_db_blocking(app.clone(), move |conn| {
         let clamped_days = clamp_i64(days, MIN_TRAINING_HORIZON_DAYS, MAX_TRAINING_HORIZON_DAYS);
         upsert_state(conn, "training_horizon_days", &clamped_days.to_string())
+    })
+    .await?;
+    get_assignment_model_status(app).await
+}
+
+#[command]
+pub async fn set_decay_half_life_days(
+    app: AppHandle,
+    days: i64,
+) -> Result<AssignmentModelStatus, String> {
+    run_db_blocking(app.clone(), move |conn| {
+        let clamped_days = clamp_i64(days, MIN_DECAY_HALF_LIFE_DAYS, MAX_DECAY_HALF_LIFE_DAYS);
+        upsert_state(conn, "decay_half_life_days", &clamped_days.to_string())
     })
     .await?;
     get_assignment_model_status(app).await

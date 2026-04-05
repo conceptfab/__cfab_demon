@@ -538,6 +538,7 @@ export function Help() {
                   t18n('help_page.modes_off_manual_only_suggest_ai_hints_auto_safe_automat'),
                   t18n('help_page.ai_progress_quality_metrics_panel_shows_feedback_trends'),
                   t18n('help_page.training_horizon_set_how_many_days_of_history_e_g_30_730'),
+                  t18n('help_page.decay_half_life_controls_how_quickly_old_training_data'),
                   t18n('help_page.auto_safe_limit_control_the_maximum_number_of_sessions_p'),
                   t18n('help_page.session_indicators_configure_indicators_displayed_on_ses'),
                   t18n('help_page.k_100_privacy_the_ml_engine_runs_locally_in_rust_doesn_t'),

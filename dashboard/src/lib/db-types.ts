@@ -92,6 +92,7 @@ export interface AssignmentModelStatus {
   min_confidence_auto: number;
   min_evidence_auto: number;
   training_horizon_days: number;
+  decay_half_life_days: number;
   training_app_blacklist: string[];
   training_folder_blacklist: string[];
   last_train_at: string | null;

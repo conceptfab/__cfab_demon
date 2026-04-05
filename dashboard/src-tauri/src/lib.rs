@@ -187,6 +187,7 @@ pub fn run() {
             commands::set_assignment_mode,
             commands::set_assignment_model_cooldown,
             commands::set_training_horizon_days,
+            commands::set_decay_half_life_days,
             commands::set_training_blacklists,
             commands::reset_assignment_model_knowledge,
             commands::train_assignment_model,

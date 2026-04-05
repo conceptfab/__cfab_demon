@@ -141,6 +141,7 @@ export function AIPage() {
   const [autoConf, setAutoConf] = useState<number>(0.85);
   const [autoEvidence, setAutoEvidence] = useState<number>(3);
   const [trainingHorizonDays, setTrainingHorizonDays] = useState<number>(730);
+  const [decayHalfLifeDays, setDecayHalfLifeDays] = useState<number>(90);
   const [autoLimit, setAutoLimit] = useState<number>(
     () => loadAiAutoAssignmentSettings().autoLimit,
   );
@@ -158,6 +159,7 @@ export function AIPage() {
         setAutoConf(nextStatus.min_confidence_auto);
         setAutoEvidence(nextStatus.min_evidence_auto);
         setTrainingHorizonDays(nextStatus.training_horizon_days);
+        setDecayHalfLifeDays(nextStatus.decay_half_life_days);
       }
     },
     [],
@@ -189,6 +191,12 @@ export function AIPage() {
       if (patch.trainingHorizonDays !== undefined) {
         setTrainingHorizonDays(patch.trainingHorizonDays);
       }
+      if (patch.decayHalfLifeDays !== undefined) {
+        setDecayHalfLifeDays(patch.decayHalfLifeDays);
+      }
+      if (patch.feedbackWeight !== undefined) {
+        setFeedbackWeight(patch.feedbackWeight);
+      }
     },
     [],
   );
@@ -200,6 +208,7 @@ export function AIPage() {
       autoConf,
       autoEvidence,
       trainingHorizonDays,
+      decayHalfLifeDays,
       feedbackWeight,
     }),
     [
@@ -208,6 +217,7 @@ export function AIPage() {
       autoConf,
       autoEvidence,
       trainingHorizonDays,
+      decayHalfLifeDays,
       feedbackWeight,
     ],
   );
@@ -312,12 +322,18 @@ export function AIPage() {
       const normalizedAuto = clampNumber(autoConf, 0, 1);
       const normalizedEvidence = Math.round(clampNumber(autoEvidence, 1, 50));
 
-      await aiApi.setAssignmentMode(
-        mode,
-        normalizedSuggest,
-        normalizedAuto,
-        normalizedEvidence,
-      );
+      await Promise.all([
+        aiApi.setAssignmentMode(
+          mode,
+          normalizedSuggest,
+          normalizedAuto,
+          normalizedEvidence,
+        ),
+        aiApi.setTrainingHorizonDays(trainingHorizonDays),
+        aiApi.setDecayHalfLifeDays(decayHalfLifeDays),
+        aiApi.setFeedbackWeight(feedbackWeight),
+      ]);
+
       await refreshAiStatus();
       const freshStatus = useBackgroundStatusStore.getState().aiStatus;
       if (freshStatus) {
@@ -325,6 +341,7 @@ export function AIPage() {
       }
       const freshFw = await aiApi.getFeedbackWeight();
       setFeedbackWeight(freshFw);
+      dirtyRef.current = false;
       await fetchMetrics(true);
     } catch (e) {
       console.error(e);
