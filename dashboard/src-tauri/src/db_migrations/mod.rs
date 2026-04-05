@@ -115,7 +115,9 @@ pub fn ensure_post_migration_indexes(db: &rusqlite::Connection) -> Result<(), ru
          CREATE INDEX IF NOT EXISTS idx_sessions_app_date ON sessions(app_id, date, start_time);
          CREATE INDEX IF NOT EXISTS idx_sessions_date_standalone ON sessions(date);
          CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
-         CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);",
+         CREATE INDEX IF NOT EXISTS idx_assignment_feedback_session ON assignment_feedback(session_id, created_at DESC);
+         CREATE INDEX IF NOT EXISTS idx_manual_sessions_date ON manual_sessions(date);
+         CREATE INDEX IF NOT EXISTS idx_sessions_date_hidden ON sessions(date, is_hidden);",
     )?;
 
     let has_manual_overrides: bool = db
