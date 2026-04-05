@@ -227,18 +227,31 @@ fn init_logging() {
         }
     }
 
-    let file = fs::OpenOptions::new()
+    let file = match fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&log_path);
+        .open(&log_path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            // Cannot open log file — write diagnostic to a fallback location
+            let fallback = log_path.with_extension("err");
+            let _ = fs::write(&fallback, format!("Failed to open {}: {}\n", log_path.display(), e));
+            return;
+        }
+    };
 
-    if let Ok(file) = file {
-        let _ = log::set_boxed_logger(Box::new(FileLogger {
-            writer: std::sync::Mutex::new(std::io::BufWriter::new(file)),
-            level,
-        }));
-        log::set_max_level(level);
+    let logger = Box::new(FileLogger {
+        writer: std::sync::Mutex::new(std::io::BufWriter::new(file)),
+        level,
+    });
+
+    if let Err(e) = log::set_boxed_logger(logger) {
+        let fallback = log_path.with_extension("err");
+        let _ = fs::write(&fallback, format!("set_boxed_logger failed: {}\n", e));
+        return;
     }
+    log::set_max_level(level);
 }
 
 fn parse_log_level(s: &str) -> log::LevelFilter {

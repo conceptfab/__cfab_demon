@@ -697,8 +697,10 @@ fn get_subnet_broadcast_addresses() -> Vec<String> {
                             ip[2] | !mask[2],
                             ip[3] | !mask[3],
                         );
-                        // Skip loopback, link-local, and 255.255.255.255
-                        if ip[0] != 127 && ip[0] != 169 && bcast != "255.255.255.255" {
+                        // Skip loopback, link-local, virtual adapters, and 255.255.255.255
+                        let is_virtual = (ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 && mask == [255, 255, 240, 0])
+                            || (ip[0] == 172 && ip[1] == 17 && mask == [255, 255, 0, 0]);
+                        if ip[0] != 127 && ip[0] != 169 && !is_virtual && bcast != "255.255.255.255" {
                             if !addrs.contains(&bcast) {
                                 log::info!("LAN discovery: interface {}.{}.{}.{}/{}.{}.{}.{} → broadcast {}",
                                     ip[0], ip[1], ip[2], ip[3],

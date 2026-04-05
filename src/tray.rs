@@ -298,33 +298,37 @@ impl TrayState {
                     }
                 }
 
-                // Detect sync completion and show balloon notification
+                // Detect sync completion and show balloon notification.
+                // Use mark_sync_completed timestamp as the source of truth
+                // instead of progress.phase, which may be reset to "idle"
+                // before the tray timer fires (race condition).
                 let currently_syncing = self.is_syncing();
                 let was = self.was_syncing.get();
                 if was && !currently_syncing {
-                    let p = state.get_progress();
-                    match p.phase.as_str() {
-                        "completed" => {
-                            self.show_sync_notification(
-                                APP_NAME,
-                                lang.t(TrayText::SyncCompleted),
-                                nwg::TrayNotificationFlags::INFO_ICON,
-                            );
+                    if state.secs_since_last_sync() < 10 {
+                        let p = state.get_progress();
+                        match p.phase.as_str() {
+                            "not_needed" => {
+                                self.show_sync_notification(
+                                    APP_NAME,
+                                    lang.t(TrayText::SyncNotNeeded),
+                                    nwg::TrayNotificationFlags::INFO_ICON,
+                                );
+                            }
+                            _ => {
+                                self.show_sync_notification(
+                                    APP_NAME,
+                                    lang.t(TrayText::SyncCompleted),
+                                    nwg::TrayNotificationFlags::INFO_ICON,
+                                );
+                            }
                         }
-                        "not_needed" => {
-                            self.show_sync_notification(
-                                APP_NAME,
-                                lang.t(TrayText::SyncNotNeeded),
-                                nwg::TrayNotificationFlags::INFO_ICON,
-                            );
-                        }
-                        _ => {
-                            self.show_sync_notification(
-                                APP_NAME,
-                                lang.t(TrayText::SyncFailed),
-                                nwg::TrayNotificationFlags::WARNING_ICON,
-                            );
-                        }
+                    } else {
+                        self.show_sync_notification(
+                            APP_NAME,
+                            lang.t(TrayText::SyncFailed),
+                            nwg::TrayNotificationFlags::WARNING_ICON,
+                        );
                     }
                 }
                 self.was_syncing.set(currently_syncing);

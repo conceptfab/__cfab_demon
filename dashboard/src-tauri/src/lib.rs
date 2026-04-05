@@ -37,9 +37,29 @@ pub fn run() {
                 let logs_dir = base.join("logs");
                 let _ = std::fs::create_dir_all(&logs_dir);
 
+                // Read log level from log_settings.json (shared with daemon)
+                let dashboard_level = {
+                    let settings_path = base.join("log_settings.json");
+                    if let Ok(content) = std::fs::read_to_string(&settings_path) {
+                        serde_json::from_str::<serde_json::Value>(&content)
+                            .ok()
+                            .and_then(|v| v.get("dashboard_level")?.as_str().map(String::from))
+                            .unwrap_or_else(|| "info".into())
+                    } else {
+                        "info".into()
+                    }
+                };
+                let level = match dashboard_level.to_lowercase().as_str() {
+                    "trace" => log::LevelFilter::Trace,
+                    "debug" => log::LevelFilter::Debug,
+                    "warn" => log::LevelFilter::Warn,
+                    "error" => log::LevelFilter::Error,
+                    _ => log::LevelFilter::Info,
+                };
+
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
+                        .level(level)
                         .target(tauri_plugin_log::Target::new(
                             tauri_plugin_log::TargetKind::Folder {
                                 path: logs_dir,
@@ -48,6 +68,8 @@ pub fn run() {
                         ))
                         .build(),
                 )?;
+
+                log::info!("TIMEFLOW Dashboard starting (log level: {})", dashboard_level);
             }
 
             // Initialize database (sync — rusqlite has no async IO)

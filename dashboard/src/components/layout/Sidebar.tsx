@@ -236,6 +236,12 @@ export function Sidebar() {
   useEffect(() => {
     let timer: number | null = null;
     const poll = async () => {
+      const settings = loadLanSyncSettings();
+      if (!settings.enabled) {
+        setLanPeer(null);
+        setLanIsSlave(false);
+        return;
+      }
       try {
         const peers = await lanSyncApi.getLanPeers();
         const online = peers.find((p) => p.dashboard_running);
@@ -245,7 +251,6 @@ export function Sidebar() {
       }
       // Detect slave role — disable sync button for slave
       try {
-        const settings = loadLanSyncSettings();
         if (settings.forcedRole === 'slave') {
           setLanIsSlave(true);
         } else if (settings.forcedRole === 'master') {
