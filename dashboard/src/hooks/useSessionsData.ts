@@ -78,9 +78,7 @@ export function useSessionsData(params: {
       })
       .catch(console.error)
       .finally(() => {
-        if (!cancelled) {
-          isLoadingRef.current = false;
-        }
+        isLoadingRef.current = false;
       });
     return () => {
       cancelled = true;
