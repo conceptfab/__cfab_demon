@@ -1401,6 +1401,7 @@
     "show_token": "Pokaż token",
     "hide_token": "Ukryj token",
     "enter_the_raw_token_the_app_will_add_the_bearer_header_a": "Wprowadź surowy token; aplikacja automatycznie doda nagłówek Bearer.",
+    "token_set_auto": "Token ustawiony automatycznie przy aktywacji licencji.",
     "device_id": "ID urządzenia",
     "generated_on_save": "(wygenerowane przy zapisie)",
     "generated_automatically_and_used_to_identify_this_machin": "Generowane automatycznie i używane do identyfikacji tej maszyny podczas sync.",

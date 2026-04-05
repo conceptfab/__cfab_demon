@@ -300,7 +300,11 @@ export function OnlineSyncCard({
                 </Button>
               </AppTooltip>
             </div>
-            <p className="text-xs text-muted-foreground">{t('settings_page.enter_the_raw_token_the_app_will_add_the_bearer_header_a')}</p>
+            <p className="text-xs text-muted-foreground">
+              {settings.apiToken
+                ? t('settings_page.token_set_auto')
+                : t('settings_page.enter_the_raw_token_the_app_will_add_the_bearer_header_a')}
+            </p>
           </label>
 
           <div className="grid gap-1.5 text-sm">
