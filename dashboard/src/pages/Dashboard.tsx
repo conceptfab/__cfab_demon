@@ -432,8 +432,6 @@ export function Dashboard() {
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,
-    // t: intentionally included — forces data reload on language change so translated labels update
-    t,
   ]);
 
   return (
