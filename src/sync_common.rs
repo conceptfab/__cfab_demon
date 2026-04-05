@@ -516,7 +516,9 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 match table_name {
                     "projects" => { let _ = tx.execute("DELETE FROM projects WHERE name = ?1", [sync_key]); }
                     "applications" => { let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]); }
-                    _ => {}
+                    "sessions" => { let _ = tx.execute("DELETE FROM sessions WHERE id = ?1", [sync_key]); }
+                    "manual_sessions" => { let _ = tx.execute("DELETE FROM manual_sessions WHERE id = ?1", [sync_key]); }
+                    _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
                 }
 
                 tx.execute(
