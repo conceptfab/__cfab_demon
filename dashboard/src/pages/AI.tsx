@@ -286,21 +286,16 @@ export function AIPage() {
     void refreshModelData(true);
   });
 
-  // Refresh on tab visibility / window focus
+  // Refresh on tab visibility (covers both tab switch and window focus in Tauri)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') return;
       void refreshModelData(true);
     };
-    const handleWindowFocus = () => {
-      void refreshModelData(true);
-    };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
     };
   }, [refreshModelData]);
 
