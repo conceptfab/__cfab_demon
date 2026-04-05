@@ -36,9 +36,10 @@ export async function connectSSE(onSyncAvailable: SyncSSEListener): Promise<void
   const apiToken = await loadSecureApiToken();
   if (!apiToken) return;
 
+  // SECURITY TODO: Token in URL is logged by proxies/CDN/server access logs.
+  // Migrate to short-lived SSE ticket: POST /api/sync/sse-ticket → one-time token,
+  // or use fetch() streaming with Authorization header when EventSource is dropped.
   // EventSource doesn't support custom headers, so we pass the token as a query param.
-  // The server SSE endpoint should accept both Authorization header and ?token= query.
-  // For security, we use a short-lived approach — the token is already known to the server.
   const url = new URL(`${settings.serverUrl}/api/sync/events`);
   url.searchParams.set('deviceId', settings.deviceId);
   url.searchParams.set('token', apiToken);
