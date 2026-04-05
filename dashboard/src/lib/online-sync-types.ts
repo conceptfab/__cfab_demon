@@ -201,6 +201,7 @@ export interface LicenseActivationResult {
   groupId?: string;
   groupName?: string;
   deviceId?: string;
+  apiToken?: string;
   maxDevices?: number;
   activeDevices?: number;
   expiresAt?: string | null;

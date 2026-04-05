@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TFunction } from 'i18next';
-import { sessionsApi, settingsApi } from '@/lib/tauri';
+import { sessionsApi, settingsApi, setSecureToken } from '@/lib/tauri';
 import { normalizeHexColor } from '@/lib/normalize';
 import { splitTime } from '@/lib/form-validation';
 import {
@@ -587,6 +587,16 @@ export function useSettingsFormState({
         saveLicenseInfo(info);
         setLicenseInfo(info);
         setLicenseKeyInput('');
+
+        // Auto-save API token from activation response
+        if (result.apiToken) {
+          try {
+            await setSecureToken(result.apiToken);
+            setOnlineSyncSettings((prev) => ({ ...prev, apiToken: result.apiToken! }));
+          } catch {
+            console.warn('[license] Failed to auto-save API token');
+          }
+        }
 
         // Auto-fill deviceId if empty
         if (!onlineSyncSettings.deviceId) {
