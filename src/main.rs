@@ -6,6 +6,14 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+struct SyncGuard(Arc<lan_server::LanSyncState>);
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        self.0.sync_in_progress.store(false, Ordering::SeqCst);
+        log::info!("SyncGuard dropped — sync_in_progress reset to false");
+    }
+}
+
 mod activity;
 mod config;
 mod firewall;
@@ -107,6 +115,7 @@ fn main() {
                     std::sync::atomic::Ordering::SeqCst,
                     std::sync::atomic::Ordering::Relaxed,
                 ).is_ok() {
+                    let _guard = SyncGuard(sync_state_clone.clone());
                     log::info!("Auto-starting online sync on startup (mode: {})", online_settings.sync_mode);
                     match online_settings.sync_mode.as_str() {
                         "async" if !online_settings.group_id.is_empty() => {
@@ -117,6 +126,7 @@ fn main() {
                             online_sync::run_online_sync(online_settings, sync_state_clone, stop_signal_clone);
                         }
                     }
+                    // _guard drops here, resets flag
                 }
             });
         }
