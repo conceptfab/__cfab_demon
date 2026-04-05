@@ -4,7 +4,8 @@
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
 /requesting-code-review Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona pod katem:
- - poprawności logiki,
+ - poprawności i logiki,
+ - UI
  - wydajności, i jej poprawy,
  - wspomagania AI,
  - synchrnozacji danych lan i online
@@ -26,7 +27,7 @@ Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawnośc
 
 TODO ??
 
-- raport PDF nie drukuje 1 stronę, a dane zaiwierają więcej niż 1 strona!!!
+<!-- - raport PDF nie drukuje 1 stronę, a dane zaiwierają więcej niż 1 strona!!! -->
 
 <!-- - czy refresh w Dashbordzie jest potrzebny?
 - podział sesji
