@@ -14,8 +14,9 @@ mod m13_fix_updated_at;
 mod m14_sync_markers;
 mod m15_sync_merge_log;
 mod m16_file_activity_spans;
+mod m17_project_folder_meta;
 
-const LATEST_SCHEMA_VERSION: i64 = 16;
+const LATEST_SCHEMA_VERSION: i64 = 17;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -87,6 +88,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 16 {
         m16_file_activity_spans::run(&tx)?;
+    }
+    if current_version < 17 {
+        m17_project_folder_meta::run(&tx)?;
     }
 
     tx.execute(

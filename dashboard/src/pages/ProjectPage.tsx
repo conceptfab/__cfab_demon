@@ -139,7 +139,7 @@ function upsertProjectInList(
 
 export function ProjectPage() {
   const { t, i18n } = useTranslation();
-  const { projectPageId, setProjectPageId, setCurrentPage } = useUIStore();
+  const { projectPageId, projectPageMinimal, setProjectPageId, setCurrentPage } = useUIStore();
   const { triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
   const { showError, showInfo } = useToast();
@@ -768,6 +768,7 @@ export function ProjectPage() {
           )
         }
         onCompact={handleCompact}
+        minimal={projectPageMinimal}
       />
 
       <ProjectTimelineSection

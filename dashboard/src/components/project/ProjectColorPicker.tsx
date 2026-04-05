@@ -8,9 +8,11 @@ interface ProjectColorPickerProps {
   currentColor: string;
   labels: { changeColor: string; chooseColor: string; saveColor: string };
   onSave: (color: string) => Promise<void>;
+  /** CSS class for the dot button size, default "h-3 w-3" */
+  dotClassName?: string;
 }
 
-export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColorPickerProps) {
+export function ProjectColorPicker({ currentColor, labels, onSave, dotClassName }: ProjectColorPickerProps) {
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
 
@@ -26,7 +28,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
         <button
           type="button"
           aria-label={labels.changeColor}
-          className="h-3 w-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
+          className={`${dotClassName || 'h-3 w-3'} rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform`}
           style={{ backgroundColor: pending && editing ? pending : currentColor }}
           onClick={() => {
             setEditing(!editing);
@@ -51,7 +53,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
                 size="icon"
                 className="h-8 w-8 text-green-500 hover:text-green-400"
                 aria-label={labels.saveColor}
-                onClick={() => applyColor(pending)}
+                onClick={() => void applyColor(pending)}
                 title={labels.saveColor}
               >
                 <Save className="h-4 w-4" />
@@ -65,7 +67,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave }: ProjectColo
                 key={c}
                 className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                 style={{ backgroundColor: c }}
-                onClick={() => applyColor(c)}
+                onClick={() => void applyColor(c)}
                 aria-label={`${labels.chooseColor}: ${c}`}
                 title={c}
               />

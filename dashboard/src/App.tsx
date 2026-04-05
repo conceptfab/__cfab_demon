@@ -57,6 +57,9 @@ const Reports = lazy(() =>
 const ReportView = lazy(() =>
   import('@/pages/ReportView').then((m) => ({ default: m.ReportView })),
 );
+const PM = lazy(() =>
+  import('@/pages/PM').then((m) => ({ default: m.PM })),
+);
 
 function PageRouter() {
   const currentPage = useUIStore((s) => s.currentPage);
@@ -95,6 +98,8 @@ function PageRouter() {
         return <Reports />;
       case 'report-view':
         return <ReportView />;
+      case 'pm':
+        return <PM />;
 
       default:
         return <Dashboard />;

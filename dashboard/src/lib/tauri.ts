@@ -12,6 +12,7 @@ export * from './tauri/database';
 export * from './tauri/lan-sync';
 export * from './tauri/online-sync';
 export * from './tauri/log-management';
+export * from './tauri/pm';
 
 import { runtimeApi } from './tauri/core';
 import { projectsApi } from './tauri/projects';
@@ -27,6 +28,7 @@ import { databaseApi } from './tauri/database';
 import { lanSyncApi } from './tauri/lan-sync';
 import { daemonOnlineSyncApi } from './tauri/online-sync';
 import { logManagementApi } from './tauri/log-management';
+import { pmApi } from './tauri/pm';
 
 export {
   projectsApi,
@@ -42,6 +44,7 @@ export {
   lanSyncApi,
   daemonOnlineSyncApi,
   logManagementApi,
+  pmApi,
 };
 
 export const tauriApi = {
@@ -59,4 +62,5 @@ export const tauriApi = {
   lanSync: lanSyncApi,
   daemonOnlineSync: daemonOnlineSyncApi,
   logManagement: logManagementApi,
+  pm: pmApi,
 } as const;

@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Bug,
   FileText,
+  Briefcase,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -67,6 +68,7 @@ const navItems = [
   { id: 'ai', labelKey: 'layout.nav.ai', icon: Brain },
   { id: 'data', labelKey: 'layout.nav.data', icon: Import },
   { id: 'reports', labelKey: 'layout.nav.reports', icon: FileText },
+  { id: 'pm', labelKey: 'layout.nav.pm', icon: Briefcase },
   { id: 'daemon', labelKey: 'layout.nav.daemon', icon: Cpu },
 ];
 

@@ -135,7 +135,7 @@ function renderDuration(seconds: number) {
 
 export function Projects() {
   const { t } = useTranslation();
-  const { setProjectPageId, setCurrentPage } = useUIStore();
+  const { setProjectPageId, setCurrentPage, projectPageMinimal } = useUIStore();
   const { triggerRefresh } = useDataStore();
   const { currencyCode } = useSettingsStore();
   const { showError } = useToast();
@@ -175,6 +175,7 @@ export function Projects() {
     isDemoMode,
     loadingExtra,
     projectFolders,
+    setProjectFolders,
     projects,
     projectsAllTimeLoading,
     setFolderError,
@@ -402,6 +403,25 @@ export function Projects() {
       console.error(e);
     } finally {
       setBusy(null);
+    }
+  };
+
+  const handleUpdateFolderMeta = async (
+    path: string,
+    color: string,
+    category: string,
+    badge: string,
+  ) => {
+    // Optimistic update
+    setProjectFolders((prev) =>
+      prev.map((f) =>
+        f.path === path ? { ...f, color, category, badge } : f,
+      ),
+    );
+    try {
+      await projectsApi.updateProjectFolderMeta(path, color, category, badge);
+    } catch (e) {
+      console.error('updateProjectFolderMeta failed:', e);
     }
   };
 
@@ -937,6 +957,7 @@ export function Projects() {
         onCompactProject={() => {
           void handleCompactProject(p.id);
         }}
+        minimal={projectPageMinimal}
       />
     );
   };
@@ -1021,6 +1042,9 @@ export function Projects() {
         }}
         onRemoveFolder={(path) => {
           void handleRemoveFolder(path);
+        }}
+        onUpdateFolderMeta={(path, color, category, badge) => {
+          void handleUpdateFolderMeta(path, color, category, badge);
         }}
         onSyncFolders={() => {
           void handleSyncFolders();

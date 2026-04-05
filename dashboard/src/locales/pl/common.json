@@ -49,6 +49,7 @@
       "ai": "AI i model",
       "data": "Dane",
       "reports": "Raporty",
+      "pm": "PM",
       "daemon": "Demon"
     },
     "status": {
@@ -579,10 +580,12 @@
       "no_folders_defined": "Dodaj co najmniej jeden folder projektów, aby włączyć automatyczne wykrywanie. Bez folderów TIMEFLOW nie może przypisywać aktywności plików do projektów."
     },
     "placeholders": {
-      "project_folder_path": "C:\\projekty\\klienci"
+      "project_folder_path": "C:\\projekty\\klienci",
+      "folder_category": "np. klienci, wewnętrzne, archiwum..."
     },
     "labels": {
       "duplicate_marker": "D",
+      "folder_category": "Kategoria",
       "possible_duplicate_named": "Możliwy duplikat ({{groupSize}}): {{groupNames}}",
       "possible_duplicate_normalized": "Możliwy duplikat ({{groupSize}}) po normalizacji \"_\" i \"-\"",
       "frozen_since_click_unfreeze": "Zamrożony od {{date}} - kliknij, aby odmrozić",
@@ -1783,7 +1786,15 @@
     "bughunter_detail_title": "BugHunter",
     "bughunter_detail_what_it_does": "Co robi: BugHunter otwiera szybki formularz zgłoszenia błędu z tematem, opisem, numerem wersji i załącznikami.",
     "bughunter_detail_when_to_use": "Kiedy użyć: wyślij zgłoszenie od razu po problemie, najlepiej z krótkim opisem kroków i screenem lub plikiem pomocniczym.",
-    "bughunter_detail_limitations": "Ograniczenia i konsekwencje: pojedynczy załącznik ma limit 5 MB, temat i opis są wymagane, a formularz nie zamyka błędu automatycznie po stronie wsparcia."
+    "bughunter_detail_limitations": "Ograniczenia i konsekwencje: pojedynczy załącznik ma limit 5 MB, temat i opis są wymagane, a formularz nie zamyka błędu automatycznie po stronie wsparcia.",
+    "pm_description": "Zarządzanie projektami klienckimi — tworzenie, edycja, przeglądanie. Automatyczne numerowanie i generowanie struktury folderów na dysku.",
+    "pm_feature_create": "Tworzenie projektu — podaj klienta, nazwę, opis, budżet i termin; numer i kod generowane automatycznie.",
+    "pm_feature_numbering": "Automatyczna numeracja — numer projektu przydzielany kolejno w ramach roku (np. 01, 02, 03…).",
+    "pm_feature_folders": "Drzewo folderów — po utworzeniu projektu na dysku powstaje folder z podfolderami wg wybranego szablonu.",
+    "pm_feature_templates": "Szablony folderów — domyślny szablon odpowiada oryginalnemu PM. Możesz tworzyć własne szablony z dowolną strukturą. Placeholder {name} w nazwie folderu zamieniany na nazwę projektu.",
+    "pm_feature_status": "Status projektu — Aktywny / Nieaktywny / Archiwalny. Zmiana statusu w szczegółach projektu.",
+    "pm_feature_budget": "Budżet i termin — przypisz wartość budżetu i deadline do projektu.",
+    "pm_feature_compat": "Kompatybilność — dane przechowywane w pliku JSON (projects_list.json) zgodnym z formatem PM Python. Wymaga skonfigurowanego folderu roboczego."
   },
   "sync_progress": {
     "title": "Synchronizacja LAN",
@@ -1931,5 +1942,109 @@
     "auto_scroll": "Auto-przewijanie",
     "refresh": "Odśwież",
     "empty_content": "(pusty)"
+  },
+  "pm": {
+    "title": "PM — Menedżer Projektów",
+    "no_work_folder": "Folder roboczy nie skonfigurowany",
+    "set_work_folder": "Ustaw folder roboczy",
+    "new_project": "Nowy projekt",
+    "refresh": "Odśwież",
+    "templates": "Szablony",
+    "columns": {
+      "number": "Nr",
+      "year": "Rok",
+      "client": "Klient",
+      "name": "Nazwa",
+      "status": "Status",
+      "budget": "Budżet",
+      "term": "Termin",
+      "time": "Czas",
+      "value": "Wartość",
+      "size": "Rozmiar"
+    },
+    "status": {
+      "active": "Aktywny",
+      "inactive": "Nieaktywny",
+      "archived": "Archiwalny"
+    },
+    "create": {
+      "title": "Nowy Projekt PM",
+      "client": "Nazwa klienta",
+      "name": "Nazwa projektu",
+      "desc": "Opis",
+      "budget": "Budżet",
+      "term": "Termin",
+      "template": "Szablon folderów",
+      "preview": "Nazwa folderu",
+      "folder_preview": "Podgląd drzewa folderów",
+      "submit": "Utwórz"
+    },
+    "detail": {
+      "title": "Szczegóły projektu",
+      "edit": "Edytuj",
+      "save": "Zapisz",
+      "cancel": "Anuluj",
+      "folder_path": "Ścieżka folderu",
+      "folder_size": "Rozmiar folderu",
+      "folder_not_found": "Folder nie istnieje"
+    },
+    "template_manager": {
+      "title": "Szablony drzew folderów",
+      "new_template": "Nowy szablon",
+      "template_name": "Nazwa szablonu",
+      "folders_list": "Foldery (jeden na linię)",
+      "folders_count": "Foldery",
+      "default_badge": "Domyślny",
+      "set_default": "Ustaw jako domyślny",
+      "delete_confirm": "Usunąć ten szablon?",
+      "cannot_delete_default": "Nie można usunąć domyślnego szablonu",
+      "placeholder_hint": "Użyj {name} dla nazwy projektu",
+      "preview": "Podgląd"
+    },
+    "errors": {
+      "client_required": "Nazwa klienta jest wymagana",
+      "name_required": "Nazwa projektu jest wymagana",
+      "create_failed": "Nie udało się utworzyć projektu",
+      "load_failed": "Nie udało się wczytać danych PM"
+    },
+    "empty": "Brak projektów",
+    "total_projects": "Łącznie projektów",
+    "this_year": "W tym roku",
+    "settings_tab": "Ustawienia",
+    "go_to_settings": "Przejdź do ustawień",
+    "settings_work_folder": "Folder roboczy PM",
+    "settings_work_folder_desc": "Folder zawierający katalog 00_PM_NX z plikiem projects_list.json. Wykrywany automatycznie z folderów projektów TIMEFLOW.",
+    "settings_json_path": "Plik danych",
+    "settings_templates_desc": "Zarządzaj szablonami drzew folderów tworzonych przy nowych projektach.",
+    "filter": {
+      "all_years": "Wszystkie lata",
+      "all_clients": "Wszyscy klienci",
+      "all_statuses": "Wszystkie statusy",
+      "clear": "Wyczyść filtry",
+      "showing": "Wyświetlane",
+      "no_results": "Brak projektów pasujących do filtrów",
+      "search_placeholder": "Szukaj klienta, nazwy, kodu..."
+    },
+    "statusbar": {
+      "projects": "projektów",
+      "clients": "klientów",
+      "years": "lat",
+      "year_one": "rok",
+      "years_few": "lata",
+      "budget_sum": "Budżet łącznie"
+    },
+    "tabs": {
+      "projects": "Projekty",
+      "clients": "Klienci"
+    },
+    "clients": {
+      "color": "Kolor",
+      "projects_count": "Projekty",
+      "variants": "Warianty",
+      "comment": "Komentarz",
+      "contact": "Kontakt",
+      "comment_placeholder": "Dodaj komentarz...",
+      "contact_placeholder": "Email, telefon..."
+    }
   }
 }

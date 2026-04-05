@@ -1,7 +1,9 @@
+import { useRef } from 'react';
 import { CircleOff, FolderOpen, Plus, RefreshCw, Trash2, Wand2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { CollapsibleSection } from '@/components/project/CollapsibleSection';
+import { ProjectColorPicker } from '@/components/project/ProjectColorPicker';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,6 +13,92 @@ import type {
   ProjectFolder,
 } from '@/lib/db-types';
 import { formatDuration, formatPathForDisplay } from '@/lib/utils';
+
+const FOLDER_BADGES = ['', '⭐', '🔥', '💼', '🏠', '🎨', '🔧', '📦', '🚀', '💰', '🏆'] as const;
+
+function FolderRow({
+  folder,
+  busy,
+  onRemove,
+  onColorSave,
+  onBadgeChange,
+  onCategoryChange,
+}: {
+  folder: ProjectFolder;
+  busy: string | null;
+  onRemove: () => void;
+  onColorSave: (color: string) => Promise<void>;
+  onBadgeChange: (badge: string) => void;
+  onCategoryChange: (category: string) => void;
+}) {
+  const { t } = useTranslation();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  return (
+    <div className="rounded-md border border-border/40 bg-secondary/10 p-2 text-xs">
+      <div className="flex items-center gap-2">
+        <ProjectColorPicker
+          currentColor={folder.color || '#64748b'}
+          labels={{
+            changeColor: t('projects.labels.change_color'),
+            chooseColor: t('projects.labels.choose_color'),
+            saveColor: t('projects.labels.save'),
+          }}
+          onSave={onColorSave}
+          dotClassName="h-5 w-5"
+        />
+
+        <span
+          className="flex-1 truncate text-muted-foreground"
+          title={formatPathForDisplay(folder.path)}
+        >
+          {formatPathForDisplay(folder.path)}
+        </span>
+
+        <select
+          className="h-6 w-10 cursor-pointer rounded border border-border/40 bg-transparent text-center text-sm"
+          value={folder.badge}
+          onChange={(e) => onBadgeChange(e.target.value)}
+          title="Badge"
+        >
+          {FOLDER_BADGES.map((b) => (
+            <option key={b} value={b}>
+              {b || '—'}
+            </option>
+          ))}
+        </select>
+
+        <AppTooltip content={t('layout.tooltips.remove_folder')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive"
+            onClick={onRemove}
+            disabled={busy === `remove-folder:${folder.path}`}
+          >
+            <CircleOff className="h-3.5 w-3.5" />
+          </Button>
+        </AppTooltip>
+      </div>
+
+      <div className="mt-1.5 flex items-center gap-2 pl-6">
+        <span className="text-[10px] font-medium uppercase text-muted-foreground/70">
+          {t('projects.labels.folder_category')}:
+        </span>
+        <input
+          type="text"
+          className="h-5 flex-1 rounded border border-border/30 bg-transparent px-1.5 text-xs text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none"
+          defaultValue={folder.category}
+          placeholder={t('projects.placeholders.folder_category')}
+          onChange={(e) => {
+            clearTimeout(debounceRef.current);
+            debounceRef.current = setTimeout(() => onCategoryChange(e.target.value), 500);
+          }}
+        />
+      </div>
+    </div>
+  );
+}
 
 type DetectedCandidatesView = {
   visible: DetectedProject[];
@@ -37,6 +125,7 @@ type ProjectDiscoveryPanelProps = {
   onBrowseFolder: () => void;
   onAddFolder: () => void;
   onRemoveFolder: (path: string) => void;
+  onUpdateFolderMeta: (path: string, color: string, category: string, badge: string) => void;
   onSyncFolders: () => void;
   visibleFolderCandidates: FolderProjectCandidate[];
   hiddenRegisteredFolderCandidatesCount: number;
@@ -67,6 +156,7 @@ export function ProjectDiscoveryPanel({
   onBrowseFolder,
   onAddFolder,
   onRemoveFolder,
+  onUpdateFolderMeta,
   onSyncFolders,
   visibleFolderCandidates,
   hiddenRegisteredFolderCandidatesCount,
@@ -142,30 +232,23 @@ export function ProjectDiscoveryPanel({
           </div>
 
           {projectFolders.length > 0 ? (
-            <div className="space-y-1">
+            <div className="space-y-2">
               {projectFolders.map((folder) => (
-                <div
+                <FolderRow
                   key={folder.path}
-                  className="flex items-center justify-between gap-2 text-xs"
-                >
-                  <span
-                    className="truncate text-muted-foreground"
-                    title={formatPathForDisplay(folder.path)}
-                  >
-                    {formatPathForDisplay(folder.path)}
-                  </span>
-                  <AppTooltip content={t('layout.tooltips.remove_folder')}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-destructive"
-                      onClick={() => onRemoveFolder(folder.path)}
-                      disabled={busy === `remove-folder:${folder.path}`}
-                    >
-                      <CircleOff className="h-3.5 w-3.5" />
-                    </Button>
-                  </AppTooltip>
-                </div>
+                  folder={folder}
+                  busy={busy}
+                  onRemove={() => onRemoveFolder(folder.path)}
+                  onColorSave={async (color) => {
+                    onUpdateFolderMeta(folder.path, color, folder.category, folder.badge);
+                  }}
+                  onBadgeChange={(badge) => {
+                    onUpdateFolderMeta(folder.path, folder.color, folder.category, badge);
+                  }}
+                  onCategoryChange={(category) => {
+                    onUpdateFolderMeta(folder.path, folder.color, category, folder.badge);
+                  }}
+                />
               ))}
             </div>
           ) : (

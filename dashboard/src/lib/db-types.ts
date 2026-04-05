@@ -308,6 +308,9 @@ export interface ProjectReportData {
 export interface ProjectFolder {
   path: string;
   added_at: string;
+  color: string;
+  category: string;
+  badge: string;
 }
 
 export interface FolderProjectCandidate {

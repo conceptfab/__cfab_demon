@@ -71,7 +71,8 @@ interface UIState {
   sessionsFocusProject: number | 'unassigned' | null;
   setSessionsFocusProject: (projectId: number | 'unassigned' | null) => void;
   projectPageId: number | null;
-  setProjectPageId: (id: number | null) => void;
+  projectPageMinimal: boolean;
+  setProjectPageId: (id: number | null, minimal?: boolean) => void;
   reportTemplateId: string | null;
   setReportTemplateId: (id: string | null) => void;
   firstRun: boolean;
@@ -115,7 +116,8 @@ export const useUIStore = create<UIState>((set, get) => ({
   setSessionsFocusProject: (projectId) =>
     set({ sessionsFocusProject: projectId }),
   projectPageId: null,
-  setProjectPageId: (id) => set({ projectPageId: id }),
+  projectPageMinimal: false,
+  setProjectPageId: (id, minimal) => set({ projectPageId: id, projectPageMinimal: !!minimal }),
   reportTemplateId: null,
   setReportTemplateId: (id) => set({ reportTemplateId: id }),
   firstRun: readFirstRunFlag(),

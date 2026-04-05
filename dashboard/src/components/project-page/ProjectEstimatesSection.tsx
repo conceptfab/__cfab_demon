@@ -27,6 +27,8 @@ type ProjectEstimatesSectionProps = {
   onToggleFreeze: () => void;
   onExclude: () => void;
   onCompact: () => void;
+  /** When true, only show freeze button (used in PM context) */
+  minimal?: boolean;
 };
 
 export function ProjectEstimatesSection({
@@ -39,6 +41,7 @@ export function ProjectEstimatesSection({
   onToggleFreeze,
   onExclude,
   onCompact,
+  minimal,
 }: ProjectEstimatesSectionProps) {
   const { t } = useTranslation();
 
@@ -50,14 +53,16 @@ export function ProjectEstimatesSection({
             {t('project_page.text.project_overview')}
           </CardTitle>
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onResetTime}
-              title={t('project_page.text.reset_time')}
-            >
-              <TimerReset className="h-4 w-4" />
-            </Button>
+            {!minimal && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onResetTime}
+                title={t('project_page.text.reset_time')}
+              >
+                <TimerReset className="h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -71,15 +76,17 @@ export function ProjectEstimatesSection({
             >
               <Snowflake className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive"
-              onClick={onExclude}
-              title={t('project_page.text.exclude_project')}
-            >
-              <CircleOff className="h-4 w-4" />
-            </Button>
+            {!minimal && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive"
+                onClick={onExclude}
+                title={t('project_page.text.exclude_project')}
+              >
+                <CircleOff className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="space-y-6">

@@ -276,6 +276,7 @@ export function useProjectsData(projectDialogId: number | null) {
     isDemoMode,
     loadingExtra,
     projectFolders,
+    setProjectFolders,
     projects,
     projectsAllTimeLoading,
     setFolderError,

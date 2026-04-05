@@ -131,6 +131,7 @@ pub fn run() {
             commands::get_project_folders,
             commands::add_project_folder,
             commands::remove_project_folder,
+            commands::update_project_folder_meta,
             commands::get_folder_project_candidates,
             commands::create_project_from_folder,
             commands::sync_projects_from_folders,
@@ -269,7 +270,21 @@ pub fn run() {
             commands::get_log_files_info,
             commands::read_log_file,
             commands::clear_log_file,
-            commands::open_logs_folder
+            commands::open_logs_folder,
+            commands::pm_get_projects,
+            commands::pm_create_project,
+            commands::pm_update_project,
+            commands::pm_delete_project,
+            commands::pm_get_settings,
+            commands::pm_set_work_folder,
+            commands::pm_get_folder_size,
+            commands::pm_get_templates,
+            commands::pm_save_template,
+            commands::pm_delete_template,
+            commands::pm_set_default_template,
+            commands::pm_detect_work_folder,
+            commands::pm_get_client_colors,
+            commands::pm_save_client_colors
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

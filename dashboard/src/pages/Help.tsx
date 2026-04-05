@@ -19,6 +19,7 @@ import {
   Rocket,
   ArrowRight,
   FileText,
+  Briefcase,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
@@ -237,6 +238,11 @@ export function Help() {
               value="reports"
               icon={<FileText className="h-3.5 w-3.5" />}
               label={t18n('help_page.reports')}
+            />
+            <HelpTabTrigger
+              value="pm"
+              icon={<Briefcase className="h-3.5 w-3.5" />}
+              label="PM"
             />
             <HelpTabTrigger
               value="daemon"
@@ -760,6 +766,27 @@ export function Help() {
                   ]}
                 />
               </SectionHelp>
+            </TabsContent>
+
+            <TabsContent
+              value="pm"
+              className="m-0 focus-visible:outline-none"
+            >
+              <SectionHelp
+                icon={<Briefcase className="h-6 w-6" />}
+                title={t18n('pm.title')}
+                description={t18n('help_page.pm_description')}
+                footer={t18n('help_page.key_functionalities')}
+                features={[
+                  t18n('help_page.pm_feature_create'),
+                  t18n('help_page.pm_feature_numbering'),
+                  t18n('help_page.pm_feature_folders'),
+                  t18n('help_page.pm_feature_templates'),
+                  t18n('help_page.pm_feature_status'),
+                  t18n('help_page.pm_feature_budget'),
+                  t18n('help_page.pm_feature_compat'),
+                ]}
+              />
             </TabsContent>
 
             <TabsContent

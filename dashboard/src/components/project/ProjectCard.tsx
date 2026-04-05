@@ -2,14 +2,11 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CalendarPlus,
-  CircleOff,
   LayoutDashboard,
   MessageSquare,
   MousePointerClick,
   Save,
   Snowflake,
-  TimerReset,
-  Trash2,
   Trophy,
 } from 'lucide-react';
 
@@ -54,6 +51,8 @@ type ProjectCardProps = {
   onToggleAssignOpen: () => void;
   onAssignApp: (appId: number, projectId: number | null) => void | Promise<void>;
   onCompactProject: () => void;
+  /** When true, only show freeze button (used in PM context) */
+  minimal?: boolean;
 };
 
 export function ProjectCard({
@@ -85,6 +84,7 @@ export function ProjectCard({
   onToggleAssignOpen,
   onAssignApp,
   onCompactProject,
+  minimal,
 }: ProjectCardProps) {
   const { t } = useTranslation();
 
@@ -178,19 +178,6 @@ export function ProjectCard({
           </CardTitle>
         </div>
         <div className={cn('flex gap-1', inDialog && 'mr-8')}>
-          <AppTooltip content={t('projects.labels.reset_time')}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('projects.labels.reset_time')}
-              className="h-7 w-7"
-              onClick={onResetProjectTime}
-              disabled={isDeleting}
-            >
-              <TimerReset className="h-3.5 w-3.5" />
-            </Button>
-          </AppTooltip>
           <AppTooltip
             content={
               project.frozen_at
@@ -221,32 +208,6 @@ export function ProjectCard({
               disabled={isDeleting}
             >
               <Snowflake className="h-3.5 w-3.5" />
-            </Button>
-          </AppTooltip>
-          <AppTooltip content={t('projects.labels.exclude_project')}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('projects.labels.exclude_project')}
-              className="h-7 w-7 text-destructive"
-              onClick={onExclude}
-              disabled={isDeleting}
-            >
-              <CircleOff className="h-3.5 w-3.5" />
-            </Button>
-          </AppTooltip>
-          <AppTooltip content={t('projects.labels.delete_project_permanently')}>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={t('projects.labels.delete_project_permanently')}
-              className="h-7 w-7 text-destructive"
-              onClick={() => void onDelete()}
-              disabled={isDeleting}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </AppTooltip>
         </div>

@@ -15,13 +15,16 @@ pub(crate) fn load_project_folders_from_db(
     conn: &rusqlite::Connection,
 ) -> Result<Vec<ProjectFolder>, String> {
     let mut stmt = conn
-        .prepare_cached("SELECT path, added_at FROM project_folders ORDER BY added_at")
+        .prepare_cached("SELECT path, added_at, color, category, badge FROM project_folders ORDER BY added_at")
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |row| {
             Ok(ProjectFolder {
                 path: row.get(0)?,
                 added_at: row.get(1)?,
+                color: row.get::<_, String>(2).unwrap_or_default(),
+                category: row.get::<_, String>(3).unwrap_or_default(),
+                badge: row.get::<_, String>(4).unwrap_or_default(),
             })
         })
         .map_err(|e| e.to_string())?;
@@ -1095,6 +1098,25 @@ pub async fn remove_project_folder(app: AppHandle, path: String) -> Result<(), S
         conn.execute(
             "DELETE FROM project_folders WHERE lower(path) = lower(?1)",
             [normalized],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn update_project_folder_meta(
+    app: AppHandle,
+    path: String,
+    color: String,
+    category: String,
+    badge: String,
+) -> Result<(), String> {
+    run_db_blocking(app, move |conn| {
+        conn.execute(
+            "UPDATE project_folders SET color = ?1, category = ?2, badge = ?3 WHERE lower(path) = lower(?4)",
+            rusqlite::params![color, category, badge, path.trim()],
         )
         .map_err(|e| e.to_string())?;
         Ok(())

@@ -49,6 +49,7 @@
       "ai": "AI & Model",
       "data": "Data",
       "reports": "Reports",
+      "pm": "PM",
       "daemon": "Daemon"
     },
     "status": {
@@ -579,10 +580,12 @@
       "no_folders_defined": "Add at least one project folder to enable automatic project detection. Without folders, TIMEFLOW cannot match file activity to projects."
     },
     "placeholders": {
-      "project_folder_path": "C:\\projects\\clients"
+      "project_folder_path": "C:\\projects\\clients",
+      "folder_category": "e.g. clients, internal, archive..."
     },
     "labels": {
       "duplicate_marker": "D",
+      "folder_category": "Category",
       "possible_duplicate_named": "Possible duplicate ({{groupSize}}): {{groupNames}}",
       "possible_duplicate_normalized": "Possible duplicate ({{groupSize}}) after normalizing \"_\" and \"-\"",
       "frozen_since_click_unfreeze": "Frozen since {{date}} - click to unfreeze",
@@ -1783,7 +1786,15 @@
     "bughunter_detail_title": "BugHunter",
     "bughunter_detail_what_it_does": "What it does: BugHunter opens a fast bug report form with subject, description, version number, and attachments.",
     "bughunter_detail_when_to_use": "When to use: send a report right after the issue appears, ideally with short reproduction steps and a screenshot or supporting file.",
-    "bughunter_detail_limitations": "Limitations and consequences: each attachment is limited to 5 MB, subject and description are required, and sending the form does not automatically resolve the issue on the support side."
+    "bughunter_detail_limitations": "Limitations and consequences: each attachment is limited to 5 MB, subject and description are required, and sending the form does not automatically resolve the issue on the support side.",
+    "pm_description": "Client project management — create, edit, browse projects. Automatic numbering and disk folder structure generation.",
+    "pm_feature_create": "Project creation — enter client, name, description, budget and deadline; number and code are generated automatically.",
+    "pm_feature_numbering": "Automatic numbering — project number assigned sequentially within the year (e.g. 01, 02, 03…).",
+    "pm_feature_folders": "Folder tree — when a project is created, a directory with subfolders is created on disk according to the selected template.",
+    "pm_feature_templates": "Folder templates — the default template matches the original PM. You can create custom templates with any structure. The {name} placeholder in folder names is replaced with the project name.",
+    "pm_feature_status": "Project status — Active / Inactive / Archived. Change the status in the project detail view.",
+    "pm_feature_budget": "Budget and deadline — assign a budget value and deadline to the project.",
+    "pm_feature_compat": "Compatibility — data stored in a JSON file (projects_list.json) compatible with the Python PM format. Requires a configured work folder."
   },
   "sync_progress": {
     "title": "LAN Synchronization",
@@ -1931,5 +1942,109 @@
     "auto_scroll": "Auto-scroll",
     "refresh": "Refresh",
     "empty_content": "(empty)"
+  },
+  "pm": {
+    "title": "PM — Project Manager",
+    "no_work_folder": "Work folder not configured",
+    "set_work_folder": "Set work folder",
+    "new_project": "New project",
+    "refresh": "Refresh",
+    "templates": "Templates",
+    "columns": {
+      "number": "No.",
+      "year": "Year",
+      "client": "Client",
+      "name": "Name",
+      "status": "Status",
+      "budget": "Budget",
+      "term": "Deadline",
+      "time": "Time",
+      "value": "Value",
+      "size": "Size"
+    },
+    "status": {
+      "active": "Active",
+      "inactive": "Inactive",
+      "archived": "Archived"
+    },
+    "create": {
+      "title": "New PM Project",
+      "client": "Client name",
+      "name": "Project name",
+      "desc": "Description",
+      "budget": "Budget",
+      "term": "Deadline",
+      "template": "Folder template",
+      "preview": "Folder name",
+      "folder_preview": "Folder tree preview",
+      "submit": "Create"
+    },
+    "detail": {
+      "title": "Project details",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "folder_path": "Folder path",
+      "folder_size": "Folder size",
+      "folder_not_found": "Folder not found"
+    },
+    "template_manager": {
+      "title": "Folder tree templates",
+      "new_template": "New template",
+      "template_name": "Template name",
+      "folders_list": "Folders (one per line)",
+      "folders_count": "Folders",
+      "default_badge": "Default",
+      "set_default": "Set as default",
+      "delete_confirm": "Delete this template?",
+      "cannot_delete_default": "Cannot delete default template",
+      "placeholder_hint": "Use {name} for project name",
+      "preview": "Preview"
+    },
+    "errors": {
+      "client_required": "Client name is required",
+      "name_required": "Project name is required",
+      "create_failed": "Failed to create project",
+      "load_failed": "Failed to load PM data"
+    },
+    "empty": "No projects yet",
+    "total_projects": "Total projects",
+    "this_year": "This year",
+    "settings_tab": "Settings",
+    "go_to_settings": "Go to settings",
+    "settings_work_folder": "PM work folder",
+    "settings_work_folder_desc": "Folder containing the 00_PM_NX directory with projects_list.json. Auto-detected from TIMEFLOW project folders.",
+    "settings_json_path": "Data file",
+    "settings_templates_desc": "Manage folder tree templates used when creating new projects.",
+    "filter": {
+      "all_years": "All years",
+      "all_clients": "All clients",
+      "all_statuses": "All statuses",
+      "clear": "Clear filters",
+      "showing": "Showing",
+      "no_results": "No projects matching filters",
+      "search_placeholder": "Search client, name, code..."
+    },
+    "statusbar": {
+      "projects": "projects",
+      "clients": "clients",
+      "years": "years",
+      "year_one": "year",
+      "years_few": "years",
+      "budget_sum": "Total budget"
+    },
+    "tabs": {
+      "projects": "Projects",
+      "clients": "Clients"
+    },
+    "clients": {
+      "color": "Color",
+      "projects_count": "Projects",
+      "variants": "Variants",
+      "comment": "Comment",
+      "contact": "Contact",
+      "comment_placeholder": "Add comment...",
+      "contact_placeholder": "Email, phone..."
+    }
   }
 }

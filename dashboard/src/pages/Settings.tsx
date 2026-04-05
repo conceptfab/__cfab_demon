@@ -20,6 +20,7 @@ import { SessionSplitCard } from '@/components/settings/SessionSplitCard';
 import { OnlineSyncCard } from '@/components/settings/OnlineSyncCard';
 import { LanSyncCard } from '@/components/settings/LanSyncCard';
 import { DevSettingsCard } from '@/components/settings/DevSettingsCard';
+import { PmSettingsCard } from '@/components/settings/PmSettingsCard';
 import { useSettingsFormState } from '@/hooks/useSettingsFormState';
 import { useSettingsDemoMode } from '@/hooks/useSettingsDemoMode';
 import { lanSyncApi, settingsApi } from '@/lib/tauri';
@@ -132,13 +133,14 @@ export function Settings() {
   });
 
   // ── Tab state ──
-  type SettingsTab = 'general' | 'sessions' | 'sync' | 'advanced';
+  type SettingsTab = 'general' | 'sessions' | 'sync' | 'pm' | 'advanced';
   const [activeTab, setActiveTab] = useState<SettingsTab>('general');
 
   const tabMeta: Record<SettingsTab, { label: string; active: string }> = {
     general:  { label: t('settings_page.tab_general'),  active: 'border-sky-400 text-sky-400' },
     sessions: { label: t('settings_page.tab_sessions'), active: 'border-violet-400 text-violet-400' },
     sync:     { label: t('settings_page.tab_sync'),     active: 'border-emerald-400 text-emerald-400' },
+    pm:       { label: 'PM',                             active: 'border-orange-400 text-orange-400' },
     advanced: { label: t('settings_page.tab_advanced'),  active: 'border-amber-400 text-amber-400' },
   };
 
@@ -624,6 +626,13 @@ export function Settings() {
           forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
           syncPhaseLabels={syncPhaseLabels}
         />
+      </div>
+      )}
+
+      {/* ── Tab: PM ── */}
+      {activeTab === 'pm' && (
+      <div className="space-y-4">
+        <PmSettingsCard />
       </div>
       )}
 

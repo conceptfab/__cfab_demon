@@ -27,6 +27,8 @@ mod sql_fragments;
 mod sync_log;
 mod sync_markers;
 mod types;
+mod pm_manager;
+mod pm;
 pub(crate) use timeflow_shared::daily_store;
 
 // Re-export all public commands (required by tauri::generate_handler![])
@@ -54,3 +56,4 @@ pub use sessions::*;
 pub use settings::*;
 pub use sync_log::*;
 pub use sync_markers::*;
+pub use pm::*;

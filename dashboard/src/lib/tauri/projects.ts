@@ -111,6 +111,13 @@ export const addProjectFolder = (path: string) =>
 export const removeProjectFolder = (path: string) =>
   invokeMutation<void>('remove_project_folder', { path });
 
+export const updateProjectFolderMeta = (
+  path: string,
+  color: string,
+  category: string,
+  badge: string,
+) => invokeMutation<void>('update_project_folder_meta', { path, color, category, badge });
+
 export const getFolderProjectCandidates = () =>
   invoke<FolderProjectCandidate[]>('get_folder_project_candidates');
 
@@ -178,6 +185,7 @@ export const projectsApi = {
   getProjectFolders,
   addProjectFolder,
   removeProjectFolder,
+  updateProjectFolderMeta,
   getFolderProjectCandidates,
   createProjectFromFolder,
   syncProjectsFromFolders,

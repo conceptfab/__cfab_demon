@@ -283,6 +283,12 @@ pub struct ArchivedFileInfo {
 pub struct ProjectFolder {
     pub path: String,
     pub added_at: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub badge: String,
 }
 
 #[derive(Serialize)]
