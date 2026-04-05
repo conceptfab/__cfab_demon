@@ -161,11 +161,15 @@ pub fn update_manual_session(
     let duration_seconds = (end_dt - start_dt).num_seconds();
     let date = start_dt.format("%Y-%m-%d").to_string();
 
-    conn.execute(
+    let rows = conn.execute(
         "UPDATE manual_sessions SET title=?1, session_type=?2, project_id=?3, app_id=?4, start_time=?5, end_time=?6, duration_seconds=?7, date=?8 WHERE id=?9",
         rusqlite::params![input.title, input.session_type, input.project_id, input.app_id, input.start_time, input.end_time, duration_seconds, date, id],
     )
     .map_err(|e| format!("Failed to update manual session: {}", e))?;
+
+    if rows == 0 {
+        return Err(format!("Manual session with id {} not found", id));
+    }
 
     Ok(())
 }
