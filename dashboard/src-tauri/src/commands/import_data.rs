@@ -920,10 +920,6 @@ fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, St
     Ok(dest_path.to_string_lossy().to_string())
 }
 
-/// Public wrapper for LAN sync (called from daemon's sync_common or lan_sync).
-pub fn create_pre_lan_sync_backup(app: &AppHandle) -> Result<String, String> {
-    create_pre_sync_backup(app, "lan")
-}
 
 #[cfg(test)]
 mod tests {
