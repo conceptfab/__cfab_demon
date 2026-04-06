@@ -218,6 +218,10 @@ pub fn build_delta_archive(
 
 /// Convert ISO 8601 timestamps (e.g. "2026-03-29T10:00:00Z" or "2026-03-29T10:00:00+02:00")
 /// to SQLite datetime format in UTC ("2026-03-29 08:00:00") for correct lexicographic comparison.
+pub fn normalize_datetime_for_sqlite_pub(s: &str) -> String {
+    normalize_datetime_for_sqlite(s)
+}
+
 fn normalize_datetime_for_sqlite(s: &str) -> String {
     // Fast path: already in "YYYY-MM-DD HH:MM:SS" format (19 chars, no T, no Z)
     if s.len() == 19 && !s.contains('T') && !s.ends_with('Z') {

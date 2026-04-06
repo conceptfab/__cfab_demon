@@ -267,7 +267,34 @@ fn import_archive_into_tx(
         match t.table_name.as_str() {
             "projects" => {
                 if let Some(ref name) = t.sync_key {
-                    tx.execute("DELETE FROM projects WHERE name = ?1", [name])
+                    // Guard: skip if project was updated after tombstone (normalize for timezone-safe comparison)
+                    let local_updated: Option<String> = tx
+                        .query_row("SELECT updated_at FROM projects WHERE name = ?1", [name.as_str()], |row| row.get(0))
+                        .ok();
+                    if let Some(ref lu) = local_updated {
+                        let norm_local = super::delta_export::normalize_datetime_for_sqlite_pub(lu);
+                        let norm_deleted = super::delta_export::normalize_datetime_for_sqlite_pub(&t.deleted_at);
+                        if norm_local > norm_deleted {
+                            continue; // Project re-created/updated after deletion — skip
+                        }
+                    }
+                    // Null out FK references before deleting project
+                    tx.execute(
+                        "UPDATE sessions SET project_id = NULL \
+                         WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                        [name.as_str()],
+                    ).ok();
+                    tx.execute(
+                        "UPDATE manual_sessions SET project_id = 0 \
+                         WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                        [name.as_str()],
+                    ).ok();
+                    tx.execute(
+                        "UPDATE applications SET project_id = NULL \
+                         WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                        [name.as_str()],
+                    ).ok();
+                    tx.execute("DELETE FROM projects WHERE name = ?1", [name.as_str()])
                         .ok();
                 }
             }

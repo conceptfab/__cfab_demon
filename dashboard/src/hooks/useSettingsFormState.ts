@@ -606,8 +606,26 @@ export function useSettingsFormState({
         }
 
         // Auto-fill deviceId if empty
+        const effectiveDeviceId = onlineSyncSettings.deviceId || deviceId;
         if (!onlineSyncSettings.deviceId) {
           setOnlineSyncSettings((prev) => ({ ...prev, deviceId }));
+        }
+
+        // Immediately persist to daemon's online_sync_settings.json so sync can work without manual "Save"
+        if (result.apiToken) {
+          void import('@/lib/tauri/online-sync').then(({ saveDaemonOnlineSyncSettings }) =>
+            saveDaemonOnlineSyncSettings({
+              enabled: onlineSyncSettings.enabled,
+              server_url: onlineSyncSettings.serverUrl,
+              auth_token: result.apiToken!,
+              device_id: effectiveDeviceId,
+              encryption_key: onlineSyncSettings.encryptionKey ?? '',
+              sync_interval_hours: Math.floor(onlineSyncSettings.autoSyncIntervalMinutes / 60),
+              auto_sync_on_startup: onlineSyncSettings.autoSyncOnStartup,
+            }).catch((err) => {
+              console.warn('[license] Failed to persist daemon settings after activation:', err);
+            })
+          ).catch(() => { /* Daemon not available */ });
         }
 
         showInfo(t('settings.license.activated_success'));

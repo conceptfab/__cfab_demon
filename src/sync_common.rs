@@ -313,7 +313,57 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         }
     }
 
-    // Merge applications
+    // Build ID maps once: remote ID → name, local name → ID
+    // These are used by applications, sessions, and manual_sessions merge.
+    // Built AFTER project/app merge so local IDs reflect newly-inserted records.
+    let mut remote_app_id_to_name: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+    if let Some(apps) = archive.pointer("/data/applications").and_then(|v| v.as_array()) {
+        for app in apps {
+            let remote_id = app.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let exe_name = app.get("executable_name").and_then(|v| v.as_str()).unwrap_or("");
+            if remote_id > 0 && !exe_name.is_empty() {
+                remote_app_id_to_name.insert(remote_id, exe_name.to_string());
+            }
+        }
+    }
+
+    let mut remote_project_id_to_name: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+    if let Some(projects) = archive.pointer("/data/projects").and_then(|v| v.as_array()) {
+        for proj in projects {
+            let remote_id = proj.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
+            let name = proj.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if remote_id > 0 && !name.is_empty() {
+                remote_project_id_to_name.insert(remote_id, name.to_string());
+            }
+        }
+    }
+
+    // Refresh local ID maps from DB (includes newly-merged projects/apps)
+    let mut project_name_to_local_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, name FROM projects")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+        for row in rows.flatten() {
+            project_name_to_local_id.insert(row.1, row.0);
+        }
+    }
+
+    let mut app_name_to_local_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut stmt = tx.prepare("SELECT id, executable_name FROM applications")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| e.to_string())?;
+        for row in rows.flatten() {
+            app_name_to_local_id.insert(row.1, row.0);
+        }
+    }
+
+    // Merge applications (resolve remote project_id → local via name)
     if let Some(apps) = archive.pointer("/data/applications").and_then(|v| v.as_array()) {
         for app in apps {
             let exe_name = app.get("executable_name").and_then(|v| v.as_str()).unwrap_or("");
@@ -321,6 +371,13 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             if exe_name.is_empty() {
                 continue;
             }
+
+            // Resolve remote project_id → local project_id via name
+            let remote_project_id = app.get("project_id").and_then(|v| v.as_i64());
+            let local_project_id: Option<i64> = remote_project_id
+                .and_then(|rid| remote_project_id_to_name.get(&rid))
+                .and_then(|name| project_name_to_local_id.get(name))
+                .copied();
 
             let existing: Option<(i64, Option<String>)> = tx
                 .query_row(
@@ -335,10 +392,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     let local = local_ts.as_deref().unwrap_or("");
                     if normalize_ts(updated_at) > normalize_ts(local) {
                         log_merge_conflict(&tx, "applications", exe_name, local, updated_at, "remote");
+                        // Sync project_id: prefer remote if set, else keep local
                         tx.execute(
-                            "UPDATE applications SET display_name = ?1, updated_at = ?2 WHERE executable_name = ?3",
+                            "UPDATE applications SET display_name = ?1, \
+                             project_id = COALESCE(?2, project_id), \
+                             updated_at = ?3 WHERE executable_name = ?4",
                             rusqlite::params![
                                 json_str_opt(app, "display_name"),
+                                local_project_id,
                                 updated_at,
                                 exe_name,
                             ],
@@ -347,57 +408,18 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 }
                 None => {
                     tx.execute(
-                        "INSERT INTO applications (executable_name, display_name, is_imported, updated_at) \
-                         VALUES (?1, ?2, 1, ?3)",
-                        rusqlite::params![exe_name, json_str_opt(app, "display_name"), updated_at],
+                        "INSERT INTO applications (executable_name, display_name, project_id, is_imported, updated_at) \
+                         VALUES (?1, ?2, ?3, 1, ?4)",
+                        rusqlite::params![exe_name, json_str_opt(app, "display_name"), local_project_id, updated_at],
                     ).map_err(|e| e.to_string())?;
+                    // Update app_name_to_local_id for newly-inserted apps
+                    if let Ok(new_id) = tx.query_row(
+                        "SELECT id FROM applications WHERE executable_name = ?1", [exe_name], |row| row.get::<_, i64>(0)
+                    ) {
+                        app_name_to_local_id.insert(exe_name.to_string(), new_id);
+                    }
                 }
             }
-        }
-    }
-
-    // Build ID maps: remote ID → name, local name → ID
-    let mut remote_app_id_to_name: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-    if let Some(apps) = archive.pointer("/data/applications").and_then(|v| v.as_array()) {
-        for app in apps {
-            let remote_id = app.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-            let exe_name = app.get("executable_name").and_then(|v| v.as_str()).unwrap_or("");
-            if remote_id > 0 && !exe_name.is_empty() {
-                remote_app_id_to_name.insert(remote_id, exe_name.to_string());
-            }
-        }
-    }
-    let mut app_name_to_local_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    {
-        let mut stmt = tx.prepare("SELECT id, executable_name FROM applications")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        }).map_err(|e| e.to_string())?;
-        for row in rows.flatten() {
-            app_name_to_local_id.insert(row.1, row.0);
-        }
-    }
-
-    let mut remote_project_id_to_name: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-    if let Some(projects) = archive.pointer("/data/projects").and_then(|v| v.as_array()) {
-        for proj in projects {
-            let remote_id = proj.get("id").and_then(|v| v.as_i64()).unwrap_or(0);
-            let name = proj.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            if remote_id > 0 && !name.is_empty() {
-                remote_project_id_to_name.insert(remote_id, name.to_string());
-            }
-        }
-    }
-    let mut project_name_to_local_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    {
-        let mut stmt = tx.prepare("SELECT id, name FROM projects")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-        }).map_err(|e| e.to_string())?;
-        for row in rows.flatten() {
-            project_name_to_local_id.insert(row.1, row.0);
         }
     }
 
@@ -442,16 +464,19 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     if normalize_ts(updated_at) > normalize_ts(local) {
                         let key = format!("app_id={}|start_time={}", local_app_id, start_time);
                         log_merge_conflict(&tx, "sessions", &key, local, updated_at, "remote");
+                        // Use COALESCE for project_id: prefer remote if set, else keep local
                         tx.execute(
                             "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, \
                              rate_multiplier = ?3, comment = ?4, is_hidden = ?5, \
-                             updated_at = ?6 WHERE id = ?7",
+                             project_id = COALESCE(?6, project_id), \
+                             updated_at = ?7 WHERE id = ?8",
                             rusqlite::params![
                                 json_str_opt(sess, "end_time"),
                                 json_i64(sess, "duration_seconds"),
                                 json_f64(sess, "rate_multiplier"),
                                 json_str_opt(sess, "comment"),
                                 json_i64(sess, "is_hidden"),
+                                local_project_id,
                                 updated_at,
                                 id,
                             ],
@@ -574,10 +599,57 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 .is_ok();
 
             if !exists {
-                // Delete the record
+                let deleted_at_str = ts.get("deleted_at").and_then(|v| v.as_str()).unwrap_or("");
+
+                // Guard: don't delete a record that was re-created/updated AFTER the tombstone
+                let skip_tombstone = match table_name {
+                    "projects" => {
+                        let local_updated: Option<String> = tx
+                            .query_row("SELECT updated_at FROM projects WHERE name = ?1", [sync_key], |row| row.get(0))
+                            .ok();
+                        local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                    }
+                    _ => false,
+                };
+                if skip_tombstone {
+                    // Record was updated after tombstone — skip deletion, just record the tombstone
+                    tx.execute(
+                        "INSERT OR IGNORE INTO tombstones (table_name, record_id, deleted_at, sync_key) \
+                         VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![table_name, json_i64(ts, "record_id"), deleted_at_str, sync_key],
+                    ).map_err(|e| e.to_string())?;
+                    continue;
+                }
+
+                // Delete the record — also clean up FK references to prevent orphans
                 match table_name {
-                    "projects" => { let _ = tx.execute("DELETE FROM projects WHERE name = ?1", [sync_key]); }
-                    "applications" => { let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]); }
+                    "projects" => {
+                        // Null out project_id in sessions/manual_sessions BEFORE deleting the project
+                        if let Err(e) = tx.execute(
+                            "UPDATE sessions SET project_id = NULL \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup sessions for project '{}': {}", sync_key, e); }
+                        if let Err(e) = tx.execute(
+                            "UPDATE manual_sessions SET project_id = 0 \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup manual_sessions for project '{}': {}", sync_key, e); }
+                        if let Err(e) = tx.execute(
+                            "UPDATE applications SET project_id = NULL \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup applications for project '{}': {}", sync_key, e); }
+                        let _ = tx.execute("DELETE FROM projects WHERE name = ?1", [sync_key]);
+                    }
+                    "applications" => {
+                        if let Err(e) = tx.execute(
+                            "DELETE FROM sessions WHERE app_id IN \
+                             (SELECT id FROM applications WHERE executable_name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup sessions for app '{}': {}", sync_key, e); }
+                        let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]);
+                    }
                     "sessions" => { let _ = tx.execute("DELETE FROM sessions WHERE id = ?1", [sync_key]); }
                     "manual_sessions" => { let _ = tx.execute("DELETE FROM manual_sessions WHERE id = ?1", [sync_key]); }
                     _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
@@ -634,6 +706,34 @@ pub fn run_gc_tombstones() {
 // ── Integrity check ──
 
 pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String> {
+    // Always clean up orphan project_id references (sessions/manual_sessions pointing to non-existent projects)
+    let orphan_sessions = conn.execute(
+        "UPDATE sessions SET project_id = NULL \
+         WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)",
+        [],
+    ).map_err(|e| e.to_string())?;
+    if orphan_sessions > 0 {
+        log::warn!("Sync verify: fixed {} sessions with orphan project_id", orphan_sessions);
+    }
+
+    let orphan_manual = conn.execute(
+        "UPDATE manual_sessions SET project_id = 0 \
+         WHERE project_id NOT IN (SELECT id FROM projects) AND project_id != 0",
+        [],
+    ).map_err(|e| e.to_string())?;
+    if orphan_manual > 0 {
+        log::warn!("Sync verify: fixed {} manual_sessions with orphan project_id", orphan_manual);
+    }
+
+    let orphan_apps = conn.execute(
+        "UPDATE applications SET project_id = NULL \
+         WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)",
+        [],
+    ).map_err(|e| e.to_string())?;
+    if orphan_apps > 0 {
+        log::warn!("Sync verify: fixed {} applications with orphan project_id", orphan_apps);
+    }
+
     // Check FK integrity
     let fk_errors: Vec<String> = {
         let mut stmt = conn.prepare("PRAGMA foreign_key_check")

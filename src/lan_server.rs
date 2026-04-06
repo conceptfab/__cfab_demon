@@ -887,10 +887,8 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     }
 
     let settings = crate::config::load_online_sync_settings();
-    if !settings.enabled {
-        return (400, json_error("Online sync is not enabled"));
-    }
     if settings.server_url.is_empty() || settings.auth_token.is_empty() {
+        state.sync_in_progress.store(false, Ordering::SeqCst);
         return (400, json_error("Online sync not configured (missing server_url or auth_token)"));
     }
 
