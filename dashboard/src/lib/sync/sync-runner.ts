@@ -498,8 +498,29 @@ async function runOnlineSyncOnceImpl(
       return result;
     }
 
+    // ── Pre-heartbeat: check if local data changed since last sync ──
+    const preCheck = await getLocalDeltaState(state);
+    const hasLocalChanges = preCheck.exportOk && preCheck.hasReseedData;
+    if (hasLocalChanges) {
+      log?.info('Local changes detected before heartbeat, updating localHash', {
+        deltaRecords: preCheck.archive
+          ? (preCheck.archive as DeltaArchive).data.projects.length +
+            (preCheck.archive as DeltaArchive).data.applications.length +
+            (preCheck.archive as DeltaArchive).data.sessions.length +
+            (preCheck.archive as DeltaArchive).data.manual_sessions.length +
+            (preCheck.archive as DeltaArchive).data.tombstones.length
+          : 0,
+      });
+      // Compute fresh hash from full export so heartbeat sends accurate state
+      const freshLocal = await getLocalDatasetState(state);
+      if (freshLocal.exportOk && freshLocal.payloadSha256) {
+        state.localHash = freshLocal.payloadSha256;
+        saveOnlineSyncState(state, settings);
+      }
+    }
+
     // ── Heartbeat: report presence, receive command from server ──
-    log?.info('Heartbeat', { revision: state.localRevision });
+    log?.info('Heartbeat', { revision: state.localRevision, localChangesDetected: hasLocalChanges });
     const statusT0 = Date.now();
     const status = await postJson<SyncStatusResponse>(
       settings.serverUrl,
@@ -509,6 +530,7 @@ async function runOnlineSyncOnceImpl(
         deviceId: settings.deviceId,
         clientRevision: state.localRevision,
         clientHash: state.localHash,
+        ...(preCheck.tableHashes ? { tableHashes: preCheck.tableHashes } : {}),
       },
       settings.requestTimeoutMs,
       secureApiToken,
@@ -536,7 +558,9 @@ async function runOnlineSyncOnceImpl(
 
     // ── IDLE: nothing to do, align hash and wait ──
     if (cmd === 'idle') {
-      if (status.serverHash) {
+      // Only align local hash with server if there are NO pending local changes.
+      // Overwriting localHash when local data differs masks drift detection.
+      if (status.serverHash && !hasLocalChanges) {
         state.localHash = status.serverHash;
         state.localRevision = status.serverRevision;
       }
