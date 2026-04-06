@@ -10,7 +10,6 @@ import {
   loadOnlineSyncState,
   loadOnlineSyncSettings,
   loadSecureApiToken,
-  runOnlineSyncOnce,
   saveLicenseInfo,
   saveOnlineSyncSettings,
   type LicenseInfo,
@@ -18,6 +17,7 @@ import {
   type OnlineSyncRunResult,
   type OnlineSyncState,
 } from '@/lib/online-sync';
+import { triggerDaemonOnlineSync } from '@/lib/tauri';
 import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
 import { getErrorMessage } from '@/lib/utils';
 import {
@@ -489,19 +489,22 @@ export function useSettingsFormState({
           // Daemon not available — ignore
         }
 
-        const result = await runOnlineSyncOnce({ ignoreStartupToggle: true });
-        setManualSyncResult(result);
+        await triggerDaemonOnlineSync();
+        // Wait briefly for daemon to process, then refresh state
+        await new Promise((r) => setTimeout(r, 2_000));
         setOnlineSyncState(loadOnlineSyncState());
-
-        if (result.ok && result.action === 'pull') {
-          emitProjectsAllTimeInvalidated('online_sync_pull');
-          triggerRefresh('settings_manual_sync_pull');
-        }
+        setManualSyncResult({
+          ok: true,
+          action: 'push',
+          reason: 'daemon_sync_triggered',
+          serverRevision: null,
+        });
+        triggerRefresh('settings_manual_sync');
       } catch (e) {
         setManualSyncResult({
           ok: false,
           action: 'none',
-          reason: 'sync_failed',
+          reason: 'daemon_unreachable',
           serverRevision: onlineSyncState.serverRevision,
           error: getErrorMessage(e, t('ui.common.unknown_error')),
         });
@@ -523,12 +526,15 @@ export function useSettingsFormState({
         const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
         setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
 
-        const result = await runOnlineSyncOnce({
-          ignoreStartupToggle: true,
-          forceFullPush: true,
-        });
-        setManualSyncResult(result);
+        await triggerDaemonOnlineSync();
+        await new Promise((r) => setTimeout(r, 2_000));
         setOnlineSyncState(loadOnlineSyncState());
+        setManualSyncResult({
+          ok: true,
+          action: 'push',
+          reason: 'daemon_force_sync_triggered',
+          serverRevision: null,
+        });
       } catch (e) {
         setManualSyncResult({
           ok: false,

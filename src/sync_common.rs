@@ -73,7 +73,62 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
     }
 
     log::info!("Sync backup created: {:?}", dest);
+
+    // Also create persistent backup to user-configured Backup Destination
+    if let Err(e) = create_pre_sync_backup_to_destination(conn, "lan") {
+        log::warn!("Pre-sync backup to Backup Destination skipped: {}", e);
+    }
+
     Ok(())
+}
+
+/// Create a persistent pre-sync backup to the user-configured Backup Destination.
+/// Reads `backup_path` from system_settings. Falls back silently if not configured.
+fn create_pre_sync_backup_to_destination(conn: &rusqlite::Connection, sync_type: &str) -> Result<String, String> {
+    // Read backup_path from system_settings
+    let backup_path: Option<String> = conn.query_row(
+        "SELECT value FROM system_settings WHERE key = 'backup_path'",
+        [],
+        |row| row.get(0),
+    ).ok().filter(|p: &String| !p.is_empty());
+
+    let backup_dir = match backup_path {
+        Some(ref p) => std::path::PathBuf::from(p),
+        None => return Err("backup_path not configured".to_string()),
+    };
+
+    if !backup_dir.exists() {
+        std::fs::create_dir_all(&backup_dir)
+            .map_err(|e| format!("Failed to create backup dir: {}", e))?;
+    }
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    let file_name = format!("timeflow_pre_{}_sync_{}.db", sync_type, timestamp);
+    let dest_path = backup_dir.join(&file_name);
+
+    let escaped = dest_path.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
+        .map_err(|e| format!("Pre-sync backup VACUUM INTO failed: {}", e))?;
+
+    // Rotate: keep max 10 pre-sync backups per type
+    let prefix = format!("timeflow_pre_{}_sync_", sync_type);
+    let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&backup_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str())
+            .map(|n| n.starts_with(&prefix)).unwrap_or(false))
+        .collect();
+    backups.sort();
+    while backups.len() > 10 {
+        if let Some(oldest) = backups.first() {
+            let _ = std::fs::remove_file(oldest);
+        }
+        backups.remove(0);
+    }
+
+    log::info!("Pre-{}-sync backup to Backup Destination: {:?}", sync_type, dest_path);
+    Ok(dest_path.to_string_lossy().to_string())
 }
 
 /// Restore the most recent sync backup by copying it over the current database.

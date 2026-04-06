@@ -551,7 +551,12 @@ pub async fn import_data_archive(
     app: AppHandle,
     archive: ExportArchive,
 ) -> Result<ImportSummary, String> {
-    // Backup as extra safety net (kept even if tx approach works)
+    // Persistent backup to user-configured Backup Destination (before any sync changes)
+    run_app_blocking(app.clone(), |app| {
+        create_pre_sync_backup(&app, "online")
+    }).await.ok(); // non-fatal — don't block sync if backup dir is not configured
+
+    // Temporary restore-backup as extra safety net (kept even if tx approach works)
     let backup_path =
         run_app_blocking(app.clone(), move |app| create_sync_restore_backup(&app)).await?;
 
@@ -852,6 +857,72 @@ fn create_sync_restore_backup(app: &AppHandle) -> Result<PathBuf, String> {
     })?;
 
     Ok(backup_path)
+}
+
+/// Create a persistent backup to the user-configured Backup Destination before sync.
+/// Uses the same backup mechanism as manual/auto backups (VACUUM INTO).
+/// If backup_path is not configured, falls back to a `sync_backups` subfolder
+/// next to the active database.
+fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, String> {
+    let conn = db::get_connection(app)?;
+
+    // Read user-configured backup_path from system_settings
+    let backup_dir = db::get_system_setting(app, "backup_path")?
+        .filter(|p| !p.is_empty());
+
+    let backup_dir = match backup_dir {
+        Some(dir) => PathBuf::from(dir),
+        None => {
+            // Fallback: sync_backups/ next to the active database
+            let status = db::get_demo_mode_status(app)?;
+            let db_path = PathBuf::from(status.active_db_path);
+            db_path.parent()
+                .ok_or_else(|| "Cannot resolve database directory".to_string())?
+                .join("sync_backups")
+        }
+    };
+
+    if !backup_dir.exists() {
+        fs::create_dir_all(&backup_dir)
+            .map_err(|e| format!("Failed to create sync backup directory: {}", e))?;
+    }
+
+    // Flush WAL
+    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .map_err(|e| format!("WAL checkpoint before sync backup failed: {}", e))?;
+
+    let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S").to_string();
+    let file_name = format!("timeflow_pre_{}_sync_{}.db", sync_type, timestamp);
+    let dest_path = backup_dir.join(&file_name);
+
+    let escaped = dest_path.to_string_lossy().replace('\'', "''");
+    conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
+        .map_err(|e| format!("Pre-sync backup failed: {}", e))?;
+
+    // Rotate: keep max 10 pre-sync backups per type
+    let prefix = format!("timeflow_pre_{}_sync_", sync_type);
+    let mut backups: Vec<PathBuf> = fs::read_dir(&backup_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.file_name().and_then(|n| n.to_str())
+            .map(|n| n.starts_with(&prefix)).unwrap_or(false))
+        .collect();
+    backups.sort();
+    while backups.len() > 10 {
+        if let Some(oldest) = backups.first() {
+            let _ = fs::remove_file(oldest);
+        }
+        backups.remove(0);
+    }
+
+    log::info!("Pre-{}-sync backup created: {:?}", sync_type, dest_path);
+    Ok(dest_path.to_string_lossy().to_string())
+}
+
+/// Public wrapper for LAN sync (called from daemon's sync_common or lan_sync).
+pub fn create_pre_lan_sync_backup(app: &AppHandle) -> Result<String, String> {
+    create_pre_sync_backup(app, "lan")
 }
 
 #[cfg(test)]

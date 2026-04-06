@@ -13,7 +13,6 @@ import {
 import {
   ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
   loadOnlineSyncSettings,
-  runOnlineSyncOnce,
   type OnlineSyncRunResult,
 } from '@/lib/online-sync';
 import { loadLanSyncSettings, loadLanSyncState } from '@/lib/lan-sync';
@@ -458,20 +457,15 @@ function useJobPool() {
       isSyncingRef.current = true;
 
       try {
-        console.log(`[useJobPool] Running online sync (reason: ${reason})`);
-        const result = await runOnlineSyncOnce({
-          isStartupSync: reason === 'startup',
-        });
-        if (result.action === 'pull') {
-          emitProjectsAllTimeInvalidated('online_sync_pull');
-        }
-        if (shouldRefreshAfterOnlineSync(result)) {
+        console.log(`[useJobPool] Delegating online sync to daemon (reason: ${reason})`);
+        await triggerDaemonOnlineSync();
+        // Daemon handles the sync — refresh UI after a short delay to pick up changes
+        setTimeout(() => {
           triggerRefresh(`background_sync_${reason}`);
-        }
-        dispatchOnlineSyncDone(result.action, reason);
-        syncFailCountRef.current = 0; // Reset na sukces
+        }, 2_000);
+        syncFailCountRef.current = 0;
       } catch (e) {
-        console.warn('Sync failed:', e);
+        console.warn('Daemon sync trigger failed (daemon may be offline):', e);
         syncFailCountRef.current += 1;
 
         // Exponential backoff logic
@@ -693,20 +687,17 @@ function useOnlineSyncSSE() {
     if (!settings.enabled) return;
 
     void connectSSE(async (event) => {
-      console.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering pull`);
+      console.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering daemon sync`);
       try {
-        // Trigger dashboard-side sync (push/pull archive)
-        const result = await runOnlineSyncOnce();
-        if (result.action === 'pull') {
+        await triggerDaemonOnlineSync();
+        // Refresh UI after daemon processes the sync
+        setTimeout(() => {
           emitProjectsAllTimeInvalidated('sse_sync_pull');
           triggerRefresh('sse_sync_pull');
-          dispatchOnlineSyncDone('pull', 'sse_notification');
-        }
+        }, 2_000);
       } catch (e) {
-        console.warn('[SSE] Auto-sync after notification failed:', e);
+        console.warn('[SSE] Daemon sync trigger failed:', e);
       }
-      // Also trigger daemon async delta pull (SFTP) — daemon decides if applicable
-      triggerDaemonOnlineSync().catch(() => {});
     });
 
     const handleSettingsChange = () => {

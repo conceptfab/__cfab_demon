@@ -37,9 +37,9 @@ import { hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
-  runOnlineSyncOnce,
   type OnlineSyncIndicatorSnapshot,
 } from '@/lib/online-sync';
+import { triggerDaemonOnlineSync } from '@/lib/tauri';
 import type {
   AssignmentModelStatus,
 } from '@/lib/db-types';
@@ -397,7 +397,7 @@ export function Sidebar() {
             }
             pulse={syncIndicator.status === 'syncing'}
             onClick={() => {
-              void runOnlineSyncOnce();
+              triggerDaemonOnlineSync().catch(() => {});
             }}
             title={syncIndicator.detail}
           />
