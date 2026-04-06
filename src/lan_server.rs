@@ -860,6 +860,7 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
     if state.sync_in_progress.compare_exchange(
         false, true, Ordering::SeqCst, Ordering::SeqCst
     ).is_err() {
+        log::warn!("LAN trigger-sync: REJECTED — sync already in progress");
         return (409, json_error("Sync already in progress"));
     }
 
@@ -881,6 +882,7 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     if state.sync_in_progress.compare_exchange(
         false, true, Ordering::SeqCst, Ordering::SeqCst
     ).is_err() {
+        log::warn!("Online trigger-sync: REJECTED — sync already in progress");
         return (409, json_error("Sync already in progress"));
     }
 
@@ -897,15 +899,23 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     let state_clone = state.clone();
     let stop_clone = stop_signal.clone();
     std::thread::spawn(move || {
-        match settings.sync_mode.as_str() {
-            "async" if !settings.group_id.is_empty() => {
-                let group_id = settings.group_id.clone();
-                crate::online_sync::run_async_delta_sync(settings, state_clone, &group_id);
+        log::info!("Online sync thread started");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            match settings.sync_mode.as_str() {
+                "async" if !settings.group_id.is_empty() => {
+                    let group_id = settings.group_id.clone();
+                    crate::online_sync::run_async_delta_sync(settings, state_clone.clone(), &group_id);
+                }
+                _ => {
+                    crate::online_sync::run_online_sync(settings, state_clone.clone(), stop_clone);
+                }
             }
-            _ => {
-                crate::online_sync::run_online_sync(settings, state_clone, stop_clone);
-            }
+        }));
+        if let Err(e) = result {
+            log::error!("Online sync thread panicked: {:?}", e);
         }
+        state_clone.sync_in_progress.store(false, Ordering::SeqCst);
+        log::info!("Online sync thread finished — sync_in_progress reset to false");
     });
 
     (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())

@@ -99,6 +99,17 @@ fn main() {
     // Optionally trigger online sync on startup
     {
         let online_settings = config::load_online_sync_settings();
+        if !(online_settings.enabled && online_settings.auto_sync_on_startup
+            && !online_settings.server_url.is_empty() && !online_settings.auth_token.is_empty())
+        {
+            log::info!(
+                "Online sync skipped: enabled={}, auto_sync_on_startup={}, has_server_url={}, has_auth_token={}",
+                online_settings.enabled,
+                online_settings.auto_sync_on_startup,
+                !online_settings.server_url.is_empty(),
+                !online_settings.auth_token.is_empty(),
+            );
+        }
         if online_settings.enabled && online_settings.auto_sync_on_startup
             && !online_settings.server_url.is_empty() && !online_settings.auth_token.is_empty()
         {

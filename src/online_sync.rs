@@ -97,7 +97,9 @@ impl HeartbeatGuard {
                 if stop_clone.load(Ordering::Relaxed) {
                     break;
                 }
-                send_heartbeat(&server_url, &token, &session_id, &device_id).ok();
+                if let Err(e) = send_heartbeat(&server_url, &token, &session_id, &device_id) {
+                    sync_log(&format!("[heartbeat] error: {}", e));
+                }
             }
         });
         Self {
@@ -118,6 +120,16 @@ impl Drop for HeartbeatGuard {
 
 // ── HTTP client using ureq (supports TLS, DNS, chunked encoding) ──
 
+fn format_ureq_error(method: &str, path: &str, err: ureq::Error) -> String {
+    match err {
+        ureq::Error::Status(code, resp) => {
+            let body = resp.into_string().unwrap_or_default();
+            format!("HTTP {} {} → {} : {}", method, path, code, body)
+        }
+        other => format!("HTTP {} {} failed: {}", method, path, other),
+    }
+}
+
 fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<String, String> {
     let url = format!("{}{}", server_url.trim_end_matches('/'), path);
     let resp = ureq::post(&url)
@@ -125,7 +137,7 @@ fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<
         .set("Content-Type", "application/json")
         .timeout(std::time::Duration::from_secs(30))
         .send_string(body)
-        .map_err(|e| format!("HTTP POST failed: {}", e))?;
+        .map_err(|e| format_ureq_error("POST", path, e))?;
     resp.into_string().map_err(|e| format!("Read response: {}", e))
 }
 
@@ -135,7 +147,7 @@ fn server_get(server_url: &str, path: &str, token: &str) -> Result<String, Strin
         .set("Authorization", &format!("Bearer {}", token))
         .timeout(std::time::Duration::from_secs(30))
         .call()
-        .map_err(|e| format!("HTTP GET failed: {}", e))?;
+        .map_err(|e| format_ureq_error("GET", path, e))?;
     resp.into_string().map_err(|e| format!("Read response: {}", e))
 }
 
@@ -249,7 +261,9 @@ fn wait_for_peer(
     for _ in 0..MAX_POLL_ATTEMPTS {
         check_timeout_and_stop(sync_start, stop_signal)?;
         thread::sleep(POLL_INTERVAL);
-        send_heartbeat(server_url, token, session_id, device_id).ok();
+        if let Err(e) = send_heartbeat(server_url, token, session_id, device_id) {
+            sync_log(&format!("[heartbeat] error: {}", e));
+        }
 
         let status = poll_status(server_url, token, session_id, device_id)?;
         if status.status != "awaiting_peer" {
@@ -293,7 +307,9 @@ fn wait_for_step(
     for _ in 0..MAX_POLL_ATTEMPTS {
         check_timeout_and_stop(sync_start, stop_signal)?;
         thread::sleep(POLL_INTERVAL);
-        send_heartbeat(server_url, token, session_id, device_id).ok();
+        if let Err(e) = send_heartbeat(server_url, token, session_id, device_id) {
+            sync_log(&format!("[heartbeat] error: {}", e));
+        }
 
         let status = poll_status(server_url, token, session_id, device_id)?;
         if status.status == "failed"
@@ -646,6 +662,12 @@ pub fn run_async_delta_sync(
     group_id: &str,
 ) {
     sync_log("=== START ASYNC DELTA SYNC ===");
+    sync_log(&format!(
+        "[diag] server_url={}, group_id={}, has_token={}, has_encryption_key={}",
+        settings.server_url, group_id,
+        !settings.auth_token.is_empty(),
+        !settings.encryption_key.is_empty(),
+    ));
     sync_state.set_progress(1, "async_delta", "local");
 
     match execute_async_pull(&settings, &sync_state, group_id) {
@@ -690,6 +712,14 @@ pub fn run_online_sync(
     stop_signal: Arc<AtomicBool>,
 ) {
     sync_log("=== START ONLINE SYNC ===");
+    sync_log(&format!(
+        "[diag] server_url={}, device_id={}, has_token={}, has_encryption_key={}, sync_mode={}",
+        settings.server_url,
+        if settings.device_id.is_empty() { "<auto>" } else { &settings.device_id },
+        !settings.auth_token.is_empty(),
+        !settings.encryption_key.is_empty(),
+        settings.sync_mode,
+    ));
     sync_state.set_progress(1, "creating_session", "local");
 
     let server_url = settings.server_url.clone();
@@ -736,6 +766,14 @@ pub fn run_online_sync_forced(
     sync_log(&format!(
         "=== START ONLINE SYNC (force_full={}) ===",
         force_full
+    ));
+    sync_log(&format!(
+        "[diag] server_url={}, device_id={}, has_token={}, has_encryption_key={}, sync_mode={}",
+        settings.server_url,
+        if settings.device_id.is_empty() { "<auto>" } else { &settings.device_id },
+        !settings.auth_token.is_empty(),
+        !settings.encryption_key.is_empty(),
+        settings.sync_mode,
     ));
     sync_state.set_progress(1, "creating_session", "local");
 
