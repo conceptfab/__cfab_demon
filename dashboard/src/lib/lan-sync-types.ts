@@ -64,6 +64,7 @@ export interface SyncProgress {
   bytes_total: number;
   started_at: number;
   role: string;  // "master" | "slave" | "undecided"
+  sync_type?: string;  // "lan" | "online" | ""
 }
 
 export const LAN_SYNC_SETTINGS_KEY = 'timeflow.settings.lan-sync';

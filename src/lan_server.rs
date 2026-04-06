@@ -112,6 +112,8 @@ pub struct SyncProgress {
     pub started_at: u64,             // unix millis when this phase started
     #[serde(default)]
     pub role: String,                // "master" | "slave" | "undecided"
+    #[serde(default)]
+    pub sync_type: String,           // "lan" | "online" | "" (idle)
 }
 
 impl SyncProgress {
@@ -122,6 +124,7 @@ impl SyncProgress {
             bytes_transferred: 0, bytes_total: 0,
             started_at: 0,
             role: "undecided".into(),
+            sync_type: String::new(),
         }
     }
 }
@@ -203,6 +206,12 @@ impl LanSyncState {
     /// Get a snapshot of current progress.
     pub fn get_progress(&self) -> SyncProgress {
         self.progress.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Set the sync type label ("lan" | "online").
+    pub fn set_sync_type(&self, sync_type: &str) {
+        let mut guard = self.progress.lock().unwrap_or_else(|e| e.into_inner());
+        guard.sync_type = sync_type.to_string();
     }
 
     /// Reset progress to idle.

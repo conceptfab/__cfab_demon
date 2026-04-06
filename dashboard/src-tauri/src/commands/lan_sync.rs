@@ -77,6 +77,8 @@ pub struct SyncProgress {
     pub started_at: u64,
     #[serde(default)]
     pub role: String,
+    #[serde(default)]
+    pub sync_type: String,
 }
 
 // ── Commands ──

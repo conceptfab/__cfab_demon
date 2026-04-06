@@ -668,6 +668,7 @@ pub fn run_async_delta_sync(
         !settings.auth_token.is_empty(),
         !settings.encryption_key.is_empty(),
     ));
+    sync_state.set_sync_type("online");
     sync_state.set_progress(1, "async_delta", "local");
 
     match execute_async_pull(&settings, &sync_state, group_id) {
@@ -720,6 +721,7 @@ pub fn run_online_sync(
         !settings.encryption_key.is_empty(),
         settings.sync_mode,
     ));
+    sync_state.set_sync_type("online");
     sync_state.set_progress(1, "creating_session", "local");
 
     let server_url = settings.server_url.clone();
@@ -775,6 +777,7 @@ pub fn run_online_sync_forced(
         !settings.encryption_key.is_empty(),
         settings.sync_mode,
     ));
+    sync_state.set_sync_type("online");
     sync_state.set_progress(1, "creating_session", "local");
 
     let server_url = settings.server_url.clone();

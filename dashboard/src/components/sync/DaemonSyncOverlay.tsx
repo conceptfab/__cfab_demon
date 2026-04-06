@@ -8,7 +8,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { lanSyncApi } from '@/lib/tauri';
-import { getDaemonOnlineSyncProgress, triggerDaemonOnlineSync } from '@/lib/tauri/online-sync';
+import { triggerDaemonOnlineSync } from '@/lib/tauri/online-sync';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
@@ -82,21 +82,13 @@ export function DaemonSyncOverlay() {
       if (cancelled || activeSyncType !== null) return;
 
       try {
-        // Check LAN sync first
-        const lanProgress = await lanSyncApi.getLanSyncProgress();
-        if (!cancelled && isActive(lanProgress) && !isTerminal(lanProgress)) {
+        // Both LAN and online sync share the same daemon progress state,
+        // so we only need one call. The sync_type field tells us which is active.
+        const progress = await lanSyncApi.getLanSyncProgress();
+        if (!cancelled && isActive(progress) && !isTerminal(progress)) {
           wasActiveRef.current = true;
-          setActiveSyncType('lan');
-          return;
-        }
-      } catch { /* daemon unreachable */ }
-
-      try {
-        // Then check online sync
-        const onlineProgress = await getDaemonOnlineSyncProgress();
-        if (!cancelled && isActive(onlineProgress) && !isTerminal(onlineProgress)) {
-          wasActiveRef.current = true;
-          setActiveSyncType('online');
+          const type = progress.sync_type === 'online' ? 'online' : 'lan';
+          setActiveSyncType(type);
           return;
         }
       } catch { /* daemon unreachable */ }

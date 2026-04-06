@@ -222,6 +222,7 @@ pub fn run_sync_as_master_with_options(
     thread::spawn(move || {
         sync_log(&format!("=== START SYNC z {}:{} {} ===",
             peer.ip, peer.port, if force { "[FORCE]" } else { "" }));
+        sync_state.set_sync_type("lan");
         sync_state.set_progress(1, "starting", "local");
         let _start = Instant::now();
 
