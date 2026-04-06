@@ -78,9 +78,7 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
 
 /// Restore the most recent sync backup by copying it over the current database.
 /// Restore result indicating caller MUST re-open the database connection.
-pub struct RestoreResult {
-    pub restored_from: std::path::PathBuf,
-}
+pub struct RestoreResult;
 
 /// Uses file copy since the backup feature may not be enabled in rusqlite.
 ///
@@ -128,7 +126,7 @@ pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<RestoreRes
     let _ = std::fs::remove_file(&shm_path);
 
     log::warn!("Database restored from backup: {:?}. Caller MUST re-open connection.", latest);
-    Ok(RestoreResult { restored_from: latest })
+    Ok(RestoreResult)
 }
 
 // ── Delta export for async sync ──
