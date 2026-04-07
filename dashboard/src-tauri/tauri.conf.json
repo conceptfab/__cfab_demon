@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TIMEFLOW",
-  "version": "0.1.562",
+  "version": "0.1.563",
   "identifier": "com.timeflow.dashboard",
   "build": {
     "frontendDist": "../dist",
