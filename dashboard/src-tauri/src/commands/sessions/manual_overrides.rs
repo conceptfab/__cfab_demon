@@ -61,16 +61,9 @@ pub(crate) fn upsert_manual_session_override(
 
     if updated_legacy == 0 {
         conn.execute(
-            "INSERT INTO session_manual_overrides (
+            "INSERT OR REPLACE INTO session_manual_overrides (
                 session_id, executable_name, start_time, end_time, project_name, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
-             ON CONFLICT(executable_name, start_time, end_time) DO UPDATE SET
-               session_id = excluded.session_id,
-               executable_name = excluded.executable_name,
-               start_time = excluded.start_time,
-               end_time = excluded.end_time,
-               project_name = excluded.project_name,
-               updated_at = excluded.updated_at",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
             rusqlite::params![
                 session_id,
                 executable_name,
