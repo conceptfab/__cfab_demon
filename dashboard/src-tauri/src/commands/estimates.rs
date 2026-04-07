@@ -178,7 +178,14 @@ fn build_estimate_rows(
 
     let global_hourly_rate = get_global_hourly_rate(conn)?;
     let (_, totals, series_meta_by_key, _, _) =
-        compute_project_activity_unique(conn, date_range, false, true, None)?;
+        compute_project_activity_unique(
+            conn,
+            date_range,
+            false,
+            true,
+            None,
+            Some(super::daemon::load_persisted_session_min_duration()),
+        )?;
     if totals.is_empty() {
         return Ok(Vec::new());
     }

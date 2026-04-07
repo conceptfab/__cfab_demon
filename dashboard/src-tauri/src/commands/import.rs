@@ -268,7 +268,13 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
             continue;
         }
 
+        let min_session_dur = super::daemon::load_persisted_session_min_duration();
+
         for session in &app_data.sessions {
+            if (session.duration_seconds as i64) < min_session_dur {
+                continue;
+            }
+
             let date = if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&session.start) {
                 dt.format("%Y-%m-%d").to_string()
             } else {

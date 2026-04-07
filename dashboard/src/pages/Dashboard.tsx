@@ -254,18 +254,7 @@ export function Dashboard() {
   }, [manualSessions]);
   const timelineGranularity: 'hour' | 'day' =
     timePreset === 'today' ? 'hour' : 'day';
-  const projectTimelineSeriesLimit = useMemo(() => {
-    switch (timePreset) {
-      case 'all':
-        return 12;
-      case 'month':
-        return 10;
-      case 'week':
-        return 8;
-      default:
-        return 5;
-    }
-  }, [timePreset]);
+  const projectTimelineSeriesLimit = 200;
   const { assignSessions, updateSessionRateMultipliers, updateSessionComment } =
     useSessionActions({
       onAfterMutation: () => triggerRefresh('dashboard_session_mutation'),

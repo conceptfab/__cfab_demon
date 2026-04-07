@@ -282,7 +282,7 @@ pub(crate) fn compute_project_clock_totals_by_id(
     active_only: bool,
 ) -> Result<HashMap<i64, f64>, String> {
     let (_, totals, series_meta_by_key, _, _) =
-        compute_project_activity_unique(conn, date_range, false, active_only, None)?;
+        compute_project_activity_unique(conn, date_range, false, active_only, None, None)?;
 
     Ok(totals
         .into_iter()
@@ -300,6 +300,7 @@ pub(crate) fn compute_project_activity_unique(
     hourly: bool,
     active_only: bool,
     project_id_filter: Option<i64>,
+    min_session_duration: Option<i64>,
 ) -> Result<ProjectActivityUniqueResult, String> {
     ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
 
@@ -329,6 +330,7 @@ pub(crate) fn compute_project_activity_unique(
     )
     .ok_or_else(|| "Invalid end date in local timezone".to_string())?;
 
+    let min_dur = min_session_duration.unwrap_or(0);
     let sql = format!(
         "{SESSION_PROJECT_CTE}
          SELECT sp.start_time,
@@ -341,7 +343,8 @@ pub(crate) fn compute_project_activity_unique(
                 sp.comment
          FROM session_projects sp
          LEFT JOIN projects p ON p.id = sp.project_id AND (?3 = 0 OR p.excluded_at IS NULL)
-         WHERE ?4 IS NULL OR sp.project_id = ?4
+         WHERE (?4 IS NULL OR sp.project_id = ?4)
+           AND sp.duration_seconds >= ?5
          UNION ALL
          SELECT ms.start_time,
                 ms.end_time,
@@ -364,7 +367,8 @@ pub(crate) fn compute_project_activity_unique(
                 date_range.start,
                 date_range.end,
                 active_only as i32,
-                project_id_filter
+                project_id_filter,
+                min_dur
             ],
             |row| {
                 Ok((
@@ -689,7 +693,14 @@ pub async fn get_project_timeline(
             series_meta_by_key,
             bucket_flags,
             bucket_comments,
-        ) = compute_project_activity_unique(conn, &date_range, hourly, true, id)?;
+        ) = compute_project_activity_unique(
+            conn,
+            &date_range,
+            hourly,
+            true,
+            id,
+            Some(super::daemon::load_persisted_session_min_duration()),
+        )?;
 
         if bucket_project_seconds.is_empty() {
             return Ok(Vec::new());
@@ -863,6 +874,7 @@ mod tests {
             },
             false,
             false,
+            None,
             None,
         )
         .expect("compute activity");

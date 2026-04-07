@@ -186,7 +186,14 @@ pub async fn get_dashboard_data(
             series_meta_by_key,
             bucket_flags,
             bucket_comments,
-        ) = compute_project_activity_unique(conn, &date_range, hourly, true, None)?;
+        ) = compute_project_activity_unique(
+            conn,
+            &date_range,
+            hourly,
+            true,
+            None,
+            Some(super::daemon::load_persisted_session_min_duration()),
+        )?;
         let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
 
         Ok(DashboardData {
@@ -218,7 +225,14 @@ pub async fn get_dashboard_stats(
 ) -> Result<DashboardStats, String> {
     run_db_blocking(app, move |conn| {
         let (_, project_totals, series_meta_by_key, _, _) =
-            compute_project_activity_unique(conn, &date_range, false, true, None)?;
+            compute_project_activity_unique(
+                conn,
+                &date_range,
+                false,
+                true,
+                None,
+                Some(super::daemon::load_persisted_session_min_duration()),
+            )?;
         build_dashboard_stats(conn, &date_range, &project_totals, &series_meta_by_key)
     })
     .await
@@ -345,7 +359,14 @@ pub async fn get_top_projects(
     run_db_blocking(app, move |conn| {
         let limit = limit.unwrap_or(8).clamp(1, 50) as usize;
         let (_, totals, series_meta_by_key, _, _) =
-            compute_project_activity_unique(conn, &date_range, false, true, None)?;
+            compute_project_activity_unique(
+                conn,
+                &date_range,
+                false,
+                true,
+                None,
+                Some(super::daemon::load_persisted_session_min_duration()),
+            )?;
         let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
         build_top_project_rows(&totals, &series_meta_by_key, &counts, limit)
     })
@@ -359,7 +380,14 @@ pub async fn get_dashboard_projects(
 ) -> Result<Vec<ProjectTimeRow>, String> {
     run_db_blocking(app, move |conn| {
         let (_, totals, _, _, _) =
-            compute_project_activity_unique(conn, &date_range, false, true, None)?;
+            compute_project_activity_unique(
+                conn,
+                &date_range,
+                false,
+                true,
+                None,
+                Some(super::daemon::load_persisted_session_min_duration()),
+            )?;
         let counts = query_project_counts(conn, &date_range.start, &date_range.end, true)?;
         build_dashboard_project_rows(conn, &totals, &counts)
     })
@@ -373,7 +401,14 @@ pub async fn get_timeline(
 ) -> Result<Vec<TimelinePoint>, String> {
     run_db_blocking(app, move |conn| {
         let (bucket_map, _, _, _, _) =
-            compute_project_activity_unique(conn, &date_range, false, true, None)?;
+            compute_project_activity_unique(
+                conn,
+                &date_range,
+                false,
+                true,
+                None,
+                Some(super::daemon::load_persisted_session_min_duration()),
+            )?;
         let mut out = Vec::with_capacity(bucket_map.len());
         for (date, project_seconds) in bucket_map {
             let seconds = project_seconds.values().copied().sum::<f64>().round() as i64;
@@ -391,7 +426,14 @@ pub async fn get_hourly_breakdown(
 ) -> Result<Vec<HourlyData>, String> {
     run_db_blocking(app, move |conn| {
         let (bucket_map, _, _, _, _) =
-            compute_project_activity_unique(conn, &date_range, true, true, None)?;
+            compute_project_activity_unique(
+                conn,
+                &date_range,
+                true,
+                true,
+                None,
+                Some(super::daemon::load_persisted_session_min_duration()),
+            )?;
 
         let mut totals_by_hour = [0f64; 24];
         for (bucket, project_seconds) in bucket_map {
@@ -736,7 +778,7 @@ mod tests {
             end: "2026-02-01".to_string(),
         };
         let (_, totals, series_meta_by_key, _, _) =
-            compute_project_activity_unique(&conn, &date_range, false, true, None)
+            compute_project_activity_unique(&conn, &date_range, false, true, None, None)
                 .expect("compute project activity");
         let counts = query_project_counts(&conn, &date_range.start, &date_range.end, true)
             .expect("query project counts");

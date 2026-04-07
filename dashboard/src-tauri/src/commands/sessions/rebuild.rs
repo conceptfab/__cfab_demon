@@ -155,6 +155,24 @@ pub async fn rebuild_sessions(app: AppHandle, gap_fill_minutes: i64) -> Result<i
             .map_err(|e| e.to_string())?;
         }
 
+        // Delete sessions shorter than the global min_session_duration threshold
+        let min_dur = super::super::daemon::load_persisted_session_min_duration();
+        if min_dur > 0 {
+            let short_deleted = tx
+                .execute(
+                    "DELETE FROM sessions WHERE duration_seconds < ?1",
+                    [min_dur],
+                )
+                .map_err(|e| e.to_string())?;
+            if short_deleted > 0 {
+                log::info!(
+                    "Rebuild: deleted {} sessions shorter than {}s",
+                    short_deleted,
+                    min_dur
+                );
+            }
+        }
+
         tx.commit().map_err(|e| e.to_string())?;
 
         Ok(to_delete.len() as i64)

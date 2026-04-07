@@ -87,8 +87,8 @@ export function useTimeAnalysisData() {
     let cancelled = false;
 
     const hpPromise = rangeMode === "monthly"
-      ? getProjectTimeline(activeDateRange, 10, "day")
-      : getProjectTimeline(activeDateRange, 10, "hour");
+      ? getProjectTimeline(activeDateRange, 200, "day")
+      : getProjectTimeline(activeDateRange, 200, "hour");
 
     Promise.all([
       getTimeline(activeDateRange),
