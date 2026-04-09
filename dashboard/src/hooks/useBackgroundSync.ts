@@ -36,10 +36,11 @@ export function useOnlineSyncSSE() {
       try {
         await triggerDaemonOnlineSync();
         // Refresh UI after daemon processes the sync
+        // 5s allows for larger databases to complete processing
         setTimeout(() => {
           emitProjectsAllTimeInvalidated('sse_sync_pull');
           triggerRefresh('sse_sync_pull');
-        }, 2_000);
+        }, 5_000);
       } catch (e) {
         logger.warn('[SSE] Daemon sync trigger failed:', e);
       }

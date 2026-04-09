@@ -112,16 +112,17 @@ fn http_request_with_timeout(
 
     let path = url_path(url);
     let content_length = body.map(|b| b.len()).unwrap_or(0);
+    let secret = crate::lan_server::lan_secret();
 
     let request = if let Some(body) = body {
         format!(
-            "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            method, path, content_length, body
+            "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-TimeFlow-Secret: {}\r\nConnection: close\r\n\r\n{}",
+            method, path, content_length, secret, body
         )
     } else {
         format!(
-            "{} {} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-            method, path
+            "{} {} HTTP/1.1\r\nHost: localhost\r\nX-TimeFlow-Secret: {}\r\nConnection: close\r\n\r\n",
+            method, path, secret
         )
     };
 
@@ -141,6 +142,7 @@ fn http_request_with_timeout(
 
     // Read headers
     let mut response_content_length: usize = 0;
+    let mut content_type = String::new();
     loop {
         let mut line = String::new();
         reader.read_line(&mut line).map_err(|e| e.to_string())?;
@@ -152,6 +154,17 @@ fn http_request_with_timeout(
         if let Some(val) = lower.strip_prefix("content-length:") {
             response_content_length = val.trim().parse().unwrap_or(0);
         }
+        if let Some(val) = lower.strip_prefix("content-type:") {
+            content_type = val.trim().to_string();
+        }
+    }
+
+    // Validate content-type for sync data responses
+    if status_code == 200 && response_content_length > 0
+        && !content_type.is_empty()
+        && !content_type.contains("json") && !content_type.contains("octet-stream")
+    {
+        log::warn!("Unexpected content-type from LAN peer: {}", content_type);
     }
 
     // Read body — chunked with progress reporting
@@ -405,13 +418,19 @@ fn execute_master_sync(
     sync_state.set_progress(9, "merging", "local");
     sync_log("[9/13] Scalanie danych peera z lokalna baza...");
     let dir = crate::config::config_dir().map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("lan_sync_incoming.json"), &slave_data)
+    // Use unique filename to avoid race condition
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let incoming_file = dir.join(format!("lan_sync_incoming_{}.json", ts));
+    std::fs::write(&incoming_file, &slave_data)
         .map_err(|e| format!("Failed to write incoming data: {}", e))?;
 
     sync_common::merge_incoming_data(&mut conn, &slave_data)
         .map_err(|e| {
             sync_log(&format!("[9/13] BLAD scalania: {} — przywracam backup", e));
-            let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
+            let _ = std::fs::remove_file(&incoming_file);
             if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[9/13] BLAD przywracania backupu: {}", re));
             }
@@ -425,7 +444,7 @@ fn execute_master_sync(
     sync_common::verify_merge_integrity(&conn)
         .map_err(|e| {
             sync_log(&format!("[10/13] BLAD weryfikacji: {} — przywracam backup", e));
-            let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
+            let _ = std::fs::remove_file(&incoming_file);
             if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[10/13] BLAD przywracania backupu: {}", re));
             }
@@ -532,8 +551,9 @@ fn execute_master_sync(
     sync_log("[13/13] Bazy odmrozone — zbieranie danych wznowione");
 
     // Clean up temp files
-    let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
+    let _ = std::fs::remove_file(&incoming_file);
     let _ = std::fs::remove_file(dir.join("lan_sync_merged.json"));
+    let _ = std::fs::remove_file(dir.join("lan_sync_incoming_latest.txt"));
 
     sync_common::run_gc_tombstones();
 

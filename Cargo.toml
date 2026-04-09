@@ -49,7 +49,6 @@ winapi = { version = "0.3", features = [
 ssh2 = "0.9"
 aes-gcm = "0.10"
 flate2 = "1.0"
-hkdf = "0.12"
 sha2 = "0.10"
 hmac = "0.12"
 base64 = "0.22"

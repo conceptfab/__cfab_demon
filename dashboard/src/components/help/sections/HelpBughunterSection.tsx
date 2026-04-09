@@ -1,6 +1,6 @@
 import { Bug } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { SectionHelp, HelpDetailsBlock } from '@/components/help/help-shared';
+import { SectionHelp } from '@/components/help/help-shared';
 
 export function HelpBughunterSection() {
   const { t: t18n } = useTranslation();
@@ -16,15 +16,6 @@ export function HelpBughunterSection() {
         t18n('help_page.bughunter_detail_when_to_use'),
         t18n('help_page.bughunter_detail_limitations'),
       ]}
-    >
-      <HelpDetailsBlock
-        title={t18n('help_page.bughunter_detail_title')}
-        items={[
-          t18n('help_page.bughunter_detail_what_it_does'),
-          t18n('help_page.bughunter_detail_when_to_use'),
-          t18n('help_page.bughunter_detail_limitations'),
-        ]}
-      />
-    </SectionHelp>
+    />
   );
 }

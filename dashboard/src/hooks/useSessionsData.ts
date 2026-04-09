@@ -24,6 +24,8 @@ export function useSessionsData(params: {
     new Set(),
   );
   const [hasMore, setHasMore] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const sessionsRef = useRef<SessionWithApp[]>([]);
   const hasMoreRef = useRef(false);
   const isLoadingRef = useRef(false);
@@ -51,11 +53,18 @@ export function useSessionsData(params: {
   const loadFirstSessionsPage = useCallback(async () => {
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
+    setIsLoading(true);
+    setError(null);
     try {
       const data = await sessionsApi.getSessions(buildFetchParams(0));
       replaceSessionsPage(data);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('Sessions load failed:', msg);
+      setError(msg);
     } finally {
       isLoadingRef.current = false;
+      setIsLoading(false);
     }
   }, [buildFetchParams, replaceSessionsPage]);
 
@@ -69,6 +78,8 @@ export function useSessionsData(params: {
   useEffect(() => {
     let cancelled = false;
     isLoadingRef.current = true;
+    setIsLoading(true);
+    setError(null);
     sessionsRef.current = [];
     hasMoreRef.current = true;
     sessionsApi
@@ -77,9 +88,17 @@ export function useSessionsData(params: {
         if (cancelled) return;
         replaceSessionsPage(data);
       })
-      .catch(console.error)
+      .catch((e) => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error('Sessions initial load failed:', msg);
+        setError(msg);
+      })
       .finally(() => {
-        if (!cancelled) isLoadingRef.current = false;
+        if (!cancelled) {
+          isLoadingRef.current = false;
+          setIsLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -132,7 +151,9 @@ export function useSessionsData(params: {
 
   return {
     dismissedSuggestions,
+    error,
     hasMore,
+    isLoading,
     loadFirstSessionsPage,
     loadMore,
     sessions,

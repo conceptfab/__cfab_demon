@@ -51,6 +51,11 @@ fn truncate_middle(value: &str, max_chars: usize) -> String {
         return String::new();
     }
 
+    // Fast-path for ASCII strings (typical file paths) — avoid Vec<char> allocation
+    if value.is_ascii() && value.len() <= max_chars {
+        return value.to_string();
+    }
+
     // Collect once — avoids double iteration over chars
     let chars: Vec<char> = value.chars().collect();
     if chars.len() <= max_chars {

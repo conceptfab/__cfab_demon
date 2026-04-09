@@ -49,8 +49,7 @@ struct StorageCredentialsWrapper {
     encrypted: sync_encryption::EncryptedCredentials,
 }
 
-#[derive(Deserialize)]
-struct ReportResponse {}
+// ReportResponse removed — server returns empty JSON body, we just check success
 
 // ── Retry helper ──
 
@@ -62,7 +61,13 @@ fn with_retry<T, F: Fn() -> Result<T, String>>(label: &str, f: F) -> Result<T, S
             Err(e) => {
                 last_err = e.clone();
                 if attempt + 1 < MAX_RETRIES {
-                    let delay = RETRY_BASE_DELAY * 3u32.pow(attempt); // 5s, 15s, 45s
+                    // Add jitter to avoid thundering herd
+                    let base_delay = RETRY_BASE_DELAY * 3u32.pow(attempt); // 5s, 15s, 45s
+                    let jitter_ms = (std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .subsec_millis() % 1000) as u64;
+                    let delay = base_delay + Duration::from_millis(jitter_ms);
                     sync_log(&format!(
                         "[retry] {} attempt {}/{} failed: {} — retrying in {:?}",
                         label, attempt + 1, MAX_RETRIES, e, delay
@@ -206,7 +211,7 @@ fn report_step(
     device_id: &str,
     details: serde_json::Value,
     status: &str,
-) -> Result<ReportResponse, String> {
+) -> Result<(), String> {
     let body = serde_json::json!({
         "step": step,
         "action": action,
@@ -215,8 +220,8 @@ fn report_step(
         "status": status,
     });
     let path = format!("/api/sync/session/{}/report", session_id);
-    let resp = server_post(server_url, &path, token, &body.to_string())?;
-    serde_json::from_str(&resp).map_err(|e| format!("Parse report response: {}", e))
+    let _resp = server_post(server_url, &path, token, &body.to_string())?;
+    Ok(())
 }
 
 fn send_heartbeat(
@@ -569,6 +574,10 @@ fn execute_async_pull(
 
     let mut conn = lan_common::open_dashboard_db()?;
 
+    // Single backup before processing all packages — ensures rollback to consistent state
+    sync_state.set_progress(2, "async_pull_backup", "local");
+    sync_common::backup_database(&conn)?;
+
     for pkg in &pending.packages {
         sync_log(&format!("[async-pull] Processing package {} from device {}", &pkg.id[..8], &pkg.from_device_id[..8.min(pkg.from_device_id.len())]));
 
@@ -589,10 +598,6 @@ fn execute_async_pull(
                 return Err("base_marker_mismatch — fallback to session sync needed".to_string());
             }
         }
-
-        // Backup before merge
-        sync_state.set_progress(2, "async_pull_backup", "local");
-        sync_common::backup_database(&conn)?;
 
         // Request credentials for this package via server
         sync_state.set_progress(3, "async_pull_downloading", "download");

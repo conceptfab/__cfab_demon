@@ -145,6 +145,16 @@ pub struct LanSyncState {
     pub last_sync_completed: AtomicU64,
 }
 
+/// Guard that resets sync_in_progress to false on drop (panic-safe).
+/// Shared by main.rs and tray.rs — defined here to avoid duplication.
+pub struct SyncGuard(pub Arc<LanSyncState>);
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        self.0.sync_in_progress.store(false, Ordering::SeqCst);
+        log::info!("SyncGuard dropped — sync_in_progress reset to false");
+    }
+}
+
 const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
 
 impl LanSyncState {
@@ -383,6 +393,7 @@ fn handle_connection(
 
     // Parse headers (case-insensitive)
     let mut content_length: usize = 0;
+    let mut auth_secret = String::new();
     let mut header_count = 0;
     loop {
         let mut header_line = String::new();
@@ -398,6 +409,24 @@ fn handle_connection(
         let lower = trimmed.to_ascii_lowercase();
         if let Some(value) = lower.strip_prefix("content-length:") {
             content_length = value.trim().parse().unwrap_or(0);
+        }
+        if let Some(value) = lower.strip_prefix("x-timeflow-secret:") {
+            auth_secret = value.trim().to_string();
+        }
+    }
+
+    // Verify shared secret for mutating endpoints (skip ping and read-only)
+    let requires_auth = !matches!(path, "/lan/ping" | "/lan/sync-progress" | "/online/sync-progress");
+    if requires_auth {
+        let expected = get_or_create_lan_secret();
+        if !expected.is_empty() && auth_secret != expected {
+            let msg = r#"{"ok":false,"error":"unauthorized"}"#;
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                msg.len(), msg
+            );
+            stream.write_all(response.as_bytes()).map_err(|e| e.to_string())?;
+            return Ok(());
         }
     }
 
@@ -449,7 +478,7 @@ fn handle_connection(
 
     // Write response
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://localhost\r\nConnection: close\r\n\r\n{}",
         status,
         status_text(status),
         response_body.len(),
@@ -483,6 +512,38 @@ fn json_error(msg: &str) -> String {
     .unwrap_or_else(|_| format!(r#"{{"ok":false,"error":"{}"}}"#, msg))
 }
 
+// ── Auth ──
+
+/// Get or create a shared secret for LAN sync authentication.
+/// Stored in config dir as `lan_secret.txt`. Created on first run.
+fn get_or_create_lan_secret() -> String {
+    let dir = match config::config_dir() {
+        Ok(d) => d,
+        Err(_) => return String::new(),
+    };
+    let path = dir.join("lan_secret.txt");
+    if let Ok(secret) = std::fs::read_to_string(&path) {
+        let s = secret.trim().to_string();
+        if !s.is_empty() {
+            return s;
+        }
+    }
+    // Generate new secret
+    let mut bytes = [0u8; 32];
+    if getrandom::getrandom(&mut bytes).is_err() {
+        return String::new();
+    }
+    let secret: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    let _ = std::fs::write(&path, &secret);
+    log::info!("Generated new LAN sync secret");
+    secret
+}
+
+/// Public accessor for the LAN secret (used by orchestrator to send with requests).
+pub fn lan_secret() -> String {
+    get_or_create_lan_secret()
+}
+
 // ── DB helpers ──
 
 fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
@@ -504,14 +565,6 @@ fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
     }
-}
-
-fn get_device_id() -> String {
-    lan_common::get_device_id()
-}
-
-fn get_machine_name() -> String {
-    lan_common::get_machine_name()
 }
 
 fn get_latest_marker_hash(conn: &rusqlite::Connection) -> Option<String> {
@@ -564,8 +617,8 @@ fn handle_ping(state: &LanSyncState) -> (u16, String) {
     let resp = PingResponse {
         ok: true,
         version: crate::VERSION.trim().to_string(),
-        device_id: get_device_id(),
-        machine_name: get_machine_name(),
+        device_id: lan_common::get_device_id(),
+        machine_name: lan_common::get_machine_name(),
         role: state.get_role(),
         sync_marker_hash: marker_hash,
     };
@@ -657,7 +710,14 @@ fn handle_upload_db(state: &LanSyncState, body: &str) -> (u16, String) {
         Ok(d) => d,
         Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
     };
-    let temp_path = dir.join("lan_sync_incoming.json");
+    // Use unique filename to avoid race condition when multiple syncs trigger simultaneously
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let temp_path = dir.join(format!("lan_sync_incoming_{}.json", ts));
+    // Also write a pointer so handle_db_ready knows which file to read
+    let _ = std::fs::write(dir.join("lan_sync_incoming_latest.txt"), temp_path.to_string_lossy().as_bytes());
     if let Err(e) = std::fs::write(&temp_path, body) {
         return (500, json_error(&format!("Failed to write incoming data: {}", e)));
     }
@@ -690,7 +750,12 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         Ok(d) => d,
         Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
     };
-    let incoming_path = dir.join("lan_sync_incoming.json");
+    // Read the pointer to find the unique incoming file
+    let pointer_path = dir.join("lan_sync_incoming_latest.txt");
+    let incoming_path = match std::fs::read_to_string(&pointer_path) {
+        Ok(p) => std::path::PathBuf::from(p.trim()),
+        Err(_) => dir.join("lan_sync_incoming.json"), // fallback for backwards compat
+    };
     let merged_data = match std::fs::read_to_string(&incoming_path) {
         Ok(data) => data,
         Err(e) => {
@@ -698,6 +763,8 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
             return (500, json_error(&format!("No incoming data file: {}", e)));
         }
     };
+    // Clean up pointer and temp file after reading
+    let _ = std::fs::remove_file(&pointer_path);
 
     let data_kb = merged_data.len() as f64 / 1024.0;
     sync_log(&format!("[SLAVE] Importuje {:.1} KB scalonych danych...", data_kb));
@@ -735,12 +802,14 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         return (500, json_error(&format!("Verify failed: {}", e)));
     }
 
-    // Insert the SAME sync marker as master
+    // Generate OWN marker hash based on slave's actual post-merge state
     let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let device_id = get_device_id();
+    let device_id = lan_common::get_device_id();
     let tables_hash = lan_common::compute_tables_hash_string(&conn);
+    let own_marker = crate::sync_common::generate_marker_hash_simple(&tables_hash, &now, &device_id);
+    sync_log(&format!("[SLAVE] Own marker: {} (master sent: {})", &own_marker[..8], &req.marker_hash[..8.min(req.marker_hash.len())]));
     if let Err(e) = crate::sync_common::insert_sync_marker_db(
-        &conn, &req.marker_hash, &now, &device_id,
+        &conn, &own_marker, &now, &device_id,
         Some(&req.master_device_id), &tables_hash,
         req.transfer_mode == "full",
     ) {
@@ -748,10 +817,10 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         return (500, json_error(&format!("Marker insert failed: {}", e)));
     }
 
-    // Update shared state with new marker
+    // Update shared state with own marker
     {
         let mut guard = state.latest_marker_hash.lock().unwrap_or_else(|e| e.into_inner());
-        *guard = Some(req.marker_hash.clone());
+        *guard = Some(own_marker.clone());
     }
 
     // Clean up temp file
@@ -762,7 +831,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
 
     let resp = DbReadyResponse {
         ok: true,
-        marker_hash: req.marker_hash,
+        marker_hash: own_marker,
         transfer_mode: req.transfer_mode,
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
@@ -789,6 +858,7 @@ fn handle_download_db() -> (u16, String) {
     }
 }
 
+/// DEPRECATED: This endpoint is not called by the orchestrator. Kept for backwards compatibility.
 fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
     state.set_progress(12, "verifying", "local");
     sync_log("[SLAVE] Weryfikacja scalonych danych...");
@@ -989,7 +1059,7 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
     let archive = serde_json::json!({
         "table_hashes": table_hashes,
         "exported_at": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-        "device_id": get_device_id(),
+        "device_id": lan_common::get_device_id(),
         "data": {
             "projects": projects,
             "applications": apps,

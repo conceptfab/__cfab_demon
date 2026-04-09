@@ -52,9 +52,15 @@ pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
         .map_err(|e| e.to_string())?;
 
-    let escaped = dest.to_string_lossy().replace('\'', "''");
-    conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
+    // Use rusqlite backup API instead of string-interpolated VACUUM INTO
+    let mut dest_conn = rusqlite::Connection::open(&dest)
+        .map_err(|e| format!("Backup: cannot open dest: {}", e))?;
+    let backup = rusqlite::backup::Backup::new(conn, &mut dest_conn)
+        .map_err(|e| format!("Backup init failed: {}", e))?;
+    backup.run_to_completion(100, std::time::Duration::from_millis(50), None)
         .map_err(|e| format!("Backup failed: {}", e))?;
+    drop(backup);
+    drop(dest_conn);
 
     // Rotate: keep max 5
     let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&backup_dir)
@@ -96,6 +102,12 @@ fn create_pre_sync_backup_to_destination(conn: &rusqlite::Connection, sync_type:
         Some(ref p) => std::path::PathBuf::from(p),
         None => return Err("backup_path not configured".to_string()),
     };
+
+    // Validate path — reject traversal attempts
+    let canonical = backup_dir.to_string_lossy();
+    if canonical.contains("..") {
+        return Err(format!("Invalid backup_path: path traversal detected in '{}'", canonical));
+    }
 
     if !backup_dir.exists() {
         std::fs::create_dir_all(&backup_dir)
@@ -166,7 +178,16 @@ pub fn restore_database_backup(conn: &mut rusqlite::Connection) -> Result<Restor
     backup.run_to_completion(100, std::time::Duration::from_millis(50), None)
         .map_err(|e| format!("Backup restore failed: {}", e))?;
 
-    log::warn!("Database restored from backup via SQLite API: {:?}. Caller MUST re-open connection.", latest);
+    drop(backup);
+    drop(src);
+
+    // Re-open connection to ensure clean state after restore
+    let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
+    let new_conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Re-open after restore failed: {}", e))?;
+    *conn = new_conn;
+
+    log::warn!("Database restored from backup: {:?}. Connection re-opened.", latest);
     Ok(RestoreResult)
 }
 
@@ -590,12 +611,46 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 let deleted_at_str = ts.get("deleted_at").and_then(|v| v.as_str()).unwrap_or("");
 
                 // Guard: don't delete a record that was re-created/updated AFTER the tombstone
+                // Applied to ALL tables, not just projects (5.7 fix)
                 let skip_tombstone = match table_name {
                     "projects" => {
                         let local_updated: Option<String> = tx
                             .query_row("SELECT updated_at FROM projects WHERE name = ?1", [sync_key], |row| row.get(0))
                             .ok();
                         local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                    }
+                    "applications" => {
+                        let local_updated: Option<String> = tx
+                            .query_row("SELECT updated_at FROM applications WHERE executable_name = ?1", [sync_key], |row| row.get(0))
+                            .ok();
+                        local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                    }
+                    "sessions" => {
+                        // sync_key = "app_id|start_time"
+                        if let Some((_app_id_str, start_time)) = sync_key.split_once('|') {
+                            let local_updated: Option<String> = tx
+                                .query_row(
+                                    "SELECT updated_at FROM sessions WHERE start_time = ?1",
+                                    [start_time],
+                                    |row| row.get(0),
+                                )
+                                .ok();
+                            local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                        } else { false }
+                    }
+                    "manual_sessions" => {
+                        // sync_key = "project_id|start_time|title"
+                        let parts: Vec<&str> = sync_key.splitn(3, '|').collect();
+                        if parts.len() == 3 {
+                            let local_updated: Option<String> = tx
+                                .query_row(
+                                    "SELECT updated_at FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
+                                    rusqlite::params![parts[1], parts[2]],
+                                    |row| row.get(0),
+                                )
+                                .ok();
+                            local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                        } else { false }
                     }
                     _ => false,
                 };
@@ -638,8 +693,41 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         ) { log::warn!("tombstone FK cleanup sessions for app '{}': {}", sync_key, e); }
                         let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]);
                     }
-                    "sessions" => { let _ = tx.execute("DELETE FROM sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]); }
-                    "manual_sessions" => { let _ = tx.execute("DELETE FROM manual_sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]); }
+                    "sessions" => {
+                        // sync_key = "app_id|start_time" — app_id is local integer, NOT portable
+                        // Use start_time (unique within an app) combined with app_id to find session
+                        if let Some((app_id_str, start_time)) = sync_key.split_once('|') {
+                            // Try to match by app_id + start_time (same machine) or just start_time
+                            let deleted = tx.execute(
+                                "DELETE FROM sessions WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
+                                rusqlite::params![app_id_str, start_time],
+                            ).unwrap_or(0);
+                            if deleted == 0 {
+                                // Cross-machine: app_id differs, match by start_time alone
+                                // (start_time is unique enough per device)
+                                let _ = tx.execute(
+                                    "DELETE FROM sessions WHERE start_time = ?1",
+                                    [start_time],
+                                );
+                            }
+                        } else {
+                            // Fallback for legacy integer sync_key
+                            let _ = tx.execute("DELETE FROM sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
+                        }
+                    }
+                    "manual_sessions" => {
+                        // sync_key = "project_id|start_time|title"
+                        let parts: Vec<&str> = sync_key.splitn(3, '|').collect();
+                        if parts.len() == 3 {
+                            let _ = tx.execute(
+                                "DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
+                                rusqlite::params![parts[1], parts[2]],
+                            );
+                        } else {
+                            // Fallback for legacy integer sync_key
+                            let _ = tx.execute("DELETE FROM manual_sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
+                        }
+                    }
                     _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
                 }
 

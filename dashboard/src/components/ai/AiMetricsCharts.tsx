@@ -15,6 +15,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   ResponsiveContainer,
@@ -168,7 +169,7 @@ export function AiMetricsCharts({ metrics, loading }: AiMetricsChartsProps) {
                 </p>
                 <div className="mt-2 h-56">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={metricsChartData}>
+                    <ComposedChart data={metricsChartData}>
                       <CartesianGrid
                         strokeDasharray="3 3"
                         stroke={CHART_GRID_COLOR}
@@ -215,7 +216,7 @@ export function AiMetricsCharts({ metrics, loading }: AiMetricsChartsProps) {
                         dot={false}
                         name={tr('ai_page.text.rollbacks')}
                       />
-                    </BarChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
               </div>

@@ -338,6 +338,7 @@
       "newest_projects_az": "Najnowsze projekty (A-Z)",
       "remaining_active_az": "Pozostałe aktywne (A-Z)",
       "unassigned": "Nieprzypisane",
+      "active_projects_az": "Aktywne projekty (A-Z)",
       "no_projects": "Brak dostępnych projektów",
       "project_label": "Projekt:",
       "no_linked_project_card": "Brak powiązanej karty projektu",
@@ -1213,7 +1214,7 @@
       "active": "Aktywna",
       "activated_success": "Licencja aktywowana pomyślnie!",
       "no_server_url": "Ustaw adres serwera przed aktywacją licencji.",
-      "deactivate": "Zmien licencje"
+      "deactivate": "Zmień licencję"
     },
     "lan_sync": {
       "title": "LAN Sync",

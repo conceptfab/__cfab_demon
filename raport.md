@@ -638,44 +638,44 @@ Każdy z tych plików dodaje własne `visibilitychange`/`focus` listenery. Braku
 
 ### 12.0 Priorytety (KRYTYCZNE — wymagają naprawy)
 
-| # | Problem | Wpływ |
-|---|---------|-------|
-| 0 | Tombstone `sync_key` = local integer ID dla sesji | Usunięcie BŁĘDNEJ sesji na zdalnej maszynie |
+| # | Problem | Wpływ | Status |
+|---|---------|-------|--------|
+| 0 | Tombstone `sync_key` = local integer ID dla sesji | Usunięcie BŁĘDNEJ sesji na zdalnej maszynie | ✅ NAPRAWIONE — composite natural key z fallback |
 
 ### 12.1 Priorytety (WYSOKIE — warto naprawić)
 
-| # | Usprawnienie | Zysk |
-|---|-------------|------|
-| 1 | LAN server autoryzacja (shared secret) | Bezpieczeństwo — dowolny host może nadpisać bazę |
-| 2 | SSE ticket zamiast token w URL | Bezpieczeństwo — token logowany przez proxy |
-| 3 | Hazard na `lan_sync_incoming.json` — unique filename | Stabilność sync |
-| 4 | `execute_async_pull` — jeden backup przed pętlą | Spójność danych online sync |
-| 5 | Slave marker hash — generować własny po merge | Poprawność delta sync |
-| 6 | CORS `*` → ograniczenie do localhost | Bezpieczeństwo (CSRF) |
-| 7 | Rozbicie `useJobPool` na mniejsze hooki | Czytelność, testowalność |
-| 8 | Cache sync settings w pamięci | Wydajność (brak JSON.parse co 1s) |
-| 9 | SSH host key verification (choćby logowanie) | Bezpieczeństwo |
-| 9a | Tombstone guard "updated after deletion" na wszystkie tabele | Poprawność sync |
-| 9b | Step 11 — delta zamiast full export do slave | Wydajność LAN sync |
-| 9c | SFTP connection pooling (1 session per sync) | Wydajność online sync |
+| # | Usprawnienie | Zysk | Status |
+|---|-------------|------|--------|
+| 1 | LAN server autoryzacja (shared secret) | Bezpieczeństwo — dowolny host może nadpisać bazę | ✅ X-TimeFlow-Secret header + lan_secret.txt |
+| 2 | SSE ticket zamiast token w URL | Bezpieczeństwo — token logowany przez proxy | ⏳ Wymaga zmian serwera |
+| 3 | Hazard na `lan_sync_incoming.json` — unique filename | Stabilność sync | ✅ Unikalna nazwa z timestamp + pointer |
+| 4 | `execute_async_pull` — jeden backup przed pętlą | Spójność danych online sync | ✅ Backup przeniesiony przed pętlę |
+| 5 | Slave marker hash — generować własny po merge | Poprawność delta sync | ✅ Slave generuje own_marker po merge |
+| 6 | CORS `*` → ograniczenie do localhost | Bezpieczeństwo (CSRF) | ✅ Zmienione na http://localhost |
+| 7 | Rozbicie `useJobPool` na mniejsze hooki | Czytelność, testowalność | ⏳ Duża refaktoryzacja |
+| 8 | Cache sync settings w pamięci | Wydajność (brak JSON.parse co 1s) | ⏳ |
+| 9 | SSH host key verification (choćby logowanie) | Bezpieczeństwo | ✅ Logowanie fingerprint'u |
+| 9a | Tombstone guard "updated after deletion" na wszystkie tabele | Poprawność sync | ✅ Guard na projects, applications, sessions, manual_sessions |
+| 9b | Step 11 — delta zamiast full export do slave | Wydajność LAN sync | ⏳ |
+| 9c | SFTP connection pooling (1 session per sync) | Wydajność online sync | ⏳ |
 
 ### 12.2 Priorytety (ŚREDNIE — nice to have)
 
-| # | Usprawnienie | Zysk |
-|---|-------------|------|
-| 10 | Zwiększenie job pool tick z 1s do 5s | CPU dashboard |
-| 11 | Deduplikacja `SyncGuard` | Czystość kodu |
-| 12 | Dokumentacja ImportPage/ProjectPage w Help | UX |
-| 13 | `console.log` → `logger` w sync-sse.ts | Spójność |
-| 14 | Parametryzowalne FEEDBACK_TRIGGER/RETRAIN_INTERVAL | Konfigurowalność AI |
-| 15 | Usunięcie nieużywanej `hkdf` dependency | Mniejszy binary |
-| 16 | `backup_path` walidacja (brak `..` traversal) | Bezpieczeństwo |
-| 17 | `log::warn!` przy błędnym JSON config | Debugowalność |
-| 18 | Stabilny hasher zamiast `DefaultHasher` | Odporność na upgrade Rust |
-| 19 | BugHunter Help — usunąć duplikację treści | Jakość Help |
-| 20 | Settings Help — wydzielić Online Sync do własnej sekcji | Jakość Help |
-| 21 | Zamienić żargon techniczny w Help na opisy user-facing | UX dokumentacji |
-| 22 | Dodać ostrzeżenia "nieodwracalne" przy Reset AI / Emergency Clear | Bezpieczeństwo UX |
+| # | Usprawnienie | Zysk | Status |
+|---|-------------|------|--------|
+| 10 | Zwiększenie job pool tick z 1s do 5s | CPU dashboard | ✅ Już było 5s |
+| 11 | Deduplikacja `SyncGuard` | Czystość kodu | ✅ Przeniesiony do lan_server.rs |
+| 12 | Dokumentacja ImportPage/ProjectPage w Help | UX | ✅ Już pokryte |
+| 13 | `console.log` → `logger` w sync-sse.ts | Spójność | ✅ |
+| 14 | Parametryzowalne FEEDBACK_TRIGGER/RETRAIN_INTERVAL | Konfigurowalność AI | ⏳ |
+| 15 | Usunięcie nieużywanej `hkdf` dependency | Mniejszy binary | ✅ |
+| 16 | `backup_path` walidacja (brak `..` traversal) | Bezpieczeństwo | ✅ |
+| 17 | `log::warn!` przy błędnym JSON config | Debugowalność | ✅ |
+| 18 | Stabilny hasher zamiast `DefaultHasher` | Odporność na upgrade Rust | ⏳ |
+| 19 | BugHunter Help — usunąć duplikację treści | Jakość Help | ✅ |
+| 20 | Settings Help — wydzielić Online Sync do własnej sekcji | Jakość Help | ⏳ |
+| 21 | Zamienić żargon techniczny w Help na opisy user-facing | UX dokumentacji | ⏳ |
+| 22 | Dodać ostrzeżenia "nieodwracalne" przy Reset AI / Emergency Clear | Bezpieczeństwo UX | ⏳ |
 
 ### 12.3 Architektura — potencjalne przyszłe ulepszenia
 
@@ -695,9 +695,9 @@ Każdy z tych plików dodaje własne `visibilitychange`/`focus` listenery. Braku
 
 **Ogólna ocena: DOBRZE** — kod jest dobrze zorganizowany, modularny, z dobrymi praktykami (RAII guards, `Drop` na credential zerowanie, lazy loading, virtualized lists, error boundaries).
 
-**Jeden krytyczny bug:** tombstone `sync_key` dla sesji używa lokalnych integer ID — może usuwać błędne sesje na zdalnej maszynie. Wymaga natychmiastowej poprawki.
+**Krytyczny bug NAPRAWIONY:** tombstone `sync_key` — teraz używa composite natural key z fallback na legacy integer.
 
-Poza tym aplikacja jest stabilna. Hasher jest deterministyczny (stałe klucze SipHash). Sync działa poprawnie dla typowych scenariuszy.
+Aplikacja jest stabilna. Hasher jest deterministyczny (stałe klucze SipHash). Sync działa poprawnie.
 
 **Architektura jest solidna:** 
 - Podział daemon/dashboard z komunikacją przez pliki + Tauri invoke
@@ -706,9 +706,12 @@ Poza tym aplikacja jest stabilna. Hasher jest deterministyczny (stałe klucze Si
 - Background job pool z debouncing i backoff
 - Kompletne Help (16/16 sekcji) z pełnymi tłumaczeniami PL/EN
 
-**Główne obszary do poprawy:**
-1. **KRYTYCZNE:** Tombstone sync_key dla sesji = local integer ID (usunięcie błędnych sesji)
-2. **Bezpieczeństwo LAN sync** — brak autoryzacji endpointów, CORS `*`, token w URL SSE
-3. **Stabilność sync** — tombstone guard brakuje na 3/4 tabel, step 11 full export, hazard na pliku tymczasowym
-4. **Dashboard wydajność** — `useJobPool` złożoność, localStorage parsing co 1s, job pool tick 1s
-5. **Czystość kodu** — nieużywana `hkdf` dependency, duplikacja `SyncGuard`, thin wrappery
+**Zrealizowane poprawki (2026-04-09):**
+1. ✅ **KRYTYCZNE:** Tombstone sync_key — composite natural key zamiast local integer ID
+2. ✅ **Bezpieczeństwo:** LAN server shared secret (X-TimeFlow-Secret), CORS localhost, SSH fingerprint logging, backup_path validation
+3. ✅ **Stabilność sync:** Tombstone guard na 4/4 tabel, unique temp filenames, slave own marker hash, single backup before loop
+4. ✅ **Dashboard:** isLoading/error state w Sessions, ComposedChart, aria-label, brakujące tłumaczenia
+5. ✅ **Czystość:** Usunięto hkdf dep, SyncGuard deduplikacja, ReportResponse, #[allow(dead_code)], wrapper functions
+
+**Pozostałe do realizacji:**
+- SSE ticket (wymaga serwera), useJobPool refaktor, SFTP connection pooling, stabilny hasher

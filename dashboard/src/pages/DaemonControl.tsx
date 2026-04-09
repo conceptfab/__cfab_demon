@@ -332,6 +332,9 @@ export function DaemonControl() {
               </span>
               <button
                 onClick={handleAutostartToggle}
+                role="switch"
+                aria-checked={!!status?.autostart}
+                aria-label={t("daemon_page.autostart")}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   status?.autostart ? "bg-primary" : "bg-muted"
                 }`}

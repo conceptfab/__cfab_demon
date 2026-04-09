@@ -146,7 +146,13 @@ pub fn load_lan_sync_settings() -> LanSyncSettings {
     };
     let path = dir.join("lan_sync_settings.json");
     match std::fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(settings) => settings,
+            Err(e) => {
+                log::warn!("Invalid lan_sync_settings.json, using defaults: {}", e);
+                LanSyncSettings::default()
+            }
+        },
         Err(_) => LanSyncSettings::default(),
     }
 }
@@ -203,7 +209,13 @@ pub fn load_online_sync_settings() -> OnlineSyncSettings {
         Err(_) => return OnlineSyncSettings::default(),
     };
     match std::fs::read_to_string(&path) {
-        Ok(raw) => serde_json::from_str(&raw).unwrap_or_default(),
+        Ok(raw) => match serde_json::from_str(&raw) {
+            Ok(settings) => settings,
+            Err(e) => {
+                log::warn!("Invalid online_sync_settings.json, using defaults: {}", e);
+                OnlineSyncSettings::default()
+            }
+        },
         Err(_) => OnlineSyncSettings::default(),
     }
 }

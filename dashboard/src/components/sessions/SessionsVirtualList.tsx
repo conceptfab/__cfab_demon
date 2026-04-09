@@ -58,6 +58,7 @@ type SessionsVirtualListProps = {
   onRejectSuggestion: (session: SessionWithApp, event: MouseEvent) => void;
   onSplitClick: (session: SessionWithApp) => void;
   isEmpty: boolean;
+  isLoading?: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
 };
@@ -85,6 +86,7 @@ export function SessionsVirtualList({
   onRejectSuggestion,
   onSplitClick,
   isEmpty,
+  isLoading,
   hasMore,
   onLoadMore,
 }: SessionsVirtualListProps) {
@@ -299,7 +301,17 @@ export function SessionsVirtualList({
         />
       ) : null}
 
-      {isEmpty && (
+      {isEmpty && isLoading && (
+        <div className="py-12 text-center">
+          <div className="mx-auto space-y-3 w-[80%] max-w-md animate-pulse">
+            <div className="h-10 rounded bg-muted/30" />
+            <div className="h-10 rounded bg-muted/20" />
+            <div className="h-10 rounded bg-muted/10" />
+          </div>
+        </div>
+      )}
+
+      {isEmpty && !isLoading && (
         <div className="py-24 text-center">
           <p className="text-sm font-medium italic text-muted-foreground/30">
             {t('sessions.empty.no_activity')}

@@ -22,12 +22,12 @@ pub struct EncryptedCredentials {
 }
 
 /// Decrypted SFTP credentials.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SftpCredentials {
     pub host: String,
     pub port: u16,
+    #[allow(dead_code)] // Present in server JSON but not read directly
     pub protocol: String,
     pub username: String,
     pub password: String,

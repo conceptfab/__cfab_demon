@@ -6,13 +6,7 @@ use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-struct SyncGuard(Arc<lan_server::LanSyncState>);
-impl Drop for SyncGuard {
-    fn drop(&mut self) {
-        self.0.sync_in_progress.store(false, Ordering::SeqCst);
-        log::info!("SyncGuard dropped — sync_in_progress reset to false");
-    }
-}
+use lan_server::SyncGuard;
 
 mod activity;
 mod config;

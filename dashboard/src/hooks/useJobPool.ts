@@ -201,10 +201,11 @@ export function useJobPool() {
       try {
         logger.log(`[useJobPool] Delegating online sync to daemon (reason: ${reason})`);
         await triggerDaemonOnlineSync();
-        // Daemon handles the sync — refresh UI after a short delay to pick up changes
+        // Daemon handles the sync — refresh UI after delay to pick up changes
+        // 5s allows for larger databases to complete processing
         setTimeout(() => {
           triggerRefresh(`background_sync_${reason}`);
-        }, 2_000);
+        }, 5_000);
         syncFailCountRef.current = 0;
       } catch (e) {
         logger.warn('Daemon sync trigger failed (daemon may be offline):', e);

@@ -194,7 +194,7 @@ export function Sidebar() {
       setLanSyncStatus('error');
       if (msg.includes('Ping failed') || msg.includes('refused') || msg.includes('connection') || msg.includes('unreachable')) {
         setLanSyncMessage(t('settings.lan_sync.error_peer_unreachable'));
-        setLanPeer(null);
+        void refreshLanPeers();
       } else {
         setLanSyncMessage(msg.length > 60 ? msg.slice(0, 60) + '…' : msg);
       }
@@ -214,7 +214,7 @@ export function Sidebar() {
         // Re-poll peers to pick up discovered ones
         const peers = await lanSyncApi.getLanPeers();
         const online = peers.find((p) => p.dashboard_running);
-        setLanPeer(online ?? null);
+        void refreshLanPeers();
       }
     } catch {
       // scan failed silently

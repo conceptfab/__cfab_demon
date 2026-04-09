@@ -2,6 +2,7 @@
 // When another device pushes data, the server sends a `sync_available` event
 // and we immediately trigger an online sync pull.
 
+import { logger } from '@/lib/logger';
 import { loadOnlineSyncSettings, loadSecureApiToken } from '@/lib/sync/sync-state';
 
 export type SyncSSEListener = (event: {
@@ -48,28 +49,28 @@ export async function connectSSE(onSyncAvailable: SyncSSEListener): Promise<void
     eventSource = new EventSource(url.toString());
 
     eventSource.addEventListener('connected', () => {
-      console.log('[SSE] Connected to sync event stream');
+      logger.info('[SSE] Connected to sync event stream');
       reconnectAttempts = 0;
     });
 
     eventSource.addEventListener('sync_available', (e) => {
       try {
         const data = JSON.parse(e.data);
-        console.log('[SSE] Sync available:', data.reason, 'rev:', data.revision);
+        logger.info('[SSE] Sync available:', data.reason, 'rev:', data.revision);
         onSyncAvailable(data);
       } catch {
-        console.warn('[SSE] Failed to parse sync_available event');
+        logger.warn('[SSE] Failed to parse sync_available event');
       }
     });
 
     eventSource.onerror = () => {
-      console.warn('[SSE] Connection error — will reconnect');
+      logger.warn('[SSE] Connection error — will reconnect');
       eventSource?.close();
       eventSource = null;
       scheduleReconnect(onSyncAvailable);
     };
   } catch (e) {
-    console.warn('[SSE] Failed to create EventSource:', e);
+    logger.warn('[SSE] Failed to create EventSource:', e);
     scheduleReconnect(onSyncAvailable);
   }
 }
@@ -78,7 +79,7 @@ function scheduleReconnect(onSyncAvailable: SyncSSEListener): void {
   if (reconnectTimer) return;
   reconnectAttempts++;
   const delay = getReconnectDelay();
-  console.log(`[SSE] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts})`);
+  logger.info(`[SSE] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts})`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     void connectSSE(onSyncAvailable);

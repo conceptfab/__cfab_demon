@@ -50,6 +50,13 @@ impl SftpClient {
         session.set_tcp_stream(tcp);
         session.handshake()
             .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+        // Log host key fingerprint for security audit trail
+        if let Some(host_key) = session.host_key() {
+            let fingerprint: String = host_key.0.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+            log::info!("SSH host key fingerprint for {}: {}", self.host, fingerprint);
+        }
+
         session.userauth_password(&self.username, &self.password)
             .map_err(|e| format!("SSH auth failed: {}", e))?;
 

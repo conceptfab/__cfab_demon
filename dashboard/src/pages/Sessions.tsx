@@ -147,6 +147,7 @@ export function Sessions() {
     loadMore,
     sessions,
     sessionsRef,
+    isLoading: isSessionsLoading,
     setDismissedSuggestions,
     setSessions,
   } = useSessionsData({
@@ -715,6 +716,7 @@ export function Sessions() {
         onRejectSuggestion={handleRejectSuggestion}
         onSplitClick={openMultiSplitModal}
         isEmpty={mergedSessions.length === 0}
+        isLoading={isSessionsLoading}
         hasMore={hasMore}
         onLoadMore={loadMore}
       />
