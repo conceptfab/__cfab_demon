@@ -208,7 +208,6 @@ pub fn extract_file_from_title(title: &str) -> String {
 /// Zwraca czas bezczynności użytkownika (brak klawiatury/myszy) w milisekundach.
 /// Używa WinAPI `GetLastInputInfo`.
 pub fn get_idle_time_ms() -> u64 {
-    use winapi::um::sysinfoapi::GetTickCount64;
     use winapi::um::winuser::{GetLastInputInfo, LASTINPUTINFO};
 
     unsafe {
@@ -219,8 +218,10 @@ pub fn get_idle_time_ms() -> u64 {
             return 0; // Fallback: zakładaj aktywność
         }
 
-        let now = GetTickCount64();
-        now.saturating_sub(u64::from(lii.dwTime))
+        // Use GetTickCount (32-bit) for consistency with dwTime (also 32-bit DWORD).
+        // GetTickCount64 would give wrong results after ~49 days when dwTime wraps.
+        let now = winapi::um::sysinfoapi::GetTickCount();
+        u64::from(now.wrapping_sub(lii.dwTime))
     }
 }
 

@@ -140,7 +140,7 @@ export function Settings() {
     general:  { label: t('settings_page.tab_general'),  active: 'border-sky-400 text-sky-400' },
     sessions: { label: t('settings_page.tab_sessions'), active: 'border-violet-400 text-violet-400' },
     sync:     { label: t('settings_page.tab_sync'),     active: 'border-emerald-400 text-emerald-400' },
-    pm:       { label: 'PM',                             active: 'border-orange-400 text-orange-400' },
+    pm:       { label: t('settings_page.tab_pm'),         active: 'border-orange-400 text-orange-400' },
     advanced: { label: t('settings_page.tab_advanced'),  active: 'border-amber-400 text-amber-400' },
   };
 

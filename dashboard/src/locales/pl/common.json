@@ -24,7 +24,8 @@
     "app": {
       "loading": "Ładowanie...",
       "error_title": "Coś poszło nie tak",
-      "try_again": "Spróbuj ponownie"
+      "try_again": "Spróbuj ponownie",
+      "go_home": "Wróć do Dashboardu"
     }
   },
   "topbar": {
@@ -1367,6 +1368,7 @@
     "tab_general": "Ogolne",
     "tab_sessions": "Sesje",
     "tab_sync": "Synchronizacja",
+    "tab_pm": "PM",
     "tab_advanced": "Zaawansowane",
     "working_hours": "Godziny pracy",
     "used_to_highlight_expected_work_window_on_timeline": "Służy do podświetlenia oczekiwanego okna pracy na osi czasu.",
@@ -1491,8 +1493,9 @@
     "ai_model": "AI i model",
     "data": "Dane",
     "reports": "Raporty",
+    "pm": "PM",
     "daemon": "Demon",
-    "online_sync": "Online Sync",
+    "online_sync": "Synchronizacja online",
     "bughunter": "BugHunter",
     "settings": "Ustawienia",
     "quick_start_2": "SZYBKI START",
@@ -1504,6 +1507,10 @@
     "first_session_assignment_and_local_ai_onboarding_instruc": "Instrukcja pierwszego przypisywania sesji i uruchomienia lokalnego AI.",
     "accessible_from_the_sidebar_rocket_icon_and_from_the_hel": "Dostęp z ikony rakiety w sidebarze oraz z poziomu ekranu pomocy.",
     "automatically_clears_the_first_run_hint_after_finishing": "Automatyczne ukrycie wskaźnika 'first run' po zakończeniu samouczka.",
+    "quickstart_sync_overview": "Synchronizacja — skonfiguruj LAN sync do backupu peer-to-peer lub Online Sync do synchronizacji wielourządzeniowej w chmurze.",
+    "quickstart_reports_overview": "Raporty — generuj raporty projektów z konfigurowalnymi szablonami, sekcjami i eksportem do druku/PDF.",
+    "quickstart_pm_overview": "Moduł PM — zarządzaj klientami i projektami z budżetami, terminami, szablonami folderów i integracją TF Match.",
+    "quickstart_backup_export": "Backup i eksport — twórz kopie zapasowe bazy, eksportuj archiwa ZIP i przywracaj z plików backupu w sekcji Dane.",
     "the_full_tutorial_walks_through_installation_and_configu": "Pełny samouczek prowadzi przez wszystkie kroki instalacji i konfiguracji.",
     "launch_quick_start": "Uruchom Quick Start",
     "quick_overview_of_your_current_activity_and_key_performa": "Szybki podgląd Twojej bieżącej aktywności i najważniejszych wskaźników wydajności.",
@@ -1676,6 +1683,8 @@
     "operation_history_insight_into_when_and_what_data_was_mo": "Historia operacji – wgląd w to, kiedy i jakie dane były modyfikowane.",
     "backup_restore_database_manual_backups_restore_from_file": "Backup/Restore bazy – ręczne backupy, przywracanie z pliku oraz przegląd folderu z bazą SQLite.",
     "data_history_refreshes_after_real_data_changes_and_when_": "Historia danych odświeża się po realnych zmianach danych i po powrocie do okna aplikacji, więc nie obciąża systemu stałym pollingiem w tle.",
+    "data_stats_summary_tiles": "Statystyki danych — kafelki podsumowania z łączną liczbą sesji, projektów, aplikacji i śledzonym czasem.",
+    "database_health_panel": "Kondycja bazy — panel z rozmiarem pliku bazy, datą ostatniego vacuum i statusem optymalizacji.",
     "import_page_detail_title": "Strona Import",
     "import_page_detail_what_it_does": "Co robi: ekran Import pozwala wrzucać pliki JSON metodą drag & drop, sprawdzać historię już przetworzonych importów i czyścić archiwum po zakończonej obróbce.",
     "import_page_detail_when_to_use": "Kiedy użyć: otwórz go po ręcznym eksporcie danych z demona albo gdy chcesz zweryfikować, czy paczka została już zaimportowana.",
@@ -1741,6 +1750,9 @@
     "manual_session_rebuild_button_in_the_session_management": "Ręczny rebuild sesji – przycisk w karcie Session Management wymusza ponowne scalenie sesji (gap fill) bez restartu aplikacji.",
     "unsaved_changes_warning_before_leaving_settings": "Niezapisane zmiany w ustawieniach – przy próbie opuszczenia ekranu bez zapisu TIMEFLOW poprosi o potwierdzenie. Zamknięcie lub odświeżenie okna także wywoła ostrzeżenie przeglądarki.",
     "dev_log_management_centralized_log_viewer": "Dev / Zarządzanie logami – centralny podgląd i konfiguracja logów dla wszystkich kanałów demona (Daemon, LAN Sync, Online Sync, Dashboard). Ustaw poziomy logów, maks. rozmiar pliku z auto-rotacją, podglądaj logi na żywo i czyść poszczególne pliki logów.",
+    "pm_settings_work_folder_and_templates": "Ustawienia PM — skonfiguruj ścieżkę folderu roboczego PM i zarządzaj szablonami folderów dla nowych projektów.",
+    "backup_interval_automatic_database_backup": "Interwał backupu — ustaw liczbę dni między automatycznymi kopiami zapasowymi bazy. Kopie tworzone są przed uruchomieniem optymalizacji.",
+    "restore_database_from_backup_file": "Przywracanie bazy — przywróć bazę danych z wcześniej utworzonej kopii zapasowej. Bieżąca baza jest zastępowana po potwierdzeniu.",
     "project_page_detail_title": "ProjectPage w praktyce",
     "project_page_detail_what_it_does": "Co robi: ProjectPage zbiera w jednym widoku timeline projektu, ostatnie komentarze, sesje ręczne, kompaktowanie danych, reset czasu i generowanie raportu.",
     "project_page_detail_when_to_use": "Kiedy użyć: otwórz ten widok, gdy chcesz przeanalizować jeden projekt end-to-end zamiast przeskakiwać między zakładkami.",
@@ -1757,7 +1769,7 @@
     "online_sync_daemon_mode": "Synchronizacja przez daemon (protokół LAN Sync): Gdy daemon TIMEFLOW jest uruchomiony, synchronizacja online może użyć 13-krokowego protokołu sesji z transferem SFTP. Zapewnia szyfrowany transfer plików, śledzenie postępu i automatyczne scalanie — ten sam protokół co synchronizacja LAN, ale przez zdalny serwer. Skonfiguruj klucz szyfrowania w ustawieniach synchronizacji.",
     "delta_sync_description": "Od wersji z Delta Sync: system przesyła tylko zmodyfikowane pakiety synchronizacji dla starych i nowych sesji, oszczędzając do 95% zużycia łącza.",
     "license_activation": "Aktywacja licencji: wklej klucz licencji w sekcji Online Sync → Licencja i kliknij Aktywuj. Urządzenie zostanie zarejestrowane w grupie na serwerze. Po aktywacji dashboard wyświetla plan, grupę, liczbę urządzeń i datę wygaśnięcia.",
-    "lan_sync_title": "LAN Sync",
+    "lan_sync_title": "Synchronizacja LAN",
     "lan_sync_description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej, bez pośredniczącego serwera.",
     "lan_sync_udp_discovery": "Wykrywanie UDP – TIMEFLOW automatycznie rozgłasza swoją obecność w sieci lokalnej (port 47892) co 30 sekund. Inne instancje są wykrywane bez ręcznej konfiguracji.",
     "lan_sync_http_server": "Wbudowany serwer HTTP – po włączeniu LAN Sync uruchamia się lokalny serwer HTTP (domyślny port 47891) z endpointami /lan/ping, /lan/status, /lan/pull, /lan/push do wymiany danych.",
@@ -1794,7 +1806,11 @@
     "pm_feature_templates": "Szablony folderów — domyślny szablon odpowiada oryginalnemu PM. Możesz tworzyć własne szablony z dowolną strukturą. Placeholder {name} w nazwie folderu zamieniany na nazwę projektu.",
     "pm_feature_status": "Status projektu — Aktywny / Nieaktywny / Archiwalny. Zmiana statusu w szczegółach projektu.",
     "pm_feature_budget": "Budżet i termin — przypisz wartość budżetu i deadline do projektu.",
-    "pm_feature_compat": "Kompatybilność — dane przechowywane w pliku JSON (projects_list.json) zgodnym z formatem PM Python. Wymaga skonfigurowanego folderu roboczego."
+    "pm_feature_compat": "Kompatybilność — dane przechowywane w pliku JSON (projects_list.json) zgodnym z formatem PM Python. Wymaga skonfigurowanego folderu roboczego.",
+    "pm_feature_clients": "Klienci — grupuj projekty wg klienta. Zarządzaj listą klientów, przypisuj kolory do wizualnego rozróżnienia i przeglądaj statystyki per klient.",
+    "pm_feature_tf_match": "TF Match — połącz projekty PM z projektami TIMEFLOW, aby zobaczyć rzeczywisty śledzony czas obok danych o budżecie i terminach.",
+    "pm_feature_filters": "Filtry — filtruj listę projektów wg roku, klienta i statusu (aktywny / nieaktywny / zarchiwizowany).",
+    "pm_feature_folder_size": "Rozmiar folderu — podgląd rozmiaru folderu projektu na dysku bezpośrednio w liście projektów."
   },
   "sync_progress": {
     "title": "Synchronizacja LAN",

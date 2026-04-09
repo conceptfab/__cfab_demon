@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useEffectEvent, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/toast-notification';
 import { useDataStore } from '@/store/data-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
+import { logger } from '@/lib/logger';
 import {
   aiApi,
   daemonApi,
@@ -13,7 +14,6 @@ import {
 import {
   ONLINE_SYNC_SETTINGS_CHANGED_EVENT,
   loadOnlineSyncSettings,
-  type OnlineSyncRunResult,
 } from '@/lib/online-sync';
 import { loadLanSyncSettings, loadLanSyncState } from '@/lib/lan-sync';
 import { lanSyncApi } from '@/lib/tauri';
@@ -74,7 +74,7 @@ function loadAutoProjectSyncMeta(): AutoProjectSyncMeta {
           : null,
     };
   } catch (error) {
-    console.warn('Failed to read auto project sync metadata:', error);
+    logger.warn('Failed to read auto project sync metadata:', error);
     return {
       lastFolderSyncAt: null,
       lastDetectionAt: null,
@@ -95,7 +95,7 @@ function saveAutoProjectSyncMeta(next: Partial<AutoProjectSyncMeta>): void {
       }),
     );
   } catch (error) {
-    console.warn('Failed to persist auto project sync metadata:', error);
+    logger.warn('Failed to persist auto project sync metadata:', error);
   }
 }
 
@@ -112,7 +112,7 @@ async function runHeavyOperation<T>(
   fn_: () => Promise<T>,
 ): Promise<T | null> {
   if (heavyOperations.get(key)) {
-    console.warn(`Heavy operation '${key}' is already in progress. Skipping.`);
+    logger.warn(`Heavy operation '${key}' is already in progress. Skipping.`);
     return null;
   }
   heavyOperations.set(key, true);
@@ -139,7 +139,7 @@ async function runAutoAiAssignmentCycle(): Promise<AiAssignmentResult> {
         const det = await aiApi.applyDeterministicAssignment();
         deterministicAssigned = det.sessions_assigned;
       } catch (e) {
-        console.warn('Deterministic assignment failed:', e);
+        logger.warn('Deterministic assignment failed:', e);
       }
 
       try {
@@ -148,7 +148,7 @@ async function runAutoAiAssignmentCycle(): Promise<AiAssignmentResult> {
         const aiResult = await aiApi.autoRunIfNeeded(minDuration);
         if (aiResult) aiAssigned = aiResult.assigned;
       } catch (e) {
-        console.warn('AI auto-assignment failed:', e);
+        logger.warn('AI auto-assignment failed:', e);
       }
 
       const needsRefresh = deterministicAssigned > 0 || aiAssigned > 0;
@@ -159,10 +159,6 @@ async function runAutoAiAssignmentCycle(): Promise<AiAssignmentResult> {
   return result ?? { needsRefresh: false, deterministicAssigned: 0, aiAssigned: 0 };
 }
 
-function shouldRefreshAfterOnlineSync(result: OnlineSyncRunResult): boolean {
-  return result.action === 'pull';
-}
-
 // === BACKGROUND HOOKS ===
 
 function useAutoImporter() {
@@ -171,7 +167,7 @@ function useAutoImporter() {
   useEffect(() => {
     if (autoImportDone) return;
     const warnTimer = setTimeout(() => {
-      console.warn('Auto-import is still running (longer than 8s)...');
+      logger.warn('Auto-import is still running (longer than 8s)...');
     }, 8_000);
 
     dataApi.autoImportFromDataDir()
@@ -182,7 +178,7 @@ function useAutoImporter() {
         }
       })
       .catch((e) => {
-        console.error('Auto-import failed:', e);
+        logger.error('Auto-import failed:', e);
         setAutoImportDone(true, {
           files_found: 0,
           files_imported: 0,
@@ -240,7 +236,7 @@ function useAutoSessionRebuild() {
           );
         }
       } catch (e) {
-        console.warn('Auto session rebuild failed:', e);
+        logger.warn('Auto session rebuild failed:', e);
       }
     };
     void run();
@@ -264,7 +260,7 @@ function useStartupProjectSyncAndAiAssignment() {
           setDiscoveredProjects,
         );
       } catch (error) {
-        console.warn('Auto project sync failed:', error);
+        logger.warn('Auto project sync failed:', error);
       }
 
       if (cancelled) return;
@@ -273,7 +269,7 @@ function useStartupProjectSyncAndAiAssignment() {
         const aiResult = await runAutoAiAssignmentCycle();
         dispatchAiAssignmentDone(aiResult);
       } catch (error) {
-        console.warn('AI auto-assignment failed:', error);
+        logger.warn('AI auto-assignment failed:', error);
       }
     };
 
@@ -329,7 +325,7 @@ function useJobPool() {
       }
       lastSignatureRef.current = current;
     } catch (error) {
-      console.warn('[useJobPool] Failed to check today file signature', error);
+      logger.warn('[useJobPool] Failed to check today file signature', error);
     }
   }, [autoImportDone, triggerRefresh]);
 
@@ -343,7 +339,7 @@ function useJobPool() {
         dispatchAiAssignmentDone(aiResult);
       }
     } catch (error) {
-      console.warn('[useJobPool] Refresh today failed', error);
+      logger.warn('[useJobPool] Refresh today failed', error);
     } finally {
       isRefreshingRef.current = false;
     }
@@ -415,7 +411,7 @@ function useJobPool() {
       if (!activePeer) return;
 
       isLanSyncingRef.current = true;
-      console.log(`[useJobPool] Running LAN sync interval with peer ${activePeer.machine_name}`);
+      logger.log(`[useJobPool] Running LAN sync interval with peer ${activePeer.machine_name}`);
 
       // Ensure our server is running
       try {
@@ -442,7 +438,7 @@ function useJobPool() {
       dispatchLanSyncDone(activePeer.machine_name);
       triggerRefresh('background_lan_sync_interval');
     } catch (e) {
-      console.warn('[useJobPool] LAN sync interval failed:', e);
+      logger.warn('[useJobPool] LAN sync interval failed:', e);
     } finally {
       isLanSyncingRef.current = false;
     }
@@ -457,7 +453,7 @@ function useJobPool() {
       isSyncingRef.current = true;
 
       try {
-        console.log(`[useJobPool] Delegating online sync to daemon (reason: ${reason})`);
+        logger.log(`[useJobPool] Delegating online sync to daemon (reason: ${reason})`);
         await triggerDaemonOnlineSync();
         // Daemon handles the sync — refresh UI after a short delay to pick up changes
         setTimeout(() => {
@@ -465,7 +461,7 @@ function useJobPool() {
         }, 2_000);
         syncFailCountRef.current = 0;
       } catch (e) {
-        console.warn('Daemon sync trigger failed (daemon may be offline):', e);
+        logger.warn('Daemon sync trigger failed (daemon may be offline):', e);
         syncFailCountRef.current += 1;
 
         // Exponential backoff logic
@@ -473,7 +469,7 @@ function useJobPool() {
           300,
           30 * Math.pow(2, syncFailCountRef.current - 1),
         );
-        console.log(`Sync backoff: retry assigned in ${backoffSec}s`);
+        logger.log(`Sync backoff: retry assigned in ${backoffSec}s`);
         nextSyncPollRef.current = Date.now() + backoffSec * 1000;
       } finally {
         isSyncingRef.current = false;
@@ -482,19 +478,27 @@ function useJobPool() {
     [triggerRefresh],
   );
 
-  const handleSyncSettingsChange = useEffectEvent(() => {
-    refreshSyncSettingsCache();
-  });
+  const refreshSyncSettingsCacheRef = useRef(refreshSyncSettingsCache);
+  refreshSyncSettingsCacheRef.current = refreshSyncSettingsCache;
+  const handleSyncSettingsChange = useCallback(() => {
+    refreshSyncSettingsCacheRef.current();
+  }, []);
 
-  const handleDiagnosticsRefresh = useEffectEvent(() => {
-    void refreshDiagnostics();
-  });
+  const refreshDiagnosticsRef = useRef(refreshDiagnostics);
+  refreshDiagnosticsRef.current = refreshDiagnostics;
+  const handleDiagnosticsRefresh = useCallback(() => {
+    void refreshDiagnosticsRef.current();
+  }, []);
 
-  const handleDatabaseSettingsRefresh = useEffectEvent(() => {
-    void refreshDatabaseSettings();
-  });
+  const refreshDatabaseSettingsRef = useRef(refreshDatabaseSettings);
+  refreshDatabaseSettingsRef.current = refreshDatabaseSettings;
+  const handleDatabaseSettingsRefresh = useCallback(() => {
+    void refreshDatabaseSettingsRef.current();
+  }, []);
 
-  const handleVisibilityChange = useEffectEvent(() => {
+  // Stable refs for event handlers that capture mutable closure state
+  const visibilityHandlerRef = useRef<() => void>(() => {});
+  visibilityHandlerRef.current = () => {
     refreshSyncSettingsCache();
     if (!isDocumentVisible()) {
       if (visibilityDebounceTimer.current) {
@@ -522,9 +526,11 @@ function useJobPool() {
       nextSyncPollRef.current = Date.now() + 120_000;
       void runRefresh();
     }, 500);
-  });
+  };
+  const handleVisibilityChange = useCallback(() => visibilityHandlerRef.current(), []);
 
-  const handleLocalDataChange = useEffectEvent(() => {
+  const localDataChangeRef = useRef<() => void>(() => {});
+  localDataChangeRef.current = () => {
     if (!isDocumentVisible()) return;
 
     handleDatabaseSettingsRefresh();
@@ -545,7 +551,8 @@ function useJobPool() {
     localChangeSyncTimer.current = window.setTimeout(() => {
       void runSync('local_change');
     }, 1_500);
-  });
+  };
+  const handleLocalDataChange = useCallback(() => localDataChangeRef.current(), []);
 
   useEffect(() => {
     handleDiagnosticsRefresh();
@@ -670,7 +677,7 @@ function useLanSyncServerStartup() {
     const settings = loadLanSyncSettings();
     if (settings.enabled) {
       lanSyncApi.startLanServer(settings.serverPort).catch((e) => {
-        console.warn('Failed to start LAN server on startup:', e);
+        logger.warn('Failed to start LAN server on startup:', e);
       });
     }
     return () => {
@@ -687,7 +694,7 @@ function useOnlineSyncSSE() {
     if (!settings.enabled) return;
 
     void connectSSE(async (event) => {
-      console.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering daemon sync`);
+      logger.log(`[SSE] Peer ${event.sourceDeviceId} pushed rev ${event.revision} — triggering daemon sync`);
       try {
         await triggerDaemonOnlineSync();
         // Refresh UI after daemon processes the sync
@@ -696,7 +703,7 @@ function useOnlineSyncSSE() {
           triggerRefresh('sse_sync_pull');
         }, 2_000);
       } catch (e) {
-        console.warn('[SSE] Daemon sync trigger failed:', e);
+        logger.warn('[SSE] Daemon sync trigger failed:', e);
       }
     });
 
@@ -732,22 +739,26 @@ export function BackgroundServices() {
 
   const { t } = useTranslation();
   const { showInfo } = useToast();
-  const handleAiAssignmentDone = useEffectEvent((e: Event) => {
+  const showInfoRef = useRef(showInfo);
+  showInfoRef.current = showInfo;
+  const tRef = useRef(t);
+  tRef.current = t;
+  const handleAiAssignmentDone = useCallback((e: Event) => {
     const count = (e as CustomEvent<number>).detail;
-    showInfo(t('background.ai_assigned_sessions', { count }));
-  });
-  const handleOnlineSyncDone = useEffectEvent((e: Event) => {
-    const { action, reason } = (e as CustomEvent<{ action: string; reason: string }>).detail;
+    showInfoRef.current(tRef.current('background.ai_assigned_sessions', { count }));
+  }, []);
+  const handleOnlineSyncDone = useCallback((e: Event) => {
+    const { action } = (e as CustomEvent<{ action: string; reason: string }>).detail;
     if (action === 'pull') {
-      showInfo(t('background.online_sync_pulled', { defaultValue: 'Data synchronized from server' }));
+      showInfoRef.current(tRef.current('background.online_sync_pulled', { defaultValue: 'Data synchronized from server' }));
     } else if (action === 'push') {
-      showInfo(t('background.online_sync_pushed', { defaultValue: 'Data sent to server' }));
+      showInfoRef.current(tRef.current('background.online_sync_pushed', { defaultValue: 'Data sent to server' }));
     }
-  });
-  const handleLanSyncDone = useEffectEvent((e: Event) => {
+  }, []);
+  const handleLanSyncDone = useCallback((e: Event) => {
     const { peerName } = (e as CustomEvent<{ peerName: string }>).detail;
-    showInfo(t('background.lan_sync_done', { peer: peerName, defaultValue: `LAN sync with ${peerName} completed` }));
-  });
+    showInfoRef.current(tRef.current('background.lan_sync_done', { peer: peerName, defaultValue: `LAN sync with ${peerName} completed` }));
+  }, []);
   useEffect(() => {
     window.addEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
     window.addEventListener(ONLINE_SYNC_DONE_EVENT, handleOnlineSyncDone);

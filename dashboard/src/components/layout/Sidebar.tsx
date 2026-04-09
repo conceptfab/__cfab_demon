@@ -33,7 +33,7 @@ import { useDataStore } from '@/store/data-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { tryStartWindowDrag } from '@/lib/window-drag';
-import { hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
+import { getAiModeLabel, hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
@@ -134,11 +134,12 @@ export function Sidebar() {
       getOnlineSyncIndicatorSnapshot(),
     );
 
-  const [lanPeer, setLanPeer] = useState<LanPeer | null>(null);
+  const lanPeer = useBackgroundStatusStore((s) => s.lanPeer);
+  const lanIsSlave = useBackgroundStatusStore((s) => s.lanIsSlave);
+  const refreshLanPeers = useBackgroundStatusStore((s) => s.refreshLanPeers);
   const [lanSyncing, setLanSyncing] = useState(false);
   const [lanSyncStatus, setLanSyncStatus] = useState<'idle' | 'ok' | 'error'>('idle');
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
-  const [lanIsSlave, setLanIsSlave] = useState(false);
   const [lanScanning, setLanScanning] = useState(false);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
 
@@ -235,40 +236,12 @@ export function Sidebar() {
     return subscribeOnlineSyncIndicator(setSyncIndicator);
   }, []);
 
+  // LAN peer polling moved to background-status-store (single source of truth)
   useEffect(() => {
-    let timer: number | null = null;
-    const poll = async () => {
-      const settings = loadLanSyncSettings();
-      if (!settings.enabled) {
-        setLanPeer(null);
-        setLanIsSlave(false);
-        return;
-      }
-      try {
-        const peers = await lanSyncApi.getLanPeers();
-        const online = peers.find((p) => p.dashboard_running);
-        setLanPeer(online ?? null);
-      } catch {
-        setLanPeer(null);
-      }
-      // Detect slave role — disable sync button for slave
-      try {
-        if (settings.forcedRole === 'slave') {
-          setLanIsSlave(true);
-        } else if (settings.forcedRole === 'master') {
-          setLanIsSlave(false);
-        } else {
-          const p = await lanSyncApi.getLanSyncProgress();
-          setLanIsSlave(p.role === 'slave');
-        }
-      } catch {
-        // If settings or progress unavailable, default to not-slave
-      }
-    };
-    void poll();
-    timer = window.setInterval(poll, 5_000);
-    return () => { if (timer !== null) clearInterval(timer); };
-  }, []);
+    void refreshLanPeers();
+    const timer = window.setInterval(() => void refreshLanPeers(), 5_000);
+    return () => clearInterval(timer);
+  }, [refreshLanPeers]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -285,14 +258,7 @@ export function Sidebar() {
     todayUnassigned > 0 ? todayUnassigned : allUnassigned;
   const hasPendingAiTrainingData =
     hasPendingAssignmentModelTrainingData(aiStatus);
-  const aiModeStatusText =
-    aiStatus?.mode === 'off'
-      ? t('layout.status.off')
-      : aiStatus?.mode === 'suggest'
-        ? t('layout.status.suggestions')
-        : aiStatus?.mode === 'auto_safe'
-          ? t('layout.status.auto_safe')
-          : t('ui.common.not_available');
+  const aiModeStatusText = getAiModeLabel(aiStatus?.mode, t);
   const sessionsBadge =
     unassignedSessions > 99 ? '99+' : String(unassignedSessions);
   const sessionsAttentionTitle =

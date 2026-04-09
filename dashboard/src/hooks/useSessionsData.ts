@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
 } from 'react';
@@ -60,12 +59,14 @@ export function useSessionsData(params: {
     }
   }, [buildFetchParams, replaceSessionsPage]);
 
-  const handleVisibleSessionsRefresh = useEffectEvent(() => {
-    void loadFirstSessionsPage().catch(console.error);
-  });
+  const loadFirstPageRef = useRef(loadFirstSessionsPage);
+  loadFirstPageRef.current = loadFirstSessionsPage;
+
+  const handleVisibleSessionsRefresh = useCallback(() => {
+    void loadFirstPageRef.current().catch(console.error);
+  }, []);
 
   useEffect(() => {
-    if (isLoadingRef.current) return;
     let cancelled = false;
     isLoadingRef.current = true;
     sessionsRef.current = [];
@@ -78,7 +79,7 @@ export function useSessionsData(params: {
       })
       .catch(console.error)
       .finally(() => {
-        isLoadingRef.current = false;
+        if (!cancelled) isLoadingRef.current = false;
       });
     return () => {
       cancelled = true;

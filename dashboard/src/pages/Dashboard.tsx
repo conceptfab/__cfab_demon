@@ -54,6 +54,8 @@ import { shouldRefreshDashboardPage } from '@/lib/page-refresh-reasons';
 const UNASSIGNED_PROJECT_KEY = 'unassigned';
 const EMPTY_PROJECT_ROWS: ProjectTimeRow[] = [];
 const EMPTY_STACKED_BAR_DATA: StackedBarData[] = [];
+/** Max project series shown in timeline chart */
+const PROJECT_TIMELINE_SERIES_LIMIT = 200;
 
 type DashboardViewState = {
   dashboardData: DashboardData | null;
@@ -254,7 +256,7 @@ export function Dashboard() {
   }, [manualSessions]);
   const timelineGranularity: 'hour' | 'day' =
     timePreset === 'today' ? 'hour' : 'day';
-  const projectTimelineSeriesLimit = 200;
+  const projectTimelineSeriesLimit = PROJECT_TIMELINE_SERIES_LIMIT;
   const { assignSessions, updateSessionRateMultipliers, updateSessionComment } =
     useSessionActions({
       onAfterMutation: () => triggerRefresh('dashboard_session_mutation'),
@@ -486,7 +488,18 @@ export function Dashboard() {
         </Card>
       )}
 
-      {stats && stats.total_seconds === 0 && !loadError ? (
+      {!dashboardData && !loadError ? (
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-4">
+                <div className="h-4 w-24 rounded bg-muted mb-2" />
+                <div className="h-8 w-16 rounded bg-muted" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : stats && stats.total_seconds === 0 && !loadError ? (
         <div className="flex flex-col items-center gap-4 py-12">
           <Rocket className="h-12 w-12 text-muted-foreground/40" />
           <p className="text-muted-foreground">

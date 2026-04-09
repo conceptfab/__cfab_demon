@@ -238,7 +238,7 @@ impl LanSyncState {
 
     /// Check if frozen for too long and auto-unfreeze if needed.
     pub fn check_auto_unfreeze(&self) -> bool {
-        if !self.db_frozen.load(Ordering::Relaxed) {
+        if !self.db_frozen.load(Ordering::Acquire) {
             return false;
         }
         let should_unfreeze = {
@@ -280,6 +280,9 @@ pub fn start(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) -> Joi
     })
 }
 
+// TODO(security): LAN server listens on 0.0.0.0 without authentication.
+// Any device on the network can trigger sync, push/pull data, or overwrite the database.
+// Add shared secret or device_id verification via X-Auth-Token header.
 fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
     let listener = match TcpListener::bind(format!("0.0.0.0:{}", DEFAULT_LAN_PORT)) {
         Ok(s) => {
@@ -398,14 +401,28 @@ fn handle_connection(
         }
     }
 
-    // Read body
-    let body = if content_length > 0 && content_length <= MAX_REQUEST_BODY {
+    // Read body — reject payloads that exceed the limit with HTTP 413
+    let body_too_large = content_length > MAX_REQUEST_BODY;
+    let body = if body_too_large {
+        String::new()
+    } else if content_length > 0 {
         let mut buf = vec![0u8; content_length];
         reader.read_exact(&mut buf).map_err(|e| e.to_string())?;
         String::from_utf8(buf).map_err(|e| e.to_string())?
     } else {
         String::new()
     };
+
+    // Reject oversized payloads before routing
+    if body_too_large {
+        let msg = format!(r#"{{"ok":false,"error":"Payload too large ({} bytes, max {})"}}"#, content_length, MAX_REQUEST_BODY);
+        let response = format!(
+            "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            msg.len(), msg
+        );
+        stream.write_all(response.as_bytes()).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
 
     // Route
     let (status, response_body) = match (method, path) {
@@ -702,7 +719,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     sync_log("[SLAVE] Scalanie danych...");
     if let Err(e) = crate::sync_common::merge_incoming_data(&mut conn, &merged_data) {
         sync_log(&format!("[SLAVE] BLAD scalania: {} — przywracam backup", e));
-        if let Err(re) = crate::sync_common::restore_database_backup(&conn) {
+        if let Err(re) = crate::sync_common::restore_database_backup(&mut conn) {
             sync_log(&format!("[SLAVE] BLAD przywracania backupu: {}", re));
         }
         return (500, json_error(&format!("Merge failed: {}", e)));
@@ -712,7 +729,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     sync_log("[SLAVE] Weryfikacja integralnosci...");
     if let Err(e) = crate::sync_common::verify_merge_integrity(&conn) {
         sync_log(&format!("[SLAVE] BLAD weryfikacji: {} — przywracam backup", e));
-        if let Err(re) = crate::sync_common::restore_database_backup(&conn) {
+        if let Err(re) = crate::sync_common::restore_database_backup(&mut conn) {
             sync_log(&format!("[SLAVE] BLAD przywracania backupu: {}", re));
         }
         return (500, json_error(&format!("Verify failed: {}", e)));

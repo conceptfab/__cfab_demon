@@ -3,17 +3,21 @@ import {
   getAssignmentModelStatus,
   getBackgroundDiagnostics,
   getDatabaseSettings,
+  lanSyncApi,
 } from '@/lib/tauri';
 import type {
   AssignmentModelStatus,
   DaemonStatus,
   DatabaseSettings,
 } from '@/lib/db-types';
+import type { LanPeer } from '@/lib/lan-sync-types';
+import { loadLanSyncSettings } from '@/lib/lan-sync';
 import { logTauriError } from '@/lib/utils';
 
 let diagnosticsInFlight = false;
 let aiStatusInFlight = false;
 let databaseSettingsInFlight = false;
+let lanPeerPollInFlight = false;
 
 function areStringArraysEqual(left: string[], right: string[]): boolean {
   if (left === right) return true;
@@ -99,9 +103,12 @@ interface BackgroundStatusState {
   dbSettings: DatabaseSettings | null;
   todayUnassigned: number;
   allUnassigned: number;
+  lanPeer: LanPeer | null;
+  lanIsSlave: boolean;
   refreshDiagnostics: () => Promise<void>;
   refreshAiStatus: () => Promise<void>;
   refreshDatabaseSettings: () => Promise<void>;
+  refreshLanPeers: () => Promise<void>;
   setDaemonStatus: (status: DaemonStatus) => void;
   setDaemonAutostart: (autostart: boolean) => void;
   setAiStatus: (status: AssignmentModelStatus) => void;
@@ -114,6 +121,8 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
     dbSettings: null,
     todayUnassigned: 0,
     allUnassigned: 0,
+    lanPeer: null,
+    lanIsSlave: false,
     refreshDiagnostics: async () => {
       if (diagnosticsInFlight) return;
       diagnosticsInFlight = true;
@@ -189,6 +198,37 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
           daemonStatus: { ...state.daemonStatus, autostart },
         };
       }),
+    refreshLanPeers: async () => {
+      if (lanPeerPollInFlight) return;
+      lanPeerPollInFlight = true;
+      try {
+        const settings = loadLanSyncSettings();
+        if (!settings.enabled) {
+          if (get().lanPeer !== null || get().lanIsSlave) {
+            set({ lanPeer: null, lanIsSlave: false });
+          }
+          return;
+        }
+        const peers = await lanSyncApi.getLanPeers();
+        const online = peers.find((p) => p.dashboard_running) ?? null;
+        let isSlave = false;
+        if (settings.forcedRole === 'slave') {
+          isSlave = true;
+        } else if (settings.forcedRole !== 'master') {
+          try {
+            const p = await lanSyncApi.getLanSyncProgress();
+            isSlave = p.role === 'slave';
+          } catch { /* default not-slave */ }
+        }
+        if (get().lanPeer !== online || get().lanIsSlave !== isSlave) {
+          set({ lanPeer: online, lanIsSlave: isSlave });
+        }
+      } catch {
+        if (get().lanPeer !== null) set({ lanPeer: null });
+      } finally {
+        lanPeerPollInFlight = false;
+      }
+    },
     setAiStatus: (aiStatus) => {
       if (areAssignmentStatusesEqual(get().aiStatus, aiStatus)) {
         return;

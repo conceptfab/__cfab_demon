@@ -19,15 +19,11 @@ pub struct SftpClient {
 
 impl Drop for SftpClient {
     fn drop(&mut self) {
-        // Best-effort zeroing of sensitive fields to reduce memory exposure window.
-        // SAFETY: This is not cryptographically guaranteed (compiler may optimize out),
-        // but reduces the practical attack surface for memory scraping.
-        unsafe {
-            let pw_bytes = self.password.as_mut_vec();
-            std::ptr::write_volatile(pw_bytes.as_mut_ptr(), 0);
-            for b in pw_bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
-            let user_bytes = self.username.as_mut_vec();
-            for b in user_bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
+        // Zero sensitive fields — clear + shrink deallocates the buffer,
+        // avoiding UB from as_mut_vec() invalidating String invariants.
+        for field in [&mut self.password, &mut self.username] {
+            field.clear();
+            field.shrink_to_fit();
         }
     }
 }

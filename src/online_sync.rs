@@ -130,12 +130,19 @@ fn format_ureq_error(method: &str, path: &str, err: ureq::Error) -> String {
     }
 }
 
+/// Compute timeout based on body size — 30s base + 10s per MB of payload.
+fn compute_timeout(body_len: usize) -> std::time::Duration {
+    let base_secs = 30u64;
+    let extra_secs = (body_len as u64) / (1024 * 1024) * 10;
+    std::time::Duration::from_secs(base_secs + extra_secs)
+}
+
 fn server_post(server_url: &str, path: &str, token: &str, body: &str) -> Result<String, String> {
     let url = format!("{}{}", server_url.trim_end_matches('/'), path);
     let resp = ureq::post(&url)
         .set("Authorization", &format!("Bearer {}", token))
         .set("Content-Type", "application/json")
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(compute_timeout(body.len()))
         .send_string(body)
         .map_err(|e| format_ureq_error("POST", path, e))?;
     resp.into_string().map_err(|e| format!("Read response: {}", e))
@@ -620,7 +627,7 @@ fn execute_async_pull(
 
         if let Err(e) = sync_common::merge_incoming_data(&mut conn, &delta_str) {
             sync_log(&format!("[async-pull] Merge failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(&conn)?;
+            sync_common::restore_database_backup(&mut conn)?;
             async_reject(server_url, token, &device_id, &pkg.id, &format!("merge_failed: {}", e))?;
             return Err(format!("Async merge failed: {}", e));
         }
@@ -628,7 +635,7 @@ fn execute_async_pull(
         // Verify integrity
         if let Err(e) = sync_common::verify_merge_integrity(&conn) {
             sync_log(&format!("[async-pull] Integrity check failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(&conn)?;
+            sync_common::restore_database_backup(&mut conn)?;
             async_reject(server_url, token, &device_id, &pkg.id, &format!("integrity_failed: {}", e))?;
             return Err(format!("Async integrity check failed: {}", e));
         }

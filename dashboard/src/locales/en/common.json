@@ -24,7 +24,8 @@
     "app": {
       "loading": "Loading...",
       "error_title": "Something went wrong",
-      "try_again": "Try again"
+      "try_again": "Try again",
+      "go_home": "Back to Dashboard"
     }
   },
   "topbar": {
@@ -1367,6 +1368,7 @@
     "tab_general": "General",
     "tab_sessions": "Sessions",
     "tab_sync": "Sync",
+    "tab_pm": "PM",
     "tab_advanced": "Advanced",
     "working_hours": "Working Hours",
     "used_to_highlight_expected_work_window_on_timeline": "Used to highlight expected work window on timeline.",
@@ -1491,6 +1493,7 @@
     "ai_model": "AI & Model",
     "data": "Data",
     "reports": "Reports",
+    "pm": "PM",
     "daemon": "Daemon",
     "online_sync": "Online Sync",
     "bughunter": "BugHunter",
@@ -1504,6 +1507,10 @@
     "first_session_assignment_and_local_ai_onboarding_instruc": "First-session assignment and local AI onboarding instructions.",
     "accessible_from_the_sidebar_rocket_icon_and_from_the_hel": "Accessible from the sidebar rocket icon and from the Help screen.",
     "automatically_clears_the_first_run_hint_after_finishing": "Automatically clears the first-run hint after finishing the tutorial.",
+    "quickstart_sync_overview": "Synchronization — set up LAN sync for peer-to-peer backup or Online Sync for multi-device cloud synchronization.",
+    "quickstart_reports_overview": "Reports — generate project reports with customizable templates, sections, and print/PDF export.",
+    "quickstart_pm_overview": "PM Module — manage clients and projects with budgets, deadlines, folder templates, and TF Match integration.",
+    "quickstart_backup_export": "Backup & Export — create database backups, export ZIP archives, and restore from backup files in the Data section.",
     "the_full_tutorial_walks_through_installation_and_configu": "The full tutorial walks through installation and configuration end-to-end.",
     "launch_quick_start": "Launch Quick Start",
     "quick_overview_of_your_current_activity_and_key_performa": "Quick overview of your current activity and key performance indicators.",
@@ -1676,6 +1683,8 @@
     "operation_history_insight_into_when_and_what_data_was_mo": "Operation History – insight into when and what data was modified.",
     "backup_restore_database_manual_backups_restore_from_file": "Backup/Restore database – manual backups, restore from file, and quick access to the SQLite database folder.",
     "data_history_refreshes_after_real_data_changes_and_when_": "Data History refreshes after real data changes and when you return to the app window, so it no longer keeps a constant background polling loop.",
+    "data_stats_summary_tiles": "Data Stats — summary tiles showing total sessions, projects, applications, and tracked time at a glance.",
+    "database_health_panel": "Database Health — panel displaying database file size, last vacuum date, and optimization status.",
     "import_page_detail_title": "Import page",
     "import_page_detail_what_it_does": "What it does: the Import page lets you drop JSON files, inspect the history of processed imports, and clean the archive after processing.",
     "import_page_detail_when_to_use": "When to use it: open it after a manual daemon export or whenever you want to verify whether a package has already been imported.",
@@ -1741,6 +1750,9 @@
     "manual_session_rebuild_button_in_the_session_management": "Manual session rebuild – button in the Session Management card forces session re-merge (gap fill) without restarting the app.",
     "unsaved_changes_warning_before_leaving_settings": "Unsaved changes in Settings – when you try to leave without saving, TIMEFLOW asks for confirmation. Closing or refreshing the window also triggers the browser warning.",
     "dev_log_management_centralized_log_viewer": "Dev / Log Management – centralized log viewer and configuration for all daemon channels (Daemon, LAN Sync, Online Sync, Dashboard). Set log levels, max file size with auto-rotation, view live log content, and clear individual log files.",
+    "pm_settings_work_folder_and_templates": "PM Settings — configure the PM work folder path and manage folder templates for new projects.",
+    "backup_interval_automatic_database_backup": "Backup interval — set the number of days between automatic database backups. Backups are created before optimization runs.",
+    "restore_database_from_backup_file": "Restore database — restore the database from a previously created backup file. The current database is replaced after confirmation.",
     "project_page_detail_title": "ProjectPage in practice",
     "project_page_detail_what_it_does": "What it does: ProjectPage combines the project timeline, recent comments, manual sessions, data compaction, time reset, and report generation in one view.",
     "project_page_detail_when_to_use": "When to use: open this view when you want to review one project end-to-end instead of jumping between multiple screens.",
@@ -1794,7 +1806,11 @@
     "pm_feature_templates": "Folder templates — the default template matches the original PM. You can create custom templates with any structure. The {name} placeholder in folder names is replaced with the project name.",
     "pm_feature_status": "Project status — Active / Inactive / Archived. Change the status in the project detail view.",
     "pm_feature_budget": "Budget and deadline — assign a budget value and deadline to the project.",
-    "pm_feature_compat": "Compatibility — data stored in a JSON file (projects_list.json) compatible with the Python PM format. Requires a configured work folder."
+    "pm_feature_compat": "Compatibility — data stored in a JSON file (projects_list.json) compatible with the Python PM format. Requires a configured work folder.",
+    "pm_feature_clients": "Clients — group projects by client. Manage the client list, assign colors for visual distinction, and view per-client statistics.",
+    "pm_feature_tf_match": "TF Match — link PM projects with TIMEFLOW tracked projects to see real tracked time alongside budget and deadline data.",
+    "pm_feature_filters": "Filters — filter the project list by year, client, and status (active / inactive / archived).",
+    "pm_feature_folder_size": "Folder size — view the disk size of each project folder directly in the project list."
   },
   "sync_progress": {
     "title": "LAN Synchronization",

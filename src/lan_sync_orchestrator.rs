@@ -60,11 +60,23 @@ fn http_post_with_progress(
 }
 
 fn url_to_addr(url: &str) -> Result<std::net::SocketAddr, String> {
-    // Parse "http://1.2.3.4:47891/path" → "1.2.3.4:47891"
+    // Parse "http://1.2.3.4:47891/path" or "http://[::1]:47891/path" → SocketAddr
     let without_scheme = url
         .strip_prefix("http://")
         .unwrap_or(url);
-    let host_port = without_scheme.split('/').next().unwrap_or(without_scheme);
+    // For IPv6, bracket notation [::1]:port — find the closing ']' first
+    let host_port = if without_scheme.starts_with('[') {
+        // IPv6: find ']:port' then skip anything after the next '/'
+        let end = without_scheme.find("]/")
+            .map(|i| i + 1) // include the ']'
+            .unwrap_or(without_scheme.find(']').map(|i| i + 1).unwrap_or(without_scheme.len()));
+        // Include :port after ']'
+        let rest = &without_scheme[end..];
+        let port_end = rest.find('/').unwrap_or(rest.len());
+        &without_scheme[..end + port_end]
+    } else {
+        without_scheme.split('/').next().unwrap_or(without_scheme)
+    };
     host_port
         .parse()
         .map_err(|e| format!("Invalid address {}: {}", host_port, e))
@@ -399,7 +411,8 @@ fn execute_master_sync(
     sync_common::merge_incoming_data(&mut conn, &slave_data)
         .map_err(|e| {
             sync_log(&format!("[9/13] BLAD scalania: {} — przywracam backup", e));
-            if let Err(re) = sync_common::restore_database_backup(&conn) {
+            let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
+            if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[9/13] BLAD przywracania backupu: {}", re));
             }
             e
@@ -412,7 +425,8 @@ fn execute_master_sync(
     sync_common::verify_merge_integrity(&conn)
         .map_err(|e| {
             sync_log(&format!("[10/13] BLAD weryfikacji: {} — przywracam backup", e));
-            if let Err(re) = sync_common::restore_database_backup(&conn) {
+            let _ = std::fs::remove_file(dir.join("lan_sync_incoming.json"));
+            if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[10/13] BLAD przywracania backupu: {}", re));
             }
             e
@@ -492,7 +506,7 @@ fn execute_master_sync(
 
     let db_ready_resp = db_ready_resp.map_err(|e| {
         sync_log(&format!("[12/13] BLAD — slave nie zakonczyl importu po {} probach: {}", db_ready_timeouts.len(), e));
-        if let Err(re) = sync_common::restore_database_backup(&conn) {
+        if let Err(re) = sync_common::restore_database_backup(&mut conn) {
             sync_log(&format!("[12/13] BLAD przywracania backupu master: {}", re));
         }
         e
@@ -503,7 +517,7 @@ fn execute_master_sync(
         if resp.get("ok").and_then(|v| v.as_bool()) != Some(true) {
             let err_msg = resp.get("error").and_then(|v| v.as_str()).unwrap_or("unknown");
             sync_log(&format!("[12/13] Slave zglosil blad importu: {}", err_msg));
-            if let Err(re) = sync_common::restore_database_backup(&conn) {
+            if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[12/13] BLAD przywracania backupu master: {}", re));
             }
             return Err(format!("Slave import failed: {}", err_msg));

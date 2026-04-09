@@ -247,7 +247,7 @@ export function Sessions() {
     maxHeight: number;
   } | null>(null);
 
-  // resolveContextMenuPlacement helper similar to ProjectDayTimeline
+  // TODO: Extract shared context menu placement logic with ProjectDayTimeline (timeline-calculations.ts)
   const resolveContextMenuPlacement = useCallback(
     (
       x: number,

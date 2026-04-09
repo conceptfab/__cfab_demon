@@ -242,7 +242,7 @@ export function Help() {
             <HelpTabTrigger
               value="pm"
               icon={<Briefcase className="h-3.5 w-3.5" />}
-              label="PM"
+              label={t18n('help_page.pm')}
             />
             <HelpTabTrigger
               value="daemon"
@@ -288,6 +288,10 @@ export function Help() {
                   t18n('help_page.first_session_assignment_and_local_ai_onboarding_instruc'),
                   t18n('help_page.accessible_from_the_sidebar_rocket_icon_and_from_the_hel'),
                   t18n('help_page.automatically_clears_the_first_run_hint_after_finishing'),
+                  t18n('help_page.quickstart_sync_overview'),
+                  t18n('help_page.quickstart_reports_overview'),
+                  t18n('help_page.quickstart_pm_overview'),
+                  t18n('help_page.quickstart_backup_export'),
                 ]}
               >
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
@@ -720,6 +724,8 @@ export function Help() {
                   t18n('help_page.operation_history_insight_into_when_and_what_data_was_mo'),
                   t18n('help_page.backup_restore_database_manual_backups_restore_from_file'),
                   t18n('help_page.data_history_refreshes_after_real_data_changes_and_when_'),
+                  t18n('help_page.data_stats_summary_tiles'),
+                  t18n('help_page.database_health_panel'),
                 ]}
               >
                 <HelpDetailsBlock
@@ -784,6 +790,10 @@ export function Help() {
                   t18n('help_page.pm_feature_templates'),
                   t18n('help_page.pm_feature_status'),
                   t18n('help_page.pm_feature_budget'),
+                  t18n('help_page.pm_feature_clients'),
+                  t18n('help_page.pm_feature_tf_match'),
+                  t18n('help_page.pm_feature_filters'),
+                  t18n('help_page.pm_feature_folder_size'),
                   t18n('help_page.pm_feature_compat'),
                 ]}
               />
@@ -960,6 +970,9 @@ export function Help() {
                   t18n('help_page.manual_session_rebuild_button_in_the_session_management'),
                   t18n('help_page.unsaved_changes_warning_before_leaving_settings'),
                   t18n('help_page.dev_log_management_centralized_log_viewer'),
+                  t18n('help_page.pm_settings_work_folder_and_templates'),
+                  t18n('help_page.backup_interval_automatic_database_backup'),
+                  t18n('help_page.restore_database_from_backup_file'),
                 ]}
               >
                 <HelpDetailsBlock

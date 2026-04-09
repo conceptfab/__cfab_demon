@@ -33,7 +33,7 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Obsługa błędów
 anyhow = "1.0"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
 
 # Logowanie
 log = { version = "0.4", features = ["std"] }

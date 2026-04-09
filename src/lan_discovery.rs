@@ -425,13 +425,15 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
     }
 
     let mut last_beacon = Instant::now();
-    let mut last_http_scan = Instant::now().checked_sub(Duration::from_secs(600)).unwrap_or(Instant::now()); // allow immediate first scan
-    let mut last_full_scan = Instant::now().checked_sub(Duration::from_secs(600)).unwrap_or(Instant::now()); // allow immediate first full scan
+    let mut last_http_scan = Instant::now();
+    let mut last_full_scan = Instant::now();
 
     let mut buf = [0u8; 2048];
     let mut sync_handle: Option<JoinHandle<()>> = None;
-    let mut last_sync_attempt = Instant::now().checked_sub(Duration::from_secs(3600)).unwrap_or(Instant::now()); // allow immediate first sync
-    let mut last_settings_reload = Instant::now().checked_sub(Duration::from_secs(300)).unwrap_or(Instant::now());
+    let mut last_sync_attempt = Instant::now();
+    let mut last_settings_reload = Instant::now();
+    // Force immediate execution of all scans on first loop iteration.
+    let mut first_run = true;
     let mut lan_settings = config::load_lan_sync_settings();
     let mut discovery_active = true;
     let mut role_is_forced = forced;
@@ -548,7 +550,7 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
         } else {
             Duration::from_secs(120)
         };
-        if discovery_active && last_http_scan.elapsed() >= http_scan_interval {
+        if discovery_active && (first_run || last_http_scan.elapsed() >= http_scan_interval) {
             last_http_scan = Instant::now();
 
             let found = if use_health_check {
@@ -647,6 +649,8 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
             peers_dirty = false;
             last_peers_write = Instant::now();
         }
+
+        first_run = false;
     }
 
     // Join any outstanding sync handle before exiting
@@ -855,7 +859,7 @@ fn broadcast_to_all(socket: &UdpSocket, data: &[u8]) {
         }
     }
     // 3. Unicast scan of real LAN subnets (most reliable on Windows)
-    //    Done every 2 minutes to avoid flooding (254 packets per /24 subnet)
+    //    Done every 30s (UNICAST_SCAN_INTERVAL_SECS), aligned with beacon interval
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())

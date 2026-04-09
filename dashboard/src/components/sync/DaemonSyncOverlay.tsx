@@ -15,6 +15,8 @@ import { useDataStore } from '@/store/data-store';
 
 /** Polling interval when idle (checking if daemon started sync) */
 const IDLE_POLL_MS = 2_000;
+/** Timeout after which the overlay can be dismissed (5 minutes) */
+const OVERLAY_TIMEOUT_MS = 5 * 60 * 1_000;
 
 function isActive(p: SyncProgress): boolean {
   return p.phase !== 'idle' && p.step > 0;
@@ -28,14 +30,25 @@ export function DaemonSyncOverlay() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const [activeSyncType, setActiveSyncType] = useState<'lan' | 'online' | null>(null);
   const wasActiveRef = useRef(false);
+  const [canDismiss, setCanDismiss] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
 
   const handleFinished = useCallback((success: boolean) => {
     setActiveSyncType(null);
     wasActiveRef.current = false;
+    setCanDismiss(false);
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
     if (success) {
       triggerRefresh('daemon_sync_finished');
     }
   }, [triggerRefresh]);
+
+  const handleDismiss = useCallback(() => {
+    setActiveSyncType(null);
+    wasActiveRef.current = false;
+    setCanDismiss(false);
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+  }, []);
 
   const lastSyncTypeRef = useRef<'lan' | 'online' | null>(null);
 
@@ -63,6 +76,14 @@ export function DaemonSyncOverlay() {
       }).catch(() => {});
     }
   }, []);
+
+  // Start timeout when sync becomes active — allow dismiss after 5min
+  useEffect(() => {
+    if (activeSyncType === null) return;
+    setCanDismiss(false);
+    timeoutRef.current = window.setTimeout(() => setCanDismiss(true), OVERLAY_TIMEOUT_MS);
+    return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
+  }, [activeSyncType]);
 
   // Prevent window close during active sync
   useEffect(() => {
@@ -116,6 +137,16 @@ export function DaemonSyncOverlay() {
         onFinished={handleFinished}
         onRetry={handleRetry}
       />
+      {canDismiss && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10000]">
+          <button
+            onClick={handleDismiss}
+            className="rounded-md border border-muted-foreground/30 bg-background/90 px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors backdrop-blur-sm"
+          >
+            Dismiss — sync may still be running
+          </button>
+        </div>
+      )}
     </>
   );
 }

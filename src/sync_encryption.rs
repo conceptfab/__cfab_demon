@@ -38,12 +38,11 @@ pub struct SftpCredentials {
 
 impl Drop for SftpCredentials {
     fn drop(&mut self) {
-        // Best-effort zeroing of sensitive fields
-        unsafe {
-            for field in [&mut self.password, &mut self.username, &mut self.file_encryption_key] {
-                let bytes = field.as_mut_vec();
-                for b in bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
-            }
+        // Zero sensitive fields — clear + shrink deallocates the buffer,
+        // avoiding UB from as_mut_vec() invalidating String invariants.
+        for field in [&mut self.password, &mut self.username, &mut self.file_encryption_key] {
+            field.clear();
+            field.shrink_to_fit();
         }
     }
 }

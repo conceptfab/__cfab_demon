@@ -28,6 +28,19 @@ fn rule_exists(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if the rule already has profile=Any (no need to recreate).
+fn rule_has_correct_profile(name: &str) -> bool {
+    Command::new("netsh")
+        .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", name)])
+        .creation_flags(0x08000000)
+        .output()
+        .map(|o| {
+            let stdout = String::from_utf8_lossy(&o.stdout).to_ascii_lowercase();
+            stdout.contains("profiles:") && stdout.contains("any")
+        })
+        .unwrap_or(false)
+}
+
 fn delete_rule(name: &str) {
     let _ = Command::new("netsh")
         .args(["advfirewall", "firewall", "delete", "rule", &format!("name={}", name)])
@@ -81,6 +94,10 @@ pub fn ensure_firewall_rules() {
 
     for rule in RULES {
         if rule_exists(rule.name) {
+            if rule_has_correct_profile(rule.name) {
+                // Rule exists with correct profile — skip recreation
+                continue;
+            }
             delete_rule(rule.name);
             match add_rule(rule) {
                 Ok(()) => {

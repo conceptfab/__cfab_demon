@@ -135,13 +135,11 @@ fn create_pre_sync_backup_to_destination(conn: &rusqlite::Connection, sync_type:
 /// Restore result indicating caller MUST re-open the database connection.
 pub struct RestoreResult;
 
-/// Uses file copy since the backup feature may not be enabled in rusqlite.
-///
-/// SAFETY NOTE: The caller's connection remains open during the file copy.
-/// We mitigate this by checkpointing WAL, flushing cache, and removing WAL/SHM
-/// files after copy. Callers MUST re-open the connection after restore — the
-/// returned `RestoreResult` enforces awareness of this requirement.
-pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<RestoreResult, String> {
+/// Restores from the most recent backup using SQLite backup API.
+/// This is safe even with the caller's connection open — the backup API
+/// handles locking correctly, unlike raw fs::copy which can corrupt on Windows.
+/// Callers MUST re-open the connection after restore.
+pub fn restore_database_backup(conn: &mut rusqlite::Connection) -> Result<RestoreResult, String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     let backup_dir = dir.join("sync_backups");
 
@@ -159,28 +157,16 @@ pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<RestoreRes
     backups.sort();
 
     let latest = backups.last().ok_or("No backup files found")?.clone();
-    let db_path = config::dashboard_db_path().map_err(|e| e.to_string())?;
 
-    // Checkpoint WAL to ensure backup is consistent, then restore via file copy
-    conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
-        .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
+    // Open backup file as source, then use SQLite backup API to restore safely
+    let src = rusqlite::Connection::open(&latest)
+        .map_err(|e| format!("Cannot open backup file: {}", e))?;
+    let backup = rusqlite::backup::Backup::new(&src, conn)
+        .map_err(|e| format!("Backup init failed: {}", e))?;
+    backup.run_to_completion(100, std::time::Duration::from_millis(50), None)
+        .map_err(|e| format!("Backup restore failed: {}", e))?;
 
-    // Close the connection's internal cache so file copy is safe
-    conn.cache_flush()
-        .map_err(|e| format!("Cache flush failed: {}", e))?;
-
-    conn.execute_batch("PRAGMA optimize;").ok();
-
-    std::fs::copy(&latest, &db_path)
-        .map_err(|e| format!("File copy restore failed: {}", e))?;
-
-    // Remove WAL and SHM files that may reference the old database state
-    let wal_path = db_path.with_extension("db-wal");
-    let shm_path = db_path.with_extension("db-shm");
-    let _ = std::fs::remove_file(&wal_path);
-    let _ = std::fs::remove_file(&shm_path);
-
-    log::warn!("Database restored from backup: {:?}. Caller MUST re-open connection.", latest);
+    log::warn!("Database restored from backup via SQLite API: {:?}. Caller MUST re-open connection.", latest);
     Ok(RestoreResult)
 }
 
@@ -245,6 +231,8 @@ fn log_merge_conflict(
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
+    // Parse into Value — the source string is caller-owned and will be freed after this call.
+    // For very large payloads (>10MB), consider refactoring to section-based parsing.
     let archive: serde_json::Value = serde_json::from_str(slave_data)
         .map_err(|e| format!("Failed to parse slave data: {}", e))?;
 
@@ -650,8 +638,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         ) { log::warn!("tombstone FK cleanup sessions for app '{}': {}", sync_key, e); }
                         let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]);
                     }
-                    "sessions" => { let _ = tx.execute("DELETE FROM sessions WHERE id = ?1", [sync_key]); }
-                    "manual_sessions" => { let _ = tx.execute("DELETE FROM manual_sessions WHERE id = ?1", [sync_key]); }
+                    "sessions" => { let _ = tx.execute("DELETE FROM sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]); }
+                    "manual_sessions" => { let _ = tx.execute("DELETE FROM manual_sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]); }
                     _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
                 }
 
@@ -785,4 +773,51 @@ fn json_i64(v: &serde_json::Value, key: &str) -> i64 {
 
 fn json_f64(v: &serde_json::Value, key: &str) -> f64 {
     v.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_ts_iso_format() {
+        assert_eq!(normalize_ts("2024-01-15T10:30:00"), "2024-01-15 10:30:00");
+    }
+
+    #[test]
+    fn test_normalize_ts_already_normalized() {
+        assert_eq!(normalize_ts("2024-01-15 10:30:00"), "2024-01-15 10:30:00");
+    }
+
+    #[test]
+    fn test_normalize_ts_invalid_returns_original() {
+        assert_eq!(normalize_ts("invalid"), "invalid");
+    }
+
+    #[test]
+    fn test_json_helpers() {
+        let v: serde_json::Value = serde_json::json!({
+            "name": "test",
+            "count": 42,
+            "rate": 3.14,
+            "empty": null
+        });
+        assert_eq!(json_str(&v, "name"), "test");
+        assert_eq!(json_str(&v, "missing"), "");
+        assert_eq!(json_i64(&v, "count"), 42);
+        assert_eq!(json_i64(&v, "missing"), 0);
+        assert!((json_f64(&v, "rate") - 3.14).abs() < f64::EPSILON);
+        assert_eq!(json_str_opt(&v, "name"), Some("test".to_string()));
+        assert_eq!(json_str_opt(&v, "empty"), None);
+    }
+
+    #[test]
+    fn test_generate_marker_hash_deterministic() {
+        let h1 = generate_marker_hash_simple("abc", "2024-01-01 00:00:00", "dev1");
+        let h2 = generate_marker_hash_simple("abc", "2024-01-01 00:00:00", "dev1");
+        assert_eq!(h1, h2);
+        // Different input → different hash
+        let h3 = generate_marker_hash_simple("abc", "2024-01-01 00:00:00", "dev2");
+        assert_ne!(h1, h3);
+    }
 }

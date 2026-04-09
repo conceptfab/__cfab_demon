@@ -113,7 +113,16 @@ function areMetricsEqual(
   next: AssignmentModelMetrics,
 ): boolean {
   if (!current) return false;
-  return JSON.stringify(current) === JSON.stringify(next);
+  if (current.window_days !== next.window_days) return false;
+  if (current.points.length !== next.points.length) return false;
+  const cs = current.summary;
+  const ns = next.summary;
+  return (
+    cs.feedback_total === ns.feedback_total &&
+    cs.feedback_precision === ns.feedback_precision &&
+    cs.auto_runs === ns.auto_runs &&
+    cs.auto_assigned === ns.auto_assigned
+  );
 }
 
 export function AIPage() {
@@ -185,9 +194,9 @@ export function AIPage() {
     (patch: Partial<AiSettingsFormValues>) => {
       dirtyRef.current = true;
       if (patch.mode !== undefined) setMode(patch.mode);
-      if (patch.suggestConf !== undefined) setSuggestConf(patch.suggestConf);
-      if (patch.autoConf !== undefined) setAutoConf(patch.autoConf);
-      if (patch.autoEvidence !== undefined) setAutoEvidence(patch.autoEvidence);
+      if (patch.suggestConf !== undefined) setSuggestConf(clampNumber(patch.suggestConf, 0, 1));
+      if (patch.autoConf !== undefined) setAutoConf(clampNumber(patch.autoConf, 0, 1));
+      if (patch.autoEvidence !== undefined) setAutoEvidence(Math.round(clampNumber(patch.autoEvidence, 1, 50)));
       if (patch.trainingHorizonDays !== undefined) {
         setTrainingHorizonDays(patch.trainingHorizonDays);
       }

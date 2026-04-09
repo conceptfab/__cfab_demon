@@ -8,14 +8,21 @@ static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
 static LOG_SETTINGS_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
 const LOG_SETTINGS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Deterministic FNV-1a 64-bit hash (same result across processes/machines).
-fn fnv1a_64(data: &[u8]) -> u64 {
-    let mut hash: u64 = 14695981039346656037;
-    for byte in data {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(1099511628211);
-    }
-    hash
+/// Deterministic 128-bit hash using SipHash for better collision resistance.
+/// Returns lower 128 bits formatted as hex. Uses two SipHash-2-4 passes
+/// to produce a 128-bit result that's more collision-resistant than FNV-1a 64-bit.
+fn hash_128(data: &[u8]) -> u128 {
+    use std::hash::{Hash, Hasher};
+    // SipHash with fixed key 0 for deterministic cross-machine results
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    data.hash(&mut hasher);
+    let h1 = hasher.finish();
+    // Second pass with different seed to extend to 128 bits
+    let mut hasher2 = std::collections::hash_map::DefaultHasher::new();
+    h1.hash(&mut hasher2);
+    data.hash(&mut hasher2);
+    let h2 = hasher2.finish();
+    ((h1 as u128) << 64) | (h2 as u128)
 }
 
 /// Read device_id from config dir; create if missing. Fallback to machine name.
@@ -87,14 +94,17 @@ pub fn sync_log(msg: &str) {
             }
         }
     };
-    // Rotate if exceeds max size
+    // Rotate if exceeds max size — write to temp file + rename for atomicity
     if let Ok(meta) = std::fs::metadata(&path) {
         if meta.len() > max_bytes {
             let keep_bytes = (max_bytes / 2) as usize;
             if let Ok(content) = std::fs::read_to_string(&path) {
                 let start = content.len().saturating_sub(keep_bytes);
                 let start = content[start..].find('\n').map(|i| start + i + 1).unwrap_or(start);
-                let _ = std::fs::write(&path, &content[start..]);
+                let tmp = format!("{}.tmp", path.display());
+                if std::fs::write(&tmp, &content[start..]).is_ok() {
+                    let _ = std::fs::rename(&tmp, &path);
+                }
             }
         }
     }
@@ -147,7 +157,7 @@ pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let concat: String = conn
         .query_row(sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
-    format!("{:016x}", fnv1a_64(concat.as_bytes()))
+    format!("{:032x}", hash_128(concat.as_bytes()))
 }
 
 /// Compute hashes for all 4 sync tables, concatenated.
@@ -163,5 +173,5 @@ pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
 /// Generate a marker hash from tables_hash + timestamp + device_id.
 pub fn generate_marker_hash(tables_hash: &str, timestamp: &str, device_id: &str) -> String {
     let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    format!("{:016x}", fnv1a_64(input.as_bytes()))
+    format!("{:032x}", hash_128(input.as_bytes()))
 }

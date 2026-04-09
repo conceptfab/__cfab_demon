@@ -208,17 +208,6 @@ pub fn load_online_sync_settings() -> OnlineSyncSettings {
     }
 }
 
-/// Save online sync settings to disk.
-#[allow(dead_code)]
-pub fn save_online_sync_settings(settings: &OnlineSyncSettings) -> Result<()> {
-    let dir = config_dir()?;
-    let path = dir.join("online_sync_settings.json");
-    let json = serde_json::to_string_pretty(settings)
-        .context("Failed to serialize OnlineSyncSettings")?;
-    std::fs::write(&path, json)
-        .with_context(|| format!("Failed to write {:?}", path))?;
-    Ok(())
-}
 
 /// Ładuje legacy konfigurację z pliku JSON (interwały + fallback lista aplikacji).
 fn load_legacy_json_config() -> Config {

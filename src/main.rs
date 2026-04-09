@@ -38,7 +38,10 @@ pub use timeflow_shared::daily_store;
 
 /// Application name — single constant used everywhere
 pub const APP_NAME: &str = "TIMEFLOW Demon";
-pub const VERSION: &str = env!("TIMEFLOW_VERSION");
+pub const VERSION: &str = match option_env!("TIMEFLOW_VERSION") {
+    Some(v) => v,
+    None => "dev",
+};
 
 fn main() {
     // Handle command-line arguments (fast path, no logging needed)

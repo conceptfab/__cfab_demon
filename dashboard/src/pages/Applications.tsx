@@ -51,6 +51,7 @@ export function Applications() {
   const [newExe, setNewExe] = useState('');
   const [newDisplay, setNewDisplay] = useState('');
   const [monitoredError, setMonitoredError] = useState('');
+  const [addingApp, setAddingApp] = useState(false);
   const [syncingMonitored, setSyncingMonitored] = useState(false);
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [loadingApps, setLoadingApps] = useState(true);
@@ -146,6 +147,8 @@ export function Applications() {
   );
 
   const handleAddApp = async () => {
+    if (addingApp) return;
+    setAddingApp(true);
     setMonitoredError('');
     try {
       await daemonApi.addMonitoredApp(newExe, newDisplay);
@@ -154,6 +157,8 @@ export function Applications() {
       await loadMonitored();
     } catch (e) {
       setMonitoredError(getMonitoredErrorMessage(e));
+    } finally {
+      setAddingApp(false);
     }
   };
 
@@ -405,7 +410,7 @@ export function Applications() {
               size="sm"
               className="h-8"
               onClick={handleAddApp}
-              disabled={!newExe.trim()}
+              disabled={!newExe.trim() || addingApp}
             >
               <Plus className="h-3.5 w-3.5 mr-1" />
               {t('applications_page.actions.add')}
@@ -655,7 +660,7 @@ export function Applications() {
                         {app.project_name}
                       </Badge>
                     ) : (
-                      <span className="text-muted-foreground">{i18n.t('ui.common.not_available')}</span>
+                      <span className="text-muted-foreground">{t('ui.common.not_available')}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">

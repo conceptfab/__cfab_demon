@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import {
   APP_REFRESH_EVENT,
@@ -10,7 +10,13 @@ import {
 export function usePageRefreshListener(
   onRefresh: (reasons: string[], source: 'app' | 'local') => void,
 ) {
-  const handleRefresh = useEffectEvent(onRefresh);
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+
+  const handleRefresh = useCallback(
+    (reasons: string[], source: 'app' | 'local') => onRefreshRef.current(reasons, source),
+    [],
+  );
 
   useEffect(() => {
     const handleLocalDataChange = (event: Event) => {
@@ -43,5 +49,5 @@ export function usePageRefreshListener(
         handleAppRefresh as EventListener,
       );
     };
-  }, []);
+  }, [handleRefresh]);
 }

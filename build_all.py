@@ -60,14 +60,23 @@ Przyklady:
     compare_script = ROOT / "compare_locales.py"
     if compare_script.exists():
         result = subprocess.run([sys.executable, str(compare_script)], cwd=ROOT, capture_output=True, text=True)
-        # Tłumaczenia traktujemy jako ostrzeżenie, nie przerywamy builda ale wyświetlamy
-        if "(Keys present" in result.stdout or "Empty values" in result.stdout:
+        stdout = result.stdout.strip()
+        # Sprawdź czy są realne braki (nie tylko puste sekcje "---")
+        has_missing = False
+        for line in stdout.splitlines():
+            line = line.strip()
+            if not line or line.startswith("---") or line.startswith("Missing") or line.startswith("Empty"):
+                continue
+            # Realna linia z kluczem/wartością = brak w tłumaczeniach
+            has_missing = True
+            break
+        if has_missing:
             print("\nOSTRZEŻENIE: Wykryto braki/rozbieżności w tłumaczeniach (PL/EN):")
-            print(result.stdout)
+            print(stdout)
         else:
-            print("OK.")
+            print("OK — tłumaczenia PL/EN zsynchronizowane.")
     else:
-        print("Pominięto - brak skryptu compare_locales.py")
+        print("Pominięto — brak skryptu compare_locales.py")
 
     if do_build_demon:
         if not build_demon(ROOT, DIST, args.no_clean):

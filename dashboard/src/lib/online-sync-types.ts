@@ -1,4 +1,11 @@
-import type { ExportArchive, ImportSummary } from '@/lib/db-types';
+import type {
+  Application,
+  ExportArchive,
+  ImportSummary,
+  ManualSession,
+  Project,
+  Session,
+} from '@/lib/db-types';
 
 export interface OnlineSyncSettings {
   enabled: boolean;
@@ -22,10 +29,10 @@ export interface TableHashes {
 }
 
 export interface DeltaData {
-  projects: any[];
-  applications: any[];
-  sessions: any[];
-  manual_sessions: any[];
+  projects: Partial<Project>[];
+  applications: Partial<Application>[];
+  sessions: Partial<Session>[];
+  manual_sessions: Partial<ManualSession>[];
   tombstones: {
     table_name: string;
     record_id: string;

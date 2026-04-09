@@ -124,6 +124,10 @@ fn check_dashboard_compatibility() {
                 // Reset flag if versions become compatible again (e.g. after update)
                 WARNING_SHOWN.store(false, Ordering::SeqCst);
             }
+        } else {
+            // File missing (dashboard not installed/uninstalled) — reset so warning
+            // can trigger again if dashboard reappears with incompatible version
+            WARNING_SHOWN.store(false, Ordering::SeqCst);
         }
     }
 }
@@ -647,7 +651,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Periodic save (skip while database is frozen for LAN sync)
         if last_save.elapsed() >= save_interval {
-            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Relaxed));
+            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
             if is_frozen {
                 log::debug!("Skipping periodic save — database frozen for sync");
                 save_skipped_while_frozen = true;
@@ -660,7 +664,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 last_save = Instant::now();
             }
         } else if save_skipped_while_frozen {
-            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Relaxed));
+            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
             if !is_frozen {
                 log::info!("Database unfrozen — saving skipped data now");
                 if let Err(e) = storage::save_daily(&mut daily_data) {

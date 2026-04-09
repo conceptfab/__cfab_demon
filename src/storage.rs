@@ -51,12 +51,11 @@ fn truncate_middle(value: &str, max_chars: usize) -> String {
         return String::new();
     }
 
-    // Fast path: avoid allocation when string fits within limit (most common case)
-    if value.chars().count() <= max_chars {
+    // Collect once — avoids double iteration over chars
+    let chars: Vec<char> = value.chars().collect();
+    if chars.len() <= max_chars {
         return value.to_string();
     }
-
-    let chars: Vec<char> = value.chars().collect();
 
     if max_chars <= 3 {
         return chars.into_iter().take(max_chars).collect();
@@ -64,8 +63,8 @@ fn truncate_middle(value: &str, max_chars: usize) -> String {
 
     let head_len = (max_chars - 3) / 2;
     let tail_len = max_chars - 3 - head_len;
-    let head: String = chars.iter().take(head_len).copied().collect();
-    let tail: String = chars.iter().skip(chars.len() - tail_len).copied().collect();
+    let head: String = chars[..head_len].iter().collect();
+    let tail: String = chars[chars.len() - tail_len..].iter().collect();
     format!("{}...{}", head, tail)
 }
 

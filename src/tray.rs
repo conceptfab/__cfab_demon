@@ -11,8 +11,18 @@ use rusqlite::OptionalExtension;
 use timeflow_shared::session_settings;
 
 use crate::i18n::{self, Lang, TrayText};
+use crate::lan_server::LanSyncState;
 use crate::win_process_snapshot::{collect_process_entries, no_console};
 use crate::APP_NAME;
+
+/// Guard that resets sync_in_progress to false on drop (panic-safe).
+struct SyncGuard(Arc<LanSyncState>);
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        self.0.sync_in_progress.store(false, Ordering::SeqCst);
+        log::info!("SyncGuard (tray) dropped — sync_in_progress reset to false");
+    }
+}
 
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
@@ -263,7 +273,7 @@ impl TrayState {
             if let Some(ref state) = self.sync_state {
                 let role = state.get_role();
                 let syncing = state.sync_in_progress.load(Ordering::Relaxed);
-                let frozen = state.db_frozen.load(Ordering::Relaxed);
+                let frozen = state.db_frozen.load(Ordering::Acquire);
                 let prefix = lang.t(TrayText::SyncStatusPrefix);
                 let status = if syncing {
                     let frozen_label = lang.t(TrayText::SyncFrozenSuffix);
@@ -379,6 +389,7 @@ impl TrayState {
         {
             let state = sync_state.clone();
             std::thread::spawn(move || {
+                let _guard = SyncGuard(state.clone());
                 if force {
                     crate::online_sync::run_online_sync_forced(online_settings, state, force);
                 } else {
@@ -409,6 +420,7 @@ impl TrayState {
         if lan_settings.enabled {
             let state = sync_state.clone();
             std::thread::spawn(move || {
+                let _guard = SyncGuard(state.clone());
                 match crate::lan_discovery::find_first_peer() {
                     Some(peer) => {
                         state.set_role("master");
@@ -419,14 +431,13 @@ impl TrayState {
                     }
                     None => {
                         log::warn!("No LAN peer found for tray-triggered sync");
-                        state.sync_in_progress.store(false, Ordering::SeqCst);
                     }
                 }
             });
             return;
         }
 
-        // Nothing configured — release lock
+        // Nothing configured — _guard pattern not needed, release directly
         sync_state.sync_in_progress.store(false, Ordering::SeqCst);
     }
 
