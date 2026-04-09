@@ -3,14 +3,14 @@
 - **KAŻDA NOWA FUNKCJA** musi zostać dopisana do panelu pomocy (`Help.tsx`).
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
-/requesting-code-review Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona pod katem:
+/rust-expert  /requesting-code-review /writing-plans Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona pod katem:
  - poprawności i logiki,
  - UI
  - wydajności, i jej poprawy,
  - wspomagania AI,
  - synchrnozacji danych lan i online
  możliwych optymalizacji, 
- nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń oraz funkcjonalności nie opisanej w zakładkach help/pomoc. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
+ nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń oraz funkcjonalności nie opisanej w zakładkach help/pomoc. Swoje uwagi i szczególowe poprawki zapisz w raport.md
 
 <!-- - smtp maila dla bug huntera -->
 
