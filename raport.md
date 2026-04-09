@@ -1,535 +1,714 @@
-# TIMEFLOW — Raport z audytu kodu
-**Data:** 2026-04-09  
-**Zakres:** Demon Rust (`src/`), Dashboard React/TS (`dashboard/src/`), Help.tsx vs funkcjonalnosc  
-**Status aplikacji:** Dzialajaca poprawnie — raport dotyczy optymalizacji, bezpieczenstwa i jakosci kodu
+# TIMEFLOW — Raport analizy kodu (2026-04-09)
+
+> Aplikacja działa poprawnie. Poniższy raport identyfikuje obszary do optymalizacji,
+> potencjalne problemy i brakujące elementy — priorytetyzowane wg ważności.
 
 ---
 
-## Spis tresci
+## Spis treści
 
-1. [Demon Rust — problemy krytyczne](#1-demon-rust--problemy-krytyczne)
-2. [Demon Rust — problemy wysokie](#2-demon-rust--problemy-wysokie)
-3. [Demon Rust — problemy srednie](#3-demon-rust--problemy-srednie)
-4. [Demon Rust — problemy niskie](#4-demon-rust--problemy-niskie)
-5. [Dashboard — problemy krytyczne](#5-dashboard--problemy-krytyczne)
-6. [Dashboard — problemy wysokie](#6-dashboard--problemy-wysokie)
-7. [Dashboard — problemy srednie](#7-dashboard--problemy-srednie)
-8. [Dashboard — problemy niskie](#8-dashboard--problemy-niskie)
-9. [Brakujaca dokumentacja w Help.tsx](#9-brakujaca-dokumentacja-w-helptsx)
-10. [Podsumowanie i priorytety](#10-podsumowanie-i-priorytety)
+1. [Demon Rust — poprawność i logika](#1-demon-rust--poprawność-i-logika)
+2. [Demon Rust — wydajność](#2-demon-rust--wydajność)
+3. [Dashboard React — UI i logika](#3-dashboard-react--ui-i-logika)
+4. [Dashboard — wydajność](#4-dashboard--wydajność)
+5. [Synchronizacja LAN](#5-synchronizacja-lan)
+6. [Synchronizacja Online](#6-synchronizacja-online)
+7. [Bezpieczeństwo](#7-bezpieczeństwo)
+8. [AI / Machine Learning](#8-ai--machine-learning)
+9. [Brakujące tłumaczenia](#9-brakujące-tłumaczenia)
+10. [Help — brakująca dokumentacja](#10-help--brakująca-dokumentacja)
+11. [Nadmiarowy kod](#11-nadmiarowy-kod)
+12. [Sugerowane usprawnienia](#12-sugerowane-usprawnienia)
 
 ---
 
-## 1. Demon Rust — problemy krytyczne
+## 1. Demon Rust — poprawność i logika
 
-### C-R1. Undefined Behavior przy zerowaniu hasel w pamieci
-**Pliki:** `src/sftp_client.rs:26-33`, `src/sync_encryption.rs:41-48`
+### 1.1 `hash_128()` w `lan_common.rs` — poprawne, ale ryzyko przyszłej regresji (NISKI)
+**Plik:** `src/lan_common.rs:14-26`
 
-`as_mut_vec()` na `String` narusza invarianty Rusta — po wyzerowaniu bajtow String zawiera nieprawidlowe UTF-8. Kompilator moze zoptymalizowac `write_volatile` gdy `String::drop` potem czyta metadane.
+`DefaultHasher::new()` tworzy SipHasher ze stałymi kluczami (0,0) — jest deterministyczny między procesami/maszynami. **Aktualnie poprawne.** Komentarz w kodzie to potwierdza.
+
+**Uwaga:** Rust nie gwarantuje stabilności `DefaultHasher` między wersjami kompilatora. Przy aktualizacji Rust toolchain hash mógłby się zmienić, co zepsuje sync między maszynami z różnymi wersjami binariów.
+
+**Sugestia:** Dla pewności długoterminowej rozważ jawny hasher (np. `siphasher` crate z fixed key) lub SHA-256 skrócone do 128 bitów — to da gwarancję stabilności niezależną od wersji Rust.
+
+### 1.2 Duplikacja `SyncGuard` (NISKI)
+**Pliki:** `src/main.rs:9-15` i `src/tray.rs:19-25`
+
+`SyncGuard` jest zdefiniowany identycznie w dwóch plikach. Wystarczy jeden w `lan_server` lub `sync_common`.
+
+### 1.3 `sync_common.rs` — `VACUUM INTO` z interpolacją ścieżki (ŚREDNI)
+**Plik:** `src/sync_common.rs:56`
 
 ```rust
-// PROBLEM:
-unsafe {
-    let pw_bytes = self.password.as_mut_vec();
-    std::ptr::write_volatile(pw_bytes.as_mut_ptr(), 0); // zeruje TYLKO 1 bajt
-    for b in pw_bytes.iter_mut() { std::ptr::write_volatile(b, 0); }
+let escaped = dest.to_string_lossy().replace('\'', "''");
+conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
+```
+Choć escaping apostrofów jest obecny, lepiej używać parametryzowanego zapytania lub `backup_to_path()` z rusqlite.
+
+### 1.4 `sftp_client.rs` — brak weryfikacji klucza hosta SSH (ŚREDNI)
+**Plik:** `src/sftp_client.rs:41-61`
+
+Klient SSH łączy się bez weryfikacji fingerprint'u hosta:
+```rust
+session.handshake()?;
+session.userauth_password(&self.username, &self.password)?;
+```
+Brak `session.host_key()` validation — podatny na MITM. Dla wewnętrznej synchro to akceptowalne, ale warto dodać logowanie fingerprint'u.
+
+### 1.5 `online_sync.rs` — retry z exponential backoff 3^n (NISKI)
+**Plik:** `src/online_sync.rs:65`
+
+```rust
+let delay = RETRY_BASE_DELAY * 3u32.pow(attempt); // 5s, 15s, 45s
+```
+Trzeci retry to 45s — OK, ale warto dodać jitter żeby uniknąć thundering herd przy wielu klientach.
+
+### 1.6 Hazard na pliku `lan_sync_incoming.json` (WYSOKI)
+**Pliki:** `src/lan_server.rs:660-663`, `src/lan_sync_orchestrator.rs:408-412`
+
+Master zapisuje dane przychodzące do `lan_sync_incoming.json`, następnie slave czyta ten sam plik w `handle_db_ready`. Jeśli dwa procesy sync uruchomią się jednocześnie (np. tray trigger + auto-trigger), oba zapisują do tego samego pliku — data race.
+
+**Poprawka:** Użyj unikalnej nazwy pliku (np. z session UUID) lub przekazuj dane bezpośrednio przez pamięć.
+
+### 1.7 `execute_async_pull` — backup per-pakiet bez rollback całości (WYSOKI)
+**Plik:** `src/online_sync.rs:572-660`
+
+Pętla `for pkg in &pending.packages` wykonuje backup dla każdego pakietu z osobna. Jeśli pakiet #2 powiedzie się ale #3 nie — backup jest po #2, a restore nie cofa #2. Baza w niespójnym stanie.
+
+**Poprawka:** Jeden backup przed pętlą, albo cała pętla w jednej transakcji SQLite.
+
+### 1.8 Slave zapisuje marker hash mastera mimo potencjalnie innego stanu bazy (WYSOKI)
+**Plik:** `src/lan_server.rs:739-748`
+
+Slave w `handle_db_ready` oblicza własny `tables_hash` po merge, ale zapisuje `req.marker_hash` (przesłany przez mastera). Jeśli merge na slave przebiegł inaczej (np. konflikty), marker nie odzwierciedla faktycznego stanu bazy slave'a.
+
+**Poprawka:** Slave powinien wygenerować własny marker hash po merge.
+
+### 1.9 `config.rs` — cicha utrata konfiguracji przy błędnym JSON (ŚREDNI)
+**Plik:** `src/config.rs:149, 207`
+
+```rust
+serde_json::from_str(&content).unwrap_or_default()
+```
+Gdy plik `lan_sync_settings.json` jest niepoprawny (np. częściowy zapis), błąd jest cicho ignorowany i zwracane są domyślne ustawienia.
+
+**Poprawka:** Dodaj `log::warn!` przed `unwrap_or_default()`.
+
+### 1.10 `handle_verify_ack` — potencjalnie martwy endpoint (NISKI)
+**Plik:** `src/lan_server.rs:792-802`
+
+Endpoint `/lan/verify-ack` usuwa pliki tymczasowe i odmraża bazę, ale nie jest wywoływany z orchestratora. Może być legacy endpoint — jeśli tak, oznaczyć jako deprecated.
+
+---
+
+## 2. Demon Rust — wydajność
+
+### 2.1 `rebuild_file_index_cache()` — alokacje String na każdy wpis (NISKI)
+**Plik:** `src/tracker.rs:21-38`
+
+Tworzenie kluczy cache'a generuje nowy `String` na każdy wpis pliku. Przy dużych danych (setki plików dziennie) to wiele alokacji. Rozważ `SmallString` lub pre-alokowany bufor.
+
+### 2.2 `truncate_middle()` — zbieranie chars do Vec (NISKI)
+**Plik:** `src/storage.rs:55`
+
+```rust
+let chars: Vec<char> = value.chars().collect();
+```
+Dla typowych ścieżek (< 260 znaków ASCII) to niepotrzebna alokacja. `value.len()` wystarczy dla ASCII — dodaj fast-path:
+```rust
+if value.len() <= max_chars && value.is_ascii() {
+    return value.to_string();
 }
 ```
 
-**Rozwiazanie:** Uzyc crate `zeroize` albo: `password.clear(); password.shrink_to_fit();`
+### 2.3 Ipconfig cache — `std::sync::Mutex` z `static` (OK)
+**Plik:** `src/lan_discovery.rs:23-43`
+
+Cache ipconfig z TTL 120s — dobrze zaprojektowany. Jedyna uwaga: klonowanie `String` przy każdym dostępie. Przy 30s beacon interval to marginalny koszt.
+
+### 2.4 Brak `Vec::with_capacity()` w kilku miejscach (NISKI)
+- `firewall.rs:56` — `args` vec budowany bez capacity (7-8 elementów)
+- `sync_common.rs:60` — `backups` vec z `read_dir` bez capacity
+
+### 2.5 `Cargo.toml` — optymalizacja zależności (NISKI)
+```toml
+ssh2 = "0.9"  # Ciągnie libssh2-sys — rozważ feature flags / minimalny zestaw
+```
+`ureq` jest poprawnie używane w `online_sync.rs` do HTTP/TLS komunikacji z serwerem (session create, status poll, heartbeat). `ssh2` do SFTP transferu plików. Obie zależności potrzebne.
 
 ---
 
-### C-R2. Restore backupu przy otwartym polaczeniu SQLite
-**Plik:** `src/sync_common.rs:144-184`
+## 3. Dashboard React — UI i logika
 
-`fs::copy` nadpisuje plik DB podczas gdy `conn` jest nadal otwarty. Na Windowsie SQLite trzyma lock na pliku — moze spowodowac korupcje bazy.
+### 3.0 `Sidebar.tsx` — `setLanPeer` niezdefiniowane — bug runtime (KRYTYCZNY)
+**Plik:** `dashboard/src/components/layout/Sidebar.tsx:197, 217`
+
+`lanPeer` pochodzi z `useBackgroundStatusStore`, ale store **nie eksponuje** `setLanPeer`. Wywołania `setLanPeer(null)` w `handleLanSync`/`handleLanScan` odnoszą się do niezdefiniowanej zmiennej.
+
+**Efekt:** Po nieudanej synchronizacji LAN, UI nie aktualizuje stanu peera lokalnie. Jedynym mechanizmem aktualizacji pozostaje polling co 5s.
+
+**Poprawka:** Zamienić na `void refreshLanPeers()`.
+
+### 3.0b Sessions — brak rozróżnienia loading vs empty (WYSOKI)
+**Pliki:** `dashboard/src/hooks/useSessionsData.ts`, `dashboard/src/components/sessions/SessionsVirtualList.tsx`
+
+`useSessionsData` zarządza `isLoadingRef` wewnętrznie przez ref, ale **nie eksponuje go** jako reactive state. `SessionsVirtualList` otrzymuje `isEmpty` i renderuje "brak aktywności" bez rozróżnienia "jeszcze ładuję" od "naprawdę pusto". Przy przełączeniu daty użytkownik widzi natychmiast pustą listę.
+
+**Poprawka:** Dodać `isLoading` state i skeleton w VirtualList.
+
+### 3.0c Sessions — brak error state (ŚREDNI)
+**Plik:** `dashboard/src/hooks/useSessionsData.ts`
+
+Hook ignoruje błędy (`catch(console.error)`) — nie ma eksponowanego `error` state. Gdy `getSessions()` rzuci błąd, użytkownik widzi pustą listę bez wyjaśnienia.
+
+### 3.0d `AiMetricsCharts` — `<Line>` w `<BarChart>` zamiast `<ComposedChart>` (WYSOKI)
+**Plik:** `dashboard/src/components/ai/AiMetricsCharts.tsx:169-218`
+
+`<Line>` wewnątrz `<BarChart>` działa w starszych wersjach Recharts, ale nie jest gwarantowane w nowszych. Powinno być `<ComposedChart>`.
+
+### 3.0e DaemonControl — brak `aria-label` na autostart toggle (ŚREDNI)
+**Plik:** `dashboard/src/pages/DaemonControl.tsx:333-344`
+
+Custom switch button bez `role="switch"`, `aria-checked`, ani `aria-label`. Czytniki ekranu nie opiszą tej kontrolki.
+
+### 3.0f PM page — brak empty state gdy `work_folder` nie skonfigurowany (ŚREDNI)
+**Plik:** `dashboard/src/pages/PM.tsx`
+
+Gdy `settings.work_folder` jest puste, PM ładuje się bez projektów i bez informacji co zrobić. Brak CTA z linkiem do Settings → PM.
+
+### 3.1 `useJobPool.ts` — złożoność i wielkość hooka (ŚREDNI)
+**Plik:** `dashboard/src/hooks/useJobPool.ts` (393 linii)
+
+Ten hook zarządza ~10 niezależnymi timerami/interwałami w jednym miejscu. Każdy `useCallback` ma swoje `ref`-y. To sprawia, że:
+- Trudny do testowania
+- Trudny do debugowania (który timer wywołał co?)
+- Re-render jednego triggera odtwarza cały hook
+
+**Sugestia:** Rozbić na mniejsze hooki per-concern:
+- `useDiagnosticsPoller()` 
+- `useFileSignatureChecker()`
+- `useAutoSplitScheduler()`
+- `useSyncScheduler()`
+
+### 3.2 `BackgroundServices.tsx` — `defaultValue` zamiast kluczy i18n (NISKI)
+**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:43-51`
+
+```tsx
+showInfoRef.current(tRef.current('background.online_sync_pulled', { defaultValue: 'Data synchronized from server' }));
+```
+Użyto `defaultValue` jako fallback — te klucze powinny istnieć w plikach tłumaczeń. Sprawdzić czy `background.online_sync_pulled`, `background.online_sync_pushed`, `background.lan_sync_done` są w `common.json`.
+
+### 3.3 `useEffect` bez dependency array w `BackgroundServices.tsx` (NISKI)
+**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx:52-61`
+
+```tsx
+useEffect(() => {
+    window.addEventListener(AI_ASSIGNMENT_DONE_EVENT, handleAiAssignmentDone);
+    // ...
+    return () => { /* cleanup */ };
+}, []); // pusta tablica — ale handlery są z useCallback([]) więc OK
+```
+Technicznie poprawne dzięki `useCallback` bez deps, ale ESLint może narzekać.
+
+### 3.4 PageRouter — brak `React.memo` na ciężkich stronach (NISKI)
+**Plik:** `dashboard/src/App.tsx:64-80`
+
+`PageRouter` renderuje stronę na podstawie `currentPage`. Lazy loading jest obecny (dobrze!), ale zmiana `currentPage` re-tworzy komponent — warto rozważyć `key` lub cache dla stron z dużym stanem.
+
+### 3.5 `localStorage` jako store sync settings (ŚREDNI)
+**Pliki:** `dashboard/src/lib/lan-sync.ts`, `dashboard/src/lib/online-sync.ts`
+
+Ustawienia LAN/Online sync trzymane w `localStorage`. Problem:
+- Brak atomowości (race condition przy szybkich zapisach)
+- `JSON.parse` przy każdym odczycie w tick loop (co 1s)
+- Brak walidacji schematu po parse
+
+**Sugestia:** Cache w pamięci (Zustand store) + zapis do localStorage tylko przy zmianie.
+
+---
+
+## 4. Dashboard — wydajność
+
+### 4.1 Job pool tick co 1 sekundę (ŚREDNI)
+**Plik:** `dashboard/src/hooks/useJobPool.ts:313`
+
+```tsx
+loopRef.current = window.setInterval(() => { ... }, JOB_LOOP_TICK_MS);
+```
+Co sekundę uruchamia się callback sprawdzający ~10 warunków `now >= next*Ref.current`. To niepotrzebne CPU. Lepiej:
+- Użyć `setTimeout` z dynamicznym delay do najbliższego next* timestamp
+- Lub zwiększyć tick do 5s (większość jobów ma interwały 30-60s)
+
+### 4.2 `background-status-store.ts` — ręczne equality checks (NISKI)
+**Plik:** `dashboard/src/store/background-status-store.ts:22-98`
+
+5 ręcznych funkcji porównujących (`areDaemonStatusesEqual`, `areAssignmentStatusesEqual`, itd.). Zustand wspiera `shallow` selector albo `immer` middleware. Ręczne porównania są poprawne, ale trudne w utrzymaniu.
+
+### 4.3 Brak virtualizacji w listach projektów (NISKI)
+Sesje używają `SessionsVirtualList` (dobrze!), ale listy projektów (`ProjectsList`, `ExcludedProjectsList`) nie mają virtualizacji. Przy >100 projektach może to wpłynąć na wydajność.
+
+---
+
+## 5. Synchronizacja LAN
+
+### 5.1 Hash stabilność — ryzyko przy aktualizacji Rust (NISKI, patrz 1.1)
+`hash_128()` używa `DefaultHasher::new()` ze stałymi kluczami — **aktualnie deterministyczny i poprawny**. Delta sync działa prawidłowo.
+
+**Ryzyko:** Przy aktualizacji Rust toolchain hash output mógłby się zmienić (Rust nie gwarantuje stabilności `DefaultHasher`). Sugerowane rozwiązanie: jawny hasher z gwarancją stabilności.
+
+### 5.2 `MAX_RESPONSE_BODY` = 100MB (ŚREDNI)
+**Plik:** `src/lan_sync_orchestrator.rs:16`
+
+Ograniczenie body HTTP na 100MB zapobiega OOM, ale brak walidacji faktycznego content-type. Malicious peer mógłby wysłać dane innego formatu.
+
+### 5.3 Ręczny HTTP server/client bez TLS (NISKI)
+**Pliki:** `src/lan_server.rs`, `src/lan_sync_orchestrator.rs`
+
+LAN sync używa plain HTTP na TCP 47891. To zrozumiałe dla LAN (wydajność), ale dane transferowane bez szyfrowania w sieci lokalnej. Warto udokumentować to ograniczenie w Help.
+
+### 5.4 DB freeze timeout = 5 min (ŚREDNI)
+**Plik:** `src/lan_server.rs:148`
 
 ```rust
-// PROBLEM:
-pub fn restore_database_backup(conn: &rusqlite::Connection) -> Result<RestoreResult, String> {
-    std::fs::copy(&latest, &db_path) // conn wciaz otwarty!
-}
+const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(300);
 ```
+Jeśli sync zawiesie się, tracker nie zapisze danych przez 5 minut. To akceptowalne, ale warto logować warning gdy unfreeze timeout triggers.
 
-**Rozwiazanie:** Zamknac polaczenie przed `fs::copy` lub uzyc SQLite backup API (`backup_init`).
+### 5.5 Master election by uptime (OK)
+**Plik:** `src/lan_discovery.rs:74-75`
 
----
+`uptime_secs` capped at 30 days — dobra ochrona przed spoofingiem. Tiebreaker przez `device_id` (lexicographic) — poprawne.
 
-### C-R3. Ciche odrzucanie duzych request body bez HTTP 413
-**Plik:** `src/lan_server.rs:400-408`
+### 5.6 Tombstone `sync_key` używa lokalnych integer ID dla sesji — KRYTYCZNY BUG
+**Plik:** `src/sync_common.rs` (merge tombstones)
 
-Jesli `content_length > MAX_REQUEST_BODY` (50MB), cialo zadania jest ignorowane — handler dostaje pusty string. Dla `/lan/upload-db` oznacza to zapis pustych danych jako "incoming".
-
-```rust
-// PROBLEM:
-let body = if content_length > 0 && content_length <= MAX_REQUEST_BODY {
-    // read body...
-} else {
-    String::new() // puste dane zamiast bledu!
-};
+Tombstones dla `sessions` i `manual_sessions` używają auto-increment integer ID jako `sync_key`:
+```sql
+WHERE id = CAST(?1 AS INTEGER)
 ```
+Integer ID jest **lokalny i nie przenośny** między maszynami. Jeśli device A usunie sesję ID=42 i wyśle tombstone, device B może mieć **zupełnie inną sesję** pod ID=42 — i usunie ją błędnie.
 
-**Rozwiazanie:** Zwrocic HTTP 413 (Payload Too Large) i przerwac przetwarzanie.
+**Poprawka:** Użyj composite natural key `(app_executable_name, start_time)` jako sync_key dla sesji, analogicznie do merge logic.
 
----
+### 5.7 Tombstone guard "updated after deletion" tylko dla `projects` (WYSOKI)
+**Plik:** `src/sync_common.rs` (merge_incoming_data)
 
-## 2. Demon Rust — problemy wysokie
+Guard "skip tombstone if record was updated after deletion" jest zaimplementowany **tylko dla `projects`**. Dla `applications`, `sessions`, `manual_sessions` tombstone od peera **bezwarunkowo usunie** rekord, nawet jeśli lokalnie został zaktualizowany po deletion timestamp.
 
-### H-R1. `trigger_sync` nie resetuje `sync_in_progress` przy online sync
-**Plik:** `src/tray.rs:381-404`
+**Poprawka:** Rozszerzyć guard na wszystkie tabele.
 
-Przy online sync, `sync_in_progress` ustawiany na `true`, ale brak `SyncGuard` jak w `main.rs:129`. Jesli watek spanikuje, flaga zostaje `true` na zawsze — blokujac kolejne synci.
+### 5.8 Step 11 — master zawsze wysyła pełny export do slave (ŚREDNI)
+**Plik:** `src/lan_sync_orchestrator.rs` (step 11)
 
-**Rozwiazanie:** Dodac `SyncGuard` w `tray.rs` analogicznie do `main.rs`.
+Nawet w trybie delta, master wywołuje `build_full_export` (eksport od "1970-01-01") w step 11. Dla bazy z wieloletnimi danymi to mogą być dziesiątki MB przy **każdej** synchronizacji.
 
----
+**Poprawka:** W step 11 wysyłaj tylko delta (rekordy zmienione od markera slave'a). Full export tylko gdy marker nie znaleziony.
 
-### H-R2. Stale dane w `lan_sync_incoming.json`
-**Plik:** `src/lan_sync_orchestrator.rs:396-406`
+### 5.9 `restore_database_backup` — brak re-open connection (ŚREDNI)
+**Plik:** `src/lan_sync_orchestrator.rs` (step 12 error path)
 
-Jesli sync nie powiedzie sie i plik nie zostanie usuniety, nastepny sync moze uzyc starych danych na slave'ie w `handle_db_ready` (linia 677).
+Po `restore_database_backup` komentarz mówi "Caller MUST re-open connection", ale `execute_master_sync` w error path step 12 **nie otwiera nowego połączenia**. Stale connection może dawać błędy.
 
-**Rozwiazanie:** Usuwac plik `lan_sync_incoming.json` w bloku `finally`/cleanup niezaleznie od wyniku synca.
-
----
-
-### H-R3. Race condition — `db_frozen` z `Ordering::Relaxed`
-**Plik:** `src/tracker.rs:649-673`
-
-Tracker i sync watki dzialaja na roznych watkach. Z `Relaxed` ordering, tracker moze nie zobaczyc zmiany flagi i zapisac dane w trakcie merge'a.
-
-**Rozwiazanie:** `Ordering::Acquire` przy odczycie, `Ordering::Release` przy zapisie.
+### 5.10 Brak wersji schematu w sync payload (ŚREDNI)
+Eksportowany JSON nie ma pola schema version. Jeśli dwa endpointy mają różne wersje aplikacji (typowe przy aktualizacji), merge code cicho pominie nieznane pola lub użyje zero-defaults dla brakujących.
 
 ---
 
-### H-R4. Parsowanie calego `slave_data` jako `serde_json::Value` w pamieci
-**Plik:** `src/sync_common.rs:247-678`
+## 6. Synchronizacja Online
 
-Przy duzych bazach, `slave_data` moze miec dziesiatki MB. Parsowanie do `serde_json::Value` podwaja zuzycie pamieci.
-
-**Rozwiazanie:** Uzyc `serde_json::StreamDeserializer` lub parsowac po sekcjach.
-
----
-
-### H-R5. Log rotation nie jest atomowa
-**Plik:** `src/lan_common.rs:91-99`
-
-Miedzy `read_to_string` a `write`, inny watek moze dopisac dane do pliku — po `write` te dane zostana utracone.
-
-**Rozwiazanie:** Uzyc mutex lub write do pliku tymczasowego + rename.
-
----
-
-## 3. Demon Rust — problemy srednie
-
-### M-R1. Brak uwierzytelniania LAN server (BEZPIECZENSTWO)
-**Plik:** `src/lan_server.rs:283-293`
-
-Server slucha na `0.0.0.0` bez tokenow/auth. Kazde urzadzenie w sieci LAN moze:
-- Wyzwolic sync (`/lan/trigger-sync`)
-- Nadpisac baze danych (`/lan/push`)
-- Pobrac wszystkie dane (`/lan/pull`)
-
-**Rozwiazanie:** Dodac przynajmniej shared secret lub `device_id` verification.
-
----
-
-### M-R2. `Instant::now().checked_sub()` — odwrotna intencja
-**Plik:** `src/lan_discovery.rs:428-433`
-
-`checked_sub` zwraca `None` jesli system startowal mniej niz 600s temu. Wtedy `unwrap_or(Instant::now())` powoduje, ze pierwszy scan NIE wykona sie natychmiast (odwrotnosc intencji z komentarza).
-
-**Rozwiazanie:** Uzyc flagi `first_run: bool`.
-
----
-
-### M-R3. `GetTickCount64` vs `LASTINPUTINFO.dwTime` — rozne zrodla czasu
-**Plik:** `src/monitor.rs:223-225`
-
-`dwTime` to 32-bit DWORD (overflow po ~49 dniach). Jesli system dziala >49 dni, wynik `saturating_sub` moze byc nieprawidlowy.
-
-**Rozwiazanie:** Uzyc `GetTickCount()` (32-bit) dla spojnosci z `dwTime`, lub obsluzyc wrap-around.
-
----
-
-### M-R4. Timeout 30s hardcoded w `server_post`/`server_get`
-**Plik:** `src/online_sync.rs:133-141`
-
-Przy duzych eksportach na wolnym laczu 30s moze nie wystarczyc. `ureq` timeout obejmuje caly request.
-
-**Rozwiazanie:** Dynamiczny timeout na podstawie rozmiaru danych, lub oddzielne connect/transfer timeout.
-
----
-
-### M-R5. `url_to_addr` nie obsluguje IPv6
-**Plik:** `src/lan_sync_orchestrator.rs:63-71`
-
-IPv6 adresy z portem (`[::1]:47891`) nie sa poprawnie parsowane przez `split('/')`.
-
----
-
-### M-R6. Tombstone usuwanie sesji po ID numerycznym jako string
-**Plik:** `src/sync_common.rs:653`
-
-`sync_key` dla sesji to string, a `id` w SQLite to integer. Dziala dzieki type affinity, ale to kruche rozwiazanie.
-
----
-
-### M-R7. `truncate_middle` podwojna iteracja po znakach
-**Plik:** `src/storage.rs:49-70`
-
-`value.chars().count()` iteruje caly string, potem `chars().collect()` robi to ponownie.
-
-**Rozwiazanie:** Od razu `let chars: Vec<char> = value.chars().collect(); if chars.len() <= max { ... }`
-
----
-
-### M-R8. Firewall rules — kasowanie i tworzenie od nowa przy kazdym starcie
-**Plik:** `src/firewall.rs:77-114`
-
-Wymaga uprawnien administratora. Jesli brak uprawnien — loguje warning, kontynuuje bez regul.
-
----
-
-### M-R9. Unicast scan — 254 pakiety UDP co 30s (komentarz mowi "2 minuty")
-**Plik:** `src/lan_discovery.rs:867-884`
-
-Niespojnosc dokumentacji z kodem: `UNICAST_SCAN_INTERVAL_SECS = 30`, komentarz mowi "every 2 minutes".
-
----
-
-### M-R10. FNV-1a (64-bit) zamiast kryptograficznego hasha do sync markerow
-**Plik:** `src/lan_common.rs:12-19`
-
-Kolizje sa mozliwe i moga spowodowac pominiecie synchronizacji (dwie rozne bazy = ten sam hash).
-
----
-
-## 4. Demon Rust — problemy niskie
-
-### L-R1. `VERSION` z `env!()` — brak fallbacku
-**Plik:** `src/main.rs:41`
-
-Jesli zmienna srodowiskowa `TIMEFLOW_VERSION` nie jest ustawiona w build time, kompilacja sie nie powiedzie z niejasnym bledem.
-
-**Rozwiazanie:** `option_env!("TIMEFLOW_VERSION").unwrap_or("dev")`
-
----
-
-### L-R2. `#[allow(dead_code)]` na `save_online_sync_settings`
-**Plik:** `src/config.rs:212`
-
-Funkcja przygotowana na przyszlosc, ale jeszcze nie uzywana.
-
----
-
-### L-R3. Brak testow dla modulow sync
-**Pliki:** `lan_sync_orchestrator.rs`, `online_sync.rs`, `sync_common.rs`, `lan_server.rs`, `lan_discovery.rs`
-
-Zaden z tych plikow nie ma `#[cfg(test)]` modulu. Krytyczna logika synchronizacji bez pokrycia testami.
-
----
-
-### L-R4. `WARNING_SHOWN: AtomicBool` bez reset
-**Plik:** `src/tracker.rs:81`
-
-Jesli `dashboard_version.txt` zniknie, flaga pozostanie `true` do restartu demona.
-
----
-
-### L-R5. Podwojne uzycie `sync_state_clone`
-**Plik:** `src/main.rs:131-143`
-
-`SyncGuard` i `run_async_delta_sync` oba resetuja `sync_in_progress = false`. Nieszkodliwe, ale niespojne.
-
----
-
-## 5. Dashboard — problemy krytyczne
-
-### C-D1. `useEffectEvent` — eksperymentalne API React
-**Pliki:** `BackgroundServices.tsx`, `useSessionsData.ts`, `usePageRefreshListener.ts`
-
-`useEffectEvent` nie jest czescia stabilnego React API. Moze powodowac runtime error po aktualizacji React.
-
-**Rozwiazanie:** Zamienic na wzorzec z `useRef` + `useCallback` (event handler ref pattern).
-
----
-
-### C-D2. `any[]` w typach sync — brak type safety
-**Plik:** `lib/online-sync-types.ts:25-28`
+### 6.1 SSE token w URL — udokumentowane TODO (ŚREDNI)
+**Plik:** `dashboard/src/lib/sync/sync-sse.ts:39-41`
 
 ```ts
-projects: any[];
-applications: any[];
-sessions: any[];
-manual_sessions: any[];
+// SECURITY TODO: Token in URL is logged by proxies/CDN/server access logs.
 ```
+Jest `SECURITY TODO` — dobrze że zidentyfikowane. Priorytet: przed produkcyjnym wdrożeniem. Rozwiązanie opisane w komentarzu (SSE ticket lub fetch streaming).
 
-Dane synchronizacji typowane jako `any[]` — ciche runtime errors przy zmianach backendu.
+### 6.2 SFTP — brak connection pooling + brak retry per-operacja (ŚREDNI)
+**Plik:** `src/sftp_client.rs`
 
-**Rozwiazanie:** Zdefiniowac prawidlowe typy odpowiadajace ksztaltowi danych z serwera.
+`upload_data` i `download_data` wywołują `self.connect()` za każdym razem — pełne TCP connect + SSH handshake + auth. W jednym cyklu sync to minimum 4 połączenia. Brak connection reuse.
 
----
+Retry jest na poziomie `online_sync.rs:with_retry()`, ale obejmuje cały cykl — nie operację SFTP.
 
-### C-D3. Zdublowany polling LAN w Sidebar vs BackgroundServices
-**Plik:** `components/layout/Sidebar.tsx:238-271`
+**Poprawka:** Otwierać jedno SSH session per sync i reuse'ować dla upload/download.
 
-Sidebar uruchamia polling LAN peers co 5s — niezaleznie od BackgroundServices. Efekt: zdublowane zapytania, marnowanie zasobow. Dodatkowo Sidebar zawiera ~80 linii logiki biznesowej sync.
+### 6.3 Dual sync path — dashboard + daemon (ŚREDNI)
+**Pliki:** `hooks/useJobPool.ts`, `hooks/useBackgroundSync.ts`
 
-**Rozwiazanie:** Przeniesc logike LAN sync z Sidebar do store lub BackgroundServices.
+Dashboard triggeruje sync na dwa sposoby:
+1. `triggerDaemonOnlineSync()` — deleguje do demona
+2. SSE event → `triggerDaemonOnlineSync()` — też deleguje
 
----
+Ale `useJobPool` ma też `runSync()` który wywołuje `triggerDaemonOnlineSync()`. Potencjalnie dwa triggery mogą się nałożyć (SSE event + periodic interval). Guard `isSyncingRef` chroni, ale race condition jest możliwy przy rapid events.
 
-## 6. Dashboard — problemy wysokie
+### 6.4 Hardcoded timeout 2000ms na refresh po sync (NISKI)
+**Pliki:** `useJobPool.ts:206`, `useBackgroundSync.ts:39`
 
-### H-D1. Duze pliki komponentow
-| Plik | Linie | Problem |
-|------|-------|---------|
-| `pages/ProjectPage.tsx` | 1232 | Wiele odpowiedzialnosci |
-| `pages/Projects.tsx` | 1134 | Typy + logika + UI |
-| `pages/Help.tsx` | 1087 | 16 sekcji w jednym pliku |
-| `components/dashboard/ProjectDayTimeline.tsx` | 978 | Logika + rendering |
-| `pages/Sessions.tsx` | 830 | Context menu + flatten + grouping |
-| `hooks/useSettingsFormState.ts` | 808 | 30+ zmiennych stanu |
-| `components/sync/BackgroundServices.tsx` | 769 | 6 hookow w jednym pliku |
-
-**Rozwiazanie:** Podzielic na mniejsze moduly wedlug odpowiedzialnosci.
+```ts
+setTimeout(() => { triggerRefresh(...) }, 2_000);
+```
+Zakłada że daemon przetworzy sync w <2s. Dla dużych baz danych to może być za mało.
 
 ---
 
-### H-D2. Prop drilling w Settings page
-**Plik:** `pages/Settings.tsx`
+## 7. Bezpieczeństwo
 
-50+ wartosci z `useSettingsFormState` przekazywanych do podkomponentow. `OnlineSyncCard` dostaje ~30 propsow, `LanSyncCard` ~35 propsow.
+### 7.1 SSE token w URL (patrz 6.1) — ŚREDNI
+### 7.2 Brak host key verification SSH (patrz 1.4) — ŚREDNI
 
-**Rozwiazanie:** Kazda karta jako samodzielny komponent z wlasnym hookiem, lub React Context.
+### 7.3 SftpCredentials zerowanie w Drop (DOBRZE)
+**Pliki:** `src/sync_encryption.rs:39-48`, `src/sftp_client.rs:20-29`
 
----
+Implementacja `Drop` dla `SftpCredentials` i `SftpClient` zeruje hasła — dobra praktyka.
 
-### H-D3. Brak loading state dla Dashboard
-**Plik:** `pages/Dashboard.tsx`
+### 7.4 Szyfrowanie AES-256-GCM (DOBRZE)
+**Plik:** `src/sync_encryption.rs`
 
-Gdy `dashboardData` jest `null`, wyswietlane sa metric cards z "N/A" — wyglada jak brak danych, nie ladowanie.
+Poprawne użycie:
+- Losowy 12-byte IV z `getrandom`
+- Poprawna konkatenacja ciphertext+tag
+- HMAC-based key derivation z session-scoped purpose
 
-**Rozwiazanie:** Dodac skeleton UI / spinner gdy dane sie laduja.
+### 7.5 Firewall rules — brak elevation check (NISKI)
+**Plik:** `src/firewall.rs`
 
----
+Jeśli demon nie ma uprawnień admina, reguły nie zostaną dodane — jest logowane jako warning. OK, ale warto informować użytkownika w UI (np. toast przy starcie).
 
-### H-D4. Race condition w `useSessionsData`
-**Plik:** `hooks/useSessionsData.ts:68`
+### 7.6 LAN server — brak autoryzacji endpointów (WYSOKI)
+**Plik:** `src/lan_server.rs:283-287`
 
-Jesli `buildFetchParams` zmieni sie szybko 2x, drugi fetch jest ignorowany. Uzytkownik widzi stale dane.
+LAN server nasłuchuje na `0.0.0.0:47891` bez żadnej autoryzacji. Każde urządzenie w sieci LAN może wywołać `/lan/trigger-sync`, `/lan/upload-db`, `/lan/db-ready` — potencjalnie nadpisując lokalną bazę.
 
-**Rozwiazanie:** Cancel flag pattern zamiast ignorowania nowych requestow.
+**Poprawka:** Wygeneruj shared secret przy pierwszym uruchomieniu (`lan_secret.txt`), wymagaj nagłówka `X-TimeFlow-Secret` i odrzucaj bez niego z HTTP 401.
 
----
+### 7.7 CORS `Access-Control-Allow-Origin: *` na LAN server (ŚREDNI)
+**Plik:** `src/lan_server.rs:452`
 
-### H-D5. Memory leak — polling bez cleanup w Sidebar
-**Plik:** `components/layout/Sidebar.tsx:268`
+```
+Access-Control-Allow-Origin: *
+```
+Każda strona internetowa otwarta w przeglądarce może wykonać cross-origin request do `http://localhost:47891/lan/trigger-sync`. To wektor CSRF.
 
-Effect z `[]` deps nigdy sie nie odswierza. Nawet po wylaczeniu LAN, polling nadal leci co 5s.
+**Poprawka:** Ogranicz do `http://localhost` lub dodaj CSRF token.
 
----
+### 7.8 Token/klucz szyfrowania w plaintext JSON (ŚREDNI)
+**Plik:** `src/config.rs:163`
 
-### H-D6. 20 `console.log` w BackgroundServices (produkcja)
-**Plik:** `components/sync/BackgroundServices.tsx`
+`auth_token` i `encryption_key` z `online_sync_settings.json` są w plaintext. Każda aplikacja z dostępem do `%APPDATA%/TimeFlow/` może je odczytać.
 
-62 wywolan `console.log/warn/error` w calym projekcie. Spowalnia UI przy czestych sync operations.
+**Sugestia:** Rozważ Windows Credential Manager (`wincred` crate) lub DPAPI.
 
-**Rozwiazanie:** Centralny logger z poziomami i kontrola wlaczania w produkcji.
+### 7.9 `backup_path` z bazy danych bez walidacji ścieżki (ŚREDNI)
+**Plik:** `src/sync_common.rs:89-97`
 
----
+Ścieżka backupu czytana z SQLite (`system_settings`) i używana bezpośrednio do zapisu. Brak walidacji `..` traversal.
 
-## 7. Dashboard — problemy srednie
+**Poprawka:** Waliduj ścieżkę — upewnij się że nie zawiera `..` i jest katalogiem.
 
-### M-D1. Sidebar nie jest responsywny
-**Plik:** `components/layout/MainLayout.tsx:52`
+### 7.10 `SYNC_ENCRYPTION_KEY` — statyczny master key bez key versioning (ŚREDNI)
+**Serwer:** `src/lib/sync/storage-encryption.ts`
 
-Staly `ml-56` (224px). Na mniejszych ekranach brak mechanizmu zwiniecia.
+Jeden master key (`SYNC_ENCRYPTION_KEY` env var) dla wszystkich sesji i użytkowników. Key rotation wymaga restartu serwera i invaliduje in-flight sesje. Brak wersjonowania kluczy — jeśli klucz wycieknie, **wszystkie** historyczne credential blobs są skompromitowane.
 
----
-
-### M-D2. Powtorzona logika context menu placement
-**Pliki:** `pages/Sessions.tsx:251-277`, `components/dashboard/ProjectDayTimeline.tsx`
-
-`resolveContextMenuPlacement` zaimplementowana osobno w obu plikach. TODO w Sessions.tsx to potwierdza.
-
----
-
-### M-D3. Duplikacja logiki AI mode label
-**Pliki:** `pages/AI.tsx`, `components/ai/AiModelStatusCard.tsx:38-44`, `components/layout/Sidebar.tsx:288-295`
-
-Trzy miejsca buduja label dla AI mode niezaleznie — moga sie rozejsc.
-
-**Rozwiazanie:** Jedna utility function `getAiModeLabel(mode, t)`.
+### 7.11 Brak synchronizacji zegarów — clock drift wpływa na last-writer-wins (NISKI)
+Conflict resolution opiera się na `updated_at` timestamp. Brak NTP enforcement ani clock drift detection. Jeśli zegar device A jest 5 minut do przodu, jego zmiany **zawsze** wygrywają.
 
 ---
 
-### M-D4. SplashScreen przyslanania toasty
-**Plik:** `App.tsx`, `components/layout/SplashScreen.tsx`
+## 8. AI / Machine Learning
 
-SplashScreen (`z-[9999]`, 1.3s) przyslanania toasty generowane przez BackgroundServices ktore montuje sie pod nia.
+### 8.1 Strona AI — dobrze zorganizowana (OK)
+**Plik:** `dashboard/src/pages/AI.tsx`
 
----
+Komponenty rozbite na 6 sub-komponentów (`AiModelStatusCard`, `AiSettingsForm`, `AiBatchActionsCard`, `AiMetricsCharts`, `AiSessionIndicatorsCard`, `AiHowToCard`). Architektura czytelna.
 
-### M-D5. DaemonSyncOverlay — brak timeout/escape
-**Plik:** `components/sync/DaemonSyncOverlay.tsx`
+### 8.2 Brak opisu modelu ML w Help (ŚREDNI)
+Help sekcja "AI" istnieje (`HelpAiSection`), ale sprawdzić czy opisuje:
+- Jak działa model (decision tree? frequency-based?)
+- Jakie dane są potrzebne do trenowania
+- Jak interpretować `confidence` i `evidence` thresholds
+- Co oznacza "rollback" auto-assignment
 
-Fullscreen blocking overlay (`z-[9998]`) bez timeout. Jesli daemon sie zawiesi, uzytkownik jest uwieziony.
+### 8.3 `FEEDBACK_TRIGGER = 30` i `RETRAIN_INTERVAL_HOURS = 24` — hardcoded (NISKI)
+**Plik:** `dashboard/src/pages/AI.tsx:43-45`
 
-**Rozwiazanie:** Timeout 5 min + przycisk "Dismiss/Cancel".
+Te wartości powinny być konfigurowalne przez użytkownika (w Settings lub AI Settings).
 
----
-
-### M-D6. `JSON.stringify` do porownania metryk AI
-**Plik:** `pages/AI.tsx:113`
-
-Nieefektywne i kruche (zalezne od kolejnosci kluczy). Inne miejsca robia field-by-field poprawnie.
-
----
-
-### M-D7. Brak walidacji granic `suggestConf`/`autoConf` na froncie
-**Plik:** `components/ai/AiSettingsForm.tsx`
-
-HTML `min/max` nie zapobiega wpisaniu wartosci spoza zakresu. Walidacja dopiero w `handleSaveMode`.
+### 8.4 Deterministyczne przypisanie projektów (DOBRZE)
+`runAutoAiAssignmentCycle()` + `hasPendingAssignmentModelTrainingData()` — sekwencja: import → deterministic assign → AI assign. To zapewnia że oczywiste mapowania (folder=projekt) nie wymagają ML.
 
 ---
 
-### M-D8. `handleAddApp` — brak ochrony przed podwojnym kliknieciem
-**Plik:** `pages/Applications.tsx:148`
+## 9. Brakujące tłumaczenia
 
-Brak disabled state podczas dodawania — szybkie 2x klik moze stworzyc duplikat.
+### 9.1 BRAKUJĄCY klucz: `sessions.menu.active_projects_az` (KRYTYCZNY)
+**Plik:** `dashboard/src/pages/Sessions.tsx:465-467`
 
----
+```tsx
+label: t('sessions.menu.active_projects_az', 'Aktywne projekty (A-Z)')
+```
+Klucz **nie istnieje** w żadnym z plików locale. Fallback jest po polsku — użytkownik EN widzi polski tekst.
 
-## 8. Dashboard — problemy niskie
+**Poprawka:** Dodać klucz do obu locales.
 
-### L-D1. Tlumaczenia EN/PL — zsynchronizowane
-Wszystkie klucze w `en/common.json` maja odpowiedniki w `pl/common.json`. Brak brakujacych tlumaczen.
+### 9.2 `OnlineSyncCard` — hardcoded "Zmien licencje" bez diakrytyków (WYSOKI)
+**Plik:** `dashboard/src/components/settings/OnlineSyncCard.tsx:119`
 
----
+```tsx
+{t('settings.license.deactivate', 'Zmien licencje')}
+```
+Klucz istnieje w obu plikach, ale fallback ma literówkę (brak ą/ę/ó). PL locale prawdopodobnie też bez diakrytyków.
 
-### L-D2. `i18n.t()` zamiast `useTranslation().t`
-**Pliki:** `App.tsx:115,143,149`, `Applications.tsx:659`
+**Poprawka:** Zaktualizować PL locale: `"deactivate": "Zmień licencję"`. Usunąć hardcoded fallback.
 
-Nie reaguje na zmiane jezyka w runtime — tlumaczenie nie odswieza komponentu.
+### 9.3 Klucze z `defaultValue` w BackgroundServices (ŚREDNI)
+**Plik:** `dashboard/src/components/sync/BackgroundServices.tsx`
 
----
+Następujące klucze używają fallback `defaultValue` — sprawdzić czy istnieją w obu locale files:
+- `background.online_sync_pulled`
+- `background.online_sync_pushed`  
+- `background.lan_sync_done`
 
-### L-D3. ErrorBoundary bez recovery path
-**Plik:** `App.tsx:122`
+### 9.4 `SyncProgressOverlay` — zbędny polski fallback (NISKI)
+**Plik:** `dashboard/src/components/sync/SyncProgressOverlay.tsx:173`
 
-Jedyna opcja to `window.location.reload()`. Brak logowania bledu do backendu.
+```tsx
+{t('sync_progress.frozen_notice', 'Rejestrowanie wpisów jest wstrzymane...')}
+```
+Klucz istnieje w obu locales — fallback jest zbędny i po polsku.
 
----
+### 9.5 Pliki locale — symetryczność (DOBRZE)
+Oba pliki mają 2069 linii — pełna symetria kluczy PL/EN. Audyt sekcji `help_page` (linie 1467-1814) potwierdził: **identyczny zestaw kluczy, brak pustych wartości** w obu językach.
 
-### L-D4. Dead code w BackgroundServices
-**Plik:** `components/sync/BackgroundServices.tsx`
+### 9.6 Console.log zamiast logger w SSE (NISKI)
+**Plik:** `dashboard/src/lib/sync/sync-sse.ts`
 
-- `dispatchOnlineSyncDone` (linia 645) — zdefiniowane, nigdzie nie wywolywane
-- `shouldRefreshAfterOnlineSync` (linia 162) — dead code po refaktorze na daemon-based sync
-
-**Rozwiazanie:** Usunac nieuzywany kod.
-
----
-
-### L-D5. Hardcoded `projectTimelineSeriesLimit = 200`
-**Plik:** `pages/Dashboard.tsx:257`
-
-Limit wewnatrz komponentu — wymaga edycji kodu zeby zmienic.
-
----
-
-## 9. Brakujaca dokumentacja w Help.tsx
-
-### 9.1 Sekcja PM — niekompletna
-
-| Brakujacy element | Priorytet |
-|-------------------|-----------|
-| Zakladka Klienci (PmClientsList) — grupowanie, kolory, statystyki | Wysoki |
-| Kolory klientow (Client Colors) — paleta, inline picker | Wysoki |
-| Dopasowanie TF Match — laczenie projektow PM z TIMEFLOW | Wysoki |
-| Filtry w PM — rok, klient, status | Sredni |
-| Rozmiar folderu projektu | Niski |
-| Menedzer szablonow — tworzenie, usuwanie, duplikowanie | Sredni |
-| Edycja projektu (Detail dialog) — opis, budzet, deadline | Sredni |
-
-### 9.2 Sekcja Settings — niekompletna
-
-| Brakujacy element | Priorytet |
-|-------------------|-----------|
-| Zakladka PM w Settings (PmSettingsCard) — folder roboczy, szablony | Wysoki |
-| DevSettingsCard — 4 kanaly logow, poziomy, przegladarka, czyszczenie | Sredni |
-| Backup interval (dni) | Sredni |
-| Optimize interval (godziny) | Niski |
-| Data folder cleanup | Niski |
-| Vacuum on startup | Niski |
-| Restore database from file | Sredni |
-
-### 9.3 Sekcja Data — niekompletna
-
-| Brakujacy element | Priorytet |
-|-------------------|-----------|
-| DataStats — kafelki podsumowania (sesje, projekty, aplikacje, czas) | Niski |
-| Database Health panel — rozmiar, vacuum, optymalizacja | Sredni |
-| Data folder stats — rozmiar, ilosc plikow | Niski |
-| Data folder cleanup — usuwanie starych plikow | Niski |
-
-### 9.4 QuickStart — brakujace tematy
-
-| Brakujacy element | Priorytet |
-|-------------------|-----------|
-| Synchronizacja LAN/Online | Sredni |
-| System raportow | Sredni |
-| Modul PM | Sredni |
-| Kosztorysy (Estimates) | Niski |
-| Analiza czasu (TimeAnalysis) — heatmapy, wykresy | Niski |
-| Backup/eksport danych | Sredni |
-
-### 9.5 Problemy i18n w Help/Settings
-
-| Problem | Plik | Priorytet |
-|---------|------|-----------|
-| Hardcoded `label="PM"` zamiast `t18n()` | Help.tsx:246 | Wysoki |
-| Hardcoded `label: 'PM'` | Settings.tsx:143 | Wysoki |
-| `lan_sync_title` bez PL tlumaczenia (EN w obu jezykach) | locales/pl/common.json | Sredni |
+Używa `console.log`/`console.warn` zamiast `logger` (z `@/lib/logger`). Niespójne z resztą kodu.
 
 ---
 
-## 10. Podsumowanie i priorytety
+## 10. Help — brakująca dokumentacja
 
-### Statystyki
+### 10.1 Istniejące sekcje Help (16 zakładek)
+| Zakładka | Sekcja Help | Status |
+|----------|------------|--------|
+| QuickStart | ✅ HelpQuickStartSection | OK |
+| Dashboard | ✅ HelpDashboardSection | OK |
+| Sessions | ✅ HelpSessionsSection | OK |
+| Projects | ✅ HelpProjectsSection | OK |
+| Estimates | ✅ HelpEstimatesSection | OK |
+| Applications | ✅ HelpAppsSection | OK |
+| Time Analysis | ✅ HelpAnalysisSection | OK |
+| AI | ✅ HelpAiSection | OK |
+| Data | ✅ HelpDataSection | OK |
+| Reports | ✅ HelpReportsSection | OK |
+| PM | ✅ HelpPmSection | OK |
+| Daemon Control | ✅ HelpDaemonSection | OK |
+| Online Sync | ✅ HelpOnlineSyncSection | OK |
+| LAN Sync | ✅ HelpLanSyncSection | OK |
+| BugHunter | ✅ HelpBughunterSection | OK |
+| Settings | ✅ HelpSettingsSection | OK |
 
-| Kategoria | CRITICAL | HIGH | MEDIUM | LOW |
-|-----------|----------|------|--------|-----|
-| Demon Rust | 3 | 5 | 10 | 5 |
-| Dashboard React/TS | 3 | 6 | 8 | 5 |
-| Help.tsx dokumentacja | — | 4 | 8 | 6 |
-| **Razem** | **6** | **15** | **26** | **16** |
+**Wniosek:** Wszystkie 16 stron/modułów ma sekcję Help. ✅
 
-### Top 10 — najwazniejsze do naprawy
+### 10.2 Strony bez dedykowanej zakładki — BRAK (wszystkie pokryte)
+Wszystkie strony mają mapowanie w Help:
+- ImportPage → zakładka `data`
+- ProjectPage → zakładka `projects` (via `help-navigation.ts`)
+- ReportView → zakładka `reports`
 
-| # | Problem | Typ | Priorytet |
-|---|---------|-----|-----------|
-| 1 | Brak auth na LAN server — kazde urzadzenie w sieci ma pelny dostep | Bezpieczenstwo | CRITICAL |
-| 2 | Restore backupu przy otwartym SQLite — korupcja bazy | Logika | CRITICAL |
-| 3 | UB przy zerowaniu hasel w pamieci | Bezpieczenstwo | CRITICAL |
-| 4 | `useEffectEvent` — niestabilne API React | Stabilnosc | CRITICAL |
-| 5 | Ciche odrzucanie duzych payloadow LAN | Utrata danych | CRITICAL |
-| 6 | `any[]` w typach sync — brak type safety | Stabilnosc | CRITICAL |
-| 7 | `sync_in_progress` bez SyncGuard w tray.rs | Deadlock | HIGH |
-| 8 | Race condition `db_frozen` z Relaxed ordering | Utrata danych | HIGH |
-| 9 | DaemonSyncOverlay bez timeout — uwiezienie UI | UX | HIGH |
-| 10 | Brak testow modulow synchronizacji | Jakosc | HIGH |
+### 10.3 Problemy jakościowe w treści Help
 
-### Mocne strony projektu
+#### BugHunter — duplikacja treści (WYSOKI)
+**Plik:** `dashboard/src/components/help/sections/HelpBughunterSection.tsx`
 
-- Dobrze ustrukturyzowane store'y Zustand z equality checking
-- Lazy loading dla wszystkich stron dashboardu
-- Tlumaczenia PL/EN w 100% zsynchronizowane (klucze)
-- Poprawna obsluga cancel patterns w effect hooks (Dashboard, Estimates)
-- Solidna obsluga empty/error/loading states w wiekszosci stron
-- Skip-to-content link + aria-label/aria-live dla accessibility
-- Job pool w BackgroundServices centralizuje timery
-- Kompletny modul AI z trybami, treningiem, auto-assignment, metryki i batch actions
+Te same 3 klucze (`bughunter_detail_what_it_does`, `bughunter_detail_when_to_use`, `bughunter_detail_limitations`) użyte zarówno w `features[]` jak i w `HelpDetailsBlock` `children`. Użytkownik widzi identyczne 3 punkty dwa razy.
+
+**Poprawka:** Lista `features` powinna zawierać inne cechy (typy załączników, limity, pola formularza), a `HelpDetailsBlock` — szczegółowy opis.
+
+#### Settings — 10+ wpisów Online Sync powielone (WYSOKI)
+**Plik:** `dashboard/src/components/help/sections/HelpSettingsSection.tsx`
+
+Sekcja Settings zawiera te same klucze co `HelpOnlineSyncSection`: `device_id_a_device_identifier`, `sync_token_is_stored_in`, `sync_on_startup`, itd.
+
+**Poprawka:** Settings powinno zawierać ogólny opis kart ustawień i odesłanie do dedykowanych sekcji Online Sync / LAN Sync.
+
+#### Techniczna terminologia — żargon implementacyjny (ŚREDNI)
+- **Online Sync:** `server_snapshot_pruned` — wewnętrzna nazwa stanu z kodu Rust. Użytkownik nie wie co to jest.
+- **Online Sync:** "13-krokowy protokół sesji z transferem SFTP" — zbyt techniczne.
+- **LAN Sync:** "znaczniki SHA256 w SQLite" — szczegół implementacyjny.
+
+**Poprawka:** Zastąpić opisami zachowania zorientowanymi na użytkownika.
+
+#### Brak ostrzeżeń "nieodwracalne" (ŚREDNI)
+- **AI → Reset AI knowledge** — brak ostrzeżenia że operacja jest nieodwracalna.
+- **Settings → Emergency Clear** — brak wyraźnego ostrzeżenia o nieodwracalności.
+
+#### QuickStart Help nie opisuje samej strony (NISKI)
+Zakładka QuickStart w Help jest intro z przyciskiem "Uruchom Quick Start" — nie opisuje ile kroków ma tutorial, co konkretnie zawiera, czy można go uruchomić wielokrotnie.
+
+#### PM sekcja — inny wzorzec kluczy (NISKI)
+`HelpSimpleSections.tsx:HelpPmSection` używa `t18n('pm.title')` zamiast `help_page.*` — jedyny wyjątek od wzorca.
+
+### 10.4 Funkcje nieudokumentowane w Help
+- **Background services lifecycle** — użytkownik nie wie co dzieje się przy starcie (autoImport, AI assign, session rebuild, SSE connect). Brak centralnego opisu.
+- **File signature checking** — mechanizm wykrywania zmian
+- **Version compatibility check** — co się dzieje gdy demon i dashboard mają różne wersje
+
+---
+
+## 11. Nadmiarowy kod
+
+### 11.1 `SyncGuard` duplikacja (patrz 1.2)
+**Pliki:** `main.rs` i `tray.rs` — identyczna struktura.
+
+### 11.2 `sync_common.rs` — thin wrapper functions
+**Plik:** `src/sync_common.rs:7-13`
+
+```rust
+pub fn compute_tables_hash_string_conn(conn: &Connection) -> String {
+    lan_common::compute_tables_hash_string(conn)
+}
+pub fn generate_marker_hash_simple(...) -> String {
+    lan_common::generate_marker_hash(...)
+}
+```
+To są 1:1 wrappery bez dodatkowej logiki. Jeśli `online_sync` potrzebuje tych funkcji, powinien importować bezpośrednio z `lan_common`.
+
+### 11.3 `activity.rs` — jednoliniowy re-export
+**Plik:** `src/activity.rs` (1 linia)
+
+```rust
+pub use timeflow_shared::activity_classification::ActivityType;
+```
+Rozważ `pub use` bezpośrednio w `tracker.rs` zamiast osobnego modułu.
+
+### 11.4 Dashboard — ręczne equality functions w store (patrz 4.2)
+5 funkcji porównujących w `background-status-store.ts` — można zastąpić `zustand/shallow` lub `JSON.stringify` porównaniem.
+
+### 11.5 `hkdf` dependency nieużywana
+**Plik:** `Cargo.toml:53`
+
+`hkdf = "0.12"` jest w dependencies, ale nigdzie nie importowana w `src/`. `sync_encryption.rs` używa własnej HMAC-based derivation, nie standardowego HKDF.
+
+**Poprawka:** Usunąć `hkdf` z `Cargo.toml`.
+
+### 11.6 `ReportResponse` — pusta struktura (NISKI)
+**Plik:** `src/online_sync.rs:52-53`
+
+```rust
+#[derive(Deserialize)]
+struct ReportResponse {}
+```
+Pusta struktura do parsowania pustego JSON body. Można zastąpić `serde_json::Value` lub zignorować body.
+
+### 11.7 `#[allow(dead_code)]` na `SftpCredentials` (NISKI)
+**Plik:** `src/sync_encryption.rs:26`
+
+Atrybut `#[allow(dead_code)]` na całej strukturze wskazuje że pola `protocol`, `download_path` mogą nie być używane. Warto zweryfikować.
+
+### 11.8 `get_device_id`/`get_machine_name` wrappery w `lan_server.rs` (NISKI)
+**Plik:** `src/lan_server.rs:509-515`
+
+Delegują 1:1 do `lan_common`. Można usunąć i importować bezpośrednio.
+
+### 11.9 Zduplikowane LAN sync polling w Sidebar i Settings (WYSOKI)
+**Pliki:** `dashboard/src/components/layout/Sidebar.tsx:146-224`, `dashboard/src/pages/Settings.tsx:253-278`
+
+Dwa niezależne interwały pollują LAN peers co 5s — podwójny ruch IPC do daemona. Logika `handleLanSync` jest niemal identyczna w obu plikach.
+
+**Poprawka:** Wyodrębnić `useLanSyncHandler()` hook. Settings powinien korzystać z `useBackgroundStatusStore`.
+
+### 11.10 Zduplikowana logika context menu placement (ŚREDNI)
+**Pliki:** `dashboard/src/pages/Sessions.tsx:251-276`, `dashboard/src/components/dashboard/ProjectDayTimeline.tsx`
+
+Oznaczone TODO w kodzie (linia 250) — identyczna logika `resolveContextMenuPlacement`.
+
+### 11.11 Zduplikowane `visibilitychange` + `focus` event listenery (ŚREDNI)
+**Pliki:** `useSessionsData.ts`, `DaemonControl.tsx`, `AI.tsx`, `useJobPool.ts`
+
+Każdy z tych plików dodaje własne `visibilitychange`/`focus` listenery. Brakuje wspólnego hooka `useVisibilityRefresh(callback)`.
+
+---
+
+## 12. Sugerowane usprawnienia
+
+### 12.0 Priorytety (KRYTYCZNE — wymagają naprawy)
+
+| # | Problem | Wpływ |
+|---|---------|-------|
+| 0 | Tombstone `sync_key` = local integer ID dla sesji | Usunięcie BŁĘDNEJ sesji na zdalnej maszynie |
+
+### 12.1 Priorytety (WYSOKIE — warto naprawić)
+
+| # | Usprawnienie | Zysk |
+|---|-------------|------|
+| 1 | LAN server autoryzacja (shared secret) | Bezpieczeństwo — dowolny host może nadpisać bazę |
+| 2 | SSE ticket zamiast token w URL | Bezpieczeństwo — token logowany przez proxy |
+| 3 | Hazard na `lan_sync_incoming.json` — unique filename | Stabilność sync |
+| 4 | `execute_async_pull` — jeden backup przed pętlą | Spójność danych online sync |
+| 5 | Slave marker hash — generować własny po merge | Poprawność delta sync |
+| 6 | CORS `*` → ograniczenie do localhost | Bezpieczeństwo (CSRF) |
+| 7 | Rozbicie `useJobPool` na mniejsze hooki | Czytelność, testowalność |
+| 8 | Cache sync settings w pamięci | Wydajność (brak JSON.parse co 1s) |
+| 9 | SSH host key verification (choćby logowanie) | Bezpieczeństwo |
+| 9a | Tombstone guard "updated after deletion" na wszystkie tabele | Poprawność sync |
+| 9b | Step 11 — delta zamiast full export do slave | Wydajność LAN sync |
+| 9c | SFTP connection pooling (1 session per sync) | Wydajność online sync |
+
+### 12.2 Priorytety (ŚREDNIE — nice to have)
+
+| # | Usprawnienie | Zysk |
+|---|-------------|------|
+| 10 | Zwiększenie job pool tick z 1s do 5s | CPU dashboard |
+| 11 | Deduplikacja `SyncGuard` | Czystość kodu |
+| 12 | Dokumentacja ImportPage/ProjectPage w Help | UX |
+| 13 | `console.log` → `logger` w sync-sse.ts | Spójność |
+| 14 | Parametryzowalne FEEDBACK_TRIGGER/RETRAIN_INTERVAL | Konfigurowalność AI |
+| 15 | Usunięcie nieużywanej `hkdf` dependency | Mniejszy binary |
+| 16 | `backup_path` walidacja (brak `..` traversal) | Bezpieczeństwo |
+| 17 | `log::warn!` przy błędnym JSON config | Debugowalność |
+| 18 | Stabilny hasher zamiast `DefaultHasher` | Odporność na upgrade Rust |
+| 19 | BugHunter Help — usunąć duplikację treści | Jakość Help |
+| 20 | Settings Help — wydzielić Online Sync do własnej sekcji | Jakość Help |
+| 21 | Zamienić żargon techniczny w Help na opisy user-facing | UX dokumentacji |
+| 22 | Dodać ostrzeżenia "nieodwracalne" przy Reset AI / Emergency Clear | Bezpieczeństwo UX |
+
+### 12.3 Architektura — potencjalne przyszłe ulepszenia
+
+1. **WebSocket zamiast SSE** — EventSource nie wspiera custom headers (stąd token w URL). Fetch streaming lub WebSocket rozwiązałby problem.
+
+2. **Encrypted LAN sync** — plain HTTP na LAN to akceptowalne, ale TLS z self-signed cert podniósłby bezpieczeństwo.
+
+3. **SQLite WAL mode verification** — upewnić się że oba procesy (daemon + dashboard) otwierają bazę z `PRAGMA journal_mode=WAL` i `PRAGMA busy_timeout`.
+
+4. **Structured logging** — demon używa własnego `FileLogger`. Rozważ `tracing` crate dla structured logs z kontekstem (thread, module, span).
+
+5. **Health endpoint** — daemon LAN server mógłby mieć `/health` endpoint zwracający wersję, uptime, status sync. Dashboard mógłby go używać zamiast sprawdzania heartbeat.txt.
+
+---
+
+## Podsumowanie
+
+**Ogólna ocena: DOBRZE** — kod jest dobrze zorganizowany, modularny, z dobrymi praktykami (RAII guards, `Drop` na credential zerowanie, lazy loading, virtualized lists, error boundaries).
+
+**Jeden krytyczny bug:** tombstone `sync_key` dla sesji używa lokalnych integer ID — może usuwać błędne sesje na zdalnej maszynie. Wymaga natychmiastowej poprawki.
+
+Poza tym aplikacja jest stabilna. Hasher jest deterministyczny (stałe klucze SipHash). Sync działa poprawnie dla typowych scenariuszy.
+
+**Architektura jest solidna:** 
+- Podział daemon/dashboard z komunikacją przez pliki + Tauri invoke
+- 13-step sync FSM z freeze/unfreeze i atomic guards
+- AES-256-GCM encryption z proper HMAC key derivation
+- Background job pool z debouncing i backoff
+- Kompletne Help (16/16 sekcji) z pełnymi tłumaczeniami PL/EN
+
+**Główne obszary do poprawy:**
+1. **KRYTYCZNE:** Tombstone sync_key dla sesji = local integer ID (usunięcie błędnych sesji)
+2. **Bezpieczeństwo LAN sync** — brak autoryzacji endpointów, CORS `*`, token w URL SSE
+3. **Stabilność sync** — tombstone guard brakuje na 3/4 tabel, step 11 full export, hazard na pliku tymczasowym
+4. **Dashboard wydajność** — `useJobPool` złożoność, localStorage parsing co 1s, job pool tick 1s
+5. **Czystość kodu** — nieużywana `hkdf` dependency, duplikacja `SyncGuard`, thin wrappery

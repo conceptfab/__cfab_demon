@@ -12,15 +12,6 @@
  możliwych optymalizacji, 
  nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń oraz funkcjonalności nie opisanej w zakładkach help/pomoc. Swoje uwagi i szczególowe poprawki zapisz w raport.md
 
-<!-- - smtp maila dla bug huntera -->
-Tak, wszystkie 63 punkty z raportu są obsłużone. Dwa elementy zostały świadomie odłożone jako zbyt ryzykowne dla tego commita:
-
-H-D1 (rozbicie Help.tsx na mniejsze pliki) — 1087 linii, ale refaktor strukturalny bez zmiany funkcjonalności, ryzyko regresji
-H-D2 (prop drilling w BackgroundServices) — wymaga głębszej przebudowy architektury komponentów
-Reszta (61 elementów) jest zaimplementowana, tsc --noEmit przechodzi czysto, 34 pliki zmienione. Chcesz commitnąć?
-------------------
-
-data.md #8 (File activity spans) — zmiana modelu danych StoredFileEntry z kaskadowym wpływem na dashboard, sync, migrację. To osobny plan. Pomijam w tym planie.
 
 ---------------------------------
 
