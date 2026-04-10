@@ -116,7 +116,7 @@ export function OnlineSyncCard({
                   className="ml-auto rounded border border-zinc-700 bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400 hover:border-red-500/50 hover:text-red-400 transition-colors"
                   onClick={onDeactivateLicense}
                 >
-                  {t('settings.license.deactivate', 'Zmien licencje')}
+                  {t('settings.license.deactivate', 'Change license')}
                 </button>
               </div>
               <div className="text-muted-foreground">

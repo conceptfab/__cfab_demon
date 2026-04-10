@@ -540,17 +540,15 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         let idle_ms = monitor::get_idle_time_ms();
         let is_idle = idle_ms >= IDLE_THRESHOLD_MS;
 
-        // When transitioning from idle to active, estimate the active portion:
-        // idle_ms tells us how long since last input (should be < IDLE_THRESHOLD_MS).
+        // When transitioning from idle to active, use the full tick duration.
+        // idle_ms is near 0 here (user just moved mouse), so it can't estimate
+        // the active portion. The tick itself is the first active period.
         let effective_elapsed_for_foreground = if !is_idle && was_idle {
-            let active_portion_ms = idle_ms.min(effective_elapsed.as_millis() as u64);
-            let active_duration = Duration::from_millis(active_portion_ms);
             log::debug!(
-                "Idle→active transition: recording {}ms of {}ms tick",
-                active_portion_ms,
+                "Idle→active transition: recording full {}ms tick",
                 effective_elapsed.as_millis()
             );
-            active_duration.max(Duration::from_secs(1)) // at least 1s
+            effective_elapsed.max(Duration::from_secs(1))
         } else {
             effective_elapsed
         };
@@ -593,9 +591,16 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 process_snapshot_cache = Some(monitor::build_process_snapshot());
                 last_process_snapshot_refresh = Some(snapshot_now);
             }
+            let empty_snapshot = monitor::ProcessSnapshot {
+                tree: std::collections::HashMap::new(),
+                exe_pids: std::collections::HashMap::new(),
+            };
             let proc_snap = match process_snapshot_cache.as_ref() {
                 Some(snap) => snap,
-                None => continue,
+                None => {
+                    log::warn!("process_snapshot_cache is None — skipping background tracking this tick");
+                    &empty_snapshot
+                }
             };
 
             for exe_name in &monitored {
@@ -620,7 +625,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                         cpu_fraction * 100.0,
                         cpu_thresh * 100.0,
                     );
-                    let background_activity_type = monitor::classify_activity_type(exe_name);
+                    let background_activity_type = timeflow_shared::activity_classification::classify_activity_type(exe_name, None);
                     // Record activity without file name (window title unknown in background)
                     record_app_activity(
                         ActivityContext {

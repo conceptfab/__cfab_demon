@@ -143,6 +143,7 @@ export function Sessions() {
 
   const {
     dismissedSuggestions,
+    error: sessionsError,
     hasMore,
     loadMore,
     sessions,
@@ -464,7 +465,7 @@ export function Sessions() {
           key: 'all',
           label: t(
             'sessions.menu.active_projects_az',
-            'Aktywne projekty (A-Z)',
+            'Active projects (A-Z)',
           ),
           projects: activeAlpha,
         },
@@ -689,6 +690,12 @@ export function Sessions() {
           onModeChange: setViewMode,
         }}
       />
+
+      {sessionsError && (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+          {sessionsError}
+        </div>
+      )}
 
       <SessionsVirtualList
         customScrollParent={customScrollParent}

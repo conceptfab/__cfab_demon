@@ -129,7 +129,7 @@ fn main() {
                     match online_settings.sync_mode.as_str() {
                         "async" if !online_settings.group_id.is_empty() => {
                             let group_id = online_settings.group_id.clone();
-                            online_sync::run_async_delta_sync(online_settings, sync_state_clone, &group_id);
+                            online_sync::run_async_delta_sync(online_settings, sync_state_clone, &group_id, stop_signal_clone.clone());
                         }
                         _ => {
                             online_sync::run_online_sync(online_settings, sync_state_clone, stop_signal_clone);

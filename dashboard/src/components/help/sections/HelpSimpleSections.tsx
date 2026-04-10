@@ -32,6 +32,7 @@ export function HelpDashboardSection() {
         t18n('help_page.add_manual_session_from_timeline_click_on_the_dashboard'),
         t18n('help_page.all_projects_overview_chart_showing_work_time_distributi'),
         t18n('help_page.timeline_states_loading_empty_and_error_messages_help_yo'),
+        t18n('help_page.dashboard_sidebar_backup_indicator'),
       ]}
     />
   );
@@ -132,6 +133,7 @@ export function HelpDaemonSection() {
         t18n('help_page.log_auto_refresh_button_to_enable_automatic_real_time_lo'),
         t18n('help_page.log_auto_refresh_runs_only_while_the_daemon_screen_is_v'),
         t18n('help_page.log_coloring_error_and_warn_lines_are_highlighted_with_c'),
+        t18n('help_page.daemon_windows_autostart_details'),
       ]}
     />
   );
@@ -143,7 +145,7 @@ export function HelpPmSection() {
   return (
     <SectionHelp
       icon={<Briefcase className="h-6 w-6" />}
-      title={t18n('pm.title')}
+      title={t18n('help_page.pm_2')}
       description={t18n('help_page.pm_description')}
       footer={t18n('help_page.key_functionalities')}
       features={[
@@ -158,6 +160,9 @@ export function HelpPmSection() {
         t18n('help_page.pm_feature_filters'),
         t18n('help_page.pm_feature_folder_size'),
         t18n('help_page.pm_feature_compat'),
+        t18n('help_page.pm_template_manager'),
+        t18n('help_page.pm_project_detail_dialog'),
+        t18n('help_page.pm_clients_management'),
       ]}
     />
   );

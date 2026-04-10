@@ -67,6 +67,9 @@ impl SftpClient {
         }
     }
 
+    // NOTE: known_sftp_hosts.json is stored without integrity protection. An attacker
+    // with write access to %APPDATA%/TimeFlow/ could replace host keys to enable MITM.
+    // Consider HMAC signing or Windows Credential Store in the future.
     fn verify_host_key_tofu(&self, fingerprint: &str) -> Result<(), String> {
         let host_key = format!("{}:{}", self.host, self.port);
         let mut known = Self::load_known_hosts();

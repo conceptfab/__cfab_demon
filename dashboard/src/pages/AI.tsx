@@ -339,6 +339,8 @@ export function AIPage() {
       ]);
 
       await refreshAiStatus();
+      // Read from store after refresh completes — getState() is safe here because
+      // refreshAiStatus() just called set({aiStatus}), so the store is up-to-date.
       const freshStatus = useBackgroundStatusStore.getState().aiStatus;
       if (freshStatus) {
         syncFormWithStatus(freshStatus, true);

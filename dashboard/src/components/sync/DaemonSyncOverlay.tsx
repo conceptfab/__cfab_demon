@@ -70,10 +70,13 @@ export function DaemonSyncOverlay() {
       triggerDaemonOnlineSync().catch(() => {});
     } else if (retryType === 'lan') {
       // LAN sync is triggered via daemon tray — find first peer and run
-      lanSyncApi.getLanPeers().then((peers) => {
+      lanSyncApi.getLanPeers().then(async (peers) => {
         const peer = peers.find((p) => p.dashboard_running);
         if (peer) {
-          lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, '', false).catch(() => {});
+          // Use last known marker timestamp as `since` to avoid full re-sync on retry
+          const marker = await lanSyncApi.getLatestSyncMarker().catch(() => null);
+          const since = marker?.created_at || '';
+          lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since, false).catch(() => {});
         }
       }).catch(() => {});
     }

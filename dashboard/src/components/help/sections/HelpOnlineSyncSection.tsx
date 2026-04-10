@@ -25,6 +25,8 @@ export function HelpOnlineSyncSection() {
         t18n('help_page.online_sync_sse_realtime'),
         t18n('help_page.license_activation'),
         t18n('help_page.demo_mode_and_sync_when_switched_to_the_demo_database_on'),
+        t18n('help_page.online_sync_license_section'),
+        t18n('help_page.online_sync_sftp_encryption_key'),
       ]}
     >
       <HelpDetailsBlock

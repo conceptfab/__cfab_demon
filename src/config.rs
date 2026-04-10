@@ -326,19 +326,19 @@ pub(crate) fn file_mtime(path: &std::path::Path) -> Option<SystemTime> {
 /// JSON pozostaje fallbackiem (legacy) oraz źródłem interwałów.
 /// Wynik cachowany na podstawie mtime pliku JSON i DB.
 pub fn load() -> Config {
-    let json_mtime = config_path().ok().and_then(|p| file_mtime(&p));
-    let db_mtime = dashboard_db_path().ok().and_then(|p| file_mtime(&p));
-
-    // NOTE: Loose consistency — file may change between mtime check and cache return.
-    // This is acceptable as config is re-read on next call.
+    // Lock before reading mtime to avoid TOCTOU — ensures mtime and cache check are atomic.
     {
         let guard = CONFIG_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        let json_mtime = config_path().ok().and_then(|p| file_mtime(&p));
+        let db_mtime = dashboard_db_path().ok().and_then(|p| file_mtime(&p));
         if let Some(cached) = guard.as_ref() {
             if cached.json_mtime == json_mtime && cached.db_mtime == db_mtime {
                 return cached.config.clone();
             }
         }
     }
+    let json_mtime = config_path().ok().and_then(|p| file_mtime(&p));
+    let db_mtime = dashboard_db_path().ok().and_then(|p| file_mtime(&p));
 
     let mut cfg = load_legacy_json_config();
 
@@ -380,7 +380,7 @@ pub fn load() -> Config {
 }
 
 /// Zwraca zbiór nazw exe (lowercase) — do szybkiego porównania.
-/// Clones strings because the caller stores the set across config reloads.
+/// Caller caches the result; this allocates a new HashSet each call (negligible cost at 30s intervals).
 pub fn monitored_exe_names(config: &Config) -> HashSet<String> {
     config
         .apps

@@ -64,10 +64,11 @@ fn with_retry<T, F: Fn() -> Result<T, String>>(label: &str, f: F) -> Result<T, S
                 if attempt + 1 < MAX_RETRIES {
                     // Add jitter to avoid thundering herd
                     let base_delay = RETRY_BASE_DELAY * 3u32.pow(attempt); // 5s, 15s, 45s
-                    let jitter_ms = (std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .subsec_millis() % 1000) as u64;
+                    let jitter_ms = {
+                        let mut buf = [0u8; 2];
+                        let _ = getrandom::getrandom(&mut buf);
+                        (u16::from_le_bytes(buf) % 1000) as u64
+                    };
                     let delay = base_delay + Duration::from_millis(jitter_ms);
                     sync_log(&format!(
                         "[retry] {} attempt {}/{} failed: {} — retrying in {:?}",
@@ -665,6 +666,7 @@ pub fn run_async_delta_sync(
     settings: config::OnlineSyncSettings,
     sync_state: Arc<LanSyncState>,
     group_id: &str,
+    stop_signal: Arc<AtomicBool>,
 ) {
     sync_log("=== START ASYNC DELTA SYNC ===");
     sync_log(&format!(
@@ -685,7 +687,7 @@ pub fn run_async_delta_sync(
         Err(e) if e.contains("base_marker_mismatch") => {
             sync_log("[async] Base marker mismatch — falling back to session sync");
             sync_state.reset_progress();
-            run_online_sync(settings, sync_state, Arc::new(AtomicBool::new(false)));
+            run_online_sync(settings, sync_state, stop_signal);
             return;
         }
         Err(e) => {
@@ -765,6 +767,7 @@ pub fn run_online_sync_forced(
     settings: config::OnlineSyncSettings,
     sync_state: Arc<LanSyncState>,
     force_full: bool,
+    stop_signal: Arc<AtomicBool>,
 ) {
     sync_log(&format!(
         "=== START ONLINE SYNC (force_full={}) ===",
@@ -790,7 +793,7 @@ pub fn run_online_sync_forced(
     match execute_online_sync_inner(
         &settings,
         &sync_state,
-        &AtomicBool::new(false),
+        &stop_signal,
         &mut session_id_for_cleanup,
         force_full,
     ) {

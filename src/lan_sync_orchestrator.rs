@@ -323,9 +323,12 @@ pub fn run_sync_as_master_with_options(
                         while Instant::now() < deadline {
                             if stop_signal.load(Ordering::Relaxed) {
                                 sync_log("[!] Stop signal podczas backoff — przerywam");
-                                return;
+                                break;
                             }
                             thread::sleep(Duration::from_secs(1));
+                        }
+                        if stop_signal.load(Ordering::Relaxed) {
+                            break;
                         }
                     }
                 }
@@ -470,8 +473,8 @@ fn execute_master_sync(
     temp_guard.track(dir.join("lan_sync_merged.json"));
     temp_guard.track(dir.join("lan_sync_incoming_latest.txt"));
 
-    std::fs::write(&incoming_file, &slave_data)
-        .map_err(|e| format!("Failed to write incoming data: {}", e))?;
+    // NOTE: slave_data is passed directly to merge_incoming_data in memory.
+    // No need to write it to a file first (data already available).
 
     sync_common::merge_incoming_data(&mut conn, &slave_data)
         .map_err(|e| {
@@ -511,9 +514,16 @@ fn execute_master_sync(
 
     // Step 11: Upload merged data to SLAVE
     sync_state.set_progress(11, "uploading_to_slave", "upload");
-    sync_log("[11/13] Budowanie pelnego eksportu dla peera...");
-    let merged_export = sync_common::build_full_export(&conn)
-        .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?;
+    let merged_export = if transfer_mode == "delta" {
+        sync_log("[11/13] Budowanie delta eksportu dla peera...");
+        let (data, _size) = sync_common::build_delta_export(&conn, Some(&since))
+            .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania delta eksportu: {}", e)); e })?;
+        data
+    } else {
+        sync_log("[11/13] Budowanie pelnego eksportu dla peera...");
+        sync_common::build_full_export(&conn)
+            .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?
+    };
     let export_kb = merged_export.len() as f64 / 1024.0;
     sync_log(&format!("[11/13] Wysylanie {:.1} KB do peera...", export_kb));
 
@@ -521,7 +531,7 @@ fn execute_master_sync(
         .map_err(|e| e.to_string())?;
 
     // Send merged data to slave via /lan/upload-db
-    http_post_with_progress(
+    let upload_resp = http_post_with_progress(
         &format!("{}/lan/upload-db", base_url),
         &merged_export,
         |transferred, total| {
@@ -531,6 +541,12 @@ fn execute_master_sync(
     ).map_err(|e| { sync_log(&format!("[11/13] BLAD wysylania danych do peera: {}", e)); e })?;
     sync_log("[11/13] Dane wyslane do peera");
 
+    // Extract incoming_file from upload-db response to pass to db-ready (avoids race condition on pointer file)
+    let incoming_file = serde_json::from_str::<serde_json::Value>(&upload_resp)
+        .ok()
+        .and_then(|v| v.get("incoming_file").and_then(|f| f.as_str().map(String::from)))
+        .unwrap_or_default();
+
     // Step 12: Tell slave to merge + verify + insert marker
     sync_state.set_progress(12, "slave_importing", "upload");
     sync_log("[12/13] Polecenie importu dla peera (db-ready)...");
@@ -538,6 +554,7 @@ fn execute_master_sync(
         "marker_hash": new_marker,
         "transfer_mode": transfer_mode,
         "master_device_id": device_id,
+        "incoming_file": incoming_file,
     });
 
     // db-ready now blocks until slave finishes import — use long timeout with retry
@@ -611,22 +628,22 @@ fn execute_master_sync(
 
 // ── DB helper functions (local only) ──
 
-fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String> {
+/// Returns (marker_hash, created_at) of the latest sync marker, or None.
+fn get_latest_marker(conn: &rusqlite::Connection) -> Option<(String, String)> {
     conn.query_row(
-        "SELECT marker_hash FROM sync_markers ORDER BY created_at DESC LIMIT 1",
+        "SELECT marker_hash, created_at FROM sync_markers ORDER BY created_at DESC LIMIT 1",
         [],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .ok()
 }
 
+fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String> {
+    get_latest_marker(conn).map(|(hash, _)| hash)
+}
+
 fn get_local_marker_created_at_with_conn(conn: &rusqlite::Connection) -> Option<String> {
-    conn.query_row(
-        "SELECT created_at FROM sync_markers ORDER BY created_at DESC LIMIT 1",
-        [],
-        |row| row.get(0),
-    )
-    .ok()
+    get_latest_marker(conn).map(|(_, created_at)| created_at)
 }
 
 /// Find the created_at timestamp for a specific marker hash.

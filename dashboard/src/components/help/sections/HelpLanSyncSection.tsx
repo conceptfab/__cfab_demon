@@ -8,7 +8,7 @@ export function HelpLanSyncSection() {
   return (
     <SectionHelp
       icon={<Wifi className="h-6 w-6" />}
-      title={t18n('help_page.lan_sync_setup_title')}
+      title={t18n('help_page.lan_sync_section_title')}
       description={t18n('help_page.lan_sync_description')}
       footer={t18n('help_page.key_functionalities')}
       features={[
@@ -31,6 +31,7 @@ export function HelpLanSyncSection() {
         t18n('help_page.lan_sync_sidebar_indicator'),
         t18n('help_page.lan_sync_port_config'),
         t18n('help_page.lan_sync_device_pairing'),
+        t18n('help_page.lan_sync_peer_notification_detail'),
       ]}
     >
       <HelpDetailsBlock

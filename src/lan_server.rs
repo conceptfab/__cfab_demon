@@ -38,12 +38,14 @@ pub struct TableHashes {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct StatusRequest {
     device_id: String,
     table_hashes: TableHashes,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct StatusResponse {
     needs_push: bool,
     needs_pull: bool,
@@ -86,6 +88,7 @@ struct FreezeAckResponse {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct UploadAckResponse {
     ok: bool,
     bytes_received: usize,
@@ -290,9 +293,8 @@ pub fn start(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) -> Joi
     })
 }
 
-// TODO(security): LAN server listens on 0.0.0.0 without authentication.
-// Any device on the network can trigger sync, push/pull data, or overwrite the database.
-// Add shared secret or device_id verification via X-Auth-Token header.
+// LAN server listens on 0.0.0.0. Mutating endpoints require X-Auth-Secret header
+// matching the shared secret from lan_secret.txt. Read-only + pairing endpoints are open.
 fn run_server(stop_signal: Arc<AtomicBool>, sync_state: Arc<LanSyncState>) {
     let listener = match TcpListener::bind(format!("0.0.0.0:{}", DEFAULT_LAN_PORT)) {
         Ok(s) => {
@@ -415,17 +417,19 @@ fn handle_connection(
         }
     }
 
-    // Verify shared secret for mutating endpoints (skip ping and read-only)
+    // Verify shared secret for mutating endpoints (skip ping, pairing, and read-only)
     let requires_auth = !matches!(path,
         "/lan/ping" | "/lan/pair" | "/lan/sync-progress" | "/online/sync-progress"
         | "/lan/paired-devices" | "/lan/generate-pairing-code"
-        | "/lan/store-paired-device" | "/lan/remove-paired-device"
-        | "/lan/local-identity" | "/lan/trigger-sync"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
-        if !expected.is_empty() && auth_secret != expected {
-            let msg = r#"{"ok":false,"error":"unauthorized"}"#;
+        if expected.is_empty() || auth_secret != expected {
+            let msg = if expected.is_empty() {
+                r#"{"ok":false,"error":"server secret unavailable"}"#
+            } else {
+                r#"{"ok":false,"error":"unauthorized"}"#
+            };
             let response = format!(
                 "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                 msg.len(), msg
@@ -435,7 +439,8 @@ fn handle_connection(
         }
     }
 
-    // Read body — reject payloads that exceed the limit with HTTP 413
+    // Read body as UTF-8 String — reject payloads that exceed the limit with HTTP 413
+    // NOTE: Body is read as String (not Vec<u8>) because all handlers parse JSON text.
     let body_too_large = content_length > MAX_REQUEST_BODY;
     let body = if body_too_large {
         String::new()
@@ -462,14 +467,14 @@ fn handle_connection(
     let (status, response_body) = match (method, path) {
         ("GET", "/lan/ping") => handle_ping(&state),
         ("GET", "/lan/sync-progress") => handle_sync_progress(&state),
-        ("POST", "/lan/status") => handle_status(&body),
+        ("POST", "/lan/status") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/negotiate") => handle_negotiate(&state, &body),
         ("POST", "/lan/freeze-ack") => handle_freeze_ack(&state),
         ("POST", "/lan/upload-db") => handle_upload_db(&state, &body),
         ("POST", "/lan/upload-ack") => (200, json_ok()),
         ("POST", "/lan/db-ready") => handle_db_ready(&state, &body),
         ("GET", "/lan/download-db") => handle_download_db(),
-        ("POST", "/lan/verify-ack") => handle_verify_ack(&state),
+        ("POST", "/lan/verify-ack") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
         ("POST", "/lan/pair") => handle_pair(&body),
         ("POST", "/lan/generate-pairing-code") => handle_generate_pairing_code(),
@@ -481,9 +486,9 @@ fn handle_connection(
         // Online sync endpoints
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal),
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
-        // Legacy endpoints (backward compat with existing Tauri client)
-        ("POST", "/lan/pull") => handle_pull(&body),
-        ("POST", "/lan/push") => handle_push(&body),
+        // Legacy endpoints — deprecated, use 13-step protocol instead
+        ("POST", "/lan/pull") => (410, json_error("deprecated: use 13-step sync protocol")),
+        ("POST", "/lan/push") => (410, json_error("deprecated: use 13-step sync protocol")),
         _ => (404, r#"{"ok":false,"error":"not found"}"#.to_string()),
     };
 
@@ -542,7 +547,8 @@ fn get_or_create_lan_secret() -> String {
     }
     // Generate new secret
     let mut bytes = [0u8; 32];
-    if getrandom::getrandom(&mut bytes).is_err() {
+    if let Err(e) = getrandom::getrandom(&mut bytes) {
+        log::error!("CRITICAL: getrandom failed, cannot generate LAN secret: {}", e);
         return String::new();
     }
     let secret: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
@@ -635,6 +641,7 @@ fn handle_ping(state: &LanSyncState) -> (u16, String) {
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }
 
+#[allow(dead_code)]
 fn handle_status(body: &str) -> (u16, String) {
     let req: StatusRequest = match serde_json::from_str(body) {
         Ok(r) => r,
@@ -726,17 +733,18 @@ fn handle_upload_db(state: &LanSyncState, body: &str) -> (u16, String) {
         .unwrap_or_default()
         .as_millis();
     let temp_path = dir.join(format!("lan_sync_incoming_{}.json", ts));
-    // Also write a pointer so handle_db_ready knows which file to read
-    let _ = std::fs::write(dir.join("lan_sync_incoming_latest.txt"), temp_path.to_string_lossy().as_bytes());
     if let Err(e) = std::fs::write(&temp_path, body) {
         return (500, json_error(&format!("Failed to write incoming data: {}", e)));
     }
 
-    let resp = UploadAckResponse {
-        ok: true,
-        bytes_received: body.len(),
-    };
-    (200, serde_json::to_string(&resp).unwrap_or_default())
+    // Return the file path in the response so db-ready can reference it directly
+    // instead of relying on a racy pointer file.
+    let resp = serde_json::json!({
+        "ok": true,
+        "bytes_received": body.len(),
+        "incoming_file": temp_path.to_string_lossy(),
+    });
+    (200, resp.to_string())
 }
 
 fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
@@ -746,6 +754,8 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         transfer_mode: String,
         #[serde(default)]
         master_device_id: String,
+        #[serde(default)]
+        incoming_file: String,
     }
     let req: DbReadyRequest = match serde_json::from_str(body) {
         Ok(r) => r,
@@ -760,11 +770,16 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         Ok(d) => d,
         Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
     };
-    // Read the pointer to find the unique incoming file
-    let pointer_path = dir.join("lan_sync_incoming_latest.txt");
-    let incoming_path = match std::fs::read_to_string(&pointer_path) {
-        Ok(p) => std::path::PathBuf::from(p.trim()),
-        Err(_) => dir.join("lan_sync_incoming.json"), // fallback for backwards compat
+    // Prefer the incoming_file path from the request (race-free),
+    // fall back to pointer file for backward compat with older masters.
+    let incoming_path = if !req.incoming_file.is_empty() {
+        std::path::PathBuf::from(&req.incoming_file)
+    } else {
+        let pointer_path = dir.join("lan_sync_incoming_latest.txt");
+        match std::fs::read_to_string(&pointer_path) {
+            Ok(p) => std::path::PathBuf::from(p.trim()),
+            Err(_) => dir.join("lan_sync_incoming.json"),
+        }
     };
     let merged_data = match std::fs::read_to_string(&incoming_path) {
         Ok(data) => data,
@@ -773,8 +788,9 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
             return (500, json_error(&format!("No incoming data file: {}", e)));
         }
     };
-    // Clean up pointer and temp file after reading
-    let _ = std::fs::remove_file(&pointer_path);
+    // Clean up temp file and pointer after reading
+    let _ = std::fs::remove_file(&incoming_path);
+    let _ = std::fs::remove_file(dir.join("lan_sync_incoming_latest.txt"));
 
     let data_kb = merged_data.len() as f64 / 1024.0;
     sync_log(&format!("[SLAVE] Importuje {:.1} KB scalonych danych...", data_kb));
@@ -869,6 +885,7 @@ fn handle_download_db() -> (u16, String) {
 }
 
 /// DEPRECATED: This endpoint is not called by the orchestrator. Kept for backwards compatibility.
+#[allow(dead_code)]
 fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
     state.set_progress(12, "verifying", "local");
     sync_log("[SLAVE] Weryfikacja scalonych danych...");
@@ -896,6 +913,7 @@ fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
 
 // ── Legacy pull/push (backward compat with Tauri dashboard client) ──
 
+#[allow(dead_code)]
 fn handle_pull(body: &str) -> (u16, String) {
     #[derive(Deserialize)]
     #[allow(dead_code)]
@@ -927,6 +945,7 @@ fn handle_pull(body: &str) -> (u16, String) {
     }
 }
 
+#[allow(dead_code)]
 fn handle_push(body: &str) -> (u16, String) {
     let mut conn = match open_dashboard_db() {
         Ok(c) => c,
@@ -1008,7 +1027,7 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
             match settings.sync_mode.as_str() {
                 "async" if !settings.group_id.is_empty() => {
                     let group_id = settings.group_id.clone();
-                    crate::online_sync::run_async_delta_sync(settings, state_clone.clone(), &group_id);
+                    crate::online_sync::run_async_delta_sync(settings, state_clone.clone(), &group_id, stop_clone.clone());
                 }
                 _ => {
                     crate::online_sync::run_online_sync(settings, state_clone.clone(), stop_clone);
@@ -1068,12 +1087,10 @@ fn handle_pair(body: &str) -> (u16, String) {
 
 fn handle_local_identity() -> (u16, String) {
     let device_id = crate::lan_common::get_device_id();
-    let secret = get_or_create_lan_secret();
     let machine_name = crate::lan_common::get_machine_name();
     let resp = serde_json::json!({
         "ok": true,
         "device_id": device_id,
-        "secret": secret,
         "machine_name": machine_name,
     });
     (200, resp.to_string())

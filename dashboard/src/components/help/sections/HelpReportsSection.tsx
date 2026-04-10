@@ -23,6 +23,7 @@ export function HelpReportsSection() {
         t18n('help_page.section_reordering_up_down_arrows_on_each_section_in_the'),
         t18n('help_page.preview_loading_state_when_switching_templates_or_rebuild'),
         t18n('help_page.empty_templates_state_if_no_report_templates_are_availab'),
+        t18n('help_page.reports_how_to_open'),
       ]}
     >
       <HelpDetailsBlock

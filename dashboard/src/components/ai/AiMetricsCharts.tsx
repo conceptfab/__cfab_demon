@@ -57,6 +57,10 @@ export function AiMetricsCharts({ metrics, loading }: AiMetricsChartsProps) {
           <p className="text-sm text-muted-foreground">
             {tr('ai_page.text.loading_ai_metrics')}
           </p>
+        ) : !metrics ? (
+          <p className="text-sm text-muted-foreground">
+            {tr('ai_page.text.no_ai_metrics', 'No AI metrics data available.')}
+          </p>
         ) : (
           <>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

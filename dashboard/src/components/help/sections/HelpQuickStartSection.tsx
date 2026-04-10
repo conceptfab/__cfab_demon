@@ -25,6 +25,8 @@ export function HelpQuickStartSection() {
         t18n('help_page.quickstart_reports_overview'),
         t18n('help_page.quickstart_pm_overview'),
         t18n('help_page.quickstart_backup_export'),
+        t18n('help_page.quickstart_f1_shortcut'),
+        t18n('help_page.quickstart_rerun_info'),
       ]}
     >
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">

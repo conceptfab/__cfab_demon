@@ -45,17 +45,9 @@ export function HelpSettingsSection() {
         t18n('help_page.pm_settings_work_folder_and_templates'),
         t18n('help_page.backup_interval_automatic_database_backup'),
         t18n('help_page.restore_database_from_backup_file'),
+        t18n('help_page.settings_dev_log_channels'),
       ]}
     >
-      <HelpDetailsBlock
-        title={t18n('help_page.online_sync_setup_title')}
-        items={[
-          t18n('help_page.online_sync_setup_what_it_does'),
-          t18n('help_page.online_sync_setup_how_to_start'),
-          t18n('help_page.online_sync_setup_when_to_use'),
-          t18n('help_page.online_sync_setup_limitations'),
-        ]}
-      />
       <HelpDetailsBlock
         title={t18n('help_page.bughunter_detail_title')}
         items={[

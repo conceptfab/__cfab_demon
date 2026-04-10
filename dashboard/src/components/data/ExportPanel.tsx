@@ -25,7 +25,10 @@ export function ExportPanel() {
   const { showInfo, showError } = useToast();
 
   useEffect(() => {
-    loadProjectsAllTime().then(setProjects).catch(console.error);
+    loadProjectsAllTime().then(setProjects).catch((e) => {
+      console.error('Failed to load projects:', e);
+      showError(String(e));
+    });
   }, []);
 
   const handleExport = async () => {

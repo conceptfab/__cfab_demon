@@ -48,6 +48,7 @@ export function DatabaseManagement() {
       setFolderStats(stats);
     } catch (e) {
       logTauriError('load database management data', e);
+      showError(String(e));
     }
   };
 

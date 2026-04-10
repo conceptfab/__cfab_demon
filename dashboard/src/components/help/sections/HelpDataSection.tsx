@@ -22,6 +22,9 @@ export function HelpDataSection() {
         t18n('help_page.data_history_refreshes_after_real_data_changes_and_when_'),
         t18n('help_page.data_stats_summary_tiles'),
         t18n('help_page.database_health_panel'),
+        t18n('help_page.data_selective_export'),
+        t18n('help_page.data_vacuum_management'),
+        t18n('help_page.data_history_details'),
       ]}
     >
       <HelpDetailsBlock

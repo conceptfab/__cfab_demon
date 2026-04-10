@@ -20,6 +20,7 @@ use crate::lan_sync_orchestrator;
 
 /// Cached ipconfig output to avoid spawning the process on every beacon (every 30s).
 /// TTL: 120 seconds.
+/// TODO: Replace with WinAPI GetAdaptersAddresses for locale-independent results.
 static IPCONFIG_CACHE: std::sync::Mutex<Option<(Instant, String)>> = std::sync::Mutex::new(None);
 const IPCONFIG_CACHE_TTL: Duration = Duration::from_secs(120);
 

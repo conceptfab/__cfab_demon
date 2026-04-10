@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useBackgroundStatusStore } from "@/store/background-status-store";
+import { useToast } from "@/components/ui/toast-notification";
 import { daemonApi, readLogFile } from "@/lib/tauri";
 import { useCancellableAsync } from "@/lib/async-utils";
 import { useTranslation } from "react-i18next";
@@ -24,6 +25,7 @@ function isDocumentVisible(): boolean {
 
 export function DaemonControl() {
   const { t } = useTranslation();
+  const { showError } = useToast();
   const status = useBackgroundStatusStore((s) => s.daemonStatus);
   const filteredUnassigned = useBackgroundStatusStore((s) => s.allUnassigned);
   const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
@@ -167,6 +169,7 @@ export function DaemonControl() {
       refreshAll();
     } catch (e) {
       console.error(e);
+      showError(String(e));
     } finally {
       setLoading("");
     }

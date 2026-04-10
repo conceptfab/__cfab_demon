@@ -28,7 +28,7 @@ pub fn generate_code() -> String {
     let num = u32::from_le_bytes(bytes) % 1_000_000;
     let code = format!("{:06}", num);
 
-    let mut lock = ACTIVE_PAIRING_CODE.lock().unwrap();
+    let mut lock = ACTIVE_PAIRING_CODE.lock().unwrap_or_else(|e| e.into_inner());
     *lock = Some(ActiveCode {
         code: code.clone(),
         created_at: Instant::now(),
@@ -41,7 +41,7 @@ pub fn generate_code() -> String {
 /// Validate a submitted code. Returns Ok(()) on match, Err(reason) on failure.
 /// Consumes the code on success. Increments attempt counter on failure.
 pub fn validate_code(submitted: &str) -> Result<(), &'static str> {
-    let mut lock = ACTIVE_PAIRING_CODE.lock().unwrap();
+    let mut lock = ACTIVE_PAIRING_CODE.lock().unwrap_or_else(|e| e.into_inner());
     let active = match lock.as_mut() {
         Some(a) => a,
         None => return Err("no_active_code"),
@@ -76,7 +76,7 @@ pub fn validate_code(submitted: &str) -> Result<(), &'static str> {
 
 /// Get remaining seconds for active code, or 0 if none.
 pub fn active_code_remaining_secs() -> u64 {
-    let lock = ACTIVE_PAIRING_CODE.lock().unwrap();
+    let lock = ACTIVE_PAIRING_CODE.lock().unwrap_or_else(|e| e.into_inner());
     match lock.as_ref() {
         Some(a) => {
             let elapsed = a.created_at.elapsed().as_secs();

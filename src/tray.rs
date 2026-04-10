@@ -382,15 +382,16 @@ impl TrayState {
             std::thread::spawn(move || {
                 // No SyncGuard here — online sync functions manage sync_in_progress themselves
                 if force {
-                    crate::online_sync::run_online_sync_forced(online_settings, state, force);
+                    crate::online_sync::run_online_sync_forced(online_settings, state.clone(), force, Arc::new(AtomicBool::new(false)));
                 } else {
                     match online_settings.sync_mode.as_str() {
                         "async" if !online_settings.group_id.is_empty() => {
                             let gid = online_settings.group_id.clone();
                             crate::online_sync::run_async_delta_sync(
                                 online_settings,
-                                state,
+                                state.clone(),
                                 &gid,
+                                Arc::new(AtomicBool::new(false)),
                             );
                         }
                         _ => {

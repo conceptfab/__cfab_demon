@@ -1,4 +1,5 @@
 import { RotateCcw, WandSparkles } from 'lucide-react';
+import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -60,14 +61,20 @@ export function AiBatchActionsCard({
         </label>
 
         <div className="flex flex-wrap gap-2">
-          <Button
-            className="h-9"
-            onClick={onRun}
-            disabled={runningAuto || !modeIsAutoSafe}
+          <AppTooltip
+            content={!modeIsAutoSafe ? 'Set mode to "auto safe" first' : undefined}
           >
-            <WandSparkles className="mr-2 h-4 w-4" />
-            {runningAuto ? runStartingLabel : runLabel}
-          </Button>
+            <span>
+              <Button
+                className="h-9"
+                onClick={onRun}
+                disabled={runningAuto || !modeIsAutoSafe}
+              >
+                <WandSparkles className="mr-2 h-4 w-4" />
+                {runningAuto ? runStartingLabel : runLabel}
+              </Button>
+            </span>
+          </AppTooltip>
 
           <Button
             variant="outline"

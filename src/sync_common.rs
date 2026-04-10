@@ -264,6 +264,12 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     }
 
     // Parse into Value — the source string is caller-owned and will be freed after this call.
+    // NOTE: For payloads >50 MB, peak memory usage is ~3× payload size (source + parsed Value).
+    // Consider serde_json::StreamDeserializer for very large databases in the future.
+    let payload_mb = slave_data.len() as f64 / (1024.0 * 1024.0);
+    if payload_mb > 10.0 {
+        lan_common::sync_log(&format!("  Parsowanie {:.1} MB payloadu...", payload_mb));
+    }
     let archive: serde_json::Value = serde_json::from_str(slave_data)
         .map_err(|e| format!("Failed to parse slave data: {}", e))?;
 

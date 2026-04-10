@@ -26,6 +26,7 @@ export function ImportPanel() {
   const [validation, setValidation] = useState<ImportValidation | null>(null);
   const [summary, setSummary] = useState<ImportSummary | null>(null);
   const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const selectFile = async () => {
     try {
@@ -44,27 +45,32 @@ export function ImportPanel() {
       }
     } catch (e) {
       console.error('File selection failed:', e);
+      setError(String(e));
     }
   };
 
   const handleValidate = async (path: string) => {
+    setError(null);
     try {
       const result = await validateImport(path);
       setValidation(result);
       setArchivePath(path);
     } catch (e) {
       console.error('Validation failed:', e);
+      setError(String(e));
     }
   };
 
   const handleImport = async () => {
     if (!archivePath) return;
     setImporting(true);
+    setError(null);
     try {
       const result = await importData(archivePath);
       setSummary(result);
     } catch (e) {
       console.error('Import failed:', e);
+      setError(String(e));
     } finally {
       setImporting(false);
     }
@@ -80,6 +86,12 @@ export function ImportPanel() {
         <CardDescription>{t('data_page.import_panel.description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {error && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            {error}
+          </div>
+        )}
         {!validation && !summary && (
           <div
             className="border border-dashed rounded-lg p-3 flex items-center gap-4 hover:bg-accent/40 transition-colors cursor-pointer"

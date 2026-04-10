@@ -4,6 +4,8 @@ use crate::config;
 use std::sync::Mutex;
 use std::time::Instant;
 
+// Lock ordering: SYNC_LOG_MUTEX → LOG_SETTINGS_CACHE (never reverse).
+// SYNC_LOG_MUTEX is the outer lock, LOG_SETTINGS_CACHE is only acquired inside sync_log().
 static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
 static LOG_SETTINGS_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
 const LOG_SETTINGS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);

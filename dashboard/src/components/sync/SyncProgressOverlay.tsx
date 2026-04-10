@@ -170,7 +170,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
         {/* Freeze notice */}
         {!isCompleted && !isError && (
           <p className="text-[11px] text-amber-400/80 mb-2">
-            {t('sync_progress.frozen_notice', 'Rejestrowanie wpisów jest wstrzymane. Proszę nie zamykać aplikacji.')}
+            {t('sync_progress.frozen_notice', 'Recording is paused. Please do not close the application.')}
           </p>
         )}
 
