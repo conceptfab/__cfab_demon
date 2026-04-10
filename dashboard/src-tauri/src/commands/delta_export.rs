@@ -1,5 +1,5 @@
 use super::helpers::build_table_hashes;
-use super::types::{ApplicationRow, ManualSession, Project, SessionRow, Tombstone};
+use super::types::{ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ManualSession, Project, SessionRow, Tombstone};
 use crate::db;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +13,10 @@ pub struct TableHashes {
     pub sessions: String,
     #[serde(default)]
     pub manual_sessions: String,
+    #[serde(default)]
+    pub assignment_feedback: String,
+    #[serde(default)]
+    pub assignment_auto_runs: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -27,6 +31,10 @@ pub struct DeltaData {
     pub manual_sessions: Vec<ManualSession>,
     #[serde(default)]
     pub tombstones: Vec<Tombstone>,
+    #[serde(default)]
+    pub assignment_feedback: Vec<AssignmentFeedbackRow>,
+    #[serde(default)]
+    pub assignment_auto_runs: Vec<AssignmentAutoRunRow>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -187,9 +195,55 @@ pub fn build_delta_archive(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
 
+    // Assignment Feedback (delta — only rows created after `since`)
+    let mut stmt = conn
+        .prepare("SELECT id, session_id, app_id, from_project_id, to_project_id, source, COALESCE(weight, 1.0), created_at
+                  FROM assignment_feedback WHERE created_at > ?1")
+        .map_err(|e| e.to_string())?;
+
+    let assignment_feedback: Vec<AssignmentFeedbackRow> = stmt
+        .query_map([since.as_str()], |row| {
+            Ok(AssignmentFeedbackRow {
+                id: row.get(0)?,
+                session_id: row.get(1)?,
+                app_id: row.get(2)?,
+                from_project_id: row.get(3)?,
+                to_project_id: row.get(4)?,
+                source: row.get(5)?,
+                weight: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Assignment Auto Runs (delta — only rows started after `since`)
+    let mut stmt = conn
+        .prepare("SELECT id, started_at, finished_at, sessions_scanned, sessions_assigned, sessions_skipped, rolled_back_at
+                  FROM assignment_auto_runs WHERE started_at > ?1")
+        .map_err(|e| e.to_string())?;
+
+    let assignment_auto_runs: Vec<AssignmentAutoRunRow> = stmt
+        .query_map([since.as_str()], |row| {
+            Ok(AssignmentAutoRunRow {
+                id: row.get(0)?,
+                started_at: row.get(1)?,
+                finished_at: row.get(2)?,
+                sessions_scanned: row.get(3)?,
+                sessions_assigned: row.get(4)?,
+                sessions_skipped: row.get(5)?,
+                rolled_back_at: row.get(6)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
     log::info!(
-        "Delta export (since={}): projects={}, apps={}, sessions={}, manual={}, tombstones={}",
-        since, projects.len(), applications.len(), sessions.len(), manual_sessions.len(), tombstones.len()
+        "Delta export (since={}): projects={}, apps={}, sessions={}, manual={}, tombstones={}, feedback={}, auto_runs={}",
+        since, projects.len(), applications.len(), sessions.len(), manual_sessions.len(), tombstones.len(),
+        assignment_feedback.len(), assignment_auto_runs.len()
     );
 
     let default_name = format!(
@@ -210,6 +264,8 @@ pub fn build_delta_archive(
             sessions,
             manual_sessions,
             tombstones,
+            assignment_feedback,
+            assignment_auto_runs,
         },
     };
 

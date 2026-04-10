@@ -101,6 +101,14 @@ pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> St
             "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
              FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)"
         }
+        "assignment_feedback" => {
+            "SELECT COALESCE(group_concat(source || '|' || created_at, ';'), '') \
+             FROM (SELECT source, created_at FROM assignment_feedback ORDER BY created_at)"
+        }
+        "assignment_auto_runs" => {
+            "SELECT COALESCE(group_concat(started_at || '|' || COALESCE(finished_at, ''), ';'), '') \
+             FROM (SELECT started_at, finished_at FROM assignment_auto_runs ORDER BY started_at)"
+        }
         _ => return String::new(),
     };
     let concat: String = conn.query_row(sql, [], |row| row.get(0))
@@ -114,6 +122,8 @@ pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_ex
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
+        assignment_feedback: compute_table_hash(conn, "assignment_feedback"),
+        assignment_auto_runs: compute_table_hash(conn, "assignment_auto_runs"),
     }
 }
 

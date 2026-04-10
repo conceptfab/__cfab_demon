@@ -450,6 +450,10 @@ pub struct ExportData {
     pub manual_sessions: Vec<ManualSession>,
     pub daily_files: BTreeMap<String, DailyData>,
     pub tombstones: Vec<Tombstone>,
+    #[serde(default)]
+    pub assignment_feedback: Vec<AssignmentFeedbackRow>,
+    #[serde(default)]
+    pub assignment_auto_runs: Vec<AssignmentAutoRunRow>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -553,4 +557,27 @@ pub struct ImportSummary {
     pub sessions_imported: usize,
     pub sessions_merged: usize,
     pub daily_files_imported: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AssignmentFeedbackRow {
+    pub id: i64,
+    pub session_id: Option<i64>,
+    pub app_id: Option<i64>,
+    pub from_project_id: Option<i64>,
+    pub to_project_id: Option<i64>,
+    pub source: String,
+    pub weight: f64,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AssignmentAutoRunRow {
+    pub id: i64,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub sessions_scanned: i64,
+    pub sessions_assigned: i64,
+    pub sessions_skipped: i64,
+    pub rolled_back_at: Option<String>,
 }

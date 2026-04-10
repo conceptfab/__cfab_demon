@@ -7,7 +7,7 @@ export interface DaemonOnlineSyncSettings {
   auth_token: string;
   device_id: string;
   encryption_key: string;
-  sync_interval_hours: number;
+  sync_interval_minutes: number;
   auto_sync_on_startup: boolean;
 }
 
