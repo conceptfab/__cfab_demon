@@ -19,7 +19,7 @@ import {
 } from '@/lib/online-sync';
 import { triggerDaemonOnlineSync } from '@/lib/tauri';
 import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
-import { getErrorMessage } from '@/lib/utils';
+import { getErrorMessage, logTauriWarn } from '@/lib/utils';
 import {
   type AppearanceSettings,
   type CurrencySettings,
@@ -350,7 +350,7 @@ export function useSettingsFormState({
         sync_interval_hours: Math.floor(savedOnlineSync.autoSyncIntervalMinutes / 60),
         auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
       }).catch((err) => {
-        console.warn('Failed to persist online sync settings to daemon:', err);
+        logTauriWarn('Failed to persist online sync settings to daemon:', err);
       })
     ).catch(() => { /* Daemon not available — ignore */ });
 
@@ -360,11 +360,11 @@ export function useSettingsFormState({
     void settingsApi
       .persistSessionSettingsForDaemon(savedSession.minSessionDurationSeconds)
       .catch((err) => {
-        console.warn('Failed to persist session settings for daemon:', err);
+        logTauriWarn('Failed to persist session settings for daemon:', err);
       });
     void settingsApi.persistLanguageForDaemon(savedLanguage.code).catch(
       (err) => {
-        console.warn('Failed to persist language for daemon:', err);
+        logTauriWarn('Failed to persist language for daemon:', err);
       },
     );
     const savedAppearance = saveAppearanceSettings(appearanceSettings);
@@ -383,7 +383,7 @@ export function useSettingsFormState({
     setStoreSplitSettings?.(splitSettings);
     if (i18n.resolvedLanguage !== savedLanguage.code) {
       void i18n.changeLanguage(savedLanguage.code).catch((error) => {
-        console.warn('Failed to apply language change:', error);
+        logTauriWarn('Failed to apply language change:', error);
       });
     }
     setWorkingHoursError(null);
@@ -421,7 +421,7 @@ export function useSettingsFormState({
         t('settings_page.successfully_merged_close_sessions', { merged }),
       );
     } catch (e) {
-      console.error(e);
+      logTauriWarn('Settings operation failed:', e);
       showError(
         t('settings_page.error_linking_sessions') +
           getErrorMessage(e, t('ui.common.unknown_error')),
@@ -443,7 +443,7 @@ export function useSettingsFormState({
       setClearArmed(false);
       showInfo(t('settings_page.all_data_removed'));
     } catch (e) {
-      console.error(e);
+      logTauriWarn('Settings operation failed:', e);
       showError(
         t('settings_page.failed_to_clear_data') +
           getErrorMessage(e, t('ui.common.unknown_error')),
@@ -601,7 +601,7 @@ export function useSettingsFormState({
             await setSecureToken(result.apiToken);
             setOnlineSyncSettings((prev) => ({ ...prev, apiToken: result.apiToken! }));
           } catch {
-            console.warn('[license] Failed to auto-save API token');
+            logTauriWarn('[license] Failed to auto-save API token');
           }
         }
 
@@ -623,7 +623,7 @@ export function useSettingsFormState({
               sync_interval_hours: Math.floor(onlineSyncSettings.autoSyncIntervalMinutes / 60),
               auto_sync_on_startup: onlineSyncSettings.autoSyncOnStartup,
             }).catch((err) => {
-              console.warn('[license] Failed to persist daemon settings after activation:', err);
+              logTauriWarn('[license] Failed to persist daemon settings after activation:', err);
             })
           ).catch(() => { /* Daemon not available */ });
         }

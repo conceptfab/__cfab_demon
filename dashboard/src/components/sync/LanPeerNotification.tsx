@@ -43,7 +43,10 @@ function getDismissedPeers(): Set<string> {
 function dismissPeer(deviceId: string): void {
   const raw = localStorage.getItem(NOTIFICATION_DISMISS_KEY);
   const now = Date.now();
-  const entries: DismissEntry[] = raw ? JSON.parse(raw) : [];
+  let entries: DismissEntry[] = [];
+  if (raw) {
+    try { entries = JSON.parse(raw); } catch { /* corrupted localStorage */ }
+  }
   const valid = entries.filter((e) => e.until > now);
   valid.push({ id: deviceId, until: now + DISMISS_TTL_MS });
   localStorage.setItem(NOTIFICATION_DISMISS_KEY, JSON.stringify(valid));
@@ -73,6 +76,9 @@ export function LanPeerNotification() {
 
   visiblePeerRef.current = visiblePeer;
 
+  // Keep a ref to handleSync so the polling effect always calls the latest version
+  const handleSyncRef = useRef<(peer: LanPeer) => Promise<void>>();
+
   useEffect(() => {
     const poll = async () => {
       try {
@@ -87,8 +93,8 @@ export function LanPeerNotification() {
 
           // Auto-sync if enabled
           const settings = loadLanSyncSettings();
-          if (settings.enabled && settings.autoSyncOnPeerFound) {
-            await handleSync(activePeer);
+          if (settings.enabled && settings.autoSyncOnPeerFound && handleSyncRef.current) {
+            await handleSyncRef.current(activePeer);
           }
         } else if (!activePeer && visiblePeerRef.current) {
           setVisiblePeer(null);
@@ -156,6 +162,9 @@ export function LanPeerNotification() {
     }
   }, [triggerRefresh, t]);
 
+  // Keep ref in sync with latest handleSync
+  handleSyncRef.current = handleSync;
+
   const handleDismiss = useCallback(() => {
     if (visiblePeer) {
       dismissPeer(visiblePeer.device_id);
@@ -206,7 +215,7 @@ export function LanPeerNotification() {
             type="button"
             className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
             onClick={handleDismiss}
-            aria-label="Dismiss"
+            aria-label={t('common.dismiss', 'Dismiss')}
           >
             <X className="h-3.5 w-3.5" />
           </button>

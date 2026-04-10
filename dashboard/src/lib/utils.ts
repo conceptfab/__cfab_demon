@@ -61,8 +61,18 @@ export function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+const isDev = import.meta.env.DEV;
+
 export function logTauriError(action: string, error: unknown): void {
   console.error(`[TIMEFLOW] Failed to ${action}:`, error);
+}
+
+export function logTauriWarn(action: string, ...args: unknown[]): void {
+  if (isDev) console.warn(`[TIMEFLOW] ${action}`, ...args);
+}
+
+export function logTauriInfo(action: string, ...args: unknown[]): void {
+  if (isDev) console.info(`[TIMEFLOW] ${action}`, ...args);
 }
 
 export function formatMoney(value: number, currencyCode: string): string {

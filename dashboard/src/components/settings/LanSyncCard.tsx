@@ -56,6 +56,28 @@ interface LanSyncCardProps {
   firewallHintTitle?: string;
   firewallHintDescription?: string;
   forceMergeTooltip?: string;
+  // Pairing props
+  pairedDeviceIds?: Set<string>;
+  pairingExpiredDeviceIds?: Set<string>;
+  pairingCode?: string | null;
+  pairingCodeRemaining?: number;
+  onGeneratePairingCode?: () => void;
+  onPairWithPeer?: (peer: LanPeer, code: string) => Promise<void>;
+  onUnpairDevice?: (peer: LanPeer) => void;
+  pairingGenerateCodeLabel?: string;
+  pairingCodeLabel?: string;
+  pairingCodeExpiresLabel?: string;
+  pairingCodeExpiredLabel?: string;
+  pairingEnterCodeLabel?: string;
+  pairingEnterCodeDescriptionLabel?: string;
+  pairingSubmitLabel?: string;
+  pairingBadgePairedLabel?: string;
+  pairingBadgeExpiredLabel?: string;
+  pairingUnpairLabel?: string;
+  pairingUnpairConfirmLabel?: string;
+  pairingRepairLabel?: string;
+  pairingPairButtonLabel?: string;
+  pairingNotPairedLabel?: string;
   onEnabledChange: (enabled: boolean) => void;
   onAutoSyncChange: (enabled: boolean) => void;
   onSyncIntervalChange: (hours: number) => void;
@@ -64,6 +86,131 @@ interface LanSyncCardProps {
   onSyncWithPeer: (peer: LanPeer) => void;
   onFullSyncWithPeer?: (peer: LanPeer) => void;
   onForceSyncWithPeer?: (peer: LanPeer) => void;
+}
+
+function PairCodeDialog({
+  peer,
+  onSubmit,
+  buttonLabel,
+  buttonVariant = 'outline',
+  buttonClassName = '',
+  dialogTitle,
+  dialogDescription,
+  submitLabel,
+}: {
+  peer: LanPeer;
+  onSubmit: (peer: LanPeer, code: string) => Promise<void>;
+  buttonLabel: string;
+  buttonVariant?: 'outline' | 'ghost' | 'default';
+  buttonClassName?: string;
+  dialogTitle: string;
+  dialogDescription: string;
+  submitLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [digits, setDigits] = useState(['', '', '', '', '', '']);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleDigitChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    const newDigits = [...digits];
+    newDigits[index] = value.slice(-1);
+    setDigits(newDigits);
+    setError(null);
+    if (value && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (pasted.length === 6) {
+      setDigits(pasted.split(''));
+      inputRefs.current[5]?.focus();
+    }
+  };
+
+  const handleSubmit = async () => {
+    const code = digits.join('');
+    if (code.length !== 6) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onSubmit(peer, code);
+      setOpen(false);
+      setDigits(['', '', '', '', '', '']);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant={buttonVariant}
+        size="sm"
+        className={`h-7 px-2.5 text-xs ${buttonClassName}`}
+        onClick={() => {
+          setOpen(true);
+          setDigits(['', '', '', '', '', '']);
+          setError(null);
+          setTimeout(() => inputRefs.current[0]?.focus(), 100);
+        }}
+      >
+        <Shield className="h-3 w-3 mr-1" />
+        {buttonLabel}
+      </Button>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-card border border-border rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold mb-1">{dialogTitle}</h3>
+            <p className="text-sm text-muted-foreground mb-4">{dialogDescription}</p>
+            <div className="flex justify-center gap-2 mb-4" onPaste={handlePaste}>
+              {digits.map((digit, i) => (
+                <input
+                  key={i}
+                  ref={(el) => { inputRefs.current[i] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleDigitChange(i, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(i, e)}
+                  className="w-10 h-12 text-center text-xl font-mono font-bold bg-background border border-border rounded-md focus:border-primary focus:outline-none"
+                />
+              ))}
+            </div>
+            {error && <p className="text-sm text-destructive mb-3">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setOpen(false)} disabled={submitting}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleSubmit()}
+                disabled={submitting || digits.some(d => !d)}
+              >
+                {submitting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                {submitLabel}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 export function LanSyncCard({
@@ -108,6 +255,27 @@ export function LanSyncCard({
   firewallHintTitle,
   firewallHintDescription,
   forceMergeTooltip,
+  pairedDeviceIds,
+  pairingExpiredDeviceIds,
+  pairingCode,
+  pairingCodeRemaining,
+  onGeneratePairingCode,
+  onPairWithPeer,
+  onUnpairDevice,
+  pairingGenerateCodeLabel,
+  pairingCodeLabel,
+  pairingCodeExpiresLabel,
+  pairingCodeExpiredLabel,
+  pairingEnterCodeLabel,
+  pairingEnterCodeDescriptionLabel,
+  pairingSubmitLabel,
+  pairingBadgePairedLabel,
+  pairingBadgeExpiredLabel,
+  pairingUnpairLabel,
+  pairingUnpairConfirmLabel,
+  pairingRepairLabel,
+  pairingPairButtonLabel,
+  pairingNotPairedLabel,
   onEnabledChange,
   onAutoSyncChange,
   onSyncIntervalChange,
@@ -395,6 +563,35 @@ export function LanSyncCard({
             </p>
           )}
 
+          {/* Pairing code generation — master side only */}
+          {onGeneratePairingCode && !isSlave && (
+            <div className="flex items-center gap-3 rounded-md border border-border/50 bg-background/20 p-3">
+              {pairingCode ? (
+                <div className="flex items-center gap-4 w-full">
+                  <div className="flex flex-col">
+                    <span className="text-xs text-muted-foreground">{pairingCodeLabel ?? 'Pairing code'}</span>
+                    <span className="text-2xl font-mono font-bold tracking-[0.3em]">{pairingCode}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground ml-auto">
+                    {pairingCodeRemaining && pairingCodeRemaining > 0
+                      ? (pairingCodeExpiresLabel ?? 'Expires in {{seconds}}s').replace('{{seconds}}', String(pairingCodeRemaining))
+                      : pairingCodeExpiredLabel ?? 'Code expired'}
+                  </span>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={onGeneratePairingCode}
+                >
+                  <Shield className="h-3 w-3 mr-1.5" />
+                  {pairingGenerateCodeLabel ?? 'Generate pairing code'}
+                </Button>
+              )}
+            </div>
+          )}
+
           {peers.length === 0 ? (
             <>
               <p className="text-xs text-muted-foreground">{noPeersText}</p>
@@ -416,86 +613,153 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
             </>
           ) : (
             <div className="space-y-2">
-              {peers.map((peer) => (
-                <div
-                  key={peer.device_id}
-                  className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-background/20 p-2.5"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {peer.machine_name}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-mono">
-                        {peer.ip}:{peer.dashboard_port}
-                      </p>
+              {peers.map((peer) => {
+                const isPaired = pairedDeviceIds?.has(peer.device_id);
+                const isPairingExpired = pairingExpiredDeviceIds?.has(peer.device_id);
+                const needsPairing = onPairWithPeer && !isPaired;
+                const canSync = isPaired || !onPairWithPeer; // If pairing not enabled, always allow sync
+
+                return (
+                  <div
+                    key={peer.device_id}
+                    className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-background/20 p-2.5"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {peer.machine_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground font-mono">
+                          {peer.ip}:{peer.dashboard_port}
+                        </p>
+                      </div>
+                      {/* Connection status badge */}
+                      <span
+                        className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
+                          peer.dashboard_running
+                            ? 'bg-emerald-500/15 text-emerald-400'
+                            : 'bg-zinc-500/15 text-zinc-400'
+                        }`}
+                      >
+                        {peer.dashboard_running
+                          ? dashboardRunningLabel
+                          : dashboardOfflineLabel}
+                      </span>
+                      {/* Pairing status badge */}
+                      {isPaired && !isPairingExpired && (
+                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400">
+                          {pairingBadgePairedLabel ?? 'paired'}
+                        </span>
+                      )}
+                      {isPairingExpired && (
+                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+                          {pairingBadgeExpiredLabel ?? 'pairing expired'}
+                        </span>
+                      )}
                     </div>
-                    <span
-                      className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${
-                        peer.dashboard_running
-                          ? 'bg-emerald-500/15 text-emerald-400'
-                          : 'bg-zinc-500/15 text-zinc-400'
-                      }`}
-                    >
-                      {peer.dashboard_running
-                        ? dashboardRunningLabel
-                        : dashboardOfflineLabel}
-                    </span>
-                  </div>
-                  <div className="flex gap-1.5 shrink-0">
-                    {isSlave ? null : (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 px-2.5 text-xs"
-                          disabled={isBusy || !peer.dashboard_running}
-                          onClick={() => onSyncWithPeer(peer)}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            setContextMenu({ x: e.clientX, y: e.clientY, peer });
-                          }}
-                        >
-                          {isBusy ? (
-                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                          ) : (
-                            <RefreshCw className="h-3 w-3 mr-1" />
+                    <div className="flex gap-1.5 shrink-0">
+                      {/* SLAVE: only Pair / Re-pair buttons (code entry) */}
+                      {isSlave && onPairWithPeer && (
+                        <>
+                          {needsPairing && !isPairingExpired && (
+                            <PairCodeDialog
+                              peer={peer}
+                              onSubmit={onPairWithPeer}
+                              buttonLabel={pairingPairButtonLabel ?? 'Pair'}
+                              dialogTitle={pairingEnterCodeLabel ?? 'Enter pairing code'}
+                              dialogDescription={pairingEnterCodeDescriptionLabel ?? 'Enter the 6-digit code displayed on the other device.'}
+                              submitLabel={pairingSubmitLabel ?? 'Pair'}
+                            />
                           )}
-                          {isBusy ? syncingLabel : syncButtonLabel}
-                        </Button>
-                        {onFullSyncWithPeer && (
+                          {isPairingExpired && (
+                            <PairCodeDialog
+                              peer={peer}
+                              onSubmit={onPairWithPeer}
+                              buttonLabel={pairingRepairLabel ?? 'Re-pair'}
+                              buttonVariant="outline"
+                              buttonClassName="text-amber-400 hover:text-amber-300"
+                              dialogTitle={pairingEnterCodeLabel ?? 'Enter pairing code'}
+                              dialogDescription={pairingEnterCodeDescriptionLabel ?? 'Enter the 6-digit code displayed on the other device.'}
+                              submitLabel={pairingSubmitLabel ?? 'Pair'}
+                            />
+                          )}
+                          {isPaired && onUnpairDevice && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs text-red-400 hover:text-red-300"
+                              onClick={() => {
+                                const msg = (pairingUnpairConfirmLabel ?? 'Remove pairing with {{name}}?').replace('{{name}}', peer.machine_name);
+                                if (window.confirm(msg)) onUnpairDevice(peer);
+                              }}
+                            >
+                              {pairingUnpairLabel ?? 'Unpair'}
+                            </Button>
+                          )}
+                        </>
+                      )}
+                      {/* MASTER: sync buttons — only when peer is paired (or pairing not enabled) */}
+                      {!isSlave && canSync && (
+                        <>
                           <Button
                             type="button"
-                            variant="ghost"
+                            variant="outline"
                             size="sm"
-                            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                            className="h-7 px-2.5 text-xs"
                             disabled={isBusy || !peer.dashboard_running}
-                            onClick={() => onFullSyncWithPeer(peer)}
+                            onClick={() => onSyncWithPeer(peer)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setContextMenu({ x: e.clientX, y: e.clientY, peer });
+                            }}
                           >
-                            {fullSyncButtonLabel}
+                            {isBusy ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                            )}
+                            {isBusy ? syncingLabel : syncButtonLabel}
                           </Button>
-                        )}
-                        {onForceSyncWithPeer && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 px-2 text-xs text-amber-400 hover:text-amber-300"
-                            disabled={isBusy || !peer.dashboard_running}
-                            onClick={() => onForceSyncWithPeer(peer)}
-                            title={forceMergeTooltip ?? 'Force merge — ignores hash comparison'}
-                          >
-                            <Zap className="h-3 w-3 mr-1" />
-                            {forceSyncButtonLabel ?? 'Force'}
-                          </Button>
-                        )}
-                      </>
-                    )}
+                          {onFullSyncWithPeer && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                              disabled={isBusy || !peer.dashboard_running}
+                              onClick={() => onFullSyncWithPeer(peer)}
+                            >
+                              {fullSyncButtonLabel}
+                            </Button>
+                          )}
+                          {onForceSyncWithPeer && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs text-amber-400 hover:text-amber-300"
+                              disabled={isBusy || !peer.dashboard_running}
+                              onClick={() => onForceSyncWithPeer(peer)}
+                              title={forceMergeTooltip ?? 'Force merge — ignores hash comparison'}
+                            >
+                              <Zap className="h-3 w-3 mr-1" />
+                              {forceSyncButtonLabel ?? 'Force'}
+                            </Button>
+                          )}
+                        </>
+                      )}
+                      {/* MASTER: peer not paired — show hint */}
+                      {!isSlave && !canSync && (
+                        <span className="text-[10px] text-muted-foreground italic">
+                          {pairingNotPairedLabel ?? 'Not paired — pair this device before syncing'}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

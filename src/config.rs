@@ -186,6 +186,17 @@ fn default_sync_mode() -> String {
     "session".to_string()
 }
 
+impl OnlineSyncSettings {
+    /// Returns the effective device ID: configured value, or auto-detected fallback.
+    pub fn effective_device_id(&self) -> String {
+        if self.device_id.is_empty() {
+            crate::lan_common::get_device_id()
+        } else {
+            self.device_id.clone()
+        }
+    }
+}
+
 impl Default for OnlineSyncSettings {
     fn default() -> Self {
         Self {
@@ -320,7 +331,8 @@ pub fn load() -> Config {
 
     // NOTE: Loose consistency — file may change between mtime check and cache return.
     // This is acceptable as config is re-read on next call.
-    if let Ok(guard) = CONFIG_CACHE.lock() {
+    {
+        let guard = CONFIG_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(cached) = guard.as_ref() {
             if cached.json_mtime == json_mtime && cached.db_mtime == db_mtime {
                 return cached.config.clone();
@@ -342,7 +354,8 @@ pub fn load() -> Config {
             // If DB read failed and JSON also returned default, prefer cached config
             // to avoid losing monitored apps during a concurrent write
             if cfg.apps.is_empty() {
-                if let Ok(guard) = CONFIG_CACHE.lock() {
+                {
+                    let guard = CONFIG_CACHE.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(cached) = guard.as_ref() {
                         if !cached.config.apps.is_empty() {
                             log::info!("Using previously cached config (DB and JSON both empty/failed)");
@@ -354,7 +367,8 @@ pub fn load() -> Config {
         }
     }
 
-    if let Ok(mut guard) = CONFIG_CACHE.lock() {
+    {
+        let mut guard = CONFIG_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         *guard = Some(ConfigCache {
             json_mtime,
             db_mtime,

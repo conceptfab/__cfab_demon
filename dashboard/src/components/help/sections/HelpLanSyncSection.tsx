@@ -30,6 +30,7 @@ export function HelpLanSyncSection() {
         t18n('help_page.lan_sync_peer_notification'),
         t18n('help_page.lan_sync_sidebar_indicator'),
         t18n('help_page.lan_sync_port_config'),
+        t18n('help_page.lan_sync_device_pairing'),
       ]}
     >
       <HelpDetailsBlock
@@ -39,6 +40,16 @@ export function HelpLanSyncSection() {
           t18n('help_page.lan_sync_setup_how_to_start'),
           t18n('help_page.lan_sync_setup_when_to_use'),
           t18n('help_page.lan_sync_setup_limitations'),
+        ]}
+      />
+      <HelpDetailsBlock
+        title={t18n('help_page.lan_sync_pairing_title')}
+        items={[
+          t18n('help_page.lan_sync_pairing_what'),
+          t18n('help_page.lan_sync_pairing_master'),
+          t18n('help_page.lan_sync_pairing_slave'),
+          t18n('help_page.lan_sync_pairing_expired'),
+          t18n('help_page.lan_sync_pairing_unpair'),
         ]}
       />
     </SectionHelp>

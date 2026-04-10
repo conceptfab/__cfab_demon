@@ -5,6 +5,8 @@ import type {
   LanServerStatus,
   SyncMarker,
   SyncProgress,
+  PairingCodeInfo,
+  PairedDeviceInfo,
 } from '../lan-sync-types';
 import type { TableHashes } from '../online-sync-types';
 
@@ -65,6 +67,18 @@ export const getLanSyncLog = (lines?: number) =>
 export const getLanSyncProgress = () =>
   invoke<SyncProgress>('get_lan_sync_progress');
 
+export const generatePairingCode = () =>
+  invokeMutation<PairingCodeInfo>('generate_pairing_code');
+
+export const submitPairingCode = (peerIp: string, peerPort: number, code: string) =>
+  invokeMutation<PairedDeviceInfo>('submit_pairing_code', { peerIp, peerPort, code });
+
+export const unpairDevice = (deviceId: string) =>
+  invokeMutation<boolean>('unpair_device', { deviceId });
+
+export const getPairedDevices = () =>
+  invoke<PairedDeviceInfo[]>('get_paired_devices');
+
 export const lanSyncApi = {
   getLanPeers,
   getLocalIps,
@@ -82,4 +96,8 @@ export const lanSyncApi = {
   markersMatch,
   backupBeforeSync,
   getLanSyncProgress,
+  generatePairingCode,
+  submitPairingCode,
+  unpairDevice,
+  getPairedDevices,
 } as const;

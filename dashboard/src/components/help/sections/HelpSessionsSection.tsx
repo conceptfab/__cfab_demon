@@ -31,6 +31,7 @@ export function HelpSessionsSection() {
         t18n('help_page.scissors_icon_appears_on_sessions_where_ai_detected_file'),
         t18n('help_page.auto_split_runs_in_cycles_it_starts_after_import_and_rep'),
         t18n('help_page.sessions_refresh_when_filters_or_data_change_and_when_yo'),
+        t18n('help_page.merge_sessions_select_two_or_more_adjacent_sessions_from'),
       ]}
     >
       <div className="text-sm space-y-4 text-foreground/90 leading-relaxed border-t border-border/10 pt-4">

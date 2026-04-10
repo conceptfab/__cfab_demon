@@ -18,6 +18,7 @@ const SYNC_TIMEOUT: Duration = Duration::from_secs(1800); // 30 min
 const MAX_POLL_ATTEMPTS: u32 = 200; // ~10 min at 3s intervals
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RETRIES: u32 = 3;
+// Exponential backoff: 5s × 3^attempt → 5s, 15s, 45s (max total ~65s with jitter)
 const RETRY_BASE_DELAY: Duration = Duration::from_secs(5);
 
 // ── Server response types ──
@@ -460,11 +461,7 @@ fn execute_async_push(
 ) -> Result<(), String> {
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
-    let device_id = if settings.device_id.is_empty() {
-        lan_common::get_device_id()
-    } else {
-        settings.device_id.clone()
-    };
+    let device_id = settings.effective_device_id();
 
     let conn = lan_common::open_dashboard_db()?;
 
@@ -554,11 +551,7 @@ fn execute_async_pull(
 ) -> Result<bool, String> {
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
-    let device_id = if settings.device_id.is_empty() {
-        lan_common::get_device_id()
-    } else {
-        settings.device_id.clone()
-    };
+    let device_id = settings.effective_device_id();
 
     // Check for pending packages
     sync_state.set_progress(1, "async_pull_checking", "download");
@@ -738,11 +731,7 @@ pub fn run_online_sync(
 
     let server_url = settings.server_url.clone();
     let token = settings.auth_token.clone();
-    let device_id = if settings.device_id.is_empty() {
-        lan_common::get_device_id()
-    } else {
-        settings.device_id.clone()
-    };
+    let device_id = settings.effective_device_id();
 
     // Track session_id for error cleanup
     let mut session_id_for_cleanup: Option<String> = None;
@@ -794,11 +783,7 @@ pub fn run_online_sync_forced(
 
     let server_url = settings.server_url.clone();
     let token = settings.auth_token.clone();
-    let device_id = if settings.device_id.is_empty() {
-        lan_common::get_device_id()
-    } else {
-        settings.device_id.clone()
-    };
+    let device_id = settings.effective_device_id();
 
     let mut session_id_for_cleanup: Option<String> = None;
 
@@ -844,11 +829,7 @@ fn execute_online_sync_inner(
 ) -> Result<(), String> {
     let server_url = &settings.server_url;
     let token = &settings.auth_token;
-    let device_id = if settings.device_id.is_empty() {
-        lan_common::get_device_id()
-    } else {
-        settings.device_id.clone()
-    };
+    let device_id = settings.effective_device_id();
     let sync_start = Instant::now();
 
     // Open DB connection

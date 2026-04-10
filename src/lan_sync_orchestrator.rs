@@ -12,6 +12,29 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
+
+/// RAII guard that removes temporary files on drop (even on early return / panic).
+struct TempFileGuard {
+    paths: Vec<std::path::PathBuf>,
+}
+
+impl TempFileGuard {
+    fn new() -> Self {
+        Self { paths: Vec::new() }
+    }
+
+    fn track(&mut self, path: std::path::PathBuf) {
+        self.paths.push(path);
+    }
+}
+
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
 const HTTP_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_RESPONSE_BODY: usize = 100 * 1024 * 1024; // 100 MB — prevent OOM from malicious Content-Length
 
@@ -26,23 +49,31 @@ pub struct PeerTarget {
 
 // ── HTTP client helpers ──
 
-fn http_post(url: &str, body: &str) -> Result<String, String> {
+/// Resolve the secret to use for a given peer: paired secret first, fallback to local.
+fn resolve_peer_secret(peer_device_id: &str) -> String {
+    if let Some(secret) = crate::lan_pairing::get_paired_secret(peer_device_id) {
+        return secret;
+    }
+    crate::lan_server::lan_secret()
+}
+
+fn http_post(url: &str, body: &str, secret: &str) -> Result<String, String> {
     let stream = std::net::TcpStream::connect_timeout(
         &url_to_addr(url)?,
         HTTP_TIMEOUT,
     )
     .map_err(|e| format!("Connect failed: {}", e))?;
-    http_request(stream, "POST", url, Some(body), None)
+    http_request(stream, "POST", url, Some(body), None, secret)
 }
 
 /// HTTP POST with custom timeout — used when slave needs more time (e.g. import).
-fn http_post_with_timeout(url: &str, body: &str, timeout: Duration) -> Result<String, String> {
+fn http_post_with_timeout(url: &str, body: &str, timeout: Duration, secret: &str) -> Result<String, String> {
     let stream = std::net::TcpStream::connect_timeout(
         &url_to_addr(url)?,
         timeout,
     )
     .map_err(|e| format!("Connect failed: {}", e))?;
-    http_request_with_timeout(stream, "POST", url, Some(body), None, timeout)
+    http_request_with_timeout(stream, "POST", url, Some(body), None, timeout, secret)
 }
 
 /// HTTP POST with progress callback — used for large data transfers.
@@ -50,13 +81,14 @@ fn http_post_with_progress(
     url: &str,
     body: &str,
     on_progress: impl Fn(u64, u64),
+    secret: &str,
 ) -> Result<String, String> {
     let stream = std::net::TcpStream::connect_timeout(
         &url_to_addr(url)?,
         HTTP_TIMEOUT,
     )
     .map_err(|e| format!("Connect failed: {}", e))?;
-    http_request(stream, "POST", url, Some(body), Some(&on_progress))
+    http_request(stream, "POST", url, Some(body), Some(&on_progress), secret)
 }
 
 fn url_to_addr(url: &str) -> Result<std::net::SocketAddr, String> {
@@ -93,8 +125,9 @@ fn http_request(
     url: &str,
     body: Option<&str>,
     on_progress: Option<&dyn Fn(u64, u64)>,
+    secret: &str,
 ) -> Result<String, String> {
-    http_request_with_timeout(stream, method, url, body, on_progress, HTTP_TIMEOUT)
+    http_request_with_timeout(stream, method, url, body, on_progress, HTTP_TIMEOUT, secret)
 }
 
 fn http_request_with_timeout(
@@ -104,6 +137,7 @@ fn http_request_with_timeout(
     body: Option<&str>,
     on_progress: Option<&dyn Fn(u64, u64)>,
     timeout: Duration,
+    secret: &str,
 ) -> Result<String, String> {
     use std::io::{BufRead, BufReader, Read, Write};
 
@@ -112,7 +146,6 @@ fn http_request_with_timeout(
 
     let path = url_path(url);
     let content_length = body.map(|b| b.len()).unwrap_or(0);
-    let secret = crate::lan_server::lan_secret();
 
     let request = if let Some(body) = body {
         format!(
@@ -139,6 +172,10 @@ fn http_request_with_timeout(
         .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
+
+    if status_code == 401 {
+        return Err("pairing_invalid: 401 Unauthorized — device may need re-pairing".to_string());
+    }
 
     // Read headers
     let mut response_content_length: usize = 0;
@@ -272,7 +309,8 @@ pub fn run_sync_as_master_with_options(
                     sync_state.db_frozen.store(false, Ordering::SeqCst);
                     // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (5 min)
                     let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer.ip, peer.port);
-                    if let Err(ue) = http_post(&slave_unfreeze_url, "{}") {
+                    let retry_secret = resolve_peer_secret(&peer.device_id);
+                    if let Err(ue) = http_post(&slave_unfreeze_url, "{}", &retry_secret) {
                         sync_log(&format!("[!] Nie udalo sie odmrozic slave: {}", ue));
                     }
                     sync_state.reset_progress();
@@ -319,6 +357,7 @@ fn execute_master_sync(
     force: bool,
 ) -> Result<(), String> {
     let base_url = format!("http://{}:{}", peer.ip, peer.port);
+    let secret = resolve_peer_secret(&peer.device_id);
     let sync_start = Instant::now();
 
     // Open single DB connection for entire sync flow
@@ -338,6 +377,7 @@ fn execute_master_sync(
     let negotiate_resp = http_post(
         &format!("{}/lan/negotiate", base_url),
         &negotiate_body.to_string(),
+        &secret,
     ).map_err(|e| { sync_log(&format!("[3/13] BLAD negocjacji: {}", e)); e })?;
 
     #[derive(Deserialize)]
@@ -374,7 +414,7 @@ fn execute_master_sync(
     sync_state.set_progress(5, "freezing", "local");
     sync_log("[5/13] Zamrazanie baz danych (master + slave)...");
     sync_state.freeze();
-    if let Err(e) = http_post(&format!("{}/lan/freeze-ack", base_url), "{}") {
+    if let Err(e) = http_post(&format!("{}/lan/freeze-ack", base_url), "{}", &secret) {
         sync_log(&format!("[5/13] BLAD freeze slave: {} — rollback master freeze", e));
         sync_state.unfreeze();
         return Err(e);
@@ -402,6 +442,7 @@ fn execute_master_sync(
         |transferred, total| {
             sync_state.update_transfer_bytes(transferred, total);
         },
+        &secret,
     ).map_err(|e| { sync_log(&format!("[6/13] BLAD pobierania: {}", e)); e })?;
 
     sync_state.set_progress(7, "received_from_slave", "local");
@@ -424,13 +465,17 @@ fn execute_master_sync(
         .unwrap_or_default()
         .as_millis();
     let incoming_file = dir.join(format!("lan_sync_incoming_{}.json", ts));
+    let mut temp_guard = TempFileGuard::new();
+    temp_guard.track(incoming_file.clone());
+    temp_guard.track(dir.join("lan_sync_merged.json"));
+    temp_guard.track(dir.join("lan_sync_incoming_latest.txt"));
+
     std::fs::write(&incoming_file, &slave_data)
         .map_err(|e| format!("Failed to write incoming data: {}", e))?;
 
     sync_common::merge_incoming_data(&mut conn, &slave_data)
         .map_err(|e| {
             sync_log(&format!("[9/13] BLAD scalania: {} — przywracam backup", e));
-            let _ = std::fs::remove_file(&incoming_file);
             if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[9/13] BLAD przywracania backupu: {}", re));
             }
@@ -444,7 +489,6 @@ fn execute_master_sync(
     sync_common::verify_merge_integrity(&conn)
         .map_err(|e| {
             sync_log(&format!("[10/13] BLAD weryfikacji: {} — przywracam backup", e));
-            let _ = std::fs::remove_file(&incoming_file);
             if let Err(re) = sync_common::restore_database_backup(&mut conn) {
                 sync_log(&format!("[10/13] BLAD przywracania backupu: {}", re));
             }
@@ -483,6 +527,7 @@ fn execute_master_sync(
         |transferred, total| {
             sync_state.update_transfer_bytes(transferred, total);
         },
+        &secret,
     ).map_err(|e| { sync_log(&format!("[11/13] BLAD wysylania danych do peera: {}", e)); e })?;
     sync_log("[11/13] Dane wyslane do peera");
 
@@ -506,7 +551,7 @@ fn execute_master_sync(
             return Err("Stop signal during db-ready".to_string());
         }
         sync_log(&format!("[12/13] Proba db-ready {}/{}...", i + 1, db_ready_timeouts.len()));
-        match http_post_with_timeout(&db_ready_url, &db_ready_body, Duration::from_secs(timeout_secs)) {
+        match http_post_with_timeout(&db_ready_url, &db_ready_body, Duration::from_secs(timeout_secs), &secret) {
             Ok(resp) => {
                 db_ready_resp = Ok(resp);
                 break;
@@ -547,13 +592,11 @@ fn execute_master_sync(
     // Step 13: Unfreeze + cleanup
     sync_log("[13/13] Odmrazanie baz danych...");
     sync_state.unfreeze();
-    http_post(&format!("{}/lan/unfreeze", base_url), "{}").ok();
+    http_post(&format!("{}/lan/unfreeze", base_url), "{}", &secret).ok();
     sync_log("[13/13] Bazy odmrozone — zbieranie danych wznowione");
 
-    // Clean up temp files
-    let _ = std::fs::remove_file(&incoming_file);
-    let _ = std::fs::remove_file(dir.join("lan_sync_merged.json"));
-    let _ = std::fs::remove_file(dir.join("lan_sync_incoming_latest.txt"));
+    // Temp files cleaned up by TempFileGuard on drop
+    drop(temp_guard);
 
     sync_common::run_gc_tombstones();
 

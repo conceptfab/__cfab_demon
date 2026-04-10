@@ -8,21 +8,15 @@ static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
 static LOG_SETTINGS_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
 const LOG_SETTINGS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Deterministic 128-bit hash using SipHash for better collision resistance.
-/// Returns lower 128 bits formatted as hex. Uses two SipHash-2-4 passes
-/// to produce a 128-bit result that's more collision-resistant than FNV-1a 64-bit.
+/// Deterministic 128-bit hash using SHA-256 (truncated to 128 bits).
+/// Stable across Rust compiler versions, unlike DefaultHasher.
 fn hash_128(data: &[u8]) -> u128 {
-    use std::hash::{Hash, Hasher};
-    // SipHash with fixed key 0 for deterministic cross-machine results
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    data.hash(&mut hasher);
-    let h1 = hasher.finish();
-    // Second pass with different seed to extend to 128 bits
-    let mut hasher2 = std::collections::hash_map::DefaultHasher::new();
-    h1.hash(&mut hasher2);
-    data.hash(&mut hasher2);
-    let h2 = hasher2.finish();
-    ((h1 as u128) << 64) | (h2 as u128)
+    use sha2::{Sha256, Digest};
+    let result = Sha256::digest(data);
+    // Take first 16 bytes (128 bits) of the 32-byte SHA-256 digest
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&result[..16]);
+    u128::from_be_bytes(bytes)
 }
 
 /// Read device_id from config dir; create if missing. Fallback to machine name.

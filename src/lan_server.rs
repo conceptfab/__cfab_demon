@@ -416,7 +416,12 @@ fn handle_connection(
     }
 
     // Verify shared secret for mutating endpoints (skip ping and read-only)
-    let requires_auth = !matches!(path, "/lan/ping" | "/lan/sync-progress" | "/online/sync-progress");
+    let requires_auth = !matches!(path,
+        "/lan/ping" | "/lan/pair" | "/lan/sync-progress" | "/online/sync-progress"
+        | "/lan/paired-devices" | "/lan/generate-pairing-code"
+        | "/lan/store-paired-device" | "/lan/remove-paired-device"
+        | "/lan/local-identity"
+    );
     if requires_auth {
         let expected = get_or_create_lan_secret();
         if !expected.is_empty() && auth_secret != expected {
@@ -466,6 +471,12 @@ fn handle_connection(
         ("GET", "/lan/download-db") => handle_download_db(),
         ("POST", "/lan/verify-ack") => handle_verify_ack(&state),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
+        ("POST", "/lan/pair") => handle_pair(&body),
+        ("POST", "/lan/generate-pairing-code") => handle_generate_pairing_code(),
+        ("POST", "/lan/store-paired-device") => handle_store_paired_device(&body),
+        ("POST", "/lan/remove-paired-device") => handle_remove_paired_device(&body),
+        ("GET", "/lan/paired-devices") => handle_get_paired_devices(),
+        ("GET", "/lan/local-identity") => handle_local_identity(),
         ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body),
         // Online sync endpoints
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal),
@@ -478,7 +489,7 @@ fn handle_connection(
 
     // Write response
     let response = format!(
-        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: http://localhost\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
         status,
         status_text(status),
         response_body.len(),
@@ -495,6 +506,7 @@ fn status_text(code: u16) -> &'static str {
         400 => "Bad Request",
         404 => "Not Found",
         409 => "Conflict",
+        413 => "Payload Too Large",
         500 => "Internal Server Error",
         _ => "Unknown",
     }
@@ -610,17 +622,15 @@ fn handle_sync_progress(state: &LanSyncState) -> (u16, String) {
 }
 
 fn handle_ping(state: &LanSyncState) -> (u16, String) {
-    let marker_hash = open_dashboard_db_readonly()
-        .ok()
-        .and_then(|conn| get_latest_marker_hash(&conn));
-
+    // Ping is unauthenticated (used for discovery), so minimize exposed data.
+    // sync_marker_hash and machine_name are omitted to reduce info leakage.
     let resp = PingResponse {
         ok: true,
         version: crate::VERSION.trim().to_string(),
         device_id: lan_common::get_device_id(),
-        machine_name: lan_common::get_machine_name(),
+        machine_name: String::new(),
         role: state.get_role(),
-        sync_marker_hash: marker_hash,
+        sync_marker_hash: None,
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }
@@ -1013,6 +1023,106 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     });
 
     (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())
+}
+
+fn handle_pair(body: &str) -> (u16, String) {
+    #[derive(Deserialize)]
+    struct PairReq {
+        code: String,
+        /// Slave sends its own identity so master can store it (mutual pairing).
+        slave_device_id: Option<String>,
+        slave_secret: Option<String>,
+        slave_machine_name: Option<String>,
+    }
+    let req: PairReq = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
+    };
+
+    match crate::lan_pairing::validate_code(&req.code) {
+        Ok(()) => {
+            // Master stores slave's secret (mutual pairing)
+            if let (Some(slave_id), Some(slave_sec)) = (&req.slave_device_id, &req.slave_secret) {
+                let slave_name = req.slave_machine_name.as_deref().unwrap_or("");
+                crate::lan_pairing::store_paired_device(slave_id, slave_sec, slave_name);
+                log::info!("LAN pairing: master stored slave secret for {}", slave_id);
+            }
+
+            let device_id = crate::lan_common::get_device_id();
+            let secret = get_or_create_lan_secret();
+            let machine_name = crate::lan_common::get_machine_name();
+            let resp = serde_json::json!({
+                "ok": true,
+                "device_id": device_id,
+                "secret": secret,
+                "machine_name": machine_name,
+            });
+            (200, resp.to_string())
+        }
+        Err(reason) => {
+            log::warn!("LAN pair attempt failed: {}", reason);
+            (403, json_error(reason))
+        }
+    }
+}
+
+fn handle_local_identity() -> (u16, String) {
+    let device_id = crate::lan_common::get_device_id();
+    let secret = get_or_create_lan_secret();
+    let machine_name = crate::lan_common::get_machine_name();
+    let resp = serde_json::json!({
+        "ok": true,
+        "device_id": device_id,
+        "secret": secret,
+        "machine_name": machine_name,
+    });
+    (200, resp.to_string())
+}
+
+fn handle_generate_pairing_code() -> (u16, String) {
+    let code = crate::lan_pairing::generate_code();
+    let remaining = crate::lan_pairing::active_code_remaining_secs();
+    let resp = serde_json::json!({
+        "ok": true,
+        "code": code,
+        "expires_in_secs": remaining,
+    });
+    (200, resp.to_string())
+}
+
+fn handle_store_paired_device(body: &str) -> (u16, String) {
+    #[derive(Deserialize)]
+    struct Req { device_id: String, secret: String, machine_name: String }
+    let req: Req = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
+    };
+    crate::lan_pairing::store_paired_device(&req.device_id, &req.secret, &req.machine_name);
+    (200, json_ok())
+}
+
+fn handle_remove_paired_device(body: &str) -> (u16, String) {
+    #[derive(Deserialize)]
+    struct Req { device_id: String }
+    let req: Req = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
+    };
+    crate::lan_pairing::remove_paired_device(&req.device_id);
+    (200, json_ok())
+}
+
+fn handle_get_paired_devices() -> (u16, String) {
+    let devices = crate::lan_pairing::load_paired_devices();
+    let list: Vec<serde_json::Value> = devices.iter().map(|(id, d)| {
+        serde_json::json!({
+            "device_id": id,
+            "machine_name": d.machine_name,
+            "paired_at": d.paired_at,
+        })
+    }).collect();
+    let resp = serde_json::json!({ "ok": true, "devices": list });
+    (200, resp.to_string())
 }
 
 /// Public wrapper for the orchestrator to call.

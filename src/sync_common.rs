@@ -118,9 +118,15 @@ fn create_pre_sync_backup_to_destination(conn: &rusqlite::Connection, sync_type:
     let file_name = format!("timeflow_pre_{}_sync_{}.db", sync_type, timestamp);
     let dest_path = backup_dir.join(&file_name);
 
-    let escaped = dest_path.to_string_lossy().replace('\'', "''");
-    conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
-        .map_err(|e| format!("Pre-sync backup VACUUM INTO failed: {}", e))?;
+    // Use rusqlite backup API instead of string-interpolated VACUUM INTO to prevent SQL injection
+    let mut dest_conn = rusqlite::Connection::open(&dest_path)
+        .map_err(|e| format!("Pre-sync backup: cannot open dest: {}", e))?;
+    let backup = rusqlite::backup::Backup::new(conn, &mut dest_conn)
+        .map_err(|e| format!("Pre-sync backup init failed: {}", e))?;
+    backup.run_to_completion(100, std::time::Duration::from_millis(50), None)
+        .map_err(|e| format!("Pre-sync backup failed: {}", e))?;
+    drop(backup);
+    drop(dest_conn);
 
     // Rotate: keep max 10 pre-sync backups per type
     let prefix = format!("timeflow_pre_{}_sync_", sync_type);
@@ -143,15 +149,11 @@ fn create_pre_sync_backup_to_destination(conn: &rusqlite::Connection, sync_type:
     Ok(dest_path.to_string_lossy().to_string())
 }
 
-/// Restore the most recent sync backup by copying it over the current database.
-/// Restore result indicating caller MUST re-open the database connection.
-pub struct RestoreResult;
-
 /// Restores from the most recent backup using SQLite backup API.
 /// This is safe even with the caller's connection open — the backup API
 /// handles locking correctly, unlike raw fs::copy which can corrupt on Windows.
 /// Callers MUST re-open the connection after restore.
-pub fn restore_database_backup(conn: &mut rusqlite::Connection) -> Result<RestoreResult, String> {
+pub fn restore_database_backup(conn: &mut rusqlite::Connection) -> Result<(), String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
     let backup_dir = dir.join("sync_backups");
 
@@ -188,7 +190,7 @@ pub fn restore_database_backup(conn: &mut rusqlite::Connection) -> Result<Restor
     *conn = new_conn;
 
     log::warn!("Database restored from backup: {:?}. Connection re-opened.", latest);
-    Ok(RestoreResult)
+    Ok(())
 }
 
 // ── Delta export for async sync ──
@@ -252,8 +254,16 @@ fn log_merge_conflict(
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
+    const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
+    if slave_data.len() > MAX_PAYLOAD_SIZE {
+        return Err(format!(
+            "Sync payload too large: {} MB (limit {} MB)",
+            slave_data.len() / (1024 * 1024),
+            MAX_PAYLOAD_SIZE / (1024 * 1024)
+        ));
+    }
+
     // Parse into Value — the source string is caller-owned and will be freed after this call.
-    // For very large payloads (>10MB), consider refactoring to section-based parsing.
     let archive: serde_json::Value = serde_json::from_str(slave_data)
         .map_err(|e| format!("Failed to parse slave data: {}", e))?;
 

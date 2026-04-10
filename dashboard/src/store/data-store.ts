@@ -34,7 +34,9 @@ interface DataState {
   dismissDiscoveredProjects: () => void;
 }
 
+// Minimum interval between consecutive data refreshes (prevents UI flicker)
 const REFRESH_THROTTLE_MS = 150;
+// Same-reason refresh dedup window (e.g. rapid file-change events from daemon)
 const REASON_REFRESH_DEDUPE_MS = 1_000;
 
 function presetToRange(preset: TimePreset): DateRange {

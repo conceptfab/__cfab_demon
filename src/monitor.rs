@@ -388,7 +388,8 @@ mod tests {
         PidCacheEntry {
             exe_name: "code.exe".to_string(),
             creation_time: 123,
-            cached_at: now - std::time::Duration::from_secs(cache_age_secs),
+            created_at: now - std::time::Duration::from_secs(cache_age_secs),
+            last_accessed_at: now - std::time::Duration::from_secs(cache_age_secs),
             last_alive_check: now,
             detected_path: detected_path.map(str::to_string),
             activity_type,

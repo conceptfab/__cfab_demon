@@ -40,16 +40,16 @@ pub(crate) fn collect_pending_detected_path_pids(pid_cache: &PidCache) -> Vec<u3
         })
         .collect();
     pids.sort_unstable_by(|left, right| {
-        let left_cached_at = pid_cache
+        let left_last_accessed = pid_cache
             .get(left)
-            .map(|entry| entry.cached_at)
+            .map(|entry| entry.last_accessed_at)
             .unwrap_or_else(std::time::Instant::now);
-        let right_cached_at = pid_cache
+        let right_last_accessed = pid_cache
             .get(right)
-            .map(|entry| entry.cached_at)
+            .map(|entry| entry.last_accessed_at)
             .unwrap_or_else(std::time::Instant::now);
-        right_cached_at
-            .cmp(&left_cached_at)
+        right_last_accessed
+            .cmp(&left_last_accessed)
             .then_with(|| left.cmp(right))
     });
     pids.truncate(WMI_PATH_LOOKUP_BATCH_LIMIT);
@@ -123,6 +123,9 @@ fn with_wmi_connection<T>(op: impl FnOnce(&wmi::WMIConnection) -> Result<T, ()>)
     })
 }
 
+/// Maximum time to wait for a single WMI query before giving up.
+const WMI_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 fn get_process_command_lines_wmi(pids: &[u32]) -> Result<HashMap<u32, String>, ()> {
     #[derive(serde::Deserialize, Debug)]
     struct Win32ProcessCommandLineRow {
@@ -133,7 +136,9 @@ fn get_process_command_lines_wmi(pids: &[u32]) -> Result<HashMap<u32, String>, (
     }
 
     let query = build_wmi_process_command_line_query(pids).ok_or(())?;
-    with_wmi_connection(|conn| {
+
+    let start = std::time::Instant::now();
+    let result = with_wmi_connection(|conn| {
         let query_result: Result<Vec<Win32ProcessCommandLineRow>, _> = conn.raw_query(&query);
         match query_result {
             Ok(rows) => {
@@ -149,7 +154,19 @@ fn get_process_command_lines_wmi(pids: &[u32]) -> Result<HashMap<u32, String>, (
             }
             Err(_) => Err(()),
         }
-    })
+    });
+
+    let elapsed = start.elapsed();
+    if elapsed > WMI_QUERY_TIMEOUT {
+        log::warn!(
+            "WMI query took {:.1}s (exceeds {}s threshold), result discarded",
+            elapsed.as_secs_f64(),
+            WMI_QUERY_TIMEOUT.as_secs()
+        );
+        return Err(());
+    }
+
+    result
 }
 
 fn split_command_line_tokens(command_line: &str) -> Vec<String> {

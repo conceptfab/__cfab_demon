@@ -71,6 +71,17 @@ export const LAN_SYNC_SETTINGS_KEY = 'timeflow.settings.lan-sync';
 export const LAN_SYNC_STATE_KEY = 'timeflow.state.lan-sync';
 export const LAN_SYNC_SETTINGS_CHANGED_EVENT = 'timeflow:lan-sync-settings-changed';
 
+export interface PairingCodeInfo {
+  code: string;
+  expires_in_secs: number;
+}
+
+export interface PairedDeviceInfo {
+  device_id: string;
+  machine_name: string;
+  paired_at: string;
+}
+
 export const DEFAULT_LAN_SYNC_SETTINGS: LanSyncSettings = {
   enabled: true,
   serverPort: 47891,

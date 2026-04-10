@@ -8,7 +8,8 @@
       "not_available": "—",
       "unknown_error": "Unknown error",
       "unassigned": "Unassigned",
-      "other": "Other"
+      "other": "Other",
+      "dismiss": "Dismiss"
     },
     "buttons": {
       "ok": "OK",
@@ -1266,7 +1267,26 @@
       "full_sync_label": "Full sync",
       "sync_label": "Sync",
       "firewall_hint_title": "No visible peers — check your firewall",
-      "firewall_hint_description": "If the daemon did not have administrator privileges, firewall rules may not have been added. Add them manually:"
+      "firewall_hint_description": "If the daemon did not have administrator privileges, firewall rules may not have been added. Add them manually:",
+      "pairing_generate_code": "Generate pairing code",
+      "pairing_code_label": "Pairing code",
+      "pairing_code_expires": "Expires in {{seconds}}s",
+      "pairing_code_expired": "Code expired",
+      "pairing_enter_code": "Enter pairing code",
+      "pairing_enter_code_description": "Enter the 6-digit code displayed on the other device.",
+      "pairing_submit": "Pair",
+      "pairing_success": "Successfully paired with {{name}}",
+      "pairing_error_invalid_code": "Invalid code — check and try again",
+      "pairing_error_expired": "Code expired — generate a new one on the other device",
+      "pairing_error_too_many_attempts": "Too many attempts — generate a new code",
+      "pairing_error_no_active_code": "No active code — generate one on the other device first",
+      "pairing_badge_paired": "paired",
+      "pairing_badge_expired": "pairing expired",
+      "pairing_unpair": "Unpair",
+      "pairing_unpair_confirm": "Remove pairing with {{name}}? You will need to re-enter a code to sync again.",
+      "pairing_repair": "Re-pair",
+      "pairing_pair_button": "Pair",
+      "pairing_not_paired": "Not paired — pair this device before syncing"
     }
   },
   "help": {
@@ -1549,6 +1569,7 @@
     "scissors_icon_appears_on_sessions_where_ai_detected_file": "Scissors icon – appears on sessions where AI detected file activity across multiple projects. Click to split the session based on AI suggestions.",
     "auto_split_runs_in_cycles_it_starts_after_import_and_rep": "Auto-split runs in cycles: it starts after import and repeats every 60 seconds. In one pass it analyzes up to 50 unassigned sessions and performs at most 5 splits.",
     "sessions_refresh_when_filters_or_data_change_and_when_yo": "The sessions list refreshes when filters change, when real data changes, and when you return to the TIMEFLOW window, without a separate 15s timer on this page.",
+    "merge_sessions_select_two_or_more_adjacent_sessions_from": "Merge sessions – select two or more adjacent sessions from the context menu and combine them into a single session. Useful when the same task was tracked in separate fragments.",
     "ai_data_view_interpretation": "AI Data View Interpretation",
     "the_ai_data_view_presents_the_model_s_train_of_thought_f": "The \"AI Data\" view presents the model's \"train of thought\" for assigned or suggested sessions. Here is how to read its metrics:",
     "confidence": "Confidence:",
@@ -1779,6 +1800,7 @@
     "lan_sync_peer_notification": "Peer notification – a floating notification appears when a new TIMEFLOW instance is detected. You can sync immediately or dismiss the notification.",
     "lan_sync_sidebar_indicator": "Sidebar indicator – the LAN status in the sidebar shows the name of a discovered peer (or 'No peers'). Click it to open LAN Sync settings.",
     "lan_sync_port_config": "Server port – configurable port for the embedded HTTP server (1024–65535). Both devices must be on the same LAN/Wi-Fi.",
+    "lan_sync_device_pairing": "Device Pairing – before syncing, devices must be paired using a 6-digit code (TTL 5 min, max 5 attempts). After pairing, the slave stores the master's secret for future syncs.",
     "lan_sync_firewall": "Automatic Firewall – on first startup, the daemon creates Windows Firewall rules for UDP 47892 (discovery) and TCP 47891 (sync server) for ALL network profiles (private, public, domain). If the daemon lacks admin privileges, a warning is logged and you may need to add the rules manually.",
     "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery reads actual subnet masks from network interfaces and calculates correct broadcast addresses. Discover responses are sent directly to the requester (unicast) for reliability when broadcast is blocked.",
     "lan_sync_background_interval": "Background Sync Interval – when a sync interval is configured (4h/8h/12h/24h/48h), TIMEFLOW automatically syncs with the first available online peer in the background, even without manual action.",
@@ -1788,6 +1810,12 @@
     "lan_sync_setup_how_to_start": "How to start: enable LAN Sync in Settings on both machines, make sure they are on the same LAN/Wi-Fi, and wait for peer discovery (up to 30 seconds).",
     "lan_sync_setup_when_to_use": "When to use: use it to quickly synchronize work data between your desktop and laptop, or between team members on the same office network.",
     "lan_sync_setup_limitations": "Limitations: both devices must be on the same local network. Large datasets may take a moment on the first sync.",
+    "lan_sync_pairing_title": "Device Pairing",
+    "lan_sync_pairing_what": "What it does: before two devices can sync, they must be paired using a 6-digit code. This ensures only authorized devices can exchange data.",
+    "lan_sync_pairing_master": "Generating a code (master): click 'Generate pairing code' in LAN Sync settings. A 6-digit code appears with a 5-minute countdown. Share this code with the other device.",
+    "lan_sync_pairing_slave": "Entering a code (slave): click 'Pair' next to the discovered device and enter the 6-digit code shown on the master. After successful pairing, the Sync button becomes available.",
+    "lan_sync_pairing_expired": "Pairing expired: if a previously paired device rejects the connection (401), a 'pairing expired' badge appears. Click 'Re-pair' and enter a new code generated on the other device.",
+    "lan_sync_pairing_unpair": "Unpairing: click 'Unpair' to remove a device pairing. You will need to enter a new code to sync with that device again.",
     "lan_sync_master_slave": "MASTER/SLAVE Roles – by default, roles are assigned via UDP election at startup (longest uptime wins MASTER). You can override this in Settings > LAN Sync > Device role — set Master or Slave manually. The daemon applies the forced role within 60 seconds.",
     "lan_sync_sync_markers": "Sync Markers – after each successful sync, a SHA256 marker is stored in SQLite. Matching markers enable efficient delta sync; mismatched markers trigger a full sync.",
     "lan_sync_scheduled": "Scheduled Sync – configure the sync interval (4h/8h/12h/24h/48h or manual) in Settings. Discovery activates only during sync windows to save resources.",
@@ -1941,6 +1969,9 @@
     "online_sync_pulled": "Data synchronized from server",
     "online_sync_pushed": "Data sent to server",
     "lan_sync_done": "LAN sync with {{peer}} completed"
+  },
+  "daemon_sync": {
+    "dismiss_warning": "Dismiss — sync may still be running"
   },
   "dashboard_page": {
     "empty_state_title": "No tracked activity yet",

@@ -46,35 +46,37 @@ pub struct DailySummary {
     pub apps_active_count: usize,
 }
 
-fn truncate_middle(value: &str, max_chars: usize) -> String {
+fn truncate_middle(value: &str, max_chars: usize) -> std::borrow::Cow<'_, str> {
+    use std::borrow::Cow;
+
     if max_chars == 0 {
-        return String::new();
+        return Cow::Borrowed("");
     }
 
     // Fast-path for ASCII strings (typical file paths) — avoid Vec<char> allocation
     if value.is_ascii() && value.len() <= max_chars {
-        return value.to_string();
+        return Cow::Borrowed(value);
     }
 
     // Collect once — avoids double iteration over chars
     let chars: Vec<char> = value.chars().collect();
     if chars.len() <= max_chars {
-        return value.to_string();
+        return Cow::Borrowed(value);
     }
 
     if max_chars <= 3 {
-        return chars.into_iter().take(max_chars).collect();
+        return Cow::Owned(chars.into_iter().take(max_chars).collect());
     }
 
     let head_len = (max_chars - 3) / 2;
     let tail_len = max_chars - 3 - head_len;
     let head: String = chars[..head_len].iter().collect();
     let tail: String = chars[chars.len() - tail_len..].iter().collect();
-    format!("{}...{}", head, tail)
+    Cow::Owned(format!("{}...{}", head, tail))
 }
 
 fn sanitize_text(value: &str, max_chars: usize) -> String {
-    truncate_middle(value.trim(), max_chars)
+    truncate_middle(value.trim(), max_chars).into_owned()
 }
 
 pub(crate) fn sanitize_file_entry_name(value: &str) -> String {

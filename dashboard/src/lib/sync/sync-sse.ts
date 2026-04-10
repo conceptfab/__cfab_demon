@@ -17,6 +17,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let reconnectAttempts = 0;
 const MAX_RECONNECT_DELAY_MS = 120_000; // 2 min max backoff
 const BASE_RECONNECT_DELAY_MS = 5_000;
+const MAX_RECONNECT_ATTEMPTS = 20; // Stop retrying after ~20 attempts (~40 min total)
 
 function getReconnectDelay(): number {
   const delay = Math.min(
@@ -78,8 +79,12 @@ export async function connectSSE(onSyncAvailable: SyncSSEListener): Promise<void
 function scheduleReconnect(onSyncAvailable: SyncSSEListener): void {
   if (reconnectTimer) return;
   reconnectAttempts++;
+  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+    logger.warn(`[SSE] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached — giving up`);
+    return;
+  }
   const delay = getReconnectDelay();
-  logger.info(`[SSE] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts})`);
+  logger.info(`[SSE] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     void connectSSE(onSyncAvailable);

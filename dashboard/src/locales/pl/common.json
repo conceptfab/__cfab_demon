@@ -8,7 +8,8 @@
       "not_available": "—",
       "unknown_error": "Nieznany błąd",
       "unassigned": "Nieprzypisane",
-      "other": "Inne"
+      "other": "Inne",
+      "dismiss": "Zamknij"
     },
     "buttons": {
       "ok": "OK",
@@ -1266,7 +1267,26 @@
       "full_sync_label": "Pełna synchronizacja",
       "sync_label": "Synchronizacja",
       "firewall_hint_title": "Brak widocznych peerów — sprawdź zaporę sieciową",
-      "firewall_hint_description": "Jeśli demon nie miał uprawnień administratora, reguły firewall mogły nie zostać dodane. Dodaj je ręcznie:"
+      "firewall_hint_description": "Jeśli demon nie miał uprawnień administratora, reguły firewall mogły nie zostać dodane. Dodaj je ręcznie:",
+      "pairing_generate_code": "Generuj kod parowania",
+      "pairing_code_label": "Kod parowania",
+      "pairing_code_expires": "Wygasa za {{seconds}}s",
+      "pairing_code_expired": "Kod wygasł",
+      "pairing_enter_code": "Wprowadź kod parowania",
+      "pairing_enter_code_description": "Wpisz 6-cyfrowy kod wyświetlony na drugim urządzeniu.",
+      "pairing_submit": "Sparuj",
+      "pairing_success": "Pomyślnie sparowano z {{name}}",
+      "pairing_error_invalid_code": "Nieprawidłowy kod — sprawdź i spróbuj ponownie",
+      "pairing_error_expired": "Kod wygasł — wygeneruj nowy na drugim urządzeniu",
+      "pairing_error_too_many_attempts": "Zbyt wiele prób — wygeneruj nowy kod",
+      "pairing_error_no_active_code": "Brak aktywnego kodu — najpierw wygeneruj go na drugim urządzeniu",
+      "pairing_badge_paired": "sparowane",
+      "pairing_badge_expired": "parowanie wygasło",
+      "pairing_unpair": "Odparuj",
+      "pairing_unpair_confirm": "Usunąć parowanie z {{name}}? Aby ponownie synchronizować, trzeba będzie wpisać nowy kod.",
+      "pairing_repair": "Sparuj ponownie",
+      "pairing_pair_button": "Sparuj",
+      "pairing_not_paired": "Nie sparowane — sparuj urządzenie przed synchronizacją"
     }
   },
   "help": {
@@ -1549,6 +1569,7 @@
     "scissors_icon_appears_on_sessions_where_ai_detected_file": "Ikona nożyczek – pojawia się przy sesjach, w których AI wykrył aktywność na plikach wielu projektów. Kliknij aby podzielić sesję wg sugestii AI.",
     "auto_split_runs_in_cycles_it_starts_after_import_and_rep": "Auto-split działa cyklicznie: startuje po imporcie i ponawia się co 60 sekund. W jednym przebiegu analizuje do 50 nieprzypisanych sesji i wykonuje maksymalnie 5 podziałów.",
     "sessions_refresh_when_filters_or_data_change_and_when_yo": "Lista sesji odświeża się po zmianie filtrów, po realnych zmianach danych i po powrocie do okna TIMEFLOW, bez osobnego timera 15 s na tej stronie.",
+    "merge_sessions_select_two_or_more_adjacent_sessions_from": "Scalanie sesji – zaznacz dwie lub więcej sąsiednich sesji z menu kontekstowego i połącz je w jedną sesję. Przydatne gdy to samo zadanie zostało zarejestrowane w osobnych fragmentach.",
     "ai_data_view_interpretation": "Interpretacja widoku AI Data",
     "the_ai_data_view_presents_the_model_s_train_of_thought_f": "Widok \"AI Data\" prezentuje \"tok myślenia\" modelu dla przypisanych lub sugerowanych sesji. Oto jak czytać zawarte w nim wskaźniki:",
     "confidence": "Ufność:",
@@ -1779,6 +1800,7 @@
     "lan_sync_peer_notification": "Powiadomienie o peer – pływające powiadomienie pojawia się po wykryciu nowej instancji TIMEFLOW. Możesz zsynchronizować natychmiast lub odrzucić powiadomienie.",
     "lan_sync_sidebar_indicator": "Wskaźnik w pasku bocznym – status LAN w sidebarze pokazuje nazwę wykrytego peera (lub 'Brak peerów'). Kliknij, aby otworzyć ustawienia LAN Sync.",
     "lan_sync_port_config": "Port serwera – konfigurowalny port wbudowanego serwera HTTP (1024–65535). Oba urządzenia muszą być w tej samej sieci LAN/Wi-Fi.",
+    "lan_sync_device_pairing": "Parowanie urządzeń – przed synchronizacją urządzenia muszą być sparowane za pomocą 6-cyfrowego kodu (TTL 5 min, maks. 5 prób). Po sparowaniu slave przechowuje secret mastera dla przyszłych synchronizacji.",
     "lan_sync_firewall": "Automatyczny Firewall – przy pierwszym uruchomieniu daemon tworzy reguły Windows Firewall dla UDP 47892 (discovery) i TCP 47891 (serwer sync) dla wszystkich profili sieciowych (prywatna, publiczna, domena). Jeśli daemon nie ma uprawnień administratora, ostrzeżenie jest logowane — reguły trzeba dodać ręcznie.",
     "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery automatycznie odczytuje maski podsieci z interfejsów sieciowych i oblicza poprawny adres broadcast. Odpowiedzi na zapytania discover są wysyłane bezpośrednio do pytającego (unicast) dla niezawodności gdy broadcast jest blokowany.",
     "lan_sync_background_interval": "Automatyczny sync w tle – gdy ustawiony jest interwał (4h/8h/12h/24h/48h), TIMEFLOW automatycznie synchronizuje się z pierwszym dostępnym peerem w tle, bez konieczności ręcznej akcji.",
@@ -1788,6 +1810,12 @@
     "lan_sync_setup_how_to_start": "Jak zacząć: włącz LAN Sync w Ustawieniach na obu maszynach, upewnij się że są w tej samej sieci LAN/Wi-Fi i poczekaj na wykrycie peera (do 30 sekund).",
     "lan_sync_setup_when_to_use": "Kiedy użyć: użyj do szybkiej synchronizacji danych między komputerem stacjonarnym a laptopem lub między członkami zespołu w tej samej sieci biurowej.",
     "lan_sync_setup_limitations": "Ograniczenia: oba urządzenia muszą być w tej samej sieci lokalnej. Przy pierwszej synchronizacji duże zestawy danych mogą chwilę potrwać.",
+    "lan_sync_pairing_title": "Parowanie urządzeń",
+    "lan_sync_pairing_what": "Co to robi: przed synchronizacją dwa urządzenia muszą być sparowane za pomocą 6-cyfrowego kodu. Gwarantuje to, że tylko autoryzowane urządzenia mogą wymieniać dane.",
+    "lan_sync_pairing_master": "Generowanie kodu (master): kliknij 'Generuj kod parowania' w ustawieniach LAN Sync. Pojawi się 6-cyfrowy kod z 5-minutowym odliczaniem. Podaj ten kod drugiemu urządzeniu.",
+    "lan_sync_pairing_slave": "Wpisywanie kodu (slave): kliknij 'Sparuj' obok wykrytego urządzenia i wpisz 6-cyfrowy kod wyświetlony na masterze. Po udanym parowaniu pojawi się przycisk Synchronizuj.",
+    "lan_sync_pairing_expired": "Parowanie wygasło: jeśli wcześniej sparowane urządzenie odrzuci połączenie (401), pojawi się znaczek 'parowanie wygasło'. Kliknij 'Sparuj ponownie' i wpisz nowy kod wygenerowany na drugim urządzeniu.",
+    "lan_sync_pairing_unpair": "Odparowanie: kliknij 'Odparuj' aby usunąć parowanie z urządzeniem. Aby ponownie synchronizować, trzeba będzie wpisać nowy kod.",
     "lan_sync_master_slave": "Role MASTER/SLAVE – domyślnie role przydzielane automatycznie przez elekcję UDP (dłuższy uptime = MASTER). Możesz wymusić rolę ręcznie w Ustawienia > LAN Sync > Rola urządzenia. Demon zastosuje wymuszoną rolę w ciągu 60 sekund.",
     "lan_sync_sync_markers": "Znaczniki Sync – po każdej udanej synchronizacji w SQLite zapisywany jest znacznik SHA256. Zgodne znaczniki umożliwiają wydajny delta sync; różne znaczniki wymuszają pełny sync.",
     "lan_sync_scheduled": "Harmonogram Sync – ustaw interwał synchronizacji (4h/8h/12h/24h/48h lub ręcznie) w Ustawieniach. Discovery aktywuje się tylko w oknie synchronizacji.",
@@ -1941,6 +1969,9 @@
     "online_sync_pulled": "Dane zsynchronizowane z serwera",
     "online_sync_pushed": "Dane wysłane na serwer",
     "lan_sync_done": "LAN sync z {{peer}} zakończony"
+  },
+  "daemon_sync": {
+    "dismiss_warning": "Zamknij — synchronizacja może nadal trwać"
   },
   "dashboard_page": {
     "empty_state_title": "Brak zarejestrowanej aktywności",

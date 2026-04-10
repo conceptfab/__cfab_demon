@@ -89,7 +89,7 @@ fn check_dashboard_compatibility() {
             let demon_version = crate::VERSION.trim();
             if !version_compat::check_version_compatibility(demon_version, v_dash) {
                 if WARNING_SHOWN
-                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                    .compare_exchange(false, true, Ordering::SeqCst, Ordering::Relaxed)
                     .is_ok()
                 {
                     let lang_obj = crate::i18n::load_language();

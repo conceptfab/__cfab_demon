@@ -192,12 +192,25 @@ pub fn decrypt_file_data(data: &[u8], key_base64: &str) -> Result<Vec<u8>, Strin
         .decrypt(&nonce, ciphertext)
         .map_err(|e| format!("Decryption failed: {}", e))?;
 
-    // Gzip decompress
+    // Gzip decompress with size limit to prevent gzip bomb attacks
+    const MAX_DECOMPRESSED_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     let mut decoder = GzDecoder::new(&compressed[..]);
     let mut decompressed = Vec::new();
-    decoder
-        .read_to_end(&mut decompressed)
-        .map_err(|e| format!("Gzip decompress: {}", e))?;
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = decoder.read(&mut buf)
+            .map_err(|e| format!("Gzip decompress: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        if decompressed.len() + n > MAX_DECOMPRESSED_SIZE {
+            return Err(format!(
+                "Gzip decompressed data exceeds {} MB limit — possible gzip bomb",
+                MAX_DECOMPRESSED_SIZE / (1024 * 1024)
+            ));
+        }
+        decompressed.extend_from_slice(&buf[..n]);
+    }
 
     Ok(decompressed)
 }

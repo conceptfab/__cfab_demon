@@ -7,6 +7,7 @@
  * renders SyncProgressOverlay which handles the detailed progress display.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { lanSyncApi } from '@/lib/tauri';
 import { triggerDaemonOnlineSync } from '@/lib/tauri/online-sync';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
@@ -27,6 +28,7 @@ function isTerminal(p: SyncProgress): boolean {
 }
 
 export function DaemonSyncOverlay() {
+  const { t } = useTranslation();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const [activeSyncType, setActiveSyncType] = useState<'lan' | 'online' | null>(null);
   const wasActiveRef = useRef(false);
@@ -143,7 +145,7 @@ export function DaemonSyncOverlay() {
             onClick={handleDismiss}
             className="rounded-md border border-muted-foreground/30 bg-background/90 px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/50 transition-colors backdrop-blur-sm"
           >
-            Dismiss — sync may still be running
+            {t('daemon_sync.dismiss_warning', 'Dismiss — sync may still be running')}
           </button>
         </div>
       )}

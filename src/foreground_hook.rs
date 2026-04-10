@@ -84,6 +84,9 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
+// SAFETY: This callback is invoked by SetWinEventHook on the same thread that installed
+// the hook (message-pump thread). HOOK_SIGNAL is thread_local!, so the RefCell borrow
+// is safe — no cross-thread access is possible.
 unsafe extern "system" fn win_event_proc(
     _hook: HWINEVENTHOOK,
     _event: DWORD,

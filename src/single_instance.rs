@@ -9,7 +9,9 @@ use winapi::um::winnt::HANDLE;
 
 const MUTEX_NAME: &str = "Global\\TimeFlowDemon_SingleInstance";
 
-/// RAII guard — mutex is released on drop
+/// RAII guard — mutex is released on drop.
+/// On panic or process termination, Windows automatically closes all handles
+/// owned by the process, so the named mutex is always released.
 pub struct SingleInstanceGuard {
     handle: HANDLE,
 }

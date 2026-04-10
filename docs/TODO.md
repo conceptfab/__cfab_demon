@@ -4,19 +4,14 @@
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
 /rust-expert  /requesting-code-review /writing-plans Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona pod katem:
- - poprawności i logiki,
- - UI
- - wydajności, i jej poprawy,
- - wspomagania AI,
- - synchrnozacji danych lan i online
- możliwych optymalizacji, 
+
+- poprawności i logiki,
+- UI
+- wydajności, i jej poprawy,
+- wspomagania AI,
+- synchrnozacji danych lan i online
+ możliwych optymalizacji,
  nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń oraz funkcjonalności nie opisanej w zakładkach help/pomoc. Swoje uwagi i szczególowe poprawki zapisz w raport.md
-
-
----------------------------------
-
-ISSUE-8: podwójne parsowanie ipconfig (wymaga cache warstwy)
-ISSUE-9a: peak RAM 200MB+ na merge (wymaga typowanych struktur Deserialize zamiast serde_json::Value)
 
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku (pomoc i quick start są wyjątkiem). Przeanalizuj kod i logikę odpowiedzialną za AI, bo mam wątpliwości co do jej poprawności. Wszystkie zachowania AI muszą być precyzyjnie komunikowane by zachowaniu uzytkownika było elementem treningu. Sprawdz czygoś nie warto poprawic w jej rdzeniu i założeniach. Przygotuj aplikacje do dynamicznego rozwoju - podziel ją na moduły umożliwiające łatwe aktualizacje. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 

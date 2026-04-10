@@ -95,7 +95,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
     void poll();
     const id = window.setInterval(poll, POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
-  }, [active, onFinished, syncType]);
+  }, [active, onFinished, syncType, onRetry]);
 
   if (!active || !progress || progress.phase === 'idle') return null;
 

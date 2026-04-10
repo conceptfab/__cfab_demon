@@ -14,7 +14,9 @@ use super::{classify_activity_type, filetime_to_u64, get_exe_name_and_creation_t
 pub struct PidCacheEntry {
     pub exe_name: String,
     pub creation_time: u64,
-    pub cached_at: Instant,
+    #[allow(dead_code)] // Retained for diagnostics and future eviction by creation time
+    pub created_at: Instant,
+    pub last_accessed_at: Instant,
     pub last_alive_check: Instant,
     pub detected_path: Option<String>,
     pub activity_type: Option<ActivityType>,
@@ -75,7 +77,7 @@ pub(crate) fn ensure_pid_cache_entry(
         }
 
         if !needs_refresh {
-            entry.cached_at = now;
+            entry.last_accessed_at = now;
             return Some(());
         }
     }
@@ -91,7 +93,8 @@ pub(crate) fn ensure_pid_cache_entry(
         PidCacheEntry {
             exe_name,
             creation_time,
-            cached_at: now,
+            created_at: now,
+            last_accessed_at: now,
             last_alive_check: now,
             detected_path: None,
             activity_type,
@@ -104,5 +107,5 @@ pub(crate) fn ensure_pid_cache_entry(
 /// Evicts cache entries older than `max_age` instead of clearing the whole map.
 pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: std::time::Duration) {
     let now = Instant::now();
-    pid_cache.retain(|_, entry| now.duration_since(entry.cached_at) < max_age);
+    pid_cache.retain(|_, entry| now.duration_since(entry.last_accessed_at) < max_age);
 }

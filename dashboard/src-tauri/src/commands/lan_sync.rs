@@ -376,6 +376,171 @@ pub async fn run_lan_sync(
     })
 }
 
+// ── Pairing types ──
+
+#[derive(Serialize, Debug)]
+pub struct PairingCodeInfo {
+    pub code: String,
+    pub expires_in_secs: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PairedDeviceInfo {
+    pub device_id: String,
+    pub machine_name: String,
+    pub paired_at: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct PairResponse {
+    ok: bool,
+    device_id: Option<String>,
+    secret: Option<String>,
+    machine_name: Option<String>,
+    error: Option<String>,
+}
+
+// ── Pairing commands ──
+
+#[tauri::command]
+pub async fn generate_pairing_code() -> Result<PairingCodeInfo, String> {
+    let result = tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+        let url = "http://127.0.0.1:47891/lan/generate-pairing-code";
+        let resp = client.post(url)
+            .send()
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
+        let body: serde_json::Value = resp.json()
+            .map_err(|e| format!("Invalid response: {}", e))?;
+
+        if body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(body.get("error").and_then(|v| v.as_str()).unwrap_or("unknown error").to_string());
+        }
+
+        Ok::<PairingCodeInfo, String>(PairingCodeInfo {
+            code: body["code"].as_str().unwrap_or("").to_string(),
+            expires_in_secs: body["expires_in_secs"].as_u64().unwrap_or(300),
+        })
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn submit_pairing_code(
+    peer_ip: String,
+    peer_port: u16,
+    code: String,
+) -> Result<PairedDeviceInfo, String> {
+    let result = tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+
+        // Get local identity + secret so master can store it (mutual pairing)
+        let local_info: serde_json::Value = client.get("http://127.0.0.1:47891/lan/local-identity")
+            .send()
+            .and_then(|r| r.json())
+            .unwrap_or_default();
+        let local_device_id = local_info.get("device_id").and_then(|v| v.as_str()).unwrap_or("");
+        let local_secret = local_info.get("secret").and_then(|v| v.as_str()).unwrap_or("");
+        let local_machine_name = local_info.get("machine_name").and_then(|v| v.as_str()).unwrap_or("");
+
+        let body = serde_json::json!({
+            "code": code,
+            "slave_device_id": local_device_id,
+            "slave_secret": local_secret,
+            "slave_machine_name": local_machine_name,
+        });
+        let url = format!("http://{}:{}/lan/pair", peer_ip, peer_port);
+        let resp = client.post(&url)
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Peer unreachable: {}", e))?;
+        let status = resp.status();
+        let pair_resp: PairResponse = resp.json()
+            .map_err(|e| format!("Invalid response: {}", e))?;
+
+        if !status.is_success() || !pair_resp.ok {
+            return Err(pair_resp.error.unwrap_or_else(|| format!("Pairing failed ({})", status)));
+        }
+
+        let device_id = pair_resp.device_id.ok_or("Missing device_id in response")?;
+        let secret = pair_resp.secret.ok_or("Missing secret in response")?;
+        let machine_name = pair_resp.machine_name.unwrap_or_default();
+
+        // Store in local paired devices via daemon
+        let store_body = serde_json::json!({
+            "device_id": device_id,
+            "secret": secret,
+            "machine_name": machine_name,
+        });
+        let store_url = "http://127.0.0.1:47891/lan/store-paired-device";
+        let store_resp = client.post(store_url)
+            .json(&store_body)
+            .send()
+            .map_err(|e| format!("Failed to store pairing: {}", e))?;
+        if !store_resp.status().is_success() {
+            return Err("Failed to store paired device in daemon".to_string());
+        }
+
+        Ok::<PairedDeviceInfo, String>(PairedDeviceInfo {
+            device_id,
+            machine_name: machine_name.clone(),
+            paired_at: chrono::Utc::now().to_rfc3339(),
+        })
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+
+    sync_log(&format!("LAN pairing: successfully paired with {}", result.machine_name));
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn unpair_device(device_id: String) -> Result<bool, String> {
+    let result = tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+        let body = serde_json::json!({ "device_id": device_id });
+        let url = "http://127.0.0.1:47891/lan/remove-paired-device";
+        let resp = client.post(url)
+            .json(&body)
+            .send()
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
+        Ok::<bool, String>(resp.status().is_success())
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
+    let result = tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+        let url = "http://127.0.0.1:47891/lan/paired-devices";
+        let resp = client.get(url)
+            .send()
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
+        let body: serde_json::Value = resp.json()
+            .map_err(|e| format!("Invalid response: {}", e))?;
+        let devices = body.get("devices")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let result: Vec<PairedDeviceInfo> = devices.iter().filter_map(|d| {
+            Some(PairedDeviceInfo {
+                device_id: d.get("device_id")?.as_str()?.to_string(),
+                machine_name: d.get("machine_name")?.as_str()?.to_string(),
+                paired_at: d.get("paired_at")?.as_str()?.to_string(),
+            })
+        }).collect();
+        Ok::<Vec<PairedDeviceInfo>, String>(result)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))??;
+    Ok(result)
+}
+
 // ── Helpers ──
 
 fn build_http_client() -> reqwest::blocking::Client {

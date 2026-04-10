@@ -1,14 +1,18 @@
 //! SFTP client for online sync file transfers.
 
 use ssh2::Session;
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::Path;
 use std::time::Duration;
 
+use crate::config;
+
 const CHUNK_SIZE: usize = 64 * 1024; // 64 KB
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024; // 50 MB — safety limit for SFTP downloads
+const KNOWN_HOSTS_FILE: &str = "known_sftp_hosts.json";
 
 pub struct SftpClient {
     pub host: String,
@@ -38,6 +42,62 @@ impl SftpClient {
         }
     }
 
+    fn known_hosts_path() -> Result<std::path::PathBuf, String> {
+        let dir = config::config_dir().map_err(|e| e.to_string())?;
+        Ok(dir.join(KNOWN_HOSTS_FILE))
+    }
+
+    fn load_known_hosts() -> HashMap<String, String> {
+        let path = match Self::known_hosts_path() {
+            Ok(p) => p,
+            Err(_) => return HashMap::new(),
+        };
+        let data = match std::fs::read_to_string(&path) {
+            Ok(d) => d,
+            Err(_) => return HashMap::new(),
+        };
+        serde_json::from_str(&data).unwrap_or_default()
+    }
+
+    fn save_known_hosts(hosts: &HashMap<String, String>) {
+        if let Ok(path) = Self::known_hosts_path() {
+            if let Ok(data) = serde_json::to_string_pretty(hosts) {
+                let _ = std::fs::write(path, data);
+            }
+        }
+    }
+
+    fn verify_host_key_tofu(&self, fingerprint: &str) -> Result<(), String> {
+        let host_key = format!("{}:{}", self.host, self.port);
+        let mut known = Self::load_known_hosts();
+
+        match known.get(&host_key) {
+            Some(stored) if stored == fingerprint => {
+                log::debug!("SSH host key verified (TOFU) for {}", host_key);
+                Ok(())
+            }
+            Some(stored) => {
+                log::error!(
+                    "SSH HOST KEY CHANGED for {}! Expected: {}, got: {}. Possible MITM attack.",
+                    host_key, stored, fingerprint
+                );
+                Err(format!(
+                    "SSH host key mismatch for {} — stored fingerprint does not match. \
+                     This could indicate a man-in-the-middle attack. \
+                     If the server was reinstalled, delete the entry from {:?}.",
+                    host_key,
+                    Self::known_hosts_path().unwrap_or_default()
+                ))
+            }
+            None => {
+                log::info!("SSH TOFU: trusting host key for {} on first use: {}", host_key, fingerprint);
+                known.insert(host_key, fingerprint.to_string());
+                Self::save_known_hosts(&known);
+                Ok(())
+            }
+        }
+    }
+
     fn connect(&self) -> Result<Session, String> {
         let addr = format!("{}:{}", self.host, self.port);
         let tcp = TcpStream::connect_timeout(
@@ -51,10 +111,10 @@ impl SftpClient {
         session.handshake()
             .map_err(|e| format!("SSH handshake failed: {}", e))?;
 
-        // Log host key fingerprint for security audit trail
+        // Trust-on-first-use (TOFU) host key verification
         if let Some(host_key) = session.host_key() {
             let fingerprint: String = host_key.0.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
-            log::info!("SSH host key fingerprint for {}: {}", self.host, fingerprint);
+            self.verify_host_key_tofu(&fingerprint)?;
         }
 
         session.userauth_password(&self.username, &self.password)

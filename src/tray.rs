@@ -380,7 +380,7 @@ impl TrayState {
         {
             let state = sync_state.clone();
             std::thread::spawn(move || {
-                let _guard = SyncGuard(state.clone());
+                // No SyncGuard here — online sync functions manage sync_in_progress themselves
                 if force {
                     crate::online_sync::run_online_sync_forced(online_settings, state, force);
                 } else {

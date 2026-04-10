@@ -151,6 +151,10 @@ export function Settings() {
   const [lanSyncResult, setLanSyncResult] = useState<{ text: string; success: boolean } | null>(null);
   const [latestMarker, setLatestMarker] = useState<SyncMarker | null>(null);
   const [myIp, setMyIp] = useState('');
+  const [pairedDeviceIds, setPairedDeviceIds] = useState<Set<string>>(new Set());
+  const [pairingExpiredDeviceIds, setPairingExpiredDeviceIds] = useState<Set<string>>(new Set());
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [pairingCodeRemaining, setPairingCodeRemaining] = useState(0);
 
   const [lastSyncAt, setLastSyncAt] = useState(() => loadLanSyncState().lastSyncAt);
   useEffect(() => {
@@ -234,6 +238,67 @@ export function Settings() {
     }
   }, [lanSettings.enabled, lanSettings.serverPort]);
 
+  // ── Pairing: load paired devices on mount ──
+  const refreshPairedDevices = useCallback(async () => {
+    try {
+      const devices = await lanSyncApi.getPairedDevices();
+      setPairedDeviceIds(new Set(devices.map(d => d.device_id)));
+    } catch {
+      // Daemon might not be running
+    }
+  }, []);
+
+  useEffect(() => { void refreshPairedDevices(); }, [refreshPairedDevices]);
+
+  // Pairing code countdown timer
+  useEffect(() => {
+    if (!pairingCode || pairingCodeRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setPairingCodeRemaining(prev => {
+        if (prev <= 1) {
+          setPairingCode(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pairingCode, pairingCodeRemaining]);
+
+  // Pairing callback handlers
+  const handleGeneratePairingCode = useCallback(async () => {
+    try {
+      const result = await lanSyncApi.generatePairingCode();
+      setPairingCode(result.code);
+      setPairingCodeRemaining(result.expires_in_secs);
+    } catch (e) {
+      setLanSyncResult({ text: e instanceof Error ? e.message : String(e), success: false });
+    }
+  }, []);
+
+  const handlePairWithPeer = useCallback(async (peer: LanPeer, code: string) => {
+    const result = await lanSyncApi.submitPairingCode(peer.ip, peer.dashboard_port, code);
+    setPairedDeviceIds(prev => new Set([...prev, result.device_id]));
+    setPairingExpiredDeviceIds(prev => {
+      const next = new Set(prev);
+      next.delete(result.device_id);
+      return next;
+    });
+  }, []);
+
+  const handleUnpairDevice = useCallback(async (peer: LanPeer) => {
+    try {
+      await lanSyncApi.unpairDevice(peer.device_id);
+      setPairedDeviceIds(prev => {
+        const next = new Set(prev);
+        next.delete(peer.device_id);
+        return next;
+      });
+    } catch (e) {
+      setLanSyncResult({ text: e instanceof Error ? e.message : String(e), success: false });
+    }
+  }, []);
+
   const updateLanSettings = useCallback((updater: (prev: LanSyncSettingsType) => LanSyncSettingsType) => {
     setLanSettings((prev) => {
       const next = updater(prev);
@@ -270,11 +335,17 @@ export function Settings() {
       setLanSyncResult({ text: `${label} — OK`, success: true });
       triggerRefresh('lan_sync_pull');
     } catch (e) {
-      setLanSyncResult({ text: e instanceof Error ? e.message : String(e), success: false });
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes('pairing_invalid') || msg.includes('401')) {
+        setPairingExpiredDeviceIds(prev => new Set([...prev, peer.device_id]));
+        setLanSyncResult({ text: t('settings.lan_sync.pairing_badge_expired'), success: false });
+      } else {
+        setLanSyncResult({ text: msg, success: false });
+      }
     } finally {
       setLanSyncing(false);
     }
-  }, [triggerRefresh]);
+  }, [triggerRefresh, t]);
 
   const handleManualPing = useCallback(async (ip: string, port: number): Promise<LanPeer | null> => {
     const result = await lanSyncApi.pingLanPeer(ip, port);
@@ -625,6 +696,27 @@ export function Settings() {
           firewallHintDescription={t('settings.lan_sync.firewall_hint_description')}
           forceMergeTooltip={t('settings.lan_sync.force_merge_tooltip')}
           syncPhaseLabels={syncPhaseLabels}
+          pairedDeviceIds={pairedDeviceIds}
+          pairingExpiredDeviceIds={pairingExpiredDeviceIds}
+          pairingCode={pairingCode}
+          pairingCodeRemaining={pairingCodeRemaining}
+          onGeneratePairingCode={() => void handleGeneratePairingCode()}
+          onPairWithPeer={handlePairWithPeer}
+          onUnpairDevice={(peer) => void handleUnpairDevice(peer)}
+          pairingGenerateCodeLabel={t('settings.lan_sync.pairing_generate_code')}
+          pairingCodeLabel={t('settings.lan_sync.pairing_code_label')}
+          pairingCodeExpiresLabel={t('settings.lan_sync.pairing_code_expires')}
+          pairingCodeExpiredLabel={t('settings.lan_sync.pairing_code_expired')}
+          pairingEnterCodeLabel={t('settings.lan_sync.pairing_enter_code')}
+          pairingEnterCodeDescriptionLabel={t('settings.lan_sync.pairing_enter_code_description')}
+          pairingSubmitLabel={t('settings.lan_sync.pairing_submit')}
+          pairingBadgePairedLabel={t('settings.lan_sync.pairing_badge_paired')}
+          pairingBadgeExpiredLabel={t('settings.lan_sync.pairing_badge_expired')}
+          pairingUnpairLabel={t('settings.lan_sync.pairing_unpair')}
+          pairingUnpairConfirmLabel={t('settings.lan_sync.pairing_unpair_confirm')}
+          pairingRepairLabel={t('settings.lan_sync.pairing_repair')}
+          pairingPairButtonLabel={t('settings.lan_sync.pairing_pair_button')}
+          pairingNotPairedLabel={t('settings.lan_sync.pairing_not_paired')}
         />
       </div>
       )}
