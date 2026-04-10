@@ -12,10 +12,12 @@ import type {
   LanSyncSettings as LanSyncSettingsType,
   SyncMarker,
 } from '@/lib/lan-sync-types';
-import { usePageRefreshListener, triggerRefresh } from '@/hooks/usePageRefreshListener';
+import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
+import { useDataStore } from '@/store/data-store';
 
 export function useLanSyncManager() {
   const { t } = useTranslation();
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
 
   const [lanSettings, setLanSettings] = useState<LanSyncSettingsType>(loadLanSyncSettings);
   const [lanPeers, setLanPeers] = useState<LanPeer[]>([]);
