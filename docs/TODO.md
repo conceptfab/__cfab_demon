@@ -4,7 +4,6 @@
 - Zapis **TIMEFLOW** musi być zawsze wielkimi literami.
 
 /rust-expert  /requesting-code-review /writing-plans Aplikacja działa poprawnie, ale przeanalizuj dokładnie kod dashboard i demona pod katem:
-
 - poprawności i logiki,
 - UI
 - wielowątkowości
@@ -16,7 +15,7 @@
 
 Aplikacja działa poprawnie, ale przeanalizuj kod projektu pod katem poprawności logiki, wydajności, możliwych optymalizacji, nadmiarowego kodu i sugerowanych rozwiązań oraz brakujących tłumaczeń (cały UI ma być po angielsku (pomoc i quick start są wyjątkiem). Przeanalizuj kod i logikę odpowiedzialną za AI, bo mam wątpliwości co do jej poprawności. Wszystkie zachowania AI muszą być precyzyjnie komunikowane by zachowaniu uzytkownika było elementem treningu. Sprawdz czygoś nie warto poprawic w jej rdzeniu i założeniach. Przygotuj aplikacje do dynamicznego rozwoju - podziel ją na moduły umożliwiające łatwe aktualizacje. Swoje uwagi i propozycje zapisz w szczegółowym raport.md
 
-TODO ??
+<!-- TODO ?? -->
 
 <!-- - raport PDF nie drukuje 1 stronę, a dane zaiwierają więcej niż 1 strona!!! -->
 
@@ -26,7 +25,7 @@ TODO ??
 - znaczek na NEW -->
 
 <!-- - czy faktycznie dziala dzielenie sesji - do sprawdzenia -->
-- licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik
+<!-- - licznik plików edytowanych w sesji/projekcie nie działa prawidłowo - zweryfikuj czy jest szansa na wiarygodny wynik, czy warto usunąć ten licznik -->
 <!-- - poprawa modułów sesji w raporcie z boostami, z komentarzami, z manualnymi -->
 <!-- - fonty systemowe do wyboru -->
 <!-- - uporządkowanie settings -> Session Split wyzej logicznie poukładane! -->
