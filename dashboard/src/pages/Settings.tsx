@@ -184,10 +184,26 @@ export function Settings() {
     }).catch(() => {});
   }, []);
 
-  // Load latest sync marker
+  // Load latest sync marker — refresh after UI sync AND poll periodically (for slave)
   useEffect(() => {
-    lanSyncApi.getLatestSyncMarker().then(setLatestMarker).catch(() => {});
-  }, [lanSyncing]); // Refresh after sync completes
+    const refresh = () => {
+      lanSyncApi.getLatestSyncMarker().then((marker) => {
+        setLatestMarker(marker);
+        // Update lastSyncAt from marker if it's newer (covers slave-side syncs)
+        if (marker?.created_at) {
+          setLastSyncAt(prev => {
+            if (!prev || new Date(marker.created_at) > new Date(prev)) {
+              return marker.created_at;
+            }
+            return prev;
+          });
+        }
+      }).catch(() => {});
+    };
+    refresh();
+    const id = window.setInterval(refresh, 10_000);
+    return () => clearInterval(id);
+  }, [lanSyncing]);
 
   // Poll peers every 5s; auto-scan subnet once if no peers found after 10s
   useEffect(() => {
@@ -238,17 +254,37 @@ export function Settings() {
     }
   }, [lanSettings.enabled, lanSettings.serverPort]);
 
-  // ── Pairing: load paired devices on mount ──
+  // ── Pairing: load paired devices on mount + poll every 5s ──
   const refreshPairedDevices = useCallback(async () => {
     try {
       const devices = await lanSyncApi.getPairedDevices();
-      setPairedDeviceIds(new Set(devices.map(d => d.device_id)));
+      const newIds = new Set(devices.map(d => d.device_id));
+      setPairedDeviceIds(prev => {
+        // If a new device appeared, clear the pairing code (it was consumed)
+        if (pairingCode) {
+          for (const id of newIds) {
+            if (!prev.has(id)) {
+              setPairingCode(null);
+              setPairingCodeRemaining(0);
+              break;
+            }
+          }
+        }
+        return newIds;
+      });
     } catch {
       // Daemon might not be running
     }
-  }, []);
+  }, [pairingCode]);
 
   useEffect(() => { void refreshPairedDevices(); }, [refreshPairedDevices]);
+
+  // Poll paired devices alongside peers so master detects slave pairing
+  useEffect(() => {
+    if (!lanSettings.enabled) return;
+    const id = window.setInterval(() => { void refreshPairedDevices(); }, 5_000);
+    return () => clearInterval(id);
+  }, [lanSettings.enabled, refreshPairedDevices]);
 
   // Pairing code countdown timer
   useEffect(() => {
@@ -327,6 +363,13 @@ export function Settings() {
       await lanSyncApi.runLanSync(peer.ip, peer.dashboard_port, since, force);
       // LanSyncCard already polls progress — no duplicate polling here.
       recordPeerSync(peer);
+      // Clear "pairing expired" for this peer on successful sync trigger
+      setPairingExpiredDeviceIds(prev => {
+        if (!prev.has(peer.device_id)) return prev;
+        const next = new Set(prev);
+        next.delete(peer.device_id);
+        return next;
+      });
       const label = force
         ? t('settings.lan_sync.force_sync_label', 'Force sync')
         : fullSync

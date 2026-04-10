@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Wifi, Monitor, RefreshCw, Loader2, Shield, Search, FileText, Zap } from 'lucide-react';
+import { Wifi, Monitor, RefreshCw, Loader2, Shield, ShieldCheck, ShieldAlert, ShieldX, Search, FileText, Zap, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { LanPeer, LanSyncSettings, SyncMarker, SyncProgress } from '@/lib/lan-sync-types';
@@ -295,6 +295,24 @@ export function LanSyncCard({
   const [daemonSyncing, setDaemonSyncing] = useState(false);
   const completedTimerRef = useRef<number | null>(null);
   const logRef = useRef<HTMLPreElement>(null);
+
+  // Flash "just paired" confirmation per device_id (shown for 4 seconds after pairing)
+  const [justPairedIds, setJustPairedIds] = useState<Set<string>>(new Set());
+
+  // Wrap onPairWithPeer to trigger the "just paired" flash
+  const handlePairWithFlash = async (peer: LanPeer, code: string) => {
+    if (!onPairWithPeer) return;
+    await onPairWithPeer(peer, code);
+    // Show confirmation flash for this peer
+    setJustPairedIds(prev => new Set([...prev, peer.device_id]));
+    setTimeout(() => {
+      setJustPairedIds(prev => {
+        const next = new Set(prev);
+        next.delete(peer.device_id);
+        return next;
+      });
+    }, 4000);
+  };
 
   // Context menu state for right-click on sync button
   const [contextMenu, setContextMenu] = useState<{
@@ -617,7 +635,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                 const isPaired = pairedDeviceIds?.has(peer.device_id);
                 const isPairingExpired = pairingExpiredDeviceIds?.has(peer.device_id);
                 const needsPairing = onPairWithPeer && !isPaired;
-                const canSync = isPaired || !onPairWithPeer; // If pairing not enabled, always allow sync
+                const canSync = (isPaired && !isPairingExpired) || !onPairWithPeer;
 
                 return (
                   <div
@@ -646,15 +664,22 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                           ? dashboardRunningLabel
                           : dashboardOfflineLabel}
                       </span>
-                      {/* Pairing status badge */}
+                      {/* Pairing status icon */}
                       {isPaired && !isPairingExpired && (
-                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400">
+                        <span className="ml-1.5 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium" title={pairingBadgePairedLabel ?? 'paired'}>
+                          <ShieldCheck className="h-3.5 w-3.5" />
                           {pairingBadgePairedLabel ?? 'paired'}
                         </span>
                       )}
                       {isPairingExpired && (
-                        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400">
+                        <span className="ml-1.5 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium" title={pairingBadgeExpiredLabel ?? 'pairing expired'}>
+                          <ShieldAlert className="h-3.5 w-3.5" />
                           {pairingBadgeExpiredLabel ?? 'pairing expired'}
+                        </span>
+                      )}
+                      {onPairWithPeer && !isPaired && !isPairingExpired && (
+                        <span className="ml-1.5 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-500 font-medium">
+                          <ShieldX className="h-3.5 w-3.5" />
                         </span>
                       )}
                     </div>
@@ -662,20 +687,27 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                       {/* SLAVE: only Pair / Re-pair buttons (code entry) */}
                       {isSlave && onPairWithPeer && (
                         <>
-                          {needsPairing && !isPairingExpired && (
+                          {/* Just-paired success flash */}
+                          {justPairedIds.has(peer.device_id) && (
+                            <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium animate-pulse">
+                              <CheckCircle2 className="h-4 w-4" />
+                              {pairingBadgePairedLabel ?? 'Paired'}!
+                            </span>
+                          )}
+                          {needsPairing && !isPairingExpired && !justPairedIds.has(peer.device_id) && (
                             <PairCodeDialog
                               peer={peer}
-                              onSubmit={onPairWithPeer}
+                              onSubmit={handlePairWithFlash}
                               buttonLabel={pairingPairButtonLabel ?? 'Pair'}
                               dialogTitle={pairingEnterCodeLabel ?? 'Enter pairing code'}
                               dialogDescription={pairingEnterCodeDescriptionLabel ?? 'Enter the 6-digit code displayed on the other device.'}
                               submitLabel={pairingSubmitLabel ?? 'Pair'}
                             />
                           )}
-                          {isPairingExpired && (
+                          {isPairingExpired && !justPairedIds.has(peer.device_id) && (
                             <PairCodeDialog
                               peer={peer}
-                              onSubmit={onPairWithPeer}
+                              onSubmit={handlePairWithFlash}
                               buttonLabel={pairingRepairLabel ?? 'Re-pair'}
                               buttonVariant="outline"
                               buttonClassName="text-amber-400 hover:text-amber-300"
@@ -684,7 +716,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                               submitLabel={pairingSubmitLabel ?? 'Pair'}
                             />
                           )}
-                          {isPaired && onUnpairDevice && (
+                          {isPaired && !justPairedIds.has(peer.device_id) && onUnpairDevice && (
                             <Button
                               type="button"
                               variant="ghost"

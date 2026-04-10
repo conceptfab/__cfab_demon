@@ -420,7 +420,7 @@ fn handle_connection(
         "/lan/ping" | "/lan/pair" | "/lan/sync-progress" | "/online/sync-progress"
         | "/lan/paired-devices" | "/lan/generate-pairing-code"
         | "/lan/store-paired-device" | "/lan/remove-paired-device"
-        | "/lan/local-identity"
+        | "/lan/local-identity" | "/lan/trigger-sync"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
