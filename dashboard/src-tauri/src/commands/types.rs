@@ -450,6 +450,10 @@ pub struct ExportData {
     pub manual_sessions: Vec<ManualSession>,
     pub daily_files: BTreeMap<String, DailyData>,
     pub tombstones: Vec<Tombstone>,
+    #[serde(default)]
+    pub assignment_feedback: Vec<AssignmentFeedbackRow>,
+    #[serde(default)]
+    pub assignment_auto_runs: Vec<AssignmentAutoRunRow>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

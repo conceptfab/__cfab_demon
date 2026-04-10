@@ -516,6 +516,69 @@ fn import_archive_into_tx(
         }
     }
 
+    // 4b. Assignment Feedback (dedup by source + created_at to avoid double-importing)
+    for fb in &archive.data.assignment_feedback {
+        let local_session_id = fb.session_id.and_then(|sid| {
+            // Try session mapping first; fall back to using the ID as-is
+            // (feedback may reference sessions not in this delta)
+            Some(sid)
+        });
+        let local_app_id = fb.app_id;
+        let local_from_project = fb.from_project_id.and_then(|pid| project_mapping.get(&pid).copied());
+        let local_to_project = fb.to_project_id.and_then(|pid| project_mapping.get(&pid).copied());
+
+        // Dedup: check if we already have a feedback entry with same source + created_at
+        let exists: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM assignment_feedback WHERE source = ?1 AND created_at = ?2",
+                rusqlite::params![fb.source, fb.created_at],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        if !exists {
+            tx.execute(
+                "INSERT INTO assignment_feedback (session_id, app_id, from_project_id, to_project_id, source, weight, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                rusqlite::params![
+                    local_session_id,
+                    local_app_id,
+                    local_from_project,
+                    local_to_project,
+                    fb.source,
+                    fb.weight,
+                    fb.created_at,
+                ],
+            ).ok();
+        }
+    }
+
+    // 4c. Assignment Auto Runs (dedup by started_at)
+    for run in &archive.data.assignment_auto_runs {
+        let exists: bool = tx
+            .query_row(
+                "SELECT COUNT(*) FROM assignment_auto_runs WHERE started_at = ?1",
+                rusqlite::params![run.started_at],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap_or(0) > 0;
+
+        if !exists {
+            tx.execute(
+                "INSERT INTO assignment_auto_runs (started_at, finished_at, sessions_scanned, sessions_assigned, sessions_skipped, rolled_back_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    run.started_at,
+                    run.finished_at,
+                    run.sessions_scanned,
+                    run.sessions_assigned,
+                    run.sessions_skipped,
+                    run.rolled_back_at,
+                ],
+            ).ok();
+        }
+    }
+
     // 5. Daily Files
     let demo_mode = db::is_demo_mode_enabled(app)?;
     for (date, daily) in &archive.data.daily_files {
