@@ -347,7 +347,7 @@ export function useSettingsFormState({
         auth_token: uiApiToken,
         device_id: savedOnlineSync.deviceId,
         encryption_key: savedOnlineSync.encryptionKey ?? '',
-        sync_interval_hours: Math.floor(savedOnlineSync.autoSyncIntervalMinutes / 60),
+        sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
         auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
       }).catch((err) => {
         logTauriWarn('Failed to persist online sync settings to daemon:', err);
@@ -482,7 +482,7 @@ export function useSettingsFormState({
             auth_token: uiToken,
             device_id: savedOnlineSync.deviceId,
             encryption_key: savedOnlineSync.encryptionKey ?? '',
-            sync_interval_hours: Math.floor(savedOnlineSync.autoSyncIntervalMinutes / 60),
+            sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
             auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
           });
         } catch {
@@ -620,7 +620,7 @@ export function useSettingsFormState({
               auth_token: result.apiToken!,
               device_id: effectiveDeviceId,
               encryption_key: onlineSyncSettings.encryptionKey ?? '',
-              sync_interval_hours: Math.floor(onlineSyncSettings.autoSyncIntervalMinutes / 60),
+              sync_interval_minutes: onlineSyncSettings.autoSyncIntervalMinutes,
               auto_sync_on_startup: onlineSyncSettings.autoSyncOnStartup,
             }).catch((err) => {
               logTauriWarn('[license] Failed to persist daemon settings after activation:', err);

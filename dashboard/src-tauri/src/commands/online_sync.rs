@@ -26,7 +26,7 @@ pub struct OnlineSyncSettings {
     pub device_id: String,
     #[serde(default)]
     pub encryption_key: String,
-    pub sync_interval_hours: u32,
+    pub sync_interval_minutes: u32,
     pub auto_sync_on_startup: bool,
 }
 
@@ -38,7 +38,7 @@ impl Default for OnlineSyncSettings {
             auth_token: String::new(),
             device_id: String::new(),
             encryption_key: String::new(),
-            sync_interval_hours: 0,
+            sync_interval_minutes: 30,
             auto_sync_on_startup: false,
         }
     }
