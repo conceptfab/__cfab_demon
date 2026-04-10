@@ -309,7 +309,9 @@ export async function getLocalDeltaState(
           archive.data.applications.length > 0 ||
           archive.data.sessions.length > 0 ||
           archive.data.manual_sessions.length > 0 ||
-          archive.data.tombstones.length > 0;
+          archive.data.tombstones.length > 0 ||
+          (archive.data.assignment_feedback?.length ?? 0) > 0 ||
+          (archive.data.assignment_auto_runs?.length ?? 0) > 0;
 
     // Only compute SHA-256 when there is actual data to push
     const payloadSha256 = hasAnyDeltaData
