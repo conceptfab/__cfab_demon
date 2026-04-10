@@ -7,6 +7,7 @@
 
 - poprawności i logiki,
 - UI
+- wielowątkowości
 - wydajności, i jej poprawy,
 - wspomagania AI,
 - synchrnozacji danych lan i online

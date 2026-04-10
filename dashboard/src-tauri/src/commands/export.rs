@@ -369,6 +369,8 @@ fn build_export_archive(
                 manual_sessions,
                 daily_files,
                 tombstones,
+                assignment_feedback: Vec::new(),
+                assignment_auto_runs: Vec::new(),
             },
         };
         (archive, default_name)
