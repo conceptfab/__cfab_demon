@@ -3,6 +3,7 @@ use rusqlite::OptionalExtension;
 use std::collections::{HashMap, HashSet};
 
 use crate::commands::datetime::parse_datetime_fixed;
+use crate::commands::projects::{infer_project_from_path_pub, load_project_folders_from_db};
 
 #[derive(Debug)]
 pub struct SessionContext {
@@ -156,6 +157,17 @@ pub fn extract_hour_weekday(start_time: &str) -> (i64, i64) {
     (12, 0)
 }
 
+/// Resolves a project name (from path inference) to project_id.
+/// Returns None if no active project with that name exists.
+fn resolve_project_id_by_name(conn: &rusqlite::Connection, name: &str) -> Option<i64> {
+    conn.query_row(
+        "SELECT id FROM projects WHERE lower(name) = lower(?1) AND excluded_at IS NULL AND frozen_at IS NULL LIMIT 1",
+        rusqlite::params![name],
+        |row| row.get(0),
+    )
+    .ok()
+}
+
 pub fn build_session_context(
     conn: &rusqlite::Connection,
     session_id: i64,
@@ -179,6 +191,8 @@ pub fn build_session_context(
     let Some((app_id, date, start_time, end_time)) = session else {
         return Ok(None);
     };
+
+    let project_roots = load_project_folders_from_db(conn).unwrap_or_default();
 
     // Filter file_activities to only those overlapping with the session time window
     let mut file_stmt = conn
@@ -267,22 +281,43 @@ pub fn build_session_context(
                 }
             }
         }
+        // Compute overlap weight for this file entry
+        let overlap = if let (Some(ss), Some(se), Some(fs), Some(fe)) = (
+            session_start_ts,
+            session_end_ts,
+            parse_timestamp(&file_first_seen),
+            parse_timestamp(&file_last_seen),
+        ) {
+            let overlap_start = ss.max(fs);
+            let overlap_end = se.min(fe);
+            let overlap_secs = (overlap_end - overlap_start).num_seconds().max(0) as f64;
+            (overlap_secs / session_duration_secs).clamp(0.05, 1.0)
+        } else {
+            1.0
+        };
+
         if let Some(pid) = project_id {
-            let overlap = if let (Some(ss), Some(se), Some(fs), Some(fe)) = (
-                session_start_ts,
-                session_end_ts,
-                parse_timestamp(&file_first_seen),
-                parse_timestamp(&file_last_seen),
-            ) {
-                let overlap_start = ss.max(fs);
-                let overlap_end = se.min(fe);
-                let overlap_secs = (overlap_end - overlap_start).num_seconds().max(0) as f64;
-                (overlap_secs / session_duration_secs).clamp(0.05, 1.0)
-            } else {
-                1.0 // fallback: full weight if timestamps can't be parsed
-            };
             let entry = file_project_overlap.entry(pid).or_insert(0.0);
-            *entry = (*entry).max(overlap); // take the max overlap for this project
+            *entry = (*entry).max(overlap);
+        } else if !project_roots.is_empty() {
+            // Path-based inference: try detected_path first, then file_path
+            let inferred_name = detected_path
+                .as_deref()
+                .and_then(|p| infer_project_from_path_pub(p, &project_roots))
+                .or_else(|| {
+                    let fp = file_path.as_str();
+                    if fp.is_empty() || fp == "(unknown)" {
+                        None
+                    } else {
+                        infer_project_from_path_pub(fp, &project_roots)
+                    }
+                });
+            if let Some(ref name) = inferred_name {
+                if let Some(pid) = resolve_project_id_by_name(conn, name) {
+                    let entry = file_project_overlap.entry(pid).or_insert(0.0);
+                    *entry = (*entry).max(overlap);
+                }
+            }
         }
     }
 
@@ -329,5 +364,22 @@ mod tests {
     fn tokenize_handles_empty_and_short() {
         assert!(tokenize("").is_empty());
         assert!(tokenize("a").is_empty()); // too short
+    }
+
+    #[test]
+    fn resolve_project_id_by_name_finds_active() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, excluded_at TEXT, frozen_at TEXT);
+             INSERT INTO projects (id, name, excluded_at, frozen_at) VALUES (1, 'Alpha', NULL, NULL);
+             INSERT INTO projects (id, name, excluded_at, frozen_at) VALUES (2, 'Beta', '2024-01-01', NULL);
+             INSERT INTO projects (id, name, excluded_at, frozen_at) VALUES (3, 'Gamma', NULL, '2024-01-01');",
+        ).unwrap();
+
+        assert_eq!(super::resolve_project_id_by_name(&conn, "Alpha"), Some(1));
+        assert_eq!(super::resolve_project_id_by_name(&conn, "alpha"), Some(1)); // case-insensitive
+        assert_eq!(super::resolve_project_id_by_name(&conn, "Beta"), None); // excluded
+        assert_eq!(super::resolve_project_id_by_name(&conn, "Gamma"), None); // frozen
+        assert_eq!(super::resolve_project_id_by_name(&conn, "Nope"), None);
     }
 }
