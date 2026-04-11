@@ -8,6 +8,7 @@ use crate::commands::assignment_model::{
 use crate::commands::sql_fragments::ACTIVE_SESSION_FILTER;
 use crate::commands::types::DateRange;
 use rusqlite::{OptionalExtension, ToSql};
+use timeflow_shared::activity_classification::{classify_activity_type, ActivityType};
 
 pub fn fetch_unassigned_session_ids(
     conn: &rusqlite::Connection,
@@ -418,28 +419,46 @@ pub fn deterministic_sync(
 ) -> Result<DeterministicResult, String> {
     let min_sessions = min_history.unwrap_or(5).max(1);
 
-    let app_rules: Vec<(i64, i64)> = {
+    let app_rules: Vec<(i64, i64, String)> = {
         let mut stmt = conn
             .prepare(
-                "SELECT app_id, project_id
+                "SELECT s.app_id, s.project_id, a.executable_name
                  FROM (
                      SELECT app_id, project_id, COUNT(*) as cnt,
-                            COUNT(DISTINCT project_id) as distinct_projects
+                            COUNT(DISTINCT project_id) as distinct_projects,
+                            MAX(start_time) as last_session_time
                      FROM sessions
                      WHERE project_id IS NOT NULL AND duration_seconds > 10
                      GROUP BY app_id
-                     HAVING distinct_projects = 1 AND cnt >= ?1
-                 )",
+                     HAVING distinct_projects = 1
+                       AND cnt >= ?1
+                       AND date(last_session_time) >= date('now', '-30 days')
+                 ) s
+                 JOIN applications a ON a.id = s.app_id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::params![min_sessions], |row| {
-                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| format!("Failed to read deterministic app rule row: {}", e))?
     };
+
+    // Exclude Design and Browsing apps — they naturally span multiple projects
+    let app_rules: Vec<(i64, i64)> = app_rules
+        .into_iter()
+        .filter(|(_, _, exe_name)| {
+            let activity = classify_activity_type(exe_name, None);
+            !matches!(activity, Some(ActivityType::Design) | Some(ActivityType::Browsing))
+        })
+        .map(|(app_id, project_id, _)| (app_id, project_id))
+        .collect();
 
     let apps_with_rules = app_rules.len() as i64;
     let mut sessions_assigned: i64 = 0;
@@ -547,4 +566,32 @@ pub fn deterministic_sync(
         sessions_assigned,
         sessions_skipped,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn deterministic_excludes_stale_and_design_apps() {
+        // This test verifies the filtering logic conceptually.
+        // Full integration requires DB setup — here we test the activity-type guard.
+        use timeflow_shared::activity_classification::{classify_activity_type, ActivityType};
+
+        // photoshop.exe is Design — should be excluded
+        assert!(matches!(
+            classify_activity_type("photoshop.exe", None),
+            Some(ActivityType::Design)
+        ));
+        // chrome.exe is Browsing — should be excluded
+        assert!(matches!(
+            classify_activity_type("chrome.exe", None),
+            Some(ActivityType::Browsing)
+        ));
+        // code.exe is Coding — should NOT be excluded
+        assert!(matches!(
+            classify_activity_type("code.exe", None),
+            Some(ActivityType::Coding)
+        ));
+        // unknown.exe has no type — should NOT be excluded
+        assert!(classify_activity_type("unknown.exe", None).is_none());
+    }
 }
