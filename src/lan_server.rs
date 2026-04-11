@@ -1144,9 +1144,11 @@ fn handle_pair(body: &str) -> (u16, String) {
 fn handle_local_identity() -> (u16, String) {
     let device_id = crate::lan_common::get_device_id();
     let machine_name = crate::lan_common::get_machine_name();
+    let secret = get_or_create_lan_secret();
     let resp = serde_json::json!({
         "ok": true,
         "device_id": device_id,
+        "secret": secret,
         "machine_name": machine_name,
     });
     (200, resp.to_string())
