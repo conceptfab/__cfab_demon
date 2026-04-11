@@ -52,7 +52,10 @@ pub struct PeerTarget {
 /// Resolve the secret to use for a given peer: paired secret first, fallback to local.
 fn resolve_peer_secret(peer_device_id: &str) -> String {
     if let Some(secret) = crate::lan_pairing::get_paired_secret(peer_device_id) {
-        return secret;
+        if !secret.is_empty() {
+            return secret;
+        }
+        log::warn!("LAN sync: paired secret for {} is empty — falling back to local secret", peer_device_id);
     }
     crate::lan_server::lan_secret()
 }
@@ -605,6 +608,18 @@ fn execute_master_sync(
         }
     }
     sync_log("[12/13] Peer zakonczyl import — dane scalone");
+
+    // Store slave's marker in our history so next negotiate can find it for delta
+    if let Ok(resp_val) = serde_json::from_str::<serde_json::Value>(&db_ready_resp) {
+        if let Some(slave_marker) = resp_val.get("marker_hash").and_then(|v| v.as_str()) {
+            let slave_now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let _ = sync_common::insert_sync_marker_db(
+                &conn, slave_marker, &slave_now, &peer.device_id,
+                Some(&device_id), &new_tables_hash, transfer_mode == "full",
+            );
+            sync_log(&format!("[12/13] Stored slave marker: {}", &slave_marker[..16.min(slave_marker.len())]));
+        }
+    }
 
     // Step 13: Unfreeze + cleanup
     sync_log("[13/13] Odmrazanie baz danych...");

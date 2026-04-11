@@ -846,6 +846,15 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         return (500, json_error(&format!("Marker insert failed: {}", e)));
     }
 
+    // Store master's marker in our history so next negotiate can find it for delta
+    if !req.marker_hash.is_empty() {
+        let _ = crate::sync_common::insert_sync_marker_db(
+            &conn, &req.marker_hash, &now, &req.master_device_id,
+            Some(&device_id), &tables_hash, req.transfer_mode == "full",
+        );
+        sync_log(&format!("[SLAVE] Stored master marker: {}", &req.marker_hash[..16.min(req.marker_hash.len())]));
+    }
+
     // Update shared state with own marker
     {
         let mut guard = state.latest_marker_hash.lock().unwrap_or_else(|e| e.into_inner());
