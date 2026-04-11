@@ -124,6 +124,11 @@ export function useJobPool() {
 
   const runDaemonOnlineSyncInterval = useCallback(async () => {
     if (isDaemonOnlineSyncingRef.current || !isDocumentVisible()) return;
+    const settings = syncSettingsRef.current;
+    if (!settings.enabled) {
+      nextDaemonOnlineSyncRef.current = Date.now() + 300_000;
+      return;
+    }
     isDaemonOnlineSyncingRef.current = true;
 
     // Reschedule for next interval (60s)
@@ -388,6 +393,7 @@ export function useJobPool() {
     void runAutoSplit();
     refreshSyncSettingsCache();
     if (!syncSettingsRef.current.enabled) return;
-    void runSync('startup', false);
+    if (!syncSettingsRef.current.autoSyncOnStartup) return;
+    void runSync('startup');
   }, [autoImportDone, runAutoSplit, runSync, refreshSyncSettingsCache]);
 }
