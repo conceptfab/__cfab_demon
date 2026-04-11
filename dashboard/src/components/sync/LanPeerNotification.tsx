@@ -90,12 +90,6 @@ export function LanPeerNotification() {
 
         if (activePeer && !visiblePeerRef.current) {
           setVisiblePeer(activePeer);
-
-          // Auto-sync if enabled
-          const settings = loadLanSyncSettings();
-          if (settings.enabled && settings.autoSyncOnPeerFound && handleSyncRef.current) {
-            await handleSyncRef.current(activePeer);
-          }
         } else if (!activePeer && visiblePeerRef.current) {
           setVisiblePeer(null);
         }

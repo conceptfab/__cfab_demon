@@ -20,6 +20,8 @@ import {
   Bug,
   FileText,
   Briefcase,
+  Link2,
+  ArrowDownUp,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -135,6 +137,7 @@ export function Sidebar() {
     );
 
   const lanPeer = useBackgroundStatusStore((s) => s.lanPeer);
+  const lanPeerPaired = useBackgroundStatusStore((s) => s.lanPeerPaired);
   const lanIsSlave = useBackgroundStatusStore((s) => s.lanIsSlave);
   const refreshLanPeers = useBackgroundStatusStore((s) => s.refreshLanPeers);
   const [lanSyncing, setLanSyncing] = useState(false);
@@ -368,42 +371,109 @@ export function Sidebar() {
             title={syncIndicator.detail}
           />
 
-          <StatusIndicator
-            icon={Wifi}
-            label={t('layout.status.lan')}
-            statusText={
-              lanSyncMessage
-                ?? (lanPeer
-                  ? t('layout.status.lan_peer_found', { name: lanPeer.machine_name })
-                  : lanScanning
-                    ? t('layout.status.lan_scanning')
-                    : t('layout.status.lan_no_peers'))
-            }
-            colorClass={
-              lanSyncStatus === 'error'
-                ? 'text-red-400'
-                : lanSyncStatus === 'ok'
-                  ? 'text-emerald-500'
-                  : lanSyncing || lanScanning
-                    ? 'text-amber-400'
-                    : lanPeer
-                      ? 'text-sky-400'
-                      : 'text-muted-foreground/35'
-            }
-            pulse={lanSyncing || lanScanning}
-            onClick={
-              lanPeer && !lanIsSlave
-                ? () => void handleLanSync()
-                : !lanPeer && !lanScanning
-                  ? () => void handleLanScan()
-                  : undefined
-            }
-            title={
-              lanPeer
-                ? t('layout.tooltips.lan_peer_ip', { name: lanPeer.machine_name, ip: lanPeer.ip })
-                : t('layout.tooltips.lan_click_to_scan')
-            }
-          />
+          {/* LAN status row: Wifi (peer) | Readiness (paired) | Delta sync */}
+          <div className="flex w-full items-center gap-0.5 rounded-md px-1 py-1">
+            {/* Wifi — peer discovery status */}
+            <AppTooltip
+              content={
+                lanPeer
+                  ? t('layout.tooltips.lan_peer_ip', { name: lanPeer.machine_name, ip: lanPeer.ip })
+                  : t('layout.tooltips.lan_click_to_scan')
+              }
+              side="right"
+            >
+              <button
+                onClick={
+                  !lanPeer && !lanScanning
+                    ? () => void handleLanScan()
+                    : () => setCurrentPage('settings')
+                }
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-1.5 py-1 transition-all text-[11px] font-medium',
+                  'hover:bg-accent/40',
+                )}
+              >
+                <Wifi
+                  className={cn(
+                    'h-3.5 w-3.5',
+                    lanSyncing || lanScanning
+                      ? 'text-amber-400'
+                      : lanPeer
+                        ? 'text-sky-400'
+                        : 'text-muted-foreground/35',
+                  )}
+                />
+                <div className="flex min-w-0 flex-col items-start gap-0.5 leading-none">
+                  <span className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground/45">
+                    {t('layout.status.lan')}
+                  </span>
+                  <span className="truncate text-[10px] text-muted-foreground max-w-[68px]">
+                    {lanSyncMessage
+                      ?? (lanPeer
+                        ? lanPeer.machine_name
+                        : lanScanning
+                          ? t('layout.status.lan_scanning')
+                          : t('layout.status.lan_no_peers'))}
+                  </span>
+                </div>
+              </button>
+            </AppTooltip>
+
+            <div className="flex items-center gap-0.5 ml-auto">
+              {/* Readiness — both peers paired & online */}
+              <AppTooltip
+                content={
+                  lanPeer && lanPeerPaired
+                    ? t('layout.tooltips.lan_readiness_ready')
+                    : lanPeer && !lanPeerPaired
+                      ? t('layout.tooltips.lan_readiness_not_paired')
+                      : t('layout.tooltips.lan_readiness_no_peer')
+                }
+                side="right"
+              >
+                <div
+                  className={cn(
+                    'flex items-center justify-center rounded-md p-1.5 transition-all',
+                    lanPeer && lanPeerPaired
+                      ? 'text-emerald-500'
+                      : lanPeer
+                        ? 'text-amber-400'
+                        : 'text-muted-foreground/25',
+                  )}
+                >
+                  <Link2 className="h-3.5 w-3.5" />
+                </div>
+              </AppTooltip>
+
+              {/* Delta sync trigger */}
+              <AppTooltip
+                content={
+                  lanPeer && lanPeerPaired && !lanIsSlave
+                    ? t('layout.tooltips.lan_delta_sync')
+                    : t('layout.tooltips.lan_delta_sync_disabled')
+                }
+                side="right"
+              >
+                <button
+                  onClick={
+                    lanPeer && lanPeerPaired && !lanIsSlave && !lanSyncing
+                      ? () => void handleLanSync()
+                      : undefined
+                  }
+                  disabled={!lanPeer || !lanPeerPaired || lanIsSlave || lanSyncing}
+                  className={cn(
+                    'flex items-center justify-center rounded-md p-1.5 transition-all',
+                    lanPeer && lanPeerPaired && !lanIsSlave && !lanSyncing
+                      ? 'text-sky-400 hover:bg-sky-500/15 hover:text-sky-300 active:scale-90'
+                      : 'text-muted-foreground/25 cursor-not-allowed',
+                    lanSyncing && 'animate-pulse text-amber-400',
+                  )}
+                >
+                  <ArrowDownUp className="h-3.5 w-3.5" />
+                </button>
+              </AppTooltip>
+            </div>
+          </div>
 
           <StatusIndicator
             icon={Brain}

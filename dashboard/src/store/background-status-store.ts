@@ -104,6 +104,7 @@ interface BackgroundStatusState {
   todayUnassigned: number;
   allUnassigned: number;
   lanPeer: LanPeer | null;
+  lanPeerPaired: boolean;
   lanIsSlave: boolean;
   refreshDiagnostics: () => Promise<void>;
   refreshAiStatus: () => Promise<void>;
@@ -122,6 +123,7 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
     todayUnassigned: 0,
     allUnassigned: 0,
     lanPeer: null,
+    lanPeerPaired: false,
     lanIsSlave: false,
     refreshDiagnostics: async () => {
       if (diagnosticsInFlight) return;
@@ -204,13 +206,20 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
       try {
         const settings = loadLanSyncSettings();
         if (!settings.enabled) {
-          if (get().lanPeer !== null || get().lanIsSlave) {
-            set({ lanPeer: null, lanIsSlave: false });
+          if (get().lanPeer !== null || get().lanPeerPaired || get().lanIsSlave) {
+            set({ lanPeer: null, lanPeerPaired: false, lanIsSlave: false });
           }
           return;
         }
         const peers = await lanSyncApi.getLanPeers();
         const online = peers.find((p) => p.dashboard_running) ?? null;
+        let isPaired = false;
+        if (online) {
+          try {
+            const paired = await lanSyncApi.getPairedDevices();
+            isPaired = paired.some((d) => d.device_id === online.device_id);
+          } catch { /* pairing info unavailable */ }
+        }
         let isSlave = false;
         if (settings.forcedRole === 'slave') {
           isSlave = true;
@@ -220,11 +229,11 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
             isSlave = p.role === 'slave';
           } catch { /* default not-slave */ }
         }
-        if (get().lanPeer !== online || get().lanIsSlave !== isSlave) {
-          set({ lanPeer: online, lanIsSlave: isSlave });
+        if (get().lanPeer !== online || get().lanPeerPaired !== isPaired || get().lanIsSlave !== isSlave) {
+          set({ lanPeer: online, lanPeerPaired: isPaired, lanIsSlave: isSlave });
         }
       } catch {
-        if (get().lanPeer !== null) set({ lanPeer: null });
+        if (get().lanPeer !== null) set({ lanPeer: null, lanPeerPaired: false });
       } finally {
         lanPeerPollInFlight = false;
       }
