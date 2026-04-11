@@ -33,6 +33,9 @@ export function HelpAiSection() {
         t18n('help_page.how_to_train_and_configure_card_built_in_guide_with_thre'),
         t18n('help_page.ai_status_uses_central_background_diagnostics_and_the_me'),
         t18n('help_page.training_blacklists_exclude_selected_applications_and_fo'),
+        t18n('help_page.ai_path_inference'),
+        t18n('help_page.ai_deterministic_guard'),
+        t18n('help_page.ai_balanced_scoring'),
         t18n('help_page.ai_training_blacklists_config'),
       ]}
     >
