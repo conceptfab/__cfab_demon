@@ -153,19 +153,35 @@ pub fn compute_score_breakdowns(
     // so that the evidence_factor grows at a comparable rate to file-based apps.
     let is_background_app = context.file_project_weights.is_empty();
     let layer1_evidence_weight: i64 = if is_background_app { 2 } else { 1 };
-    let mut stmt = conn
-        .prepare_cached("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
-        .map_err(|e| e.to_string())?;
-    let mut rows = stmt
-        .query(rusqlite::params![context.app_id])
-        .map_err(|e| e.to_string())?;
-    while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-        let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+
+    // Collect raw counts first, then normalize per-app
+    let mut app_raw_counts: Vec<(i64, f64)> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare_cached("SELECT project_id, cnt FROM assignment_model_app WHERE app_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query(rusqlite::params![context.app_id])
+            .map_err(|e| e.to_string())?;
+        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+            let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+            let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+            app_raw_counts.push((pid, cnt));
+        }
+    }
+
+    let app_total: f64 = app_raw_counts.iter().map(|(_, c)| *c).sum();
+    for (pid, cnt) in app_raw_counts {
         if !is_project_active_cached(conn, &mut active_project_cache, pid) {
             continue;
         }
-        let cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
-        let score = 0.30 * (1.0 + cnt).ln();
+        // Blend log-scale with inverse-proportion dampening: prevents historical
+        // dominance while still rewarding higher absolute counts.
+        // Projects that already dominate this app get slightly dampened,
+        // giving minority projects a fairer chance.
+        let proportion = if app_total > 0.0 { cnt / app_total } else { 0.0 };
+        let log_score = (1.0 + cnt).ln();
+        let score = 0.30 * log_score * (0.6 + 0.4 * (1.0 - proportion).sqrt());
         *layer1.entry(pid).or_insert(0.0) += score;
         *candidate_evidence.entry(pid).or_insert(0) += layer1_evidence_weight;
     }
@@ -466,5 +482,31 @@ mod confidence_tests {
             "sigmoid at margin=0.3 was {}",
             sigmoid
         );
+    }
+
+    #[test]
+    fn normalized_app_score_reduces_dominance() {
+        // Scenario: project A has 20 sessions, project B has 2
+        // Old: pure log → ln(21)=3.04 vs ln(3)=1.10 → ratio 2.76x
+        // New: blended with inverse-proportion dampening → ratio reduced
+        let cnt_a = 20.0_f64;
+        let cnt_b = 2.0_f64;
+        let total = cnt_a + cnt_b;
+
+        let prop_a = cnt_a / total;
+        let prop_b = cnt_b / total;
+        let log_a = (1.0 + cnt_a).ln();
+        let log_b = (1.0 + cnt_b).ln();
+
+        let old_ratio = log_a / log_b;
+        // New formula: log_score * (0.6 + 0.4 * sqrt(1 - proportion))
+        let new_a = log_a * (0.6 + 0.4 * (1.0 - prop_a).sqrt());
+        let new_b = log_b * (0.6 + 0.4 * (1.0 - prop_b).sqrt());
+        let new_ratio = new_a / new_b;
+
+        assert!(old_ratio > 2.5, "old ratio should be >2.5, was {}", old_ratio);
+        assert!(new_ratio < old_ratio, "new ratio {} should be less than old {}", new_ratio, old_ratio);
+        // The new ratio should still favor A but less aggressively
+        assert!(new_ratio > 1.0, "new ratio should still favor A");
     }
 }
