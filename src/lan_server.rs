@@ -840,7 +840,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
 
     // Backup before merge
     sync_log("[SLAVE] Tworzenie kopii zapasowej...");
-    if let Err(e) = crate::sync_common::backup_database(&conn) {
+    if let Err(e) = crate::sync_common::backup_database_typed(&conn, "lan") {
         sync_log(&format!("[SLAVE] BLAD backup: {}", e));
         return (500, json_error(&format!("Backup failed: {}", e)));
     }
@@ -849,7 +849,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     sync_log("[SLAVE] Scalanie danych...");
     if let Err(e) = crate::sync_common::merge_incoming_data(&mut conn, &merged_data) {
         sync_log(&format!("[SLAVE] BLAD scalania: {} — przywracam backup", e));
-        if let Err(re) = crate::sync_common::restore_database_backup(&mut conn) {
+        if let Err(re) = crate::sync_common::restore_database_backup_typed(&mut conn, "lan") {
             sync_log(&format!("[SLAVE] BLAD przywracania backupu: {}", re));
         }
         return (500, json_error(&format!("Merge failed: {}", e)));
@@ -859,7 +859,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     sync_log("[SLAVE] Weryfikacja integralnosci...");
     if let Err(e) = crate::sync_common::verify_merge_integrity(&conn) {
         sync_log(&format!("[SLAVE] BLAD weryfikacji: {} — przywracam backup", e));
-        if let Err(re) = crate::sync_common::restore_database_backup(&mut conn) {
+        if let Err(re) = crate::sync_common::restore_database_backup_typed(&mut conn, "lan") {
             sync_log(&format!("[SLAVE] BLAD przywracania backupu: {}", re));
         }
         return (500, json_error(&format!("Verify failed: {}", e)));
