@@ -421,6 +421,9 @@ fn handle_connection(
     let requires_auth = !matches!(path,
         "/lan/ping" | "/lan/pair" | "/lan/sync-progress" | "/online/sync-progress"
         | "/lan/paired-devices" | "/lan/generate-pairing-code"
+        | "/lan/store-paired-device" | "/lan/remove-paired-device"
+        | "/lan/local-identity"
+        | "/lan/trigger-sync" | "/online/trigger-sync"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
@@ -486,8 +489,8 @@ fn handle_connection(
         // Online sync endpoints
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal),
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
-        // Legacy endpoints — deprecated, use 13-step protocol instead
-        ("POST", "/lan/pull") => (410, json_error("deprecated: use 13-step sync protocol")),
+        // Legacy endpoints — /lan/pull used by 13-step protocol (step 6, master fetches from slave)
+        ("POST", "/lan/pull") => handle_pull(&body),
         ("POST", "/lan/push") => (410, json_error("deprecated: use 13-step sync protocol")),
         _ => (404, r#"{"ok":false,"error":"not found"}"#.to_string()),
     };
@@ -913,10 +916,8 @@ fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
 
 // ── Legacy pull/push (backward compat with Tauri dashboard client) ──
 
-#[allow(dead_code)]
 fn handle_pull(body: &str) -> (u16, String) {
     #[derive(Deserialize)]
-    #[allow(dead_code)]
     struct PullRequest {
         device_id: String,
         since: String,
@@ -982,6 +983,17 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
         return (429, json_error("Sync completed recently, wait before retrying"));
     }
 
+    // Auto-clear stale sync lock: if sync_in_progress but DB not frozen and no active sync phase,
+    // the previous sync thread likely finished or died without cleanup.
+    if state.sync_in_progress.load(Ordering::SeqCst) && !state.db_frozen.load(Ordering::SeqCst) {
+        let progress = state.progress.lock().unwrap_or_else(|e| e.into_inner());
+        let is_idle = progress.phase == "idle" || progress.phase == "completed" || progress.phase == "error";
+        drop(progress);
+        if is_idle {
+            log::warn!("LAN trigger-sync: clearing stale sync_in_progress (phase is idle/completed but flag was still set)");
+            state.sync_in_progress.store(false, Ordering::SeqCst);
+        }
+    }
     if state.sync_in_progress.compare_exchange(
         false, true, Ordering::SeqCst, Ordering::SeqCst
     ).is_err() {
