@@ -570,7 +570,7 @@ fn execute_async_pull(
 
     // Single backup before processing all packages — ensures rollback to consistent state
     sync_state.set_progress(2, "async_pull_backup", "local");
-    sync_common::backup_database(&conn)?;
+    sync_common::backup_database_typed(&conn, "online")?;
 
     for pkg in &pending.packages {
         sync_log(&format!("[async-pull] Processing package {} from device {}", &pkg.id[..8], &pkg.from_device_id[..8.min(pkg.from_device_id.len())]));
@@ -626,7 +626,7 @@ fn execute_async_pull(
 
         if let Err(e) = sync_common::merge_incoming_data(&mut conn, &delta_str) {
             sync_log(&format!("[async-pull] Merge failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(&mut conn)?;
+            sync_common::restore_database_backup_typed(&mut conn, "online")?;
             async_reject(server_url, token, &device_id, &pkg.id, &format!("merge_failed: {}", e))?;
             return Err(format!("Async merge failed: {}", e));
         }
@@ -634,7 +634,7 @@ fn execute_async_pull(
         // Verify integrity
         if let Err(e) = sync_common::verify_merge_integrity(&conn) {
             sync_log(&format!("[async-pull] Integrity check failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(&mut conn)?;
+            sync_common::restore_database_backup_typed(&mut conn, "online")?;
             async_reject(server_url, token, &device_id, &pkg.id, &format!("integrity_failed: {}", e))?;
             return Err(format!("Async integrity check failed: {}", e));
         }
@@ -1136,12 +1136,12 @@ fn execute_sync_steps(
 
         // Import merged data with backup restore on error
         sync_log("[12/13] Importowanie scalonych danych...");
-        sync_common::backup_database(conn)?;
+        sync_common::backup_database_typed(conn, "online")?;
         if let Err(e) = sync_common::merge_incoming_data(conn, &merged_str)
             .and_then(|_| sync_common::verify_merge_integrity(conn))
         {
             sync_log(&format!("[12/13] Merge/verify failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(conn).map_err(|re| {
+            sync_common::restore_database_backup_typed(conn, "online").map_err(|re| {
                 format!("Merge failed: {} AND backup restore failed: {}", e, re)
             })?;
             return Err(format!("Merge failed (backup restored): {}", e));
@@ -1232,7 +1232,7 @@ fn execute_sync_steps(
         // Step 8: Backup
         sync_state.set_progress(8, "backing_up", "local");
         sync_log("[8/13] Kopia zapasowa...");
-        sync_common::backup_database(conn)?;
+        sync_common::backup_database_typed(conn, "online")?;
         report_step(
             server_url,
             token,
@@ -1249,7 +1249,7 @@ fn execute_sync_steps(
         sync_log("[9/13] Scalanie danych...");
         if let Err(e) = sync_common::merge_incoming_data(conn, &slave_str) {
             sync_log(&format!("[9/13] Merge failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(conn).map_err(|re| {
+            sync_common::restore_database_backup_typed(conn, "online").map_err(|re| {
                 format!("Merge failed: {} AND backup restore failed: {}", e, re)
             })?;
             return Err(format!("Merge failed (backup restored): {}", e));
@@ -1270,7 +1270,7 @@ fn execute_sync_steps(
         sync_log("[10/13] Weryfikacja...");
         if let Err(e) = sync_common::verify_merge_integrity(conn) {
             sync_log(&format!("[10/13] Verify failed: {} — restoring backup", e));
-            sync_common::restore_database_backup(conn).map_err(|re| {
+            sync_common::restore_database_backup_typed(conn, "online").map_err(|re| {
                 format!("Verify failed: {} AND backup restore failed: {}", e, re)
             })?;
             return Err(format!("Verify failed (backup restored): {}", e));

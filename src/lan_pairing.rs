@@ -145,5 +145,8 @@ pub fn remove_paired_device(device_id: &str) -> bool {
 
 /// Get the stored secret for a specific device, if paired.
 pub fn get_paired_secret(device_id: &str) -> Option<String> {
-    load_paired_devices().get(device_id).map(|d| d.secret.clone())
+    load_paired_devices()
+        .get(device_id)
+        .map(|d| d.secret.clone())
+        .filter(|s| !s.is_empty())
 }
