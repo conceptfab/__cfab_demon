@@ -369,6 +369,38 @@ fn execute_master_sync(
     // Open single DB connection for entire sync flow
     let mut conn = lan_common::open_dashboard_db()?;
 
+    // Step 2: Preflight check — verify connectivity + auth before committing
+    sync_state.set_progress(2, "preflight", "local");
+    sync_log(&format!("[2/13] Preflight check z peerem {}:{} ...", peer.ip, peer.port));
+    let preflight_resp = http_post(
+        &format!("{}/lan/preflight", base_url),
+        "{}",
+        &secret,
+    );
+    match preflight_resp {
+        Ok(resp_str) => {
+            if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&resp_str) {
+                if resp.get("sync_in_progress").and_then(|v| v.as_bool()) == Some(true) {
+                    sync_log("[2/13] Peer juz synchronizuje — przerywam");
+                    return Err("Peer already syncing".to_string());
+                }
+                if resp.get("db_frozen").and_then(|v| v.as_bool()) == Some(true) {
+                    sync_log("[2/13] Peer ma zamrozona baze — przerywam");
+                    return Err("Peer database frozen".to_string());
+                }
+                sync_log("[2/13] Preflight OK — peer gotowy");
+            }
+        }
+        Err(e) => {
+            if e.contains("401") || e.contains("unauthorized") || e.contains("Unauthorized") {
+                sync_log(&format!("[2/13] PREFLIGHT FAILED — auth error: {}", e));
+                return Err(format!("pairing_invalid: {}", e));
+            }
+            sync_log(&format!("[2/13] PREFLIGHT FAILED: {}", e));
+            return Err(format!("Preflight failed: {}", e));
+        }
+    }
+
     // Step 3: Negotiate with SLAVE
     sync_state.set_progress(3, "negotiating", "local");
     sync_log(&format!("[3/13] Negocjacja z peerem {}:{} ...", peer.ip, peer.port));

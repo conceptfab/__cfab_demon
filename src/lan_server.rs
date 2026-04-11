@@ -469,6 +469,7 @@ fn handle_connection(
     // Route
     let (status, response_body) = match (method, path) {
         ("GET", "/lan/ping") => handle_ping(&state),
+        ("POST", "/lan/preflight") => handle_preflight(&state),
         ("GET", "/lan/sync-progress") => handle_sync_progress(&state),
         ("POST", "/lan/status") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/negotiate") => handle_negotiate(&state, &body),
@@ -642,6 +643,23 @@ fn handle_ping(state: &LanSyncState) -> (u16, String) {
         sync_marker_hash: None,
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
+}
+
+fn handle_preflight(state: &LanSyncState) -> (u16, String) {
+    let in_sync = state.sync_in_progress.load(Ordering::SeqCst);
+    let frozen = state.db_frozen.load(Ordering::SeqCst);
+    let device_id = lan_common::get_device_id();
+    let version = env!("CARGO_PKG_VERSION");
+
+    let resp = serde_json::json!({
+        "ok": true,
+        "auth": "valid",
+        "device_id": device_id,
+        "version": version,
+        "sync_in_progress": in_sync,
+        "db_frozen": frozen,
+    });
+    (200, resp.to_string())
 }
 
 #[allow(dead_code)]
