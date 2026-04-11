@@ -39,9 +39,14 @@ pub fn build_full_export(conn: &rusqlite::Connection) -> Result<String, String> 
 
 // ── Backup ──
 
+#[allow(dead_code)]
 pub fn backup_database(conn: &rusqlite::Connection) -> Result<(), String> {
+    backup_database_typed(conn, "lan")
+}
+
+pub fn backup_database_typed(conn: &rusqlite::Connection, sync_type: &str) -> Result<(), String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
-    let backup_dir = dir.join("sync_backups");
+    let backup_dir = dir.join("sync_backups").join(sync_type);
     if !backup_dir.exists() {
         std::fs::create_dir_all(&backup_dir).map_err(|e| e.to_string())?;
     }
@@ -153,9 +158,14 @@ fn create_pre_sync_backup_to_destination(conn: &rusqlite::Connection, sync_type:
 /// This is safe even with the caller's connection open — the backup API
 /// handles locking correctly, unlike raw fs::copy which can corrupt on Windows.
 /// Callers MUST re-open the connection after restore.
+#[allow(dead_code)]
 pub fn restore_database_backup(conn: &mut rusqlite::Connection) -> Result<(), String> {
+    restore_database_backup_typed(conn, "lan")
+}
+
+pub fn restore_database_backup_typed(conn: &mut rusqlite::Connection, sync_type: &str) -> Result<(), String> {
     let dir = config::config_dir().map_err(|e| e.to_string())?;
-    let backup_dir = dir.join("sync_backups");
+    let backup_dir = dir.join("sync_backups").join(sync_type);
 
     let mut backups: Vec<std::path::PathBuf> = std::fs::read_dir(&backup_dir)
         .map_err(|e| format!("Cannot read backup dir: {}", e))?

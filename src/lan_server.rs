@@ -962,6 +962,7 @@ fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
 fn handle_pull(body: &str) -> (u16, String) {
     #[derive(Deserialize)]
     struct PullRequest {
+        #[allow(dead_code)]
         device_id: String,
         since: String,
     }
