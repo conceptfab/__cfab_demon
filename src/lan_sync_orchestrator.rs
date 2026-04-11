@@ -416,7 +416,13 @@ fn execute_master_sync(
         &format!("{}/lan/negotiate", base_url),
         &negotiate_body.to_string(),
         &secret,
-    ).map_err(|e| { sync_log(&format!("[3/13] BLAD negocjacji: {}", e)); e })?;
+    ).map_err(|e| {
+        sync_log(&format!("[3/13] BLAD negocjacji: {}", e));
+        if e.contains("409") || e.contains("Master conflict") {
+            sync_log("[3/13] Peer ma priorytet mastera — ustepuje");
+        }
+        e
+    })?;
 
     #[derive(Deserialize)]
     struct NegResp {

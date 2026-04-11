@@ -694,6 +694,22 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
+    // If we're already syncing as master, use device_id tiebreaker
+    if state.sync_in_progress.load(Ordering::SeqCst) {
+        let local_device_id = lan_common::get_device_id();
+        let role = state.get_role();
+        if role == "master" {
+            // Lower device_id wins master role
+            if req.master_device_id > local_device_id {
+                // We have priority — reject remote's negotiate
+                sync_log(&format!("[NEGOTIATE] Conflict: we win master role (lower device_id than {})", req.master_device_id));
+                return (409, json_error("Master conflict: this device has priority"));
+            }
+            // Remote wins — let it through, our sync will fail on its own
+            sync_log(&format!("[NEGOTIATE] Conflict: remote {} wins master role (lower device_id)", req.master_device_id));
+        }
+    }
+
     let db = open_dashboard_db_readonly().ok();
     let local_marker = db.as_ref().and_then(|conn| get_latest_marker_hash(conn));
 
