@@ -173,6 +173,7 @@ export interface CandidateScore {
   layer1_app_score: number;
   layer2_time_score: number;
   layer3_token_score: number;
+  layer3b_folder_score: number;
   total_score: number;
   evidence_count: number;
 }
@@ -190,6 +191,20 @@ export interface SuggestionBreakdown {
   app_score: number;
   time_score: number;
   token_score: number;
+  folder_score: number;
+}
+
+export interface FolderScanResult {
+  projects_scanned: number;
+  tokens_total: number;
+  duration_ms: number;
+}
+
+export interface FolderScanStatus {
+  has_scan_data: boolean;
+  last_scanned_at: string | null;
+  projects_count: number;
+  tokens_count: number;
 }
 
 export interface ScoreBreakdown {

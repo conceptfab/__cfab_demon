@@ -75,7 +75,7 @@ function renderScoreBreakdownCandidates(
       return (
         <div
           key={candidate.project_id}
-          className={`grid grid-cols-[1fr_repeat(4,50px)_60px_40px] gap-1 text-[11px] items-center ${
+          className={`grid grid-cols-[1fr_repeat(5,46px)_60px_40px] gap-1 text-[11px] items-center ${
             candidate.total_score === topScore
               ? 'text-sky-300/80 font-medium'
               : 'text-muted-foreground/40'
@@ -100,6 +100,11 @@ function renderScoreBreakdownCandidates(
           <span className="text-right font-mono">
             {candidate.layer3_token_score > 0
               ? candidate.layer3_token_score.toFixed(2)
+              : '-'}
+          </span>
+          <span className="text-right font-mono">
+            {candidate.layer3b_folder_score > 0
+              ? candidate.layer3b_folder_score.toFixed(2)
               : '-'}
           </span>
           <span

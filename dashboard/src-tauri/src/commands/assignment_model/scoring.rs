@@ -137,6 +137,7 @@ pub fn compute_score_breakdowns(
     let mut layer1: HashMap<i64, f64> = HashMap::new();
     let mut layer2: HashMap<i64, f64> = HashMap::new();
     let mut layer3: HashMap<i64, f64> = HashMap::new();
+    let mut layer3b: HashMap<i64, f64> = HashMap::new();
     let mut candidate_evidence: HashMap<i64, i64> = HashMap::new();
     let mut active_project_cache: HashMap<i64, bool> = HashMap::new();
 
@@ -246,11 +247,48 @@ pub fn compute_score_breakdowns(
         }
     }
 
+    // Layer 3b: folder-scan tokens (static knowledge from project folder contents)
+    if !context.tokens.is_empty() {
+        let mut folder_stats: HashMap<i64, (f64, f64)> = HashMap::new();
+        for chunk in context.tokens.chunks(200) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT project_id, SUM(count), COUNT(*) FROM project_folder_tokens WHERE token IN ({}) GROUP BY project_id",
+                placeholders
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let params: Vec<&dyn ToSql> = chunk.iter().map(|t| t as &dyn ToSql).collect();
+            let mut rows = stmt
+                .query(rusqlite::params_from_iter(params))
+                .map_err(|e| e.to_string())?;
+            while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                let pid: i64 = row.get(0).map_err(|e| e.to_string())?;
+                let sum_cnt = row.get::<_, i64>(1).map_err(|e| e.to_string())? as f64;
+                let matches_cnt = row.get::<_, i64>(2).map_err(|e| e.to_string())? as f64;
+                let entry = folder_stats.entry(pid).or_insert((0.0, 0.0));
+                entry.0 += sum_cnt;
+                entry.1 += matches_cnt;
+            }
+        }
+        let token_total = context.tokens.len() as f64;
+        for (pid, (sum_cnt, matches_cnt)) in folder_stats {
+            if !is_project_active_cached(conn, &mut active_project_cache, pid) {
+                continue;
+            }
+            let avg_log =
+                (1.0 + (sum_cnt / matches_cnt.max(1.0))).ln() * (matches_cnt / token_total);
+            let score = 0.15 * avg_log;
+            *layer3b.entry(pid).or_insert(0.0) += score;
+            *candidate_evidence.entry(pid).or_insert(0) += 1;
+        }
+    }
+
     let mut all_pids: HashSet<i64> = HashSet::new();
     all_pids.extend(layer0.keys());
     all_pids.extend(layer1.keys());
     all_pids.extend(layer2.keys());
     all_pids.extend(layer3.keys());
+    all_pids.extend(layer3b.keys());
 
     let mut all_pids: Vec<i64> = all_pids.into_iter().collect();
     all_pids.sort_unstable();
@@ -262,7 +300,8 @@ pub fn compute_score_breakdowns(
         let l1 = *layer1.get(&pid).unwrap_or(&0.0);
         let l2 = *layer2.get(&pid).unwrap_or(&0.0);
         let l3 = *layer3.get(&pid).unwrap_or(&0.0);
-        let total = l0 + l1 + l2 + l3;
+        let l3b = *layer3b.get(&pid).unwrap_or(&0.0);
+        let total = l0 + l1 + l2 + l3 + l3b;
         let evidence = *candidate_evidence.get(&pid).unwrap_or(&0);
 
         let project_name = project_names
@@ -277,6 +316,7 @@ pub fn compute_score_breakdowns(
             layer1_app_score: (l1 * 1000.0).round() / 1000.0,
             layer2_time_score: (l2 * 1000.0).round() / 1000.0,
             layer3_token_score: (l3 * 1000.0).round() / 1000.0,
+            layer3b_folder_score: (l3b * 1000.0).round() / 1000.0,
             total_score: (total * 1000.0).round() / 1000.0,
             evidence_count: evidence,
         });
@@ -303,6 +343,7 @@ pub fn compute_score_breakdowns(
             app_score: best.layer1_app_score,
             time_score: best.layer2_time_score,
             token_score: best.layer3_token_score,
+            folder_score: best.layer3b_folder_score,
         };
 
         Some(ProjectSuggestion {

@@ -429,6 +429,20 @@
     "info": {
       "knowledge_reset": "AI knowledge has been reset."
     },
+    "folder_scan": {
+      "title": "Learn from Project Folders",
+      "description": "Scan registered project folders to learn file and directory names. This static knowledge helps the AI match sessions to projects even without prior training data.",
+      "scan_button": "Learn My Projects",
+      "scanning": "Scanning...",
+      "clear_button": "Clear Scan Data",
+      "clearing": "Clearing...",
+      "clear_confirm": "Clear all folder scan data? The AI will lose static folder knowledge until the next scan.",
+      "scan_completed": "Scan completed: {{projects}} projects, {{tokens}} tokens in {{duration}}ms.",
+      "cleared": "Folder scan data cleared.",
+      "last_scan": "Last scan",
+      "projects_count": "Projects",
+      "tokens_count": "Tokens"
+    },
     "titles": {
       "progress_and_quality": "AI progress and quality (last {{days}} days)"
     },
@@ -1871,6 +1885,7 @@
     "ai_deterministic_guard": "Smart Deterministic Rules — design apps (Photoshop, Figma, Blender) and browsers are no longer locked to a single project by deterministic rules. Rules also expire after 30 days of inactivity, allowing reclassification.",
     "ai_balanced_scoring": "Balanced App Scoring — the AI scoring model reduces historical bias so that a project with many past sessions doesn't overwhelmingly dominate predictions. New project assignments get a fairer chance.",
     "ai_training_blacklists_config": "Training Blacklists configuration — open AI > Training Blacklists, add application names or folder paths to exclude from model training. Changes take effect on the next training run. Use this to prevent irrelevant apps (e.g. music players) from polluting the model.",
+    "ai_folder_scan_boost": "Learn from Project Folders — scans registered project folders and learns file/directory names. This static knowledge helps the AI match sessions to projects even without prior training data. Use after adding/changing project folders, or when the model misassigns sessions. Does not read file contents — only names.",
     "daemon_windows_autostart_details": "Windows Autostart details — TIMEFLOW registers a scheduled task or registry entry under the current user account. No admin privileges are required. If you relocate the .exe file, re-enable autostart in Settings > Daemon so the path is updated.",
     "reports_how_to_open": "How to open a report — go to the project detail view (ProjectPage), click the report icon in the toolbar, select a template, and click Generate. The report opens in ReportView for preview, printing, or PDF export.",
     "settings_online_sync_duplicate_note": "Note: Online Sync setup details are documented in the dedicated Online Sync section of this Help.",

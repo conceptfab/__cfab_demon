@@ -37,6 +37,7 @@ export function HelpAiSection() {
         t18n('help_page.ai_deterministic_guard'),
         t18n('help_page.ai_balanced_scoring'),
         t18n('help_page.ai_training_blacklists_config'),
+        t18n('help_page.ai_folder_scan_boost'),
       ]}
     >
       <div className="text-sm space-y-4 text-foreground/90 leading-relaxed">

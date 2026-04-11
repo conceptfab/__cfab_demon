@@ -18,6 +18,7 @@ import type {
   AssignmentMode,
   AssignmentModelMetrics,
   AssignmentModelStatus,
+  FolderScanStatus,
 } from '@/lib/db-types';
 import {
   loadSessionSettings,
@@ -31,6 +32,7 @@ import { clampNumber } from '@/lib/utils';
 import { hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import { AiSessionIndicatorsCard } from '@/components/ai/AiSessionIndicatorsCard';
 import { AiBatchActionsCard } from '@/components/ai/AiBatchActionsCard';
+import { AiFolderScanCard } from '@/components/ai/AiFolderScanCard';
 import { AiHowToCard } from '@/components/ai/AiHowToCard';
 import { AiModelStatusCard } from '@/components/ai/AiModelStatusCard';
 import {
@@ -144,6 +146,9 @@ export function AIPage() {
   const [resettingKnowledge, setResettingKnowledge] = useState(false);
   const [snoozingReminder, setSnoozingReminder] = useState(false);
   const [refreshingStatus, setRefreshingStatus] = useState(false);
+  const [scanStatus, setScanStatus] = useState<FolderScanStatus | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [clearingScan, setClearingScan] = useState(false);
 
   const [mode, setMode] = useState<AssignmentMode>('suggest');
   const [suggestConf, setSuggestConf] = useState<number>(0.6);
@@ -241,9 +246,11 @@ export function AIPage() {
       const results = await Promise.all([
         refreshAiStatus(),
         aiApi.getFeedbackWeight(),
+        aiApi.getFolderScanStatus(),
       ]);
       const fw = results[1];
       if (!dirtyRef.current) setFeedbackWeight(fw);
+      setScanStatus(results[2]);
     } catch (e) {
       console.error(e);
       showTranslatedError('ai_page.errors.status_load_failed', e);
@@ -483,6 +490,43 @@ export function AIPage() {
     }
   };
 
+  const handleFolderScan = async () => {
+    setScanning(true);
+    try {
+      const result = await aiApi.scanProjectFoldersForAi();
+      showInfo(
+        tr('ai_page.folder_scan.scan_completed', {
+          projects: result.projects_scanned,
+          tokens: result.tokens_total,
+          duration: result.duration_ms,
+        }),
+      );
+      setScanStatus(await aiApi.getFolderScanStatus());
+    } catch (e) {
+      console.error(e);
+      showError(`${tr('ai_page.errors.status_load_failed')} ${String(e)}`);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleClearFolderScan = async () => {
+    const confirmed = await confirm(tr('ai_page.folder_scan.clear_confirm'));
+    if (!confirmed) return;
+
+    setClearingScan(true);
+    try {
+      await aiApi.clearFolderScanData();
+      showInfo(tr('ai_page.folder_scan.cleared'));
+      setScanStatus(await aiApi.getFolderScanStatus());
+    } catch (e) {
+      console.error(e);
+      showError(`${tr('ai_page.errors.status_load_failed')} ${String(e)}`);
+    } finally {
+      setClearingScan(false);
+    }
+  };
+
   const indicatorItems = useMemo(
     () => [
       {
@@ -559,6 +603,15 @@ export function AIPage() {
             void handleRefreshStatus();
           }}
           onResetKnowledge={handleResetKnowledge}
+        />
+
+        <AiFolderScanCard
+          status={scanStatus}
+          scanning={scanning}
+          clearing={clearingScan}
+          onScan={() => { void handleFolderScan(); }}
+          onClear={() => { void handleClearFolderScan(); }}
+          t={(key, interpolation) => tr(key, interpolation)}
         />
 
         <AiMetricsCharts metrics={metrics} loading={loadingMetrics} />

@@ -7,6 +7,8 @@ import type {
   AutoSafeRunResult,
   DateRange,
   DeterministicResult,
+  FolderScanResult,
+  FolderScanStatus,
 } from '../db-types';
 
 export const getAssignmentModelStatus = () =>
@@ -89,6 +91,15 @@ export const getFeedbackWeight = () => invoke<number>('get_feedback_weight');
 export const setFeedbackWeight = (weight: number) =>
   invokeMutation<void>('set_feedback_weight', { weight });
 
+export const scanProjectFoldersForAi = () =>
+  invokeMutation<FolderScanResult>('scan_project_folders_for_ai');
+
+export const getFolderScanStatus = () =>
+  invoke<FolderScanStatus>('get_folder_scan_status');
+
+export const clearFolderScanData = () =>
+  invokeMutation<void>('clear_folder_scan_data');
+
 export const aiApi = {
   getAssignmentModelStatus,
   getAssignmentModelMetrics,
@@ -105,4 +116,7 @@ export const aiApi = {
   applyDeterministicAssignment,
   getFeedbackWeight,
   setFeedbackWeight,
+  scanProjectFoldersForAi,
+  getFolderScanStatus,
+  clearFolderScanData,
 } as const;

@@ -15,11 +15,13 @@ use crate::commands::types::DateRange;
 pub mod auto_safe;
 pub mod config;
 pub mod context;
+pub mod folder_scan;
 pub mod scoring;
 pub mod training;
 
 pub use auto_safe::*;
 pub use config::*;
+pub use folder_scan::*;
 pub use scoring::*;
 pub use training::*;
 
@@ -61,6 +63,7 @@ pub struct SuggestionBreakdown {
     pub app_score: f64,
     pub time_score: f64,
     pub token_score: f64,
+    pub folder_score: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -135,6 +138,7 @@ pub struct CandidateScore {
     pub layer1_app_score: f64,
     pub layer2_time_score: f64,
     pub layer3_token_score: f64,
+    pub layer3b_folder_score: f64,
     pub total_score: f64,
     pub evidence_count: i64,
 }
@@ -694,4 +698,25 @@ pub async fn set_feedback_weight(app: AppHandle, weight: f64) -> Result<(), Stri
         upsert_state(conn, "feedback_weight", &format!("{:.1}", weight))
     })
     .await
+}
+
+#[command]
+pub async fn scan_project_folders_for_ai(app: AppHandle) -> Result<FolderScanResult, String> {
+    run_db_blocking(app, |mut conn| {
+        folder_scan::scan_project_folders_sync(&mut conn)
+    })
+    .await
+}
+
+#[command]
+pub async fn get_folder_scan_status(app: AppHandle) -> Result<FolderScanStatus, String> {
+    run_db_blocking(app, |conn| {
+        folder_scan::get_folder_scan_status_sync(conn)
+    })
+    .await
+}
+
+#[command]
+pub async fn clear_folder_scan_data(app: AppHandle) -> Result<(), String> {
+    run_db_blocking(app, |conn| folder_scan::clear_folder_scan_sync(conn)).await
 }
