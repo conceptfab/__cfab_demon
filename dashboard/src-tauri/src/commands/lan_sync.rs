@@ -389,6 +389,8 @@ pub struct PairedDeviceInfo {
     pub device_id: String,
     pub machine_name: String,
     pub paired_at: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub last_auth_error_at: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -487,6 +489,7 @@ pub async fn submit_pairing_code(
             device_id,
             machine_name: machine_name.clone(),
             paired_at: chrono::Utc::now().to_rfc3339(),
+            last_auth_error_at: None,
         })
     })
     .await
@@ -532,6 +535,9 @@ pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
                 device_id: d.get("device_id")?.as_str()?.to_string(),
                 machine_name: d.get("machine_name")?.as_str()?.to_string(),
                 paired_at: d.get("paired_at")?.as_str()?.to_string(),
+                last_auth_error_at: d.get("last_auth_error_at")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
             })
         }).collect();
         Ok::<Vec<PairedDeviceInfo>, String>(result)

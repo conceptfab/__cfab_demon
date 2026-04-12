@@ -21,20 +21,44 @@ fn hash_128(data: &[u8]) -> u128 {
     u128::from_be_bytes(bytes)
 }
 
-/// Read device_id from config dir; create if missing. Fallback to machine name.
+/// Read device_id from config dir; create if missing.
+///
+/// CRITICAL: regenerates ONLY when the file does not exist (ErrorKind::NotFound)
+/// or is verifiably empty. Any other read error (permission denied, AV lock,
+/// transient I/O fault) returns the ephemeral machine name as fallback and
+/// DOES NOT touch the file — otherwise a transient glitch would rotate the
+/// device_id and silently invalidate every paired peer on the other side.
 pub fn get_device_id() -> String {
     let dir = match config::config_dir() {
         Ok(d) => d,
-        Err(_) => return get_machine_name(),
+        Err(e) => {
+            log::error!("CRITICAL: config_dir() failed in get_device_id: {}", e);
+            return get_machine_name();
+        }
     };
     let path = dir.join("device_id.txt");
-    if let Ok(id) = std::fs::read_to_string(&path) {
-        let trimmed = id.trim().to_string();
-        if !trimmed.is_empty() {
-            return trimmed;
+
+    match std::fs::read_to_string(&path) {
+        Ok(id) => {
+            let trimmed = id.trim().to_string();
+            if !trimmed.is_empty() {
+                return trimmed;
+            }
+            log::warn!("device_id.txt exists but is empty — regenerating");
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            log::info!("device_id.txt not found — generating new device id");
+        }
+        Err(e) => {
+            log::error!(
+                "CRITICAL: cannot read device_id.txt ({}): {} — refusing to regenerate, returning machine name as ephemeral fallback",
+                path.display(), e
+            );
+            return get_machine_name();
         }
     }
-    // Generate and persist a unique device ID
+
+    // Generate and persist a unique device ID (atomic write)
     let machine = get_machine_name();
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -42,7 +66,18 @@ pub fn get_device_id() -> String {
         .unwrap_or(0);
     let pid = std::process::id();
     let id = format!("{}-{:x}-{:x}", machine, ts, pid);
-    let _ = std::fs::write(&path, &id);
+
+    let tmp = path.with_extension("txt.tmp");
+    if let Err(e) = std::fs::write(&tmp, &id) {
+        log::error!("CRITICAL: failed to write device_id.txt.tmp: {}", e);
+        return id;
+    }
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        log::error!("CRITICAL: failed to rename device_id.txt.tmp -> device_id.txt: {}", e);
+        let _ = std::fs::remove_file(&tmp);
+        return id;
+    }
+    log::info!("Generated new device id (atomic write): {}", id);
     id
 }
 

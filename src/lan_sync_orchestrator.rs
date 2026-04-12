@@ -303,6 +303,9 @@ pub fn run_sync_as_master_with_options(
             match execute_master_sync(&peer, &sync_state, &stop_signal, force) {
                 Ok(()) => {
                     last_err.clear();
+                    // Sync completed end-to-end — any prior auth-error badge
+                    // for this peer is stale, clear it so the UI recovers.
+                    crate::lan_pairing::clear_auth_error(&peer.device_id);
                     break;
                 }
                 Err(e) => {
@@ -394,6 +397,10 @@ fn execute_master_sync(
         Err(e) => {
             if e.contains("401") || e.contains("unauthorized") || e.contains("Unauthorized") {
                 sync_log(&format!("[2/13] PREFLIGHT FAILED — auth error: {}", e));
+                // Mark this paired device as "needs re-pair" so the dashboard
+                // shows a badge. We do NOT delete the entry — the user must
+                // decide whether to re-pair or investigate first.
+                crate::lan_pairing::mark_auth_error(&peer.device_id);
                 return Err(format!("pairing_invalid: {}", e));
             }
             sync_log(&format!("[2/13] PREFLIGHT FAILED: {}", e));

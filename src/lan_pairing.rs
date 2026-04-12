@@ -93,6 +93,13 @@ pub struct PairedDevice {
     pub secret: String,
     pub machine_name: String,
     pub paired_at: String,
+    /// ISO-8601 timestamp of the last HTTP 401 observed when talking to this
+    /// peer. `None` = healthy. UI surfaces this as a "needs re-pair" badge.
+    /// Cleared on the first successful sync. Never used to auto-remove the
+    /// entry — pairing data is expensive to recover and must stay until the
+    /// user explicitly re-pairs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_auth_error_at: Option<String>,
 }
 
 fn paired_devices_path() -> Result<std::path::PathBuf, String> {
@@ -121,15 +128,42 @@ pub fn save_paired_devices(devices: &HashMap<String, PairedDevice>) {
 }
 
 /// Store a paired device's secret. Overwrites if device_id already exists.
+/// Resets `last_auth_error_at` so a fresh pairing starts clean.
 pub fn store_paired_device(device_id: &str, secret: &str, machine_name: &str) {
     let mut devices = load_paired_devices();
     devices.insert(device_id.to_string(), PairedDevice {
         secret: secret.to_string(),
         machine_name: machine_name.to_string(),
         paired_at: chrono::Utc::now().to_rfc3339(),
+        last_auth_error_at: None,
     });
     save_paired_devices(&devices);
     log::info!("LAN pairing: stored secret for device {} ({})", device_id, machine_name);
+}
+
+/// Mark a paired device as having failed authentication (HTTP 401).
+/// Does NOT delete the entry — UI uses this flag to render a "re-pair needed"
+/// badge. No-op if the device is not in the paired map.
+pub fn mark_auth_error(device_id: &str) {
+    let mut devices = load_paired_devices();
+    if let Some(dev) = devices.get_mut(device_id) {
+        dev.last_auth_error_at = Some(chrono::Utc::now().to_rfc3339());
+        save_paired_devices(&devices);
+        log::warn!("LAN pairing: marked auth error for device {}", device_id);
+    }
+}
+
+/// Clear the auth-error flag for a paired device. Called after a successful
+/// sync round so the badge disappears automatically once things recover.
+pub fn clear_auth_error(device_id: &str) {
+    let mut devices = load_paired_devices();
+    if let Some(dev) = devices.get_mut(device_id) {
+        if dev.last_auth_error_at.is_some() {
+            dev.last_auth_error_at = None;
+            save_paired_devices(&devices);
+            log::info!("LAN pairing: cleared auth error for device {}", device_id);
+        }
+    }
 }
 
 /// Remove a paired device. Returns true if it existed.

@@ -537,18 +537,46 @@ fn json_error(msg: &str) -> String {
 
 /// Get or create a shared secret for LAN sync authentication.
 /// Stored in config dir as `lan_secret.txt`. Created on first run.
+///
+/// CRITICAL: regenerates ONLY when the file does not exist (ErrorKind::NotFound)
+/// or is verifiably empty. Any other read error (permission denied, AV lock,
+/// transient I/O fault) returns an empty string without touching the file.
+/// Empty string propagates as HTTP 401 so the caller notices; the on-disk
+/// secret stays intact and paired peers remain valid after the glitch passes.
 fn get_or_create_lan_secret() -> String {
     let dir = match config::config_dir() {
         Ok(d) => d,
-        Err(_) => return String::new(),
+        Err(e) => {
+            log::error!("CRITICAL: config_dir() failed, cannot read LAN secret: {}", e);
+            return String::new();
+        }
     };
     let path = dir.join("lan_secret.txt");
-    if let Ok(secret) = std::fs::read_to_string(&path) {
-        let s = secret.trim().to_string();
-        if !s.is_empty() {
-            return s;
+
+    match std::fs::read_to_string(&path) {
+        Ok(secret) => {
+            let s = secret.trim().to_string();
+            if !s.is_empty() {
+                return s;
+            }
+            log::warn!("lan_secret.txt exists but is empty — regenerating");
+            // fall through to generation
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            log::info!("lan_secret.txt not found — generating new secret");
+            // fall through to generation
+        }
+        Err(e) => {
+            // Transient I/O error (lock, permission, AV scan, ...).
+            // DO NOT regenerate — that would invalidate all paired devices.
+            log::error!(
+                "CRITICAL: cannot read lan_secret.txt ({}): {} — refusing to regenerate, paired devices preserved",
+                path.display(), e
+            );
+            return String::new();
         }
     }
+
     // Generate new secret
     let mut bytes = [0u8; 32];
     if let Err(e) = getrandom::getrandom(&mut bytes) {
@@ -556,8 +584,20 @@ fn get_or_create_lan_secret() -> String {
         return String::new();
     }
     let secret: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
-    let _ = std::fs::write(&path, &secret);
-    log::info!("Generated new LAN sync secret");
+
+    // Atomic write: tmp file + rename, so a crash mid-write cannot leave
+    // an empty or partial lan_secret.txt behind.
+    let tmp = path.with_extension("txt.tmp");
+    if let Err(e) = std::fs::write(&tmp, &secret) {
+        log::error!("CRITICAL: failed to write lan_secret.txt.tmp: {}", e);
+        return secret; // still return — in-memory is better than nothing
+    }
+    if let Err(e) = std::fs::rename(&tmp, &path) {
+        log::error!("CRITICAL: failed to rename lan_secret.txt.tmp -> lan_secret.txt: {}", e);
+        let _ = std::fs::remove_file(&tmp);
+        return secret;
+    }
+    log::info!("Generated new LAN sync secret (atomic write)");
     secret
 }
 
@@ -1194,6 +1234,7 @@ fn handle_get_paired_devices() -> (u16, String) {
             "device_id": id,
             "machine_name": d.machine_name,
             "paired_at": d.paired_at,
+            "last_auth_error_at": d.last_auth_error_at,
         })
     }).collect();
     let resp = serde_json::json!({ "ok": true, "devices": list });

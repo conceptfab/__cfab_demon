@@ -80,6 +80,8 @@ export interface PairedDeviceInfo {
   device_id: string;
   machine_name: string;
   paired_at: string;
+  /** ISO timestamp of last HTTP 401 observed for this peer. Null/undefined = healthy. */
+  last_auth_error_at?: string | null;
 }
 
 export const DEFAULT_LAN_SYNC_SETTINGS: LanSyncSettings = {
