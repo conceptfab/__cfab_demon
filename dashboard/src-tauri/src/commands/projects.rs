@@ -1329,7 +1329,9 @@ pub(crate) fn query_project_extra_info(
         .and_then(|v| v.parse::<f64>().ok())
         .unwrap_or(100.0);
 
-    let effective_rate = hourly_rate.unwrap_or(global_rate);
+    let effective_rate = hourly_rate
+        .filter(|r| r.is_finite() && *r > 0.0)
+        .unwrap_or(global_rate);
 
     let get_extra_secs =
         |conn: &rusqlite::Connection, start: &str, end: &str, p_id: i64| -> Result<f64, String> {

@@ -319,7 +319,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                          frozen_at = ?4, updated_at = ?5 WHERE name = ?6",
                         rusqlite::params![
                             json_str(proj, "color"),
-                            json_f64(proj, "hourly_rate"),
+                            json_f64_opt(proj, "hourly_rate"),
                             json_str_opt(proj, "excluded_at"),
                             json_str_opt(proj, "frozen_at"),
                             updated_at,
@@ -335,7 +335,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         rusqlite::params![
                             name,
                             json_str(proj, "color"),
-                            json_f64(proj, "hourly_rate"),
+                            json_f64_opt(proj, "hourly_rate"),
                             json_str(proj, "created_at"),
                             json_str_opt(proj, "excluded_at"),
                             json_str_opt(proj, "frozen_at"),
@@ -887,6 +887,12 @@ fn json_i64(v: &serde_json::Value, key: &str) -> i64 {
 
 fn json_f64(v: &serde_json::Value, key: &str) -> f64 {
     v.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0)
+}
+
+fn json_f64_opt(v: &serde_json::Value, key: &str) -> Option<f64> {
+    v.get(key)
+        .and_then(|inner| inner.as_f64())
+        .filter(|n| n.is_finite() && *n > 0.0)
 }
 
 #[cfg(test)]

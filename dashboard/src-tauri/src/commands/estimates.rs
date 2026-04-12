@@ -14,7 +14,7 @@ type ProjectMetaRow = (i64, String, String, Option<f64>);
 type ProjectMetaById = HashMap<i64, ProjectMetaRow>;
 
 fn sanitize_rate(rate: f64) -> Option<f64> {
-    if rate.is_finite() && (0.0..=MAX_HOURLY_RATE).contains(&rate) {
+    if rate.is_finite() && rate > 0.0 && rate <= MAX_HOURLY_RATE {
         Some(rate)
     } else {
         None
@@ -216,7 +216,9 @@ fn build_estimate_rows(
 
         let seconds = seconds_f64.round() as i64;
         let hours = seconds_f64 / 3600.0;
-        let effective_hourly_rate = project_hourly_rate.unwrap_or(global_hourly_rate);
+        let effective_hourly_rate = project_hourly_rate
+            .filter(|r| r.is_finite() && *r > 0.0)
+            .unwrap_or(global_hourly_rate);
         let mult_info = multiplier_extra_seconds_by_project.get(&series_key);
         let extra_secs = mult_info.map(|m| m.extra_seconds).unwrap_or(0.0);
         let weighted_hours = hours + (extra_secs / 3600.0);
