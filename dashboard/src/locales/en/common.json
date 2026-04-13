@@ -1606,6 +1606,7 @@
     "managing_task_structure_and_intelligent_automation_of_pr": "Managing task structure and intelligent automation of project detection.",
     "freezing_hide_inactive_projects_to_keep_them_from_clutte": "Freezing – hide inactive projects to keep them from cluttering session assignment.",
     "auto_freezing_the_system_automatically_freezes_projects": "Auto-freezing – the system automatically 'freezes' projects unused for a specified number of days.",
+    "freezing_blocks_override_reapply": "Freezing & manual assignments – sessions matching past manual assignments will not be reassigned to a frozen project on the next sync. Unfreezing restores this behavior.",
     "unfreezing_use_the_flame_icon_to_restore_a_project_to_th": "Unfreezing – use the flame icon to restore a project to the active tasks list.",
     "folder_sync_timeflow_scans_paths_on_every_dashboard_star": "Folder Sync – TIMEFLOW periodically scans configured paths during dashboard startup and automatically adds new projects (including .git repositories). When new items are found, a discovered-projects notification appears on the dashboard.",
     "candidate_detection_the_system_suggests_project_creation": "Candidate Detection – the system suggests project creation based on folder activity.",

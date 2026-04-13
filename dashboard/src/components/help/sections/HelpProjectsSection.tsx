@@ -14,6 +14,7 @@ export function HelpProjectsSection() {
       features={[
         t18n('help_page.freezing_hide_inactive_projects_to_keep_them_from_clutte'),
         t18n('help_page.auto_freezing_the_system_automatically_freezes_projects'),
+        t18n('help_page.freezing_blocks_override_reapply'),
         t18n('help_page.unfreezing_use_the_flame_icon_to_restore_a_project_to_th'),
         t18n('help_page.folder_sync_timeflow_scans_paths_on_every_dashboard_star'),
         t18n('help_page.candidate_detection_the_system_suggests_project_creation'),
