@@ -194,14 +194,23 @@ pub(crate) fn upsert_daily_data(conn: &mut rusqlite::Connection, daily: &DailyDa
                 return 0;
             }
         };
-    let mut app_project_stmt =
-        match tx.prepare_cached("SELECT project_id FROM applications WHERE id = ?1") {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("Failed to prepare app project select: {}", e);
-                return 0;
-            }
-        };
+    // Layer 1 app-default: only inherit project_id when the bound project is still
+    // active (not excluded, not frozen). Frozen projects are contractually excluded
+    // from any automatic assignment — see HelpProjectsSection freezing entries.
+    let mut app_project_stmt = match tx.prepare_cached(
+        "SELECT a.project_id
+         FROM applications a
+         LEFT JOIN projects p ON p.id = a.project_id
+         WHERE a.id = ?1
+           AND (a.project_id IS NULL
+                OR (p.excluded_at IS NULL AND p.frozen_at IS NULL))",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            log::error!("Failed to prepare app project select: {}", e);
+            return 0;
+        }
+    };
     let mut session_stmt = match tx.prepare_cached(
         "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)

@@ -346,7 +346,8 @@ pub(crate) fn ensure_app_project_from_file_hint(
             "SELECT id
              FROM projects
              WHERE lower(name) = lower(?1)
-               AND excluded_at IS NULL",
+               AND excluded_at IS NULL
+               AND frozen_at IS NULL",
             [candidate_name.as_str()],
             |row| row.get(0),
         ) {
@@ -976,6 +977,20 @@ pub async fn assign_app_to_project(
             if !project_id_is_active(conn, pid)? {
                 return Err("Cannot assign app to an excluded or missing project".to_string());
             }
+            // Frozen projects must not receive new automatic assignments. Binding
+            // an app to a frozen project would make `upsert_daily_data` inherit
+            // that id for every new session, re-creating the leak that freezing
+            // is supposed to prevent. Unfreeze first if the user wants this.
+            let is_frozen: bool = conn
+                .query_row(
+                    "SELECT frozen_at IS NOT NULL FROM projects WHERE id = ?1",
+                    [pid],
+                    |row| row.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if is_frozen {
+                return Err("Cannot assign app to a frozen project".to_string());
+            }
         }
 
         let old_project_id: Option<i64> = conn
@@ -1523,7 +1538,7 @@ pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String>
 
 #[cfg(test)]
 mod tests {
-    use super::prune_projects_missing_on_disk;
+    use super::{ensure_app_project_from_file_hint, prune_projects_missing_on_disk};
 
     fn setup_conn() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
@@ -1540,6 +1555,112 @@ mod tests {
         )
         .expect("schema");
         conn
+    }
+
+    /// Schema used by frozen-exclusion regression tests. Mirrors the real
+    /// `projects` / `applications` columns touched by `upsert_daily_data` and
+    /// `ensure_app_project_from_file_hint` — just enough to exercise the SQL
+    /// predicates that enforce the "frozen = no automatic assignment" contract.
+    fn setup_conn_with_apps() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                excluded_at TEXT,
+                frozen_at TEXT
+            );
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                executable_name TEXT NOT NULL UNIQUE,
+                project_id INTEGER
+            );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    fn query_app_default_project(conn: &rusqlite::Connection, app_id: i64) -> Option<i64> {
+        // Exact SQL used by upsert_daily_data's app_project_stmt — copied here
+        // so a future edit that relaxes the predicate fails this test.
+        conn.query_row(
+            "SELECT a.project_id
+             FROM applications a
+             LEFT JOIN projects p ON p.id = a.project_id
+             WHERE a.id = ?1
+               AND (a.project_id IS NULL
+                    OR (p.excluded_at IS NULL AND p.frozen_at IS NULL))",
+            [app_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .ok()
+        .flatten()
+    }
+
+    #[test]
+    fn upsert_app_project_query_skips_frozen_and_excluded_projects() {
+        let conn = setup_conn_with_apps();
+
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at) VALUES
+                (1, 'Active',   NULL, NULL),
+                (2, 'Excluded', '2026-04-13T10:00:00+02:00', NULL),
+                (3, 'Frozen',   NULL, '2026-04-13T10:00:00+02:00');
+             INSERT INTO applications (id, executable_name, project_id) VALUES
+                (10, 'unbound.exe',  NULL),
+                (11, 'active.exe',   1),
+                (12, 'excluded.exe', 2),
+                (13, 'frozen.exe',   3);",
+        )
+        .expect("seed");
+
+        assert_eq!(query_app_default_project(&conn, 10), None, "unbound app stays None");
+        assert_eq!(
+            query_app_default_project(&conn, 11),
+            Some(1),
+            "active-bound app returns project id"
+        );
+        assert_eq!(
+            query_app_default_project(&conn, 12),
+            None,
+            "excluded project must not leak into new sessions"
+        );
+        assert_eq!(
+            query_app_default_project(&conn, 13),
+            None,
+            "frozen project must not leak into new sessions (regression for the reported bug)"
+        );
+    }
+
+    #[test]
+    fn ensure_app_project_from_file_hint_skips_frozen_and_excluded() {
+        let conn = setup_conn_with_apps();
+
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at) VALUES
+                (1, 'Alpha',   NULL, NULL),
+                (2, 'Beta',    '2026-04-13T10:00:00+02:00', NULL),
+                (3, 'Gamma',   NULL, '2026-04-13T10:00:00+02:00');",
+        )
+        .expect("seed");
+
+        let roots: Vec<super::ProjectFolder> = Vec::new();
+
+        assert_eq!(
+            ensure_app_project_from_file_hint(&conn, "Alpha - main.rs", &roots),
+            Some(1),
+            "active project should still match on file hint"
+        );
+        assert_eq!(
+            ensure_app_project_from_file_hint(&conn, "Beta - notes.md", &roots),
+            None,
+            "excluded project must not be inferred from file hint"
+        );
+        assert_eq!(
+            ensure_app_project_from_file_hint(&conn, "Gamma - draft.txt", &roots),
+            None,
+            "frozen project must not be inferred from file hint"
+        );
     }
 
     #[test]
