@@ -78,6 +78,17 @@ pub(crate) fn upsert_manual_session_override(
     Ok(())
 }
 
+/// Re-applies historical manual overrides from `session_manual_overrides` onto
+/// sessions that match by `(executable_name, start_time, end_time)`.
+///
+/// Called after every `import_data` / sync-pull so manual assignments survive
+/// session-id churn caused by re-importing archives.
+///
+/// Frozen projects (`projects.frozen_at IS NOT NULL`) are intentionally
+/// excluded — freezing is the user's explicit signal that a project should
+/// not receive any new assignments, including reapplication of past overrides.
+/// If the project is later unfrozen, the override will naturally take effect
+/// again on the next reapplication pass.
 pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Result<i64, String> {
     let mut total_reapplied = 0_i64;
 
@@ -109,7 +120,8 @@ pub(crate) fn apply_manual_session_overrides(conn: &rusqlite::Connection) -> Res
             .prepare_cached(
                 "SELECT id, name
                  FROM projects
-                 WHERE excluded_at IS NULL",
+                 WHERE excluded_at IS NULL
+                   AND frozen_at IS NULL",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt

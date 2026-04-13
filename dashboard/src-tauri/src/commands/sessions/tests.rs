@@ -634,3 +634,109 @@ fn split_multi_preserves_total_duration_and_writes_feedback_per_part() {
         .expect("collect activity projects");
     assert_eq!(activities, vec![Some(10), Some(20), Some(30)]);
 }
+
+#[test]
+fn apply_manual_overrides_skips_frozen_project() {
+    let conn = setup_conn();
+
+    conn.execute(
+        "UPDATE projects SET frozen_at = '2026-04-13T10:00:00+02:00' WHERE id = 20",
+        [],
+    )
+    .expect("freeze Beta");
+
+    conn.execute(
+        "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+        rusqlite::params![
+            100_i64,
+            1_i64,
+            "2026-04-12T09:00:00+02:00",
+            "2026-04-12T10:00:00+02:00",
+            3600_i64,
+            "2026-04-12",
+        ],
+    )
+    .expect("insert session");
+
+    conn.execute(
+        "INSERT INTO session_manual_overrides (session_id, executable_name, start_time, end_time, project_name, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+        rusqlite::params![
+            100_i64,
+            "editor.exe",
+            "2026-04-12T09:00:00+02:00",
+            "2026-04-12T10:00:00+02:00",
+            "Beta",
+        ],
+    )
+    .expect("insert override");
+
+    let reapplied = super::manual_overrides::apply_manual_session_overrides(&conn)
+        .expect("apply overrides ok");
+
+    assert_eq!(
+        reapplied, 0,
+        "frozen project must not be reapplied; got {}",
+        reapplied
+    );
+
+    let project_id: Option<i64> = conn
+        .query_row(
+            "SELECT project_id FROM sessions WHERE id = 100",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read session");
+    assert_eq!(
+        project_id, None,
+        "sessions.project_id must stay NULL, got {:?}",
+        project_id
+    );
+}
+
+#[test]
+fn apply_manual_overrides_still_works_for_active_project() {
+    let conn = setup_conn();
+
+    conn.execute(
+        "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id, rate_multiplier, comment, is_hidden)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, 1.0, NULL, 0)",
+        rusqlite::params![
+            101_i64,
+            1_i64,
+            "2026-04-12T11:00:00+02:00",
+            "2026-04-12T12:00:00+02:00",
+            3600_i64,
+            "2026-04-12",
+        ],
+    )
+    .expect("insert session");
+
+    conn.execute(
+        "INSERT INTO session_manual_overrides (session_id, executable_name, start_time, end_time, project_name, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
+        rusqlite::params![
+            101_i64,
+            "editor.exe",
+            "2026-04-12T11:00:00+02:00",
+            "2026-04-12T12:00:00+02:00",
+            "Alpha",
+        ],
+    )
+    .expect("insert override");
+
+    let reapplied = super::manual_overrides::apply_manual_session_overrides(&conn)
+        .expect("apply overrides ok");
+
+    assert_eq!(reapplied, 1, "active project should be reapplied");
+
+    let project_id: Option<i64> = conn
+        .query_row(
+            "SELECT project_id FROM sessions WHERE id = 101",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read session");
+    assert_eq!(project_id, Some(10), "session should be assigned to Alpha (id=10)");
+}
