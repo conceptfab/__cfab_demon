@@ -339,6 +339,7 @@ export function useLanSyncManager() {
         dashboard_port: result.dashboard_port,
         last_seen: new Date().toISOString(),
         dashboard_running: true,
+        timeflow_version: result.version,
       };
       await lanSyncApi.upsertLanPeer(peer);
       setLanPeers((prev) => {

@@ -14,6 +14,7 @@ export interface LanPeer {
   dashboard_port: number;
   last_seen: string;
   dashboard_running: boolean;
+  timeflow_version?: string;
 }
 
 export interface LanSyncState {
