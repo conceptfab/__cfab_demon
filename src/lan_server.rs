@@ -602,10 +602,6 @@ fn get_or_create_lan_secret() -> String {
 }
 
 /// Public accessor for the LAN secret (used by orchestrator to send with requests).
-pub fn lan_secret() -> String {
-    get_or_create_lan_secret()
-}
-
 // ── DB helpers ──
 
 fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
@@ -1078,6 +1074,22 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
             state.sync_in_progress.store(false, Ordering::SeqCst);
         }
     }
+    // Defence in depth: refuse sync with peers that are not paired.
+    // Without a stored paired secret we would fall back to the local
+    // lan_secret, guaranteeing a 401 on the peer and surfacing a misleading
+    // "pairing_invalid" error. Reject early with 412 + not_paired so the
+    // dashboard can prompt the user to pair the device first.
+    if crate::lan_pairing::get_paired_secret(&req.peer_device_id)
+        .map(|s| s.is_empty())
+        .unwrap_or(true)
+    {
+        log::warn!(
+            "LAN trigger-sync: REJECTED — peer {} is not paired",
+            req.peer_device_id
+        );
+        return (412, json_error("not_paired"));
+    }
+
     if state.sync_in_progress.compare_exchange(
         false, true, Ordering::SeqCst, Ordering::SeqCst
     ).is_err() {

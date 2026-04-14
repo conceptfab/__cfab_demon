@@ -82,10 +82,21 @@ export function LanPeerNotification() {
   useEffect(() => {
     const poll = async () => {
       try {
-        const peers = await lanSyncApi.getLanPeers();
+        // Sync wymaga sparowania. Powiadomienie pokazujemy tylko dla peerów,
+        // którzy są jednocześnie widoczni w LAN (dashboard_running) ORAZ
+        // znajdują się na liście sparowanych urządzeń. Niesparowanych peerów
+        // obsługuje panel ustawień LAN Sync (tam jest flow parowania).
+        const [peers, pairedDevices] = await Promise.all([
+          lanSyncApi.getLanPeers(),
+          lanSyncApi.getPairedDevices().catch(() => []),
+        ]);
+        const pairedIds = new Set(pairedDevices.map((d) => d.device_id));
         const dismissed = getDismissedPeers();
         const activePeer = peers.find(
-          (p) => p.dashboard_running && !dismissed.has(p.device_id),
+          (p) =>
+            p.dashboard_running &&
+            pairedIds.has(p.device_id) &&
+            !dismissed.has(p.device_id),
         );
 
         if (activePeer && !visiblePeerRef.current) {
