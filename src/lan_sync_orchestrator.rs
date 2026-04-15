@@ -49,15 +49,20 @@ pub struct PeerTarget {
 
 // ── HTTP client helpers ──
 
-/// Resolve the secret to use for a given peer: paired secret first, fallback to local.
-fn resolve_peer_secret(peer_device_id: &str) -> String {
-    if let Some(secret) = crate::lan_pairing::get_paired_secret(peer_device_id) {
-        if !secret.is_empty() {
-            return secret;
-        }
-        log::warn!("LAN sync: paired secret for {} is empty — falling back to local secret", peer_device_id);
+/// Resolve the secret to use for a given peer. Returns `None` when the peer is
+/// not paired (no entry in lan_paired_devices.json or entry has empty secret).
+///
+/// IMPORTANT: there is no fallback to the local `lan_secret.txt`. Using the
+/// local secret to talk to an unpaired peer guarantees a 401 and pollutes
+/// diagnostics with a misleading "may need re-pairing" error. Callers MUST
+/// treat `None` as `not_paired` and refuse to start the sync flow.
+fn resolve_peer_secret(peer_device_id: &str) -> Option<String> {
+    let secret = crate::lan_pairing::get_paired_secret(peer_device_id)?;
+    if secret.is_empty() {
+        log::warn!("LAN sync: paired entry for {} exists but secret is empty", peer_device_id);
+        return None;
     }
-    crate::lan_server::lan_secret()
+    Some(secret)
 }
 
 fn http_post(url: &str, body: &str, secret: &str) -> Result<String, String> {
@@ -313,11 +318,14 @@ pub fn run_sync_as_master_with_options(
                     // Unfreeze DB but keep sync_in_progress = true to prevent
                     // another thread from starting a concurrent sync during backoff.
                     sync_state.db_frozen.store(false, Ordering::SeqCst);
-                    // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (5 min)
-                    let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer.ip, peer.port);
-                    let retry_secret = resolve_peer_secret(&peer.device_id);
-                    if let Err(ue) = http_post(&slave_unfreeze_url, "{}", &retry_secret) {
-                        sync_log(&format!("[!] Nie udalo sie odmrozic slave: {}", ue));
+                    // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (5 min).
+                    // Skip the unfreeze call when peer is not paired (no secret available) —
+                    // without a matching secret it would just loop on 401.
+                    if let Some(retry_secret) = resolve_peer_secret(&peer.device_id) {
+                        let slave_unfreeze_url = format!("http://{}:{}/lan/unfreeze", peer.ip, peer.port);
+                        if let Err(ue) = http_post(&slave_unfreeze_url, "{}", &retry_secret) {
+                            sync_log(&format!("[!] Nie udalo sie odmrozic slave: {}", ue));
+                        }
                     }
                     sync_state.reset_progress();
                     last_err = e;
@@ -366,7 +374,17 @@ fn execute_master_sync(
     force: bool,
 ) -> Result<(), String> {
     let base_url = format!("http://{}:{}", peer.ip, peer.port);
-    let secret = resolve_peer_secret(&peer.device_id);
+    let secret = match resolve_peer_secret(&peer.device_id) {
+        Some(s) => s,
+        None => {
+            sync_log(&format!(
+                "[!] Peer {} nie jest sparowany — wymagane jest parowanie przed sync",
+                peer.device_id
+            ));
+            crate::lan_pairing::mark_auth_error(&peer.device_id);
+            return Err(format!("not_paired: peer {} is not paired", peer.device_id));
+        }
+    };
     let sync_start = Instant::now();
 
     // Open single DB connection for entire sync flow
