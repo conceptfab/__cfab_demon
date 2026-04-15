@@ -28,7 +28,6 @@ export function HelpLanSyncSection() {
         t18n('help_page.lan_sync_subnet_broadcast'),
         t18n('help_page.lan_sync_background_interval'),
         t18n('help_page.lan_sync_peer_notification'),
-        t18n('help_page.lan_sync_version_required'),
         t18n('help_page.lan_sync_sidebar_indicator'),
         t18n('help_page.lan_sync_port_config'),
         t18n('help_page.lan_sync_device_pairing'),

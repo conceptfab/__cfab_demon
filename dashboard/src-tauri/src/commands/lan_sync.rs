@@ -32,8 +32,6 @@ pub struct LanPeer {
     pub dashboard_port: u16,
     pub last_seen: String,
     pub dashboard_running: bool,
-    #[serde(default)]
-    pub timeflow_version: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -262,7 +260,6 @@ pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, String> {
                 dashboard_port: peer.dashboard_port,
                 last_seen: chrono::Utc::now().to_rfc3339(),
                 dashboard_running: true,
-                timeflow_version: peer.version.clone(),
             });
             found.push(peer);
         }

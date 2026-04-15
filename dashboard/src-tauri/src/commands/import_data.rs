@@ -786,26 +786,8 @@ fn merge_or_insert_session(
         }
     }
 
-    // Fall back to the archive's project_id only when it is still active on
-    // this device. Frozen and excluded projects must never receive a freshly
-    // imported assignment from a remote archive — otherwise sync re-plants the
-    // binding every pull. Existing local `merged_project_id` values (picked up
-    // from the overlap loop above) are preserved as-is per the product rule
-    // that freezing does not mutate historical assignments.
     if merged_project_id.is_none() {
-        if let Some(pid) = incoming.project_id {
-            let active: bool = tx
-                .query_row(
-                    "SELECT COUNT(*) > 0 FROM projects
-                     WHERE id = ?1 AND excluded_at IS NULL AND frozen_at IS NULL",
-                    rusqlite::params![pid],
-                    |row| row.get(0),
-                )
-                .unwrap_or(false);
-            if active {
-                merged_project_id = Some(pid);
-            }
-        }
+        merged_project_id = incoming.project_id;
     }
 
     if overlap_ids.is_empty() {
