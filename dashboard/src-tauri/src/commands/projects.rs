@@ -643,10 +643,62 @@ pub async fn unfreeze_project(app: AppHandle, id: i64) -> Result<(), String> {
     .await
 }
 
+/// Core logic for `auto_freeze_projects`, exposed for unit tests.
+///
+/// Freezes stale projects (no session/manual_session/file_activity in the
+/// last `days` days and older than `days` since creation). Does **not**
+/// unfreeze anything — unfreeze is a manual-only operation. Callers must
+/// pass `days >= 1`.
+fn auto_freeze_stale_projects(
+    conn: &rusqlite::Connection,
+    days: i64,
+) -> rusqlite::Result<i64> {
+    conn.execute(
+        "UPDATE projects
+         SET unfreeze_reason = NULL
+         WHERE excluded_at IS NULL
+           AND unfreeze_reason IS NOT NULL
+           AND julianday(unfreeze_reason) < julianday('now', '-' || ?1 || ' days')",
+        [days],
+    )?;
+
+    let frozen = conn.execute(
+        "UPDATE projects
+         SET frozen_at = datetime('now'),
+             unfreeze_reason = NULL
+         WHERE excluded_at IS NULL
+           AND frozen_at IS NULL
+           AND julianday('now') - julianday(created_at) >= ?1
+           AND id NOT IN (
+               SELECT DISTINCT s.project_id FROM sessions s
+               WHERE s.project_id IS NOT NULL
+                 AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+               UNION
+               SELECT DISTINCT p.id FROM projects p
+               JOIN applications a ON a.project_id = p.id
+               JOIN sessions s ON s.app_id = a.id
+               WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
+               UNION
+               SELECT DISTINCT project_id FROM manual_sessions
+               WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
+               UNION
+               SELECT DISTINCT project_id FROM file_activities
+               WHERE project_id IS NOT NULL
+                 AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
+               UNION
+               SELECT id FROM projects
+               WHERE unfreeze_reason IS NOT NULL
+                 AND julianday(unfreeze_reason) >= julianday('now', '-' || ?1 || ' days')
+           )",
+        [days],
+    )? as i64;
+
+    Ok(frozen)
+}
+
 #[derive(serde::Serialize)]
 pub struct AutoFreezeResult {
     pub frozen_count: i64,
-    pub unfrozen_count: i64,
 }
 
 #[tauri::command]
@@ -656,82 +708,9 @@ pub async fn auto_freeze_projects(
 ) -> Result<AutoFreezeResult, String> {
     run_db_blocking(app, move |conn| {
         let days = threshold_days.unwrap_or(14).max(1);
-
-        let _clear_old = conn
-            .execute(
-                "UPDATE projects
-                 SET unfreeze_reason = NULL
-                 WHERE excluded_at IS NULL
-                   AND unfreeze_reason IS NOT NULL
-                   AND julianday(unfreeze_reason) < julianday('now', '-' || ?1 || ' days')",
-                [days],
-            )
+        let frozen_count = auto_freeze_stale_projects(conn, days)
             .map_err(|e| e.to_string())?;
-
-        let frozen = conn
-            .execute(
-                "UPDATE projects
-                 SET frozen_at = datetime('now'),
-                     unfreeze_reason = NULL
-                 WHERE excluded_at IS NULL
-                   AND frozen_at IS NULL
-                   AND julianday('now') - julianday(created_at) >= ?1
-                   AND id NOT IN (
-                       SELECT DISTINCT s.project_id FROM sessions s
-                       WHERE s.project_id IS NOT NULL
-                         AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT DISTINCT p.id FROM projects p
-                       JOIN applications a ON a.project_id = p.id
-                       JOIN sessions s ON s.app_id = a.id
-                       WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT DISTINCT project_id FROM manual_sessions
-                       WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT DISTINCT project_id FROM file_activities
-                       WHERE project_id IS NOT NULL
-                         AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT id FROM projects
-                       WHERE unfreeze_reason IS NOT NULL
-                         AND julianday(unfreeze_reason) >= julianday('now', '-' || ?1 || ' days')
-                   )",
-                [days],
-            )
-            .map_err(|e| e.to_string())? as i64;
-
-        let unfrozen = conn
-            .execute(
-                "UPDATE projects
-                 SET frozen_at = NULL
-                 WHERE frozen_at IS NOT NULL
-                   AND excluded_at IS NULL
-                   AND id IN (
-                       SELECT DISTINCT s.project_id FROM sessions s
-                       WHERE s.project_id IS NOT NULL
-                         AND julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT DISTINCT p.id FROM projects p
-                       JOIN applications a ON a.project_id = p.id
-                       JOIN sessions s ON s.app_id = a.id
-                       WHERE julianday(s.end_time) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT DISTINCT project_id FROM manual_sessions
-                       WHERE julianday(end_time) >= julianday('now', '-' || ?1 || ' days')
-                       UNION
-                       SELECT DISTINCT project_id FROM file_activities
-                       WHERE project_id IS NOT NULL
-                         AND julianday(last_seen) >= julianday('now', '-' || ?1 || ' days')
-                   )",
-                [days],
-            )
-            .map_err(|e| e.to_string())? as i64;
-
-        Ok(AutoFreezeResult {
-            frozen_count: frozen,
-            unfrozen_count: unfrozen,
-        })
+        Ok(AutoFreezeResult { frozen_count })
     })
     .await
 }
