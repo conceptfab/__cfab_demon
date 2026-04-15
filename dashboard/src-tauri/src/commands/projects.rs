@@ -1502,7 +1502,7 @@ pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String>
 
 #[cfg(test)]
 mod tests {
-    use super::prune_projects_missing_on_disk;
+    use super::{auto_freeze_stale_projects, prune_projects_missing_on_disk};
 
     fn setup_conn() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
@@ -1550,5 +1550,143 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM project_folders", [], |row| row.get(0))
             .expect("folder count");
         assert_eq!(folder_count, 0);
+    }
+
+    fn setup_auto_freeze_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                excluded_at TEXT,
+                frozen_at TEXT,
+                unfreeze_reason TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER,
+                app_id INTEGER,
+                end_time TEXT NOT NULL
+            );
+            CREATE TABLE manual_sessions (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER,
+                end_time TEXT NOT NULL
+            );
+            CREATE TABLE file_activities (
+                id INTEGER PRIMARY KEY,
+                project_id INTEGER,
+                last_seen TEXT NOT NULL
+            );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    #[test]
+    fn auto_freeze_never_unfreezes_manual_freeze() {
+        let conn = setup_auto_freeze_conn();
+
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (10, 'ManualFrozen', NULL, datetime('now', '-1 days'), NULL,
+                     datetime('now', '-30 days'))",
+            [],
+        )
+        .expect("insert frozen project");
+
+        // Historyczna sesja z ostatnich 14 dni wciąż wskazująca na zamrożony projekt
+        // (c0bbed0 celowo nie czyści historycznego sessions.project_id po freeze).
+        conn.execute(
+            "INSERT INTO sessions (id, project_id, app_id, end_time)
+             VALUES (1, 10, NULL, datetime('now', '-2 days'))",
+            [],
+        )
+        .expect("insert historic session");
+
+        let frozen_count = auto_freeze_stale_projects(&conn, 14).expect("auto-freeze");
+
+        assert_eq!(
+            frozen_count, 0,
+            "nothing new to freeze — project already frozen"
+        );
+
+        let frozen_at: Option<String> = conn
+            .query_row(
+                "SELECT frozen_at FROM projects WHERE id = 10",
+                [],
+                |row| row.get(0),
+            )
+            .expect("select frozen_at");
+
+        assert!(
+            frozen_at.is_some(),
+            "manual freeze must NOT be cleared by auto_freeze_stale_projects, got {:?}",
+            frozen_at
+        );
+    }
+
+    #[test]
+    fn auto_freeze_freezes_stale_project_without_activity() {
+        let conn = setup_auto_freeze_conn();
+
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (20, 'StaleAlive', NULL, NULL, NULL, datetime('now', '-60 days'))",
+            [],
+        )
+        .expect("insert stale project");
+
+        let frozen_count = auto_freeze_stale_projects(&conn, 14).expect("auto-freeze");
+
+        assert_eq!(frozen_count, 1, "stale project without activity must be frozen");
+
+        let frozen_at: Option<String> = conn
+            .query_row(
+                "SELECT frozen_at FROM projects WHERE id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("select frozen_at");
+
+        assert!(frozen_at.is_some(), "StaleAlive should now be frozen");
+    }
+
+    #[test]
+    fn auto_freeze_skips_project_with_recent_session() {
+        let conn = setup_auto_freeze_conn();
+
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (30, 'Active', NULL, NULL, NULL, datetime('now', '-60 days'))",
+            [],
+        )
+        .expect("insert active project");
+
+        conn.execute(
+            "INSERT INTO sessions (id, project_id, app_id, end_time)
+             VALUES (5, 30, NULL, datetime('now', '-3 days'))",
+            [],
+        )
+        .expect("insert recent session");
+
+        let frozen_count = auto_freeze_stale_projects(&conn, 14).expect("auto-freeze");
+
+        assert_eq!(frozen_count, 0, "project with recent activity must stay active");
+
+        let frozen_at: Option<String> = conn
+            .query_row(
+                "SELECT frozen_at FROM projects WHERE id = 30",
+                [],
+                |row| row.get(0),
+            )
+            .expect("select frozen_at");
+
+        assert!(frozen_at.is_none(), "active project must not be frozen");
     }
 }
