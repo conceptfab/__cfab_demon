@@ -88,6 +88,8 @@ export function useProjectsData(projectDialogId: number | null) {
   useEffect(() => {
     if (autoFreezeInitializedRef.current) return;
     autoFreezeInitializedRef.current = true;
+    // Auto-freeze is additive only: it freezes stale projects but never
+    // clears a manual freeze. Safe to run on every Projects page mount.
     projectsApi.autoFreezeProjects()
       .catch(() => {
         /* feature optional */

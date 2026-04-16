@@ -49,14 +49,13 @@ export const unfreezeProject = (id: number) =>
   invokeMutation<void>('unfreeze_project', { id });
 
 export const autoFreezeProjects = (thresholdDays?: number) =>
-  invokeMutation<{ frozen_count: number; unfrozen_count: number }>(
+  invokeMutation<{ frozen_count: number }>(
     'auto_freeze_projects',
     {
       thresholdDays: thresholdDays ?? null,
     },
     {
-      notify: (result) =>
-        result.frozen_count > 0 || result.unfrozen_count > 0,
+      notify: (result) => result.frozen_count > 0,
     },
   );
 
