@@ -166,7 +166,8 @@ pub(crate) fn project_id_is_active(
     project_id: i64,
 ) -> Result<bool, String> {
     conn.query_row(
-        "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1 AND excluded_at IS NULL",
+        "SELECT COUNT(*) > 0 FROM projects
+         WHERE id = ?1 AND excluded_at IS NULL AND frozen_at IS NULL",
         [project_id],
         |row| row.get(0),
     )
@@ -346,7 +347,8 @@ pub(crate) fn ensure_app_project_from_file_hint(
             "SELECT id
              FROM projects
              WHERE lower(name) = lower(?1)
-               AND excluded_at IS NULL",
+               AND excluded_at IS NULL
+               AND frozen_at IS NULL",
             [candidate_name.as_str()],
             |row| row.get(0),
         ) {
@@ -611,20 +613,35 @@ pub(crate) fn collect_project_subfolders(roots: &[ProjectFolder]) -> Vec<(String
 // ==================== Tauri Commands ====================
 
 #[tauri::command]
+/// Freezes a project and detaches every application→project mapping that
+/// points at it, so future sessions cannot inherit the frozen project via
+/// Layer 1 app-project inheritance during daemon log import.
+pub(crate) fn freeze_project_in_conn(
+    conn: &mut rusqlite::Connection,
+    id: i64,
+) -> Result<(), String> {
+    let tx = conn.transaction().map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE projects
+         SET frozen_at = datetime('now'),
+             unfreeze_reason = NULL
+         WHERE id = ?1
+           AND excluded_at IS NULL",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE applications SET project_id = NULL WHERE project_id = ?1",
+        [id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn freeze_project(app: AppHandle, id: i64) -> Result<(), String> {
-    run_db_blocking(app, move |conn| {
-        conn.execute(
-            "UPDATE projects
-             SET frozen_at = datetime('now'),
-                 unfreeze_reason = NULL
-             WHERE id = ?1
-               AND excluded_at IS NULL",
-            [id],
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
-    })
-    .await
+    run_db_blocking(app, move |conn| freeze_project_in_conn(conn, id)).await
 }
 
 #[tauri::command]
@@ -953,7 +970,9 @@ pub async fn assign_app_to_project(
     run_db_blocking(app, move |conn| {
         if let Some(pid) = project_id {
             if !project_id_is_active(conn, pid)? {
-                return Err("Cannot assign app to an excluded or missing project".to_string());
+                return Err(
+                    "Cannot assign app to an excluded, frozen, or missing project".to_string(),
+                );
             }
         }
 
@@ -1502,7 +1521,10 @@ pub async fn compact_project_data(app: AppHandle, id: i64) -> Result<(), String>
 
 #[cfg(test)]
 mod tests {
-    use super::{auto_freeze_stale_projects, prune_projects_missing_on_disk};
+    use super::{
+        auto_freeze_stale_projects, ensure_app_project_from_file_hint, freeze_project_in_conn,
+        project_id_is_active, prune_projects_missing_on_disk,
+    };
 
     fn setup_conn() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
@@ -1688,5 +1710,146 @@ mod tests {
             .expect("select frozen_at");
 
         assert!(frozen_at.is_none(), "active project must not be frozen");
+    }
+
+    #[test]
+    fn project_id_is_active_rejects_frozen_project() {
+        let conn = setup_auto_freeze_conn();
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (40, 'Frozen', NULL, datetime('now'), NULL, datetime('now', '-10 days'))",
+            [],
+        )
+        .expect("insert frozen project");
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (41, 'Active', NULL, NULL, NULL, datetime('now', '-10 days'))",
+            [],
+        )
+        .expect("insert active project");
+
+        assert!(
+            !project_id_is_active(&conn, 40).expect("query frozen"),
+            "frozen project must NOT be treated as active"
+        );
+        assert!(
+            project_id_is_active(&conn, 41).expect("query active"),
+            "active project must be treated as active"
+        );
+    }
+
+    #[test]
+    fn freeze_project_detaches_application_assignments() {
+        let mut conn = setup_auto_freeze_conn();
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (50, 'FreezeMe', NULL, NULL, NULL, datetime('now', '-30 days'))",
+            [],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO applications (id, project_id) VALUES (100, 50), (101, 50), (102, NULL)",
+            [],
+        )
+        .expect("insert applications");
+
+        freeze_project_in_conn(&mut conn, 50).expect("freeze");
+
+        let frozen_at: Option<String> = conn
+            .query_row(
+                "SELECT frozen_at FROM projects WHERE id = 50",
+                [],
+                |row| row.get(0),
+            )
+            .expect("select frozen_at");
+        assert!(frozen_at.is_some(), "project must be frozen");
+
+        let app_with_project: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM applications WHERE project_id = 50",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count apps");
+        assert_eq!(
+            app_with_project, 0,
+            "all applications pointing at the frozen project must be detached"
+        );
+    }
+
+    #[test]
+    fn ensure_app_project_from_file_hint_skips_frozen_project() {
+        let conn = setup_auto_freeze_conn();
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (70, '01_26_RM_Jutrzenki', NULL, datetime('now'), NULL,
+                     datetime('now', '-30 days')),
+                    (71, '16_26_Profil_Korea_HAIR', NULL, NULL, NULL,
+                     datetime('now', '-30 days'))",
+            [],
+        )
+        .expect("insert projects");
+
+        let frozen_hint =
+            ensure_app_project_from_file_hint(&conn, "01_26_RM_Jutrzenki - brief.psd", &[]);
+        assert_eq!(
+            frozen_hint, None,
+            "file hint matching a frozen project name must not resolve to that project"
+        );
+
+        let active_hint =
+            ensure_app_project_from_file_hint(&conn, "16_26_Profil_Korea_HAIR - set.psd", &[]);
+        assert_eq!(
+            active_hint,
+            Some(71),
+            "file hint matching an active project name must resolve normally"
+        );
+    }
+
+    #[test]
+    fn import_app_project_query_skips_frozen_project() {
+        // Mirrors the SQL used in import.rs to resolve the Layer 1 app→project
+        // inheritance when sessions land from the daemon. Must return no row
+        // when the target project is frozen, so the incoming session stays
+        // unassigned and is routed to the assignment model instead.
+        let conn = setup_auto_freeze_conn();
+        conn.execute(
+            "INSERT INTO projects (id, name, excluded_at, frozen_at, unfreeze_reason, created_at)
+             VALUES (60, 'Frozen', NULL, datetime('now'), NULL, datetime('now', '-10 days')),
+                    (61, 'Active', NULL, NULL, NULL, datetime('now', '-10 days'))",
+            [],
+        )
+        .expect("insert projects");
+        conn.execute(
+            "INSERT INTO applications (id, project_id) VALUES (200, 60), (201, 61)",
+            [],
+        )
+        .expect("insert applications");
+
+        let sql = "SELECT a.project_id
+             FROM applications a
+             JOIN projects p ON p.id = a.project_id
+             WHERE a.id = ?1
+               AND p.excluded_at IS NULL
+               AND p.frozen_at IS NULL";
+
+        let frozen_lookup: Option<i64> = conn
+            .query_row(sql, [200_i64], |row| row.get(0))
+            .ok()
+            .flatten();
+        assert_eq!(
+            frozen_lookup, None,
+            "app mapped to frozen project must not return an inheritable project_id"
+        );
+
+        let active_lookup: Option<i64> = conn
+            .query_row(sql, [201_i64], |row| row.get(0))
+            .ok()
+            .flatten();
+        assert_eq!(
+            active_lookup,
+            Some(61),
+            "app mapped to active project must inherit normally"
+        );
     }
 }

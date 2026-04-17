@@ -20,7 +20,9 @@ pub fn create_manual_session(
 ) -> Result<ManualSession, String> {
     let conn = db::get_connection(&app)?;
     if !project_id_is_active(&conn, input.project_id)? {
-        return Err("Cannot assign manual session to an excluded or missing project".to_string());
+        return Err(
+            "Cannot assign manual session to an excluded, frozen, or missing project".to_string(),
+        );
     }
 
     // Parse start_time to compute date and duration
@@ -144,7 +146,9 @@ pub fn update_manual_session(
 ) -> Result<(), String> {
     let conn = db::get_connection(&app)?;
     if !project_id_is_active(&conn, input.project_id)? {
-        return Err("Cannot assign manual session to an excluded or missing project".to_string());
+        return Err(
+            "Cannot assign manual session to an excluded, frozen, or missing project".to_string(),
+        );
     }
 
     let start_dt = chrono::NaiveDateTime::parse_from_str(&input.start_time, "%Y-%m-%dT%H:%M:%S")
