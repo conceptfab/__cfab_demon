@@ -113,6 +113,7 @@ pub struct AssignmentModelMetricsSummary {
     pub feedback_accepted: i64,
     pub feedback_rejected: i64,
     pub feedback_manual_change: i64,
+    pub feedback_manual_corrections: i64,
     pub feedback_precision: f64,
     pub auto_runs: i64,
     pub auto_assigned: i64,
@@ -264,7 +265,7 @@ pub async fn get_assignment_model_metrics(
         let window_days = clamp_i64(days.unwrap_or(30), 7, 365);
         let from_modifier = format!("-{} days", window_days.saturating_sub(1));
 
-        let mut feedback_by_day: HashMap<String, (i64, i64, i64)> = HashMap::new();
+        let mut feedback_by_day: HashMap<String, (i64, i64, i64, i64)> = HashMap::new();
         {
             let mut stmt = conn
                 .prepare(
@@ -282,7 +283,18 @@ pub async fn get_assignment_model_metrics(
                                 'manual_app_assign'
                             ) THEN 1
                             ELSE 0
-                        END) AS manual_change
+                        END) AS manual_change,
+                        SUM(CASE
+                            WHEN source IN (
+                                'manual_session_assign',
+                                'manual_session_change',
+                                'manual_project_card_change',
+                                'manual_session_unassign',
+                                'bulk_unassign',
+                                'manual_app_assign'
+                            ) AND from_project_id IS NOT NULL THEN 1
+                            ELSE 0
+                        END) AS manual_corrections
                      FROM assignment_feedback
                      WHERE created_at >= date('now', ?1)
                      GROUP BY date(created_at)",
@@ -295,13 +307,14 @@ pub async fn get_assignment_model_metrics(
                         row.get::<_, i64>(1)?,
                         row.get::<_, i64>(2)?,
                         row.get::<_, i64>(3)?,
+                        row.get::<_, i64>(4)?,
                     ))
                 })
                 .map_err(|e| e.to_string())?;
             for row in rows {
-                let (date, accepted, rejected, manual_change) =
+                let (date, accepted, rejected, manual_change, manual_corrections) =
                     row.map_err(|e| format!("Failed to read feedback metrics row: {}", e))?;
-                feedback_by_day.insert(date, (accepted, rejected, manual_change));
+                feedback_by_day.insert(date, (accepted, rejected, manual_change, manual_corrections));
             }
         }
 
@@ -389,6 +402,7 @@ pub async fn get_assignment_model_metrics(
             feedback_accepted: 0,
             feedback_rejected: 0,
             feedback_manual_change: 0,
+            feedback_manual_corrections: 0,
             feedback_precision: 0.0,
             auto_runs: 0,
             auto_assigned: 0,
@@ -406,8 +420,8 @@ pub async fn get_assignment_model_metrics(
             let date = (today - chrono::Duration::days(offset))
                 .format("%Y-%m-%d")
                 .to_string();
-            let (feedback_accepted, feedback_rejected, feedback_manual_change) =
-                feedback_by_day.get(&date).copied().unwrap_or((0, 0, 0));
+            let (feedback_accepted, feedback_rejected, feedback_manual_change, feedback_manual_corrections) =
+                feedback_by_day.get(&date).copied().unwrap_or((0, 0, 0, 0));
             let feedback_total = feedback_accepted + feedback_rejected + feedback_manual_change;
             let (auto_runs, auto_assigned, auto_rollbacks) =
                 auto_by_day.get(&date).copied().unwrap_or((0, 0, 0));
@@ -422,6 +436,7 @@ pub async fn get_assignment_model_metrics(
             summary.feedback_accepted += feedback_accepted;
             summary.feedback_rejected += feedback_rejected;
             summary.feedback_manual_change += feedback_manual_change;
+            summary.feedback_manual_corrections += feedback_manual_corrections;
             summary.auto_runs += auto_runs;
             summary.auto_assigned += auto_assigned;
             summary.auto_rollbacks += auto_rollbacks;
@@ -448,7 +463,9 @@ pub async fn get_assignment_model_metrics(
 
         summary.feedback_precision = ratio_or_zero(
             summary.feedback_accepted,
-            summary.feedback_accepted + summary.feedback_rejected,
+            summary.feedback_accepted
+                + summary.feedback_rejected
+                + summary.feedback_manual_corrections,
         );
         summary.coverage_detected_path_ratio =
             ratio_or_zero(coverage_with_detected_total, summary.coverage_total_entries);

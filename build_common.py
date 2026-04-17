@@ -112,6 +112,9 @@ def build_dashboard(root: Path) -> bool:
         [sys.executable, str(root / "dashboard_build.py")],
         cwd=root,
     )
+    if result.returncode == 2:
+        print("\n   BLAD: Nie udalo sie skopiowac dashboardu do dist/ (patrz log powyzej).")
+        return False
     if result.returncode != 0:
         print("\n   BLAD: Kompilacja dashboardu nie powiodla sie.")
         return False

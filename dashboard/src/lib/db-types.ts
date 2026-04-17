@@ -128,6 +128,7 @@ export interface AssignmentModelMetricsSummary {
   feedback_accepted: number;
   feedback_rejected: number;
   feedback_manual_change: number;
+  feedback_manual_corrections: number;
   feedback_precision: number;
   auto_runs: number;
   auto_assigned: number;
