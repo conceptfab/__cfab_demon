@@ -285,6 +285,30 @@ export function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
   return out;
 }
 
+export function computeUnionSeconds(intervals: Array<{ startMs: number; endMs: number }>): number {
+  if (intervals.length === 0) return 0;
+  const sorted = intervals
+    .filter((interval) => Number.isFinite(interval.startMs) && Number.isFinite(interval.endMs) && interval.endMs > interval.startMs)
+    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
+  if (sorted.length === 0) return 0;
+
+  let unionMs = 0;
+  let cursorStart = sorted[0].startMs;
+  let cursorEnd = sorted[0].endMs;
+  for (let i = 1; i < sorted.length; i++) {
+    const { startMs, endMs } = sorted[i];
+    if (startMs <= cursorEnd) {
+      if (endMs > cursorEnd) cursorEnd = endMs;
+    } else {
+      unionMs += cursorEnd - cursorStart;
+      cursorStart = startMs;
+      cursorEnd = endMs;
+    }
+  }
+  unionMs += cursorEnd - cursorStart;
+  return Math.round(unionMs / 1000);
+}
+
 export function fmtHourMinute(ms: number): string {
   const date = new Date(ms);
   const hh = String(date.getHours()).padStart(2, '0');
@@ -430,7 +454,6 @@ export function buildProjectTimelineModel(params: {
       });
     }
     const row = byProject.get(key)!;
-    row.totalSeconds += item.session.duration_seconds;
     if ((item.session.rate_multiplier ?? 1) > 1.000_001) {
       row.boostedCount += 1;
     }
@@ -486,7 +509,6 @@ export function buildProjectTimelineModel(params: {
       });
     }
     const row = byProject.get(key)!;
-    row.totalSeconds += item.manualSession.duration_seconds;
     row.segments.push({
       sessionId: item.manualSession.id,
       startMs: item.startMs,
@@ -502,6 +524,7 @@ export function buildProjectTimelineModel(params: {
   const rows = Array.from(byProject.values())
     .map((row) => ({
       ...row,
+      totalSeconds: computeUnionSeconds(row.segments),
       segments: mergeSessionFragments(row.segments),
     }))
     .sort((left, right) => {
