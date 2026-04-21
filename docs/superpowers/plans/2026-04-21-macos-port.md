@@ -275,7 +275,7 @@ Po każdym module: smoke test na Macu.
 | Brak `wmi` na macOS → inna ścieżka detekcji typu aplikacji | `sysinfo` + `NSRunningApplication.bundleIdentifier` (często lepsze niż WMI) |
 | Różnice w ścieżkach (`AppData` vs `~/Library`) | Już rozwiązane w `shared/timeflow_paths.rs` — sprawdź czy obsługuje macOS, jeśli nie dodaj |
 | Sync LAN — multicast/UDP może mieć inne zachowanie na macOS | Test wcześnie, w fazie 3 |
-| macOS ARM (Apple Silicon) vs Intel | Buduj universal binary: `cargo build --target x86_64-apple-darwin && --target aarch64-apple-darwin`, potem `lipo -create` |
+| ~~macOS ARM vs Intel~~ | **Decyzja: tylko ARM** (`aarch64-apple-darwin`). Bez Intela, bez universal binary. Upraszcza build, `.app` o połowę mniejszy. |
 | Regresja na Windows po refactorze | Faza 1 = ZERO zmiany zachowania, tylko reorganizacja. Test end-to-end przed Fazą 2 |
 
 ---
@@ -303,7 +303,7 @@ Po każdym module: smoke test na Macu.
 ## 10. Pytania do rozstrzygnięcia (zanim zaczniemy)
 
 1. Apple Developer ID — masz? (99$/rok, bez tego tylko lokalnie albo z `xattr -d com.apple.quarantine`)
-2. Docelowa architektura — tylko Apple Silicon (ARM) czy universal (Intel+ARM)?
+2. ~~Docelowa architektura — ARM czy universal?~~ → **ROZSTRZYGNIĘTE: tylko ARM (aarch64-apple-darwin)**
 3. Czy Mac development będzie na Twojej maszynie czy wynajętym CI?
 4. Czy chcesz zachować `native-windows-gui` tray długoterminowo, czy zmigrujemy też Windows na `tray-icon` (unifikacja)?
 
