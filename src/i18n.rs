@@ -80,7 +80,12 @@ impl Lang {
     }
 }
 
+// Większość wariantów konsumowana jest wyłącznie przez tray Windowsa
+// (platform/windows/tray.rs); na macOS tray ma inne menu i `cargo check`
+// oznacza je jako dead_code. `#[allow]` trzyma ostrzeżenia z daleka bez
+// ukrywania prawdziwych nieużywanych tłumaczeń.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum TrayText {
     RunningInBackground,
     UnassignedSessions,

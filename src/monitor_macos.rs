@@ -24,7 +24,12 @@ pub struct ProcessInfo {
     pub activity_type: Option<ActivityType>,
 }
 
+/// Struktura symetryczna z Windows wariantem (`monitor::PidCacheEntry`),
+/// żeby tracker mógł być cross-platform bez cfg-switchy na poziomie pól.
+/// Na macOS większość pól nie jest obecnie czytana (klasyfikacja dzieje się
+/// w `get_foreground_info` bez powrotu do cache), stąd `allow(dead_code)`.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PidCacheEntry {
     pub exe_name: String,
     pub creation_time: u64,
@@ -38,7 +43,11 @@ pub struct PidCacheEntry {
 
 pub type PidCache = HashMap<u32, PidCacheEntry>;
 
+/// Pola przechowywane dla kompatybilności typu z Windows variant'em
+/// `monitor::CpuSnapshot`. Tracker konsumuje tylko zwracany `cpu_fraction`
+/// z `measure_cpu_for_app`; snapshot leży w pamięci jako opaque marker.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CpuSnapshot {
     /// Sumaryczny `accumulated_cpu_time` (ms) po całym drzewie procesów.
     pub total_time: u64,
