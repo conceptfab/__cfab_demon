@@ -18,25 +18,72 @@ use crate::APP_NAME;
 
 const PUMP_INTERVAL_SECS: f64 = 0.15;
 
-/// Prosta ikona menu bar — 18×18 RGBA z niebieskim kwadratem i literą "T".
-/// Wystarczająca dla Fazy 3; docelowo wczytanie .icns/.png z assetów.
+/// Logo TIMEFLOW osadzone w binarce (PNG 128×128 — macOS skaluje do
+/// 22×22 statusbara, na Retinie używa pełnej rozdzielczości).
+const TRAY_ICON_PNG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/tray_icon.png"
+));
+
+/// Wczytuje ikonę tray z osadzonego PNG i dekoduje do RGBA. Jeśli dekodowanie
+/// zawiedzie, zwraca prosty niebieski kwadrat jako fallback — daemon nie może
+/// wystartować bez ikony, ale nie chcemy brakiem logo blokować produkcji.
 fn build_icon() -> Icon {
-    const SIZE: usize = 18;
-    let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            // Ramka T: górny pasek + środkowa pionowa kolumna
-            let is_t = (y >= 2 && y <= 4)
-                || (x >= SIZE / 2 - 1 && x <= SIZE / 2 + 1 && y >= 2 && y <= SIZE - 3);
-            if is_t {
-                rgba.extend_from_slice(&[255, 255, 255, 255]); // biała litera
-            } else {
-                rgba.extend_from_slice(&[31, 81, 255, 255]); // niebieskie tło
-            }
+    match decode_png_rgba(TRAY_ICON_PNG) {
+        Ok((rgba, w, h)) => {
+            Icon::from_rgba(rgba, w, h).expect("Failed to build tray icon from RGBA")
+        }
+        Err(e) => {
+            log::warn!("Tray icon PNG decode failed ({e}) — fallback to 18×18 blue square");
+            fallback_icon()
         }
     }
-    Icon::from_rgba(rgba, SIZE as u32, SIZE as u32)
-        .expect("Failed to build tray icon from RGBA")
+}
+
+fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
+    let decoder = png::Decoder::new(bytes);
+    let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
+    buf.truncate(info.buffer_size());
+
+    // Normalizacja do RGBA8 — tray-icon wymaga 4 kanałów.
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buf,
+        png::ColorType::Rgb => {
+            let mut out = Vec::with_capacity((info.width * info.height * 4) as usize);
+            for chunk in buf.chunks_exact(3) {
+                out.extend_from_slice(chunk);
+                out.push(255);
+            }
+            out
+        }
+        png::ColorType::GrayscaleAlpha => {
+            let mut out = Vec::with_capacity((info.width * info.height * 4) as usize);
+            for chunk in buf.chunks_exact(2) {
+                out.extend_from_slice(&[chunk[0], chunk[0], chunk[0], chunk[1]]);
+            }
+            out
+        }
+        png::ColorType::Grayscale => {
+            let mut out = Vec::with_capacity((info.width * info.height * 4) as usize);
+            for &g in &buf {
+                out.extend_from_slice(&[g, g, g, 255]);
+            }
+            out
+        }
+        other => return Err(format!("unsupported PNG color type: {:?}", other)),
+    };
+    Ok((rgba, info.width, info.height))
+}
+
+fn fallback_icon() -> Icon {
+    const SIZE: usize = 18;
+    let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
+    for _ in 0..SIZE * SIZE {
+        rgba.extend_from_slice(&[31, 81, 255, 255]);
+    }
+    Icon::from_rgba(rgba, SIZE as u32, SIZE as u32).expect("fallback icon must build")
 }
 
 pub fn run(

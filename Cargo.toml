@@ -68,6 +68,8 @@ core-foundation = "0.9"
 sysinfo = "0.31"
 # Plik-lock (flock)
 fs2 = "0.4"
+# Dekodowanie PNG do RGBA dla tray icon (logo TIMEFLOW)
+png = "0.17"
 
 [target.'cfg(windows)'.build-dependencies]
 embed-resource = "3"
