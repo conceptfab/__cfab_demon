@@ -1,4 +1,4 @@
-// Single instance lock via Windows Named Mutex
+// Single instance lock via Windows Named Mutex.
 
 use std::ptr;
 use winapi::shared::winerror::ERROR_ALREADY_EXISTS;
@@ -10,15 +10,10 @@ use winapi::um::winnt::HANDLE;
 const MUTEX_NAME: &str = "Global\\TimeFlowDemon_SingleInstance";
 
 /// RAII guard — mutex is released on drop.
-/// On panic or process termination, Windows automatically closes all handles
-/// owned by the process, so the named mutex is always released.
 pub struct SingleInstanceGuard {
     handle: HANDLE,
 }
 
-// SAFETY: Windows mutex handle (HANDLE) is a plain pointer that is safe to move
-// between threads. We intentionally do NOT implement Sync because the handle
-// should not be shared across threads concurrently.
 unsafe impl Send for SingleInstanceGuard {}
 
 impl Drop for SingleInstanceGuard {
@@ -29,8 +24,6 @@ impl Drop for SingleInstanceGuard {
     }
 }
 
-/// Attempts to acquire the mutex. Returns `Ok(guard)` if this is the only instance,
-/// `Err(msg)` if another instance is already running.
 pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
     let wide_name: Vec<u16> = MUTEX_NAME
         .encode_utf16()
@@ -44,9 +37,6 @@ pub fn try_acquire() -> Result<SingleInstanceGuard, String> {
             return Err(format!("Failed to create mutex (error {})", GetLastError()));
         }
 
-        // SAFETY: GetLastError() is safe here — no WinAPI function
-        // is called between CreateMutexW and this check,
-        // so the last error code has not been overwritten.
         if GetLastError() == ERROR_ALREADY_EXISTS {
             CloseHandle(handle);
             return Err(crate::i18n::load_language()

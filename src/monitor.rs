@@ -13,7 +13,7 @@ use winapi::um::processthreadsapi::{GetProcessTimes, OpenProcess};
 use winapi::um::winuser::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId};
 
 use crate::activity::ActivityType;
-use crate::win_process_snapshot::collect_process_entries;
+use crate::platform::process_snapshot::collect_process_entries;
 
 use pid_cache::ensure_pid_cache_entry;
 #[cfg(test)]

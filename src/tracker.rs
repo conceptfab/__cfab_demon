@@ -14,7 +14,7 @@ use timeflow_shared::version_compat;
 
 use crate::activity::ActivityType;
 use crate::config;
-use crate::foreground_hook::ForegroundSignal;
+use crate::platform::foreground_signal::ForegroundSignal;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
 
@@ -100,6 +100,9 @@ fn check_dashboard_compatibility() {
                     log::error!("{}", msg);
 
                     // Display warning without blocking the monitoring loop.
+                    // Nativeowy dialog tylko na Windows; na innych platformach
+                    // zostaje log::error! powyżej.
+                    #[cfg(windows)]
                     std::thread::spawn(move || unsafe {
                         use std::ptr;
                         let title_text = lang_obj
@@ -119,6 +122,11 @@ fn check_dashboard_compatibility() {
                                 | winapi::um::winuser::MB_TOPMOST,
                         );
                     });
+                    #[cfg(not(windows))]
+                    {
+                        let _ = lang_obj;
+                        let _ = msg;
+                    }
                 }
             } else {
                 // Reset flag if versions become compatible again (e.g. after update)

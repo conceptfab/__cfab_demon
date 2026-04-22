@@ -1,5 +1,5 @@
-// TimeFlow Demon — skrypt kompilacji
-// Osadza ikonę w zasobach exe i wersję z pliku VERSION
+// TIMEFLOW Demon — skrypt kompilacji
+// Na Windows osadza ikonę w zasobach exe; wersja z pliku VERSION czytana na każdej platformie.
 
 fn main() {
     println!("cargo:rerun-if-changed=VERSION");
@@ -8,5 +8,9 @@ fn main() {
         .trim()
         .to_string();
     println!("cargo:rustc-env=TIMEFLOW_VERSION={}", version);
-    let _ = embed_resource::compile("assets/app.rc", embed_resource::NONE);
+
+    #[cfg(windows)]
+    {
+        let _ = embed_resource::compile("assets/app.rc", embed_resource::NONE);
+    }
 }

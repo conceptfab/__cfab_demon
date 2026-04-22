@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use std::os::windows::process::CommandExt;
+use timeflow_shared::process_utils::no_console;
 
 use crate::config;
 use crate::lan_common;
@@ -32,10 +32,9 @@ fn get_ipconfig_output() -> Option<String> {
             }
         }
     }
-    let output = std::process::Command::new("ipconfig")
-        .creation_flags(0x08000000)
-        .output()
-        .ok()?;
+    let mut cmd = std::process::Command::new("ipconfig");
+    no_console(&mut cmd);
+    let output = cmd.output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
     if let Ok(mut guard) = IPCONFIG_CACHE.lock() {
         *guard = Some((Instant::now(), text.clone()));

@@ -1,8 +1,8 @@
-// TimeFlow Demon - Windows tray daemon with application monitor
-#![windows_subsystem = "windows"]
+// TIMEFLOW Demon - cross-platform tray daemon with application monitor.
+// `windows_subsystem` ukrywa konsolę na Windows; na macOS atrybut nie obowiązuje.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::process::Command;
-use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -10,25 +10,26 @@ use lan_server::SyncGuard;
 
 mod activity;
 mod config;
-mod firewall;
-mod foreground_hook;
 mod i18n;
 mod lan_common;
 mod lan_discovery;
 mod lan_pairing;
 mod lan_server;
 mod lan_sync_orchestrator;
+#[cfg(windows)]
+mod monitor;
+#[cfg(target_os = "macos")]
+#[path = "monitor_macos.rs"]
+mod monitor;
+mod online_sync;
+mod platform;
+mod sftp_client;
+mod storage;
 mod sync_common;
 mod sync_encryption;
-mod sftp_client;
-mod online_sync;
-mod monitor;
-mod single_instance;
-mod storage;
 mod tracker;
-mod tray;
-mod win_process_snapshot;
-use crate::win_process_snapshot::no_console;
+
+use timeflow_shared::process_utils::no_console;
 pub use timeflow_shared::daily_store;
 
 /// Application name — single constant used everywhere
@@ -53,7 +54,7 @@ fn main() {
     log::logger().flush();
 
     // Single instance lock
-    let _guard = match single_instance::try_acquire() {
+    let _guard = match platform::single_instance::try_acquire() {
         Ok(guard) => guard,
         Err(msg) => {
             log::warn!("{}", msg);
@@ -68,20 +69,21 @@ fn main() {
         log::warn!("Failed to create application directories: {}", e);
     }
 
-    // Ensure Windows Firewall allows LAN discovery and sync traffic
-    firewall::ensure_firewall_rules();
+    // Ensure firewall (Windows) allows LAN discovery and sync traffic.
+    // On macOS this is a no-op (user prompt on first bind).
+    platform::firewall::ensure_firewall_rules();
 
     // Monitor thread control signal
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    // Start event-driven foreground detection (SetWinEventHook)
-    let (foreground_signal, hook_handle) = foreground_hook::start(stop_signal.clone());
+    // Start event-driven foreground detection (SetWinEventHook on Windows,
+    // polling-only stub on macOS in Phase 1).
+    let (foreground_signal, hook_handle) = platform::foreground::start(stop_signal.clone());
 
     // Shared LAN sync state (role, freeze, markers)
     let sync_state = Arc::new(lan_server::LanSyncState::new());
 
     // Start monitoring thread with foreground signal for instant wake
-    // Pass sync_state so tracker skips saves when db_frozen is true
     let monitor_handle = tracker::start(
         stop_signal.clone(),
         Some(foreground_signal.clone()),
@@ -142,7 +144,7 @@ fn main() {
     }
 
     // Start tray icon event loop (pass sync_state for sync icon)
-    let tray_action = tray::run(stop_signal.clone(), Some(sync_state.clone()));
+    let tray_action = platform::tray::run(stop_signal.clone(), Some(sync_state.clone()));
 
     // After tray closes — cleanly stop all threads
     stop_signal.store(true, Ordering::SeqCst);
@@ -164,7 +166,7 @@ fn main() {
     log::info!("{} - stopped", APP_NAME);
     log::logger().flush();
 
-    if matches!(tray_action, tray::TrayExitAction::Restart) {
+    if matches!(tray_action, platform::tray_common::TrayExitAction::Restart) {
         drop(_guard);
         if let Ok(exe) = std::env::current_exe() {
             let mut cmd = Command::new(exe);
@@ -178,7 +180,9 @@ fn main() {
     }
 }
 
+#[cfg(windows)]
 fn show_already_running_message(msg: &str) {
+    use std::ptr;
     let title: Vec<u16> = APP_NAME.encode_utf16().chain(std::iter::once(0)).collect();
     let text: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
@@ -189,6 +193,13 @@ fn show_already_running_message(msg: &str) {
             winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONINFORMATION,
         );
     }
+}
+
+#[cfg(not(windows))]
+fn show_already_running_message(msg: &str) {
+    // Na macOS/Linux logujemy + piszemy na stderr — bez nativeowego dialogu.
+    eprintln!("{}: {}", APP_NAME, msg);
+    log::warn!("{}", msg);
 }
 
 /// Install panic hook so panics are logged to file instead of being swallowed
@@ -211,7 +222,7 @@ fn install_panic_hook() {
     }));
 }
 
-/// Initialize file logging to %APPDATA%/TimeFlow/logs/daemon.log.
+/// Initialize file logging to logs_dir()/daemon.log.
 /// Falls back to exe directory if config_dir is unavailable.
 fn init_logging() {
     use std::fs;
@@ -253,7 +264,6 @@ fn init_logging() {
     {
         Ok(f) => f,
         Err(e) => {
-            // Cannot open log file — write diagnostic to a fallback location
             let fallback = log_path.with_extension("err");
             let _ = fs::write(&fallback, format!("Failed to open {}: {}\n", log_path.display(), e));
             return;
@@ -298,7 +308,6 @@ impl log::Log for FileLogger {
 
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
-            // Recover from poison — logging should never silently stop
             let mut guard = match self.writer.lock() {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),
