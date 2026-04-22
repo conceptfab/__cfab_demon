@@ -257,6 +257,18 @@ fn launch_dashboard() {
                 candidates.push(parent.join("TIMEFLOW.app"));
             }
         }
+        // Gdy daemon leci z "TIMEFLOW Demon.app/Contents/MacOS/timeflow-demon",
+        // siostrzane TIMEFLOW.app leży o 3 poziomy wyżej (katalog zawierający
+        // bundle daemona). Szukamy pierwszego przodka z rozszerzeniem ".app"
+        // i bierzemy jego parent jako baza.
+        if let Some(app_dir) = exe
+            .ancestors()
+            .find(|p| p.extension().map(|e| e == "app").unwrap_or(false))
+        {
+            if let Some(sibling_base) = app_dir.parent() {
+                candidates.push(sibling_base.join("TIMEFLOW.app"));
+            }
+        }
     }
     candidates.push(PathBuf::from("/Applications/TIMEFLOW.app"));
 

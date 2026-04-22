@@ -116,16 +116,40 @@ fn load_daemon_version(exe: &std::path::Path) -> Option<String> {
 }
 
 pub(super) fn find_daemon_exe() -> Result<std::path::PathBuf, String> {
-    // Look next to the dashboard executable first
+    // macOS: daemon siedzi zwykle w siostrzanym `.app` bundle obok dashboardu
+    // (dist/TIMEFLOW Demon.app/Contents/MacOS/timeflow-demon).
+    #[cfg(target_os = "macos")]
+    const DAEMON_APP_BUNDLE: &str = "TIMEFLOW Demon.app";
+
+    // Helper: sprawdź wszystkie znane layouty pod danym prefiksem.
+    let probe = |base: &std::path::Path| -> Option<std::path::PathBuf> {
+        let direct = base.join(DAEMON_EXE_NAME);
+        if direct.exists() {
+            return Some(direct);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let in_bundle = base
+                .join(DAEMON_APP_BUNDLE)
+                .join("Contents")
+                .join("MacOS")
+                .join(DAEMON_EXE_NAME);
+            if in_bundle.exists() {
+                return Some(in_bundle);
+            }
+        }
+        None
+    };
+
+    // 1) Obok dashboardu (w tym samym katalogu co exe dashboardu).
     if let Ok(self_exe) = std::env::current_exe() {
         if let Some(dir) = self_exe.parent() {
-            let candidate = dir.join(DAEMON_EXE_NAME);
-            if candidate.exists() {
-                return Ok(candidate);
+            if let Some(p) = probe(dir) {
+                return Ok(p);
             }
         }
     }
-    // Check dist/ relative to APPDATA data dir
+    // 2) Zapisana ścieżka w katalogu danych.
     let data_dir = timeflow_data_dir()?;
     if let Ok(content) = std::fs::read_to_string(data_dir.join("daemon_path.txt")) {
         let p = std::path::PathBuf::from(content.trim());
@@ -133,20 +157,28 @@ pub(super) fn find_daemon_exe() -> Result<std::path::PathBuf, String> {
             return Ok(p);
         }
     }
-    // Fallback: search near current executable without hardcoded dev paths
+    // 3) Skanuj przodków oraz ich `dist/` — działa zarówno dla layoutu
+    //    dev (target/release obok źródeł) jak i produkcji (obie apki w dist/).
     if let Ok(self_exe) = std::env::current_exe() {
-        for ancestor in self_exe.ancestors().take(5) {
-            let direct = ancestor.join(DAEMON_EXE_NAME);
-            if direct.exists() {
-                return Ok(direct);
+        for ancestor in self_exe.ancestors().take(6) {
+            if let Some(p) = probe(ancestor) {
+                return Ok(p);
             }
-            let dist = ancestor.join("dist").join(DAEMON_EXE_NAME);
-            if dist.exists() {
-                return Ok(dist);
+            let dist = ancestor.join("dist");
+            if let Some(p) = probe(&dist) {
+                return Ok(p);
             }
         }
     }
-    Err("Cannot find timeflow-demon.exe".to_string())
+    // 4) macOS: zainstalowane w /Applications (siostra dashboardu).
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(p) = probe(std::path::Path::new("/Applications")) {
+            return Ok(p);
+        }
+    }
+
+    Err(format!("Cannot find {}", DAEMON_EXE_NAME))
 }
 
 pub(super) fn daemon_log_path() -> Result<std::path::PathBuf, String> {

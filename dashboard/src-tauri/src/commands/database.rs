@@ -215,6 +215,18 @@ pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
                 .map_err(|e| e.to_string())?;
         }
 
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            Command::new("open")
+                .arg(folder)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        let _ = folder;
+
         Ok(())
     })
     .await

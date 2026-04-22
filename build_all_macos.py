@@ -2,15 +2,15 @@
 """
 Build TIMEFLOW na macOS (aarch64-apple-darwin).
 
-Na czas Fazy 3 portu macOS skrypt buduje wyłącznie demona — dashboard
-(Tauri) nadal zawiera kod Windows-only i zostanie dołożony w Fazie 4.
+Domyślnie: demon pakowany w `TIMEFLOW Demon.app` (LSUIElement=true, menu-bar
+agent, bez Docka, bez otwierania Terminala) + dashboard (Tauri .app/.dmg).
 Wszystkie artefakty lądują w katalogu ./dist/.
 
 Przykłady:
-    python build_all_macos.py                 # Pełny build release → dist/
+    python build_all_macos.py                 # Demon.app + dashboard.app
     python build_all_macos.py --no-clean      # Szybsza inkrementalna kompilacja
     python build_all_macos.py --debug         # Binary debug (szybsza, większa)
-    python build_all_macos.py --with-dashboard# Próba budowy dashboardu (eksperyment)
+    python build_all_macos.py --no-dashboard  # Tylko demon (bez Tauri buildu)
 """
 from __future__ import annotations
 
@@ -27,6 +27,8 @@ from build_common import handle_version
 ROOT = Path(__file__).resolve().parent
 DEMON_BIN = "timeflow-demon"
 DEMON_PACKAGE = "timeflow-demon"
+DEMON_APP_NAME = "TIMEFLOW Demon.app"
+DEMON_BUNDLE_ID = "com.timeflow.demon"
 DASHBOARD_DIR = ROOT / "dashboard"
 
 
@@ -163,6 +165,92 @@ def smoke_test(binary: Path) -> None:
         print(f"   OSTRZEZENIE: smoke test nie powiodl sie: {exc}")
 
 
+def read_version() -> str:
+    """Zwraca zawartość pliku VERSION albo 'dev' jeśli nie istnieje."""
+    version_file = ROOT / "VERSION"
+    if version_file.exists():
+        return version_file.read_text(encoding="utf-8").strip() or "dev"
+    return "dev"
+
+
+def package_demon_app(binary: Path, dist: Path) -> Path:
+    """Pakuje binarkę demona w bundle `.app` z LSUIElement=true.
+
+    Dzięki temu dwuklik w Finderze (lub `open TIMEFLOW\\ Demon.app`) uruchamia
+    demona jako menu-bar agenta — bez Terminala, bez ikony w Docku.
+
+    Layout:
+      TIMEFLOW Demon.app/
+        Contents/
+          Info.plist
+          MacOS/timeflow-demon
+          Resources/icon.icns
+    """
+    step("Pakowanie demona w .app bundle (LSUIElement=true)")
+    app_dir = dist / DEMON_APP_NAME
+    if app_dir.exists():
+        shutil.rmtree(app_dir)
+
+    contents = app_dir / "Contents"
+    macos_dir = contents / "MacOS"
+    resources_dir = contents / "Resources"
+    macos_dir.mkdir(parents=True)
+    resources_dir.mkdir(parents=True)
+
+    bundled_bin = macos_dir / DEMON_BIN
+    shutil.copy2(binary, bundled_bin)
+    os.chmod(bundled_bin, 0o755)
+
+    # Ikona: reużywamy .icns z dashboardu (ta sama tożsamość wizualna).
+    icns_src = DASHBOARD_DIR / "src-tauri" / "icons" / "icon.icns"
+    has_icon = icns_src.exists()
+    if has_icon:
+        shutil.copy2(icns_src, resources_dir / "icon.icns")
+    else:
+        print(f"   OSTRZEZENIE: brak {icns_src} — bundle bez ikony aplikacji.")
+
+    version = read_version()
+    icon_key = (
+        "    <key>CFBundleIconFile</key>\n    <string>icon</string>\n"
+        if has_icon
+        else ""
+    )
+    plist = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        "<dict>\n"
+        "    <key>CFBundleDevelopmentRegion</key>\n    <string>en</string>\n"
+        "    <key>CFBundleDisplayName</key>\n    <string>TIMEFLOW Demon</string>\n"
+        f"    <key>CFBundleExecutable</key>\n    <string>{DEMON_BIN}</string>\n"
+        f"{icon_key}"
+        f"    <key>CFBundleIdentifier</key>\n    <string>{DEMON_BUNDLE_ID}</string>\n"
+        "    <key>CFBundleInfoDictionaryVersion</key>\n    <string>6.0</string>\n"
+        "    <key>CFBundleName</key>\n    <string>TIMEFLOW Demon</string>\n"
+        "    <key>CFBundlePackageType</key>\n    <string>APPL</string>\n"
+        f"    <key>CFBundleShortVersionString</key>\n    <string>{version}</string>\n"
+        f"    <key>CFBundleVersion</key>\n    <string>{version}</string>\n"
+        "    <key>CFBundleSignature</key>\n    <string>????</string>\n"
+        "    <key>LSMinimumSystemVersion</key>\n    <string>11.0</string>\n"
+        # LSUIElement=true → agent app: brak ikony w Docku, brak menu appki,
+        # brak Cmd-Tab. Tylko tray w menu barze (NSApplicationActivationPolicy
+        # ::Accessory w kodzie ustawia to samo w runtime, ale Info.plist
+        # gwarantuje że LaunchServices traktuje bundle właściwie od startu).
+        "    <key>LSUIElement</key>\n    <true/>\n"
+        "    <key>NSHighResolutionCapable</key>\n    <true/>\n"
+        "    <key>NSSupportsAutomaticGraphicsSwitching</key>\n    <true/>\n"
+        "</dict>\n"
+        "</plist>\n"
+    )
+    (contents / "Info.plist").write_text(plist, encoding="utf-8")
+
+    size_mb = sum(p.stat().st_size for p in app_dir.rglob("*") if p.is_file()) / (1024 * 1024)
+    print(f"   Utworzono: {app_dir} ({size_mb:.2f} MB)")
+    print(f"   Uruchomienie: open \"{app_dir}\"")
+    return app_dir
+
+
 def build_dashboard_macos(dist: Path) -> None:
     """Buduje dashboard Tauri na macOS przez lokalny @tauri-apps/cli (npm).
 
@@ -274,9 +362,14 @@ def main() -> None:
         help="Katalog docelowy dla artefaktow (domyslnie: dist).",
     )
     parser.add_argument(
-        "--with-dashboard",
+        "--no-dashboard",
         action="store_true",
-        help="Zbuduj takze dashboard Tauri (Vite frontend + cargo tauri build + .app bundle).",
+        help="Pomin build dashboardu Tauri (domyslnie budowany razem z demonem).",
+    )
+    parser.add_argument(
+        "--no-app-bundle",
+        action="store_true",
+        help="Nie pakuj demona w TIMEFLOW Demon.app (zostaw goła binarke).",
     )
     parser.add_argument(
         "--skip-version",
@@ -315,20 +408,34 @@ def main() -> None:
     if not args.skip_smoke:
         smoke_test(binary)
 
-    if args.with_dashboard:
+    demon_app: Path | None = None
+    if not args.no_app_bundle:
+        demon_app = package_demon_app(binary, dist)
+    else:
+        step("Pakowanie demona w .app")
+        print("   Pominieto (--no-app-bundle) — w dist/ zostaje goła binarka.")
+
+    if not args.no_dashboard:
         build_dashboard_macos(dist)
     else:
         step("Dashboard (Tauri)")
-        print("   Pominieto — uzyj --with-dashboard zeby zbudowac .app bundle.")
+        print("   Pominieto (--no-dashboard).")
 
     elapsed = time.time() - start
     header(f"GOTOWE — czas {elapsed:.1f}s")
     print(f"   Katalog wyjsciowy: {dist}")
+    if demon_app is not None:
+        print(f"   Daemon bundle:     {demon_app}")
     print(f"   Daemon binary:     {binary}")
     print()
-    print("   Uruchomienie:")
-    print(f"     {binary}                                     # foreground (tray w menu bar)")
-    print(f"     nohup {binary} > /dev/null 2>&1 &            # background (niezalezny od terminala)")
+    print("   Uruchomienie (bez terminala, rekomendowane):")
+    if demon_app is not None:
+        print(f"     open \"{demon_app}\"")
+        print(f"     # albo dwuklik w Finderze na \"{DEMON_APP_NAME}\"")
+    print()
+    print("   Uruchomienie CLI (z terminalem):")
+    print(f"     {binary}                                     # foreground")
+    print(f"     nohup {binary} > /dev/null 2>&1 &            # background")
     print()
     print("   Dane uzytkownika lada w:")
     print("     ~/Library/Application Support/TimeFlow/       # config, DB, logi")
