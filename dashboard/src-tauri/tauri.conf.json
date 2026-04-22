@@ -34,7 +34,15 @@
       "icons/favicon-128.png",
       "icons/mstile-150x150.png",
       "icons/mstile-310x310.png",
-      "icons/icon.ico"
-    ]
+      "icons/icon.ico",
+      "icons/icon.icns"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "signingIdentity": null,
+      "providerShortName": null,
+      "entitlements": null,
+      "exceptionDomain": null
+    }
   }
 }

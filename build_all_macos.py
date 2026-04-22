@@ -163,48 +163,63 @@ def smoke_test(binary: Path) -> None:
         print(f"   OSTRZEZENIE: smoke test nie powiodl sie: {exc}")
 
 
-def try_build_dashboard_macos(dist: Path) -> None:
-    """Eksperymentalna próba zbudowania dashboardu Tauri na macOS.
+def build_dashboard_macos(dist: Path) -> None:
+    """Buduje dashboard Tauri na macOS przez lokalny @tauri-apps/cli (npm).
 
-    Uwaga: Faza 4 portu jeszcze nie została zrobiona — dashboard zawiera
-    kod Windows-only (PowerShell, APPDATA, taskkill). Funkcja jest tu, żeby
-    móc odpalić ją ręcznie podczas prac nad Fazą 4; w normalnym buildzie
-    jest pomijana.
+    Oczekiwana kolejność:
+      1. `npm install` — jeśli dashboard/node_modules brakuje
+      2. `npm run tauri -- build --target aarch64-apple-darwin` — Vite frontend
+         (beforeBuildCommand) + cargo build --release + .app/.dmg bundle
     """
-    step("(eksperyment) cargo tauri build w dashboard/")
-    tauri = shutil.which("cargo-tauri") or shutil.which("tauri")
-    if tauri is None:
-        print(
-            "   'cargo-tauri' nie znaleziony w PATH. Zainstaluj: "
-            "`cargo install tauri-cli --version ^2.0` albo `npm i -D @tauri-apps/cli`."
-        )
-        return
+    step("Dashboard Tauri (macOS)")
     if not (DASHBOARD_DIR / "src-tauri" / "Cargo.toml").exists():
         print("   Brak dashboard/src-tauri — pomijam.")
         return
+    if shutil.which("npm") is None:
+        print("   'npm' nie znaleziony w PATH. Zainstaluj Node.js: https://nodejs.org")
+        return
+    if shutil.which("node") is None:
+        print("   'node' nie znaleziony w PATH. Zainstaluj Node.js: https://nodejs.org")
+        return
 
-    cmd = ["cargo", "tauri", "build", "--target", "aarch64-apple-darwin"]
+    if not (DASHBOARD_DIR / "node_modules").exists():
+        print("   node_modules brakuje — uruchamiam 'npm install'...")
+        result = subprocess.run(["npm", "install"], cwd=DASHBOARD_DIR)
+        if result.returncode != 0:
+            die("npm install zakonczyl sie bledem — sprawdz logi powyzej.")
+
+    # Domyślnie budujemy tylko .app bundle. Tauri próbuje też .dmg, ale to
+    # wymaga narzędzia `create-dmg` (brew install create-dmg) — zostawiamy
+    # za osobną flagą żeby build nie zawalał się bez tej zależności.
+    bundles = "app,dmg" if os.environ.get("TIMEFLOW_BUILD_DMG") == "1" else "app"
+    print(f"   cargo tauri build (release, aarch64-apple-darwin, bundles={bundles})...")
     t0 = time.time()
-    result = subprocess.run(cmd, cwd=DASHBOARD_DIR)
+    result = subprocess.run(
+        [
+            "npm",
+            "run",
+            "tauri",
+            "--",
+            "build",
+            "--target",
+            "aarch64-apple-darwin",
+            "--bundles",
+            bundles,
+        ],
+        cwd=DASHBOARD_DIR,
+    )
     elapsed = time.time() - t0
     if result.returncode != 0:
-        print(
-            f"\n   cargo tauri build zakonczyl sie bledem ({result.returncode}) "
-            f"po {elapsed:.1f}s — to oczekiwane dopoki Faza 4 portu macOS nie "
-            f"zostanie zrobiona."
+        die(
+            f"tauri build zakonczyl sie bledem ({result.returncode}) po {elapsed:.1f}s. "
+            f"Pelne logi powyzej."
         )
-        return
     print(f"   OK — tauri build ({elapsed:.1f}s).")
 
-    # Skopiuj .app bundle do dist/ jesli istnieje
+    # Cargo workspace używa wspólnego target/ w root projektu — Tauri respektuje
+    # to ustawienie. Szukamy bundle'a tam, nie w dashboard/src-tauri/target.
     bundle_dir = (
-        DASHBOARD_DIR
-        / "src-tauri"
-        / "target"
-        / "aarch64-apple-darwin"
-        / "release"
-        / "bundle"
-        / "macos"
+        ROOT / "target" / "aarch64-apple-darwin" / "release" / "bundle" / "macos"
     )
     if bundle_dir.exists():
         for app in bundle_dir.glob("*.app"):
@@ -212,9 +227,19 @@ def try_build_dashboard_macos(dist: Path) -> None:
             if target.exists():
                 shutil.rmtree(target)
             shutil.copytree(app, target)
-            print(f"   Skopiowano bundle: {target}")
+            size_mb = sum(p.stat().st_size for p in target.rglob("*") if p.is_file()) / (1024 * 1024)
+            print(f"   Skopiowano bundle: {target} ({size_mb:.1f} MB)")
     else:
         print(f"   UWAGA: brak bundle'a w {bundle_dir}")
+
+    # Skopiuj .dmg jeśli powstał (tylko gdy TIMEFLOW_BUILD_DMG=1 + create-dmg dostępne)
+    dmg_dir = bundle_dir.parent / "dmg"
+    if dmg_dir.exists():
+        for dmg in dmg_dir.glob("*.dmg"):
+            if dmg.name.startswith("rw."):
+                continue  # artefakt z tymczasowego mount (nieudany bundle)
+            shutil.copy2(dmg, dist / dmg.name)
+            print(f"   Skopiowano: {dist / dmg.name}")
 
 
 def main() -> None:
@@ -251,7 +276,7 @@ def main() -> None:
     parser.add_argument(
         "--with-dashboard",
         action="store_true",
-        help="Sprobuj zbudowac takze dashboard Tauri (Faza 4 — obecnie nie kompiluje sie na macOS).",
+        help="Zbuduj takze dashboard Tauri (Vite frontend + cargo tauri build + .app bundle).",
     )
     parser.add_argument(
         "--skip-version",
@@ -291,11 +316,10 @@ def main() -> None:
         smoke_test(binary)
 
     if args.with_dashboard:
-        try_build_dashboard_macos(dist)
+        build_dashboard_macos(dist)
     else:
         step("Dashboard (Tauri)")
-        print("   Pominieto — Faza 4 portu macOS jeszcze nie gotowa.")
-        print("   Uzyj --with-dashboard zeby sprobowac mimo to (spodziewaj sie bledow).")
+        print("   Pominieto — uzyj --with-dashboard zeby zbudowac .app bundle.")
 
     elapsed = time.time() - start
     header(f"GOTOWE — czas {elapsed:.1f}s")

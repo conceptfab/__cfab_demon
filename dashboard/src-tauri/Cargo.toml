@@ -32,7 +32,10 @@ tokio = { version = "1", features = ["time", "rt"] }
 # Required by BugHunter: direct SMTP transport with attachments and no extra HTTP backend.
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder", "hostname"] }
 rfd = "0.14"
-windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
+hostname = "0.4"
 regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls"] }
 timeflow-shared = { path = "../../shared" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }

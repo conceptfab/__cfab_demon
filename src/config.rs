@@ -46,33 +46,10 @@ pub struct Config {
     pub intervals: Intervals,
 }
 
-/// Katalog "roboczy" użytkownika, w którym żyje folder TimeFlow:
-/// - Windows: %APPDATA% (np. C:\Users\<user>\AppData\Roaming)
-/// - macOS:   ~/Library/Application Support
-fn data_root() -> Result<PathBuf> {
-    #[cfg(windows)]
-    {
-        let appdata = std::env::var("APPDATA").context("APPDATA environment variable is missing")?;
-        Ok(PathBuf::from(appdata))
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let home = std::env::var("HOME").context("HOME environment variable is missing")?;
-        Ok(PathBuf::from(home)
-            .join("Library")
-            .join("Application Support"))
-    }
-    #[cfg(not(any(windows, target_os = "macos")))]
-    {
-        anyhow::bail!("Unsupported platform — no data_root() mapping")
-    }
-}
-
 /// Tworzy katalogi aplikacji raz przy starcie. Wywołać na początku main().
 pub fn ensure_app_dirs() -> Result<()> {
-    let root = data_root()?;
-    let base = timeflow_paths::ensure_timeflow_base_dir(&root)
-        .with_context(|| format!("Failed to prepare application directory: {:?}", root))?;
+    let base = timeflow_paths::timeflow_data_dir()
+        .with_context(|| "Failed to prepare TimeFlow application directory")?;
 
     let data = base.join("data");
     let import = base.join("import");
@@ -89,11 +66,9 @@ pub fn ensure_app_dirs() -> Result<()> {
     Ok(())
 }
 
-/// Zwraca ścieżkę do katalogu konfiguracji:
-/// - Windows: %APPDATA%/TimeFlow
-/// - macOS:   ~/Library/Application Support/TimeFlow
+/// Zwraca ścieżkę do katalogu konfiguracji (`<user_data_root>/TimeFlow`).
 pub fn config_dir() -> Result<PathBuf> {
-    Ok(data_root()?.join("TimeFlow"))
+    timeflow_paths::timeflow_data_dir().context("Failed to resolve TimeFlow data directory")
 }
 
 /// Ścieżka do pliku konfiguracyjnego

@@ -8,8 +8,18 @@ use crate::db;
 pub(crate) static LAST_PRUNE_EPOCH_SECS: AtomicU64 = AtomicU64::new(0);
 pub(crate) const PRUNE_CACHE_TTL_SECS: u64 = 300; // 5 minutes
 
+#[cfg(windows)]
 pub(crate) const DAEMON_EXE_NAME: &str = "timeflow-demon.exe";
+#[cfg(not(windows))]
+pub(crate) const DAEMON_EXE_NAME: &str = "timeflow-demon";
+
+/// Nazwa skrótu autostartu. Na Windows to plik .lnk w Startup folderze; na
+/// macOS autostart realizowany jest przez plist w ~/Library/LaunchAgents
+/// (patrz `commands::daemon::control::set_autostart_enabled`).
+#[cfg(windows)]
 pub(crate) const DAEMON_AUTOSTART_LNK: &str = "TimeFlow Demon.lnk";
+#[cfg(not(windows))]
+pub(crate) const DAEMON_AUTOSTART_LNK: &str = "com.kleniewski.timeflow-demon.plist";
 
 pub(crate) use timeflow_shared::process_utils::no_console;
 
@@ -128,13 +138,22 @@ pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_ex
 }
 
 pub fn get_machine_id() -> String {
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
+    #[cfg(windows)]
+    {
+        std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown".to_string())
+    }
+    #[cfg(not(windows))]
+    {
+        // hostname crate już jest w dependencyach (pulled in by tauri stack)
+        hostname::get()
+            .ok()
+            .and_then(|s| s.into_string().ok())
+            .unwrap_or_else(|| "unknown".to_string())
+    }
 }
 
 pub fn timeflow_data_dir() -> Result<std::path::PathBuf, String> {
-    let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
-    let appdata_root = std::path::PathBuf::from(&appdata);
-    timeflow_paths::ensure_timeflow_base_dir(&appdata_root).map_err(|e| e.to_string())
+    timeflow_paths::timeflow_data_dir().map_err(|e| e.to_string())
 }
 
 /// Runs a blocking SQLite task against the currently active dashboard database.

@@ -5276,6 +5276,7 @@ version = "0.1.5682"
 dependencies = [
  "chrono",
  "dotenvy",
+ "hostname",
  "lettre",
  "log",
  "regex",

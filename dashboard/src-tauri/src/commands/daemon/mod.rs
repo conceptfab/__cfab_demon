@@ -157,6 +157,10 @@ pub(super) fn daemon_log_path() -> Result<std::path::PathBuf, String> {
         .join("timeflow_demon.log"))
 }
 
+/// Katalog, w którym przechowywany jest artefakt autostartu daemona:
+/// - Windows: Start Menu → Programs → Startup (aplikacja uruchamia się przy logowaniu)
+/// - macOS:   `~/Library/LaunchAgents` (plist + `launchctl load -w`)
+#[cfg(windows)]
 pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
     let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
     Ok(std::path::PathBuf::from(appdata)
@@ -165,6 +169,22 @@ pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
         .join("Start Menu")
         .join("Programs")
         .join("Startup"))
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    Ok(std::path::PathBuf::from(home)
+        .join("Library")
+        .join("LaunchAgents"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".config")
+        .join("autostart"))
 }
 
 pub(super) fn read_last_n_lines(path: &std::path::Path, n: usize) -> Result<String, String> {
@@ -231,6 +251,7 @@ fn query_unassigned_counts(app: &AppHandle, min_duration_sec: i64) -> (i64, i64)
     .unwrap_or((0, 0))
 }
 
+#[cfg(windows)]
 fn query_daemon_process_status() -> Result<(bool, Option<u32>), String> {
     let mut cmd = Command::new("tasklist");
     no_console(&mut cmd);
@@ -261,6 +282,25 @@ fn query_daemon_process_status() -> Result<(bool, Option<u32>), String> {
     }
 
     Ok((running, pid))
+}
+
+/// macOS/Linux: `pgrep -f <exe>` — zwraca pierwszy pasujący PID.
+#[cfg(not(windows))]
+fn query_daemon_process_status() -> Result<(bool, Option<u32>), String> {
+    let output = Command::new("pgrep")
+        .args(["-f", DAEMON_EXE_NAME])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut pid = None;
+    for line in stdout.lines() {
+        if let Ok(p) = line.trim().parse::<u32>() {
+            pid = Some(p);
+            break;
+        }
+    }
+    Ok((pid.is_some(), pid))
 }
 
 fn load_daemon_process_status(use_cache: bool) -> Result<(bool, Option<u32>), String> {

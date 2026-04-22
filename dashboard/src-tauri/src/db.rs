@@ -76,31 +76,22 @@ fn copy_first_existing_file_if_missing(
 }
 
 fn app_storage_dir(app: &AppHandle) -> PathBuf {
-    let app_dir = if let Ok(appdata) = std::env::var("APPDATA") {
-        let appdata_path = PathBuf::from(&appdata);
-        match timeflow_paths::ensure_timeflow_base_dir(&appdata_path) {
-            Ok(path) => path,
-            Err(error) => {
-                let fallback = appdata_path.join("TimeFlow");
-                log::warn!(
-                    "Failed to resolve TIMEFLOW storage dir via shared helper, falling back to '{}': {}",
-                    fallback.display(),
-                    error
-                );
-                std::fs::create_dir_all(&fallback).ok();
-                fallback
-            }
-        }
-    } else {
-        match app.path().app_data_dir() {
-            Ok(dir) => dir,
-            Err(e) => {
-                log::error!("Failed to get app data dir: {}", e);
-                let fallback = std::env::current_dir()
-                    .unwrap_or_default()
-                    .join("timeflow_data");
-                std::fs::create_dir_all(&fallback).ok();
-                fallback
+    let app_dir = match timeflow_paths::timeflow_data_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            log::warn!(
+                "Failed to resolve TIMEFLOW storage dir via shared helper: {}. \
+                 Falling back to Tauri app_data_dir.",
+                error
+            );
+            match app.path().app_data_dir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    log::error!("Failed to get app data dir: {}", e);
+                    std::env::current_dir()
+                        .unwrap_or_default()
+                        .join("timeflow_data")
+                }
             }
         }
     };
