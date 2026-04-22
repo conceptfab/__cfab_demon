@@ -305,6 +305,7 @@ mod tests {
                             "n".repeat(400),
                         ],
                         activity_type: Some("coding".to_string()),
+                        activity_spans: Vec::new(),
                     }],
                 },
             )]),
