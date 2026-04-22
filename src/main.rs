@@ -27,6 +27,7 @@ mod sftp_client;
 mod storage;
 mod sync_common;
 mod sync_encryption;
+mod sync_trigger;
 mod tracker;
 
 use timeflow_shared::process_utils::no_console;

@@ -61,8 +61,8 @@ wmi = "0.13"
 tray-icon = "0.14"
 # macOS / Objective-C bindings
 objc2 = "0.5"
-objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSApplication"] }
-objc2-foundation = { version = "0.2", features = ["NSString", "NSNotification", "NSArray"] }
+objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSApplication", "NSResponder", "NSEvent", "libc"] }
+objc2-foundation = { version = "0.2", features = ["NSString", "NSNotification", "NSArray", "NSDate", "NSRunLoop", "NSThread"] }
 core-foundation = "0.9"
 # Proces listing cross-platform
 sysinfo = "0.31"
