@@ -43,6 +43,11 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     // don't leave the DB in an inconsistent state with an outdated schema_version.
     let tx = db.unchecked_transaction()?;
 
+    // Niektóre migracje zgłaszają chęć wykonania VACUUM (zwalnianie stron po
+    // dedupie) — VACUUM MUSI być poza transakcją (SQLite wymaga auto-commit),
+    // więc zbieramy flag i uruchamiamy VACUUM po `tx.commit()`.
+    let mut needs_vacuum = false;
+
     if current_version < 1 {
         m01_vital_tables::run(&tx)?;
     }
@@ -50,7 +55,7 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
         m02_file_activities::run(&tx)?;
     }
     if current_version < 3 {
-        m03_manual_sessions::run(&tx)?;
+        m03_manual_sessions::run(&tx, &mut needs_vacuum)?;
     }
     if current_version < 4 {
         m04_sessions_unique::run(&tx)?;
@@ -107,6 +112,11 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     )?;
 
     tx.commit()?;
+
+    if needs_vacuum {
+        log::info!("Running post-migration VACUUM (outside transaction)");
+        db.execute_batch("VACUUM;")?;
+    }
 
     Ok(())
 }
