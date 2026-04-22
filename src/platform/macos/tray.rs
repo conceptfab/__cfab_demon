@@ -156,20 +156,83 @@ fn pump_ns_app(app: &NSApplication, mode: &objc2_foundation::NSRunLoopMode) {
     }
 }
 
+/// Sprawdza czy dashboard już żyje (żeby nie startować drugiej instancji
+/// — Tauri i tak pozwoliłby, ale tworzyłby duplikat okna).
+fn is_dashboard_running() -> bool {
+    let Some(entries) = crate::platform::process_snapshot::collect_process_entries() else {
+        return false;
+    };
+    entries.into_iter().any(|e| {
+        matches!(
+            e.exe_name.as_str(),
+            "timeflow-dashboard" | "timeflow" | "timeflow-dashboard.exe"
+        )
+    })
+}
+
+/// Uruchamia dashboard TIMEFLOW. Strategia fallbackowa:
+/// 1. `open -b com.timeflow.dashboard` — najpewniejsze, działa gdy `.app`
+///    jest gdziekolwiek zarejestrowany w LaunchServices (typowo po pierwszym
+///    otwarciu lub po przeciągnięciu do /Applications).
+/// 2. `open /path/to/TIMEFLOW.app` — ścieżkowo, dla dev-buildów obok daemona
+///    (dist/TIMEFLOW.app) albo w /Applications.
 fn launch_dashboard() {
-    // Faza 4: prawdziwe uruchomienie aplikacji dashboard (np. `open -a TIMEFLOW Dashboard`
-    // lub bezpośrednia ścieżka do `.app`). Na razie log + best-effort `open` po nazwie.
-    let mut cmd = std::process::Command::new("open");
-    cmd.arg("-a").arg("TIMEFLOW Dashboard");
-    match cmd.spawn() {
-        Ok(_) => log::info!("Dashboard launch: `open -a \"TIMEFLOW Dashboard\"` wystrzelone"),
-        Err(e) => {
-            log::warn!(
-                "Dashboard launch nieudany ({e}); zainstaluj aplikację Dashboard \
-                 w /Applications albo uruchom ręcznie."
-            );
-            // ignorujemy — dev environment nie ma zbudowanej aplikacji
-            let _ = std::time::Duration::from_millis(0);
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    if is_dashboard_running() {
+        log::info!("Dashboard already running — skipping launch");
+        return;
+    }
+
+    const BUNDLE_ID: &str = "com.timeflow.dashboard";
+
+    // 1) Bundle ID via LaunchServices
+    match Command::new("open").args(["-b", BUNDLE_ID]).output() {
+        Ok(out) if out.status.success() => {
+            log::info!("Dashboard launched via bundle id {BUNDLE_ID}");
+            return;
+        }
+        Ok(out) => log::debug!(
+            "open -b {BUNDLE_ID} zakończył się kodem {:?}, próbuję ścieżkowo",
+            out.status.code()
+        ),
+        Err(e) => log::debug!("open -b failed ({e}), próbuję ścieżkowo"),
+    }
+
+    // 2) Szukanie .app obok daemona i w /Applications
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("TIMEFLOW.app"));
+            if let Some(parent) = dir.parent() {
+                candidates.push(parent.join("dist").join("TIMEFLOW.app"));
+                candidates.push(parent.join("TIMEFLOW.app"));
+            }
         }
     }
+    candidates.push(PathBuf::from("/Applications/TIMEFLOW.app"));
+
+    for cand in &candidates {
+        if cand.exists() {
+            match Command::new("open").arg(cand).output() {
+                Ok(out) if out.status.success() => {
+                    log::info!("Dashboard launched from path: {}", cand.display());
+                    return;
+                }
+                Ok(out) => log::warn!(
+                    "open {} zakończył się kodem {:?}",
+                    cand.display(),
+                    out.status.code()
+                ),
+                Err(e) => log::warn!("open {} failed: {e}", cand.display()),
+            }
+        }
+    }
+
+    log::error!(
+        "Dashboard launch nieudany — aplikacja TIMEFLOW.app nie znaleziona. \
+         Sprawdź candidates: {:?}",
+        candidates
+    );
 }
