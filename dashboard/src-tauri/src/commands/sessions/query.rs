@@ -178,7 +178,7 @@ pub async fn get_sessions(
                 "{SESSION_PROJECT_CTE_ALL_TIME}
                  SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
-                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    a.display_name, a.executable_name, s.project_id, COALESCE(p.name, s.project_name), p.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
                     s.comment,
                     s.split_source_session_id,
@@ -206,7 +206,7 @@ pub async fn get_sessions(
             format!(
                 "SELECT s.id, s.app_id, s.start_time, s.end_time, s.duration_seconds,
                     COALESCE(s.rate_multiplier, 1.0),
-                    a.display_name, a.executable_name, s.project_id, p.name, p.color,
+                    a.display_name, a.executable_name, s.project_id, COALESCE(p.name, s.project_name), p.color,
                     CASE WHEN af_last.source = 'auto_accept' THEN 1 ELSE 0 END,
                     s.comment,
                     s.split_source_session_id,

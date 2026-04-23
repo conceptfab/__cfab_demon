@@ -1269,9 +1269,11 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, updated_at FROM applications ORDER BY executable_name")?;
 
-    // Fetch sessions since timestamp (parameterized — no SQL injection)
+    // Fetch sessions since timestamp (parameterized — no SQL injection).
+    // project_name carries the peer's project label so receiving peers can preserve
+    // the assignment even when the project row is absent in their local DB.
     let sessions = fetch_all_rows_params(conn,
-        "SELECT s.id, s.app_id, s.project_id, s.start_time, s.end_time, s.duration_seconds, \
+        "SELECT s.id, s.app_id, s.project_id, s.project_name, s.start_time, s.end_time, s.duration_seconds, \
          s.date, s.rate_multiplier, s.comment, s.is_hidden, s.updated_at \
          FROM sessions s WHERE s.updated_at >= ?1 ORDER BY s.start_time",
         &[&since_ref as &dyn rusqlite::types::ToSql],
@@ -1279,7 +1281,7 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
 
     // Fetch manual_sessions since timestamp (parameterized)
     let manual = fetch_all_rows_params(conn,
-        "SELECT id, title, session_type, project_id, app_id, start_time, end_time, \
+        "SELECT id, title, session_type, project_id, project_name, app_id, start_time, end_time, \
          duration_seconds, date, created_at, updated_at \
          FROM manual_sessions WHERE updated_at >= ?1 ORDER BY start_time",
         &[&since_ref as &dyn rusqlite::types::ToSql],

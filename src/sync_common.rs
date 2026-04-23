@@ -503,6 +503,22 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 .and_then(|rid| remote_project_id_to_name.get(&rid))
                 .and_then(|name| project_name_to_local_id.get(name))
                 .copied();
+            // Determine project_name to persist. Priority:
+            //   1) Remote sent explicit project_name (newer schema) — use it
+            //   2) Look up peer's project_id in the peer's project list and use that name
+            // This preserves the assignment LABEL even when the project is not present
+            // locally (so sessions never appear "unassigned" just because the project
+            // list differs per machine).
+            let remote_project_name: Option<String> = sess
+                .get("project_name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    remote_pid_opt
+                        .and_then(|rid| remote_project_id_to_name.get(&rid))
+                        .cloned()
+                });
             if let Some(rid) = remote_pid_opt {
                 diag_sess_with_remote_pid += 1;
                 if local_project_id.is_some() {
@@ -531,12 +547,16 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     if normalize_ts(updated_at) > normalize_ts(local) {
                         let key = format!("app_id={}|start_time={}", local_app_id, start_time);
                         log_merge_conflict(&tx, "sessions", &key, local, updated_at, "remote");
-                        // Use COALESCE for project_id: prefer remote if set, else keep local
+                        // COALESCE for project_id: prefer remote-resolved if set, else keep local.
+                        // project_name: prefer remote (peer's label), fallback to local — this
+                        // ensures that even when the project isn't present locally, the label
+                        // persists and the session is not rendered as "Unassigned".
                         tx.execute(
                             "UPDATE sessions SET end_time = ?1, duration_seconds = ?2, \
                              rate_multiplier = ?3, comment = ?4, is_hidden = ?5, \
                              project_id = COALESCE(?6, project_id), \
-                             updated_at = ?7 WHERE id = ?8",
+                             project_name = COALESCE(?7, project_name), \
+                             updated_at = ?8 WHERE id = ?9",
                             rusqlite::params![
                                 json_str_opt(sess, "end_time"),
                                 json_i64(sess, "duration_seconds"),
@@ -544,6 +564,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                                 json_str_opt(sess, "comment"),
                                 json_i64(sess, "is_hidden"),
                                 local_project_id,
+                                remote_project_name,
                                 updated_at,
                                 id,
                             ],
@@ -552,12 +573,13 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 }
                 None => {
                     tx.execute(
-                        "INSERT OR IGNORE INTO sessions (app_id, project_id, start_time, end_time, \
+                        "INSERT OR IGNORE INTO sessions (app_id, project_id, project_name, start_time, end_time, \
                          duration_seconds, date, rate_multiplier, comment, is_hidden, updated_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                         rusqlite::params![
                             local_app_id,
                             local_project_id,
+                            remote_project_name,
                             start_time,
                             json_str_opt(sess, "end_time"),
                             json_i64(sess, "duration_seconds"),
@@ -856,7 +878,25 @@ pub fn run_gc_tombstones() {
 // ── Integrity check ──
 
 pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String> {
-    // Diagnostyka: PRZED zerowaniem zlicz orphany per project_id
+    // Before nulling orphan project_id, try to re-attach sessions to local projects
+    // by matching project_name → local projects.name. This catches the case where
+    // a session's remote project_id points to a project whose name DOES exist
+    // locally (possibly with a different local ID).
+    let reattached = conn.execute(
+        "UPDATE sessions SET project_id = (SELECT id FROM projects WHERE projects.name = sessions.project_name) \
+         WHERE sessions.project_name IS NOT NULL AND sessions.project_name != '' \
+           AND (sessions.project_id IS NULL \
+                OR sessions.project_id NOT IN (SELECT id FROM projects)) \
+           AND EXISTS (SELECT 1 FROM projects WHERE projects.name = sessions.project_name)",
+        [],
+    ).map_err(|e| e.to_string())?;
+    if reattached > 0 {
+        lan_common::sync_log(&format!(
+            "  [DIAG] Przywrocono project_id dla {} sesji po nazwie projektu",
+            reattached
+        ));
+    }
+    // Diagnostyka: PRZED zerowaniem zlicz pozostałe orphany per project_id
     {
         let mut stmt = conn.prepare(
             "SELECT project_id, COUNT(*) FROM sessions \
@@ -870,19 +910,20 @@ pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String>
             .collect();
         if !rows.is_empty() {
             lan_common::sync_log(&format!(
-                "  [DIAG] verify_merge_integrity ZARAZ wyzeruje project_id w sesjach: {:?} (project_id → liczba sesji)",
+                "  [DIAG] verify_merge_integrity ZARAZ wyzeruje project_id w sesjach: {:?} (project_id → liczba sesji). project_name zachowane.",
                 rows
             ));
         }
     }
-    // Always clean up orphan project_id references (sessions/manual_sessions pointing to non-existent projects)
+    // Null out orphan project_id references (FK consistency). project_name is preserved
+    // so the UI can still display the project label even without a local project row.
     let orphan_sessions = conn.execute(
         "UPDATE sessions SET project_id = NULL \
          WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects)",
         [],
     ).map_err(|e| e.to_string())?;
     if orphan_sessions > 0 {
-        log::warn!("Sync verify: fixed {} sessions with orphan project_id", orphan_sessions);
+        log::warn!("Sync verify: fixed {} sessions with orphan project_id (project_name preserved)", orphan_sessions);
     }
 
     let orphan_manual = conn.execute(

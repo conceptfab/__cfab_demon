@@ -17,8 +17,9 @@ mod m16_file_activity_spans;
 mod m17_project_folder_meta;
 mod m18_project_folder_tokens;
 mod m19_clear_zero_hourly_rate;
+mod m20_session_project_name;
 
-const LATEST_SCHEMA_VERSION: i64 = 19;
+const LATEST_SCHEMA_VERSION: i64 = 20;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -104,6 +105,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 19 {
         m19_clear_zero_hourly_rate::run(&tx)?;
+    }
+    if current_version < 20 {
+        m20_session_project_name::run(&tx)?;
     }
 
     tx.execute(
