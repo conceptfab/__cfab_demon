@@ -6,10 +6,12 @@ import { hasTauriRuntime } from "@/lib/tauri";
 import { AppTooltip } from "@/components/ui/app-tooltip";
 import { useTranslation } from "react-i18next";
 import { tryStartWindowDrag } from "@/lib/window-drag";
+import { isMacOS } from "@/lib/platform";
 
 export function TopBar() {
   const { t } = useTranslation();
   const tauriRuntime = hasTauriRuntime();
+  const onMac = isMacOS();
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
@@ -73,11 +75,17 @@ export function TopBar() {
     <header className="flex h-12 items-stretch border-b border-border/25 bg-background/95">
       <div
         data-tauri-drag-region
-        className="flex min-w-0 flex-1 select-none items-center px-4 [app-region:drag] [-webkit-app-region:drag]"
+        className="flex min-w-0 flex-1 select-none items-center justify-end px-4 [app-region:drag] [-webkit-app-region:drag]"
         onDoubleClick={() => withWindow((appWindow) => appWindow.toggleMaximize())}
         onMouseDown={handleDragMouseDown}
-      />
-      {tauriRuntime && (
+      >
+        {onMac && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            TIMEFLOW
+          </span>
+        )}
+      </div>
+      {tauriRuntime && !onMac && (
         <div className="flex items-stretch border-l border-border/25 [app-region:no-drag] [-webkit-app-region:no-drag]">
           <AppTooltip content={t("topbar.aria.minimize")} side="bottom">
             <button

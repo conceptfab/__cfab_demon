@@ -35,6 +35,7 @@ import { useDataStore } from '@/store/data-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { tryStartWindowDrag } from '@/lib/window-drag';
+import { isMacOS } from '@/lib/platform';
 import { getAiModeLabel, hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import {
   getOnlineSyncIndicatorSnapshot,
@@ -285,9 +286,11 @@ export function Sidebar() {
         className="flex h-12 select-none items-center border-b border-border/25 px-4"
         onMouseDown={handleSidebarDragMouseDown}
       >
-        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-          TIMEFLOW
-        </span>
+        {!isMacOS() && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            TIMEFLOW
+          </span>
+        )}
       </div>
 
       <nav
