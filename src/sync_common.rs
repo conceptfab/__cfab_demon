@@ -292,6 +292,9 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     let tx = conn.transaction().map_err(|e| e.to_string())?;
 
     // Merge projects
+    let mut diag_proj_new: Vec<String> = Vec::new();
+    let mut diag_proj_updated: Vec<String> = Vec::new();
+    let mut diag_proj_local_wins: u32 = 0;
     if let Some(projects) = archive.pointer("/data/projects").and_then(|v| v.as_array()) {
         for proj in projects {
             let name = proj.get("name").and_then(|v| v.as_str()).unwrap_or("");
@@ -310,6 +313,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     if normalize_ts(&local_ts) != normalize_ts(updated_at) {
                         log_merge_conflict(&tx, "projects", name, &local_ts, updated_at, "local");
                     }
+                    diag_proj_local_wins += 1;
                 }
                 Some(ref local_ts) => {
                     log_merge_conflict(&tx, "projects", name, local_ts, updated_at, "remote");
@@ -326,6 +330,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                             name,
                         ],
                     ).map_err(|e| e.to_string())?;
+                    diag_proj_updated.push(name.to_string());
                 }
                 None => {
                     tx.execute(
@@ -343,10 +348,17 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                             updated_at,
                         ],
                     ).map_err(|e| e.to_string())?;
+                    diag_proj_new.push(name.to_string());
                 }
             }
         }
     }
+    lan_common::sync_log(&format!(
+        "  [DIAG] Projekty: NEW={} ({:?}), UPDATED={} ({:?}), LOCAL_WINS={}",
+        diag_proj_new.len(), diag_proj_new,
+        diag_proj_updated.len(), diag_proj_updated,
+        diag_proj_local_wins
+    ));
 
     // Build ID maps once: remote ID → name, local name → ID
     // These are used by applications, sessions, and manual_sessions merge.
@@ -459,6 +471,11 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     }
 
     // Merge sessions (using local IDs resolved via name maps)
+    let mut diag_sess_total: u32 = 0;
+    let mut diag_sess_with_remote_pid: u32 = 0;
+    let mut diag_sess_resolved_pid: u32 = 0;
+    let mut diag_sess_unresolved_by_name: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut diag_sess_unresolved_remote_id_unknown: u32 = 0;
     if let Some(sessions) = archive.pointer("/data/sessions").and_then(|v| v.as_array()) {
         for sess in sessions {
             let remote_app_id = sess.get("app_id").and_then(|v| v.as_i64()).unwrap_or(0);
@@ -467,6 +484,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             if start_time.is_empty() || remote_app_id == 0 {
                 continue;
             }
+            diag_sess_total += 1;
 
             // Resolve remote app_id → local app_id via executable_name
             let local_app_id = match remote_app_id_to_name.get(&remote_app_id)
@@ -480,10 +498,24 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             };
 
             // Resolve remote project_id → local project_id via name
-            let local_project_id: Option<i64> = sess.get("project_id").and_then(|v| v.as_i64())
+            let remote_pid_opt = sess.get("project_id").and_then(|v| v.as_i64());
+            let local_project_id: Option<i64> = remote_pid_opt
                 .and_then(|rid| remote_project_id_to_name.get(&rid))
                 .and_then(|name| project_name_to_local_id.get(name))
                 .copied();
+            if let Some(rid) = remote_pid_opt {
+                diag_sess_with_remote_pid += 1;
+                if local_project_id.is_some() {
+                    diag_sess_resolved_pid += 1;
+                } else {
+                    match remote_project_id_to_name.get(&rid) {
+                        Some(pname) => {
+                            *diag_sess_unresolved_by_name.entry(pname.clone()).or_insert(0) += 1;
+                        }
+                        None => { diag_sess_unresolved_remote_id_unknown += 1; }
+                    }
+                }
+            }
 
             let existing: Option<(i64, Option<String>)> = tx
                 .query_row(
@@ -540,6 +572,12 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             }
         }
     }
+
+    lan_common::sync_log(&format!(
+        "  [DIAG] Sesje: total={}, z remote project_id={}, zresolwowane={}, NIEZRESOLWOWANE_po_nazwie={:?}, remote_id_nieznane={}",
+        diag_sess_total, diag_sess_with_remote_pid, diag_sess_resolved_pid,
+        diag_sess_unresolved_by_name, diag_sess_unresolved_remote_id_unknown
+    ));
 
     // Merge manual_sessions (using resolved local IDs)
     if let Some(manual_sessions) = archive.pointer("/data/manual_sessions").and_then(|v| v.as_array()) {
@@ -693,6 +731,16 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 // Delete the record — also clean up FK references to prevent orphans
                 match table_name {
                     "projects" => {
+                        // Diagnostyka: czy istnieje lokalny projekt który zostanie usunięty?
+                        let proj_exists: bool = tx
+                            .query_row("SELECT 1 FROM projects WHERE name = ?1", [sync_key], |_| Ok(()))
+                            .is_ok();
+                        if proj_exists {
+                            lan_common::sync_log(&format!(
+                                "  [DIAG] TOMBSTONE kasuje projekt '{}' (deleted_at={})",
+                                sync_key, deleted_at_str
+                            ));
+                        }
                         // Null out project_id in sessions/manual_sessions BEFORE deleting the project
                         if let Err(e) = tx.execute(
                             "UPDATE sessions SET project_id = NULL \
@@ -808,6 +856,25 @@ pub fn run_gc_tombstones() {
 // ── Integrity check ──
 
 pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String> {
+    // Diagnostyka: PRZED zerowaniem zlicz orphany per project_id
+    {
+        let mut stmt = conn.prepare(
+            "SELECT project_id, COUNT(*) FROM sessions \
+             WHERE project_id IS NOT NULL AND project_id NOT IN (SELECT id FROM projects) \
+             GROUP BY project_id"
+        ).map_err(|e| e.to_string())?;
+        let rows: Vec<(i64, i64)> = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+        if !rows.is_empty() {
+            lan_common::sync_log(&format!(
+                "  [DIAG] verify_merge_integrity ZARAZ wyzeruje project_id w sesjach: {:?} (project_id → liczba sesji)",
+                rows
+            ));
+        }
+    }
     // Always clean up orphan project_id references (sessions/manual_sessions pointing to non-existent projects)
     let orphan_sessions = conn.execute(
         "UPDATE sessions SET project_id = NULL \

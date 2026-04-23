@@ -345,13 +345,13 @@ export function AIPage() {
         aiApi.setFeedbackWeight(feedbackWeight),
       ]);
 
-      await refreshAiStatus();
-      // Read from store after refresh completes — getState() is safe here because
-      // refreshAiStatus() just called set({aiStatus}), so the store is up-to-date.
-      const freshStatus = useBackgroundStatusStore.getState().aiStatus;
-      if (freshStatus) {
-        syncFormWithStatus(freshStatus, true);
-      }
+      // Bypass refreshAiStatus() in-flight guard — fetch directly so we always get
+      // post-save values. Otherwise a concurrent background poll can no-op the
+      // refresh and we'd sync the form from STALE store data (the bug where
+      // entering 60 displayed 244 after Save).
+      const freshStatus = await aiApi.getAssignmentModelStatus();
+      setAiStatus(freshStatus);
+      syncFormWithStatus(freshStatus, true);
       const freshFw = await aiApi.getFeedbackWeight();
       setFeedbackWeight(freshFw);
       dirtyRef.current = false;
