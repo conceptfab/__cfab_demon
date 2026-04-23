@@ -70,32 +70,105 @@ def ensure_cargo() -> None:
         die(f"cargo --version zakonczyl sie bledem: {exc}")
 
 
-def kill_running_daemon() -> None:
-    """Zatrzymuje bieżące instancje timeflow-demon (inaczej plik binarny bywa zablokowany)."""
+# Pattern pgrepa: `/timeflow-demon` i `/timeflow-dashboard` — slash z przodu,
+# żeby nie łapać przypadkowych wystąpień substringu w cwd/argumentach edytorów
+# itp. Match działa zarówno dla bare binary (dist/timeflow-demon), dev build
+# (target/release/timeflow-demon), jak i .app (Contents/MacOS/timeflow-demon).
+PROC_PATTERN = "/timeflow-demon|/timeflow-dashboard"
+
+
+def _collect_running_pids() -> list[str]:
     try:
         result = subprocess.run(
-            ["pgrep", "-f", "target/.*/timeflow-demon"],
-            capture_output=True,
-            text=True,
+            ["pgrep", "-f", PROC_PATTERN], capture_output=True, text=True
         )
-        pids = [p for p in result.stdout.split() if p.strip()]
-        if not pids:
-            return
-        print(f"   Znaleziono dzialajacego demona: PID={','.join(pids)} — wysylam SIGTERM")
-        subprocess.run(["kill", "-TERM", *pids], check=False)
-        # Krotki oddech na clean exit, potem twardy kill jesli trzyma
-        time.sleep(0.8)
-        still_alive = subprocess.run(
-            ["pgrep", "-f", "target/.*/timeflow-demon"],
-            capture_output=True,
-            text=True,
-        ).stdout.split()
-        if still_alive:
-            subprocess.run(["kill", "-KILL", *still_alive], check=False)
-            print(f"   Wymuszony SIGKILL: PID={','.join(still_alive)}")
     except FileNotFoundError:
-        # pgrep/kill nie ma — pomijamy
-        pass
+        return []
+    # Odfiltruj naszego własnego PID (gdyby pgrep -f złapał np. python build_all_macos.py,
+    # choć nie powinien — pattern ma slash z przodu).
+    self_pid = str(os.getpid())
+    return [p for p in result.stdout.split() if p.strip() and p != self_pid]
+
+
+def kill_running_processes() -> None:
+    """Zamyka demon + dashboard przed buildem (analogicznie do wersji Windows).
+
+    Kolejność:
+      1. `osascript ... quit` — graceful quit przez LaunchServices (clean shutdown
+         tray/app, zwolnione porty LAN, zamknięte okna Tauri, zwolnione SQLite).
+      2. SIGTERM dla ocalałych (pgrep -f matchuje binarki z .app bundle i bare).
+      3. SIGKILL dla opornych po 0.8s.
+    """
+    # 1) Graceful quit via AppleScript — nie-blokująco, ignorujemy błędy
+    #    (aplikacja może nie istnieć w LaunchServices zanim zostanie uruchomiona).
+    for app_name in ("TIMEFLOW", "TIMEFLOW Demon"):
+        try:
+            subprocess.run(
+                ["osascript", "-e", f'tell application "{app_name}" to quit'],
+                capture_output=True,
+                check=False,
+                timeout=3,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
+
+    # 2) SIGTERM na pozostałe
+    pids = _collect_running_pids()
+    if not pids:
+        print("   Brak dzialajacych procesow TIMEFLOW.")
+        return
+    print(f"   Znaleziono procesy: PID={','.join(pids)} — wysylam SIGTERM")
+    try:
+        subprocess.run(["kill", "-TERM", *pids], check=False)
+    except FileNotFoundError:
+        return
+
+    # 3) Krótka pauza + hard kill dla opornych
+    time.sleep(0.8)
+    still_alive = _collect_running_pids()
+    if still_alive:
+        subprocess.run(["kill", "-KILL", *still_alive], check=False)
+        print(f"   Wymuszony SIGKILL: PID={','.join(still_alive)}")
+    else:
+        print("   Wszystkie procesy zatrzymane.")
+
+
+def clean_dist_artifacts(dist: Path, clean_demon: bool, clean_dashboard: bool) -> None:
+    """Usuwa stare artefakty TIMEFLOW z dist/ (analogicznie do Windows safe_copy).
+
+    Nie czyścimy całego dist/ — user może tam trzymać własne pliki. Kasujemy
+    wyłącznie artefakty odpowiadające tym modułom, które aktualny build będzie
+    odbudowywał (zachowanie jak `--demon-only` / `--dashboard-only` na Windows).
+    """
+    if not dist.exists():
+        return
+    targets: list[Path] = []
+    if clean_demon:
+        targets.append(dist / DEMON_BIN)
+        targets.append(dist / DEMON_APP_NAME)
+        targets.extend(dist.glob("timeflow-demon.old-*"))
+    if clean_dashboard:
+        targets.append(dist / "TIMEFLOW.app")
+        targets.extend(dist.glob("TIMEFLOW*.dmg"))
+        targets.extend(dist.glob("timeflow*.dmg"))
+        targets.extend(dist.glob("TIMEFLOW.app.old-*"))
+
+    removed: list[str] = []
+    for t in targets:
+        if not t.exists():
+            continue
+        try:
+            if t.is_dir():
+                shutil.rmtree(t)
+            else:
+                t.unlink()
+            removed.append(t.name)
+        except OSError as exc:
+            print(f"   UWAGA: nie udalo sie usunac {t.name}: {exc}")
+    if removed:
+        print(f"   Usunieto z dist/: {', '.join(removed)}")
+    else:
+        print("   Brak starych artefaktow do usuniecia.")
 
 
 def compare_locales() -> None:
@@ -390,8 +463,8 @@ def main() -> None:
     ensure_cargo()
     print(f"   ROOT: {ROOT}")
 
-    step("Zatrzymanie dzialajacych instancji demona")
-    kill_running_daemon()
+    step("Zatrzymanie dzialajacych instancji (demon + dashboard)")
+    kill_running_processes()
 
     if not args.skip_version:
         step("Wersja")
@@ -402,6 +475,17 @@ def main() -> None:
 
     dist = ROOT / args.out_dir
     dist.mkdir(parents=True, exist_ok=True)
+
+    if not args.no_clean:
+        step(f"Czyszczenie artefaktow w {dist}")
+        clean_dist_artifacts(
+            dist,
+            clean_demon=True,
+            clean_dashboard=not args.no_dashboard,
+        )
+    else:
+        step("Czyszczenie dist/")
+        print("   Pominieto (--no-clean) — istniejace artefakty moga byc nadpisywane.")
 
     binary = build_demon(dist, release=not args.debug, no_clean=args.no_clean, jobs=args.jobs)
 
