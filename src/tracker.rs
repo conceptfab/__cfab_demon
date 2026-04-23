@@ -433,6 +433,11 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
     let mut last_config_reload = Instant::now();
     let mut last_heartbeat = Instant::now();
     let mut last_tracking_tick = Instant::now();
+    // Wall-clock twin of last_tracking_tick. Used to detect system sleep:
+    // Instant is uptime-based (stops during sleep on macOS/Windows), but
+    // DateTime<Local> keeps advancing. A large wall-vs-uptime delta means
+    // the OS suspended us and no activity should be credited for that gap.
+    let mut last_tracking_tick_wall = Local::now();
     write_heartbeat();
 
     // Active session state per application
@@ -497,6 +502,49 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Calculate actual elapsed time since last poll (D-9, D-11)
         let now = Instant::now();
+        let now_wall = Local::now();
+
+        // System sleep detection: Instant (uptime clock) freezes during
+        // macOS/Windows sleep, but wall clock advances. If wall delta exceeds
+        // uptime delta by SLEEP_DETECTION_THRESHOLD, the box was asleep —
+        // discard this tick, close active sessions, flush state, force
+        // idle→active transition so next real input opens a fresh session.
+        const SLEEP_DETECTION_THRESHOLD: Duration = Duration::from_secs(30);
+        let uptime_delta = now.duration_since(last_tracking_tick);
+        let wall_delta = now_wall
+            .signed_duration_since(last_tracking_tick_wall)
+            .to_std()
+            .unwrap_or(Duration::ZERO);
+        let sleep_gap = wall_delta.saturating_sub(uptime_delta);
+        if sleep_gap > SLEEP_DETECTION_THRESHOLD {
+            log::info!(
+                "System sleep detected: wall={}s uptime={}s gap={}s — pausing tracker, closing sessions",
+                wall_delta.as_secs(),
+                uptime_delta.as_secs(),
+                sleep_gap.as_secs(),
+            );
+            if let Some(ref signal) = foreground_signal {
+                let _ = signal.drain_switch_times();
+            }
+            let is_frozen = sync_state
+                .as_ref()
+                .map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
+            if !is_frozen {
+                if let Err(e) = storage::save_daily(&mut daily_data) {
+                    log::error!("Error saving daily data after sleep detection: {}", e);
+                }
+                last_save = Instant::now();
+                save_skipped_while_frozen = false;
+            } else {
+                save_skipped_while_frozen = true;
+            }
+            active_sessions.clear();
+            was_idle = true;
+            last_tracking_tick = now;
+            last_tracking_tick_wall = now_wall;
+            continue;
+        }
+
         let max_elapsed = poll_interval.saturating_mul(3);
         let actual_elapsed = now.duration_since(last_tracking_tick).min(max_elapsed);
 
@@ -523,6 +571,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         };
 
         last_tracking_tick = now;
+        last_tracking_tick_wall = now_wall;
 
         // Poll foreground window
         let foreground_exe = monitor::get_foreground_info(&mut pid_cache).and_then(|info| {

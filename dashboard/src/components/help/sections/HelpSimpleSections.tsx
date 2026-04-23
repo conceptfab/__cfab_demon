@@ -134,6 +134,7 @@ export function HelpDaemonSection() {
         t18n('help_page.log_auto_refresh_runs_only_while_the_daemon_screen_is_v'),
         t18n('help_page.log_coloring_error_and_warn_lines_are_highlighted_with_c'),
         t18n('help_page.daemon_windows_autostart_details'),
+        t18n('help_page.daemon_sleep_pause'),
       ]}
     />
   );
