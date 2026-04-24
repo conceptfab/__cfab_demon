@@ -21,7 +21,8 @@ function B({ children }: { children?: React.ReactNode }) {
 
 export function QuickStart() {
   const { t } = useTranslation();
-  const { setCurrentPage, setFirstRun } = useUIStore();
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const setFirstRun = useUIStore((s) => s.setFirstRun);
 
   const handleStart = () => {
     setFirstRun(false);
