@@ -84,13 +84,11 @@ const TOP_PROJECTS_LIMIT = 5;
 export function Sessions() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
-  const {
-    setProjectPageId,
-    setCurrentPage,
-    assignProjectListMode,
-    setAssignProjectListMode,
-  } = useUIStore();
-  const { triggerRefresh } = useDataStore();
+  const setProjectPageId = useUIStore((s) => s.setProjectPageId);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const assignProjectListMode = useUIStore((s) => s.assignProjectListMode);
+  const setAssignProjectListMode = useUIStore((s) => s.setAssignProjectListMode);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const {
     assignSessions,
     updateSessionRateMultipliers,
