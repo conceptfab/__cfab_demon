@@ -23,6 +23,18 @@ export default defineConfig([
           allowExportNames: ['buttonVariants', 'badgeVariants', 'useToast'],
         },
       ],
+      // Task 90: forbid `const { ... } = useXxxStore()` — every Zustand
+      // read must go through a selector so components don't re-render on
+      // every store update. See docs/CODING_STYLE.md.
+      'no-restricted-syntax': [
+        'warn',
+        {
+          selector:
+            "VariableDeclarator[id.type='ObjectPattern'][init.type='CallExpression'][init.callee.type='Identifier'][init.callee.name=/^use(UI|Data|BackgroundStatus|Settings|ProjectsCache)Store$/][init.arguments.length=0]",
+          message:
+            'Destructuring a Zustand store without a selector subscribes the component to every field. Use `useXxxStore(s => s.field)` instead.',
+        },
+      ],
     },
     languageOptions: {
       ecmaVersion: 2020,

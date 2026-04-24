@@ -1179,9 +1179,11 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 **Files:**
 - Create: `dashboard/.eslintrc.js` custom rule albo `dashboard/eslint-rules/no-zustand-full-destructure.js`
 
-- [ ] **Step 90.1: ESLint regex — `const\s*\{[^}]+\}\s*=\s*use(UI|Data|BackgroundStatus)Store\(\s*\)` → warn.**
+- [x] **Step 90.1: ESLint regex — `const\s*\{[^}]+\}\s*=\s*use(UI|Data|BackgroundStatus)Store\(\s*\)` → warn.**
 
-- [ ] **Step 90.2: Commit**
+  *(Zaimplementowane jako `no-restricted-syntax` AST selector w `dashboard/eslint.config.js` — brak potrzeby osobnego pluginu. Objęte store'y: `use(UI|Data|BackgroundStatus|Settings|ProjectsCache)Store`.)*
+
+- [x] **Step 90.2: Commit**
 
 ### Task 91: `PARITY.md` finalizacja
 
