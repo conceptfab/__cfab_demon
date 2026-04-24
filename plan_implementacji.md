@@ -1098,8 +1098,8 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 68: Usuń `dashboard/src-tauri/src/refactor_db.py`
 
-- [ ] **Step 68.1:** `git rm dashboard/src-tauri/src/refactor_db.py`
-- [ ] **Step 68.2: Commit**
+- [x] **Step 68.1:** `git rm dashboard/src-tauri/src/refactor_db.py`
+- [x] **Step 68.2: Commit**
 
 ### Task 69-72: Martwe endpointy LAN
 
