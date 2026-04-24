@@ -600,7 +600,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // When transitioning from idle to active, use the full tick duration.
         // idle_ms is near 0 here (user just moved mouse), so it can't estimate
         // the active portion. The tick itself is the first active period.
-        let effective_elapsed_for_foreground = if !is_idle && was_idle {
+        let effective_elapsed_for_activity = if !is_idle && was_idle {
             log::debug!(
                 "Idle→active transition: recording full {}ms tick",
                 effective_elapsed.as_millis()
@@ -622,7 +622,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                         window_title: &info.window_title,
                         detected_path: info.detected_path.as_deref(),
                         activity_type: info.activity_type,
-                        elapsed: effective_elapsed_for_foreground,
+                        elapsed: effective_elapsed_for_activity,
                         session_gap,
                     },
                     &cfg,
@@ -691,7 +691,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                             window_title: "",
                             detected_path: None,
                             activity_type: background_activity_type,
-                            elapsed: actual_elapsed,
+                            elapsed: effective_elapsed_for_activity,
                             session_gap,
                         },
                         &cfg,

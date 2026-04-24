@@ -99,6 +99,7 @@ fn main() {
     let lan_server_handle = lan_server::start(stop_signal.clone(), sync_state.clone());
 
     // Optionally trigger online sync on startup
+    let mut online_sync_handle: Option<std::thread::JoinHandle<()>> = None;
     {
         let online_settings = config::load_online_sync_settings();
         if !(online_settings.enabled && online_settings.auto_sync_on_startup
@@ -117,11 +118,13 @@ fn main() {
         {
             let sync_state_clone = sync_state.clone();
             let stop_signal_clone = stop_signal.clone();
-            std::thread::spawn(move || {
+            online_sync_handle = Some(std::thread::spawn(move || {
                 // Wait 10 seconds for daemon to fully start up
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                if stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
-                    return;
+                for _ in 0..10 {
+                    if stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 if sync_state_clone.sync_in_progress.compare_exchange(
                     false, true,
@@ -141,7 +144,7 @@ fn main() {
                     }
                     // _guard drops here, resets flag
                 }
-            });
+            }));
         }
     }
 
@@ -163,6 +166,13 @@ fn main() {
     }
     if lan_server_handle.join().is_err() {
         log::error!("LAN server thread panicked");
+    }
+    if let Some(handle) = online_sync_handle.take() {
+        if handle.join().is_err() {
+            log::error!("Online sync thread panicked");
+        } else {
+            log::info!("Online sync thread joined cleanly");
+        }
     }
 
     log::info!("{} - stopped", APP_NAME);
