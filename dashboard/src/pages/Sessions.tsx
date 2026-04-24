@@ -44,6 +44,10 @@ import { manualToSessionRow } from '@/lib/session-utils';
 import { useSessionScoreBreakdown } from '@/hooks/useSessionScoreBreakdown';
 import { useSessionSplitAnalysis } from '@/hooks/useSessionSplitAnalysis';
 import {
+  useClickOutsideDismiss,
+  useEscapeKey,
+} from '@/hooks/useDismissable';
+import {
   loadProjectsAllTime,
   useProjectsCacheStore,
 } from '@/store/projects-cache-store';
@@ -307,29 +311,24 @@ export function Sessions() {
     };
   }, [ctxMenu, resolveContextMenuPlacement]);
 
-  // Close context menus on click outside or Escape
-  // TODO: Extract to a reusable useClickOutsideDismiss hook (shared with ProjectDayTimeline)
-  useEffect(() => {
-    if (!ctxMenu && !projectCtxMenu) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ctxRef.current && !ctxRef.current.contains(target)) setCtxMenu(null);
-      if (projectCtxRef.current && !projectCtxRef.current.contains(target))
-        setProjectCtxMenu(null);
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setCtxMenu(null);
-        setProjectCtxMenu(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [ctxMenu, projectCtxMenu]);
+  const closeSessionContextMenu = useCallback(() => setCtxMenu(null), [
+    setCtxMenu,
+  ]);
+  const closeProjectContextMenu = useCallback(() => setProjectCtxMenu(null), [
+    setProjectCtxMenu,
+  ]);
+  const closeContextMenus = useCallback(() => {
+    setCtxMenu(null);
+    setProjectCtxMenu(null);
+  }, [setCtxMenu, setProjectCtxMenu]);
+
+  useClickOutsideDismiss(ctxRef, closeSessionContextMenu, Boolean(ctxMenu));
+  useClickOutsideDismiss(
+    projectCtxRef,
+    closeProjectContextMenu,
+    Boolean(projectCtxMenu),
+  );
+  useEscapeKey(closeContextMenus, Boolean(ctxMenu || projectCtxMenu));
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, session: SessionWithApp) => {
