@@ -637,7 +637,7 @@ export function AIPage() {
           highlightTrainAction={highlightTrainAction}
           snoozedUntil={trainingReminder.cooldownUntil}
           reminderSuppressed={!trainingReminder.shouldShow}
-          onTrainNow={handleTrainNow}
+          onTrainNow={() => handleTrainNow()}
           onFullRebuild={() => {
             void handleTrainNow(true);
           }}

@@ -7,9 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use objc2::rc::Retained;
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
-use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode};
+use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
+use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode, NSRunLoop};
 use rusqlite::OptionalExtension;
 use timeflow_shared::session_settings;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -21,7 +20,7 @@ use crate::platform::tray_common::TrayExitAction;
 use crate::sync_trigger;
 use crate::APP_NAME;
 
-const PUMP_INTERVAL_SECS: f64 = 0.15;
+const PUMP_INTERVAL_SECS: f64 = 0.05;
 const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Logo TIMEFLOW osadzone w binarce (PNG 128×128 — macOS skaluje do
@@ -29,6 +28,16 @@ const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 const TRAY_ICON_PNG: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/assets/tray_icon.png"
+));
+
+const TRAY_ICON_ATTENTION_PNG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/tray_icon_attention.png"
+));
+
+const TRAY_ICON_SYNC_PNG: &[u8] = include_bytes!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/assets/tray_icon_sync.png"
 ));
 
 /// Wczytuje ikonę tray z osadzonego PNG i dekoduje do RGBA. Jeśli dekodowanie
@@ -83,25 +92,33 @@ fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
 }
 
 fn fallback_icon() -> Result<Icon, String> {
-    solid_icon([31, 81, 255, 255])
-}
-
-fn attention_icon() -> Result<Icon, String> {
-    solid_icon([245, 158, 11, 255])
-}
-
-fn sync_icon() -> Result<Icon, String> {
-    solid_icon([16, 185, 129, 255])
-}
-
-fn solid_icon(color: [u8; 4]) -> Result<Icon, String> {
+    // Minimalny fallback — używany tylko gdy główny PNG nie może być zdekodowany.
     const SIZE: usize = 18;
-    let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
-    for _ in 0..SIZE * SIZE {
-        rgba.extend_from_slice(&color);
-    }
+    let rgba = vec![31u8, 81, 255, 255].repeat(SIZE * SIZE);
     Icon::from_rgba(rgba, SIZE as u32, SIZE as u32)
-        .map_err(|e| format!("failed to build solid tray icon: {e}"))
+        .map_err(|e| format!("failed to build fallback tray icon: {e}"))
+}
+
+fn build_attention_icon() -> Result<Icon, String> {
+    match decode_png_rgba(TRAY_ICON_ATTENTION_PNG) {
+        Ok((rgba, w, h)) => Icon::from_rgba(rgba, w, h)
+            .map_err(|e| format!("failed to build attention tray icon from RGBA: {e}")),
+        Err(e) => {
+            log::warn!("Attention tray icon PNG decode failed ({e}) — fallback to main icon");
+            build_icon()
+        }
+    }
+}
+
+fn build_sync_icon() -> Result<Icon, String> {
+    match decode_png_rgba(TRAY_ICON_SYNC_PNG) {
+        Ok((rgba, w, h)) => Icon::from_rgba(rgba, w, h)
+            .map_err(|e| format!("failed to build sync tray icon from RGBA: {e}")),
+        Err(e) => {
+            log::warn!("Sync tray icon PNG decode failed ({e}) — fallback to main icon");
+            build_icon()
+        }
+    }
 }
 
 struct AttentionState {
@@ -306,8 +323,8 @@ pub fn run(
             return TrayExitAction::Exit;
         }
     };
-    let icon_attention = attention_icon().unwrap_or_else(|_| icon.clone());
-    let icon_sync = sync_icon().unwrap_or_else(|_| icon.clone());
+    let icon_attention = build_attention_icon().unwrap_or_else(|_| icon.clone());
+    let icon_sync = build_sync_icon().unwrap_or_else(|_| icon.clone());
 
     let tray_icon = match TrayIconBuilder::new()
         .with_menu(Box::new(menu))
@@ -419,8 +436,7 @@ pub fn run(
             }
         }
 
-        // Pompka NSApp — blokuje do PUMP_INTERVAL_SECS lub dopóki nie ma eventu.
-        pump_ns_app(&app, default_mode);
+        pump_ns_app(default_mode);
     }
 
     log::info!("Daemon tray loop exited");
@@ -428,20 +444,15 @@ pub fn run(
     action
 }
 
-fn pump_ns_app(app: &NSApplication, mode: &objc2_foundation::NSRunLoopMode) {
+fn pump_ns_app(mode: &objc2_foundation::NSRunLoopMode) {
+    // NSRunLoop.runMode_beforeDate pozwala NSStatusItem obsługiwać własne eventy
+    // (kliknięcia, menu) bez konfliktu. Poprzednie podejście z
+    // nextEventMatchingMask kradło eventy myszy od NSStatusBarButton, co
+    // powodowało "skakanie" ikony i niepojawianie się menu.
     unsafe {
+        let rl = NSRunLoop::currentRunLoop();
         let until = NSDate::dateWithTimeIntervalSinceNow(PUMP_INTERVAL_SECS);
-        let event: Option<Retained<objc2_app_kit::NSEvent>> = app
-            .nextEventMatchingMask_untilDate_inMode_dequeue(
-                NSEventMask::Any,
-                Some(&until),
-                mode,
-                true,
-            );
-        if let Some(evt) = event {
-            app.sendEvent(&evt);
-            app.updateWindows();
-        }
+        let _ = rl.runMode_beforeDate(mode, &until);
     }
 }
 
