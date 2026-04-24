@@ -496,7 +496,9 @@ git commit -m "fix(tracker): use SystemTime UTC to avoid DST false positives (P1
 pub(crate) static MERGE_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 ```
 
-- [ ] **Step 8.2: `merge_peer_delta` acquires mutex na całość operacji**
+- [x] **Step 8.2: `merge_peer_delta` acquires mutex na całość operacji**
+
+  *(Implementacja jest w `merge_incoming_data` — `_merge_guard` trzymany przez cały scope funkcji.)*
 
 - [x] **Step 8.3: Tracker sprawdza `db_frozen` przed każdym INSERT/UPDATE**
 
@@ -1017,9 +1019,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/assignment_model/auto_safe.rs:102`
 
-- [ ] **Step 41.1: Chunk sesji po 500 × osobna transakcja; progress emit po każdym batchu.**
+- [x] **Step 41.1: Chunk sesji po 500 × osobna transakcja; progress emit po każdym batchu.**
 
-- [ ] **Step 41.2: Commit**
+- [x] **Step 41.2: Commit**
 
 ### Task 42: „Force Sync" PL → „Wymuś synchronizację"
 
