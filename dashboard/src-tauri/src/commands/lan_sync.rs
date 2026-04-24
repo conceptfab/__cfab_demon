@@ -307,7 +307,7 @@ pub async fn run_lan_sync(
     let ip_c = peer_ip.clone();
     let port_c = peer_port;
     let ping_result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = format!("http://{}:{}/lan/ping", ip_c, port_c);
         let resp = client.get(&url).send().map_err(|e| format!("Peer unreachable: {}", e))?;
         let body = resp.text().map_err(|e| format!("Ping read failed: {}", e))?;
@@ -347,7 +347,7 @@ pub async fn run_lan_sync(
     });
 
     let _trigger_result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/trigger-sync";
         let resp = client.post(url)
             .json(&trigger_body)
@@ -407,7 +407,7 @@ struct PairResponse {
 #[tauri::command]
 pub async fn generate_pairing_code() -> Result<PairingCodeInfo, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/generate-pairing-code";
         let resp = client.post(url)
             .send()
@@ -436,7 +436,7 @@ pub async fn submit_pairing_code(
     code: String,
 ) -> Result<PairedDeviceInfo, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
 
         // Get local identity + secret so master can store it (mutual pairing)
         let local_info: serde_json::Value = client.get("http://127.0.0.1:47891/lan/local-identity")
@@ -502,7 +502,7 @@ pub async fn submit_pairing_code(
 #[tauri::command]
 pub async fn unpair_device(device_id: String) -> Result<bool, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let body = serde_json::json!({ "device_id": device_id });
         let url = "http://127.0.0.1:47891/lan/remove-paired-device";
         let resp = client.post(url)
@@ -519,7 +519,7 @@ pub async fn unpair_device(device_id: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/paired-devices";
         let resp = client.get(url)
             .send()
@@ -549,9 +549,9 @@ pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
 
 // ── Helpers ──
 
-fn build_http_client() -> reqwest::blocking::Client {
+fn build_http_client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .unwrap_or_else(|_| reqwest::blocking::Client::new())
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }

@@ -877,9 +877,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/lan_sync.rs:552-557`
 
-- [ ] **Step 29.1: Zwróć `Result<Client, String>` zamiast fallback `Client::new()`.**
+- [x] **Step 29.1: Zwróć `Result<Client, String>` zamiast fallback `Client::new()`.**
 
-- [ ] **Step 29.2: Commit**
+- [x] **Step 29.2: Commit**
 
 ### Task 30: Selektory dla Zustand — eliminacja destrukturyzacji całego storu
 
