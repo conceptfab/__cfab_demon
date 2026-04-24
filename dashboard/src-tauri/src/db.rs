@@ -14,6 +14,8 @@ const SCHEMA: &str = include_str!("../resources/sql/schema.sql");
 const PRIMARY_DB_FILE_NAME: &str = "timeflow_dashboard.db";
 const DEMO_DB_FILE_NAME: &str = "timeflow_dashboard_demo.db";
 const DB_MODE_FILE_NAME: &str = "timeflow_dashboard_mode.json";
+// TODO(2026-12-31): remove legacy cfab_dashboard* migration once old installs
+// have had a full release window to copy data into TIMEFLOW-named files.
 const LEGACY_PRIMARY_DB_FILE_NAME: &str = "cfab_dashboard.db";
 const LEGACY_DEMO_DB_FILE_NAME: &str = "cfab_dashboard_demo.db";
 const LEGACY_DB_MODE_FILE_NAME: &str = "cfab_dashboard_mode.json";
