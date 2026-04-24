@@ -7,7 +7,7 @@ use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Local, Timelike};
 use timeflow_shared::version_compat;
@@ -76,6 +76,10 @@ fn write_heartbeat() {
         let heartbeat = dir.join("heartbeat.txt");
         let _ = fs::write(heartbeat, Local::now().to_rfc3339());
     }
+}
+
+fn wall_delta_since(last: SystemTime, now: SystemTime) -> Duration {
+    now.duration_since(last).unwrap_or(Duration::ZERO)
 }
 
 static WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
@@ -435,9 +439,9 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
     let mut last_tracking_tick = Instant::now();
     // Wall-clock twin of last_tracking_tick. Used to detect system sleep:
     // Instant is uptime-based (stops during sleep on macOS/Windows), but
-    // DateTime<Local> keeps advancing. A large wall-vs-uptime delta means
+    // SystemTime keeps advancing in UTC. A large wall-vs-uptime delta means
     // the OS suspended us and no activity should be credited for that gap.
-    let mut last_tracking_tick_wall = Local::now();
+    let mut last_tracking_tick_wall = SystemTime::now();
     write_heartbeat();
 
     // Active session state per application
@@ -502,7 +506,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Calculate actual elapsed time since last poll (D-9, D-11)
         let now = Instant::now();
-        let now_wall = Local::now();
+        let now_wall = SystemTime::now();
 
         // System sleep detection: Instant (uptime clock) freezes during
         // macOS/Windows sleep, but wall clock advances. If wall delta exceeds
@@ -511,10 +515,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // idle→active transition so next real input opens a fresh session.
         const SLEEP_DETECTION_THRESHOLD: Duration = Duration::from_secs(30);
         let uptime_delta = now.duration_since(last_tracking_tick);
-        let wall_delta = now_wall
-            .signed_duration_since(last_tracking_tick_wall)
-            .to_std()
-            .unwrap_or(Duration::ZERO);
+        let wall_delta = wall_delta_since(last_tracking_tick_wall, now_wall);
         let sleep_gap = wall_delta.saturating_sub(uptime_delta);
         if sleep_gap > SLEEP_DETECTION_THRESHOLD {
             log::info!(
@@ -775,7 +776,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 mod tests {
     use super::{
         compute_session_duration_seconds, record_app_activity, session_start_time_for_elapsed,
-        should_refresh_background_process_snapshot, ActivityContext,
+        should_refresh_background_process_snapshot, wall_delta_since, ActivityContext,
         BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
     };
     use crate::activity::ActivityType;
@@ -783,7 +784,7 @@ mod tests {
     use crate::storage::{DailyData, DailySummary};
     use chrono::{Local, TimeZone, Timelike};
     use std::collections::HashMap;
-    use std::time::{Duration, Instant};
+    use std::time::{Duration, Instant, SystemTime};
     use timeflow_shared::monitored_app::MonitoredApp;
 
     #[test]
@@ -827,6 +828,14 @@ mod tests {
             .expect("zero nanos");
         let duration = compute_session_duration_seconds("2026-03-11T12:00:15+01:00", end, 0);
         assert_eq!(duration, 285);
+    }
+
+    #[test]
+    fn wall_delta_uses_system_time_duration() {
+        let last = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let now = last + Duration::from_secs(5);
+
+        assert_eq!(wall_delta_since(last, now), Duration::from_secs(5));
     }
 
     #[test]
