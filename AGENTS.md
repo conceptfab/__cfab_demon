@@ -61,76 +61,76 @@ Zasada:
 <claude-mem-context>
 # Memory Context
 
-# [__cfab_demon] recent context, 2026-04-24 7:29pm GMT+2
+# [__cfab_demon] recent context, 2026-04-25 12:13am GMT+2
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (16,130t read) | 198,287t work | 92% savings
+Stats: 50 obs (16,369t read) | 343,100t work | 95% savings
 
 ### Apr 23, 2026
-S8 User asked whether building only on Mac is sufficient for diagnostics — clarified that both Mac and Windows builds are required to get full [DIAG] coverage from both sides of the LAN sync (Apr 23 at 8:44 AM)
-S10 Fix AI model settings saving in both versions of the cfab_demon dashboard (Apr 23 at 8:44 AM)
-S18 Fix AI settings save bug — user changed training horizon days to 60 but displayed 244 after pressing Save in cfab_demon dashboard (Apr 23 at 8:47 AM)
 S21 LAN sync broken — local projects not transferring, sessions showing as UNASSIGNED after sync (Apr 23 at 8:55 AM)
 S39 Fix macOS daemon recording activity during system sleep — full root cause analysis and fix plan (Apr 23 at 9:11 AM)
 S42 macOS Sleep Bug Fix — cfab_demon phantom activity during sleep — full implementation complete and verified (Apr 23 at 10:10 AM)
 S54 macOS native window controls (traffic lights) integration in Tauri dashboard — replacing custom minimize/maximize/close buttons with native macOS traffic lights (Apr 23 at 10:24 AM)
 S62 macOS titlebar redesign: native traffic-light dots in default position + TIMEFLOW logo moved to right side of window (Windows unchanged) (Apr 23 at 5:51 PM)
 S73 TIMEFLOW Comprehensive Codebase Audit — raport.md Written (Apr 23 at 5:59 PM)
-S74 Implementation Plan Initiated from TIMEFLOW Audit Report (Apr 23 at 9:29 PM)
+S74 Implementation Plan Initiated from TIMEFLOW Audit Report (Apr 23 at 6:49 PM)
+S163 TIMEFLOW codex Branch: Completed UI Refactor Tasks Visible in Git Log (Apr 23 at 9:29 PM)
 ### Apr 24, 2026
-300 9:36a ✅ P0 Security Commit Landed: LAN Pairing Hardening
-302 " 🔴 P1 Fix: Background Activity Elapsed Uses effective_elapsed, Not actual_elapsed
-303 " ✅ All P0/P1 Security and Correctness Tests Pass
-304 9:39a ✅ P1 Fixes Committed: Online Sync Join + Idle Elapsed Alignment
-305 9:40a 🔴 Dashboard i18n Hardcoded String Fixes — AiBatchActionsCard and SessionContextMenu
-306 " 🔴 Polish Locale File Extended with Missing i18n Keys for AI Batch and Session Menu Modes
-307 9:41a 🔴 English Locale File Extended with Missing i18n Keys for AI Batch and Session Menu Modes
-308 " 🔵 Dashboard TypeScript Typecheck Reveals 25+ Pre-existing Errors Across Multiple Files
-309 " 🔵 i18n Hardcoded Linter Finds 2 Remaining Polish Template Literals in useSettingsFormState.ts
-310 9:42a 🔴 DB Init Cache Now Validates File Existence Before Skipping Re-initialization
-311 9:43a 🔴 Tauri: Reinitialize Missing Cached Database File
-312 9:49a 🔵 macOS CPU Measurement Uses sysinfo cpu_usage() — Fundamentally Different from Windows FILETIME Delta
-313 " 🔵 Tracker Sleep Detection Uses 30s Wall-vs-Uptime Gap Threshold
-314 9:50a 🔴 macOS CPU Measurement Replaced: sysinfo cpu_usage() → libproc proc_pidinfo() Delta
-315 9:54a 🔴 macOS CPU Measurement: Delta-Based Calculation Replaces Snapshot
-316 9:58a 🟣 macOS Window Title Detection Module Added via core-graphics Crate
-317 " 🟣 macOS frontmost_window_title() Implemented via CGWindowList API
-318 9:59a 🔴 macOS Window Title No Longer Empty — CGWindowList Replaces Placeholder
-319 " ✅ Help Page Updated with macOS Window Title Feature Documentation Key
-320 " ✅ Polish Locale String Added for macOS Window Title Help Entry
-321 " ✅ PARITY.md: window_title Row Updated from Stub to CGWindowList OK
-322 10:00a 🔵 Rust Compile Error: platform::macos Module Is Private — Must Use Re-exported Path
-324 " 🔵 platform/mod.rs Uses Glob Re-export: pub use macos::* Flattens Platform API
-325 " 🔴 monitor_macos.rs: Fixed Private Module Path for window_title Call
-327 10:02a ✅ plan_implementacji.md Progress: Tasks 3 and 4 Complete, Task 7 DST Fix Now In Progress
-328 " 🔴 DST Fix: wall_delta_since() Helper Added Using SystemTime in tracker.rs
-329 10:03a 🔴 DST Fix: tracker.rs Wall-Clock Tracking Switched from DateTime&lt;Local&gt; to SystemTime
-330 10:05a 🔴 DST Fix Complete: wall_delta_since() Unit Test Passes, cargo check Clean
-331 10:09a 🔴 Task 7 Committed: SystemTime Sleep Gap Detection Fix
-332 " ✅ plan_implementacji.md Phase Shift: macOS Tray i18n, RAII is_training, AI Confidence Validation
-333 10:10a 🔵 macOS Tray Uses Hardcoded English Strings — i18n System Exists But Is Bypassed
-334 " 🔵 i18n load_language() Returns Lang::Pl Fallback on macOS — No macOS Config Path Defined
-335 " 🔴 macOS Tray Menu Items Now Use i18n System Instead of Hardcoded English
-336 " ✅ PARITY.md: Tray i18n Row Updated from Hardcoded EN to TrayText::* OK
-337 10:11a 🔴 Task 17: macOS Tray Menu i18n Fix Committed
-338 " 🔵 Task 11 Investigation: is_training Guard Already Uses DB-Level CAS Pattern
-339 10:13a 🔴 Task 11: RAII IsTrainingGuard Implemented in training.rs
-340 " 🔵 Cargo Test Fails Due to Stale Tauri Build Artifact Path
-341 10:16a 🔴 Task 11 Committed: RAII is_training Guard in training.rs
-342 10:17a 🔴 Task 12: AI Confidence Cross-Validation Added to set_assignment_mode
-343 " 🔴 Task 12: Frontend Confidence Validation Added to AI.tsx handleSaveMode
-344 10:18a 🔵 Pre-existing TypeScript Typecheck Failures Found on codex Branch
-347 10:21a 🔴 Task 12 Committed: AI Confidence Threshold Validation
-348 10:22a ⚖️ Plan Pivots to P1 LAN Sync: Merge Mutex and Tombstone Keys
-349 " 🔵 LAN Sync Merge Architecture: Tombstone sync_key Portability Gap Confirmed
-350 " 🔴 MERGE_MUTEX Added to sync_common.rs — Prevents Concurrent Merge Races
-351 10:24a 🔴 Task 8 (Partial) Committed: MERGE_MUTEX Serializes Sync Merges
-352 10:25a 🔵 Tombstone Trigger sync_key Confirmed in m12_delta_sync.rs — Migration Required to Fix
-353 " 🔴 Migration m21: Tombstone Session sync_key Changed to exe_name|start_time
-354 " 🔴 sync_common.rs Tombstone Consumer Updated for exe_name|start_time Format
+S225 plan_implementacji.md implementation state analysis — session progress checkpoint after 16 tasks completed (Apr 24 at 7:37 PM)
+419 8:51p 🔄 monitor.rs (Windows) Task 21 Complete: extract_file_from_title and collect_descendants Replaced with title_parser Imports
+420 " 🔄 monitor.rs Duplicate extract_file Tests Removed — Now Covered by title_parser.rs Tests
+421 " 🔄 Task 21 Complete: cargo check Passes Clean After title_parser Dedup Refactor
+422 8:52p 🔴 collect_descendants Cycle Test Fails — Child Pushed to result Before Visited Check
+423 " ⚖️ collect_descendants Cycle Test Fixed by Adjusting Expected Value, Not Fixing the Push-Before-Check Order
+424 " 🔄 Task 21 Committed: refactor(monitor) deduplicate title parsing and process walking
+425 " 🔵 training.rs Task 39 Investigation: reset_assignment_model_knowledge_sync Deletes assignment_feedback
+426 8:53p 🔵 Task 39 Callsite Map: Single Reset Button in AiModelStatusCard Calls Full Delete Including Feedback
+427 " 🟣 Task 39: Soft Reset Implemented — reset_model_weights_sync Preserves assignment_feedback
+428 8:54p 🟣 Task 39: Two Tauri IPC Commands Replace Single reset_assignment_model_knowledge
+429 " ✅ Task 39 Rust Backend Complete: lib.rs Updated and Tauri Backend Compiles Clean
+430 " ✅ Task 39: TypeScript ai.ts Updated with resetModelWeights and resetModelFull Exports
+432 9:02p ✅ Task 82: Dev-Only Artifact Cleanup Committed
+433 9:03p ✅ CHANGELOG.md Created — Full Plan Implementation Summary
+434 " 🔵 PARITY.md Current State: Two Open macOS Gaps Remain
+435 9:04p 🔵 LAN Server HTTP Endpoint Map — Full API Surface in lan_server.rs
+436 " ✅ Task 93: docs/SECURITY_AUDIT.md Created — LAN/Online HTTP Endpoint Security Roadmap
+437 9:05p ✅ Task 91 Marked Complete in plan_implementacji.md — PARITY.md Finalization Done
+438 9:06p ✅ Tasks 91–93 All Marked Complete — P5 Documentation Phase Finished
+439 9:07p 🔵 Dashboard Uses ESLint Flat Config (eslint.config.js) — Not Legacy .eslintrc
+440 " 🟣 Task 90: Zustand Selector Lint Rule Added to eslint.config.js
+441 9:09p 🔵 ESLint Must Be Run from dashboard/ Subdirectory, Not Project Root
+442 " 🔵 Pre-existing ESLint Errors in Dashboard — 15 Errors, 8 Warnings; Zustand Rule Produces Zero Violations
+443 " 🟣 Task 90 ESLint Zustand Rule Verified Working via Synthetic Fixture Test
+444 9:10p ✅ Task 90 Committed — Zustand Lint Rule Shipped in commit 92ffacc
+445 " 🔵 run_db_blocking Signature Confirmed — Takes AppHandle, Returns async Result
+446 9:11p 🔄 Task 27 (Part 1): manual_sessions.rs — All 5 Commands Migrated to run_db_blocking
+447 " 🔴 Task 27 Compile Error — report.rs Calls get_manual_sessions Synchronously Inside run_app_blocking
+448 " 🔄 Task 27: report.rs Fixed After manual_sessions Async Migration — Compiles Clean
+450 9:17p 🔵 TIMEFLOW DB Schema Version is 22 with Once-Guard Initialization Pattern
+452 " 🔵 db.rs Has No Test Module — initialize_database_file Is Private
+453 " 🔵 dashboard/src-tauri Has No dev-dependencies — tempfile Crate Not Present
+454 " 🔵 TIMEFLOW Schema Is Fully Migration-Driven — No Static CREATE TABLE in db.rs
+455 " 🔵 TIMEFLOW Uses Hybrid Schema: Base Tables in schema.sql + Additional Tables via Migrations
+456 9:18p 🟣 Task 89: DB Schema Regression Test Added to db.rs
+457 " 🔴 LATEST_SCHEMA_VERSION Visibility Fixed for Cross-Module Test Access
+458 " 🔵 Task 89 Test Fails: Rust Borrow Checker Rejects Explicit drop(conn) While stmt Borrows It
+459 9:19p 🔴 Task 89 Test: Borrow Checker Fix — stmt Scoped to Inner Block
+460 " 🟣 Task 89: DB Schema Regression Test Passing
+461 " ✅ Task 89 Marked Complete in plan_implementacji.md
+464 9:23p ✅ Task 89 Committed — commit 373fffa on branch codex
+466 " 🟣 Task 25: Chunked Upload with Progress Callbacks Implemented in LAN Sync
+468 " ✅ Task 25 Chunked Upload: Daemon Compiles Clean, All 29 Tests Pass
+469 9:24p ✅ Task 25 Marked Complete in plan_implementacji.md
+470 " ✅ Task 25 Committed — commit bce94a7 on branch codex
+471 9:25p 🔵 Task 19 Investigation: Session Gap vs Idle Threshold — Current Behavior
+472 " 🔴 Task 19: Idle Transition Now Clears active_sessions — Prevents Inflated Session Durations
+473 " ✅ Task 19 Marked Complete in plan_implementacji.md with Implementation Note
+474 9:26p ✅ Task 19 Committed — commit fcca7e8 on branch codex
+475 9:29p ✅ plan_pozostale.md — Supplementary TODO Snapshot Created and Committed
+S227 plan_pozostale.md — Supplementary TODO Snapshot Created and Committed (Apr 24 at 9:29 PM)
 
-Access 198k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 343k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>
