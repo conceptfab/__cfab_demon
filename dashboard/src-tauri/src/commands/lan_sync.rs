@@ -3,7 +3,6 @@
 
 use super::delta_export::TableHashes;
 use super::helpers::{build_table_hashes, timeflow_data_dir};
-use crate::db;
 use serde::{Deserialize, Serialize};
 use std::net::Ipv4Addr;
 use tauri::AppHandle;
@@ -322,9 +321,8 @@ pub async fn get_lan_sync_progress() -> Result<SyncProgress, String> {
 }
 
 #[tauri::command]
-pub fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
-    let conn = db::get_connection(&app)?;
-    Ok(build_table_hashes(&conn))
+pub async fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
+    super::helpers::run_db_blocking(app, |conn| Ok(build_table_hashes(conn))).await
 }
 
 #[tauri::command]

@@ -865,11 +865,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 - Modify: `dashboard/src-tauri/src/commands/sync_markers.rs:35,66,93,143`
 - Modify: `dashboard/src-tauri/src/commands/lan_sync.rs:290`
 
-- [ ] **Step 27.1: Zamień `pub fn cmd_x(...) -> Result` z DB na `pub async fn cmd_x(...) -> Result { run_db_blocking(|conn| { ... }).await }`.**
+- [x] **Step 27.1: Zamień `pub fn cmd_x(...) -> Result` z DB na `pub async fn cmd_x(...) -> Result { run_db_blocking(|conn| { ... }).await }`.**
 
-- [ ] **Step 27.2: Weryfikuj rejestrację w `invoke_handler` (async zmiana nie wymaga zmiany kontraktu JS).**
+- [x] **Step 27.2: Weryfikuj rejestrację w `invoke_handler` (async zmiana nie wymaga zmiany kontraktu JS).**
 
-- [ ] **Step 27.3: Commit**
+- [x] **Step 27.3: Commit**
 
 ### Task 28: `VACUUM INTO` przez `SELECT quote(?1)`
 
