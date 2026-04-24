@@ -156,12 +156,6 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
     }
 }
 
-/// Lightweight app category used by the tracker to tag file activities.
-/// Delegates to the shared classification map; supports config overrides.
-pub fn classify_activity_type(exe_name: &str) -> Option<ActivityType> {
-    timeflow_shared::activity_classification::classify_activity_type(exe_name, None)
-}
-
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
 /// Heurystyka: bierze pierwszą część przed separatorem (` - `, ` — `, ` | `).
 /// Przykłady:
@@ -506,17 +500,20 @@ mod tests {
     #[test]
     fn classify_activity_type_for_known_apps() {
         assert_eq!(
-            classify_activity_type("code.exe"),
+            timeflow_shared::activity_classification::classify_activity_type("code.exe", None),
             Some(ActivityType::Coding)
         );
         assert_eq!(
-            classify_activity_type("chrome.exe"),
+            timeflow_shared::activity_classification::classify_activity_type("chrome.exe", None),
             Some(ActivityType::Browsing)
         );
         assert_eq!(
-            classify_activity_type("blender.exe"),
+            timeflow_shared::activity_classification::classify_activity_type("blender.exe", None),
             Some(ActivityType::Design)
         );
-        assert_eq!(classify_activity_type("unknown.exe"), None);
+        assert_eq!(
+            timeflow_shared::activity_classification::classify_activity_type("unknown.exe", None),
+            None
+        );
     }
 }

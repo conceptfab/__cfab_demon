@@ -1,5 +1,4 @@
-// macOS-specific implementacje API platform::. W Fazie 1 wiele modułów
-// to tylko stuby — prawdziwa implementacja w Fazie 3.
+// macOS-specific implementacje API platform::.
 
 pub mod firewall;
 pub mod foreground;

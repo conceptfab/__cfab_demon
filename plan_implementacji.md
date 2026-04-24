@@ -1116,13 +1116,14 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 74-78: Martwe pola/funkcje macOS
 
-- [ ] **74:** `monitor_macos.rs:32` — usuń `#[allow(dead_code)]` pola z `PidCacheEntry` lub użyj ich.
+- [x] **74:** `monitor_macos.rs:32` — usuń `#[allow(dead_code)]` pola z `PidCacheEntry` lub użyj ich.
 - [ ] **75:** `monitor_macos.rs:50` — usuń `CpuSnapshot.total_time` (po Task 3 to bezpieczne).
-- [ ] **76:** `monitor_macos.rs:100-102` — usuń `warm_path_detection_wmi`; wywołanie gate `#[cfg(windows)]` w miejscu użycia.
-- [ ] **77:** `monitor.rs:161-163` — usuń wrapper `classify_activity_type`.
-- [ ] **78:** `platform/macos/mod.rs:2` — usuń komentarz „Faza 1: stuby..." (nieaktualny).
+  - Status: zostaje otwarte — `total_time` nadal jest wymagane do delty CPU między pomiarami.
+- [x] **76:** `monitor_macos.rs:100-102` — usuń `warm_path_detection_wmi`; wywołanie gate `#[cfg(windows)]` w miejscu użycia.
+- [x] **77:** `monitor.rs:161-163` — usuń wrapper `classify_activity_type`.
+- [x] **78:** `platform/macos/mod.rs:2` — usuń komentarz „Faza 1: stuby..." (nieaktualny).
 
-- [ ] **Commit:** `cleanup(macos): remove dead code after Phase 3 completion`
+- [x] **Commit:** `cleanup(macos): remove dead code after Phase 3 completion` (74, 76-78; 75 pozostaje otwarte)
 
 ### Task 79-82: UI martwy kod
 

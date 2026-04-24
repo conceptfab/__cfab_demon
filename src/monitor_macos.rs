@@ -22,32 +22,18 @@ pub struct ProcessInfo {
     pub activity_type: Option<ActivityType>,
 }
 
-/// Struktura symetryczna z Windows wariantem (`monitor::PidCacheEntry`),
-/// żeby tracker mógł być cross-platform bez cfg-switchy na poziomie pól.
-/// Na macOS większość pól nie jest obecnie czytana (klasyfikacja dzieje się
-/// w `get_foreground_info` bez powrotu do cache), stąd `allow(dead_code)`.
+/// Minimalny cache PID używany przez tracker do okresowej ewikcji wpisów.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct PidCacheEntry {
-    pub exe_name: String,
-    pub creation_time: u64,
-    pub created_at: Instant,
     pub last_accessed_at: Instant,
-    pub last_alive_check: Instant,
-    pub detected_path: Option<String>,
-    pub activity_type: Option<ActivityType>,
-    pub path_detection_attempted: bool,
 }
 
 pub type PidCache = HashMap<u32, PidCacheEntry>;
 
-/// Pola przechowywane dla kompatybilności typu z Windows variant'em
-/// `monitor::CpuSnapshot`. Tracker konsumuje tylko zwracany `cpu_fraction`
-/// z `measure_cpu_for_app`; snapshot leży w pamięci jako opaque marker.
+/// Poprzedni stan CPU per aplikacja (suma user+system z ostatniego ticku).
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CpuSnapshot {
-    /// Sumaryczny `accumulated_cpu_time` (ms) po całym drzewie procesów.
+    /// Sumaryczny `accumulated_cpu_time` (ns) po całym drzewie procesów.
     pub total_time: u64,
     pub measured_at: Instant,
 }
@@ -93,10 +79,6 @@ pub fn extract_file_from_title(title: &str) -> String {
 pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: Duration) {
     let now = Instant::now();
     pid_cache.retain(|_, entry| now.duration_since(entry.last_accessed_at) < max_age);
-}
-
-pub fn warm_path_detection_wmi() {
-    // WMI nie istnieje na macOS — no-op.
 }
 
 // ── Idle time (CoreGraphics FFI) ────────────────────────────────────────
@@ -167,21 +149,11 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
     let now = Instant::now();
     let activity_type = classify_activity_type(&exe_name);
 
-    // Prosta rewalidacja cache: utrzymuj entry per pid żeby tracker mógł robić
-    // evict_old_pid_cache. Nie sprawdzamy creation_time (na macOS nie jest
-    // potrzebne do detekcji PID reuse — zrobi to nowy NSRunningApplication).
+    // Utrzymuj entry per pid, żeby tracker mógł robić evict_old_pid_cache.
     let entry = pid_cache.entry(pid).or_insert_with(|| PidCacheEntry {
-        exe_name: exe_name.clone(),
-        creation_time: 0,
-        created_at: now,
         last_accessed_at: now,
-        last_alive_check: now,
-        detected_path: None,
-        activity_type,
-        path_detection_attempted: true, // AX/detected_path poza zakresem Fazy 3
     });
     entry.last_accessed_at = now;
-    entry.last_alive_check = now;
 
     let window_title =
         crate::platform::window_title::frontmost_window_title(pid as i32).unwrap_or_default();

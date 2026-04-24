@@ -440,6 +440,7 @@ fn record_app_activity(
 
 fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<ForegroundSignal>>, sync_state: Option<Arc<crate::lan_server::LanSyncState>>) {
     let mut pid_cache: PidCache = HashMap::new();
+    #[cfg(windows)]
     monitor::warm_path_detection_wmi();
     let mut cfg = config::load();
     let mut monitored: HashSet<String> = config::monitored_exe_names(&cfg);
