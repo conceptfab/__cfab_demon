@@ -1056,12 +1056,12 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 50-53: Sync drobne
 
-- [ ] **50:** Usuń drugi `remove_file` w `lan_server.rs:935`.
-- [ ] **51:** `SftpClient::Drop` zeruje `host`/`port`.
-- [ ] **52:** Ujednolić `AUTO_SYNC_COOLDOWN_SECS` i `TRIGGER_SYNC_COOLDOWN_SECS` — np. jedna stała `SYNC_COOLDOWN_SECS=30`, udokumentowana.
-- [ ] **53:** Gate `[DIAG]` w `sync_common.rs:356-361,598-602,894-898,911-916` — `if cfg!(debug_assertions) || log_settings.verbose { log::debug!("[DIAG] ...") }`.
+- [x] **50:** Usuń drugi `remove_file` w `lan_server.rs:935`.
+- [x] **51:** `SftpClient::Drop` zeruje `host`/`port`.
+- [x] **52:** Ujednolić `AUTO_SYNC_COOLDOWN_SECS` i `TRIGGER_SYNC_COOLDOWN_SECS` — np. jedna stała `SYNC_COOLDOWN_SECS=30`, udokumentowana.
+- [x] **53:** Gate `[DIAG]` w `sync_common.rs:356-361,598-602,894-898,911-916` — `if cfg!(debug_assertions) || log_settings.verbose { log::debug!("[DIAG] ...") }`.
 
-- [ ] **Commit**
+- [x] **Commit**
 
 ### Task 54-58: Tauri backend drobne
 

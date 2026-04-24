@@ -17,8 +17,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 const DEFAULT_LAN_PORT: u16 = 47891;
 const MAX_REQUEST_BODY: usize = 50 * 1024 * 1024; // 50MB
 const MAX_CONNECTIONS: usize = 32;
-/// Minimum seconds after a completed sync before accepting a new manual trigger.
-const TRIGGER_SYNC_COOLDOWN_SECS: u64 = 30;
+/// Minimum seconds after a completed sync before accepting another LAN sync.
+pub(crate) const SYNC_COOLDOWN_SECS: u64 = 30;
 
 struct ConnectionGuard(Arc<AtomicUsize>);
 impl Drop for ConnectionGuard {
@@ -951,9 +951,6 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         *guard = Some(own_marker.clone());
     }
 
-    // Clean up temp file
-    let _ = std::fs::remove_file(&incoming_path);
-
     state.set_progress(12, "slave_import_done", "local");
     sync_log("[SLAVE] Import zakonczony — dane scalone i zweryfikowane");
 
@@ -1079,7 +1076,7 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
-    if !req.force && state.secs_since_last_sync() < TRIGGER_SYNC_COOLDOWN_SECS {
+    if !req.force && state.secs_since_last_sync() < SYNC_COOLDOWN_SECS {
         return (429, json_error("Sync completed recently, wait before retrying"));
     }
 

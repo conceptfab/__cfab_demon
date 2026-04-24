@@ -57,9 +57,6 @@ const BEACON_INTERVAL: Duration = Duration::from_secs(30);
 const PEER_EXPIRY: Duration = Duration::from_secs(120);
 const RECV_TIMEOUT: Duration = Duration::from_secs(1);
 const PROTOCOL_VERSION: u32 = 1;
-/// Minimum seconds after a completed sync before auto-triggering another.
-const AUTO_SYNC_COOLDOWN_SECS: u64 = 60;
-
 // ── Beacon / Discovery packets ──
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -510,7 +507,8 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
 
             if should_auto_sync {
                 let sync_cooldown = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
-                let completed_cooldown_ok = state.secs_since_last_sync() >= AUTO_SYNC_COOLDOWN_SECS;
+                let completed_cooldown_ok =
+                    state.secs_since_last_sync() >= crate::lan_server::SYNC_COOLDOWN_SECS;
                 if role == "master" && !in_progress && handle_done && completed_cooldown_ok && last_sync_attempt.elapsed() >= sync_cooldown {
                     // Find a slave peer to sync with
                     if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {

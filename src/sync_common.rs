@@ -8,6 +8,10 @@ use std::sync::Mutex;
 
 pub(crate) static MERGE_MUTEX: Mutex<()> = Mutex::new(());
 
+fn diag_logging_enabled() -> bool {
+    cfg!(debug_assertions) || config::load_log_settings().lan_sync_level.eq_ignore_ascii_case("debug")
+}
+
 pub fn compute_tables_hash_string_conn(conn: &rusqlite::Connection) -> String {
     lan_common::compute_tables_hash_string(conn)
 }
@@ -360,12 +364,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             }
         }
     }
-    lan_common::sync_log(&format!(
-        "  [DIAG] Projekty: NEW={} ({:?}), UPDATED={} ({:?}), LOCAL_WINS={}",
-        diag_proj_new.len(), diag_proj_new,
-        diag_proj_updated.len(), diag_proj_updated,
-        diag_proj_local_wins
-    ));
+    if diag_logging_enabled() {
+        lan_common::sync_log(&format!(
+            "  [DIAG] Projekty: NEW={} ({:?}), UPDATED={} ({:?}), LOCAL_WINS={}",
+            diag_proj_new.len(), diag_proj_new,
+            diag_proj_updated.len(), diag_proj_updated,
+            diag_proj_local_wins
+        ));
+    }
 
     // Build ID maps once: remote ID → name, local name → ID
     // These are used by applications, sessions, and manual_sessions merge.
@@ -602,11 +608,13 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         }
     }
 
-    lan_common::sync_log(&format!(
-        "  [DIAG] Sesje: total={}, z remote project_id={}, zresolwowane={}, NIEZRESOLWOWANE_po_nazwie={:?}, remote_id_nieznane={}",
-        diag_sess_total, diag_sess_with_remote_pid, diag_sess_resolved_pid,
-        diag_sess_unresolved_by_name, diag_sess_unresolved_remote_id_unknown
-    ));
+    if diag_logging_enabled() {
+        lan_common::sync_log(&format!(
+            "  [DIAG] Sesje: total={}, z remote project_id={}, zresolwowane={}, NIEZRESOLWOWANE_po_nazwie={:?}, remote_id_nieznane={}",
+            diag_sess_total, diag_sess_with_remote_pid, diag_sess_resolved_pid,
+            diag_sess_unresolved_by_name, diag_sess_unresolved_remote_id_unknown
+        ));
+    }
 
     // Merge manual_sessions (using resolved local IDs)
     if let Some(manual_sessions) = archive.pointer("/data/manual_sessions").and_then(|v| v.as_array()) {
@@ -776,7 +784,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         let proj_exists: bool = tx
                             .query_row("SELECT 1 FROM projects WHERE name = ?1", [sync_key], |_| Ok(()))
                             .is_ok();
-                        if proj_exists {
+                        if proj_exists && diag_logging_enabled() {
                             lan_common::sync_log(&format!(
                                 "  [DIAG] TOMBSTONE kasuje projekt '{}' (deleted_at={})",
                                 sync_key, deleted_at_str
@@ -908,7 +916,7 @@ pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String>
            AND EXISTS (SELECT 1 FROM projects WHERE projects.name = sessions.project_name)",
         [],
     ).map_err(|e| e.to_string())?;
-    if reattached > 0 {
+    if reattached > 0 && diag_logging_enabled() {
         lan_common::sync_log(&format!(
             "  [DIAG] Przywrocono project_id dla {} sesji po nazwie projektu",
             reattached
@@ -926,7 +934,7 @@ pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String>
             .map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
             .collect();
-        if !rows.is_empty() {
+        if !rows.is_empty() && diag_logging_enabled() {
             lan_common::sync_log(&format!(
                 "  [DIAG] verify_merge_integrity ZARAZ wyzeruje project_id w sesjach: {:?} (project_id → liczba sesji). project_name zachowane.",
                 rows
