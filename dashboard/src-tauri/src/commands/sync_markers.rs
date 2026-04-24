@@ -111,8 +111,11 @@ pub fn backup_before_sync(app: AppHandle) -> Result<String, String> {
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
         .map_err(|e| format!("WAL checkpoint failed: {}", e))?;
 
-    let escaped = dest_path.to_string_lossy().replace('\'', "''");
-    conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
+    let dest_path_string = dest_path.to_string_lossy().to_string();
+    let quoted_path: String = conn
+        .query_row("SELECT quote(?1)", [&dest_path_string], |row| row.get(0))
+        .map_err(|e| format!("Failed to escape backup path: {}", e))?;
+    conn.execute_batch(&format!("VACUUM INTO {}", quoted_path))
         .map_err(|e| format!("Backup failed: {}", e))?;
 
     // Rotate: keep only MAX_SYNC_BACKUPS newest files

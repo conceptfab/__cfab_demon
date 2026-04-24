@@ -868,9 +868,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/sync_markers.rs:94-115`
 
-- [ ] **Step 28.1: Zamień `format!("VACUUM INTO '{}'")` na pattern z `settings.rs:348-350`: `SELECT quote(?1)`.**
+- [x] **Step 28.1: Zamień `format!("VACUUM INTO '{}'")` na pattern z `settings.rs:348-350`: `SELECT quote(?1)`.**
 
-- [ ] **Step 28.2: Commit**
+- [x] **Step 28.2: Commit**
 
 ### Task 29: `build_http_client` → `Result`
 
