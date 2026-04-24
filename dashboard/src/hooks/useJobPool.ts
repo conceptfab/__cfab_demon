@@ -29,7 +29,8 @@ import {
 } from '@/lib/background-helpers';
 
 export function useJobPool() {
-  const { autoImportDone, triggerRefresh } = useDataStore();
+  const autoImportDone = useDataStore((s) => s.autoImportDone);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
   const refreshDatabaseSettings = useBackgroundStatusStore(
     (s) => s.refreshDatabaseSettings,
