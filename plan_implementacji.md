@@ -1185,26 +1185,28 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 91: `PARITY.md` finalizacja
 
-- [ ] **Step 91.1: Zaktualizuj wszystkie wiersze po zakończeniu P1/P2.**
+- [x] **Step 91.1: Zaktualizuj wszystkie wiersze po zakończeniu P1/P2.**
 
-- [ ] **Step 91.2: Dodaj link z `CLAUDE.md` do `PARITY.md`.**
+  *(Status snapshot po fazie P2: window_title, measure_cpu_for_app, Tray i18n, Version dialog — parity. detected_path, Tray sync status, foreground detection — pozostają otwarte, śledzone w wierszach z referencjami do tasków 36 i 37.)*
 
-- [ ] **Step 91.3: Commit**
+- [x] **Step 91.2: Dodaj link z `CLAUDE.md` do `PARITY.md`.**
+
+- [x] **Step 91.3: Commit**
 
 ### Task 92: CHANGELOG
 
 **Files:**
 - Modify: `CHANGELOG.md` (lub stwórz)
 
-- [ ] **Step 92.1: Sekcja per faza — wylistuj user-visible zmiany (P0 security, P1 funkcjonalne, P2 perf).**
+- [x] **Step 92.1: Sekcja per faza — wylistuj user-visible zmiany (P0 security, P1 funkcjonalne, P2 perf).**
 
-- [ ] **Step 92.2: Commit**
+- [x] **Step 92.2: Commit**
 
 ### Task 93: Audit security — roadmap
 
-- [ ] **Step 93.1: Dodaj `docs/SECURITY_AUDIT.md` z listą endpointów LAN HTTP + tickbox „sprawdzone w release Y".**
+- [x] **Step 93.1: Dodaj `docs/SECURITY_AUDIT.md` z listą endpointów LAN HTTP + tickbox „sprawdzone w release Y".**
 
-- [ ] **Step 93.2: Commit**
+- [x] **Step 93.2: Commit**
 
 ---
 
