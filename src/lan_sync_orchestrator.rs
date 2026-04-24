@@ -720,10 +720,6 @@ fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String
     get_latest_marker(conn).map(|(hash, _)| hash)
 }
 
-fn get_local_marker_created_at_with_conn(conn: &rusqlite::Connection) -> Option<String> {
-    get_latest_marker(conn).map(|(_, created_at)| created_at)
-}
-
 /// Find the created_at timestamp for a specific marker hash.
 /// Used to determine the correct `since` for delta sync — we need
 /// the date of the marker matching the remote peer's hash, not our latest.
@@ -734,7 +730,4 @@ fn get_marker_created_at_by_hash(conn: &rusqlite::Connection, hash: &str) -> Opt
         |row| row.get(0),
     )
     .ok()
-    // Fallback to latest marker if hash not found locally
-    .or_else(|| get_local_marker_created_at_with_conn(conn))
 }
-

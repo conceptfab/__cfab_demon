@@ -815,11 +815,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `src/lan_sync_orchestrator.rs:723-725,738`
 
-- [ ] **Step 23.1: Zastąp wywołanie: brak markera → `since = "1970-01-01 00:00:00"` (full dump).**
+- [x] **Step 23.1: Zastąp wywołanie: brak markera → `since = "1970-01-01 00:00:00"` (full dump).**
 
-- [ ] **Step 23.2: Usuń martwą funkcję (Task 87/P4).**
+- [x] **Step 23.2: Usuń martwą funkcję (Task 87/P4).**
 
-- [ ] **Step 23.3: Commit**
+- [x] **Step 23.3: Commit**
 
 ### Task 24: Merge streaming — zamiast wczytywania 200 MB JSON w pamięci
 
