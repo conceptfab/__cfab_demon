@@ -135,9 +135,11 @@ function renderDuration(seconds: number) {
 
 export function Projects() {
   const { t } = useTranslation();
-  const { setProjectPageId, setCurrentPage, projectPageMinimal } = useUIStore();
-  const { triggerRefresh } = useDataStore();
-  const { currencyCode } = useSettingsStore();
+  const setProjectPageId = useUIStore((s) => s.setProjectPageId);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const projectPageMinimal = useUIStore((s) => s.projectPageMinimal);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+  const currencyCode = useSettingsStore((s) => s.currencyCode);
   const { showError } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
