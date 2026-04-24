@@ -128,13 +128,6 @@ pub struct PeersFile {
     pub peers: Vec<PeerInfo>,
 }
 
-// ── Device ID ──
-// Unified: uses lan_common::get_device_id() which creates the file if missing.
-
-fn get_machine_name() -> String {
-    lan_common::get_machine_name()
-}
-
 // ── Peers file I/O ──
 
 fn peers_file_path() -> Option<std::path::PathBuf> {
@@ -216,7 +209,7 @@ pub fn start(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>
 
 fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>) {
     let device_id = lan_common::get_device_id();
-    let machine_name = get_machine_name();
+    let machine_name = lan_common::get_machine_name();
     let version_str = crate::VERSION.trim().to_string();
     let started_at = Instant::now();
 
