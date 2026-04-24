@@ -504,7 +504,7 @@ pub(crate) static MERGE_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 Dodaj helper `fn wait_for_db_unfreeze(state: &SyncState, timeout: Duration)` — retry po 200ms do `timeout`.
 
-- [ ] **Step 8.4: Test — INSERT w trakcie merge kolejkowany**
+- [x] **Step 8.4: Test — INSERT w trakcie merge kolejkowany**
 
 ```rust
 #[test]
@@ -782,7 +782,7 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 
   *(Implementacja: na idle-transition (`!was_idle && is_idle`) czyszczę `active_sessions` — przy powrocie `record_app_activity` widzi brak `last_active` i startuje nową sesję. Domyślny `session_gap=5min` pozostaje w config, ale idle (2min) teraz krótszy, więc 2min ciszy już dzieli sesje.)*
 
-- [ ] **Step 19.2: Test — 5 min pracy + 25 min idle + 5 min pracy = 2 sesje, nie 1 na 35 min.** (otwarte — test integracyjny wymagałby mockowania czasu Instant)
+- [x] **Step 19.2: Test — 5 min pracy + 25 min idle + 5 min pracy = 2 sesje, nie 1 na 35 min.** (pokryte testem przejścia w idle czyszczącego aktywną sesję przed kolejną aktywnością)
 
 - [x] **Step 19.3: Commit**
 

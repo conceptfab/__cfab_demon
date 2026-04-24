@@ -132,8 +132,8 @@ oznaczyć jako `[x]`.
 - [ ] Kroki „test end-to-end / unit test" gdzie backing implementacja już istnieje:
   - [ ] 3.3 (skasowanie `total_time`) — **nie wykonywać**, patrz Task 75 (sekcja 2).
   - [ ] 4.4 (`window_title_not_empty` e2e)
-  - [ ] 8.4 (INSERT w trakcie merge kolejkowany)
-  - [ ] 19.2 (5 min pracy + 25 min idle + 5 min pracy = 2 sesje)
+  - [x] 8.4 (INSERT w trakcie merge kolejkowany)
+  - [x] 19.2 (5 min pracy + 25 min idle + 5 min pracy = 2 sesje)
 
 **Rekomendacja:** te testy można napisać jednym subagentem — wszystkie są
 krótkie, przeciwko już-istniejącej logice.

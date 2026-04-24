@@ -1074,4 +1074,32 @@ mod tests {
         let h3 = generate_marker_hash_simple("abc", "2024-01-01 00:00:00", "dev2");
         assert_ne!(h1, h3);
     }
+
+    #[test]
+    fn merge_incoming_data_waits_for_merge_mutex() {
+        let guard = MERGE_MUTEX.lock().expect("merge mutex lock");
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        let handle = std::thread::spawn(move || {
+            let mut conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+            let result = merge_incoming_data(&mut conn, "{");
+            tx.send(result).expect("send merge result");
+        });
+
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(50))
+                .is_err(),
+            "merge should not start parsing while another merge holds the mutex"
+        );
+
+        drop(guard);
+
+        let result = rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .expect("merge finishes after mutex release");
+        assert!(result
+            .expect_err("invalid JSON should fail after mutex release")
+            .contains("Failed to parse slave data"));
+        handle.join().expect("merge thread joins");
+    }
 }

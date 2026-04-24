@@ -175,6 +175,26 @@ fn save_daily_if_unfrozen(
     true
 }
 
+fn should_flush_skipped_save(
+    sync_state: Option<&Arc<crate::lan_server::LanSyncState>>,
+    save_skipped_while_frozen: bool,
+) -> bool {
+    save_skipped_while_frozen && !is_db_frozen(sync_state)
+}
+
+fn close_sessions_on_idle_transition(
+    is_idle: bool,
+    was_idle: bool,
+    active_sessions: &mut HashMap<String, Instant>,
+) -> bool {
+    if is_idle && !was_idle && !active_sessions.is_empty() {
+        active_sessions.clear();
+        true
+    } else {
+        false
+    }
+}
+
 /// Starts the monitor thread. Returns a JoinHandle.
 /// `stop_signal` — set to true to stop the thread.
 /// `foreground_signal` — optional event from SetWinEventHook for instant wake on window change.
@@ -624,11 +644,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // Idle detection: skip foreground recording when user is idle (no kb/mouse input)
         let idle_ms = monitor::get_idle_time_ms();
         let is_idle = idle_ms >= IDLE_THRESHOLD_MS;
+        let was_idle_before_tick = was_idle;
 
         // When transitioning from idle to active, use the full tick duration.
         // idle_ms is near 0 here (user just moved mouse), so it can't estimate
         // the active portion. The tick itself is the first active period.
-        let effective_elapsed_for_activity = if !is_idle && was_idle {
+        let effective_elapsed_for_activity = if !is_idle && was_idle_before_tick {
             log::debug!(
                 "Idle→active transition: recording full {}ms tick",
                 effective_elapsed.as_millis()
@@ -637,7 +658,6 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         } else {
             effective_elapsed
         };
-        was_idle = is_idle;
 
         // Foreground tracking (skip when idle — don't count time without user input)
         if !is_idle {
@@ -664,17 +684,18 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
             // On transition into idle, forget active sessions so that the
             // next active tick opens a fresh session instead of extending
             // the pre-idle one across the idle gap (Task 19).
-            if !was_idle && !active_sessions.is_empty() {
+            let active_before_clear = active_sessions.len();
+            if close_sessions_on_idle_transition(is_idle, was_idle_before_tick, &mut active_sessions) {
                 log::info!(
                     "Idle transition ({}ms ≥ {}ms): closing {} active session(s)",
                     idle_ms,
                     IDLE_THRESHOLD_MS,
-                    active_sessions.len()
+                    active_before_clear
                 );
-                active_sessions.clear();
             }
             log::debug!("User idle for {}ms, skipping foreground recording", idle_ms);
         }
+        was_idle = is_idle;
 
         // CPU-based background tracking (for monitored apps NOT in foreground)
         // Build process snapshot at most every 30s for background apps.
@@ -759,13 +780,11 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
             } else {
                 save_skipped_while_frozen = true;
             }
-        } else if save_skipped_while_frozen {
-            if !is_db_frozen(sync_state.as_ref()) {
-                log::info!("Database unfrozen — saving skipped data now");
-                save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "post-unfreeze");
-                save_skipped_while_frozen = false;
-                last_save = Instant::now();
-            }
+        } else if should_flush_skipped_save(sync_state.as_ref(), save_skipped_while_frozen) {
+            log::info!("Database unfrozen — saving skipped data now");
+            save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "post-unfreeze");
+            save_skipped_while_frozen = false;
+            last_save = Instant::now();
         }
 
         // Evict old PID cache entries
@@ -804,15 +823,18 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_session_duration_seconds, record_app_activity, session_start_time_for_elapsed,
+        close_sessions_on_idle_transition, compute_session_duration_seconds, record_app_activity,
+        session_start_time_for_elapsed, should_flush_skipped_save,
         should_refresh_background_process_snapshot, wall_delta_since, ActivityContext,
         BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
     };
     use crate::activity::ActivityType;
     use crate::config::Config;
+    use crate::lan_server::LanSyncState;
     use crate::storage::{DailyData, DailySummary};
     use chrono::{Local, TimeZone, Timelike};
     use std::collections::HashMap;
+    use std::sync::Arc;
     use std::time::{Duration, Instant, SystemTime};
     use timeflow_shared::monitored_app::MonitoredApp;
 
@@ -865,6 +887,19 @@ mod tests {
         let now = last + Duration::from_secs(5);
 
         assert_eq!(wall_delta_since(last, now), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn skipped_save_flushes_only_after_db_unfreeze() {
+        let sync_state = Arc::new(LanSyncState::new());
+        sync_state.freeze();
+
+        assert!(!should_flush_skipped_save(Some(&sync_state), false));
+        assert!(!should_flush_skipped_save(Some(&sync_state), true));
+
+        sync_state.unfreeze();
+
+        assert!(should_flush_skipped_save(Some(&sync_state), true));
     }
 
     #[test]
@@ -939,6 +974,79 @@ mod tests {
                 .map(|file| file.total_seconds)
                 .collect::<Vec<_>>(),
             vec![10, 15]
+        );
+    }
+
+    #[test]
+    fn idle_transition_closes_session_before_next_activity() {
+        let cfg = Config {
+            apps: vec![MonitoredApp {
+                exe_name: "code.exe".to_string(),
+                display_name: "Code".to_string(),
+                added_at: "2026-03-12T00:00:00Z".to_string(),
+            }],
+            intervals: Default::default(),
+        };
+        let mut daily_data = DailyData {
+            date: "2026-03-12".to_string(),
+            generated_at: "2026-03-12T00:00:00Z".to_string(),
+            apps: HashMap::new(),
+            summary: DailySummary {
+                total_app_seconds: 0,
+                total_app_formatted: String::new(),
+                apps_active_count: 0,
+            },
+        };
+        let mut active_sessions = HashMap::new();
+        let mut file_index_cache = HashMap::new();
+        let session_gap = Duration::from_secs(5 * 60);
+
+        record_app_activity(
+            ActivityContext {
+                exe_name: "code.exe",
+                file_name: "main.rs",
+                window_title: "TIMEFLOW - main.rs",
+                detected_path: Some("/repo/src/main.rs"),
+                activity_type: Some(ActivityType::Coding),
+                elapsed: Duration::from_secs(5 * 60),
+                session_gap,
+            },
+            &cfg,
+            &mut daily_data,
+            &mut active_sessions,
+            &mut file_index_cache,
+        );
+
+        assert!(close_sessions_on_idle_transition(
+            true,
+            false,
+            &mut active_sessions
+        ));
+
+        record_app_activity(
+            ActivityContext {
+                exe_name: "code.exe",
+                file_name: "main.rs",
+                window_title: "TIMEFLOW - main.rs",
+                detected_path: Some("/repo/src/main.rs"),
+                activity_type: Some(ActivityType::Coding),
+                elapsed: Duration::from_secs(5 * 60),
+                session_gap,
+            },
+            &cfg,
+            &mut daily_data,
+            &mut active_sessions,
+            &mut file_index_cache,
+        );
+
+        let sessions = &daily_data.apps.get("code.exe").expect("app tracked").sessions;
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session.duration_seconds)
+                .collect::<Vec<_>>(),
+            vec![300, 300]
         );
     }
 }
