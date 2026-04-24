@@ -661,6 +661,18 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 recorded_this_tick.insert(info.exe_name.clone());
             }
         } else {
+            // On transition into idle, forget active sessions so that the
+            // next active tick opens a fresh session instead of extending
+            // the pre-idle one across the idle gap (Task 19).
+            if !was_idle && !active_sessions.is_empty() {
+                log::info!(
+                    "Idle transition ({}ms ≥ {}ms): closing {} active session(s)",
+                    idle_ms,
+                    IDLE_THRESHOLD_MS,
+                    active_sessions.len()
+                );
+                active_sessions.clear();
+            }
             log::debug!("User idle for {}ms, skipping foreground recording", idle_ms);
         }
 
