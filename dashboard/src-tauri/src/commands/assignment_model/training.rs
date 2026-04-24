@@ -13,6 +13,48 @@ use crate::commands::assignment_model::{
     MIN_TRAINING_HORIZON_DAYS,
 };
 
+struct IsTrainingGuard {
+    conn: *mut rusqlite::Connection,
+}
+
+impl IsTrainingGuard {
+    fn acquire(conn: &mut rusqlite::Connection) -> Result<Self, String> {
+        let rows = conn
+            .execute(
+                "UPDATE assignment_model_state
+                 SET value = 'true', updated_at = datetime('now')
+                 WHERE key = 'is_training' AND value = 'false'",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+
+        if rows == 0 {
+            let existing: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM assignment_model_state WHERE key = 'is_training'",
+                    [],
+                    |row| row.get(0),
+                )
+                .ok();
+            match existing.as_deref() {
+                Some("true") => return Err("Training already in progress".to_string()),
+                _ => upsert_state(conn, "is_training", "true")?,
+            }
+        }
+
+        Ok(Self { conn })
+    }
+}
+
+impl Drop for IsTrainingGuard {
+    fn drop(&mut self) {
+        // SAFETY: guard is created only from a live retrain_model_sync connection
+        // and is dropped before that function returns.
+        let conn = unsafe { &mut *self.conn };
+        let _ = upsert_state(conn, "is_training", "false");
+    }
+}
+
 pub fn reset_assignment_model_knowledge_sync(
     conn: &mut rusqlite::Connection,
 ) -> Result<(), String> {
@@ -46,23 +88,7 @@ pub fn reset_assignment_model_knowledge_sync(
 }
 
 pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String> {
-    // Atomically set is_training=true only if not already training
-    let rows = conn.execute(
-        "UPDATE assignment_model_state SET value = 'true', updated_at = datetime('now') WHERE key = 'is_training' AND value = 'false'",
-        [],
-    ).map_err(|e| e.to_string())?;
-    if rows == 0 {
-        // Either no row exists (first run) or already training — try insert for first run
-        let existing: Option<String> = conn.query_row(
-            "SELECT value FROM assignment_model_state WHERE key = 'is_training'",
-            [],
-            |row| row.get(0),
-        ).ok();
-        match existing.as_deref() {
-            Some("true") => return Err("Training already in progress".to_string()),
-            _ => { upsert_state(conn, "is_training", "true")?; }
-        }
-    }
+    let _training_guard = IsTrainingGuard::acquire(conn)?;
     let start_time = std::time::Instant::now();
 
     let state = load_state_map(conn).unwrap_or_default();
@@ -401,7 +427,6 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
     })();
 
     let duration_ms = start_time.elapsed().as_millis() as i64;
-    let _ = upsert_state(conn, "is_training", "false");
 
     match result {
         Ok(total_samples) => {
@@ -519,6 +544,25 @@ mod tests {
         )
         .expect("insert projects");
         conn
+    }
+
+    #[test]
+    fn is_training_guard_releases_on_panic() {
+        let mut conn = setup_training_conn();
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = IsTrainingGuard::acquire(&mut conn).expect("acquire training guard");
+            panic!("simulated");
+        }));
+
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM assignment_model_state WHERE key = 'is_training'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("is_training row");
+        assert_eq!(value, "false");
     }
 
     fn session_window(days_ago: i64, hour: u32) -> (String, String, String) {
