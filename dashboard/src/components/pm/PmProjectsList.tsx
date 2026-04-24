@@ -6,6 +6,7 @@ import type { PmTfMatch } from '@/pages/PM';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { usePersistedState } from '@/hooks/usePersistedState';
 
 interface PmProjectsListProps {
   projects: PmProject[];
@@ -93,10 +94,6 @@ const STORAGE_KEY_STATUS = 'timeflow-pm-filter-status';
 const STORAGE_KEY_SORT_FIELD = 'timeflow-pm-sort-field';
 const STORAGE_KEY_SORT_DIR = 'timeflow-pm-sort-dir';
 
-function loadStored(key: string, fallback: string): string {
-  try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
-}
-
 export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, onOpenProjectCard }: PmProjectsListProps) {
   const { t } = useTranslation();
 
@@ -104,20 +101,19 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
   const [search, setSearch] = useState('');
 
   // Filters
-  const [filterYear, setFilterYear] = useState(() => loadStored(STORAGE_KEY_YEAR, ''));
-  const [filterClient, setFilterClient] = useState(() => loadStored(STORAGE_KEY_CLIENT, ''));
-  const [filterStatus, setFilterStatus] = useState(() => loadStored(STORAGE_KEY_STATUS, ''));
+  const [filterYear, setFilterYear] = usePersistedState(STORAGE_KEY_YEAR, '');
+  const [filterClient, setFilterClient] = usePersistedState(STORAGE_KEY_CLIENT, '');
+  const [filterStatus, setFilterStatus] = usePersistedState(STORAGE_KEY_STATUS, '');
 
   // Sort
-  const [sortField, setSortField] = useState<PmSortField>(() => loadStored(STORAGE_KEY_SORT_FIELD, 'number') as PmSortField);
-  const [sortDir, setSortDir] = useState<SortDir>(() => loadStored(STORAGE_KEY_SORT_DIR, 'desc') as SortDir);
-
-  // Persist filter/sort choices
-  const setAndStoreYear = (v: string) => { setFilterYear(v); localStorage.setItem(STORAGE_KEY_YEAR, v); };
-  const setAndStoreClient = (v: string) => { setFilterClient(v); localStorage.setItem(STORAGE_KEY_CLIENT, v); };
-  const setAndStoreStatus = (v: string) => { setFilterStatus(v); localStorage.setItem(STORAGE_KEY_STATUS, v); };
-  const setAndStoreSortField = (v: PmSortField) => { setSortField(v); localStorage.setItem(STORAGE_KEY_SORT_FIELD, v); };
-  const setAndStoreSortDir = (v: SortDir) => { setSortDir(v); localStorage.setItem(STORAGE_KEY_SORT_DIR, v); };
+  const [sortField, setSortField] = usePersistedState<PmSortField>(
+    STORAGE_KEY_SORT_FIELD,
+    'number',
+  );
+  const [sortDir, setSortDir] = usePersistedState<SortDir>(
+    STORAGE_KEY_SORT_DIR,
+    'desc',
+  );
 
   // Extract unique values for filters
   const uniqueYears = useMemo(() =>
@@ -181,22 +177,22 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
     return displayed.map((dp) => projects.indexOf(dp));
   }, [displayed, projects]);
 
-  const toggleSortDir = () => setAndStoreSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+  const toggleSortDir = () => setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
 
   const handleHeaderClick = (field: PmSortField) => {
     if (sortField === field) {
       toggleSortDir();
     } else {
-      setAndStoreSortField(field);
-      setAndStoreSortDir('asc');
+      setSortField(field);
+      setSortDir('asc');
     }
   };
 
   const clearFilters = () => {
     setSearch('');
-    setAndStoreYear('');
-    setAndStoreClient('');
-    setAndStoreStatus('');
+    setFilterYear('');
+    setFilterClient('');
+    setFilterStatus('');
   };
 
   const selectClass = 'h-7 rounded-md border border-border bg-background px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-primary';
@@ -231,19 +227,19 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
         <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
 
         {/* Year filter */}
-        <select className={selectClass} value={filterYear} onChange={(e) => setAndStoreYear(e.target.value)}>
+        <select className={selectClass} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
           <option value="">{t('pm.filter.all_years')}</option>
           {uniqueYears.map((y) => <option key={y} value={y}>20{y}</option>)}
         </select>
 
         {/* Client filter */}
-        <select className={selectClass} value={filterClient} onChange={(e) => setAndStoreClient(e.target.value)}>
+        <select className={selectClass} value={filterClient} onChange={(e) => setFilterClient(e.target.value)}>
           <option value="">{t('pm.filter.all_clients')}</option>
           {uniqueClients.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
 
         {/* Status filter */}
-        <select className={selectClass} value={filterStatus} onChange={(e) => setAndStoreStatus(e.target.value)}>
+        <select className={selectClass} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="">{t('pm.filter.all_statuses')}</option>
           {uniqueStatuses.map((s) => <option key={s} value={s}>{t(`pm.status.${s}`, s)}</option>)}
         </select>
@@ -253,7 +249,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
           <select
             className={selectClass}
             value={sortField}
-            onChange={(e) => setAndStoreSortField(e.target.value as PmSortField)}
+            onChange={(e) => setSortField(e.target.value as PmSortField)}
           >
             {SORT_FIELDS.map((f) => (
               <option key={f.key} value={f.key}>{t(f.labelKey)}</option>
@@ -416,7 +412,7 @@ function StatusBar({ projects, clientGroupOf, t }: { projects: PmProject[]; clie
       if (!isNaN(b)) budgetSum += b;
     }
     return { count: projects.length, clients: clients.size, years: years.size, byStatus, budgetSum };
-  }, [projects]);
+  }, [clientGroupOf, projects]);
 
   if (stats.count === 0) return null;
 
@@ -437,7 +433,7 @@ function StatusBar({ projects, clientGroupOf, t }: { projects: PmProject[]; clie
       {Object.entries(stats.byStatus).map(([status, count]) => (
         <span key={status} className="flex items-center gap-1">
           <Badge variant="outline" className={cn('text-[9px] px-1 py-0', statusColor(status))}>
-            {t(`pm.status.${status}`, status)}
+            {t(`pm.status.${status}`)}
           </Badge>
           <span className="font-medium text-foreground/80">{count}</span>
         </span>
