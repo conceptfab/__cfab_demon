@@ -144,7 +144,7 @@ export function ProjectPage() {
   const setProjectPageId = useUIStore((s) => s.setProjectPageId);
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
-  const { currencyCode } = useSettingsStore();
+  const currencyCode = useSettingsStore((s) => s.currencyCode);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const {
