@@ -5304,6 +5304,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "core-foundation 0.9.4",
+ "core-graphics 0.23.2",
  "embed-resource",
  "flate2",
  "fs2",

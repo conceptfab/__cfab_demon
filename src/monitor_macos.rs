@@ -2,8 +2,8 @@
 // Faza 3: prawdziwe API do idle time (CGEventSource), foreground
 // (NSWorkspace.frontmostApplication) oraz CPU per aplikacja (sysinfo,
 // z sumowaniem po drzewie procesów).
-// WMI i tytuł okna przez AX API to osobny temat — tytuł okna zostaje pusty
-// do czasu dodania obsługi Accessibility (wymaga zgody użytkownika).
+// WMI i pełne AX API to osobny temat — podstawowy tytuł okna pobieramy przez
+// CGWindowListCopyWindowInfo bez proszenia użytkownika o Accessibility.
 
 use std::collections::HashMap;
 use std::os::raw::{c_int, c_void};
@@ -183,10 +183,13 @@ pub fn get_foreground_info(pid_cache: &mut PidCache) -> Option<ProcessInfo> {
     entry.last_accessed_at = now;
     entry.last_alive_check = now;
 
+    let window_title =
+        crate::platform::window_title::frontmost_window_title(pid as i32).unwrap_or_default();
+
     Some(ProcessInfo {
         exe_name,
         pid,
-        window_title: String::new(), // Faza 3.1: AX API wymaga Accessibility permission
+        window_title,
         detected_path: None,
         activity_type,
     })

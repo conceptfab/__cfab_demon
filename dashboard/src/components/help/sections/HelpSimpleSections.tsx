@@ -129,6 +129,7 @@ export function HelpDaemonSection() {
         t18n('help_page.version_insight_information_on_the_compatibility_of_daem'),
         t18n('help_page.localization_the_daemon_tray_menu_automatically_switches'),
         t18n('help_page.monitor_all_fallback_if_the_monitored_process_list_is_em'),
+        t18n('help_page.daemon_macos_window_title'),
         t18n('help_page.monitored_apps_with_empty_window_titles_are_still_counted'),
         t18n('help_page.unassigned_sessions_indicator_badge_with_the_count_of_se'),
         t18n('help_page.log_auto_refresh_button_to_enable_automatic_real_time_lo'),
