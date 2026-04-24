@@ -35,9 +35,11 @@ export function useJobPool() {
   const refreshDatabaseSettings = useBackgroundStatusStore(
     (s) => s.refreshDatabaseSettings,
   );
+  const refreshAiStatus = useBackgroundStatusStore((s) => s.refreshAiStatus);
   const loopRef = useRef<number | null>(null);
 
   const nextDiagnosticsRef = useRef(0);
+  const nextAiStatusRef = useRef(0);
   const nextRefreshRef = useRef(0);
   const nextSigCheckRef = useRef(0);
   const nextAutoSplitRef = useRef(0);
@@ -276,6 +278,7 @@ export function useJobPool() {
     visibilityDebounceTimer.current = window.setTimeout(() => {
       visibilityDebounceTimer.current = null;
       nextDiagnosticsRef.current = 0;
+      nextAiStatusRef.current = 0;
       handleDiagnosticsRefresh();
       handleDatabaseSettingsRefresh();
 
@@ -351,6 +354,12 @@ export function useJobPool() {
       if (autoImportDone && now >= nextDaemonOnlineSyncRef.current) {
         void runDaemonOnlineSyncInterval();
       }
+
+      // Periodic AI status refresh — keeps sidebar training badge up to date
+      if (isDocumentVisible() && now >= nextAiStatusRef.current) {
+        nextAiStatusRef.current = now + 120_000;
+        void refreshAiStatus().catch((e) => logger.warn('[useJobPool] AI status refresh failed:', e));
+      }
     }, JOB_LOOP_TICK_MS);
 
     return () => {
@@ -364,6 +373,7 @@ export function useJobPool() {
     runSync,
     runLanSyncInterval,
     runDaemonOnlineSyncInterval,
+    refreshAiStatus,
   ]);
 
   useEffect(() => {
