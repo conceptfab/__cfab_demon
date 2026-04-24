@@ -46,7 +46,7 @@ export function Estimates() {
   const shiftDateRange = useDataStore((s) => s.shiftDateRange);
   const canShiftForward = useDataStore((s) => s.canShiftForward);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
-  const { currencyCode } = useSettingsStore();
+  const currencyCode = useSettingsStore((s) => s.currencyCode);
 
   const [settings, setSettings] = useState<EstimateSettings | null>(null);
   const [summary, setSummary] = useState<EstimateSummary | null>(null);
