@@ -153,6 +153,27 @@ fn should_refresh_background_process_snapshot(last_refresh: Option<Instant>, now
     }
 }
 
+fn is_db_frozen(sync_state: Option<&Arc<crate::lan_server::LanSyncState>>) -> bool {
+    sync_state.map_or(false, |s| s.db_frozen.load(Ordering::Acquire))
+}
+
+fn save_daily_if_unfrozen(
+    daily_data: &mut storage::DailyData,
+    sync_state: Option<&Arc<crate::lan_server::LanSyncState>>,
+    context: &str,
+) -> bool {
+    if is_db_frozen(sync_state) {
+        log::debug!("Skipping {} save — database frozen for sync", context);
+        return false;
+    }
+
+    if let Err(e) = storage::save_daily(daily_data) {
+        log::error!("Error saving daily data during {}: {}", context, e);
+        log::logger().flush();
+    }
+    true
+}
+
 /// Starts the monitor thread. Returns a JoinHandle.
 /// `stop_signal` — set to true to stop the thread.
 /// `foreground_signal` — optional event from SetWinEventHook for instant wake on window change.
@@ -469,7 +490,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // Check stop signal
         if stop_signal.load(Ordering::Relaxed) {
             // Final save before exiting
-            let _ = storage::save_daily(&mut daily_data);
+            save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "shutdown");
             break;
         }
 
@@ -477,7 +498,8 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         let today = Local::now().date_naive();
         if today != current_date {
             log::info!("Date changed: {} → {}", current_date, today);
-            let _ = storage::save_daily(&mut daily_data);
+            save_skipped_while_frozen =
+                !save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "date change");
             daily_data = storage::load_daily(today);
             current_date = today;
             active_sessions.clear();
@@ -527,13 +549,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
             if let Some(ref signal) = foreground_signal {
                 let _ = signal.drain_switch_times();
             }
-            let is_frozen = sync_state
-                .as_ref()
-                .map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
-            if !is_frozen {
-                if let Err(e) = storage::save_daily(&mut daily_data) {
-                    log::error!("Error saving daily data after sleep detection: {}", e);
-                }
+            if save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "sleep detection") {
                 last_save = Instant::now();
                 save_skipped_while_frozen = false;
             } else {
@@ -714,26 +730,16 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Periodic save (skip while database is frozen for LAN sync)
         if last_save.elapsed() >= save_interval {
-            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
-            if is_frozen {
-                log::debug!("Skipping periodic save — database frozen for sync");
-                save_skipped_while_frozen = true;
-            } else {
-                if let Err(e) = storage::save_daily(&mut daily_data) {
-                    log::error!("Error saving daily data: {}", e);
-                    log::logger().flush();
-                }
+            if save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "periodic") {
                 save_skipped_while_frozen = false;
                 last_save = Instant::now();
+            } else {
+                save_skipped_while_frozen = true;
             }
         } else if save_skipped_while_frozen {
-            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
-            if !is_frozen {
+            if !is_db_frozen(sync_state.as_ref()) {
                 log::info!("Database unfrozen — saving skipped data now");
-                if let Err(e) = storage::save_daily(&mut daily_data) {
-                    log::error!("Error saving daily data: {}", e);
-                    log::logger().flush();
-                }
+                save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "post-unfreeze");
                 save_skipped_while_frozen = false;
                 last_save = Instant::now();
             }
