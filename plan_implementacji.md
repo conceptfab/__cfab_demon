@@ -1081,7 +1081,7 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 - [x] **62:** `BugHunter.tsx:4,45,96` — zastąp `@tauri-apps/api/core` → `lib/tauri.ts` + `alert()` → `useToast`.
 - [x] **63:** Helper `useClickOutsideDismiss(ref, onClose)` + `useEscapeKey(onClose)` w `dashboard/src/hooks/useDismissable.ts`; zastąp TODO w `Sessions.tsx:252,311`.
 
-- [ ] **Commit per grupa (UI 59-60, UI 61, UI 62, UI 63)** — UI 60, UI 61, UI 62 i UI 63 committed separately.
+- [x] **Commit per grupa (UI 59-60, UI 61, UI 62, UI 63)** — UI 60, UI 61, UI 62 i UI 63 committed separately.
 
 ### Task 64-67: Parity + Help
 
