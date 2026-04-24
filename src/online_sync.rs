@@ -743,6 +743,7 @@ pub fn run_online_sync(
         &sync_state,
         &stop_signal,
         &mut session_id_for_cleanup,
+        false,
     ) {
         Ok(()) => {
             sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
@@ -790,7 +791,7 @@ pub fn run_online_sync_forced(
 
     let mut session_id_for_cleanup: Option<String> = None;
 
-    match execute_online_sync_inner(
+    match execute_online_sync(
         &settings,
         &sync_state,
         &stop_signal,
@@ -815,15 +816,6 @@ pub fn run_online_sync_forced(
 }
 
 fn execute_online_sync(
-    settings: &config::OnlineSyncSettings,
-    sync_state: &LanSyncState,
-    stop_signal: &AtomicBool,
-    session_id_out: &mut Option<String>,
-) -> Result<(), String> {
-    execute_online_sync_inner(settings, sync_state, stop_signal, session_id_out, false)
-}
-
-fn execute_online_sync_inner(
     settings: &config::OnlineSyncSettings,
     sync_state: &LanSyncState,
     stop_signal: &AtomicBool,
