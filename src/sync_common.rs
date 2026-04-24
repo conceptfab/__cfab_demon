@@ -4,6 +4,10 @@ use crate::config;
 use crate::lan_common;
 use crate::lan_server;
 
+use std::sync::Mutex;
+
+pub(crate) static MERGE_MUTEX: Mutex<()> = Mutex::new(());
+
 pub fn compute_tables_hash_string_conn(conn: &rusqlite::Connection) -> String {
     lan_common::compute_tables_hash_string(conn)
 }
@@ -264,6 +268,9 @@ fn log_merge_conflict(
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
+    let _merge_guard = MERGE_MUTEX
+        .lock()
+        .map_err(|_| "merge mutex poisoned".to_string())?;
     const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     if slave_data.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
