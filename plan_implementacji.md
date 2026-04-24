@@ -1069,7 +1069,7 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 - [ ] **55:** `helpers.rs:94-127` `compute_table_hash` — `group_concat(..., ',') LIMIT ??` lub `GROUP_CONCAT` z assertem; log::warn gdy pusty.
 - [ ] **56:** `lan_sync.rs:197` `scan_lan_subnet` — filtr prywatne IP range `10/8, 172.16/12, 192.168/16`; semaphore do 32 równoległych.
 - [x] **57:** `pm_manager.rs:93` `path.parent().ok_or_else(|| "no parent".to_string())?`.
-- [ ] **58:** `daemon/control.rs:195-205` — `serde_json::json!({ "field": value })`.
+- [x] **58:** `daemon/control.rs:195-205` — `serde_json::json!({ "field": value })`.
 
 - [ ] **Commit**
 

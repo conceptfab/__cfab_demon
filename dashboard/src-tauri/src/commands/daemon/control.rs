@@ -200,8 +200,9 @@ pub async fn persist_language_for_daemon(code: String) -> Result<(), String> {
     } else {
         "en"
     };
-    let content = format!("{{\"code\":\"{}\"}}", normalized);
-    std::fs::write(&lang_file, content).map_err(|e| format!("Failed to write language.json: {}", e))
+    let content = serde_json::json!({ "code": normalized });
+    std::fs::write(&lang_file, content.to_string())
+        .map_err(|e| format!("Failed to write language.json: {}", e))
 }
 
 #[tauri::command]
