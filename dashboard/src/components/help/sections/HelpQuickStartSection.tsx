@@ -25,6 +25,7 @@ export function HelpQuickStartSection() {
         t18n('help_page.quickstart_reports_overview'),
         t18n('help_page.quickstart_pm_overview'),
         t18n('help_page.quickstart_backup_export'),
+        t18n('help_page.quick_start_sleep_pause'),
         t18n('help_page.quickstart_f1_shortcut'),
         t18n('help_page.quickstart_rerun_info'),
       ]}

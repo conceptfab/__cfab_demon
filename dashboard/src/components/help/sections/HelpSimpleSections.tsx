@@ -164,6 +164,7 @@ export function HelpPmSection() {
         t18n('help_page.pm_feature_folder_size'),
         t18n('help_page.pm_feature_compat'),
         t18n('help_page.pm_template_manager'),
+        t18n('help_page.pm_template_manager_howto'),
         t18n('help_page.pm_project_detail_dialog'),
         t18n('help_page.pm_clients_management'),
       ]}
