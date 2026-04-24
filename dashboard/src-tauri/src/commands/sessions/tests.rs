@@ -48,7 +48,8 @@ fn setup_conn() -> rusqlite::Connection {
                 project_id INTEGER,
                 detected_path TEXT,
                 window_title TEXT,
-                title_history TEXT
+                title_history TEXT,
+                activity_spans TEXT NOT NULL DEFAULT '[]'
             );
             CREATE TABLE assignment_model_app (
                 app_id INTEGER NOT NULL,
@@ -71,6 +72,14 @@ fn setup_conn() -> rusqlite::Connection {
                 project_id INTEGER NOT NULL,
                 cnt INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (app_id, hour_bucket, weekday, project_id)
+            );
+            CREATE TABLE project_folder_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                token TEXT NOT NULL,
+                count INTEGER NOT NULL DEFAULT 1,
+                scanned_at TEXT NOT NULL,
+                UNIQUE(project_id, token)
             );
             CREATE TABLE assignment_feedback (
                 id INTEGER PRIMARY KEY,

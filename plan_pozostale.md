@@ -128,7 +128,7 @@ checkpointy *przed* implementacją. Ponieważ implementacja już jest
 uruchomić aktualną suitę testów, potwierdzić PASS, a następnie zbiorczo
 oznaczyć jako `[x]`.
 
-- [ ] 1.2, 2.3, 6.1, 6.2, 9.1, 10.1, 11.1, 12.1 — wszystkie to „oczekiwany FAIL" TDD-checkpointy.
+- [x] 1.2, 2.3, 6.1, 6.2, 9.1, 10.1, 11.1, 12.1 — wszystkie to „oczekiwany FAIL" TDD-checkpointy.
 - [ ] Kroki „test end-to-end / unit test" gdzie backing implementacja już istnieje:
   - [ ] 3.3 (skasowanie `total_time`) — **nie wykonywać**, patrz Task 75 (sekcja 2).
   - [ ] 4.4 (`window_title_not_empty` e2e)
@@ -158,7 +158,7 @@ Wymagają realnego środowiska (Windows + macOS, pair devices, itp.):
 
 Z planu (sekcja *Kryteria ukończenia*):
 
-- [ ] Wszystkie testy jednostkowe i integracyjne PASS (`cargo test --all`, `npm test`).
+- [x] Wszystkie testy jednostkowe i integracyjne PASS (`cargo test --all`, `npm test`).
 - [ ] `cargo clippy -- -D warnings` na demon i Tauri.
 - [ ] `npm run lint` i `npm run typecheck` na dashboard.
 - [ ] Manualny smoke-test per platforma (Windows 11 + macOS 14+):

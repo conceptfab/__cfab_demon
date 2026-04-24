@@ -161,7 +161,7 @@ fn local_identity_does_not_leak_secret() {
 }
 ```
 
-- [ ] **Step 1.2: Uruchom test — oczekiwany FAIL**
+- [x] **Step 1.2: Uruchom test — oczekiwany FAIL**
 
 ```bash
 cargo test --lib lan_server::tests::local_identity_does_not_leak_secret
@@ -225,7 +225,7 @@ fn pair_throttle_per_ip_isolated() {
 }
 ```
 
-- [ ] **Step 2.3: Uruchom testy — FAIL**
+- [x] **Step 2.3: Uruchom testy — FAIL**
 
 ```bash
 cargo test --lib lan_pair_throttle
@@ -429,7 +429,7 @@ git commit -m "fix(daemon): join online-sync thread on shutdown (P1)"
 **Files:**
 - Modify: `src/tracker.rs:602-703` (pętla background CPU)
 
-- [ ] **Step 6.1: Test — idle transition background nie dostaje >1s**
+- [x] **Step 6.1: Test — idle transition background nie dostaje >1s**
 
 ```rust
 #[test]
@@ -442,7 +442,7 @@ fn background_idle_transition_caps_elapsed() {
 }
 ```
 
-- [ ] **Step 6.2: FAIL**
+- [x] **Step 6.2: FAIL**
 
 - [x] **Step 6.3: Zastosuj `effective_elapsed.max(1s)` jak w foreground path (analogicznie do `:630+`)**
 
@@ -530,7 +530,7 @@ git commit -m "fix(sync): add MERGE_MUTEX and tracker db_frozen awareness (P1)"
 **Files:**
 - Modify: `src/sync_common.rs:797-808`
 
-- [ ] **Step 9.1: Test — dwie apki z tym samym `start_time` nie usuwają się nawzajem**
+- [x] **Step 9.1: Test — dwie apki z tym samym `start_time` nie usuwają się nawzajem**
 
 ```rust
 #[test]
@@ -560,7 +560,7 @@ git commit -m "fix(sync): tombstone key uses exe_name to avoid cross-machine del
 **Files:**
 - Modify: `dashboard/src-tauri/src/db.rs:22-25`
 
-- [ ] **Step 10.1: Test — po usunięciu pliku DB, ponowna inicjalizacja działa**
+- [x] **Step 10.1: Test — po usunięciu pliku DB, ponowna inicjalizacja działa**
 
 - [x] **Step 10.2: Fix — przed `cache.contains(&path)` sprawdź `!Path::new(&path).exists()`; jeśli brak, usuń z cache i re-initialize**
 
@@ -576,7 +576,7 @@ git commit -m "fix(tauri): re-init DB when file missing despite cache hit (P1)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/assignment_model/training.rs:50-64,404`
 
-- [ ] **Step 11.1: Test — panic w środku `retrain` nie zostawia is_training=true**
+- [x] **Step 11.1: Test — panic w środku `retrain` nie zostawia is_training=true**
 
 ```rust
 #[test]
@@ -611,7 +611,7 @@ git commit -m "fix(ai): RAII guard for is_training flag (P1)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/assignment_model/mod.rs:495-498`
 
-- [ ] **Step 12.1: Test — `set_assignment_mode` z auto=0.5 suggest=0.95 zwraca Err**
+- [x] **Step 12.1: Test — `set_assignment_mode` z auto=0.5 suggest=0.95 zwraca Err**
 
 - [x] **Step 12.2: W `set_assignment_mode`, po clamp(0..1) sprawdź: `if auto < suggest { return Err("auto must be >= suggest") }`**
 
