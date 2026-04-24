@@ -427,7 +427,7 @@ fn handle_connection(
         | "/lan/paired-devices" | "/lan/generate-pairing-code"
         | "/lan/store-paired-device" | "/lan/remove-paired-device"
         | "/lan/local-identity"
-        | "/lan/trigger-sync" | "/online/trigger-sync"
+        | "/lan/trigger-sync" | "/online/trigger-sync" | "/online/cancel-sync"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
@@ -490,6 +490,7 @@ fn handle_connection(
         ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body),
         // Online sync endpoints
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal),
+        ("POST", "/online/cancel-sync") => handle_online_cancel_sync(&state),
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
         // Legacy endpoints — /lan/pull used by 13-step protocol (step 6, master fetches from slave)
         ("POST", "/lan/pull") => handle_pull(&body),
@@ -1060,6 +1061,18 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     });
 
     (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())
+}
+
+fn handle_online_cancel_sync(state: &Arc<LanSyncState>) -> (u16, String) {
+    let progress = state.get_progress();
+    if !state.sync_in_progress.load(Ordering::SeqCst) || progress.sync_type != "online" {
+        return (409, json_error("No online sync in progress"));
+    }
+
+    crate::online_sync::request_cancel();
+    state.set_progress(progress.step, "cancelling", "local");
+    log::info!("Online cancel-sync: cancellation requested");
+    (200, r#"{"ok":true,"message":"online sync cancellation requested"}"#.to_string())
 }
 
 fn pair_throttle() -> &'static crate::lan_pair_throttle::PairThrottle {

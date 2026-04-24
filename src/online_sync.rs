@@ -20,6 +20,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const MAX_RETRIES: u32 = 3;
 // Exponential backoff: 5s × 3^attempt → 5s, 15s, 45s (max total ~65s with jitter)
 const RETRY_BASE_DELAY: Duration = Duration::from_secs(5);
+static ONLINE_SYNC_CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 // ── Server response types ──
 
@@ -253,9 +254,17 @@ fn cancel_session(
 
 // ── Helper functions ──
 
+pub fn request_cancel() {
+    ONLINE_SYNC_CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+    sync_log("[online] Cancel requested");
+}
+
 fn check_timeout_and_stop(start: Instant, stop: &AtomicBool) -> Result<(), String> {
     if start.elapsed() > SYNC_TIMEOUT {
         return Err("Online sync timeout (30 min)".to_string());
+    }
+    if ONLINE_SYNC_CANCEL_REQUESTED.load(Ordering::SeqCst) {
+        return Err("Online sync cancelled".to_string());
     }
     if stop.load(Ordering::Relaxed) {
         return Err("Stop signal received".to_string());
@@ -719,6 +728,7 @@ pub fn run_online_sync(
     sync_state: Arc<LanSyncState>,
     stop_signal: Arc<AtomicBool>,
 ) {
+    ONLINE_SYNC_CANCEL_REQUESTED.store(false, Ordering::SeqCst);
     sync_log("=== START ONLINE SYNC ===");
     sync_log(&format!(
         "[diag] server_url={}, device_id={}, has_token={}, has_encryption_key={}, sync_mode={}",
@@ -770,6 +780,7 @@ pub fn run_online_sync_forced(
     force_full: bool,
     stop_signal: Arc<AtomicBool>,
 ) {
+    ONLINE_SYNC_CANCEL_REQUESTED.store(false, Ordering::SeqCst);
     sync_log(&format!(
         "=== START ONLINE SYNC (force_full={}) ===",
         force_full

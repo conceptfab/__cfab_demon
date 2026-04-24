@@ -1820,6 +1820,7 @@
     "online_sync_setup_when_to_use": "When to use: enable it when you want off-device backups or want to sync work between multiple machines.",
     "online_sync_setup_limitations": "Limitations and consequences: Demo Mode disables sync, an invalid token blocks push/pull, and a reseed warning means you need to rebuild state with a local export or a fresh seed.",
     "online_sync_daemon_mode": "Daemon-based sync (LAN Sync Protocol): When the TIMEFLOW daemon is running, online sync can use the 13-step session protocol with SFTP transfer. This provides encrypted file transfer, progress tracking, and automatic merge — same protocol as LAN sync but through a remote server. Configure the encryption key in sync settings.",
+    "online_sync_cancel": "Cancel Online Sync — when a daemon-based online sync is running, TIMEFLOW can request cancellation. The sync stops at the next safe checkpoint and asks the server to cancel the active session.",
     "delta_sync_description": "Since the Delta Sync version: the system transmits only modified synchronization packets for old and new sessions, saving up to 95% of bandwidth usage.",
     "license_activation": "License activation: paste your license key in Online Sync → License section and click Activate. Your device will be registered in the group on the server. After activation the dashboard shows the plan, group, device count and expiration date.",
     "lan_sync_title": "LAN Sync",
