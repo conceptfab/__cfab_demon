@@ -925,9 +925,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 
 - [x] **Step 32.2: Projects — `renderProjectList`/`renderProjectCard` → `<ProjectList>`/`<ProjectCard>` + `React.memo`.**
 
-- [ ] **Step 32.3: useSettingsFormState — rozbij na `useGeneralSettings`, `useAiSettings`, `useSyncSettings`, `useUiSettings` etc.**
+- [x] **Step 32.3: useSettingsFormState — rozbij na `useGeneralSettings`, `useAiSettings`, `useSyncSettings`, `useUiSettings` etc.**
 
-- [ ] **Step 32.4: Commit per plik**
+- [x] **Step 32.4: Commit per plik**
 
 ### Task 33: Toast Provider `useMemo`
 

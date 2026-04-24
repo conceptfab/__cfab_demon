@@ -32,9 +32,9 @@ sesji, pogrupowane wg typu i rekomendowanej kolejności wykonania.
 
 **Plik:** `dashboard/src/hooks/useSettingsFormState.ts` (27 KB)
 **Kroki:**
-- [ ] 32.3: Rozbij na `useGeneralSettings`, `useAiSettings`, `useSyncSettings`,
+- [x] 32.3: Rozbij na `useGeneralSettings`, `useAiSettings`, `useSyncSettings`,
   `useUiSettings` (ewentualnie więcej — patrz faktyczne grupy pól w pliku).
-- [ ] 32.4: Commit per plik / per logiczna grupa.
+- [x] 32.4: Commit per plik / per logiczna grupa.
 
 **Uwaga:** czysty refactor frontend — bez zmiany API konsumentów. Najlepszy
 kandydat do wykonania jako pierwszy (brak decyzji projektowych).
