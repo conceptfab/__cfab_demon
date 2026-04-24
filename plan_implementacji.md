@@ -846,9 +846,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Create: `dashboard/src-tauri/src/db_migrations/m22_updated_at_indexes.rs`
 
-- [ ] **Step 26.1: CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at); analogicznie manual_sessions i sync_markers.**
+- [x] **Step 26.1: CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at); analogicznie manual_sessions i sync_markers.**
 
-- [ ] **Step 26.2: Commit**
+- [x] **Step 26.2: Commit**
 
 ### Task 27: `run_db_blocking` w manual_sessions, sync_markers, lan_sync
 
