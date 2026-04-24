@@ -158,7 +158,7 @@ impl Drop for SyncGuard {
     }
 }
 
-const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
 
 impl LanSyncState {
     pub fn new() -> Self {
@@ -260,9 +260,24 @@ impl LanSyncState {
         };
         if should_unfreeze {
             log::warn!("Auto-unfreezing database after {:?} timeout", AUTO_UNFREEZE_TIMEOUT);
-            self.unfreeze();
-            self.reset_progress();
-            self.set_role("undecided");
+            let phase = self.get_progress().phase;
+            let can_clear_sync_lock = phase == "idle" || phase == "completed";
+
+            self.db_frozen.store(false, Ordering::SeqCst);
+            let mut guard = self.frozen_at.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = None;
+            drop(guard);
+
+            if can_clear_sync_lock {
+                self.sync_in_progress.store(false, Ordering::SeqCst);
+                self.reset_progress();
+                self.set_role("undecided");
+            } else {
+                log::warn!(
+                    "Auto-unfreeze kept sync_in_progress=true because sync phase is '{}'",
+                    phase
+                );
+            }
             return true;
         }
         false
@@ -1380,7 +1395,9 @@ impl PartialEq for TableHashes {
 
 #[cfg(test)]
 mod tests {
-    use super::handle_local_identity;
+    use super::{handle_local_identity, LanSyncState, AUTO_UNFREEZE_TIMEOUT};
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
 
     #[test]
     fn local_identity_does_not_leak_secret() {
@@ -1394,5 +1411,33 @@ mod tests {
         );
         assert!(json.get("device_id").is_some());
         assert!(json.get("machine_name").is_some());
+    }
+
+    #[test]
+    fn auto_unfreeze_keeps_active_sync_lock() {
+        let state = LanSyncState::new();
+        state.freeze();
+        state.set_progress(4, "uploading", "push");
+        *state.frozen_at.lock().unwrap() =
+            Some(Instant::now() - AUTO_UNFREEZE_TIMEOUT - Duration::from_secs(1));
+
+        assert!(state.check_auto_unfreeze());
+        assert!(!state.db_frozen.load(Ordering::SeqCst));
+        assert!(state.sync_in_progress.load(Ordering::SeqCst));
+        assert_eq!(state.get_progress().phase, "uploading");
+    }
+
+    #[test]
+    fn auto_unfreeze_clears_completed_sync_lock() {
+        let state = LanSyncState::new();
+        state.freeze();
+        state.set_progress(13, "completed", "pull");
+        *state.frozen_at.lock().unwrap() =
+            Some(Instant::now() - AUTO_UNFREEZE_TIMEOUT - Duration::from_secs(1));
+
+        assert!(state.check_auto_unfreeze());
+        assert!(!state.db_frozen.load(Ordering::SeqCst));
+        assert!(!state.sync_in_progress.load(Ordering::SeqCst));
+        assert_eq!(state.get_progress().phase, "idle");
     }
 }

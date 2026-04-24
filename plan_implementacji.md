@@ -804,11 +804,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `src/lan_server.rs:253-269,323-327`
 
-- [ ] **Step 22.1: `check_auto_unfreeze` — nie resetuj `sync_in_progress` jeśli `phase != completed/idle`.**
+- [x] **Step 22.1: `check_auto_unfreeze` — nie resetuj `sync_in_progress` jeśli `phase != completed/idle`.**
 
-- [ ] **Step 22.2: Unfreeze timeout 10 min (> SYNC_TIMEOUT=5 min).**
+- [x] **Step 22.2: Unfreeze timeout 10 min (> SYNC_TIMEOUT=5 min).**
 
-- [ ] **Step 22.3: Commit**
+- [x] **Step 22.3: Commit**
 
 ### Task 23: Martwy `get_local_marker_created_at_with_conn` → usuń fallback
 
