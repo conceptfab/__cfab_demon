@@ -8,9 +8,9 @@ use crate::lan_common::{self, sync_log};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -380,6 +380,10 @@ fn handle_connection(
     stream
         .set_write_timeout(Some(Duration::from_secs(30)))
         .map_err(|e| e.to_string())?;
+    let client_ip = stream
+        .peer_addr()
+        .map(|addr| addr.ip())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
     let mut reader = BufReader::new(&stream);
 
@@ -480,7 +484,7 @@ fn handle_connection(
         ("GET", "/lan/download-db") => handle_download_db(),
         ("POST", "/lan/verify-ack") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
-        ("POST", "/lan/pair") => handle_pair(&body),
+        ("POST", "/lan/pair") => handle_pair(&body, client_ip),
         ("POST", "/lan/generate-pairing-code") => handle_generate_pairing_code(),
         ("POST", "/lan/store-paired-device") => handle_store_paired_device(&body),
         ("POST", "/lan/remove-paired-device") => handle_remove_paired_device(&body),
@@ -516,6 +520,7 @@ fn status_text(code: u16) -> &'static str {
         404 => "Not Found",
         409 => "Conflict",
         413 => "Payload Too Large",
+        429 => "Too Many Requests",
         500 => "Internal Server Error",
         _ => "Unknown",
     }
@@ -1152,7 +1157,12 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())
 }
 
-fn handle_pair(body: &str) -> (u16, String) {
+fn pair_throttle() -> &'static crate::lan_pair_throttle::PairThrottle {
+    static PAIR_THROTTLE: OnceLock<crate::lan_pair_throttle::PairThrottle> = OnceLock::new();
+    PAIR_THROTTLE.get_or_init(crate::lan_pair_throttle::PairThrottle::new)
+}
+
+fn handle_pair(body: &str, client_ip: IpAddr) -> (u16, String) {
     #[derive(Deserialize)]
     struct PairReq {
         code: String,
@@ -1165,6 +1175,10 @@ fn handle_pair(body: &str) -> (u16, String) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
+
+    if pair_throttle().check_and_record(client_ip).is_err() {
+        return (429, json_error("too many pairing attempts; try again later"));
+    }
 
     match crate::lan_pairing::validate_code(&req.code) {
         Ok(()) => {
@@ -1196,11 +1210,9 @@ fn handle_pair(body: &str) -> (u16, String) {
 fn handle_local_identity() -> (u16, String) {
     let device_id = crate::lan_common::get_device_id();
     let machine_name = crate::lan_common::get_machine_name();
-    let secret = get_or_create_lan_secret();
     let resp = serde_json::json!({
         "ok": true,
         "device_id": device_id,
-        "secret": secret,
         "machine_name": machine_name,
     });
     (200, resp.to_string())
@@ -1363,5 +1375,24 @@ impl PartialEq for TableHashes {
             && self.applications == other.applications
             && self.sessions == other.sessions
             && self.manual_sessions == other.manual_sessions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::handle_local_identity;
+
+    #[test]
+    fn local_identity_does_not_leak_secret() {
+        let (status, body) = handle_local_identity();
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        assert_eq!(status, 200);
+        assert!(
+            json.get("secret").is_none(),
+            "secret MUST NOT be in /lan/local-identity response"
+        );
+        assert!(json.get("device_id").is_some());
+        assert!(json.get("machine_name").is_some());
     }
 }

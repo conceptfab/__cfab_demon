@@ -13,6 +13,7 @@ mod config;
 mod i18n;
 mod lan_common;
 mod lan_discovery;
+mod lan_pair_throttle;
 mod lan_pairing;
 mod lan_server;
 mod lan_sync_orchestrator;
