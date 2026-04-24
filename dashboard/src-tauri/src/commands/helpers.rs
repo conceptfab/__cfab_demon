@@ -92,37 +92,69 @@ fn fnv1a_64(data: &[u8]) -> u64 {
 }
 
 pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    let sql = match table {
+    let (sql, count_sql) = match table {
         "projects" => {
-            "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-             FROM (SELECT name, updated_at FROM projects ORDER BY name)"
+            (
+                "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
+                 FROM (SELECT name, updated_at FROM projects ORDER BY name)",
+                "SELECT COUNT(*) FROM projects",
+            )
         }
         "applications" => {
-            "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
-             FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)"
+            (
+                "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
+                 FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)",
+                "SELECT COUNT(*) FROM applications",
+            )
         }
         "sessions" => {
-            "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
-                   FROM sessions s JOIN applications a ON s.app_id = a.id \
-                   ORDER BY a.executable_name, s.start_time)"
+            (
+                "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
+                 FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
+                       FROM sessions s JOIN applications a ON s.app_id = a.id \
+                       ORDER BY a.executable_name, s.start_time)",
+                "SELECT COUNT(*) FROM sessions",
+            )
         }
         "manual_sessions" => {
-            "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)"
+            (
+                "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
+                 FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)",
+                "SELECT COUNT(*) FROM manual_sessions",
+            )
         }
         "assignment_feedback" => {
-            "SELECT COALESCE(group_concat(source || '|' || created_at, ';'), '') \
-             FROM (SELECT source, created_at FROM assignment_feedback ORDER BY created_at)"
+            (
+                "SELECT COALESCE(group_concat(source || '|' || created_at, ';'), '') \
+                 FROM (SELECT source, created_at FROM assignment_feedback ORDER BY created_at)",
+                "SELECT COUNT(*) FROM assignment_feedback",
+            )
         }
         "assignment_auto_runs" => {
-            "SELECT COALESCE(group_concat(started_at || '|' || COALESCE(finished_at, ''), ';'), '') \
-             FROM (SELECT started_at, finished_at FROM assignment_auto_runs ORDER BY started_at)"
+            (
+                "SELECT COALESCE(group_concat(started_at || '|' || COALESCE(finished_at, ''), ';'), '') \
+                 FROM (SELECT started_at, finished_at FROM assignment_auto_runs ORDER BY started_at)",
+                "SELECT COUNT(*) FROM assignment_auto_runs",
+            )
         }
-        _ => return String::new(),
+        _ => {
+            log::warn!("compute_table_hash: unknown table '{}'", table);
+            return String::new();
+        }
     };
-    let concat: String = conn.query_row(sql, [], |row| row.get(0))
+    let concat: String = conn
+        .query_row(sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
+    let row_count = conn
+        .query_row(count_sql, [], |row| row.get::<_, i64>(0))
+        .unwrap_or(0);
+    if row_count > 0 && concat.is_empty() {
+        log::warn!(
+            "compute_table_hash: table '{}' has {} row(s) but produced an empty hash input",
+            table,
+            row_count
+        );
+    }
     format!("{:016x}", fnv1a_64(concat.as_bytes()))
 }
 

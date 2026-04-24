@@ -1066,12 +1066,12 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 ### Task 54-58: Tauri backend drobne
 
 - [x] **54:** `tauri.conf.json:26` CSP — dodaj `base-uri 'self'; form-action 'self';`.
-- [ ] **55:** `helpers.rs:94-127` `compute_table_hash` — `group_concat(..., ',') LIMIT ??` lub `GROUP_CONCAT` z assertem; log::warn gdy pusty.
-- [ ] **56:** `lan_sync.rs:197` `scan_lan_subnet` — filtr prywatne IP range `10/8, 172.16/12, 192.168/16`; semaphore do 32 równoległych.
+- [x] **55:** `helpers.rs:94-127` `compute_table_hash` — `group_concat(..., ',') LIMIT ??` lub `GROUP_CONCAT` z assertem; log::warn gdy pusty.
+- [x] **56:** `lan_sync.rs:197` `scan_lan_subnet` — filtr prywatne IP range `10/8, 172.16/12, 192.168/16`; semaphore do 32 równoległych.
 - [x] **57:** `pm_manager.rs:93` `path.parent().ok_or_else(|| "no parent".to_string())?`.
 - [x] **58:** `daemon/control.rs:195-205` — `serde_json::json!({ "field": value })`.
 
-- [ ] **Commit**
+- [x] **Commit**
 
 ### Task 59-63: UI drobne
 
