@@ -719,14 +719,26 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
                     }
                     "sessions" => {
-                        // sync_key = "app_id|start_time"
-                        if let Some((_app_id_str, start_time)) = sync_key.split_once('|') {
+                        // sync_key = "executable_name|start_time" (legacy: "app_id|start_time")
+                        if let Some((app_key, start_time)) = sync_key.split_once('|') {
                             let local_updated: Option<String> = tx
                                 .query_row(
-                                    "SELECT updated_at FROM sessions WHERE start_time = ?1",
-                                    [start_time],
+                                    "SELECT s.updated_at
+                                     FROM sessions s
+                                     JOIN applications a ON a.id = s.app_id
+                                     WHERE a.executable_name = ?1 AND s.start_time = ?2",
+                                    rusqlite::params![app_key, start_time],
                                     |row| row.get(0),
                                 )
+                                .or_else(|_| {
+                                    tx.query_row(
+                                        "SELECT updated_at
+                                         FROM sessions
+                                         WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
+                                        rusqlite::params![app_key, start_time],
+                                        |row| row.get(0),
+                                    )
+                                })
                                 .ok();
                             local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
                         } else { false }
@@ -797,20 +809,19 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]);
                     }
                     "sessions" => {
-                        // sync_key = "app_id|start_time" — app_id is local integer, NOT portable
-                        // Use start_time (unique within an app) combined with app_id to find session
-                        if let Some((app_id_str, start_time)) = sync_key.split_once('|') {
-                            // Try to match by app_id + start_time (same machine) or just start_time
+                        // sync_key = "executable_name|start_time" (legacy: "app_id|start_time")
+                        if let Some((app_key, start_time)) = sync_key.split_once('|') {
                             let deleted = tx.execute(
-                                "DELETE FROM sessions WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
-                                rusqlite::params![app_id_str, start_time],
+                                "DELETE FROM sessions
+                                 WHERE app_id IN (
+                                     SELECT id FROM applications WHERE executable_name = ?1
+                                 ) AND start_time = ?2",
+                                rusqlite::params![app_key, start_time],
                             ).unwrap_or(0);
                             if deleted == 0 {
-                                // Cross-machine: app_id differs, match by start_time alone
-                                // (start_time is unique enough per device)
                                 let _ = tx.execute(
-                                    "DELETE FROM sessions WHERE start_time = ?1",
-                                    [start_time],
+                                    "DELETE FROM sessions WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
+                                    rusqlite::params![app_key, start_time],
                                 );
                             }
                         } else {

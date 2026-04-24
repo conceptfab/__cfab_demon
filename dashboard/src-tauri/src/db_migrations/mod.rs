@@ -18,8 +18,9 @@ mod m17_project_folder_meta;
 mod m18_project_folder_tokens;
 mod m19_clear_zero_hourly_rate;
 mod m20_session_project_name;
+mod m21_tombstone_session_sync_key;
 
-const LATEST_SCHEMA_VERSION: i64 = 20;
+const LATEST_SCHEMA_VERSION: i64 = 21;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -108,6 +109,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 20 {
         m20_session_project_name::run(&tx)?;
+    }
+    if current_version < 21 {
+        m21_tombstone_session_sync_key::run(&tx)?;
     }
 
     tx.execute(
