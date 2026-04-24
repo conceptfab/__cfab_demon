@@ -174,7 +174,9 @@ export function useProjectsData(projectDialogId: number | null) {
     Promise.allSettled([
       projectsApi.getProjectFolders(),
       projectsApi.getFolderProjectCandidates(),
-    ]).then(([foldersRes, candidatesRes]) => {
+      projectsApi.getDetectedProjects(ALL_TIME_DATE_RANGE),
+      dashboardApi.getProjectEstimates(ALL_TIME_DATE_RANGE),
+    ]).then(([foldersRes, candidatesRes, detectedRes, estimatesRes]) => {
       if (cancelled) return;
 
       if (foldersRes.status === 'fulfilled') {
@@ -193,46 +195,23 @@ export function useProjectsData(projectDialogId: number | null) {
           candidatesRes.reason,
         );
       }
+
+      if (detectedRes.status === 'fulfilled') {
+        setDetectedProjects(detectedRes.value);
+      } else {
+        logTauriError('load detected projects', detectedRes.reason);
+      }
+
+      if (estimatesRes.status === 'fulfilled') {
+        setEstimates(buildEstimateMap(estimatesRes.value));
+      } else {
+        logTauriError('load estimates', estimatesRes.reason);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [foldersRefreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-    projectsApi
-      .getDetectedProjects(ALL_TIME_DATE_RANGE)
-      .then((data) => {
-        if (!cancelled) setDetectedProjects(data);
-      })
-      .catch((reason) => {
-        if (!cancelled) {
-          logTauriError('load detected projects', reason);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [allTimeRefreshKey, isDemoMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    dashboardApi
-      .getProjectEstimates(ALL_TIME_DATE_RANGE)
-      .then((rows) => {
-        if (cancelled) return;
-        setEstimates(buildEstimateMap(rows));
-      })
-      .catch((reason) => {
-        if (!cancelled) {
-          logTauriError('load estimates', reason);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [allTimeRefreshKey, isDemoMode]);
+  }, [allTimeRefreshKey, foldersRefreshKey, isDemoMode]);
 
   useEffect(() => {
     if (projectDialogId === null) {
