@@ -1026,9 +1026,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src/locales/pl/common.json`
 
-- [ ] **Step 42.1: `settings.lan_sync.force_sync: "Wymuś synchronizację"` (PL)**
+- [x] **Step 42.1: `settings.lan_sync.force_sync: "Wymuś synchronizację"` (PL)**
 
-- [ ] **Step 42.2: Commit**
+- [x] **Step 42.2: Commit**
 
 ---
 
