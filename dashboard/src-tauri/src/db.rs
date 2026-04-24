@@ -2,7 +2,7 @@ mod pool;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 use timeflow_shared::timeflow_paths;
@@ -407,7 +407,10 @@ fn initialize_database_file_once(path_str: &str) -> Result<(), String> {
         .lock()
         .map_err(|_| "Initialized DB paths mutex poisoned".to_string())?;
     if initialized_paths.contains(path_str) {
-        return Ok(());
+        if Path::new(path_str).exists() {
+            return Ok(());
+        }
+        initialized_paths.remove(path_str);
     }
 
     initialize_database_file(path_str)?;
