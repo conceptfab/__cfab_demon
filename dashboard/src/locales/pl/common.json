@@ -458,6 +458,7 @@
     "text": {
       "model_settings_saved": "Ustawienia modelu zapisane.",
       "failed_to_save_model_settings": "Nie udało się zapisać ustawień modelu:",
+      "auto_confidence_must_be_at_least_suggest": "Próg Auto Safe musi być równy lub wyższy niż próg sugestii.",
       "model_training_completed": "Trening modelu zakończony.",
       "model_training_failed": "Trening modelu nie powiódł się:",
       "auto_safe_is_disabled_set_mode_to_auto_safe_and": "Auto-safe jest wyłączone. Ustaw tryb na auto_safe i zapisz ustawienia.",

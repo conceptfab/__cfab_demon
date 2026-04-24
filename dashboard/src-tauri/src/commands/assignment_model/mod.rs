@@ -496,6 +496,7 @@ pub async fn set_assignment_mode(
         let suggest_conf = clamp01(suggest_conf, DEFAULT_MIN_CONFIDENCE_SUGGEST);
         let auto_conf = clamp01(auto_conf, DEFAULT_MIN_CONFIDENCE_AUTO);
         let auto_ev = clamp_i64(auto_ev, 1, 50);
+        validate_assignment_confidences(suggest_conf, auto_conf)?;
 
         upsert_state(conn, "mode", &mode)?;
         upsert_state(
@@ -509,6 +510,15 @@ pub async fn set_assignment_mode(
         Ok(())
     })
     .await
+}
+
+fn validate_assignment_confidences(suggest_conf: f64, auto_conf: f64) -> Result<(), String> {
+    if auto_conf < suggest_conf {
+        return Err(
+            "auto_confidence must be greater than or equal to suggest_confidence".to_string(),
+        );
+    }
+    Ok(())
 }
 
 #[command]
@@ -736,4 +746,20 @@ pub async fn get_folder_scan_status(app: AppHandle) -> Result<FolderScanStatus, 
 #[command]
 pub async fn clear_folder_scan_data(app: AppHandle) -> Result<(), String> {
     run_db_blocking(app, |conn| folder_scan::clear_folder_scan_sync(conn)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_assignment_confidences;
+
+    #[test]
+    fn rejects_auto_confidence_below_suggest_confidence() {
+        assert!(validate_assignment_confidences(0.95, 0.5).is_err());
+    }
+
+    #[test]
+    fn accepts_auto_confidence_equal_or_above_suggest_confidence() {
+        assert!(validate_assignment_confidences(0.6, 0.6).is_ok());
+        assert!(validate_assignment_confidences(0.6, 0.85).is_ok());
+    }
 }

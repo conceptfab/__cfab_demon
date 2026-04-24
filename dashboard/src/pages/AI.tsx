@@ -333,6 +333,11 @@ export function AIPage() {
       const normalizedAuto = clampNumber(autoConf, 0, 1);
       const normalizedEvidence = Math.round(clampNumber(autoEvidence, 1, 50));
 
+      if (normalizedAuto < normalizedSuggest) {
+        showError(tr('ai_page.text.auto_confidence_must_be_at_least_suggest'));
+        return;
+      }
+
       await Promise.all([
         aiApi.setAssignmentMode(
           mode,
