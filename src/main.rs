@@ -209,9 +209,22 @@ fn show_already_running_message(msg: &str) {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
 fn show_already_running_message(msg: &str) {
-    // Na macOS/Linux logujemy + piszemy na stderr — bez nativeowego dialogu.
+    let escaped_msg = msg.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped_title = APP_NAME.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "display dialog \"{}\" buttons {{\"OK\"}} default button \"OK\" with title \"{}\"",
+        escaped_msg, escaped_title
+    );
+    if Command::new("osascript").arg("-e").arg(script).status().is_err() {
+        eprintln!("{}: {}", APP_NAME, msg);
+    }
+    log::warn!("{}", msg);
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
+fn show_already_running_message(msg: &str) {
     eprintln!("{}: {}", APP_NAME, msg);
     log::warn!("{}", msg);
 }

@@ -8,4 +8,4 @@
 | Tray i18n | `TrayText::*` | `TrayText::*` | OK |
 | Tray sync status | OK | brak | Task 36 |
 | Foreground detection | event | polling 250ms | Task 37 |
-| Version mismatch dialog | MessageBox | tylko log | Task 65 |
+| Version mismatch dialog | MessageBox | osascript dialog | OK |

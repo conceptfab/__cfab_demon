@@ -1086,7 +1086,7 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 ### Task 64-67: Parity + Help
 
 - [ ] **64:** `dashboard/src/lib/platform.ts:4` — `import { platform } from '@tauri-apps/plugin-os'` z fallback UA.
-- [ ] **65:** `main.rs:184-199` — macOS: `Command::new("osascript").arg("-e").arg(format!("display dialog \"{}\"", msg))`.
+- [x] **65:** `main.rs:184-199` — macOS: `Command::new("osascript").arg("-e").arg(format!("display dialog \"{}\"", msg))`.
 - [x] **66:** `compare_locales.py` — ścieżki: `Path(__file__).resolve().parent / "dashboard/src/locales"`.
 - [ ] **67:** [HELP] — `help_page.quick_start_sleep_pause` (krótka wzmianka w Quick Start) + `help_page.pm_template_manager_howto` (placeholders, podmiany) w PL/EN.
 
