@@ -37,16 +37,15 @@ const MAX_RATE = 100000;
 
 export function Estimates() {
   const { t, i18n } = useTranslation();
-  const { setCurrentPage, setSessionsFocusRange, setSessionsFocusProject } =
-    useUIStore();
-  const {
-    dateRange,
-    timePreset,
-    setTimePreset,
-    shiftDateRange,
-    canShiftForward,
-    triggerRefresh,
-  } = useDataStore();
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const setSessionsFocusRange = useUIStore((s) => s.setSessionsFocusRange);
+  const setSessionsFocusProject = useUIStore((s) => s.setSessionsFocusProject);
+  const dateRange = useDataStore((s) => s.dateRange);
+  const timePreset = useDataStore((s) => s.timePreset);
+  const setTimePreset = useDataStore((s) => s.setTimePreset);
+  const shiftDateRange = useDataStore((s) => s.shiftDateRange);
+  const canShiftForward = useDataStore((s) => s.canShiftForward);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { currencyCode } = useSettingsStore();
 
   const [settings, setSettings] = useState<EstimateSettings | null>(null);
