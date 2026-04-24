@@ -18,8 +18,10 @@ import type {
 export function ReportView() {
   const { t } = useTranslation();
 
-  const { setCurrentPage, projectPageId, reportTemplateId } = useUIStore();
-  const { currencyCode } = useSettingsStore();
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const projectPageId = useUIStore((s) => s.projectPageId);
+  const reportTemplateId = useUIStore((s) => s.reportTemplateId);
+  const currencyCode = useSettingsStore((s) => s.currencyCode);
   const runReportRequest = useCancellableAsync();
   const runDaemonRequest = useCancellableAsync();
 
@@ -534,4 +536,3 @@ export function ReportView() {
     </div>
   );
 }
-
