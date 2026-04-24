@@ -143,7 +143,7 @@ function DiscoveredProjectsBanner() {
   const { t } = useTranslation();
   const { projects, dismissed } = useDataStore((s) => s.discoveredProjects);
   const dismiss = useDataStore((s) => s.dismissDiscoveredProjects);
-  const { setCurrentPage } = useUIStore();
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
 
   if (dismissed || projects.length === 0) return null;
   const previewProjects = projects.slice(0, 5).join(', ');
@@ -183,15 +183,14 @@ function DiscoveredProjectsBanner() {
 export function Dashboard() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
-  const { setCurrentPage, setSessionsFocusDate } = useUIStore();
-  const {
-    dateRange,
-    timePreset,
-    setTimePreset,
-    shiftDateRange,
-    canShiftForward,
-    triggerRefresh,
-  } = useDataStore();
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const setSessionsFocusDate = useUIStore((s) => s.setSessionsFocusDate);
+  const dateRange = useDataStore((s) => s.dateRange);
+  const timePreset = useDataStore((s) => s.timePreset);
+  const setTimePreset = useDataStore((s) => s.setTimePreset);
+  const shiftDateRange = useDataStore((s) => s.shiftDateRange);
+  const canShiftForward = useDataStore((s) => s.canShiftForward);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const [dashboardView, setDashboardView] = useState<DashboardViewState>(
     EMPTY_DASHBOARD_VIEW_STATE,
   );
@@ -423,6 +422,7 @@ export function Dashboard() {
     timePreset,
     projectTimelineSeriesLimit,
     timelineGranularity,
+    t,
   ]);
 
   return (
@@ -636,4 +636,3 @@ export function Dashboard() {
     </div>
   );
 }
-
