@@ -1,5 +1,7 @@
 # TIMEFLOW — instrukcje projektu (CLAUDE.md)
 
+> Parity między Windows a macOS: [`PARITY.md`](./PARITY.md) — aktualny tracker znanych różnic i stubów.
+
 ## 1) Język i styl pracy
 - Komunikuj się po polsku.
 - Pisz zwięźle i precyzyjnie (bez długich wstępów).
