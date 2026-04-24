@@ -175,6 +175,7 @@ export function AIPage() {
         setAutoEvidence(nextStatus.min_evidence_auto);
         setTrainingHorizonDays(nextStatus.training_horizon_days);
         setDecayHalfLifeDays(nextStatus.decay_half_life_days);
+        setFeedbackWeight(nextStatus.feedback_weight);
       }
     },
     [],
@@ -244,14 +245,11 @@ export function AIPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const results = await Promise.all([
+      const [, scan] = await Promise.all([
         refreshAiStatus(),
-        aiApi.getFeedbackWeight(),
         aiApi.getFolderScanStatus(),
       ]);
-      const fw = results[1];
-      if (!dirtyRef.current) setFeedbackWeight(fw);
-      setScanStatus(results[2]);
+      setScanStatus(scan);
     } catch (e) {
       console.error(e);
       showTranslatedError('ai_page.errors.status_load_failed', e);
@@ -358,8 +356,6 @@ export function AIPage() {
       const freshStatus = await aiApi.getAssignmentModelStatus();
       setAiStatus(freshStatus);
       syncFormWithStatus(freshStatus, true);
-      const freshFw = await aiApi.getFeedbackWeight();
-      setFeedbackWeight(freshFw);
       dirtyRef.current = false;
       await fetchMetrics(true);
     } catch (e) {

@@ -86,8 +86,6 @@ export const applyDeterministicAssignment = (minHistory?: number) =>
     notify: (result) => result.sessions_assigned > 0,
   });
 
-export const getFeedbackWeight = () => invoke<number>('get_feedback_weight');
-
 export const setFeedbackWeight = (weight: number) =>
   invokeMutation<void>('set_feedback_weight', { weight });
 
@@ -114,7 +112,6 @@ export const aiApi = {
   rollbackLastAutoSafeRun,
   autoRunIfNeeded,
   applyDeterministicAssignment,
-  getFeedbackWeight,
   setFeedbackWeight,
   scanProjectFoldersForAi,
   getFolderScanStatus,

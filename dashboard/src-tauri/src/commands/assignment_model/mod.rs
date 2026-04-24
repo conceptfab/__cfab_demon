@@ -46,6 +46,7 @@ pub struct AssignmentModelStatus {
     pub last_auto_assigned_count: i64,
     pub last_auto_rolled_back_at: Option<String>,
     pub can_rollback_last_auto_run: bool,
+    pub feedback_weight: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -224,6 +225,7 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
             last_auto_assigned_count: 0,
             last_auto_rolled_back_at: None,
             can_rollback_last_auto_run: false,
+            feedback_weight: parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT),
         };
 
         let last_auto = conn
@@ -699,19 +701,6 @@ pub async fn get_session_score_breakdown(
 ) -> Result<ScoreBreakdown, String> {
     run_db_blocking(app, move |conn| {
         get_session_score_breakdown_sync(conn, session_id)
-    })
-    .await
-}
-
-#[command]
-pub async fn get_feedback_weight(app: AppHandle) -> Result<f64, String> {
-    run_db_blocking(app, move |conn| {
-        let state = load_state_map(conn)?;
-        Ok(parse_state_f64(
-            &state,
-            "feedback_weight",
-            DEFAULT_FEEDBACK_WEIGHT,
-        ))
     })
     .await
 }

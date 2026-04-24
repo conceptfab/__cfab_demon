@@ -1008,11 +1008,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 - Modify: `dashboard/src-tauri/src/commands/assignment_model/mod.rs`
 - Modify: `dashboard/src/lib/tauri/ai.ts:89`
 
-- [ ] **Step 40.1: Dołącz `feedback_weight: f64` do `AssignmentModelStatus`.**
+- [x] **Step 40.1: Dołącz `feedback_weight: f64` do `AssignmentModelStatus`.**
 
-- [ ] **Step 40.2: Usuń osobny endpoint `getFeedbackWeight` po migracji wszystkich użyć.**
+- [x] **Step 40.2: Usuń osobny endpoint `getFeedbackWeight` po migracji wszystkich użyć.**
 
-- [ ] **Step 40.3: Commit**
+- [x] **Step 40.3: Commit**
 
 ### Task 41: Auto-safe batch po 500
 

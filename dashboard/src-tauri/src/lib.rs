@@ -219,7 +219,6 @@ pub fn run() {
             commands::auto_run_if_needed,
             commands::apply_deterministic_assignment,
             commands::get_session_score_breakdown,
-            commands::get_feedback_weight,
             commands::set_feedback_weight,
             commands::scan_project_folders_for_ai,
             commands::get_folder_scan_status,
