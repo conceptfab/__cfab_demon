@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useDataStore } from '@/store/data-store';
 import { logger } from '@/lib/logger';
 import { lanSyncApi, triggerDaemonOnlineSync } from '@/lib/tauri';
@@ -26,6 +26,7 @@ export function useLanSyncServerStartup() {
 
 export function useOnlineSyncSSE() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+  const refreshTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const settings = loadOnlineSyncSettings();
@@ -37,7 +38,11 @@ export function useOnlineSyncSSE() {
         await triggerDaemonOnlineSync();
         // Refresh UI after daemon processes the sync
         // 5s allows for larger databases to complete processing
-        setTimeout(() => {
+        if (refreshTimerRef.current) {
+          window.clearTimeout(refreshTimerRef.current);
+        }
+        refreshTimerRef.current = window.setTimeout(() => {
+          refreshTimerRef.current = null;
           emitProjectsAllTimeInvalidated('sse_sync_pull');
           triggerRefresh('sse_sync_pull');
         }, 5_000);
@@ -59,6 +64,10 @@ export function useOnlineSyncSSE() {
     );
 
     return () => {
+      if (refreshTimerRef.current) {
+        window.clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = null;
+      }
       disconnectSSE();
       window.removeEventListener(
         ONLINE_SYNC_SETTINGS_CHANGED_EVENT,

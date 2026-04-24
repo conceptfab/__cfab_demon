@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import {
   LayoutDashboard,
@@ -143,7 +143,27 @@ export function Sidebar() {
   const [lanSyncing, setLanSyncing] = useState(false);
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
   const [lanScanning, setLanScanning] = useState(false);
+  const lanSyncMessageTimerRef = useRef<number | null>(null);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+
+  const clearLanSyncMessageLater = useCallback((delayMs: number) => {
+    if (lanSyncMessageTimerRef.current) {
+      window.clearTimeout(lanSyncMessageTimerRef.current);
+    }
+    lanSyncMessageTimerRef.current = window.setTimeout(() => {
+      lanSyncMessageTimerRef.current = null;
+      setLanSyncMessage(null);
+    }, delayMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (lanSyncMessageTimerRef.current) {
+        window.clearTimeout(lanSyncMessageTimerRef.current);
+        lanSyncMessageTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleLanSync = useCallback(async () => {
     if (!lanPeer || lanSyncing || lanIsSlave) return;
@@ -187,7 +207,7 @@ export function Sidebar() {
       });
       triggerRefresh('lan_sync_pull');
       setLanSyncMessage(t('layout.status.lan_synced'));
-      setTimeout(() => { setLanSyncMessage(null); }, 8_000);
+      clearLanSyncMessageLater(8_000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('LAN sync failed:', msg);
@@ -197,11 +217,11 @@ export function Sidebar() {
       } else {
         setLanSyncMessage(msg.length > 60 ? msg.slice(0, 60) + '…' : msg);
       }
-      setTimeout(() => { setLanSyncMessage(null); }, 10_000);
+      clearLanSyncMessageLater(10_000);
     } finally {
       setLanSyncing(false);
     }
-  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t]);
+  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t, clearLanSyncMessageLater]);
 
   const handleLanScan = useCallback(async () => {
     if (lanScanning || lanSyncing) return;

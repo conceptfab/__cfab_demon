@@ -946,9 +946,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 - Modify: `dashboard/src/hooks/useJobPool.ts:211`
 - Modify: `dashboard/src/components/layout/Sidebar.tsx:194,205`
 
-- [ ] **Step 35.1: Wszystkie `setTimeout` → `const id = setTimeout(...); return () => clearTimeout(id);` w `useEffect` cleanup; dla `ref`-owanych: `timerRef.current = setTimeout(...); clearTimeout(timerRef.current)`.**
+- [x] **Step 35.1: Wszystkie `setTimeout` → `const id = setTimeout(...); return () => clearTimeout(id);` w `useEffect` cleanup; dla `ref`-owanych: `timerRef.current = setTimeout(...); clearTimeout(timerRef.current)`.**
 
-- [ ] **Step 35.2: Commit**
+- [x] **Step 35.2: Commit**
 
 ### Task 36: Sync status + attention counter w tray macOS
 

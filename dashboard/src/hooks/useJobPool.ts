@@ -54,6 +54,7 @@ export function useJobPool() {
   const lastSignatureRef = useRef<string | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
   const localChangeSyncTimer = useRef<number | null>(null);
+  const syncRefreshTimer = useRef<number | null>(null);
   const visibilityDebounceTimer = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const isSyncingRef = useRef(false);
@@ -107,6 +108,10 @@ export function useJobPool() {
     if (visibilityDebounceTimer.current) {
       window.clearTimeout(visibilityDebounceTimer.current);
       visibilityDebounceTimer.current = null;
+    }
+    if (syncRefreshTimer.current) {
+      window.clearTimeout(syncRefreshTimer.current);
+      syncRefreshTimer.current = null;
     }
   }, []);
 
@@ -208,7 +213,11 @@ export function useJobPool() {
         await triggerDaemonOnlineSync();
         // Daemon handles the sync — refresh UI after delay to pick up changes
         // 5s allows for larger databases to complete processing
-        setTimeout(() => {
+        if (syncRefreshTimer.current) {
+          window.clearTimeout(syncRefreshTimer.current);
+        }
+        syncRefreshTimer.current = window.setTimeout(() => {
+          syncRefreshTimer.current = null;
           triggerRefresh(`background_sync_${reason}`);
         }, 5_000);
         syncFailCountRef.current = 0;
