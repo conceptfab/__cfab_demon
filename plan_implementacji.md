@@ -783,9 +783,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `src/platform/macos/tray.rs:34,86`
 
-- [ ] **Step 20.1: `Icon::from_rgba(...).map_err(...)` + fallback_icon bezpieczny (const raw RGBA literal).**
+- [x] **Step 20.1: `Icon::from_rgba(...).map_err(...)` + fallback_icon bezpieczny (const raw RGBA literal).**
 
-- [ ] **Step 20.2: Commit**
+- [x] **Step 20.2: Commit**
 
 ### Task 21: Dedup `extract_file_from_title`, `classify_activity_type`, `collect_descendants`
 

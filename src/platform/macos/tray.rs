@@ -29,11 +29,10 @@ const TRAY_ICON_PNG: &[u8] = include_bytes!(concat!(
 /// Wczytuje ikonę tray z osadzonego PNG i dekoduje do RGBA. Jeśli dekodowanie
 /// zawiedzie, zwraca prosty niebieski kwadrat jako fallback — daemon nie może
 /// wystartować bez ikony, ale nie chcemy brakiem logo blokować produkcji.
-fn build_icon() -> Icon {
+fn build_icon() -> Result<Icon, String> {
     match decode_png_rgba(TRAY_ICON_PNG) {
-        Ok((rgba, w, h)) => {
-            Icon::from_rgba(rgba, w, h).expect("Failed to build tray icon from RGBA")
-        }
+        Ok((rgba, w, h)) => Icon::from_rgba(rgba, w, h)
+            .map_err(|e| format!("failed to build tray icon from RGBA: {e}")),
         Err(e) => {
             log::warn!("Tray icon PNG decode failed ({e}) — fallback to 18×18 blue square");
             fallback_icon()
@@ -78,13 +77,14 @@ fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
     Ok((rgba, info.width, info.height))
 }
 
-fn fallback_icon() -> Icon {
+fn fallback_icon() -> Result<Icon, String> {
     const SIZE: usize = 18;
     let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
     for _ in 0..SIZE * SIZE {
         rgba.extend_from_slice(&[31, 81, 255, 255]);
     }
-    Icon::from_rgba(rgba, SIZE as u32, SIZE as u32).expect("fallback icon must build")
+    Icon::from_rgba(rgba, SIZE as u32, SIZE as u32)
+        .map_err(|e| format!("failed to build fallback tray icon: {e}"))
 }
 
 pub fn run(
@@ -123,10 +123,18 @@ pub fn run(
     let _ = menu.append(&restart_item);
     let _ = menu.append(&exit_item);
 
+    let icon = match build_icon() {
+        Ok(icon) => icon,
+        Err(e) => {
+            log::error!("Tray: nie udało się przygotować ikony menu bar: {e}");
+            return TrayExitAction::Exit;
+        }
+    };
+
     let tray_icon = match TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip(APP_NAME)
-        .with_icon(build_icon())
+        .with_icon(icon)
         .build()
     {
         Ok(t) => t,
