@@ -924,9 +924,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src/components/ui/toast-notification.tsx:58`
 
-- [ ] **Step 33.1: `const value = useMemo(() => ({ showError, showInfo }), [showError, showInfo]);`**
+- [x] **Step 33.1: `const value = useMemo(() => ({ showError, showInfo }), [showError, showInfo]);`**
 
-- [ ] **Step 33.2: Commit**
+- [x] **Step 33.2: Commit**
 
 ### Task 34: Unifikacja `aiStatus` w store
 
