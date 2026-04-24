@@ -157,45 +157,7 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
 }
 
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
-/// Heurystyka: bierze pierwszą część przed separatorem (` - `, ` — `, ` | `).
-/// Przykłady:
-///   "main.rs - timeflow_demon - Visual Studio Code" → "main.rs - timeflow_demon"
-///   "projekt.psd @ 100% (RGB/8)" → "projekt.psd"
-///   "Blender" → "Blender"
-pub fn extract_file_from_title(title: &str) -> String {
-    // Priority: " — " and " | " (checked via rfind) take precedence over " - ".
-    // For "file.py - projekt | VS Code", rfind(" | ") matches first → result is "file.py - projekt".
-    // This is intentional: " - " is last because it often appears inside file paths / project names.
-    let separators = [" — ", " | "];
-
-    for sep in separators {
-        if let Some(pos) = title.rfind(sep) {
-            let left = title[..pos].trim();
-            if !left.is_empty() {
-                return left.to_string();
-            }
-        }
-    }
-
-    // Dla " - " — specjalne traktowanie: bierzemy wszystko oprócz ostatniego segmentu
-    // "main.rs - timeflow_demon - Visual Studio Code" → "main.rs - timeflow_demon"
-    if let Some(pos) = title.rfind(" - ") {
-        let left = title[..pos].trim();
-        if !left.is_empty() {
-            return left.to_string();
-        }
-    }
-
-    // Dla " @ " — bierzemy lewą część
-    if let Some(pos) = title.find(" @ ") {
-        let left = title[..pos].trim();
-        if !left.is_empty() {
-            return left.to_string();
-        }
-    }
-
-    title.trim().to_string()
-}
+pub use crate::title_parser::{classify_activity_type, extract_file_from_title};
 
 // ── Idle detection ────────────────────────────────────────────
 
@@ -272,23 +234,7 @@ pub fn build_process_snapshot() -> ProcessSnapshot {
     ProcessSnapshot { tree, exe_pids }
 }
 
-/// Recursively collects all descendant PIDs.
-fn collect_descendants(
-    tree: &HashMap<u32, Vec<u32>>,
-    root: u32,
-    result: &mut Vec<u32>,
-    visited: &mut std::collections::HashSet<u32>,
-) {
-    if !visited.insert(root) {
-        return; // Cycle detected or already visited
-    }
-    if let Some(children) = tree.get(&root) {
-        for &child in children {
-            result.push(child);
-            collect_descendants(tree, child, result, visited);
-        }
-    }
-}
+use crate::title_parser::collect_descendants;
 
 /// Pobiera sumaryczny czas CPU (kernel + user) dla zbioru PIDów.
 /// Zwraca sumę w 100-ns jednostkach.
@@ -396,51 +342,6 @@ mod tests {
     }
 
     #[test]
-    fn extract_file_single_separator() {
-        assert_eq!(
-            extract_file_from_title("main.rs - timeflow_demon - Visual Studio Code"),
-            "main.rs - timeflow_demon"
-        );
-    }
-
-    #[test]
-    fn extract_file_at_separator() {
-        assert_eq!(
-            extract_file_from_title("projekt.psd @ 100% (RGB/8)"),
-            "projekt.psd"
-        );
-    }
-
-    #[test]
-    fn extract_file_no_separator() {
-        assert_eq!(extract_file_from_title("Blender"), "Blender");
-    }
-
-    #[test]
-    fn extract_file_pipe_separator() {
-        assert_eq!(extract_file_from_title("file.py | VS Code"), "file.py");
-    }
-
-    #[test]
-    fn extract_file_mixed_separators() {
-        // " - " ma pierwszeństwo przed " | " przy rfind — bierzemy lewą część przed ostatnim " - "
-        assert_eq!(
-            extract_file_from_title("file.py - projekt | VS Code"),
-            "file.py - projekt"
-        );
-    }
-
-    #[test]
-    fn extract_file_empty_after_trim() {
-        assert_eq!(extract_file_from_title("   "), "");
-    }
-
-    #[test]
-    fn extract_file_em_dash() {
-        assert_eq!(extract_file_from_title("dokument — Edytor"), "dokument");
-    }
-
-    #[test]
     fn decode_window_title_allows_empty_title() {
         let empty: [u16; 0] = [];
         assert_eq!(decode_window_title(&empty, 0), "");
@@ -497,23 +398,4 @@ mod tests {
         assert_eq!(pending, vec![11, 12]);
     }
 
-    #[test]
-    fn classify_activity_type_for_known_apps() {
-        assert_eq!(
-            timeflow_shared::activity_classification::classify_activity_type("code.exe", None),
-            Some(ActivityType::Coding)
-        );
-        assert_eq!(
-            timeflow_shared::activity_classification::classify_activity_type("chrome.exe", None),
-            Some(ActivityType::Browsing)
-        );
-        assert_eq!(
-            timeflow_shared::activity_classification::classify_activity_type("blender.exe", None),
-            Some(ActivityType::Design)
-        );
-        assert_eq!(
-            timeflow_shared::activity_classification::classify_activity_type("unknown.exe", None),
-            None
-        );
-    }
 }

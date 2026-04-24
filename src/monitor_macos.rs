@@ -47,34 +47,7 @@ pub struct ProcessSnapshot {
 
 // ── Cross-platform logika (niezależna od OS) ────────────────────────────
 
-pub fn classify_activity_type(exe_name: &str) -> Option<ActivityType> {
-    timeflow_shared::activity_classification::classify_activity_type(exe_name, None)
-}
-
-pub fn extract_file_from_title(title: &str) -> String {
-    let separators = [" — ", " | "];
-    for sep in separators {
-        if let Some(pos) = title.rfind(sep) {
-            let left = title[..pos].trim();
-            if !left.is_empty() {
-                return left.to_string();
-            }
-        }
-    }
-    if let Some(pos) = title.rfind(" - ") {
-        let left = title[..pos].trim();
-        if !left.is_empty() {
-            return left.to_string();
-        }
-    }
-    if let Some(pos) = title.find(" @ ") {
-        let left = title[..pos].trim();
-        if !left.is_empty() {
-            return left.to_string();
-        }
-    }
-    title.trim().to_string()
-}
+pub use crate::title_parser::{classify_activity_type, extract_file_from_title};
 
 pub fn evict_old_pid_cache(pid_cache: &mut PidCache, max_age: Duration) {
     let now = Instant::now();
@@ -230,22 +203,7 @@ extern "C" {
     ) -> c_int;
 }
 
-fn collect_descendants(
-    tree: &HashMap<u32, Vec<u32>>,
-    root: u32,
-    result: &mut Vec<u32>,
-    visited: &mut std::collections::HashSet<u32>,
-) {
-    if !visited.insert(root) {
-        return;
-    }
-    if let Some(children) = tree.get(&root) {
-        for &child in children {
-            result.push(child);
-            collect_descendants(tree, child, result, visited);
-        }
-    }
-}
+use crate::title_parser::collect_descendants;
 
 fn cpu_time_for_pid(pid: u32) -> Option<u64> {
     let mut info = ProcTaskInfo::default();

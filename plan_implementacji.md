@@ -799,11 +799,13 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 - Create: `src/monitor/title_parser.rs`
 - Modify: `src/monitor.rs:171`, `src/monitor_macos.rs:70,161`
 
-- [ ] **Step 21.1: Przenieś wspólne funkcje do `title_parser.rs` + re-export.**
+- [x] **Step 21.1: Przenieś wspólne funkcje do `title_parser.rs` + re-export.**
 
-- [ ] **Step 21.2: Testy jednostkowe per funkcja (już w jednym z miejsc — skonsoliduj).**
+  *(Utworzony jako `src/title_parser.rs` — top-level module zamiast `src/monitor/title_parser.rs`, bo `monitor.rs` i `monitor_macos.rs` to alternatywne moduły wybierane przez `#[cfg(target_os)]`.)*
 
-- [ ] **Step 21.3: Commit**
+- [x] **Step 21.2: Testy jednostkowe per funkcja (już w jednym z miejsc — skonsoliduj).**
+
+- [x] **Step 21.3: Commit**
 
 ### Task 22: Auto-unfreeze vs `SYNC_TIMEOUT`
 
