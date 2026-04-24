@@ -21,7 +21,7 @@ mod m20_session_project_name;
 mod m21_tombstone_session_sync_key;
 mod m22_updated_at_indexes;
 
-const LATEST_SCHEMA_VERSION: i64 = 22;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 22;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(

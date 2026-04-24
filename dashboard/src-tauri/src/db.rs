@@ -532,3 +532,74 @@ pub fn set_demo_mode(app: &AppHandle, enabled: bool) -> Result<DemoModeStatus, S
 
     get_demo_mode_status(app)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Task 89: a freshly created database goes through `schema.sql` + all
+    /// migrations and lands at the latest schema version, with the `sessions`
+    /// table carrying every column the runtime expects.
+    #[test]
+    fn fresh_database_lands_on_latest_schema() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("timeflow_fresh_db_test_{}.db", nanos));
+        let path_str = path.to_string_lossy().to_string();
+
+        // Clean up leftovers from previous interrupted runs.
+        let _ = std::fs::remove_file(&path);
+
+        initialize_database_file(&path_str).expect("fresh init should succeed");
+
+        let conn = rusqlite::Connection::open(&path).expect("open fresh DB");
+        let version: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .expect("schema_version row exists");
+        assert_eq!(
+            version,
+            crate::db_migrations::LATEST_SCHEMA_VERSION,
+            "fresh DB should be at LATEST_SCHEMA_VERSION"
+        );
+
+        // Snapshot of columns the dashboard + daemon rely on. If a migration
+        // drops or renames one of these, this test catches it before release.
+        let expected_columns = [
+            "id",
+            "app_id",
+            "start_time",
+            "end_time",
+            "duration_seconds",
+            "date",
+            "project_id",
+            "project_name",
+            "updated_at",
+        ];
+        let actual: std::collections::HashSet<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM pragma_table_info('sessions')")
+                .expect("pragma_table_info sessions");
+            stmt.query_map([], |row| row.get::<_, String>(0))
+                .expect("query columns")
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+
+        for col in expected_columns {
+            assert!(
+                actual.contains(col),
+                "fresh sessions table missing expected column `{}` (have: {:?})",
+                col,
+                actual
+            );
+        }
+
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
+}

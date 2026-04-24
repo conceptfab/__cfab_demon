@@ -1170,9 +1170,11 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 **Files:**
 - Create: `dashboard/src-tauri/src/tests/fresh_db_schema.rs`
 
-- [ ] **Step 89.1: Test — `initialize_database_file_once(tempdir/new.db)` → `schema_version == LATEST_SCHEMA_VERSION`; wszystkie `sessions` kolumny obecne.**
+- [x] **Step 89.1: Test — `initialize_database_file_once(tempdir/new.db)` → `schema_version == LATEST_SCHEMA_VERSION`; wszystkie `sessions` kolumny obecne.**
 
-- [ ] **Step 89.2: Commit**
+  *(Test w `#[cfg(test)] mod tests` w `db.rs` — używa `initialize_database_file` bezpośrednio zamiast wariantu _once, żeby nie zanieczyszczać globalnego cache ścieżek między testami. Weryfikuje `schema_version` + kluczowe kolumny `sessions`.)*
+
+- [x] **Step 89.2: Commit**
 
 ### Task 90: Lint-rule `no-zustand-full-destructure`
 
