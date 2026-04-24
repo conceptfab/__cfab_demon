@@ -886,11 +886,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: listing sekcja 4.3.1 raportu (~9 plików)
 
-- [ ] **Step 30.1: Zmień każdy `const { currentPage, ... } = useUIStore()` na osobne `useUIStore(s => s.currentPage)` etc.**
+- [x] **Step 30.1: Zmień każdy `const { currentPage, ... } = useUIStore()` na osobne `useUIStore(s => s.currentPage)` etc.**
 
-- [ ] **Step 30.2: Dodaj lint-rule custom (`no-zustand-full-destructure`) lub dokument w `docs/CODING_STYLE.md`.**
+- [x] **Step 30.2: Dodaj lint-rule custom (`no-zustand-full-destructure`) lub dokument w `docs/CODING_STYLE.md`.**
 
-- [ ] **Step 30.3: Commit per plik (łatwiejszy review)**
+- [x] **Step 30.3: Commit per plik (łatwiejszy review)**
 
 ### Task 31: `ConfirmDialog` jako komponent
 
