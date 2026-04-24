@@ -757,13 +757,17 @@ git commit -m "fix(macos): use TrayText::* for i18n tray menu (P1)"
 - Modify: `src/storage.rs:128`
 - Modify: `src/tracker.rs` (trzymaj `DailyStore` w stanie wątku)
 
-- [ ] **Step 18.1: Wprowadź struct `DailyStore { conn: Connection, path: PathBuf }` z `open(path)` i `save(&mut self, daily: &Daily)`.**
+- [x] **Step 18.1: Wprowadź struct `DailyStore { conn: Connection, path: PathBuf }` z `open(path)` i `save(&mut self, daily: &Daily)`.**
 
-- [ ] **Step 18.2: W `tracker::run_loop` utwórz `DailyStore` raz; używaj `.save()` co tick.**
+  *(DailyStore trzyma tylko `conn` — w obecnej architekturze plik DB jest pojedynczy, `PathBuf` nie jest potrzebny; otwieranie przez `open_daily_store()` który samodzielnie zna ścieżkę.)*
 
-- [ ] **Step 18.3: Na date-change lub po sleep reopen (nowy plik dnia).**
+- [x] **Step 18.2: W `tracker::run_loop` utwórz `DailyStore` raz; używaj `.save()` co tick.**
 
-- [ ] **Step 18.4: Commit**
+- [x] **Step 18.3: Na date-change lub po sleep reopen (nowy plik dnia).**
+
+  *(Reopen wpięty tylko po sleep detection — date-change to tylko nowy rekord w tej samej DB, reopen zbędny.)*
+
+- [x] **Step 18.4: Commit**
 
 ```bash
 git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"

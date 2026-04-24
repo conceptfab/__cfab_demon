@@ -158,6 +158,7 @@ fn is_db_frozen(sync_state: Option<&Arc<crate::lan_server::LanSyncState>>) -> bo
 }
 
 fn save_daily_if_unfrozen(
+    store: &mut storage::DailyStore,
     daily_data: &mut storage::DailyData,
     sync_state: Option<&Arc<crate::lan_server::LanSyncState>>,
     context: &str,
@@ -167,7 +168,7 @@ fn save_daily_if_unfrozen(
         return false;
     }
 
-    if let Err(e) = storage::save_daily(daily_data) {
+    if let Err(e) = store.save(daily_data) {
         log::error!("Error saving daily data during {}: {}", context, e);
         log::logger().flush();
     }
@@ -452,6 +453,13 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
     let mut daily_data = storage::load_today();
     let mut current_date = Local::now().date_naive();
+    let mut daily_store = match storage::DailyStore::open() {
+        Ok(store) => store,
+        Err(e) => {
+            log::error!("Failed to open DailyStore: {} — monitor thread aborting", e);
+            return;
+        }
+    };
 
     let mut save_skipped_while_frozen = false;
     let mut last_cache_evict = Instant::now();
@@ -491,7 +499,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // Check stop signal
         if stop_signal.load(Ordering::Relaxed) {
             // Final save before exiting
-            save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "shutdown");
+            save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "shutdown");
             break;
         }
 
@@ -500,7 +508,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         if today != current_date {
             log::info!("Date changed: {} → {}", current_date, today);
             save_skipped_while_frozen =
-                !save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "date change");
+                !save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "date change");
             daily_data = storage::load_daily(today);
             current_date = today;
             active_sessions.clear();
@@ -550,11 +558,14 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
             if let Some(ref signal) = foreground_signal {
                 let _ = signal.take_last_switch_time();
             }
-            if save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "sleep detection") {
+            if save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "sleep detection") {
                 last_save = Instant::now();
                 save_skipped_while_frozen = false;
             } else {
                 save_skipped_while_frozen = true;
+            }
+            if let Err(e) = daily_store.reopen() {
+                log::warn!("DailyStore reopen after sleep failed: {}", e);
             }
             active_sessions.clear();
             was_idle = true;
@@ -730,7 +741,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Periodic save (skip while database is frozen for LAN sync)
         if last_save.elapsed() >= save_interval {
-            if save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "periodic") {
+            if save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "periodic") {
                 save_skipped_while_frozen = false;
                 last_save = Instant::now();
             } else {
@@ -739,7 +750,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         } else if save_skipped_while_frozen {
             if !is_db_frozen(sync_state.as_ref()) {
                 log::info!("Database unfrozen — saving skipped data now");
-                save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "post-unfreeze");
+                save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "post-unfreeze");
                 save_skipped_while_frozen = false;
                 last_save = Instant::now();
             }
