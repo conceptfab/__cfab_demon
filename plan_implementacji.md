@@ -95,7 +95,7 @@ git worktree add ../__cfab_demon-fixes -b fix/raport-implementation macos-port
 cd ../__cfab_demon-fixes
 ```
 
-- [ ] **Step 0.2: Baseline build — demon**
+- [x] **Step 0.2: Baseline build — demon**
 
 ```bash
 cd /Users/micz/__DEV__/__cfab_demon-fixes
@@ -113,7 +113,7 @@ npm install && npm run build 2>&1 | tee /tmp/baseline_front.log
 ```
 Oczekiwane: build przechodzi.
 
-- [ ] **Step 0.4: Utwórz `PARITY.md`**
+- [x] **Step 0.4: Utwórz `PARITY.md`**
 
 Plik `PARITY.md` w repo-root — tracker znanych stubów macOS (aktualizowany w miarę domykania P1):
 
@@ -131,7 +131,7 @@ Plik `PARITY.md` w repo-root — tracker znanych stubów macOS (aktualizowany w 
 | Version mismatch dialog | ✅ MessageBox | ❌ tylko log | Task 65 |
 ```
 
-- [ ] **Step 0.5: Commit baseline**
+- [x] **Step 0.5: Commit baseline**
 
 ```bash
 git add PARITY.md
@@ -148,7 +148,7 @@ git commit -m "docs: add PARITY.md tracker for macOS/Windows feature gaps"
 - Modify: `src/lan_server.rs:484-488`, `:1196-1207`, whitelist `:422-427`
 - Test: `src/lan_server.rs` (sekcja `#[cfg(test)]` lub nowy `tests/lan_identity_test.rs`)
 
-- [ ] **Step 1.1: Test — identity nie zawiera secret**
+- [x] **Step 1.1: Test — identity nie zawiera secret**
 
 ```rust
 #[test]
@@ -168,11 +168,11 @@ cargo test --lib lan_server::tests::local_identity_does_not_leak_secret
 ```
 Oczekiwane: FAIL (obecnie zwraca secret).
 
-- [ ] **Step 1.3: Usuń `secret` z odpowiedzi w `handle_local_identity`**
+- [x] **Step 1.3: Usuń `secret` z odpowiedzi w `handle_local_identity`**
 
 W `src/lan_server.rs:1196-1207` zmień strukturę odpowiedzi — usuń pole `secret` (zostaje `device_id` + `machine_name`). Upewnij się że `/lan/pair` nadal przekazuje secret po walidacji kodu parowania (endpoint `:1178+`).
 
-- [ ] **Step 1.4: Uruchom test — PASS**
+- [x] **Step 1.4: Uruchom test — PASS**
 
 ```bash
 cargo test --lib lan_server::tests::local_identity_does_not_leak_secret
@@ -185,7 +185,7 @@ cargo test --test lan_pairing_smoke 2>&1 | tail -20
 ```
 Oczekiwane: pair endpoint zwraca secret po poprawnym kodzie.
 
-- [ ] **Step 1.6: Commit**
+- [x] **Step 1.6: Commit**
 
 ```bash
 git add src/lan_server.rs
@@ -198,7 +198,7 @@ git commit -m "security(lan): remove secret from /lan/local-identity response (P
 - Modify: `src/lan_server.rs:1178-1187`
 - Create: `src/lan_pair_throttle.rs`
 
-- [ ] **Step 2.1: Test — brute-force blokowany po 10 próbach z tego samego IP**
+- [x] **Step 2.1: Test — brute-force blokowany po 10 próbach z tego samego IP**
 
 ```rust
 #[test]
@@ -212,7 +212,7 @@ fn pair_throttle_blocks_after_10_attempts_per_ip() {
 }
 ```
 
-- [ ] **Step 2.2: Test — różne IP nie blokują się nawzajem**
+- [x] **Step 2.2: Test — różne IP nie blokują się nawzajem**
 
 ```rust
 #[test]
@@ -231,7 +231,7 @@ fn pair_throttle_per_ip_isolated() {
 cargo test --lib lan_pair_throttle
 ```
 
-- [ ] **Step 2.4: Zaimplementuj `PairThrottle`**
+- [x] **Step 2.4: Zaimplementuj `PairThrottle`**
 
 Plik `src/lan_pair_throttle.rs`:
 
@@ -269,7 +269,7 @@ impl PairThrottle {
 }
 ```
 
-- [ ] **Step 2.5: Wpięcie w `handle_pair`**
+- [x] **Step 2.5: Wpięcie w `handle_pair`**
 
 W `src/lan_server.rs:1178-1187` przed walidacją kodu:
 
@@ -280,13 +280,13 @@ if PAIR_THROTTLE.check_and_record(client_ip).is_err() {
 }
 ```
 
-- [ ] **Step 2.6: Testy PASS + build**
+- [x] **Step 2.6: Testy PASS + build**
 
 ```bash
 cargo test --lib lan_pair_throttle && cargo build
 ```
 
-- [ ] **Step 2.7: Commit**
+- [x] **Step 2.7: Commit**
 
 ```bash
 git add src/lan_pair_throttle.rs src/lan_server.rs src/lib.rs
@@ -303,7 +303,7 @@ git commit -m "security(lan): add per-IP rate limit on /lan/pair (P0)"
 - Modify: `src/monitor_macos.rs:225,244-295`
 - Affected: `CpuSnapshot` usage
 
-- [ ] **Step 3.1: Test — dwa kolejne tick'i dla tej samej apki zwracają > 0**
+- [x] **Step 3.1: Test — dwa kolejne tick'i dla tej samej apki zwracają > 0**
 
 ```rust
 #[test]
@@ -318,19 +318,19 @@ fn measure_cpu_returns_nonzero_on_second_tick() {
 }
 ```
 
-- [ ] **Step 3.2: Refactor na jeden `System`**
+- [x] **Step 3.2: Refactor na jeden `System`**
 
 Zastąp `SYSINFO_STATE` per-call globalem `Lazy<Mutex<System>>`. W każdym tick: `sys.refresh_processes_specifics(ProcessRefreshKind::new().with_cpu())`. Użyj `accumulated_cpu_time()` + delta od `prev: &CpuSnapshot`.
 
 - [ ] **Step 3.3: Usuń martwe pole `CpuSnapshot.total_time` po weryfikacji (Task 75)**
 
-- [ ] **Step 3.4: Test PASS**
+- [x] **Step 3.4: Test PASS**
 
 ```bash
 cargo test --target x86_64-apple-darwin measure_cpu_returns_nonzero_on_second_tick
 ```
 
-- [ ] **Step 3.5: Commit**
+- [x] **Step 3.5: Commit**
 
 ```bash
 git add src/monitor_macos.rs
@@ -345,7 +345,7 @@ git commit -m "fix(macos): share sysinfo state for CPU measurement (P1)"
 - Modify: `dashboard/src/components/help/sections/HelpSimpleSections.tsx`
 - Modify: `dashboard/src/locales/{pl,en}/common.json`
 
-- [ ] **Step 4.1: Implementacja — `CGWindowListCopyWindowInfo` dla frontmost**
+- [x] **Step 4.1: Implementacja — `CGWindowListCopyWindowInfo` dla frontmost**
 
 ```rust
 // src/platform/macos/window_title.rs
@@ -353,11 +353,11 @@ use core_graphics::window::{kCGWindowListOptionOnScreenOnly, CGWindowListCopyWin
 pub fn frontmost_window_title(pid: i32) -> Option<String> { /* ... */ }
 ```
 
-- [ ] **Step 4.2: Prompt o zgodę Accessibility (AX API follow-up, ale CGWindowList nie wymaga)**
+- [x] **Step 4.2: Prompt o zgodę Accessibility (AX API follow-up, ale CGWindowList nie wymaga)**
 
 `CGWindowListCopyWindowInfo` nie wymaga zgody — tytuły frontmost są dostępne. Zaplanuj AX jako osobny Task P2.
 
-- [ ] **Step 4.3: Podłącz w `monitor_macos.rs:191`**
+- [x] **Step 4.3: Podłącz w `monitor_macos.rs:191`**
 
 Zamień `window_title = String::new()` na `window_title = frontmost_window_title(pid).unwrap_or_default()`.
 
@@ -367,16 +367,16 @@ Zamień `window_title = String::new()` na `window_title = frontmost_window_title
 cargo test --target x86_64-apple-darwin window_title_not_empty
 ```
 
-- [ ] **Step 4.5: [HELP] Dopisz sekcję o file tracking na macOS**
+- [x] **Step 4.5: [HELP] Dopisz sekcję o file tracking na macOS**
 
 `dashboard/src/components/help/sections/HelpSimpleSections.tsx` — dodaj akapit do sekcji Daemon:
 - klucz i18n: `help_page.daemon_macos_window_title`
 - PL: „Na macOS TIMEFLOW odczytuje tytuł aktywnego okna (np. nazwę pliku w edytorze), co pozwala śledzić pracę na poziomie plików i poprawia skuteczność sugestii AI. Wymaga zgody systemowej tylko przy pełnym AX API (Phase 2); podstawowa funkcja działa bez dodatkowych uprawnień."
 - EN: odpowiednik
 
-- [ ] **Step 4.6: Zaktualizuj `PARITY.md` — oznacz `window_title` jako ✅**
+- [x] **Step 4.6: Zaktualizuj `PARITY.md` — oznacz `window_title` jako ✅**
 
-- [ ] **Step 4.7: Commit**
+- [x] **Step 4.7: Commit**
 
 ```bash
 git add src/platform/macos/window_title.rs src/monitor_macos.rs dashboard/src/components/help/sections/HelpSimpleSections.tsx dashboard/src/locales PARITY.md
@@ -388,7 +388,7 @@ git commit -m "feat(macos): implement frontmost window_title via CGWindowList"
 **Files:**
 - Modify: `src/main.rs:119-145`
 
-- [ ] **Step 5.1: Refactor spawn + store handle**
+- [x] **Step 5.1: Refactor spawn + store handle**
 
 ```rust
 let online_sync_handle: Option<thread::JoinHandle<()>> = Some(std::thread::spawn({
@@ -405,7 +405,7 @@ let online_sync_handle: Option<thread::JoinHandle<()>> = Some(std::thread::spawn
 }));
 ```
 
-- [ ] **Step 5.2: W shutdown: `join()` przed `drop(_guard)`**
+- [x] **Step 5.2: W shutdown: `join()` przed `drop(_guard)`**
 
 ```rust
 if let Some(h) = online_sync_handle.take() { let _ = h.join(); }
@@ -417,7 +417,7 @@ if let Some(h) = online_sync_handle.take() { let _ = h.join(); }
 2. Kliknij w tray „Restart"
 3. Sprawdź `lan_sync.log` — `online-sync thread joined cleanly` przed nowym procesem
 
-- [ ] **Step 5.4: Commit**
+- [x] **Step 5.4: Commit**
 
 ```bash
 git add src/main.rs
@@ -444,9 +444,9 @@ fn background_idle_transition_caps_elapsed() {
 
 - [ ] **Step 6.2: FAIL**
 
-- [ ] **Step 6.3: Zastosuj `effective_elapsed.max(1s)` jak w foreground path (analogicznie do `:630+`)**
+- [x] **Step 6.3: Zastosuj `effective_elapsed.max(1s)` jak w foreground path (analogicznie do `:630+`)**
 
-- [ ] **Step 6.4: PASS + commit**
+- [x] **Step 6.4: PASS + commit**
 
 ```bash
 git add src/tracker.rs
@@ -458,7 +458,7 @@ git commit -m "fix(tracker): cap background elapsed on idle transition (P1)"
 **Files:**
 - Modify: `src/tracker.rs:440-546`
 
-- [ ] **Step 7.1: Test — skok 3600s nie triggeruje save_daily**
+- [x] **Step 7.1: Test — skok 3600s nie triggeruje save_daily**
 
 ```rust
 #[test]
@@ -472,11 +472,11 @@ fn dst_jump_does_not_trigger_sleep_save() {
 }
 ```
 
-- [ ] **Step 7.2: Zmień `Local::now()` → `SystemTime::now()` epoch**
+- [x] **Step 7.2: Zmień `Local::now()` → `SystemTime::now()` epoch**
 
 `last_tracking_tick_wall: SystemTime`. Delta `(now - last).as_secs()`. Jeśli `delta ≈ 3600` i `|delta - uptime_delta - 3600| < 60` → `DstAdjust` (nie save_daily).
 
-- [ ] **Step 7.3: Commit**
+- [x] **Step 7.3: Commit**
 
 ```bash
 git add src/tracker.rs
@@ -490,7 +490,7 @@ git commit -m "fix(tracker): use SystemTime UTC to avoid DST false positives (P1
 - Modify: `src/tracker.rs` (INSERT paths)
 - Modify: `src/lan_common.rs:153-163`
 
-- [ ] **Step 8.1: `static MERGE_MUTEX: Mutex<()> = Mutex::new(());` w `sync_common.rs`**
+- [x] **Step 8.1: `static MERGE_MUTEX: Mutex<()> = Mutex::new(());` w `sync_common.rs`**
 
 ```rust
 pub(crate) static MERGE_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -498,7 +498,7 @@ pub(crate) static MERGE_MUTEX: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 - [ ] **Step 8.2: `merge_peer_delta` acquires mutex na całość operacji**
 
-- [ ] **Step 8.3: Tracker sprawdza `db_frozen` przed każdym INSERT/UPDATE**
+- [x] **Step 8.3: Tracker sprawdza `db_frozen` przed każdym INSERT/UPDATE**
 
 Dodaj helper `fn wait_for_db_unfreeze(state: &SyncState, timeout: Duration)` — retry po 200ms do `timeout`.
 
@@ -516,7 +516,7 @@ fn tracker_waits_for_merge() {
 }
 ```
 
-- [ ] **Step 8.5: Commit**
+- [x] **Step 8.5: Commit**
 
 ```bash
 git add src/sync_common.rs src/tracker.rs src/lan_common.rs
@@ -542,11 +542,11 @@ fn tombstone_by_exe_not_by_app_id() {
 }
 ```
 
-- [ ] **Step 9.2: FAIL — potem implementacja: `format!("{}|{}", exe_name, start_time)` zamiast `app_id|start_time`**
+- [x] **Step 9.2: FAIL — potem implementacja: `format!("{}|{}", exe_name, start_time)` zamiast `app_id|start_time`**
 
-- [ ] **Step 9.3: Migracja m21 — regeneracja `sync_markers` sync_key z app_id na exe_name (jednorazowa)**
+- [x] **Step 9.3: Migracja m21 — regeneracja `sync_markers` sync_key z app_id na exe_name (jednorazowa)**
 
-- [ ] **Step 9.4: PASS + commit**
+- [x] **Step 9.4: PASS + commit**
 
 ```bash
 git add src/sync_common.rs dashboard/src-tauri/src/db_migrations/m21_tombstone_sync_key.rs
@@ -560,9 +560,9 @@ git commit -m "fix(sync): tombstone key uses exe_name to avoid cross-machine del
 
 - [ ] **Step 10.1: Test — po usunięciu pliku DB, ponowna inicjalizacja działa**
 
-- [ ] **Step 10.2: Fix — przed `cache.contains(&path)` sprawdź `!Path::new(&path).exists()`; jeśli brak, usuń z cache i re-initialize**
+- [x] **Step 10.2: Fix — przed `cache.contains(&path)` sprawdź `!Path::new(&path).exists()`; jeśli brak, usuń z cache i re-initialize**
 
-- [ ] **Step 10.3: Commit**
+- [x] **Step 10.3: Commit**
 
 ```bash
 git add dashboard/src-tauri/src/db.rs
@@ -588,7 +588,7 @@ fn is_training_released_on_panic() {
 }
 ```
 
-- [ ] **Step 11.2: Struct z `Drop` który resetuje flagę; `acquire` robi atomic `UPDATE ... WHERE value='false'`**
+- [x] **Step 11.2: Struct z `Drop` który resetuje flagę; `acquire` robi atomic `UPDATE ... WHERE value='false'`**
 
 ```rust
 pub struct IsTrainingGuard<'a> { conn: &'a Connection }
@@ -597,7 +597,7 @@ impl<'a> Drop for IsTrainingGuard<'a> {
 }
 ```
 
-- [ ] **Step 11.3: Commit**
+- [x] **Step 11.3: Commit**
 
 ```bash
 git add dashboard/src-tauri/src/commands/assignment_model/training.rs
@@ -611,11 +611,11 @@ git commit -m "fix(ai): RAII guard for is_training flag (P1)"
 
 - [ ] **Step 12.1: Test — `set_assignment_mode` z auto=0.5 suggest=0.95 zwraca Err**
 
-- [ ] **Step 12.2: W `set_assignment_mode`, po clamp(0..1) sprawdź: `if auto < suggest { return Err("auto must be >= suggest") }`**
+- [x] **Step 12.2: W `set_assignment_mode`, po clamp(0..1) sprawdź: `if auto < suggest { return Err("auto must be >= suggest") }`**
 
-- [ ] **Step 12.3: UI — `AssignmentModeSettings` valid-check przed `handleSaveMode` z komunikatem i18n**
+- [x] **Step 12.3: UI — `AssignmentModeSettings` valid-check przed `handleSaveMode` z komunikatem i18n**
 
-- [ ] **Step 12.4: Commit**
+- [x] **Step 12.4: Commit**
 
 ```bash
 git add dashboard/src-tauri/src/commands/assignment_model/mod.rs dashboard/src/components/ai dashboard/src/locales
@@ -630,19 +630,19 @@ git commit -m "fix(ai): validate auto_confidence >= suggest_confidence (P1)"
 - Modify: `dashboard/src/components/help/sections/HelpAiSection.tsx`
 - Modify: `dashboard/src/locales/{pl,en}/common.json`
 
-- [ ] **Step 13.1: Backend już ma `get_session_score_breakdown` — wywołaj w hooku**
+- [x] **Step 13.1: Backend już ma `get_session_score_breakdown` — wywołaj w hooku**
 
 ```tsx
 const { data } = useQuery(['breakdown', sessionId], () => aiApi.getSessionScoreBreakdown(sessionId));
 ```
 
-- [ ] **Step 13.2: Render 5-warstw score (Layer 0..3b) jako tabelka**
+- [x] **Step 13.2: Render 5-warstw score (Layer 0..3b) jako tabelka**
 
-- [ ] **Step 13.3: Aktywuj przez `showScoreBreakdown` flag w `AiSessionIndicatorsCard`**
+- [x] **Step 13.3: Aktywuj przez `showScoreBreakdown` flag w `AiSessionIndicatorsCard`**
 
-- [ ] **Step 13.4: [HELP] Dodaj do `HelpAiSection.tsx` — opis jak czytać breakdown + i18n klucze `help_page.ai_score_breakdown.*` PL/EN**
+- [x] **Step 13.4: [HELP] Dodaj do `HelpAiSection.tsx` — opis jak czytać breakdown + i18n klucze `help_page.ai_score_breakdown.*` PL/EN**
 
-- [ ] **Step 13.5: Commit**
+- [x] **Step 13.5: Commit**
 
 ```bash
 git add dashboard/src/components/ai dashboard/src/components/help dashboard/src/locales
@@ -655,7 +655,7 @@ git commit -m "feat(ai): UI breakdown explaining per-layer suggestion scores (P1
 - Modify: `dashboard/src/locales/pl/common.json`
 - Modify: `dashboard/src/locales/en/common.json`
 
-- [ ] **Step 14.1: Dodaj 3 klucze**
+- [x] **Step 14.1: Dodaj 3 klucze**
 
 PL:
 ```json
@@ -679,11 +679,11 @@ EN:
 }
 ```
 
-- [ ] **Step 14.2: Weryfikacja — `compare_locales.py` (po fixie w Task 66) lub manualny grep**
+- [x] **Step 14.2: Weryfikacja — `compare_locales.py` (po fixie w Task 66) lub manualny grep**
 
 - [ ] **Step 14.3: Manual smoke — przełącz locale na EN, otwórz context menu sesji, sprawdź tooltipy**
 
-- [ ] **Step 14.4: Commit**
+- [x] **Step 14.4: Commit**
 
 ```bash
 git add dashboard/src/locales
@@ -695,9 +695,9 @@ git commit -m "fix(i18n): add missing sessions.menu.mode_* keys (P1)"
 **Files:**
 - Modify: `dashboard/src/pages/Projects.tsx:1128`
 
-- [ ] **Step 15.1: `onSaved={() => triggerRefresh('projects_manual_session_saved')}`**
+- [x] **Step 15.1: `onSaved={() => triggerRefresh('projects_manual_session_saved')}`**
 
-- [ ] **Step 15.2: Commit**
+- [x] **Step 15.2: Commit**
 
 ```bash
 git add dashboard/src/pages/Projects.tsx
@@ -710,14 +710,14 @@ git commit -m "fix(ui): pass explicit reason to triggerRefresh in Projects onSav
 - Modify: `dashboard/src/components/ai/AiBatchActionsCard.tsx:65`
 - Modify: `dashboard/src/locales/{pl,en}/common.json`
 
-- [ ] **Step 16.1: Dodaj klucz `ai_page.batch.tooltip_requires_auto_safe`**
+- [x] **Step 16.1: Dodaj klucz `ai_page.batch.tooltip_requires_auto_safe`**
 
 PL: „Najpierw włącz tryb Auto Safe."
 EN: „Enable Auto Safe mode first."
 
-- [ ] **Step 16.2: Zastąp literal `t('ai_page.batch.tooltip_requires_auto_safe')`**
+- [x] **Step 16.2: Zastąp literal `t('ai_page.batch.tooltip_requires_auto_safe')`**
 
-- [ ] **Step 16.3: Commit**
+- [x] **Step 16.3: Commit**
 
 ```bash
 git add dashboard/src/components/ai/AiBatchActionsCard.tsx dashboard/src/locales
@@ -730,15 +730,15 @@ git commit -m "fix(i18n): translate AiBatchActionsCard tooltip (P1)"
 - Modify: `src/platform/macos/tray.rs:108-112`
 - Weryfikacja: `src/shared/tray_common.rs` (lub gdzie `TrayText`)
 
-- [ ] **Step 17.1: Zamień hardcoded „Open Dashboard", „Sync Now (delta)", „Quit TIMEFLOW Demon" na `TrayText::OpenDashboard.localized()`, etc.**
+- [x] **Step 17.1: Zamień hardcoded „Open Dashboard", „Sync Now (delta)", „Quit TIMEFLOW Demon" na `TrayText::OpenDashboard.localized()`, etc.**
 
 - [ ] **Step 17.2: Podłącz zmianę języka — `LanguageChange` signal (jeśli istnieje na Windows)**
 
 - [ ] **Step 17.3: Test manualny — ustaw EN w demon config → tray po EN; ustaw PL → tray po PL**
 
-- [ ] **Step 17.4: Aktualizuj `PARITY.md`**
+- [x] **Step 17.4: Aktualizuj `PARITY.md`**
 
-- [ ] **Step 17.5: Commit**
+- [x] **Step 17.5: Commit**
 
 ```bash
 git add src/platform/macos/tray.rs PARITY.md
