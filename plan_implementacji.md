@@ -1078,10 +1078,10 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 - [x] **59:** `Sidebar.tsx:244-248` — `if (document.visibilityState === 'visible') refreshLanPeers()`.
 - [ ] **60:** `useProjectsData.ts:175-235` — skonsoliduj 3× `Promise.allSettled` w jeden `useEffect` z `cancelled` flagą.
 - [ ] **61:** Helper `usePersistedState(key, init)` w `dashboard/src/hooks/usePersistedState.ts` + zastąp 3× kopie.
-- [ ] **62:** `BugHunter.tsx:4,45,96` — zastąp `@tauri-apps/api/core` → `lib/tauri.ts` + `alert()` → `useToast`.
+- [x] **62:** `BugHunter.tsx:4,45,96` — zastąp `@tauri-apps/api/core` → `lib/tauri.ts` + `alert()` → `useToast`.
 - [ ] **63:** Helper `useClickOutsideDismiss(ref, onClose)` + `useEscapeKey(onClose)` w `dashboard/src/hooks/useDismissable.ts`; zastąp TODO w `Sessions.tsx:252,311`.
 
-- [ ] **Commit per grupa (UI 59-60, UI 61, UI 62, UI 63)**
+- [ ] **Commit per grupa (UI 59-60, UI 61, UI 62, UI 63)** — UI 62 committed separately.
 
 ### Task 64-67: Parity + Help
 
