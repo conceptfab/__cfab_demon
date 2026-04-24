@@ -989,13 +989,13 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/assignment_model/training.rs`
 
-- [ ] **Step 38.1: Dodaj kolumnę `last_train_at` w `assignment_model_state`; migracja m23.**
+- [x] **Step 38.1: Użyj istniejącego `last_train_at` w `assignment_model_state` (key/value); migracja m23 niepotrzebna.**
 
-- [ ] **Step 38.2: `retrain_incremental(since: last_train_at)` — UPDATE tylko zmienionych wag.**
+- [x] **Step 38.2: `retrain_incremental(since: last_train_at)` — UPDATE tylko zmienionych wag.**
 
-- [ ] **Step 38.3: Zachowaj `retrain_full` jako opcja „Full Rebuild".**
+- [x] **Step 38.3: Zachowaj `retrain_full` jako opcja „Full Rebuild".**
 
-- [ ] **Step 38.4: Commit**
+- [x] **Step 38.4: Commit**
 
 ### Task 39: Soft reset — zachowaj `assignment_feedback`
 

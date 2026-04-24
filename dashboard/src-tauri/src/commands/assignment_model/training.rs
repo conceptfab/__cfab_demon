@@ -104,6 +104,31 @@ pub fn reset_model_full_sync(conn: &mut rusqlite::Connection) -> Result<(), Stri
     Ok(())
 }
 
+fn record_training_success(
+    conn: &mut rusqlite::Connection,
+    duration_ms: i64,
+    total_samples: i64,
+) -> Result<(), String> {
+    upsert_state(conn, "last_train_at", &chrono::Local::now().to_rfc3339())?;
+    upsert_state(conn, "feedback_since_train", "0")?;
+    upsert_state(conn, "last_train_duration_ms", &duration_ms.to_string())?;
+    upsert_state(conn, "last_train_samples", &total_samples.to_string())?;
+    let _ = conn.execute(
+        "DELETE FROM assignment_model_state WHERE key = 'train_error_last'",
+        [],
+    );
+    let _ = conn.execute(
+        "DELETE FROM assignment_model_state WHERE key = 'cooldown_until'",
+        [],
+    );
+    Ok(())
+}
+
+fn record_training_failure(conn: &mut rusqlite::Connection, error: &rusqlite::Error) -> String {
+    upsert_state(conn, "train_error_last", &error.to_string()).ok();
+    format!("Model training failed: {}", error)
+}
+
 pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String> {
     let _training_guard = IsTrainingGuard::acquire(conn)?;
     let start_time = std::time::Instant::now();
@@ -447,24 +472,208 @@ pub fn retrain_model_sync(conn: &mut rusqlite::Connection) -> Result<i64, String
 
     match result {
         Ok(total_samples) => {
-            upsert_state(conn, "last_train_at", &chrono::Local::now().to_rfc3339())?;
-            upsert_state(conn, "feedback_since_train", "0")?;
-            upsert_state(conn, "last_train_duration_ms", &duration_ms.to_string())?;
-            upsert_state(conn, "last_train_samples", &total_samples.to_string())?;
-            let _ = conn.execute(
-                "DELETE FROM assignment_model_state WHERE key = 'train_error_last'",
-                [],
-            );
-            let _ = conn.execute(
-                "DELETE FROM assignment_model_state WHERE key = 'cooldown_until'",
-                [],
-            );
+            record_training_success(conn, duration_ms, total_samples)?;
             Ok(total_samples)
         }
-        Err(e) => {
-            upsert_state(conn, "train_error_last", &e.to_string()).ok();
-            Err(format!("Model training failed: {}", e))
+        Err(e) => Err(record_training_failure(conn, &e)),
+    }
+}
+
+struct IncrementalFeedback {
+    session_id: Option<i64>,
+    app_id: i64,
+    from_project_id: Option<i64>,
+    to_project_id: i64,
+    boost: i64,
+    created_at: String,
+}
+
+pub fn retrain_model_incremental_sync(conn: &mut rusqlite::Connection) -> Result<i64, String> {
+    let state = load_state_map(conn).unwrap_or_default();
+    let Some(last_train_at) = state.get("last_train_at").cloned() else {
+        return retrain_model_sync(conn);
+    };
+
+    let _training_guard = IsTrainingGuard::acquire(conn)?;
+    let start_time = std::time::Instant::now();
+    let feedback_weight = parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT);
+    let training_app_blacklist = normalize_blacklist_entries(
+        &parse_state_string_list(&state, "training_app_blacklist"),
+        false,
+    );
+    let training_folder_blacklist = normalize_blacklist_entries(
+        &parse_state_string_list(&state, "training_folder_blacklist"),
+        true,
+    );
+    let blacklisted_app_ids = resolve_blacklisted_app_ids(conn, &training_app_blacklist)?;
+
+    let result = (|| -> rusqlite::Result<i64> {
+        let tx = conn.unchecked_transaction()?;
+        let mut feedback_rows = Vec::new();
+        {
+            let mut stmt = tx.prepare(
+                "SELECT session_id, app_id, from_project_id, to_project_id,
+                        COALESCE(weight, 1.0), created_at
+                 FROM assignment_feedback
+                 WHERE created_at > ?1
+                   AND source IN (
+                     'manual_session_assign',
+                     'manual_session_change',
+                     'manual_project_card_change',
+                     'manual_app_assign',
+                     'ai_suggestion_accept',
+                     'ai_suggestion_reject',
+                     'manual_session_split_part_1',
+                     'manual_session_split_part_2',
+                     'manual_session_split_part_3',
+                     'manual_session_split_part_4',
+                     'manual_session_split_part_5'
+                   )
+                   AND to_project_id IS NOT NULL
+                   AND app_id IS NOT NULL
+                 ORDER BY created_at ASC, id ASC",
+            )?;
+            let mut rows = stmt.query([last_train_at.as_str()])?;
+            while let Some(row) = rows.next()? {
+                let app_id: i64 = row.get(1)?;
+                if blacklisted_app_ids.contains(&app_id) {
+                    continue;
+                }
+                let raw_weight: f64 = row.get(4)?;
+                feedback_rows.push(IncrementalFeedback {
+                    session_id: row.get(0)?,
+                    app_id,
+                    from_project_id: row.get(2)?,
+                    to_project_id: row.get(3)?,
+                    boost: (raw_weight * feedback_weight).round().max(1.0) as i64,
+                    created_at: row.get(5)?,
+                });
+            }
         }
+
+        if feedback_rows.is_empty() {
+            tx.commit()?;
+            return Ok(0);
+        }
+
+        let mut total_samples = 0_i64;
+        for feedback in feedback_rows {
+            tx.execute(
+                "INSERT INTO assignment_model_app (app_id, project_id, cnt, last_seen)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(app_id, project_id) DO UPDATE SET
+                   cnt = assignment_model_app.cnt + ?3,
+                   last_seen = excluded.last_seen",
+                rusqlite::params![
+                    feedback.app_id,
+                    feedback.to_project_id,
+                    feedback.boost,
+                    feedback.created_at,
+                ],
+            )?;
+            total_samples += 1;
+
+            if let Some(from_project_id) = feedback.from_project_id {
+                let penalty = (feedback.boost / 2).max(1);
+                tx.execute(
+                    "UPDATE assignment_model_app
+                     SET cnt = MAX(cnt - ?3, 1)
+                     WHERE app_id = ?1 AND project_id = ?2",
+                    rusqlite::params![feedback.app_id, from_project_id, penalty],
+                )?;
+            }
+
+            if let Some(session_id) = feedback.session_id {
+                let inserted_time = tx.execute(
+                    "INSERT INTO assignment_model_time (app_id, hour_bucket, weekday, project_id, cnt)
+                     SELECT s.app_id,
+                            CAST(strftime('%H', s.start_time) AS INTEGER),
+                            CAST(strftime('%w', s.start_time) AS INTEGER),
+                            ?2,
+                            ?3
+                     FROM sessions s
+                     WHERE s.id = ?1
+                     ON CONFLICT(app_id, hour_bucket, weekday, project_id) DO UPDATE SET
+                       cnt = assignment_model_time.cnt + ?3",
+                    rusqlite::params![session_id, feedback.to_project_id, feedback.boost],
+                )?;
+                total_samples += inserted_time as i64;
+
+                let mut token_counts: HashMap<String, i64> = HashMap::new();
+                {
+                    let mut file_stmt = tx.prepare(
+                        "SELECT fa.file_name, fa.file_path, fa.detected_path,
+                                fa.window_title, fa.title_history
+                         FROM file_activities fa
+                         JOIN sessions s ON s.app_id = fa.app_id
+                                      AND s.date = fa.date
+                                      AND fa.last_seen > s.start_time
+                                      AND fa.first_seen < s.end_time
+                         WHERE s.id = ?1",
+                    )?;
+                    let mut file_rows = file_stmt.query([session_id])?;
+                    while let Some(row) = file_rows.next()? {
+                        let file_name: String = row.get(0)?;
+                        let file_path: String = row.get(1)?;
+                        let detected_path: Option<String> = row.get(2)?;
+                        let window_title: Option<String> = row.get(3)?;
+                        let title_history: Option<String> = row.get(4)?;
+
+                        if is_under_blacklisted_folder(
+                            Some(&file_path),
+                            detected_path.as_deref(),
+                            &training_folder_blacklist,
+                        ) {
+                            continue;
+                        }
+
+                        for token in tokenize(&file_name)
+                            .into_iter()
+                            .chain(tokenize(&file_path))
+                            .chain(detected_path.as_deref().into_iter().flat_map(tokenize))
+                            .chain(window_title.as_deref().into_iter().flat_map(tokenize))
+                            .chain(
+                                parse_title_history(title_history.as_deref())
+                                    .into_iter()
+                                    .flat_map(|title| tokenize(&title)),
+                            )
+                        {
+                            *token_counts.entry(token).or_insert(0) += feedback.boost;
+                        }
+                    }
+                }
+
+                for (token, count) in token_counts {
+                    tx.execute(
+                        "INSERT INTO assignment_model_token (token, project_id, cnt, last_seen)
+                         VALUES (?1, ?2, ?3, ?4)
+                         ON CONFLICT(token, project_id) DO UPDATE SET
+                           cnt = assignment_model_token.cnt + ?3,
+                           last_seen = excluded.last_seen",
+                        rusqlite::params![
+                            token,
+                            feedback.to_project_id,
+                            count,
+                            feedback.created_at,
+                        ],
+                    )?;
+                    total_samples += 1;
+                }
+            }
+        }
+
+        tx.commit()?;
+        Ok(total_samples)
+    })();
+
+    let duration_ms = start_time.elapsed().as_millis() as i64;
+
+    match result {
+        Ok(total_samples) => {
+            record_training_success(conn, duration_ms, total_samples)?;
+            Ok(total_samples)
+        }
+        Err(e) => Err(record_training_failure(conn, &e)),
     }
 }
 
@@ -498,6 +707,7 @@ mod tests {
                 start_time TEXT NOT NULL,
                 end_time TEXT NOT NULL,
                 duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
                 project_id INTEGER
             );
             CREATE TABLE file_activities (
@@ -609,9 +819,9 @@ mod tests {
         file_path: &str,
     ) {
         conn.execute(
-            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, project_id)
-             VALUES (?1, ?2, ?3, ?4, 3600, ?5)",
-            rusqlite::params![session_id, app_id, start_time, end_time, project_id],
+            "INSERT INTO sessions (id, app_id, start_time, end_time, duration_seconds, date, project_id)
+             VALUES (?1, ?2, ?3, ?4, 3600, ?5, ?6)",
+            rusqlite::params![session_id, app_id, start_time, end_time, date, project_id],
         )
         .expect("insert session");
         conn.execute(
@@ -630,6 +840,72 @@ mod tests {
             ],
         )
         .expect("insert file activity");
+    }
+
+    #[test]
+    fn retrain_incremental_applies_only_feedback_after_last_train_at() {
+        let mut conn = setup_training_conn();
+        let (start, end, date) = session_window(1, 11);
+        insert_training_session(
+            &conn,
+            1,
+            1,
+            10,
+            &start,
+            &end,
+            &date,
+            "alpha.rs",
+            "/tmp/alpha.rs",
+        );
+        upsert_state(&mut conn, "last_train_at", "2026-01-02T00:00:00Z").expect("last train");
+
+        conn.execute_batch(
+            "INSERT INTO assignment_feedback (
+                id, session_id, app_id, from_project_id, to_project_id, source, weight, created_at
+             ) VALUES
+                (1, 1, 1, 20, 10, 'manual_session_assign', 2.0, '2026-01-01T00:00:00Z'),
+                (2, 1, 1, 10, 20, 'manual_session_assign', 2.0, '2026-01-03T00:00:00Z');",
+        )
+        .expect("insert feedback");
+
+        let samples = retrain_model_incremental_sync(&mut conn).expect("incremental retrain");
+        assert!(samples > 0);
+
+        let old_project_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM assignment_model_app WHERE app_id = 1 AND project_id = 10",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read old app count");
+        assert_eq!(old_project_count, 0);
+
+        let new_project_cnt: i64 = conn
+            .query_row(
+                "SELECT cnt FROM assignment_model_app WHERE app_id = 1 AND project_id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read new app count");
+        assert_eq!(new_project_cnt, 10);
+
+        let token_cnt: i64 = conn
+            .query_row(
+                "SELECT cnt FROM assignment_model_token WHERE token = 'alpha' AND project_id = 20",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read token count");
+        assert!(token_cnt > 0);
+
+        let feedback_since_train: String = conn
+            .query_row(
+                "SELECT value FROM assignment_model_state WHERE key = 'feedback_since_train'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read feedback_since_train");
+        assert_eq!(feedback_since_train, "0");
     }
 
     #[test]

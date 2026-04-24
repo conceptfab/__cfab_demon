@@ -58,8 +58,11 @@ export const resetModelWeights = () =>
 export const resetModelFull = () =>
   invokeMutation<AssignmentModelStatus>('reset_model_full');
 
-export const trainAssignmentModel = (force = false) =>
-  invokeMutation<AssignmentModelStatus>('train_assignment_model', { force });
+export const trainAssignmentModel = (force = false, fullRebuild = false) =>
+  invokeMutation<AssignmentModelStatus>('train_assignment_model', {
+    force,
+    fullRebuild,
+  });
 
 export const runAutoSafeAssignment = (
   limit?: number,

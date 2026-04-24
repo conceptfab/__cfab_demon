@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Brain, PlayCircle, RefreshCw, Trash2 } from 'lucide-react';
+import { Brain, PlayCircle, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ interface AiModelStatusCardProps {
   snoozedUntil: Date | null;
   reminderSuppressed: boolean;
   onTrainNow: () => void;
+  onFullRebuild: () => void;
   onRefreshStatus: () => void;
   onResetWeights: () => void;
   onResetFull: () => void;
@@ -29,6 +30,7 @@ export function AiModelStatusCard({
   snoozedUntil,
   reminderSuppressed,
   onTrainNow,
+  onFullRebuild,
   onRefreshStatus,
   onResetWeights,
   onResetFull,
@@ -149,6 +151,15 @@ export function AiModelStatusCard({
             {training || status?.is_training
               ? tr('ai_page.text.training')
               : tr('ai_page.text.train_now')}
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8"
+            onClick={onFullRebuild}
+            disabled={training || status?.is_training}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" />
+            {tr('ai_page.text.full_rebuild')}
           </Button>
           <Button
             variant="outline"

@@ -611,8 +611,10 @@ pub async fn reset_model_full(app: AppHandle) -> Result<AssignmentModelStatus, S
 pub async fn train_assignment_model(
     app: AppHandle,
     force: bool,
+    full_rebuild: Option<bool>,
 ) -> Result<AssignmentModelStatus, String> {
     let status = get_assignment_model_status(app.clone()).await?;
+    let should_full_rebuild = full_rebuild.unwrap_or(false);
 
     if status.is_training {
         return Err("Training already in progress".to_string());
@@ -635,7 +637,11 @@ pub async fn train_assignment_model(
     }
 
     run_db_blocking(app.clone(), move |mut conn| {
-        retrain_model_sync(&mut conn)?;
+        if should_full_rebuild {
+            retrain_model_sync(&mut conn)?;
+        } else {
+            retrain_model_incremental_sync(&mut conn)?;
+        }
         Ok(())
     })
     .await?;

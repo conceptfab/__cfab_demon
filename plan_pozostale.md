@@ -82,13 +82,13 @@ Help.tsx (dokumentacja co-for macOS user widzi).
 
 **Plik:** `dashboard/src-tauri/src/commands/assignment_model/training.rs`
 **Kroki:**
-- [ ] 38.1: Dodaj kolumnę `last_train_at` w `assignment_model_state` —
-  migracja `m23` w `db_migrations/`.
-- [ ] 38.2: `retrain_incremental(since: last_train_at)` — UPDATE tylko
-  wag (`_app`/`_time`/`_token`) dla feedbacku starszego niż `last_train_at`.
-- [ ] 38.3: Zachowaj `retrain_full` jako opcja „Full Rebuild" (drugi
+- [x] 38.1: Użyj istniejącego `last_train_at` w `assignment_model_state` —
+  repo trzyma stan modelu jako key/value, więc migracja `m23` nie jest potrzebna.
+- [x] 38.2: `retrain_incremental(since: last_train_at)` — UPDATE tylko
+  wag (`_app`/`_time`/`_token`) dla feedbacku nowszego niż `last_train_at`.
+- [x] 38.3: Zachowaj `retrain_full` jako opcja „Full Rebuild" (drugi
   przycisk w UI).
-- [ ] 38.4: Commit.
+- [x] 38.4: Commit.
 
 **Uwaga integracyjna:** Task 38 jest blisko związany z Task 39 (soft/full
 reset — już zrobiony). Po resetach `retrain_incremental` powinien zwracać

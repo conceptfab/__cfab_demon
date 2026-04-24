@@ -368,10 +368,10 @@ export function AIPage() {
     }
   };
 
-  const handleTrainNow = async () => {
+  const handleTrainNow = async (fullRebuild = false) => {
     setTraining(true);
     try {
-      const nextStatus = await aiApi.trainAssignmentModel(true);
+      const nextStatus = await aiApi.trainAssignmentModel(true, fullRebuild);
       setAiStatus(nextStatus);
       syncFormWithStatus(nextStatus);
       await fetchMetrics(true);
@@ -638,6 +638,9 @@ export function AIPage() {
           snoozedUntil={trainingReminder.cooldownUntil}
           reminderSuppressed={!trainingReminder.shouldShow}
           onTrainNow={handleTrainNow}
+          onFullRebuild={() => {
+            void handleTrainNow(true);
+          }}
           onRefreshStatus={() => {
             void handleRefreshStatus();
           }}
@@ -671,7 +674,9 @@ export function AIPage() {
               <div className="flex flex-wrap gap-2">
                 <Button
                   className="h-8"
-                  onClick={handleTrainNow}
+                  onClick={() => {
+                    void handleTrainNow();
+                  }}
                   disabled={training || status?.is_training}
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
