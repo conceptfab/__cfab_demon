@@ -933,11 +933,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src/store/background-status-store.ts`
 
-- [ ] **Step 34.1: `refreshDiagnostics` **nie** pisze `aiStatus`; tylko `refreshAiStatus` to robi.**
+- [x] **Step 34.1: `refreshDiagnostics` **nie** pisze `aiStatus`; tylko `refreshAiStatus` to robi.**
 
-- [ ] **Step 34.2: Guard per-pole lub per-ścieżka — jedno źródło prawdy.**
+- [x] **Step 34.2: Guard per-pole lub per-ścieżka — jedno źródło prawdy.**
 
-- [ ] **Step 34.3: Commit**
+- [x] **Step 34.3: Commit**
 
 ### Task 35: `setTimeout` cleanup (useBackgroundSync, useJobPool, Sidebar)
 
