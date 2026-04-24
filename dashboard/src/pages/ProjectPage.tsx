@@ -139,8 +139,11 @@ function upsertProjectInList(
 
 export function ProjectPage() {
   const { t, i18n } = useTranslation();
-  const { projectPageId, projectPageMinimal, setProjectPageId, setCurrentPage } = useUIStore();
-  const { triggerRefresh } = useDataStore();
+  const projectPageId = useUIStore((s) => s.projectPageId);
+  const projectPageMinimal = useUIStore((s) => s.projectPageMinimal);
+  const setProjectPageId = useUIStore((s) => s.setProjectPageId);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { currencyCode } = useSettingsStore();
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -1229,4 +1232,3 @@ export function ProjectPage() {
     </div>
   );
 }
-
