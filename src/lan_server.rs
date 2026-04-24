@@ -37,21 +37,6 @@ pub struct TableHashes {
     pub manual_sessions: String,
 }
 
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct StatusRequest {
-    device_id: String,
-    table_hashes: TableHashes,
-}
-
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct StatusResponse {
-    needs_push: bool,
-    needs_pull: bool,
-    their_hashes: TableHashes,
-}
-
 #[derive(Serialize)]
 struct PingResponse {
     ok: bool,
@@ -490,14 +475,11 @@ fn handle_connection(
         ("GET", "/lan/ping") => handle_ping(&state),
         ("POST", "/lan/preflight") => handle_preflight(&state),
         ("GET", "/lan/sync-progress") => handle_sync_progress(&state),
-        ("POST", "/lan/status") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/negotiate") => handle_negotiate(&state, &body),
         ("POST", "/lan/freeze-ack") => handle_freeze_ack(&state),
         ("POST", "/lan/upload-db") => handle_upload_db(&state, &body),
         ("POST", "/lan/upload-ack") => (200, json_ok()),
         ("POST", "/lan/db-ready") => handle_db_ready(&state, &body),
-        ("GET", "/lan/download-db") => handle_download_db(),
-        ("POST", "/lan/verify-ack") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
         ("POST", "/lan/pair") => handle_pair(&body, client_ip),
         ("POST", "/lan/generate-pairing-code") => handle_generate_pairing_code(),
@@ -511,7 +493,6 @@ fn handle_connection(
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
         // Legacy endpoints — /lan/pull used by 13-step protocol (step 6, master fetches from slave)
         ("POST", "/lan/pull") => handle_pull(&body),
-        ("POST", "/lan/push") => (410, json_error("deprecated: use 13-step sync protocol")),
         _ => (404, r#"{"ok":false,"error":"not found"}"#.to_string()),
     };
 
@@ -716,32 +697,6 @@ fn handle_preflight(state: &LanSyncState) -> (u16, String) {
         "db_frozen": frozen,
     });
     (200, resp.to_string())
-}
-
-#[allow(dead_code)]
-fn handle_status(body: &str) -> (u16, String) {
-    let req: StatusRequest = match serde_json::from_str(body) {
-        Ok(r) => r,
-        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
-    };
-    log::debug!("LAN server: /lan/status from device_id={}", req.device_id);
-
-    let conn = match open_dashboard_db_readonly() {
-        Ok(c) => c,
-        Err(e) => return (500, json_error(&e)),
-    };
-
-    let local_hashes = build_table_hashes(&conn);
-
-    let needs_push = local_hashes != req.table_hashes;
-    let needs_pull = needs_push;
-
-    let resp = StatusResponse {
-        needs_push,
-        needs_pull,
-        their_hashes: local_hashes,
-    };
-    (200, serde_json::to_string(&resp).unwrap_or_default())
 }
 
 fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
@@ -962,41 +917,6 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }
 
-fn handle_download_db() -> (u16, String) {
-    let dir = match config::config_dir() {
-        Ok(d) => d,
-        Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
-    };
-    let merged_path = dir.join("lan_sync_merged.json");
-    match std::fs::read_to_string(&merged_path) {
-        Ok(data) => {
-            // Validate JSON once; the raw string is sent as the response body
-            match serde_json::from_str::<serde_json::Value>(&data) {
-                Err(_) => return (500, json_error("Merged JSON file is corrupted")),
-                Ok(_) => {}
-            }
-            let kb = data.len() as f64 / 1024.0;
-            sync_log(&format!("[SLAVE] Wysylam {:.1} KB scalonych danych do mastera", kb));
-            (200, data)
-        },
-        Err(e) => (500, json_error(&format!("No merged data available: {}", e))),
-    }
-}
-
-/// DEPRECATED: This endpoint is not called by the orchestrator. Kept for backwards compatibility.
-#[allow(dead_code)]
-fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
-    state.set_progress(12, "verifying", "local");
-    sync_log("[SLAVE] Weryfikacja scalonych danych...");
-    let dir = config::config_dir().ok();
-    if let Some(d) = &dir {
-        let _ = std::fs::remove_file(d.join("lan_sync_incoming.json"));
-        let _ = std::fs::remove_file(d.join("lan_sync_merged.json"));
-    }
-    state.unfreeze();
-    (200, json_ok())
-}
-
 fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
     state.unfreeze();
     state.set_role("undecided");
@@ -1040,25 +960,6 @@ fn handle_pull(body: &str) -> (u16, String) {
             sync_log(&format!("[SLAVE] BLAD przygotowania danych: {}", e));
             (500, json_error(&e))
         },
-    }
-}
-
-#[allow(dead_code)]
-fn handle_push(body: &str) -> (u16, String) {
-    let mut conn = match open_dashboard_db() {
-        Ok(c) => c,
-        Err(e) => return (500, json_error(&e)),
-    };
-
-    match crate::sync_common::merge_incoming_data(&mut conn, body) {
-        Ok(()) => {
-            sync_log("[SLAVE] Push data merged successfully");
-            (200, r#"{"ok":true}"#.to_string())
-        }
-        Err(e) => {
-            sync_log(&format!("[SLAVE] Push merge failed: {}", e));
-            (500, json_error(&e))
-        }
     }
 }
 

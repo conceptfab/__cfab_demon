@@ -1103,11 +1103,11 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 69-72: Martwe endpointy LAN
 
-- [ ] **69:** Usuń `handle_status` + `StatusRequest`/`StatusResponse` (`lan_server.rs:701-725`).
-- [ ] **70:** Usuń `handle_verify_ack` (`lan_server.rs:969-981`).
-- [ ] **71:** Usuń `handle_push` (`lan_server.rs:1029-1046`).
-- [ ] **72:** Usuń `handle_download_db` (`lan_server.rs:948-967`) po weryfikacji braku wywołań.
-- [ ] **Commit:** `refactor(lan): remove dead 410 endpoints`
+- [x] **69:** Usuń `handle_status` + `StatusRequest`/`StatusResponse` (`lan_server.rs:701-725`).
+- [x] **70:** Usuń `handle_verify_ack` (`lan_server.rs:969-981`).
+- [x] **71:** Usuń `handle_push` (`lan_server.rs:1029-1046`).
+- [x] **72:** Usuń `handle_download_db` (`lan_server.rs:948-967`) po weryfikacji braku wywołań.
+- [x] **Commit:** `refactor(lan): remove dead 410 endpoints`
 
 ### Task 73: `IPCONFIG_CACHE` `#[cfg(windows)]`
 

@@ -1824,7 +1824,7 @@
     "lan_sync_title": "Synchronizacja LAN",
     "lan_sync_description": "Synchronizacja peer-to-peer między instancjami TIMEFLOW w tej samej sieci lokalnej, bez pośredniczącego serwera.",
     "lan_sync_udp_discovery": "Wykrywanie UDP – TIMEFLOW automatycznie rozgłasza swoją obecność w sieci lokalnej (port 47892) co 30 sekund. Inne instancje są wykrywane bez ręcznej konfiguracji.",
-    "lan_sync_http_server": "Wbudowany serwer HTTP – po włączeniu LAN Sync uruchamia się lokalny serwer HTTP (domyślny port 47891) z endpointami /lan/ping, /lan/status, /lan/pull, /lan/push do wymiany danych.",
+    "lan_sync_http_server": "Wbudowany serwer HTTP – po włączeniu LAN Sync uruchamia się lokalny serwer HTTP (domyślny port 47891) z endpointami protokołu 13-krokowego, m.in. /lan/ping, /lan/negotiate, /lan/pull, /lan/db-ready i /lan/unfreeze.",
     "lan_sync_delta_merge": "Delta Merge – synchronizacja przesyła tylko zmiany (projekty, aplikacje, sesje, sesje manualne, tombstones) od ostatniej synchronizacji. Konflikty rozwiązywane są wg najnowszego updated_at.",
     "lan_sync_project_name_persist": "Trwałe etykiety projektów na sesjach – każda sesja przechowuje również nazwę projektu (obok ID). Dzięki temu po synchronizacji LAN sesja zachowuje przypisanie do projektu nawet gdy ten projekt nie istnieje fizycznie na danym komputerze (np. inna lista projektów na różnych maszynach). Etykieta jest automatycznie odtwarzana przy kolejnym sync.",
     "lan_sync_auto_sync": "Automatyczna synchronizacja po wykryciu – gdy włączona, TIMEFLOW automatycznie synchronizuje dane zaraz po wykryciu innej instancji w sieci.",

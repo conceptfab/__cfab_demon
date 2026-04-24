@@ -1824,7 +1824,7 @@
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Peer-to-peer synchronization between TIMEFLOW instances on the same local network, without an intermediary server.",
     "lan_sync_udp_discovery": "UDP Discovery – TIMEFLOW automatically broadcasts its presence on the local network (port 47892) every 30 seconds. Other instances are detected without manual configuration.",
-    "lan_sync_http_server": "Embedded HTTP Server – when LAN Sync is enabled, a local HTTP server starts (default port 47891) and serves /lan/ping, /lan/status, /lan/pull, /lan/push endpoints for data exchange.",
+    "lan_sync_http_server": "Embedded HTTP Server – when LAN Sync is enabled, a local HTTP server starts (default port 47891) and serves 13-step protocol endpoints including /lan/ping, /lan/negotiate, /lan/pull, /lan/db-ready, and /lan/unfreeze.",
     "lan_sync_delta_merge": "Delta Merge – synchronization transfers only changes (projects, applications, sessions, manual sessions, tombstones) since the last sync. Conflicts are resolved by the most recent updated_at timestamp.",
     "lan_sync_project_name_persist": "Persistent project labels on sessions – every session also stores the project name (in addition to the ID). After LAN sync, a session keeps its project assignment even when that project does not exist locally on a given computer (e.g., different project lists per machine). The label is restored automatically on the next sync.",
     "lan_sync_auto_sync": "Auto-sync on peer discovery – when enabled, TIMEFLOW automatically synchronizes as soon as another instance is found on the network.",
