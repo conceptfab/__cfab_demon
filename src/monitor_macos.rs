@@ -6,10 +6,8 @@
 // do czasu dodania obsługi Accessibility (wymaga zgody użytkownika).
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::os::raw::{c_int, c_void};
 use std::time::{Duration, Instant};
-
-use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 use crate::activity::ActivityType;
 
@@ -217,12 +215,45 @@ pub fn build_process_snapshot() -> ProcessSnapshot {
 
 // ── CPU measurement ─────────────────────────────────────────────────────
 //
-// Używamy sysinfo `Process::cpu_usage()` zwracającego procent zużycia pojedynczego
-// rdzenia. Sysinfo wymaga dwóch refreshy z odstępem czasowym, żeby podać sensowną
-// wartość — pierwszy pomiar po starcie trackera zwróci 0, kolejne już poprawnie.
-// Stan System trzymamy w globalnym Mutex, bo musi przeżyć między wywołaniami.
+// Używamy libproc `proc_pidinfo(PROC_PIDTASKINFO)`, bo sysinfo 0.31 nie wystawia
+// na macOS publicznego accumulated_cpu_time(). Liczymy deltę sumarycznego czasu
+// CPU drzewa procesów względem poprzedniego snapshotu, analogicznie do Windows.
 
-static SYSINFO_STATE: Mutex<Option<System>> = Mutex::new(None);
+const PROC_PIDTASKINFO: c_int = 4;
+
+#[repr(C)]
+#[derive(Default)]
+struct ProcTaskInfo {
+    pti_virtual_size: u64,
+    pti_resident_size: u64,
+    pti_total_user: u64,
+    pti_total_system: u64,
+    pti_threads_user: u64,
+    pti_threads_system: u64,
+    pti_policy: i32,
+    pti_faults: i32,
+    pti_pageins: i32,
+    pti_cow_faults: i32,
+    pti_messages_sent: i32,
+    pti_messages_received: i32,
+    pti_syscalls_mach: i32,
+    pti_syscalls_unix: i32,
+    pti_csw: i32,
+    pti_threadnum: i32,
+    pti_numrunning: i32,
+    pti_priority: i32,
+}
+
+#[link(name = "proc")]
+extern "C" {
+    fn proc_pidinfo(
+        pid: c_int,
+        flavor: c_int,
+        arg: u64,
+        buffer: *mut c_void,
+        buffersize: c_int,
+    ) -> c_int;
+}
 
 fn collect_descendants(
     tree: &HashMap<u32, Vec<u32>>,
@@ -241,9 +272,46 @@ fn collect_descendants(
     }
 }
 
+fn cpu_time_for_pid(pid: u32) -> Option<u64> {
+    let mut info = ProcTaskInfo::default();
+    let size = std::mem::size_of::<ProcTaskInfo>() as c_int;
+    let read = unsafe {
+        proc_pidinfo(
+            pid as c_int,
+            PROC_PIDTASKINFO,
+            0,
+            (&mut info as *mut ProcTaskInfo).cast::<c_void>(),
+            size,
+        )
+    };
+
+    if read == size {
+        Some(info.pti_total_user.saturating_add(info.pti_total_system))
+    } else {
+        None
+    }
+}
+
+fn sum_cpu_times(pids: &[u32]) -> u64 {
+    pids.iter().filter_map(|pid| cpu_time_for_pid(*pid)).sum()
+}
+
+fn cpu_fraction_since(prev: Option<&CpuSnapshot>, total_time: u64, now: Instant) -> f64 {
+    let Some(prev) = prev else {
+        return 0.0;
+    };
+    let wall_elapsed = now.duration_since(prev.measured_at).as_secs_f64();
+    if wall_elapsed <= 0.0 || total_time < prev.total_time {
+        return 0.0;
+    }
+
+    let delta_cpu_secs = (total_time - prev.total_time) as f64 / 1_000_000_000.0;
+    delta_cpu_secs / wall_elapsed
+}
+
 pub fn measure_cpu_for_app(
     exe_name: &str,
-    _prev: Option<&CpuSnapshot>,
+    prev: Option<&CpuSnapshot>,
     proc_snap: &ProcessSnapshot,
 ) -> (f64, CpuSnapshot) {
     let root_pids = proc_snap
@@ -266,30 +334,44 @@ pub fn measure_cpu_for_app(
     all_pids.dedup();
 
     let now = Instant::now();
-    let cpu_fraction: f64 = if all_pids.is_empty() {
-        0.0
-    } else if let Ok(mut guard) = SYSINFO_STATE.lock() {
-        let sys = guard.get_or_insert_with(System::new);
-        let pids_vec: Vec<Pid> = all_pids.iter().map(|p| Pid::from_u32(*p)).collect();
-        sys.refresh_processes_specifics(
-            ProcessesToUpdate::Some(&pids_vec),
-            ProcessRefreshKind::new().with_cpu(),
-        );
-        all_pids
-            .iter()
-            .filter_map(|pid| sys.process(Pid::from_u32(*pid)))
-            .map(|p| p.cpu_usage() as f64 / 100.0)
-            .sum()
-    } else {
-        0.0
-    };
+    let total_time = sum_cpu_times(&all_pids);
 
     let snapshot = CpuSnapshot {
-        // Pseudo-licznik tylko dla kompatybilności typu — tracker
-        // używa `cpu_fraction`, nie `total_time`.
-        total_time: (cpu_fraction * 1_000_000.0) as u64,
+        total_time,
         measured_at: now,
     };
+    let cpu_fraction = cpu_fraction_since(prev, total_time, now);
 
     (cpu_fraction, snapshot)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cpu_fraction_since, CpuSnapshot};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn cpu_fraction_uses_delta_from_previous_snapshot() {
+        let now = Instant::now();
+        let prev = CpuSnapshot {
+            total_time: 1_000_000_000,
+            measured_at: now - Duration::from_secs(2),
+        };
+
+        let fraction = cpu_fraction_since(Some(&prev), 2_000_000_000, now);
+
+        assert!((fraction - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn cpu_fraction_is_zero_for_first_or_reset_snapshot() {
+        let now = Instant::now();
+        let prev = CpuSnapshot {
+            total_time: 2_000_000_000,
+            measured_at: now - Duration::from_secs(1),
+        };
+
+        assert_eq!(cpu_fraction_since(None, 3_000_000_000, now), 0.0);
+        assert_eq!(cpu_fraction_since(Some(&prev), 1_000_000_000, now), 0.0);
+    }
 }
