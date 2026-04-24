@@ -23,14 +23,12 @@ type SessionsFetchParams = {
 export type RangeMode = 'daily' | 'weekly';
 
 export function useSessionsFilters(viewMode: SessionViewMode) {
-  const {
-    sessionsFocusDate,
-    clearSessionsFocusDate,
-    sessionsFocusRange,
-    setSessionsFocusRange,
-    sessionsFocusProject,
-    setSessionsFocusProject,
-  } = useUIStore();
+  const sessionsFocusDate = useUIStore((s) => s.sessionsFocusDate);
+  const clearSessionsFocusDate = useUIStore((s) => s.clearSessionsFocusDate);
+  const sessionsFocusRange = useUIStore((s) => s.sessionsFocusRange);
+  const setSessionsFocusRange = useUIStore((s) => s.setSessionsFocusRange);
+  const sessionsFocusProject = useUIStore((s) => s.sessionsFocusProject);
+  const setSessionsFocusProject = useUIStore((s) => s.setSessionsFocusProject);
   const [rangeMode, setRangeMode] = useState<RangeMode>('daily');
   const [anchorDate, setAnchorDate] = useState<string>(
     () => sessionsFocusDate ?? format(new Date(), 'yyyy-MM-dd'),
