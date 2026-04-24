@@ -11,6 +11,7 @@ use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode};
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
 
+use crate::i18n::{self, TrayText};
 use crate::lan_server::LanSyncState;
 use crate::platform::tray_common::TrayExitAction;
 use crate::sync_trigger;
@@ -99,17 +100,18 @@ pub fn run(
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
     // Menu
+    let lang = i18n::load_language();
     let menu = Menu::new();
     let version_item = MenuItem::new(
         format!("{} v{}", APP_NAME, crate::VERSION.trim()),
         false,
         None,
     );
-    let dashboard_item = MenuItem::new("Open Dashboard", true, None);
-    let sync_delta_item = MenuItem::new("Sync Now (delta)", true, None);
-    let sync_force_item = MenuItem::new("Force Full Sync", true, None);
-    let restart_item = MenuItem::new("Restart", true, None);
-    let exit_item = MenuItem::new("Quit TIMEFLOW Demon", true, None);
+    let dashboard_item = MenuItem::new(lang.t(TrayText::OpenDashboard), true, None);
+    let sync_delta_item = MenuItem::new(lang.t(TrayText::SyncDelta), true, None);
+    let sync_force_item = MenuItem::new(lang.t(TrayText::SyncForceFull), true, None);
+    let restart_item = MenuItem::new(lang.t(TrayText::Restart), true, None);
+    let exit_item = MenuItem::new(lang.t(TrayText::Close), true, None);
 
     let _ = menu.append(&version_item);
     let _ = menu.append(&PredefinedMenuItem::separator());
