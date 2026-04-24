@@ -1040,15 +1040,15 @@ Zadania zgrupowane w logiczne commity (nie 1-commit-per-task — będzie zbyt ro
 
 **Files:** `src/tracker.rs`, `src/monitor.rs`, `src/monitor_macos.rs`, `src/main.rs`, `src/i18n.rs`
 
-- [ ] **43:** `tracker.rs:557-558` — `drain_switch_times` → `take_last_switch_time() -> Option<Instant>`.
-- [ ] **44:** `monitor.rs:218-226` — `GetTickCount` DWORD rollover clamp: `if idle_ms > 48*3600*1000 { idle_ms = 0; }`.
-- [ ] **45:** `monitor_macos.rs:273-277` — scal 10× refresh w jeden z `HashSet<Pid>`.
-- [ ] **46:** `main.rs:261-272` — log-rotation: `log.1` przed truncate.
-- [ ] **47:** `tracker.rs:441-450` — `last_save = Instant::now() - save_interval + Duration::from_secs(30)`.
-- [ ] **48:** `i18n.rs:120-137` — cachuj wynik „brak pliku" w `LANG_CACHE`.
-- [ ] **49:** `main.rs:170-181` — `thread::sleep(Duration::from_millis(200))` między drop guard a spawn.
+- [x] **43:** `tracker.rs:557-558` — `drain_switch_times` → `take_last_switch_time() -> Option<Instant>`.
+- [x] **44:** `monitor.rs:218-226` — `GetTickCount` DWORD rollover clamp: `if idle_ms > 48*3600*1000 { idle_ms = 0; }`.
+- [x] **45:** `monitor_macos.rs:273-277` — scal 10× refresh w jeden z `HashSet<Pid>`.
+- [x] **46:** `main.rs:261-272` — log-rotation: `log.1` przed truncate.
+- [x] **47:** `tracker.rs:441-450` — `last_save = Instant::now() - save_interval + Duration::from_secs(30)`.
+- [x] **48:** `i18n.rs:120-137` — cachuj wynik „brak pliku" w `LANG_CACHE`.
+- [x] **49:** `main.rs:170-181` — `thread::sleep(Duration::from_millis(200))` między drop guard a spawn.
 
-- [ ] **Commit po grupie:**
+- [x] **Commit po grupie:**
 
 ```bash
 git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"

@@ -5,6 +5,7 @@
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use lan_server::SyncGuard;
 
@@ -180,6 +181,7 @@ fn main() {
 
     if matches!(tray_action, platform::tray_common::TrayExitAction::Restart) {
         drop(_guard);
+        std::thread::sleep(Duration::from_millis(200));
         if let Ok(exe) = std::env::current_exe() {
             let mut cmd = Command::new(exe);
             no_console(&mut cmd);
@@ -261,10 +263,20 @@ fn init_logging() {
     if log_path.exists() {
         if let Ok(meta) = fs::metadata(&log_path) {
             if meta.len() > max_bytes {
-                let _ = fs::OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .open(&log_path);
+                let rotated_path = log_path.with_file_name(format!(
+                    "{}.1",
+                    log_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("daemon.log")
+                ));
+                let _ = fs::remove_file(&rotated_path);
+                if fs::rename(&log_path, &rotated_path).is_err() {
+                    let _ = fs::OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .open(&log_path);
+                }
             }
         }
     }

@@ -221,7 +221,11 @@ pub fn get_idle_time_ms() -> u64 {
         // Use GetTickCount (32-bit) for consistency with dwTime (also 32-bit DWORD).
         // GetTickCount64 would give wrong results after ~49 days when dwTime wraps.
         let now = winapi::um::sysinfoapi::GetTickCount();
-        u64::from(now.wrapping_sub(lii.dwTime))
+        let idle_ms = u64::from(now.wrapping_sub(lii.dwTime));
+        if idle_ms > 48 * 3600 * 1000 {
+            return 0;
+        }
+        idle_ms
     }
 }
 

@@ -34,12 +34,11 @@ impl ForegroundSignal {
         self.condvar.notify_one();
     }
 
-    pub fn drain_switch_times(&self) -> Vec<Instant> {
-        self.switch_times
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .drain(..)
-            .collect()
+    pub fn take_last_switch_time(&self) -> Option<Instant> {
+        let mut times = self.switch_times.lock().unwrap_or_else(|p| p.into_inner());
+        let last = times.pop_back();
+        times.clear();
+        last
     }
 
     pub fn wait_timeout(&self, timeout: Duration) -> bool {

@@ -452,7 +452,6 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
     let mut daily_data = storage::load_today();
     let mut current_date = Local::now().date_naive();
 
-    let mut last_save = Instant::now();
     let mut save_skipped_while_frozen = false;
     let mut last_cache_evict = Instant::now();
     let mut last_config_reload = Instant::now();
@@ -476,6 +475,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
     let mut poll_interval = Duration::from_secs(iv.poll_secs);
     let mut save_interval = Duration::from_secs(iv.save_secs);
+    let mut last_save = Instant::now() - save_interval.saturating_sub(Duration::from_secs(30));
     let mut cache_evict_interval = Duration::from_secs(iv.cache_evict_secs);
     let mut cache_max_age = Duration::from_secs(iv.cache_max_age_secs);
     let mut session_gap = Duration::from_secs(iv.session_gap_secs);
@@ -547,7 +547,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 sleep_gap.as_secs(),
             );
             if let Some(ref signal) = foreground_signal {
-                let _ = signal.drain_switch_times();
+                let _ = signal.take_last_switch_time();
             }
             if save_daily_if_unfrozen(&mut daily_data, sync_state.as_ref(), "sleep detection") {
                 last_save = Instant::now();
@@ -569,14 +569,13 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // If a switch happened mid-tick, the CURRENT foreground app only gets
         // time from the last switch to now; previous app(s) got their share
         // from last_tick to the switch.
-        let switch_times: Vec<Instant> = foreground_signal
+        let last_switch_time = foreground_signal
             .as_ref()
-            .map(|s| s.drain_switch_times())
-            .unwrap_or_default();
+            .and_then(|s| s.take_last_switch_time());
 
         // Determine the effective elapsed for the current foreground app.
         // If a switch happened, the current app only gets time since the last switch.
-        let effective_elapsed = if let Some(&last_switch) = switch_times.last() {
+        let effective_elapsed = if let Some(last_switch) = last_switch_time {
             // Clamp: last_switch must be between last_tracking_tick and now
             if last_switch > last_tracking_tick && last_switch < now {
                 now.duration_since(last_switch).min(actual_elapsed)
