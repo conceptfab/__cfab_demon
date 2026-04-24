@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { useDataStore } from '@/store/data-store';
@@ -7,7 +7,8 @@ import { useUIStore } from '@/store/ui-store';
 import { type AppLanguageCode } from '@/lib/user-settings';
 import { DEFAULT_ONLINE_SYNC_SERVER_URL } from '@/lib/online-sync';
 import { useToast } from '@/components/ui/toast-notification';
-import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { ProjectFreezeCard } from '@/components/settings/ProjectFreezeCard';
 import { DemoModeCard } from '@/components/settings/DemoModeCard';
 import { DangerZoneCard } from '@/components/settings/DangerZoneCard';
@@ -23,7 +24,6 @@ import { DevSettingsCard } from '@/components/settings/DevSettingsCard';
 import { PmSettingsCard } from '@/components/settings/PmSettingsCard';
 import { useSettingsFormState } from '@/hooks/useSettingsFormState';
 import { useSettingsDemoMode } from '@/hooks/useSettingsDemoMode';
-import { settingsApi } from '@/lib/tauri';
 import { useLanSyncManager } from '@/hooks/useLanSyncManager';
 
 const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
@@ -34,7 +34,7 @@ const MINUTES = Array.from({ length: 60 }, (_, i) =>
 export function Settings() {
   const { i18n, t } = useTranslation();
   const { showError, showInfo } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const setCurrencyCode = useSettingsStore((s) => s.setCurrencyCode);
   const setChartAnimations = useSettingsStore((s) => s.setChartAnimations);
@@ -590,7 +590,7 @@ export function Settings() {
         )}
       </div>
 
-      <ConfirmDialog />
+      <ConfirmDialog {...confirmDialogProps} />
     </div>
   );
 }

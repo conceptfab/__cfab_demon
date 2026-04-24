@@ -6,7 +6,8 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -134,7 +135,7 @@ export function AIPage() {
   const refreshAiStatus = useBackgroundStatusStore((s) => s.refreshAiStatus);
   const setAiStatus = useBackgroundStatusStore((s) => s.setAiStatus);
   const { showError, showInfo } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
 
   const isFetchingMetricsRef = useRef(false);
   const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
@@ -707,7 +708,7 @@ export function AIPage() {
           sections={howToSections}
         />
       </div>
-      <ConfirmDialog />
+      <ConfirmDialog {...confirmDialogProps} />
     </>
   );
 }

@@ -31,7 +31,8 @@ import { useDataStore } from '@/store/data-store';
 import { useSettingsStore } from '@/store/settings-store';
 import { loadFreezeSettings } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
-import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { ALL_TIME_DATE_RANGE } from '@/lib/date-helpers';
 import { useProjectsData, PROJECT_FOLDERS_LOAD_ERROR } from '@/hooks/useProjectsData';
 import type {
@@ -141,7 +142,7 @@ export function Projects() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const currencyCode = useSettingsStore((s) => s.currencyCode);
   const { showError } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [projectDialogId, setProjectDialogId] = useState<number | null>(null);
   const [editingColorId, setEditingColorId] = useState<number | null>(null);
@@ -1129,7 +1130,7 @@ export function Projects() {
         defaultProjectId={sessionDialogProjectId}
         onSaved={() => triggerRefresh('projects_manual_session_saved')}
       />
-      <ConfirmDialog />
+      <ConfirmDialog {...confirmDialogProps} />
     </div>
   );
 }
