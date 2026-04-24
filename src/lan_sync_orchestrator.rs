@@ -155,10 +155,12 @@ fn http_request_with_timeout(
     let path = url_path(url);
     let content_length = body.map(|b| b.len()).unwrap_or(0);
 
-    let request = if let Some(body) = body {
+    // Send headers first; body is streamed below so progress callbacks
+    // can fire between chunks rather than after a single monolithic write.
+    let headers = if body.is_some() {
         format!(
-            "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-TimeFlow-Secret: {}\r\nConnection: close\r\n\r\n{}",
-            method, path, content_length, secret, body
+            "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-TimeFlow-Secret: {}\r\nConnection: close\r\n\r\n",
+            method, path, content_length, secret
         )
     } else {
         format!(
@@ -166,8 +168,29 @@ fn http_request_with_timeout(
             method, path, secret
         )
     };
+    stream
+        .write_all(headers.as_bytes())
+        .map_err(|e| e.to_string())?;
 
-    stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+    if let Some(body) = body {
+        const UPLOAD_CHUNK: usize = 256 * 1024;
+        let total = content_length as u64;
+        let mut sent: u64 = 0;
+        let bytes = body.as_bytes();
+
+        if let Some(cb) = &on_progress {
+            cb(0, total);
+        }
+
+        for chunk in bytes.chunks(UPLOAD_CHUNK) {
+            stream.write_all(chunk).map_err(|e| e.to_string())?;
+            sent += chunk.len() as u64;
+            if let Some(cb) = &on_progress {
+                cb(sent, total);
+            }
+        }
+    }
+
     stream.flush().map_err(|e| e.to_string())?;
 
     let mut reader = BufReader::new(&stream);

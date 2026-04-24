@@ -845,9 +845,9 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `src/lan_sync_orchestrator.rs:141-172`
 
-- [ ] **Step 25.1: Chunked write + callback co 256 KB → update `sync_progress.bytes_sent`.**
+- [x] **Step 25.1: Chunked write + callback co 256 KB → update `sync_progress.bytes_sent`.**
 
-- [ ] **Step 25.2: Commit**
+- [x] **Step 25.2: Commit**
 
 ### Task 26: Indeksy `updated_at` na `sessions` i `manual_sessions` + tombstones
 
