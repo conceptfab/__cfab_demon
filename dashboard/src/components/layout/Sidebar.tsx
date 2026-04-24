@@ -29,7 +29,6 @@ import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useUIStore } from '@/store/ui-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
 import { lanSyncApi } from '@/lib/tauri';
-import type { LanPeer } from '@/lib/lan-sync-types';
 import { loadLanSyncSettings, loadLanSyncState, saveLanSyncState } from '@/lib/lan-sync';
 import { useDataStore } from '@/store/data-store';
 import { BugHunter } from './BugHunter';
@@ -142,7 +141,6 @@ export function Sidebar() {
   const lanIsSlave = useBackgroundStatusStore((s) => s.lanIsSlave);
   const refreshLanPeers = useBackgroundStatusStore((s) => s.refreshLanPeers);
   const [lanSyncing, setLanSyncing] = useState(false);
-  const [lanSyncStatus, setLanSyncStatus] = useState<'idle' | 'ok' | 'error'>('idle');
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
   const [lanScanning, setLanScanning] = useState(false);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
@@ -150,7 +148,6 @@ export function Sidebar() {
   const handleLanSync = useCallback(async () => {
     if (!lanPeer || lanSyncing || lanIsSlave) return;
     setLanSyncing(true);
-    setLanSyncStatus('idle');
     setLanSyncMessage(t('settings.lan_sync.syncing'));
     try {
       // Ensure our server is running so the peer can push back
@@ -189,20 +186,18 @@ export function Sidebar() {
         peers: [lanPeer],
       });
       triggerRefresh('lan_sync_pull');
-      setLanSyncStatus('ok');
       setLanSyncMessage(t('layout.status.lan_synced'));
-      setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 8_000);
+      setTimeout(() => { setLanSyncMessage(null); }, 8_000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('LAN sync failed:', msg);
-      setLanSyncStatus('error');
       if (msg.includes('Ping failed') || msg.includes('refused') || msg.includes('connection') || msg.includes('unreachable')) {
         setLanSyncMessage(t('settings.lan_sync.error_peer_unreachable'));
         void refreshLanPeers();
       } else {
         setLanSyncMessage(msg.length > 60 ? msg.slice(0, 60) + '…' : msg);
       }
-      setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 10_000);
+      setTimeout(() => { setLanSyncMessage(null); }, 10_000);
     } finally {
       setLanSyncing(false);
     }
@@ -216,8 +211,6 @@ export function Sidebar() {
       const results = await lanSyncApi.scanLanSubnet();
       if (results.length > 0) {
         // Re-poll peers to pick up discovered ones
-        const peers = await lanSyncApi.getLanPeers();
-        const online = peers.find((p) => p.dashboard_running);
         void refreshLanPeers();
       }
     } catch {
@@ -242,8 +235,14 @@ export function Sidebar() {
 
   // LAN peer polling moved to background-status-store (single source of truth)
   useEffect(() => {
-    void refreshLanPeers();
-    const timer = window.setInterval(() => void refreshLanPeers(), 5_000);
+    if (document.visibilityState === 'visible') {
+      void refreshLanPeers();
+    }
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void refreshLanPeers();
+      }
+    }, 5_000);
     return () => clearInterval(timer);
   }, [refreshLanPeers]);
 

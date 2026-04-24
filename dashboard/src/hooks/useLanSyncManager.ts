@@ -12,7 +12,6 @@ import type {
   LanSyncSettings as LanSyncSettingsType,
   SyncMarker,
 } from '@/lib/lan-sync-types';
-import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
 import { useDataStore } from '@/store/data-store';
 
 export function useLanSyncManager() {

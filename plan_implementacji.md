@@ -1075,7 +1075,7 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 59-63: UI drobne
 
-- [ ] **59:** `Sidebar.tsx:244-248` — `if (document.visibilityState === 'visible') refreshLanPeers()`.
+- [x] **59:** `Sidebar.tsx:244-248` — `if (document.visibilityState === 'visible') refreshLanPeers()`.
 - [ ] **60:** `useProjectsData.ts:175-235` — skonsoliduj 3× `Promise.allSettled` w jeden `useEffect` z `cancelled` flagą.
 - [ ] **61:** Helper `usePersistedState(key, init)` w `dashboard/src/hooks/usePersistedState.ts` + zastąp 3× kopie.
 - [ ] **62:** `BugHunter.tsx:4,45,96` — zastąp `@tauri-apps/api/core` → `lib/tauri.ts` + `alert()` → `useToast`.
@@ -1126,9 +1126,9 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 79-82: UI martwy kod
 
-- [ ] **79:** `Sidebar.tsx:219-222` — usuń `online` var.
-- [ ] **80:** `useLanSyncManager.ts:15` — usuń `import { usePageRefreshListener }`.
-- [ ] **81:** `useSessionsData.ts:157` — usuń `loadFirstSessionsPage` z returns, jeśli nieużyte.
+- [x] **79:** `Sidebar.tsx:219-222` — usuń `online` var.
+- [x] **80:** `useLanSyncManager.ts:15` — usuń `import { usePageRefreshListener }`.
+- [x] **81:** `useSessionsData.ts:157` — usuń `loadFirstSessionsPage` z returns, jeśli nieużyte.
 - [ ] **82:** Usuń artefakty: `dashboard/fix_ai.py`, `dashboard/get_logs.py`, `dashboard/temp_bg_services.txt`, `dashboard/check.bat`, `dashboard/test_esbuild.mjs` — po potwierdzeniu z userem.
 
 - [ ] **Commit:** `cleanup(repo): remove dev-only artifacts and dead code`
