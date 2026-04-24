@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Snowflake,
-  Trophy,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-
-import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog';
@@ -14,7 +8,6 @@ import { open } from '@tauri-apps/plugin-dialog';
 import {
   projectsApi,
 } from '@/lib/tauri';
-import { AppTooltip } from '@/components/ui/app-tooltip';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { CreateProjectDialog } from '@/components/project/CreateProjectDialog';
@@ -23,7 +16,6 @@ import {
   formatPathForDisplay,
   getErrorMessage,
   logTauriError,
-  cn,
 } from '@/lib/utils';
 import { isRecentProject } from '@/lib/project-utils';
 import { useUIStore } from '@/store/ui-store';
@@ -39,6 +31,7 @@ import type {
   ProjectWithStats,
 } from '@/lib/db-types';
 import { ProjectsList } from '@/components/projects/ProjectsList';
+import { ProjectList } from '@/components/projects/ProjectList';
 import { ExcludedProjectsList } from '@/components/projects/ExcludedProjectsList';
 import { ProjectDiscoveryPanel } from '@/components/projects/ProjectDiscoveryPanel';
 
@@ -789,101 +782,22 @@ export function Projects() {
     if (projectList.length === 0) return null;
     const { visible, hiddenCount } = getVisibleProjects(projectList, listKey);
 
-    if (viewMode === 'compact') {
-      return (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
-            {visible.map((p) => (
-              <div
-                key={p.id}
-                data-project-id={p.id}
-                data-project-name={p.name}
-                className={cn(
-                  'flex items-center gap-3 p-3 bg-card border rounded-md shadow-sm cursor-pointer hover:bg-accent transition-colors',
-                  isRecentProject(p, newProjectMaxAgeMs, {
-                    useLastActivity: true,
-                  }) && 'border-yellow-400/70',
-                )}
-                onClick={() => openEdit(p)}
-              >
-                <div
-                  className="h-3 w-3 rounded-full shrink-0"
-                  style={{ backgroundColor: p.color }}
-                />
-                <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                  <span
-                    className={cn(
-                      'min-w-0 flex-1 truncate font-medium',
-                      p.name.length > 40
-                        ? 'text-[11px]'
-                        : p.name.length > 25
-                          ? 'text-xs'
-                          : 'text-sm',
-                    )}
-                    title={p.name}
-                  >
-                    {p.name}
-                  </span>
-                  {p.frozen_at && (
-                    <AppTooltip content={t('projects.labels.frozen_since_click_unfreeze', {
-                      date: p.frozen_at.slice(0, 10),
-                    })}>
-                      <button
-                        type="button"
-                        className="inline-flex items-center rounded px-0.5 py-0.5 text-blue-400 hover:bg-blue-500/20 transition-colors cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleUnfreeze(p.id);
-                        }}
-                      >
-                        <Snowflake className="h-3 w-3 shrink-0" />
-                      </button>
-                    </AppTooltip>
-                  )}
-                  {renderDuplicateMarker(p)}
-                  {hotProjectIds.has(p.id) && (
-                    <AppTooltip content={t('projects.labels.hot_project')}>
-                      <span className="shrink-0">
-                        <Trophy className="h-3.5 w-3.5 text-amber-500 fill-amber-500/20" />
-                      </span>
-                    </AppTooltip>
-                  )}
-                </span>
-              </div>
-            ))}
-          </div>
-          {hiddenCount > 0 && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => loadMoreProjects(listKey, projectList.length)}
-              >
-                {t('projects_page.load_more_projects')} ({hiddenCount})
-              </Button>
-            </div>
-          )}
-        </div>
-      );
-    }
-
     return (
-      <div className="space-y-3">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {visible.map((p) => renderProjectCard(p))}
-        </div>
-        {hiddenCount > 0 && (
-          <div className="flex justify-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => loadMoreProjects(listKey, projectList.length)}
-            >
-              {t('projects_page.load_more_projects')} ({hiddenCount})
-            </Button>
-          </div>
-        )}
-      </div>
+      <ProjectList
+        hiddenCount={hiddenCount}
+        hotProjectIds={hotProjectIds}
+        listKey={listKey}
+        newProjectMaxAgeMs={newProjectMaxAgeMs}
+        projects={visible}
+        renderDuplicateMarker={renderDuplicateMarker}
+        renderProjectCard={renderProjectCard}
+        viewMode={viewMode}
+        onLoadMore={() => loadMoreProjects(listKey, projectList.length)}
+        onOpenProject={openEdit}
+        onUnfreeze={(projectId) => {
+          void handleUnfreeze(projectId);
+        }}
+      />
     );
   };
 
