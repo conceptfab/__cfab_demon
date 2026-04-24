@@ -162,6 +162,11 @@ pub fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
     .map_err(|e| format!("Failed to open dashboard DB: {}", e))
 }
 
+/// Open the dashboard SQLite DB in read-only mode.
+pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
+    config::open_dashboard_db_readonly().map_err(|e| e.to_string())
+}
+
 /// Compute a hash for a table's content using DefaultHasher.
 pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let sql = match table {

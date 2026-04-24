@@ -605,14 +605,6 @@ fn get_or_create_lan_secret() -> String {
 /// Public accessor for the LAN secret (used by orchestrator to send with requests).
 // ── DB helpers ──
 
-fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
-    lan_common::open_dashboard_db()
-}
-
-fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
-    config::open_dashboard_db_readonly().map_err(|e| e.to_string())
-}
-
 fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     lan_common::compute_table_hash(conn, table)
 }
@@ -721,7 +713,7 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
         }
     }
 
-    let db = open_dashboard_db_readonly().ok();
+    let db = lan_common::open_dashboard_db_readonly().ok();
     let local_marker = db.as_ref().and_then(|conn| get_latest_marker_hash(conn));
 
     let mode = match (&local_marker, &req.master_marker_hash) {
@@ -844,7 +836,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     sync_log(&format!("[SLAVE] Importuje {:.1} KB scalonych danych...", data_kb));
 
     // Open DB connection
-    let mut conn = match open_dashboard_db() {
+    let mut conn = match lan_common::open_dashboard_db() {
         Ok(c) => c,
         Err(e) => return (500, json_error(&format!("DB open error: {}", e))),
     };
@@ -945,7 +937,7 @@ fn handle_pull(body: &str) -> (u16, String) {
     };
     sync_log(&format!("[SLAVE] Master pobiera dane (since={})...", req.since));
 
-    let conn = match open_dashboard_db_readonly() {
+    let conn = match lan_common::open_dashboard_db_readonly() {
         Ok(c) => c,
         Err(e) => return (500, json_error(&e)),
     };

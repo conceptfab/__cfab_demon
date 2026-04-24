@@ -1136,7 +1136,7 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 83-87: Konsolidacja sync
 
-- [ ] **83:** Unifikacja `open_dashboard_db*` — jedna funkcja w `lan_common.rs`; usuń duplikaty z `lan_server.rs:607-613` i `sync_common.rs`.
+- [x] **83:** Unifikacja `open_dashboard_db*` — jedna funkcja w `lan_common.rs`; usuń duplikaty z `lan_server.rs:607-613` i `sync_common.rs`.
 - [x] **84:** `get_machine_name` — jedno miejsce (`lan_common.rs:85-87`), usuń duplikat z `lan_discovery.rs:128-130`.
 - [ ] **85:** `execute_online_sync` + `execute_online_sync_inner` — scal w jedną funkcję z parametrem `force_full: bool`.
 - [x] **86:** `LEGACY_*` migracja `cfab_dashboard.db` → usuń po `2026-12-31` (scheduled). Dodaj TODO z datą w kodzie.
