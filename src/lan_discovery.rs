@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+#[cfg(windows)]
 use timeflow_shared::process_utils::no_console;
 
 use crate::config;
@@ -21,9 +22,12 @@ use crate::lan_sync_orchestrator;
 /// Cached ipconfig output to avoid spawning the process on every beacon (every 30s).
 /// TTL: 120 seconds.
 /// TODO: Replace with WinAPI GetAdaptersAddresses for locale-independent results.
+#[cfg(windows)]
 static IPCONFIG_CACHE: std::sync::Mutex<Option<(Instant, String)>> = std::sync::Mutex::new(None);
+#[cfg(windows)]
 const IPCONFIG_CACHE_TTL: Duration = Duration::from_secs(120);
 
+#[cfg(windows)]
 fn get_ipconfig_output() -> Option<String> {
     if let Ok(guard) = IPCONFIG_CACHE.lock() {
         if let Some((ts, ref cached)) = *guard {
@@ -40,6 +44,11 @@ fn get_ipconfig_output() -> Option<String> {
         *guard = Some((Instant::now(), text.clone()));
     }
     Some(text)
+}
+
+#[cfg(not(windows))]
+fn get_ipconfig_output() -> Option<String> {
+    None
 }
 
 const DISCOVERY_PORT: u16 = 47892;

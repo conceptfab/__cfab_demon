@@ -1111,8 +1111,8 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 
 ### Task 73: `IPCONFIG_CACHE` `#[cfg(windows)]`
 
-- [ ] **73.1:** `src/lan_discovery.rs:22-43` — dodaj `#[cfg(windows)]` do całego bloku.
-- [ ] **73.2: Commit**
+- [x] **73.1:** `src/lan_discovery.rs:22-43` — dodaj `#[cfg(windows)]` do całego bloku.
+- [x] **73.2: Commit**
 
 ### Task 74-78: Martwe pola/funkcje macOS
 
