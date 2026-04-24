@@ -596,13 +596,14 @@ pub async fn set_training_blacklists(
 }
 
 #[command]
-pub async fn reset_assignment_model_knowledge(
-    app: AppHandle,
-) -> Result<AssignmentModelStatus, String> {
-    run_db_blocking(app.clone(), move |mut conn| {
-        reset_assignment_model_knowledge_sync(&mut conn)
-    })
-    .await?;
+pub async fn reset_model_weights(app: AppHandle) -> Result<AssignmentModelStatus, String> {
+    run_db_blocking(app.clone(), move |mut conn| reset_model_weights_sync(&mut conn)).await?;
+    get_assignment_model_status(app).await
+}
+
+#[command]
+pub async fn reset_model_full(app: AppHandle) -> Result<AssignmentModelStatus, String> {
+    run_db_blocking(app.clone(), move |mut conn| reset_model_full_sync(&mut conn)).await?;
     get_assignment_model_status(app).await
 }
 

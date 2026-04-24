@@ -1000,13 +1000,13 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `dashboard/src-tauri/src/commands/assignment_model/training.rs:16-46`
 
-- [ ] **Step 39.1: Split na `reset_model_weights` (tylko `_app/_time/_token`) i `reset_model_full` (+ `assignment_feedback`).**
+- [x] **Step 39.1: Split na `reset_model_weights` (tylko `_app/_time/_token`) i `reset_model_full` (+ `assignment_feedback`).**
 
-- [ ] **Step 39.2: UI — dwa osobne przyciski + potwierdzenia.**
+- [x] **Step 39.2: UI — dwa osobne przyciski + potwierdzenia.**
 
-- [ ] **Step 39.3: [HELP] Opisz różnicę.**
+- [x] **Step 39.3: [HELP] Opisz różnicę.**
 
-- [ ] **Step 39.4: Commit**
+- [x] **Step 39.4: Commit**
 
 ### Task 40: `feedback_weight` w `AssignmentModelStatus`
 

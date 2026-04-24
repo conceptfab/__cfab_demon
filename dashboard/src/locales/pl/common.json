@@ -427,10 +427,13 @@
       "status_load_failed": "Nie udało się wczytać statusu modelu AI:"
     },
     "prompts": {
-      "reset_knowledge_confirm": "Wyczyścić wiedzę AI? Usunięte zostaną: model oraz historia feedbacku."
+      "reset_knowledge_confirm": "Wyczyścić wiedzę AI? Usunięte zostaną: model oraz historia feedbacku.",
+      "reset_weights_confirm": "Zresetować wagi modelu? Historia korekt (feedback) zostanie zachowana, a trening odbuduje wagi od zera na jej podstawie.",
+      "reset_full_confirm": "Pełny reset AI? Usunięte zostaną: wagi modelu, historia korekt i auto-safe. Operacja nieodwracalna."
     },
     "info": {
-      "knowledge_reset": "Wiedza AI została wyczyszczona."
+      "knowledge_reset": "Wiedza AI została wyczyszczona.",
+      "weights_reset": "Wagi modelu AI zostały zresetowane — historia korekt zachowana."
     },
     "batch": {
       "tooltip_requires_auto_safe": "Najpierw włącz tryb Auto Safe."
@@ -509,6 +512,8 @@
       "refresh_status": "Odśwież status",
       "resetting": "Resetowanie...",
       "reset_ai_knowledge": "Reset wiedzy AI",
+      "reset_ai_weights": "Reset wag modelu",
+      "reset_ai_full": "Pełny reset AI",
       "loading_ai_metrics": "Ładowanie metryk AI...",
       "ai_precision": "Precyzja AI",
       "total_feedback": "Feedback łącznie",
@@ -1685,7 +1690,7 @@
     "model_status_card_diagnostic_panel_with_6_tiles_current": "Karta \"Status modelu\" – panel diagnostyczny z 6 kaflami: aktualny tryb, stan treningu (idle/in progress), data ostatniego treningu, liczba korekt od treningu, metryki ostatniego treningu (samples/czas) oraz ostatni przebieg auto-safe.",
     "ai_progress_charts_two_charts_1_feedback_trend_stacked_b": "Wykresy postępu AI – dwa wykresy: (1) Trend feedbacku – stacked bar chart z liczbą akceptacji, odrzuceń i ręcznych korekt na dzień; (2) Przebiegi Auto-safe vs wycofania – słupki przypisań oraz linie uruchomień i wycofań. Domyślne okno: 30 dni.",
     "summary_metrics_4_tiles_ai_precision_correct_suggestions": "Metryki podsumowujące – 4 kafle: Precyzja AI (zaakceptowane sugestie ÷ (zaakceptowane + odrzucone + ręczne korekty istniejących przypisań AI); ręczne przypisania od zera nie wliczają się), Feedback łącznie, Auto-safe przypisania, Pokrycie detected_path. Dodatkowe wskaźniki: pokrycie title_history i activity_type.",
-    "reset_ai_knowledge_button_that_clears_all_learned_model": "Reset wiedzy AI – przycisk kasujący całą nauczoną wiedzę modelu (z potwierdzeniem). Przydatny po dużej zmianie struktury projektów.",
+    "reset_ai_knowledge_button_that_clears_all_learned_model": "Reset wiedzy AI – dwa przyciski z potwierdzeniem. **Reset wag modelu** (soft) czyści tylko nauczone wagi (`_app/_time/_token`) i zachowuje historię korekt — kolejny trening odbuduje wagi od zera na bazie feedbacku. **Pełny reset AI** (hard, czerwony) usuwa dodatkowo historię korekt, sugestii i uruchomień Auto-safe; używaj po dużej zmianie struktury projektów lub gdy feedback się zdezaktualizował.",
     "how_to_train_and_configure_card_built_in_guide_with_thre": "Karta \"Jak trenować i konfigurować\" – wbudowany poradnik z trzema sekcjami: kiedy trenować, znaczenie parametrów oraz rekomendowane ustawienia startowe.",
     "ai_status_uses_central_background_diagnostics_and_the_me": "Status modelu AI korzysta ze wspólnych diagnostyk TIMEFLOW, a metryki odświeżają się przy wejściu na ekran, po akcjach AI, po zmianach danych i po powrocie do okna.",
     "timeflow_uses_a_proprietary_local_machine_learning_model": "W aplikacji TIMEFLOW zastosowano autorski, lokalny model uczenia maszynowego (Local ML) typu klasyfikacyjnego, napisanego w języku Rust. Nie jest to zewnętrzne AI (jak ChatGPT), lecz algorytm działający w 100% na Twoim komputerze, co zapewnia pełną prywatność.",

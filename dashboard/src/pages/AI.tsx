@@ -388,28 +388,65 @@ export function AIPage() {
     }
   };
 
-  const handleResetKnowledge = async () => {
-    const confirmed = await confirm(
-      tr('ai_page.prompts.reset_knowledge_confirm'),
-    );
-    if (!confirmed) return;
+  const runReset = useCallback(
+    async (
+      mode: 'weights' | 'full',
+      apiCall: () => Promise<AssignmentModelStatus>,
+    ) => {
+      const confirmed = await confirm(
+        tr(
+          mode === 'weights'
+            ? 'ai_page.prompts.reset_weights_confirm'
+            : 'ai_page.prompts.reset_full_confirm',
+        ),
+      );
+      if (!confirmed) return;
 
-    setResettingKnowledge(true);
-    try {
-      const nextStatus = await aiApi.resetAssignmentModelKnowledge();
-      dirtyRef.current = false;
-      setAiStatus(nextStatus);
-      syncFormWithStatus(nextStatus, true);
-      await fetchMetrics(true);
-      triggerRefresh('ai_knowledge_reset');
-      showInfo(tr('ai_page.info.knowledge_reset'));
-    } catch (e) {
-      console.error(e);
-      showError(`${tr('ai_page.errors.knowledge_reset_failed')} ${String(e)}`);
-    } finally {
-      setResettingKnowledge(false);
-    }
-  };
+      setResettingKnowledge(true);
+      try {
+        const nextStatus = await apiCall();
+        dirtyRef.current = false;
+        setAiStatus(nextStatus);
+        syncFormWithStatus(nextStatus, true);
+        await fetchMetrics(true);
+        triggerRefresh(
+          mode === 'weights' ? 'ai_weights_reset' : 'ai_knowledge_reset',
+        );
+        showInfo(
+          tr(
+            mode === 'weights'
+              ? 'ai_page.info.weights_reset'
+              : 'ai_page.info.knowledge_reset',
+          ),
+        );
+      } catch (e) {
+        console.error(e);
+        showError(`${tr('ai_page.errors.knowledge_reset_failed')} ${String(e)}`);
+      } finally {
+        setResettingKnowledge(false);
+      }
+    },
+    [
+      confirm,
+      fetchMetrics,
+      setAiStatus,
+      showError,
+      showInfo,
+      syncFormWithStatus,
+      tr,
+      triggerRefresh,
+    ],
+  );
+
+  const handleResetWeights = useCallback(
+    () => runReset('weights', aiApi.resetModelWeights),
+    [runReset],
+  );
+
+  const handleResetFull = useCallback(
+    () => runReset('full', aiApi.resetModelFull),
+    [runReset],
+  );
 
   const handleRunAutoSafe = async () => {
     if (status?.mode !== 'auto_safe') {
@@ -604,7 +641,8 @@ export function AIPage() {
           onRefreshStatus={() => {
             void handleRefreshStatus();
           }}
-          onResetKnowledge={handleResetKnowledge}
+          onResetWeights={handleResetWeights}
+          onResetFull={handleResetFull}
         />
 
         <AiFolderScanCard

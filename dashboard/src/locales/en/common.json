@@ -427,10 +427,13 @@
       "status_load_failed": "Failed to load AI model status:"
     },
     "prompts": {
-      "reset_knowledge_confirm": "Reset AI knowledge? This deletes model tables and feedback history."
+      "reset_knowledge_confirm": "Reset AI knowledge? This deletes model tables and feedback history.",
+      "reset_weights_confirm": "Reset model weights? Feedback history is preserved and the next training will rebuild the weights from it.",
+      "reset_full_confirm": "Full AI reset? This deletes model weights, feedback history and auto-safe runs. This cannot be undone."
     },
     "info": {
-      "knowledge_reset": "AI knowledge has been reset."
+      "knowledge_reset": "AI knowledge has been reset.",
+      "weights_reset": "Model weights have been reset — feedback history preserved."
     },
     "batch": {
       "tooltip_requires_auto_safe": "Enable Auto Safe mode first."
@@ -509,6 +512,8 @@
       "refresh_status": "Refresh Status",
       "resetting": "Resetting...",
       "reset_ai_knowledge": "Reset AI knowledge",
+      "reset_ai_weights": "Reset model weights",
+      "reset_ai_full": "Full AI reset",
       "loading_ai_metrics": "Loading AI metrics...",
       "ai_precision": "AI precision",
       "total_feedback": "Total feedback",
@@ -1685,7 +1690,7 @@
     "model_status_card_diagnostic_panel_with_6_tiles_current": "\"Model Status\" card – a diagnostic panel with 6 tiles: current mode, training state (idle/in progress), last training date, correction count since training, last training metrics (samples/time), and the last Auto-safe run.",
     "ai_progress_charts_two_charts_1_feedback_trend_stacked_b": "AI progress charts – two charts: (1) Feedback trend – stacked bar chart with Accept, Reject, and Manual corrections per day; (2) Auto-safe runs vs rollback – assigned bars + runs and rollbacks lines. Default window: 30 days.",
     "summary_metrics_4_tiles_ai_precision_correct_suggestions": "Summary metrics – 4 tiles: AI precision (accepted suggestions ÷ (accepted + rejected + manual corrections of existing AI assignments); manual assignments from scratch are excluded), Total feedback, Auto-safe assignments, Detected path coverage. Additional indicators: title_history and activity_type coverage.",
-    "reset_ai_knowledge_button_that_clears_all_learned_model": "Reset AI knowledge – button that clears all learned model knowledge (with confirmation). Useful after a major project structure change.",
+    "reset_ai_knowledge_button_that_clears_all_learned_model": "Reset AI knowledge – two buttons with confirmation. **Reset model weights** (soft) clears only the trained weight tables (`_app/_time/_token`) and keeps the feedback history, so the next training rebuilds weights from it. **Full AI reset** (hard, red) additionally wipes feedback, suggestions and Auto-safe run history; use it after a major project restructure or when feedback has become stale.",
     "how_to_train_and_configure_card_built_in_guide_with_thre": "\"How to train and configure\" card – built-in guide with three sections: when to train, what parameters mean, and recommended starting settings.",
     "ai_status_uses_central_background_diagnostics_and_the_me": "The AI model status uses shared TIMEFLOW diagnostics, and metrics refresh when you open the screen, run AI actions, data changes, or return to the app window.",
     "timeflow_uses_a_proprietary_local_machine_learning_model": "TIMEFLOW uses a proprietary, local machine learning model (Local ML) for classification, written in Rust. It's not an external AI (like ChatGPT), but an algorithm running 100% on your computer, ensuring full privacy.",

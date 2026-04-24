@@ -52,8 +52,11 @@ export const setTrainingBlacklists = (
     folderBlacklist,
   });
 
-export const resetAssignmentModelKnowledge = () =>
-  invokeMutation<AssignmentModelStatus>('reset_assignment_model_knowledge');
+export const resetModelWeights = () =>
+  invokeMutation<AssignmentModelStatus>('reset_model_weights');
+
+export const resetModelFull = () =>
+  invokeMutation<AssignmentModelStatus>('reset_model_full');
 
 export const trainAssignmentModel = (force = false) =>
   invokeMutation<AssignmentModelStatus>('train_assignment_model', { force });
@@ -106,7 +109,8 @@ export const aiApi = {
   setTrainingHorizonDays,
   setDecayHalfLifeDays,
   setTrainingBlacklists,
-  resetAssignmentModelKnowledge,
+  resetModelWeights,
+  resetModelFull,
   trainAssignmentModel,
   runAutoSafeAssignment,
   rollbackLastAutoSafeRun,

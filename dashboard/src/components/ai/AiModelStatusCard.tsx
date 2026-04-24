@@ -16,7 +16,8 @@ interface AiModelStatusCardProps {
   reminderSuppressed: boolean;
   onTrainNow: () => void;
   onRefreshStatus: () => void;
-  onResetKnowledge: () => void;
+  onResetWeights: () => void;
+  onResetFull: () => void;
 }
 
 export function AiModelStatusCard({
@@ -29,7 +30,8 @@ export function AiModelStatusCard({
   reminderSuppressed,
   onTrainNow,
   onRefreshStatus,
-  onResetKnowledge,
+  onResetWeights,
+  onResetFull,
 }: AiModelStatusCardProps) {
   const { t: tr } = useTranslation();
   const trainActionHighlighted =
@@ -162,15 +164,26 @@ export function AiModelStatusCard({
               : tr('ai_page.text.refresh_status')}
           </Button>
           <Button
-            variant="destructive"
+            variant="outline"
             className="h-8"
-            onClick={onResetKnowledge}
+            onClick={onResetWeights}
             disabled={resettingKnowledge}
           >
             <Trash2 className="mr-2 h-4 w-4" />
             {resettingKnowledge
               ? tr('ai_page.text.resetting')
-              : tr('ai_page.text.reset_ai_knowledge')}
+              : tr('ai_page.text.reset_ai_weights')}
+          </Button>
+          <Button
+            variant="destructive"
+            className="h-8"
+            onClick={onResetFull}
+            disabled={resettingKnowledge}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {resettingKnowledge
+              ? tr('ai_page.text.resetting')
+              : tr('ai_page.text.reset_ai_full')}
           </Button>
         </div>
       </CardContent>

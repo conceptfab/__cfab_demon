@@ -55,9 +55,38 @@ impl Drop for IsTrainingGuard {
     }
 }
 
-pub fn reset_assignment_model_knowledge_sync(
-    conn: &mut rusqlite::Connection,
-) -> Result<(), String> {
+const RESET_STATE_KEYS_SQL: &str = "DELETE FROM assignment_model_state
+     WHERE key IN (
+         'feedback_since_train',
+         'last_train_at',
+         'last_train_duration_ms',
+         'last_train_samples',
+         'train_error_last',
+         'cooldown_until',
+         'is_training'
+     )";
+
+/// Soft reset — clears only the trained weight tables. Preserves
+/// `assignment_feedback` (and the auto-safe history tables) so the next
+/// training run can replay user corrections and rebuild weights. Use this
+/// after a model misbehaves or when tuning blacklists/horizons.
+pub fn reset_model_weights_sync(conn: &mut rusqlite::Connection) -> Result<(), String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    tx.execute_batch(
+        "DELETE FROM assignment_model_app;
+         DELETE FROM assignment_model_time;
+         DELETE FROM assignment_model_token;",
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(RESET_STATE_KEYS_SQL, [])
+        .map_err(|e| e.to_string())?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Full reset — wipes weights, feedback, suggestions and auto-safe run
+/// history. Equivalent to starting with a brand-new installation.
+pub fn reset_model_full_sync(conn: &mut rusqlite::Connection) -> Result<(), String> {
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     tx.execute_batch(
         "DELETE FROM assignment_model_app;
@@ -69,20 +98,8 @@ pub fn reset_assignment_model_knowledge_sync(
          DELETE FROM assignment_auto_runs;",
     )
     .map_err(|e| e.to_string())?;
-    tx.execute(
-        "DELETE FROM assignment_model_state
-         WHERE key IN (
-             'feedback_since_train',
-             'last_train_at',
-             'last_train_duration_ms',
-             'last_train_samples',
-             'train_error_last',
-             'cooldown_until',
-             'is_training'
-         )",
-        [],
-    )
-    .map_err(|e| e.to_string())?;
+    tx.execute(RESET_STATE_KEYS_SQL, [])
+        .map_err(|e| e.to_string())?;
     tx.commit().map_err(|e| e.to_string())?;
     Ok(())
 }
