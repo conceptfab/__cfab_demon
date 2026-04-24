@@ -122,8 +122,11 @@ function StatusIndicator({
 
 export function Sidebar() {
   const { t, i18n } = useTranslation();
-  const { currentPage, setCurrentPage, helpTab, setHelpTab, firstRun } =
-    useUIStore();
+  const currentPage = useUIStore((s) => s.currentPage);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const helpTab = useUIStore((s) => s.helpTab);
+  const setHelpTab = useUIStore((s) => s.setHelpTab);
+  const firstRun = useUIStore((s) => s.firstRun);
   const status = useBackgroundStatusStore((s) => s.daemonStatus);
   const aiStatus = useBackgroundStatusStore(
     (s) => s.aiStatus as AssignmentModelStatus | null,
@@ -221,7 +224,7 @@ export function Sidebar() {
     } finally {
       setLanSyncing(false);
     }
-  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t, clearLanSyncMessageLater]);
+  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t, clearLanSyncMessageLater, refreshLanPeers]);
 
   const handleLanScan = useCallback(async () => {
     if (lanScanning || lanSyncing) return;
@@ -239,7 +242,7 @@ export function Sidebar() {
       setLanScanning(false);
       setLanSyncMessage(null);
     }
-  }, [lanScanning, lanSyncing, t]);
+  }, [lanScanning, lanSyncing, t, refreshLanPeers]);
 
   const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
   const openContextHelp = useCallback(() => {
