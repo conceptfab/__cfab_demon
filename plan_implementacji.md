@@ -911,7 +911,7 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 - Modify: `dashboard/src/pages/Projects.tsx` (1134 lin.)
 - Modify: `dashboard/src/hooks/useSettingsFormState.ts` (27 KB)
 
-- [ ] **Step 32.1: Sessions — wydziel `useSessionsContextMenu.ts`, `useAssignProjectSections.ts`.**
+- [x] **Step 32.1: Sessions — wydziel `useSessionsContextMenu.ts`, `useAssignProjectSections.ts`.**
 
 - [ ] **Step 32.2: Projects — `renderProjectList`/`renderProjectCard` → `<ProjectList>`/`<ProjectCard>` + `React.memo`.**
 
