@@ -976,13 +976,13 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `src/platform/macos/foreground.rs:16`
 
-- [ ] **Step 37.1: Subskrypcja `NSWorkspace.didActivateApplicationNotification` przez NSRunLoop (tray-loop już istnieje).**
+- [x] **Step 37.1: Subskrypcja `NSWorkspace.didActivateApplicationNotification` przez NSRunLoop (tray-loop już istnieje).**
 
-- [ ] **Step 37.2: Usuń polling 250 ms; fallback polling 2s jako safety net.**
+- [x] **Step 37.2: Usuń polling 250 ms; fallback polling 2s jako safety net.**
 
-- [ ] **Step 37.3: Aktualizuj `PARITY.md`.**
+- [x] **Step 37.3: Aktualizuj `PARITY.md`.**
 
-- [ ] **Step 37.4: Commit**
+- [x] **Step 37.4: Commit**
 
 ### Task 38: Incremental retraining AI
 

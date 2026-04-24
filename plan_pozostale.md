@@ -63,11 +63,11 @@ dynamicznych update'ów menu — trzeba zweryfikować jakie operacje są wspiera
 
 **Plik:** `src/platform/macos/foreground.rs:16`
 **Kroki:**
-- [ ] 37.1: Subskrypcja `NSWorkspace.didActivateApplicationNotification`
+- [x] 37.1: Subskrypcja `NSWorkspace.didActivateApplicationNotification`
   przez NSRunLoop (tray-loop już istnieje, można wpiąć obserwatora tam).
-- [ ] 37.2: Usuń polling 250 ms; fallback polling 2 s jako safety net.
-- [ ] 37.3: Aktualizuj `PARITY.md` (wiersz „Foreground detection" → ✅).
-- [ ] 37.4: Commit.
+- [x] 37.2: Usuń polling 250 ms; fallback polling 2 s jako safety net.
+- [x] 37.3: Aktualizuj `PARITY.md` (wiersz „Foreground detection" → ✅).
+- [x] 37.4: Commit.
 
 **Blocker techniczny:** Potrzeba `objc2` / `block2` bindings dla `NSNotification`.
 Sprawdź czy `cocoa` / `core-foundation` crates w projekcie wystarczą, czy

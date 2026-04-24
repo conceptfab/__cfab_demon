@@ -5302,6 +5302,7 @@ dependencies = [
  "aes-gcm",
  "anyhow",
  "base64 0.22.1",
+ "block2 0.5.1",
  "chrono",
  "core-foundation 0.9.4",
  "core-graphics 0.23.2",
