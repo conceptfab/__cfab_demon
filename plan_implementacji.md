@@ -1138,9 +1138,9 @@ git commit -am "perf(daemon): batch of minor optimizations (Tasks 43-49)"
 - [x] **79:** `Sidebar.tsx:219-222` — usuń `online` var.
 - [x] **80:** `useLanSyncManager.ts:15` — usuń `import { usePageRefreshListener }`.
 - [x] **81:** `useSessionsData.ts:157` — usuń `loadFirstSessionsPage` z returns, jeśli nieużyte.
-- [ ] **82:** Usuń artefakty: `dashboard/fix_ai.py`, `dashboard/get_logs.py`, `dashboard/temp_bg_services.txt`, `dashboard/check.bat`, `dashboard/test_esbuild.mjs` — po potwierdzeniu z userem.
+- [x] **82:** Usuń artefakty: `dashboard/fix_ai.py`, `dashboard/get_logs.py`, `dashboard/temp_bg_services.txt`, `dashboard/check.bat`, `dashboard/test_esbuild.mjs` — po potwierdzeniu z userem.
 
-- [ ] **Commit:** `cleanup(repo): remove dev-only artifacts and dead code`
+- [x] **Commit:** `cleanup(repo): remove dev-only artifacts and dead code`
 
 ### Task 83-87: Konsolidacja sync
 
