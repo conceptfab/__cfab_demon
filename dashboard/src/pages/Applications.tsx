@@ -34,7 +34,7 @@ const APP_ROWS_PAGE_SIZE = 100;
 
 export function Applications() {
   const { i18n, t } = useTranslation();
-  const { triggerRefresh } = useDataStore();
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [apps, setApps] = useState<AppWithStats[]>([]);
@@ -765,4 +765,3 @@ export function Applications() {
     </div>
   );
 }
-
