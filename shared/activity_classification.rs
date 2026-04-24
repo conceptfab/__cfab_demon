@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 /// Activity type categories for file activity tagging.
@@ -17,13 +18,17 @@ impl ActivityType {
             Self::Design => "design",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for ActivityType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "coding" => Some(Self::Coding),
-            "browsing" => Some(Self::Browsing),
-            "design" => Some(Self::Design),
-            _ => None,
+            "coding" => Ok(Self::Coding),
+            "browsing" => Ok(Self::Browsing),
+            "design" => Ok(Self::Design),
+            _ => Err(()),
         }
     }
 }
@@ -123,7 +128,7 @@ pub fn classify_activity_type(
     // Check overrides first
     if let Some(overrides) = overrides {
         if let Some(type_str) = overrides.get(&exe) {
-            return ActivityType::from_str(type_str);
+            return type_str.parse().ok();
         }
     }
 

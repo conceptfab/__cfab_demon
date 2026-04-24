@@ -23,7 +23,7 @@ fn rebuild_file_index_cache(
 ) -> HashMap<String, HashMap<String, usize>> {
     let mut cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
     for (exe_name, app_data) in &daily_data.apps {
-        let file_map = cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
+        let file_map = cache.entry(exe_name.clone()).or_default();
         for (idx, file_entry) in app_data.files.iter().enumerate() {
             if let Some(cache_key) = build_file_cache_key(
                 &file_entry.name,
@@ -154,7 +154,7 @@ fn should_refresh_background_process_snapshot(last_refresh: Option<Instant>, now
 }
 
 fn is_db_frozen(sync_state: Option<&Arc<crate::lan_server::LanSyncState>>) -> bool {
-    sync_state.map_or(false, |s| s.db_frozen.load(Ordering::Acquire))
+    sync_state.is_some_and(|s| s.db_frozen.load(Ordering::Acquire))
 }
 
 fn save_daily_if_unfrozen(
@@ -725,7 +725,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 if recorded_this_tick.contains(exe_name) {
                     // Already counted by foreground — just update CPU snapshot
                     let (_, snapshot) =
-                        monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), &proc_snap);
+                        monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), proc_snap);
                     cpu_state.insert(exe_name.clone(), snapshot);
                     continue;
                 }
@@ -733,7 +733,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 let prev = cpu_state.get(exe_name);
                 let had_prev = prev.is_some();
                 let (cpu_fraction, snapshot) =
-                    monitor::measure_cpu_for_app(exe_name, prev, &proc_snap);
+                    monitor::measure_cpu_for_app(exe_name, prev, proc_snap);
                 cpu_state.insert(exe_name.clone(), snapshot);
 
                 if had_prev && cpu_fraction > cpu_thresh {

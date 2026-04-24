@@ -1053,14 +1053,14 @@ mod tests {
         let v: serde_json::Value = serde_json::json!({
             "name": "test",
             "count": 42,
-            "rate": 3.14,
+            "rate": 2.5,
             "empty": null
         });
         assert_eq!(json_str(&v, "name"), "test");
         assert_eq!(json_str(&v, "missing"), "");
         assert_eq!(json_i64(&v, "count"), 42);
         assert_eq!(json_i64(&v, "missing"), 0);
-        assert!((json_f64(&v, "rate") - 3.14).abs() < f64::EPSILON);
+        assert!((json_f64(&v, "rate") - 2.5).abs() < f64::EPSILON);
         assert_eq!(json_str_opt(&v, "name"), Some("test".to_string()));
         assert_eq!(json_str_opt(&v, "empty"), None);
     }
