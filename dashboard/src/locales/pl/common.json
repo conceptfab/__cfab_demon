@@ -348,6 +348,9 @@
       "remaining_active_az": "Pozostałe aktywne (A-Z)",
       "unassigned": "Nieprzypisane",
       "active_projects_az": "Aktywne projekty (A-Z)",
+      "mode_alpha": "Aktywne alfabetycznie (A-Z)",
+      "mode_new_top": "Najnowsze → Top → Reszta (A-Z)",
+      "mode_top_new": "Top → Najnowsze → Reszta (A-Z)",
       "no_projects": "Brak dostępnych projektów",
       "project_label": "Projekt:",
       "no_linked_project_card": "Brak powiązanej karty projektu",
@@ -428,6 +431,9 @@
     },
     "info": {
       "knowledge_reset": "Wiedza AI została wyczyszczona."
+    },
+    "batch": {
+      "tooltip_requires_auto_safe": "Najpierw włącz tryb Auto Safe."
     },
     "folder_scan": {
       "title": "Nauka z folderów projektów",

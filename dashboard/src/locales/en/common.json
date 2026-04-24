@@ -348,6 +348,9 @@
       "remaining_active_az": "Remaining active (A-Z)",
       "unassigned": "Unassigned",
       "active_projects_az": "Active projects (A-Z)",
+      "mode_alpha": "Active alphabetically (A-Z)",
+      "mode_new_top": "Newest → Top → Rest (A-Z)",
+      "mode_top_new": "Top → Newest → Rest (A-Z)",
       "no_projects": "No projects available",
       "project_label": "Project:",
       "no_linked_project_card": "No linked project card",
@@ -428,6 +431,9 @@
     },
     "info": {
       "knowledge_reset": "AI knowledge has been reset."
+    },
+    "batch": {
+      "tooltip_requires_auto_safe": "Enable Auto Safe mode first."
     },
     "folder_scan": {
       "title": "Learn from Project Folders",

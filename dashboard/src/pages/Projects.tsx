@@ -1125,10 +1125,9 @@ export function Projects() {
         onOpenChange={setSessionDialogOpen}
         projects={projects}
         defaultProjectId={sessionDialogProjectId}
-        onSaved={triggerRefresh}
+        onSaved={() => triggerRefresh('projects_manual_session_saved')}
       />
       <ConfirmDialog />
     </div>
   );
 }
-
