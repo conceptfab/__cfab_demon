@@ -898,11 +898,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 - Modify: `dashboard/src/components/ui/confirm-dialog.tsx:39-59`
 - Modify: wszystkie wywołania (grep `useConfirmDialog`)
 
-- [ ] **Step 31.1: Publiczne API: `<ConfirmDialog open message onConfirm onCancel />`.**
+- [x] **Step 31.1: Publiczne API: `<ConfirmDialog open message onConfirm onCancel />`.**
 
-- [ ] **Step 31.2: Hook `useConfirmDialogState` → tylko state, dialog renderowany w JSX.**
+- [x] **Step 31.2: Hook `useConfirmDialogState` → tylko state, dialog renderowany w JSX.**
 
-- [ ] **Step 31.3: Commit**
+- [x] **Step 31.3: Commit**
 
 ### Task 32: Rozbicie god-components
 
