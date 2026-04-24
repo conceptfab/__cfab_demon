@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import sys
+from pathlib import Path
 from typing import Any
 
 
@@ -18,9 +18,10 @@ def get_keys(d: dict[str, Any], prefix: str = '') -> set[str]:
     return keys
 
 def main() -> None:
-    with open(r'c:\_cloud\__cfab_demon\__client\dashboard\src\locales\en\common.json', 'r', encoding='utf-8') as f:
+    locales_dir = Path(__file__).resolve().parent / "dashboard" / "src" / "locales"
+    with (locales_dir / "en" / "common.json").open('r', encoding='utf-8') as f:
         en = json.load(f)
-    with open(r'c:\_cloud\__cfab_demon\__client\dashboard\src\locales\pl\common.json', 'r', encoding='utf-8') as f:
+    with (locales_dir / "pl" / "common.json").open('r', encoding='utf-8') as f:
         pl = json.load(f)
 
     en_keys = set(k for k in get_keys(en) if not k.endswith(" (EMPTY KEY)"))
