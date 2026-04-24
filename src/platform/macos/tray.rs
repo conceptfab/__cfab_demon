@@ -2,12 +2,16 @@
 // zdarzeń NSApplication (bez dodatkowej zależności na `tao`/`winit`).
 // Uruchamiane z głównego wątku (MainThreadMarker::new() panikuje inaczej).
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use objc2::rc::Retained;
 use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
 use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode};
+use rusqlite::OptionalExtension;
+use timeflow_shared::session_settings;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, TrayIconBuilder};
 
@@ -18,6 +22,7 @@ use crate::sync_trigger;
 use crate::APP_NAME;
 
 const PUMP_INTERVAL_SECS: f64 = 0.15;
+const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Logo TIMEFLOW osadzone w binarce (PNG 128×128 — macOS skaluje do
 /// 22×22 statusbara, na Retinie używa pełnej rozdzielczości).
@@ -78,13 +83,178 @@ fn decode_png_rgba(bytes: &[u8]) -> Result<(Vec<u8>, u32, u32), String> {
 }
 
 fn fallback_icon() -> Result<Icon, String> {
+    solid_icon([31, 81, 255, 255])
+}
+
+fn attention_icon() -> Result<Icon, String> {
+    solid_icon([245, 158, 11, 255])
+}
+
+fn sync_icon() -> Result<Icon, String> {
+    solid_icon([16, 185, 129, 255])
+}
+
+fn solid_icon(color: [u8; 4]) -> Result<Icon, String> {
     const SIZE: usize = 18;
     let mut rgba = Vec::with_capacity(SIZE * SIZE * 4);
     for _ in 0..SIZE * SIZE {
-        rgba.extend_from_slice(&[31, 81, 255, 255]);
+        rgba.extend_from_slice(&color);
     }
     Icon::from_rgba(rgba, SIZE as u32, SIZE as u32)
-        .map_err(|e| format!("failed to build fallback tray icon: {e}"))
+        .map_err(|e| format!("failed to build solid tray icon: {e}"))
+}
+
+struct AttentionState {
+    count: i64,
+    last_refresh: Instant,
+    conn: Option<rusqlite::Connection>,
+}
+
+fn query_unassigned_attention_count(conn: &rusqlite::Connection) -> Result<i64, String> {
+    let base_dir = crate::config::config_dir().map_err(|e| e.to_string())?;
+    let min_duration_sec =
+        session_settings::read_session_settings(&base_dir).min_session_duration_seconds;
+
+    let table_exists = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions' LIMIT 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|e| format!("Failed to check sessions table in dashboard DB: {}", e))?
+        .is_some();
+    if !table_exists {
+        return Ok(0);
+    }
+
+    conn.query_row(
+        "SELECT COUNT(*)
+         FROM sessions s
+         WHERE (s.is_hidden IS NULL OR s.is_hidden = 0)
+           AND s.project_id IS NULL
+           AND s.duration_seconds >= ?1",
+        [min_duration_sec],
+        |row| row.get::<_, i64>(0),
+    )
+    .map_err(|e| format!("Failed to query unassigned sessions for tray: {}", e))
+}
+
+fn ensure_conn(state: &mut AttentionState) -> Result<&rusqlite::Connection, String> {
+    if state.conn.is_none() {
+        match crate::config::open_dashboard_db_readonly() {
+            Ok(c) => state.conn = Some(c),
+            Err(error) => {
+                if let Ok(db_path) = crate::config::dashboard_db_path() {
+                    if !db_path.exists() {
+                        return Err("DB not found yet".into());
+                    }
+                }
+                return Err(format!("Failed to open dashboard DB for tray: {}", error));
+            }
+        }
+    }
+    state
+        .conn
+        .as_ref()
+        .ok_or_else(|| "Dashboard DB connection is unavailable".into())
+}
+
+fn refresh_attention_state(state: &mut AttentionState, force: bool) -> i64 {
+    let now = Instant::now();
+    if !force && now.duration_since(state.last_refresh) < TRAY_ATTENTION_REFRESH_INTERVAL {
+        return state.count;
+    }
+    state.last_refresh = now;
+
+    let result = match ensure_conn(state) {
+        Ok(conn) => query_unassigned_attention_count(conn),
+        Err(_) => Ok(0),
+    };
+
+    match result {
+        Ok(count) => state.count = count,
+        Err(error) => {
+            log::warn!("Failed to refresh tray attention count: {}", error);
+            state.conn = None;
+        }
+    }
+    state.count
+}
+
+fn build_tray_tip(lang: i18n::Lang, attention: i64) -> String {
+    if attention > 0 {
+        format!(
+            "{} * - {} {}",
+            APP_NAME,
+            attention,
+            lang.t(TrayText::UnassignedSessions)
+        )
+    } else {
+        format!("{} - {}", APP_NAME, lang.t(TrayText::RunningInBackground))
+    }
+}
+
+fn is_syncing(sync_state: Option<&Arc<LanSyncState>>) -> bool {
+    sync_state.is_some_and(|state| {
+        if state.sync_in_progress.load(Ordering::Relaxed) {
+            return true;
+        }
+        let progress = state.get_progress();
+        progress.phase != "idle" && progress.step > 0
+    })
+}
+
+fn update_tray_appearance(
+    tray_icon: &tray_icon::TrayIcon,
+    icon: &Icon,
+    icon_attention: &Icon,
+    icon_sync: &Icon,
+    attention: i64,
+    lang: i18n::Lang,
+    sync_state: Option<&Arc<LanSyncState>>,
+) {
+    if is_syncing(sync_state) {
+        let _ = tray_icon.set_tooltip(Some(format!(
+            "{} - {}",
+            APP_NAME,
+            lang.t(TrayText::LanSyncInProgress)
+        )));
+        let _ = tray_icon.set_icon(Some(icon_sync.clone()));
+    } else {
+        let _ = tray_icon.set_tooltip(Some(build_tray_tip(lang, attention)));
+        let next_icon = if attention > 0 { icon_attention } else { icon };
+        let _ = tray_icon.set_icon(Some(next_icon.clone()));
+    }
+}
+
+fn update_sync_menu(
+    sync_status_item: &MenuItem,
+    sync_delta_item: &MenuItem,
+    sync_force_item: &MenuItem,
+    sync_state: Option<&Arc<LanSyncState>>,
+    lang: i18n::Lang,
+) {
+    let Some(state) = sync_state else {
+        sync_status_item.set_text(format!("{}: {}", lang.t(TrayText::SyncStatusPrefix), "n/a"));
+        sync_delta_item.set_enabled(false);
+        sync_force_item.set_enabled(false);
+        return;
+    };
+
+    let role = state.get_role();
+    let syncing = state.sync_in_progress.load(Ordering::Relaxed);
+    let frozen = state.db_frozen.load(Ordering::Acquire);
+    let prefix = lang.t(TrayText::SyncStatusPrefix);
+    let status = if syncing {
+        let frozen_label = lang.t(TrayText::SyncFrozenSuffix);
+        format!("{}: {} ({}={})", prefix, role, frozen_label, frozen)
+    } else {
+        format!("{}: {}", prefix, role)
+    };
+    sync_status_item.set_text(status);
+    sync_delta_item.set_enabled(!syncing);
+    sync_force_item.set_enabled(!syncing);
 }
 
 pub fn run(
@@ -108,6 +278,11 @@ pub fn run(
         None,
     );
     let dashboard_item = MenuItem::new(lang.t(TrayText::OpenDashboard), true, None);
+    let sync_status_item = MenuItem::new(
+        format!("{}: {}", lang.t(TrayText::SyncStatusPrefix), "n/a"),
+        false,
+        None,
+    );
     let sync_delta_item = MenuItem::new(lang.t(TrayText::SyncDelta), true, None);
     let sync_force_item = MenuItem::new(lang.t(TrayText::SyncForceFull), true, None);
     let restart_item = MenuItem::new(lang.t(TrayText::Restart), true, None);
@@ -117,6 +292,7 @@ pub fn run(
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&dashboard_item);
     let _ = menu.append(&PredefinedMenuItem::separator());
+    let _ = menu.append(&sync_status_item);
     let _ = menu.append(&sync_delta_item);
     let _ = menu.append(&sync_force_item);
     let _ = menu.append(&PredefinedMenuItem::separator());
@@ -130,11 +306,13 @@ pub fn run(
             return TrayExitAction::Exit;
         }
     };
+    let icon_attention = attention_icon().unwrap_or_else(|_| icon.clone());
+    let icon_sync = sync_icon().unwrap_or_else(|_| icon.clone());
 
     let tray_icon = match TrayIconBuilder::new()
         .with_menu(Box::new(menu))
         .with_tooltip(APP_NAME)
-        .with_icon(icon)
+        .with_icon(icon.clone())
         .build()
     {
         Ok(t) => t,
@@ -153,6 +331,13 @@ pub fn run(
     let sync_force_id = sync_force_item.id().clone();
     let restart_id = restart_item.id().clone();
     let exit_id = exit_item.id().clone();
+    let lang_state = Cell::new(lang);
+    let mut attention_state = AttentionState {
+        count: 0,
+        last_refresh: Instant::now() - TRAY_ATTENTION_REFRESH_INTERVAL,
+        conn: None,
+    };
+    let mut was_syncing = false;
 
     let menu_rx = MenuEvent::receiver();
     let mut action = TrayExitAction::Exit;
@@ -161,6 +346,53 @@ pub fn run(
     loop {
         if stop_signal.load(Ordering::Relaxed) {
             break;
+        }
+
+        let new_lang = i18n::load_language();
+        let old_lang = lang_state.get();
+        if new_lang != old_lang {
+            lang_state.set(new_lang);
+            dashboard_item.set_text(new_lang.t(TrayText::OpenDashboard));
+            sync_delta_item.set_text(new_lang.t(TrayText::SyncDelta));
+            sync_force_item.set_text(new_lang.t(TrayText::SyncForceFull));
+            restart_item.set_text(new_lang.t(TrayText::Restart));
+            exit_item.set_text(new_lang.t(TrayText::Close));
+        }
+
+        let lang = lang_state.get();
+        let attention = refresh_attention_state(&mut attention_state, false);
+        update_tray_appearance(
+            &tray_icon,
+            &icon,
+            &icon_attention,
+            &icon_sync,
+            attention,
+            lang,
+            sync_state.as_ref(),
+        );
+        update_sync_menu(
+            &sync_status_item,
+            &sync_delta_item,
+            &sync_force_item,
+            sync_state.as_ref(),
+            lang,
+        );
+
+        if let Some(ref state) = sync_state {
+            let currently_syncing = is_syncing(Some(state));
+            if was_syncing && !currently_syncing {
+                if state.secs_since_last_sync() < 10 {
+                    let progress = state.get_progress();
+                    if progress.phase == "not_needed" {
+                        log::info!("Tray: {}", lang.t(TrayText::SyncNotNeeded));
+                    } else {
+                        log::info!("Tray: {}", lang.t(TrayText::SyncCompleted));
+                    }
+                } else {
+                    log::warn!("Tray: {}", lang.t(TrayText::SyncFailed));
+                }
+            }
+            was_syncing = currently_syncing;
         }
 
         // Obsłuż zdarzenia menu (non-blocking)

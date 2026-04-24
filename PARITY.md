@@ -11,7 +11,7 @@ the codebase — if a row here is stale, the task is not done.
 | Tray i18n | `TrayText::*` | `TrayText::*` | ✅ parity |
 | Version mismatch dialog | WinAPI `MessageBox` | `osascript` `display dialog` | ✅ parity |
 | `detected_path` | WMI | `None` (stub) | ❌ macOS stub — Task (P2) |
-| Tray sync status + attention counter | `update_tray_appearance`, `was_syncing`, `menu_sync_status`, tooltip from `query_unassigned_attention_count` | ❌ stub | ❌ macOS stub — Task 36 |
+| Tray sync status + attention counter | `update_tray_appearance`, `was_syncing`, `menu_sync_status`, tooltip from `query_unassigned_attention_count` | `tray-icon` dynamic tooltip/menu/icon update | ✅ parity |
 | Foreground detection | `SetWinEventHook` (event-driven) | `NSWorkspaceDidActivateApplicationNotification` + 2s fallback polling | ✅ parity |
 
 Legend: ✅ both platforms on par · ⚠️ works but degraded · ❌ missing

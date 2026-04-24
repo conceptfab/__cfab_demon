@@ -965,11 +965,11 @@ git commit -am "perf(storage): reuse SQLite connection in DailyStore (P2)"
 **Files:**
 - Modify: `src/platform/macos/tray.rs`
 
-- [ ] **Step 36.1: Skopiuj kontrakt z `src/platform/windows/tray.rs:170-330` — `update_tray_appearance`, `menu_sync_status`, `was_syncing`, tooltip z `query_unassigned_attention_count`.**
+- [x] **Step 36.1: Skopiuj kontrakt z `src/platform/windows/tray.rs:170-330` — `update_tray_appearance`, `menu_sync_status`, `was_syncing`, tooltip z `query_unassigned_attention_count`.**
 
-- [ ] **Step 36.2: Aktualizuj `PARITY.md`.**
+- [x] **Step 36.2: Aktualizuj `PARITY.md`.**
 
-- [ ] **Step 36.3: Commit**
+- [x] **Step 36.3: Commit**
 
 ### Task 37: Foreground na macOS przez NSWorkspace notifications [HELP]
 

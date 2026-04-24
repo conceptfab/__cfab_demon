@@ -46,13 +46,13 @@ kandydat do wykonania jako pierwszy (brak decyzji projektowych).
 **Plik:** `src/platform/macos/tray.rs`
 **Wzorzec do portu:** `src/platform/windows/tray.rs:170-330`
 **Kroki:**
-- [ ] 36.1: Skopiuj kontrakt:
+- [x] 36.1: Skopiuj kontrakt:
   - `update_tray_appearance`
   - `menu_sync_status`
   - `was_syncing` (state tracking)
   - Tooltip z `query_unassigned_attention_count`.
-- [ ] 36.2: Aktualizuj `PARITY.md` (wiersz „Tray sync status" → ✅).
-- [ ] 36.3: Commit.
+- [x] 36.2: Aktualizuj `PARITY.md` (wiersz „Tray sync status" → ✅).
+- [x] 36.3: Commit.
 
 **Blocker techniczny:** `tray-icon` crate w macOS ma ograniczoną API do
 dynamicznych update'ów menu — trzeba zweryfikować jakie operacje są wspierane.
