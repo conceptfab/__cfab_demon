@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy};
-use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode, NSRunLoop};
+use objc2_app_kit::{NSApplication, NSApplicationActivationPolicy, NSEventMask};
+use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode};
 use rusqlite::OptionalExtension;
 use timeflow_shared::session_settings;
 use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -20,7 +20,8 @@ use crate::platform::tray_common::TrayExitAction;
 use crate::sync_trigger;
 use crate::APP_NAME;
 
-const PUMP_INTERVAL_SECS: f64 = 0.05;
+const PUMP_INTERVAL_SECS: f64 = 0.1;
+const TRAY_STATE_INTERVAL: Duration = Duration::from_secs(1);
 const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Logo TIMEFLOW osadzone w binarce (PNG 128×128 — macOS skaluje do
@@ -359,60 +360,67 @@ pub fn run(
     let menu_rx = MenuEvent::receiver();
     let mut action = TrayExitAction::Exit;
     let default_mode: &objc2_foundation::NSRunLoopMode = unsafe { NSDefaultRunLoopMode };
+    // Drogie operacje (I/O, macOS API) — odświeżane 1×/s, nie co tick.
+    let mut last_state_update = Instant::now() - TRAY_STATE_INTERVAL;
 
     loop {
         if stop_signal.load(Ordering::Relaxed) {
             break;
         }
 
-        let new_lang = i18n::load_language();
-        let old_lang = lang_state.get();
-        if new_lang != old_lang {
-            lang_state.set(new_lang);
-            dashboard_item.set_text(new_lang.t(TrayText::OpenDashboard));
-            sync_delta_item.set_text(new_lang.t(TrayText::SyncDelta));
-            sync_force_item.set_text(new_lang.t(TrayText::SyncForceFull));
-            restart_item.set_text(new_lang.t(TrayText::Restart));
-            exit_item.set_text(new_lang.t(TrayText::Close));
-        }
+        let now = Instant::now();
+        if now.duration_since(last_state_update) >= TRAY_STATE_INTERVAL {
+            last_state_update = now;
 
-        let lang = lang_state.get();
-        let attention = refresh_attention_state(&mut attention_state, false);
-        update_tray_appearance(
-            &tray_icon,
-            &icon,
-            &icon_attention,
-            &icon_sync,
-            attention,
-            lang,
-            sync_state.as_ref(),
-        );
-        update_sync_menu(
-            &sync_status_item,
-            &sync_delta_item,
-            &sync_force_item,
-            sync_state.as_ref(),
-            lang,
-        );
-
-        if let Some(ref state) = sync_state {
-            let currently_syncing = is_syncing(Some(state));
-            if was_syncing && !currently_syncing {
-                if state.secs_since_last_sync() < 10 {
-                    let progress = state.get_progress();
-                    if progress.phase == "not_needed" {
-                        log::info!("Tray: {}", lang.t(TrayText::SyncNotNeeded));
-                    } else {
-                        log::info!("Tray: {}", lang.t(TrayText::SyncCompleted));
-                    }
-                } else {
-                    log::warn!("Tray: {}", lang.t(TrayText::SyncFailed));
-                }
+            let new_lang = i18n::load_language();
+            let old_lang = lang_state.get();
+            if new_lang != old_lang {
+                lang_state.set(new_lang);
+                dashboard_item.set_text(new_lang.t(TrayText::OpenDashboard));
+                sync_delta_item.set_text(new_lang.t(TrayText::SyncDelta));
+                sync_force_item.set_text(new_lang.t(TrayText::SyncForceFull));
+                restart_item.set_text(new_lang.t(TrayText::Restart));
+                exit_item.set_text(new_lang.t(TrayText::Close));
             }
-            was_syncing = currently_syncing;
+
+            let lang = lang_state.get();
+            let attention = refresh_attention_state(&mut attention_state, false);
+            update_tray_appearance(
+                &tray_icon,
+                &icon,
+                &icon_attention,
+                &icon_sync,
+                attention,
+                lang,
+                sync_state.as_ref(),
+            );
+            update_sync_menu(
+                &sync_status_item,
+                &sync_delta_item,
+                &sync_force_item,
+                sync_state.as_ref(),
+                lang,
+            );
+
+            if let Some(ref state) = sync_state {
+                let currently_syncing = is_syncing(Some(state));
+                if was_syncing && !currently_syncing {
+                    if state.secs_since_last_sync() < 10 {
+                        let progress = state.get_progress();
+                        if progress.phase == "not_needed" {
+                            log::info!("Tray: {}", lang.t(TrayText::SyncNotNeeded));
+                        } else {
+                            log::info!("Tray: {}", lang.t(TrayText::SyncCompleted));
+                        }
+                    } else {
+                        log::warn!("Tray: {}", lang.t(TrayText::SyncFailed));
+                    }
+                }
+                was_syncing = currently_syncing;
+            }
         }
 
-        // Obsłuż zdarzenia menu (non-blocking)
+        // Zdarzenia menu sprawdzane co tick (100ms) — szybka reakcja na kliknięcia.
         while let Ok(ev) = menu_rx.try_recv() {
             if ev.id == dashboard_id {
                 launch_dashboard();
@@ -436,7 +444,7 @@ pub fn run(
             }
         }
 
-        pump_ns_app(default_mode);
+        pump_ns_app(&app, default_mode);
     }
 
     log::info!("Daemon tray loop exited");
@@ -444,16 +452,32 @@ pub fn run(
     action
 }
 
-fn pump_ns_app(mode: &objc2_foundation::NSRunLoopMode) {
-    // NSRunLoop.runMode_beforeDate pozwala NSStatusItem obsługiwać własne eventy
-    // (kliknięcia, menu) bez konfliktu. Poprzednie podejście z
-    // nextEventMatchingMask kradło eventy myszy od NSStatusBarButton, co
-    // powodowało "skakanie" ikony i niepojawianie się menu.
+fn pump_ns_app(app: &NSApplication, mode: &objc2_foundation::NSRunLoopMode) {
     unsafe {
-        let rl = NSRunLoop::currentRunLoop();
-        let until = NSDate::dateWithTimeIntervalSinceNow(PUMP_INTERVAL_SECS);
-        let _ = rl.runMode_beforeDate(mode, &until);
+        // Drenuj kolejkę NSEvent nieblokująco. Data w przeszłości powoduje
+        // natychmiastowy powrót gdy brak eventów — w przeciwieństwie do
+        // blokującego wait, który "kradł" eventy myszy zanim tray_target
+        // (NSView w NSStatusBarButton) mógł je odebrać przez NSRunLoop.
+        // runMode_beforeDate NIE przetwarza kolejki NSEvent — dlatego
+        // mouseDown: na tray_target nigdy nie docierał.
+        let past = NSDate::dateWithTimeIntervalSinceNow(-1.0);
+        loop {
+            let event = app.nextEventMatchingMask_untilDate_inMode_dequeue(
+                NSEventMask::Any,
+                Some(&past),
+                mode,
+                true,
+            );
+            match event {
+                Some(evt) => {
+                    app.sendEvent(&evt);
+                    app.updateWindows();
+                }
+                None => break,
+            }
+        }
     }
+    std::thread::sleep(Duration::from_secs_f64(PUMP_INTERVAL_SECS));
 }
 
 /// Sprawdza czy dashboard już żyje (żeby nie startować drugiej instancji

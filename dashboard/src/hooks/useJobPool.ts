@@ -299,6 +299,7 @@ export function useJobPool() {
     if (!isDocumentVisible()) return;
 
     handleDatabaseSettingsRefresh();
+    nextAiStatusRef.current = 0;
 
     if (localChangeRefreshTimer.current) {
       window.clearTimeout(localChangeRefreshTimer.current);
