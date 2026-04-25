@@ -30,6 +30,7 @@ mod storage;
 mod title_parser;
 mod sync_common;
 mod sync_encryption;
+#[cfg(target_os = "macos")]
 mod sync_trigger;
 mod tracker;
 

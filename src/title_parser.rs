@@ -3,11 +3,14 @@
 
 use std::collections::{HashMap, HashSet};
 
+#[cfg(any(test, target_os = "macos"))]
 use crate::activity::ActivityType;
 
 /// Klasyfikuje aktywność aplikacji po nazwie pliku wykonywalnego.
 /// Thin wrapper nad `timeflow_shared::activity_classification::classify_activity_type`
 /// — opakowuje `None` jako drugi argument, żeby wywołujący nie musieli o nim pamiętać.
+/// Używany tylko w macOS (`monitor_macos.rs`) i testach — Windows wywołuje shared bezpośrednio.
+#[cfg(any(test, target_os = "macos"))]
 pub fn classify_activity_type(exe_name: &str) -> Option<ActivityType> {
     timeflow_shared::activity_classification::classify_activity_type(exe_name, None)
 }

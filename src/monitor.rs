@@ -157,7 +157,7 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
 }
 
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
-pub use crate::title_parser::{classify_activity_type, extract_file_from_title};
+pub use crate::title_parser::extract_file_from_title;
 
 // ── Idle detection ────────────────────────────────────────────
 
@@ -315,9 +315,8 @@ pub fn measure_cpu_for_app(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_wmi_process_command_line_query, classify_activity_type,
-        collect_pending_detected_path_pids, decode_window_title, extract_file_from_title,
-        extract_path_from_command_line, PidCache, PidCacheEntry,
+        build_wmi_process_command_line_query, collect_pending_detected_path_pids,
+        decode_window_title, extract_path_from_command_line, PidCache, PidCacheEntry,
     };
     use crate::activity::ActivityType;
     use std::time::Instant;
