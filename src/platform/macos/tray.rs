@@ -20,8 +20,13 @@ use crate::platform::tray_common::TrayExitAction;
 use crate::sync_trigger;
 use crate::APP_NAME;
 
-const PUMP_INTERVAL_SECS: f64 = 0.1;
-const TRAY_STATE_INTERVAL: Duration = Duration::from_secs(1);
+// 0.25s = 4 wakeups/s. Klik na status item AppKit obsługuje natychmiastowo
+// przez własną pętlę; nasza pompka tylko drenuje resztę kolejki NSEvent
+// żeby `tray-icon` mogło dostarczać MenuEvent. 100ms było overkill (CPU).
+const PUMP_INTERVAL_SECS: f64 = 0.25;
+// 5s wystarcza w pełni: attention count i tak ma cache 15s,
+// sync state zmienia się rzadko. 1s = 5× nadmiarowe DB queries i format!().
+const TRAY_STATE_INTERVAL: Duration = Duration::from_secs(5);
 const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
 
 /// Logo TIMEFLOW osadzone w binarce (PNG 128×128 — macOS skaluje do
@@ -128,6 +133,35 @@ struct AttentionState {
     conn: Option<rusqlite::Connection>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayIconVariant {
+    Idle,
+    Attention,
+    Sync,
+}
+
+/// Cache ostatnio zaaplikowanego stanu tray. Bez tego `set_icon`/`set_tooltip`/
+/// `set_text`/`set_enabled` woła się co tick (1s), a każde `set_icon` zostawia
+/// ślad w Image IO (NSImage→CGImage→ImageIO mapping retained przez AppKit).
+/// Po ~12h obserwowane 33 050 regionów Image IO i 540 MB RSS.
+struct AppliedTray {
+    icon: Option<TrayIconVariant>,
+    tooltip: Option<String>,
+    sync_status: Option<String>,
+    sync_actions_enabled: Option<bool>,
+}
+
+impl AppliedTray {
+    fn new() -> Self {
+        Self {
+            icon: None,
+            tooltip: None,
+            sync_status: None,
+            sync_actions_enabled: None,
+        }
+    }
+}
+
 fn query_unassigned_attention_count(conn: &rusqlite::Connection) -> Result<i64, String> {
     let base_dir = crate::config::config_dir().map_err(|e| e.to_string())?;
     let min_duration_sec =
@@ -231,18 +265,32 @@ fn update_tray_appearance(
     attention: i64,
     lang: i18n::Lang,
     sync_state: Option<&Arc<LanSyncState>>,
+    applied: &mut AppliedTray,
 ) {
-    if is_syncing(sync_state) {
-        let _ = tray_icon.set_tooltip(Some(format!(
-            "{} - {}",
-            APP_NAME,
-            lang.t(TrayText::LanSyncInProgress)
-        )));
-        let _ = tray_icon.set_icon(Some(icon_sync.clone()));
+    let (variant, tooltip) = if is_syncing(sync_state) {
+        (
+            TrayIconVariant::Sync,
+            format!("{} - {}", APP_NAME, lang.t(TrayText::LanSyncInProgress)),
+        )
+    } else if attention > 0 {
+        (TrayIconVariant::Attention, build_tray_tip(lang, attention))
     } else {
-        let _ = tray_icon.set_tooltip(Some(build_tray_tip(lang, attention)));
-        let next_icon = if attention > 0 { icon_attention } else { icon };
-        let _ = tray_icon.set_icon(Some(next_icon.clone()));
+        (TrayIconVariant::Idle, build_tray_tip(lang, 0))
+    };
+
+    if applied.icon != Some(variant) {
+        let next = match variant {
+            TrayIconVariant::Idle => icon,
+            TrayIconVariant::Attention => icon_attention,
+            TrayIconVariant::Sync => icon_sync,
+        };
+        let _ = tray_icon.set_icon(Some(next.clone()));
+        applied.icon = Some(variant);
+    }
+
+    if applied.tooltip.as_deref() != Some(tooltip.as_str()) {
+        let _ = tray_icon.set_tooltip(Some(tooltip.clone()));
+        applied.tooltip = Some(tooltip);
     }
 }
 
@@ -252,27 +300,37 @@ fn update_sync_menu(
     sync_force_item: &MenuItem,
     sync_state: Option<&Arc<LanSyncState>>,
     lang: i18n::Lang,
+    applied: &mut AppliedTray,
 ) {
-    let Some(state) = sync_state else {
-        sync_status_item.set_text(format!("{}: {}", lang.t(TrayText::SyncStatusPrefix), "n/a"));
-        sync_delta_item.set_enabled(false);
-        sync_force_item.set_enabled(false);
-        return;
+    let (status_text, actions_enabled) = match sync_state {
+        None => (
+            format!("{}: {}", lang.t(TrayText::SyncStatusPrefix), "n/a"),
+            false,
+        ),
+        Some(state) => {
+            let role = state.get_role();
+            let syncing = state.sync_in_progress.load(Ordering::Relaxed);
+            let frozen = state.db_frozen.load(Ordering::Acquire);
+            let prefix = lang.t(TrayText::SyncStatusPrefix);
+            let text = if syncing {
+                let frozen_label = lang.t(TrayText::SyncFrozenSuffix);
+                format!("{}: {} ({}={})", prefix, role, frozen_label, frozen)
+            } else {
+                format!("{}: {}", prefix, role)
+            };
+            (text, !syncing)
+        }
     };
 
-    let role = state.get_role();
-    let syncing = state.sync_in_progress.load(Ordering::Relaxed);
-    let frozen = state.db_frozen.load(Ordering::Acquire);
-    let prefix = lang.t(TrayText::SyncStatusPrefix);
-    let status = if syncing {
-        let frozen_label = lang.t(TrayText::SyncFrozenSuffix);
-        format!("{}: {} ({}={})", prefix, role, frozen_label, frozen)
-    } else {
-        format!("{}: {}", prefix, role)
-    };
-    sync_status_item.set_text(status);
-    sync_delta_item.set_enabled(!syncing);
-    sync_force_item.set_enabled(!syncing);
+    if applied.sync_status.as_deref() != Some(status_text.as_str()) {
+        sync_status_item.set_text(status_text.clone());
+        applied.sync_status = Some(status_text);
+    }
+    if applied.sync_actions_enabled != Some(actions_enabled) {
+        sync_delta_item.set_enabled(actions_enabled);
+        sync_force_item.set_enabled(actions_enabled);
+        applied.sync_actions_enabled = Some(actions_enabled);
+    }
 }
 
 pub fn run(
@@ -356,6 +414,7 @@ pub fn run(
         conn: None,
     };
     let mut was_syncing = false;
+    let mut applied = AppliedTray::new();
 
     let menu_rx = MenuEvent::receiver();
     let mut action = TrayExitAction::Exit;
@@ -393,6 +452,7 @@ pub fn run(
                 attention,
                 lang,
                 sync_state.as_ref(),
+                &mut applied,
             );
             update_sync_menu(
                 &sync_status_item,
@@ -400,6 +460,7 @@ pub fn run(
                 &sync_force_item,
                 sync_state.as_ref(),
                 lang,
+                &mut applied,
             );
 
             if let Some(ref state) = sync_state {
