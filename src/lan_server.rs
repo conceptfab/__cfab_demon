@@ -932,19 +932,33 @@ fn handle_pull(body: &str) -> (u16, String) {
         #[allow(dead_code)]
         device_id: String,
         since: String,
+        /// Master signals a full snapshot (force sync or first sync). In that
+        /// case slave must NOT include tombstones — otherwise the historical
+        /// deletion log gets replayed against master's live records.
+        #[serde(default)]
+        full_sync: bool,
     }
     let req: PullRequest = match serde_json::from_str(body) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
-    sync_log(&format!("[SLAVE] Master pobiera dane (since={})...", req.since));
+    sync_log(&format!(
+        "[SLAVE] Master pobiera dane (since={}, full_sync={})...",
+        req.since, req.full_sync
+    ));
 
     let conn = match lan_common::open_dashboard_db_readonly() {
         Ok(c) => c,
         Err(e) => return (500, json_error(&e)),
     };
 
-    match build_delta_for_pull(&conn, &req.since) {
+    let result = if req.full_sync {
+        build_full_snapshot_public(&conn)
+    } else {
+        build_delta_for_pull(&conn, &req.since, true)
+    };
+
+    match result {
         Ok(json) => {
             let kb = json.len() as f64 / 1024.0;
             sync_log(&format!("[SLAVE] Wyslano {:.1} KB danych do mastera", kb));
@@ -1320,10 +1334,23 @@ fn handle_get_paired_devices() -> (u16, String) {
 
 /// Public wrapper for the orchestrator to call.
 pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str) -> Result<String, String> {
-    build_delta_for_pull(conn, since)
+    build_delta_for_pull(conn, since, true)
 }
 
-fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<String, String> {
+/// Like `build_delta_for_pull_public` but lets the caller suppress tombstones.
+/// Full sync (`since=1970-01-01`) MUST pass `include_tombstones=false` — otherwise
+/// every historical deletion ever recorded is broadcast to the peer and wipes out
+/// records the peer just received in the same merge cycle (root cause of the
+/// "both sides lose data" regression — see project memory 2026-04-27).
+pub fn build_full_snapshot_public(conn: &rusqlite::Connection) -> Result<String, String> {
+    build_delta_for_pull(conn, "1970-01-01 00:00:00", false)
+}
+
+fn build_delta_for_pull(
+    conn: &rusqlite::Connection,
+    since: &str,
+    include_tombstones: bool,
+) -> Result<String, String> {
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
     let since_ref = if since_norm.len() > 19 { &since_norm[..19] } else { &since_norm };
@@ -1352,12 +1379,19 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
         &[&since_ref as &dyn rusqlite::types::ToSql],
     )?;
 
-    // Fetch tombstones since timestamp (parameterized)
-    let tombstones = fetch_all_rows_params(conn,
-        "SELECT id, table_name, record_id, record_uuid, deleted_at, sync_key \
-         FROM tombstones WHERE deleted_at >= ?1 ORDER BY deleted_at",
-        &[&since_ref as &dyn rusqlite::types::ToSql],
-    )?;
+    // Tombstones are delta-only events. In full snapshots we'd be replaying the
+    // entire deletion history against the peer's live records — guaranteed to
+    // wipe out anything the peer happens to have under the same sync_key but
+    // with a stale `updated_at` (the skip_tombstone guard fails on old rows).
+    let tombstones: Vec<serde_json::Value> = if include_tombstones {
+        fetch_all_rows_params(conn,
+            "SELECT id, table_name, record_id, record_uuid, deleted_at, sync_key \
+             FROM tombstones WHERE deleted_at >= ?1 ORDER BY deleted_at",
+            &[&since_ref as &dyn rusqlite::types::ToSql],
+        )?
+    } else {
+        Vec::new()
+    };
 
     let table_hashes = build_table_hashes(conn);
 

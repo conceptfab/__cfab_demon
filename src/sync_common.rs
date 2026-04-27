@@ -41,8 +41,10 @@ pub fn insert_sync_marker_db(
 }
 
 pub fn build_full_export(conn: &rusqlite::Connection) -> Result<String, String> {
-    let since = "1970-01-01 00:00:00";
-    lan_server::build_delta_for_pull_public(conn, since)
+    // Full snapshot: NO tombstones. The receiver shouldn't replay every historical
+    // deletion against its live records — that wipes out everything the receiver
+    // has under the same sync_key (the bug that lost data on both sides).
+    lan_server::build_full_snapshot_public(conn)
 }
 
 // ── Backup ──
@@ -301,6 +303,190 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         count("/data/manual_sessions"), count("/data/tombstones")));
 
     let tx = conn.transaction().map_err(|e| e.to_string())?;
+
+    // Merge tombstones FIRST.
+    //
+    // Tombstones must be applied BEFORE merging records — otherwise a tombstone
+    // arriving in the same payload as a fresh INSERT/UPDATE for the same key
+    // can wipe out the row we just inserted (the skip_tombstone guard fails
+    // when the freshly-inserted row carries a stale `updated_at` from its
+    // historical state). Applying deletions first means the subsequent
+    // INSERT/UPDATE re-introduces the record exactly as the peer last saw it,
+    // and a no-op when the peer also lost it.
+    if let Some(tombstones) = archive.pointer("/data/tombstones").and_then(|v| v.as_array()) {
+        for ts in tombstones {
+            let table_name = ts.get("table_name").and_then(|v| v.as_str()).unwrap_or("");
+            let sync_key = ts.get("sync_key").and_then(|v| v.as_str()).unwrap_or("");
+            if table_name.is_empty() || sync_key.is_empty() {
+                continue;
+            }
+
+            let exists: bool = tx
+                .query_row(
+                    "SELECT 1 FROM tombstones WHERE table_name = ?1 AND sync_key = ?2",
+                    rusqlite::params![table_name, sync_key],
+                    |_| Ok(()),
+                )
+                .is_ok();
+
+            if !exists {
+                let deleted_at_str = ts.get("deleted_at").and_then(|v| v.as_str()).unwrap_or("");
+
+                // Guard: don't delete a record that was re-created/updated AFTER the tombstone
+                // Applied to ALL tables, not just projects (5.7 fix)
+                let skip_tombstone = match table_name {
+                    "projects" => {
+                        let local_updated: Option<String> = tx
+                            .query_row("SELECT updated_at FROM projects WHERE name = ?1", [sync_key], |row| row.get(0))
+                            .ok();
+                        local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                    }
+                    "applications" => {
+                        let local_updated: Option<String> = tx
+                            .query_row("SELECT updated_at FROM applications WHERE executable_name = ?1", [sync_key], |row| row.get(0))
+                            .ok();
+                        local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                    }
+                    "sessions" => {
+                        // sync_key = "executable_name|start_time" (legacy: "app_id|start_time")
+                        if let Some((app_key, start_time)) = sync_key.split_once('|') {
+                            let local_updated: Option<String> = tx
+                                .query_row(
+                                    "SELECT s.updated_at
+                                     FROM sessions s
+                                     JOIN applications a ON a.id = s.app_id
+                                     WHERE a.executable_name = ?1 AND s.start_time = ?2",
+                                    rusqlite::params![app_key, start_time],
+                                    |row| row.get(0),
+                                )
+                                .or_else(|_| {
+                                    tx.query_row(
+                                        "SELECT updated_at
+                                         FROM sessions
+                                         WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
+                                        rusqlite::params![app_key, start_time],
+                                        |row| row.get(0),
+                                    )
+                                })
+                                .ok();
+                            local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                        } else { false }
+                    }
+                    "manual_sessions" => {
+                        // sync_key = "project_id|start_time|title"
+                        let parts: Vec<&str> = sync_key.splitn(3, '|').collect();
+                        if parts.len() == 3 {
+                            let local_updated: Option<String> = tx
+                                .query_row(
+                                    "SELECT updated_at FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
+                                    rusqlite::params![parts[1], parts[2]],
+                                    |row| row.get(0),
+                                )
+                                .ok();
+                            local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
+                        } else { false }
+                    }
+                    _ => false,
+                };
+                if skip_tombstone {
+                    // Record was updated after tombstone — skip deletion, just record the tombstone
+                    tx.execute(
+                        "INSERT OR IGNORE INTO tombstones (table_name, record_id, deleted_at, sync_key) \
+                         VALUES (?1, ?2, ?3, ?4)",
+                        rusqlite::params![table_name, json_i64(ts, "record_id"), deleted_at_str, sync_key],
+                    ).map_err(|e| e.to_string())?;
+                    continue;
+                }
+
+                // Delete the record — also clean up FK references to prevent orphans
+                match table_name {
+                    "projects" => {
+                        // Diagnostyka: czy istnieje lokalny projekt który zostanie usunięty?
+                        let proj_exists: bool = tx
+                            .query_row("SELECT 1 FROM projects WHERE name = ?1", [sync_key], |_| Ok(()))
+                            .is_ok();
+                        if proj_exists && diag_logging_enabled() {
+                            lan_common::sync_log(&format!(
+                                "  [DIAG] TOMBSTONE kasuje projekt '{}' (deleted_at={})",
+                                sync_key, deleted_at_str
+                            ));
+                        }
+                        // Null out project_id in sessions/manual_sessions BEFORE deleting the project
+                        if let Err(e) = tx.execute(
+                            "UPDATE sessions SET project_id = NULL \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup sessions for project '{}': {}", sync_key, e); }
+                        if let Err(e) = tx.execute(
+                            "UPDATE manual_sessions SET project_id = 0 \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup manual_sessions for project '{}': {}", sync_key, e); }
+                        if let Err(e) = tx.execute(
+                            "UPDATE applications SET project_id = NULL \
+                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup applications for project '{}': {}", sync_key, e); }
+                        let _ = tx.execute("DELETE FROM projects WHERE name = ?1", [sync_key]);
+                    }
+                    "applications" => {
+                        if let Err(e) = tx.execute(
+                            "DELETE FROM sessions WHERE app_id IN \
+                             (SELECT id FROM applications WHERE executable_name = ?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup sessions for app '{}': {}", sync_key, e); }
+                        let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]);
+                    }
+                    "sessions" => {
+                        // sync_key = "executable_name|start_time" (legacy: "app_id|start_time")
+                        if let Some((app_key, start_time)) = sync_key.split_once('|') {
+                            let deleted = tx.execute(
+                                "DELETE FROM sessions
+                                 WHERE app_id IN (
+                                     SELECT id FROM applications WHERE executable_name = ?1
+                                 ) AND start_time = ?2",
+                                rusqlite::params![app_key, start_time],
+                            ).unwrap_or(0);
+                            if deleted == 0 {
+                                let _ = tx.execute(
+                                    "DELETE FROM sessions WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
+                                    rusqlite::params![app_key, start_time],
+                                );
+                            }
+                        } else {
+                            // Fallback for legacy integer sync_key
+                            let _ = tx.execute("DELETE FROM sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
+                        }
+                    }
+                    "manual_sessions" => {
+                        // sync_key = "project_id|start_time|title"
+                        let parts: Vec<&str> = sync_key.splitn(3, '|').collect();
+                        if parts.len() == 3 {
+                            let _ = tx.execute(
+                                "DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
+                                rusqlite::params![parts[1], parts[2]],
+                            );
+                        } else {
+                            // Fallback for legacy integer sync_key
+                            let _ = tx.execute("DELETE FROM manual_sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
+                        }
+                    }
+                    _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
+                }
+
+                tx.execute(
+                    "INSERT OR IGNORE INTO tombstones (table_name, record_id, deleted_at, sync_key) \
+                     VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![
+                        table_name,
+                        json_i64(ts, "record_id"),
+                        json_str(ts, "deleted_at"),
+                        sync_key,
+                    ],
+                ).map_err(|e| e.to_string())?;
+            }
+        }
+    }
 
     // Merge projects
     let mut diag_proj_new: Vec<String> = Vec::new();
@@ -691,181 +877,9 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         }
     }
 
-    // Merge tombstones
-    if let Some(tombstones) = archive.pointer("/data/tombstones").and_then(|v| v.as_array()) {
-        for ts in tombstones {
-            let table_name = ts.get("table_name").and_then(|v| v.as_str()).unwrap_or("");
-            let sync_key = ts.get("sync_key").and_then(|v| v.as_str()).unwrap_or("");
-            if table_name.is_empty() || sync_key.is_empty() {
-                continue;
-            }
-
-            let exists: bool = tx
-                .query_row(
-                    "SELECT 1 FROM tombstones WHERE table_name = ?1 AND sync_key = ?2",
-                    rusqlite::params![table_name, sync_key],
-                    |_| Ok(()),
-                )
-                .is_ok();
-
-            if !exists {
-                let deleted_at_str = ts.get("deleted_at").and_then(|v| v.as_str()).unwrap_or("");
-
-                // Guard: don't delete a record that was re-created/updated AFTER the tombstone
-                // Applied to ALL tables, not just projects (5.7 fix)
-                let skip_tombstone = match table_name {
-                    "projects" => {
-                        let local_updated: Option<String> = tx
-                            .query_row("SELECT updated_at FROM projects WHERE name = ?1", [sync_key], |row| row.get(0))
-                            .ok();
-                        local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
-                    }
-                    "applications" => {
-                        let local_updated: Option<String> = tx
-                            .query_row("SELECT updated_at FROM applications WHERE executable_name = ?1", [sync_key], |row| row.get(0))
-                            .ok();
-                        local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
-                    }
-                    "sessions" => {
-                        // sync_key = "executable_name|start_time" (legacy: "app_id|start_time")
-                        if let Some((app_key, start_time)) = sync_key.split_once('|') {
-                            let local_updated: Option<String> = tx
-                                .query_row(
-                                    "SELECT s.updated_at
-                                     FROM sessions s
-                                     JOIN applications a ON a.id = s.app_id
-                                     WHERE a.executable_name = ?1 AND s.start_time = ?2",
-                                    rusqlite::params![app_key, start_time],
-                                    |row| row.get(0),
-                                )
-                                .or_else(|_| {
-                                    tx.query_row(
-                                        "SELECT updated_at
-                                         FROM sessions
-                                         WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
-                                        rusqlite::params![app_key, start_time],
-                                        |row| row.get(0),
-                                    )
-                                })
-                                .ok();
-                            local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
-                        } else { false }
-                    }
-                    "manual_sessions" => {
-                        // sync_key = "project_id|start_time|title"
-                        let parts: Vec<&str> = sync_key.splitn(3, '|').collect();
-                        if parts.len() == 3 {
-                            let local_updated: Option<String> = tx
-                                .query_row(
-                                    "SELECT updated_at FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
-                                    rusqlite::params![parts[1], parts[2]],
-                                    |row| row.get(0),
-                                )
-                                .ok();
-                            local_updated.as_deref().map(|lu| normalize_ts(lu) > normalize_ts(deleted_at_str)).unwrap_or(false)
-                        } else { false }
-                    }
-                    _ => false,
-                };
-                if skip_tombstone {
-                    // Record was updated after tombstone — skip deletion, just record the tombstone
-                    tx.execute(
-                        "INSERT OR IGNORE INTO tombstones (table_name, record_id, deleted_at, sync_key) \
-                         VALUES (?1, ?2, ?3, ?4)",
-                        rusqlite::params![table_name, json_i64(ts, "record_id"), deleted_at_str, sync_key],
-                    ).map_err(|e| e.to_string())?;
-                    continue;
-                }
-
-                // Delete the record — also clean up FK references to prevent orphans
-                match table_name {
-                    "projects" => {
-                        // Diagnostyka: czy istnieje lokalny projekt który zostanie usunięty?
-                        let proj_exists: bool = tx
-                            .query_row("SELECT 1 FROM projects WHERE name = ?1", [sync_key], |_| Ok(()))
-                            .is_ok();
-                        if proj_exists && diag_logging_enabled() {
-                            lan_common::sync_log(&format!(
-                                "  [DIAG] TOMBSTONE kasuje projekt '{}' (deleted_at={})",
-                                sync_key, deleted_at_str
-                            ));
-                        }
-                        // Null out project_id in sessions/manual_sessions BEFORE deleting the project
-                        if let Err(e) = tx.execute(
-                            "UPDATE sessions SET project_id = NULL \
-                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
-                            [sync_key],
-                        ) { log::warn!("tombstone FK cleanup sessions for project '{}': {}", sync_key, e); }
-                        if let Err(e) = tx.execute(
-                            "UPDATE manual_sessions SET project_id = 0 \
-                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
-                            [sync_key],
-                        ) { log::warn!("tombstone FK cleanup manual_sessions for project '{}': {}", sync_key, e); }
-                        if let Err(e) = tx.execute(
-                            "UPDATE applications SET project_id = NULL \
-                             WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
-                            [sync_key],
-                        ) { log::warn!("tombstone FK cleanup applications for project '{}': {}", sync_key, e); }
-                        let _ = tx.execute("DELETE FROM projects WHERE name = ?1", [sync_key]);
-                    }
-                    "applications" => {
-                        if let Err(e) = tx.execute(
-                            "DELETE FROM sessions WHERE app_id IN \
-                             (SELECT id FROM applications WHERE executable_name = ?1)",
-                            [sync_key],
-                        ) { log::warn!("tombstone FK cleanup sessions for app '{}': {}", sync_key, e); }
-                        let _ = tx.execute("DELETE FROM applications WHERE executable_name = ?1", [sync_key]);
-                    }
-                    "sessions" => {
-                        // sync_key = "executable_name|start_time" (legacy: "app_id|start_time")
-                        if let Some((app_key, start_time)) = sync_key.split_once('|') {
-                            let deleted = tx.execute(
-                                "DELETE FROM sessions
-                                 WHERE app_id IN (
-                                     SELECT id FROM applications WHERE executable_name = ?1
-                                 ) AND start_time = ?2",
-                                rusqlite::params![app_key, start_time],
-                            ).unwrap_or(0);
-                            if deleted == 0 {
-                                let _ = tx.execute(
-                                    "DELETE FROM sessions WHERE app_id = CAST(?1 AS INTEGER) AND start_time = ?2",
-                                    rusqlite::params![app_key, start_time],
-                                );
-                            }
-                        } else {
-                            // Fallback for legacy integer sync_key
-                            let _ = tx.execute("DELETE FROM sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
-                        }
-                    }
-                    "manual_sessions" => {
-                        // sync_key = "project_id|start_time|title"
-                        let parts: Vec<&str> = sync_key.splitn(3, '|').collect();
-                        if parts.len() == 3 {
-                            let _ = tx.execute(
-                                "DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
-                                rusqlite::params![parts[1], parts[2]],
-                            );
-                        } else {
-                            // Fallback for legacy integer sync_key
-                            let _ = tx.execute("DELETE FROM manual_sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
-                        }
-                    }
-                    _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
-                }
-
-                tx.execute(
-                    "INSERT OR IGNORE INTO tombstones (table_name, record_id, deleted_at, sync_key) \
-                     VALUES (?1, ?2, ?3, ?4)",
-                    rusqlite::params![
-                        table_name,
-                        json_i64(ts, "record_id"),
-                        json_str(ts, "deleted_at"),
-                        sync_key,
-                    ],
-                ).map_err(|e| e.to_string())?;
-            }
-        }
-    }
+    // Tombstones were merged at the top of the transaction (before records),
+    // so any peer deletions are already applied. Subsequent INSERT/UPDATE
+    // re-introduce records the peer still has — by design.
 
     tx.commit().map_err(|e| {
         log::error!("Transaction commit failed: {}", e);
@@ -1474,5 +1488,142 @@ mod tests {
         assert_eq!(s_post.sessions, total_sess, "SLAVE  sessions: {} (expected {})", s_post.sessions, total_sess);
         assert_eq!(m_post.manual, total_man, "MASTER manual: {} (expected {})", m_post.manual, total_man);
         assert_eq!(s_post.manual, total_man, "SLAVE  manual: {} (expected {})", s_post.manual, total_man);
+    }
+
+    /// Regression for the data-loss bug seen on 2026-04-27:
+    /// in a force/full sync, master's historical tombstones (e.g. an app
+    /// deleted long ago) were broadcast to slave and wiped out slave's
+    /// live records under the same sync_key. Same in the other direction.
+    /// After the fix:
+    ///   - full snapshots no longer carry tombstones
+    ///   - tombstone merge is applied BEFORE record merge so a fresh
+    ///     INSERT cannot be wiped by a stale tombstone in the same payload
+    #[test]
+    #[ignore]
+    fn diagnostic_full_sync_does_not_lose_records_when_tombstones_present() {
+        use crate::lan_server::build_full_snapshot_public;
+
+        let mut master = open_test_db();
+        let mut slave = open_test_db();
+
+        // Master: chrome.exe (active) + 5 sessions, plus a historical tombstone
+        // for "old-app.exe" that never existed on slave.
+        master
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('chrome.exe', 'Chrome', '2024-01-01 00:00:00')",
+                [],
+            )
+            .unwrap();
+        let m_chrome_id: i64 = master
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name='chrome.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        for i in 1..=5 {
+            master
+                .execute(
+                    "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, \
+                     rate_multiplier, updated_at) VALUES (?1, ?2, ?3, 600, '2024-01-01', 1.0, '2024-01-01 00:00:00')",
+                    rusqlite::params![
+                        m_chrome_id,
+                        format!("2024-01-01 0{}:00:00 M", i),
+                        format!("2024-01-01 0{}:10:00 M", i),
+                    ],
+                )
+                .unwrap();
+        }
+        master
+            .execute(
+                "INSERT INTO tombstones (table_name, sync_key, deleted_at) \
+                 VALUES ('applications', 'old-app.exe', '2025-06-01 00:00:00')",
+                [],
+            )
+            .unwrap();
+
+        // Slave: has BOTH chrome.exe AND old-app.exe locally, plus its own sessions.
+        // chrome.exe.updated_at is older than master's record (no tombstone, just
+        // older). old-app.exe is OLDER than master's tombstone — pre-fix this
+        // means master's tombstone wins and slave loses old-app.exe + sessions.
+        slave
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('chrome.exe', 'Chrome', '2023-01-01 00:00:00')",
+                [],
+            )
+            .unwrap();
+        slave
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('old-app.exe', 'Old App', '2023-01-01 00:00:00')",
+                [],
+            )
+            .unwrap();
+        let s_chrome_id: i64 = slave
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name='chrome.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let s_old_id: i64 = slave
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name='old-app.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        for i in 1..=5 {
+            slave
+                .execute(
+                    "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, \
+                     rate_multiplier, updated_at) VALUES (?1, ?2, ?3, 600, '2023-01-01', 1.0, '2023-01-01 00:00:00')",
+                    rusqlite::params![
+                        s_chrome_id,
+                        format!("2023-01-01 0{}:00:00 S", i),
+                        format!("2023-01-01 0{}:10:00 S", i),
+                    ],
+                )
+                .unwrap();
+        }
+        for i in 1..=3 {
+            slave
+                .execute(
+                    "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, \
+                     rate_multiplier, updated_at) VALUES (?1, ?2, ?3, 600, '2023-02-01', 1.0, '2023-02-01 00:00:00')",
+                    rusqlite::params![
+                        s_old_id,
+                        format!("2023-02-01 0{}:00:00 S", i),
+                        format!("2023-02-01 0{}:10:00 S", i),
+                    ],
+                )
+                .unwrap();
+        }
+
+        let m_pre = counts(&master);
+        let s_pre = counts(&slave);
+        eprintln!("PRE  master: {:?}  (1 active app, 5 sessions, 1 tombstone for old-app.exe)", m_pre);
+        eprintln!("PRE  slave : {:?}  (2 apps incl. old-app.exe, 8 sessions)", s_pre);
+
+        // Master flow (full): pulls slave's full snapshot (no tombstones), merges,
+        // then exports its own full snapshot to slave (no tombstones either).
+        let slave_export = build_full_snapshot_public(&slave).expect("slave full snapshot");
+        merge_incoming_data(&mut master, &slave_export).expect("master merges slave");
+        let master_export = build_full_snapshot_public(&master).expect("master full snapshot");
+        merge_incoming_data(&mut slave, &master_export).expect("slave merges master");
+
+        let m_post = counts(&master);
+        let s_post = counts(&slave);
+        eprintln!("POST master: {:?}", m_post);
+        eprintln!("POST slave : {:?}", s_post);
+
+        // Both sides should converge to the union: 2 apps (chrome + old-app),
+        // 5 master sessions + 8 slave sessions = 13 sessions on each side.
+        assert_eq!(m_post.apps, 2, "MASTER lost old-app.exe (tombstone bled into full snapshot)");
+        assert_eq!(s_post.apps, 2, "SLAVE  lost old-app.exe (tombstone bled into full snapshot)");
+        assert_eq!(m_post.sessions, 13, "MASTER sessions {} (expected 13)", m_post.sessions);
+        assert_eq!(s_post.sessions, 13, "SLAVE  sessions {} (expected 13)", s_post.sessions);
     }
 }

@@ -526,6 +526,9 @@ fn execute_master_sync(
     let pull_body = serde_json::json!({
         "device_id": device_id,
         "since": since,
+        // Tell slave to omit tombstones in full sync — otherwise the historical
+        // deletion log overwrites our live data on merge.
+        "full_sync": transfer_mode == "full",
     });
 
     let slave_data = http_post_with_progress(
