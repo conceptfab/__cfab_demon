@@ -1102,4 +1102,377 @@ mod tests {
             .contains("Failed to parse slave data"));
         handle.join().expect("merge thread joins");
     }
+
+    // ── Diagnostic round-trip test ──
+    // Simulates two daemons sharing data via the real sync funnel
+    // (build_delta_for_pull → merge_incoming_data, both directions).
+    // Run with:  cargo test --release roundtrip -- --ignored --nocapture
+    fn open_test_db() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT NOT NULL DEFAULT '#38bdf8',
+                hourly_rate REAL,
+                created_at TEXT,
+                excluded_at TEXT,
+                assigned_folder_path TEXT,
+                frozen_at TEXT,
+                is_imported INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                executable_name TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                project_id INTEGER,
+                is_imported INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
+                split_source_session_id INTEGER,
+                project_id INTEGER,
+                project_name TEXT,
+                comment TEXT,
+                is_hidden INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00',
+                UNIQUE(app_id, start_time)
+            );
+            CREATE TABLE manual_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                session_type TEXT NOT NULL,
+                project_id INTEGER NOT NULL,
+                project_name TEXT,
+                app_id INTEGER,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                created_at TEXT,
+                updated_at TEXT,
+                UNIQUE(project_id, start_time, title)
+            );
+            CREATE TABLE tombstones (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id INTEGER,
+                record_uuid TEXT,
+                deleted_at TEXT,
+                sync_key TEXT
+            );
+            CREATE TABLE sync_markers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                marker_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                peer_id TEXT,
+                tables_hash TEXT NOT NULL,
+                full_sync INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE sync_merge_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sync_timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+                table_name TEXT NOT NULL,
+                record_key TEXT NOT NULL,
+                resolution TEXT NOT NULL DEFAULT 'last_writer_wins',
+                local_updated_at TEXT,
+                remote_updated_at TEXT,
+                winner TEXT NOT NULL,
+                details TEXT
+            );
+            CREATE TABLE system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    #[derive(Debug, PartialEq)]
+    struct Counts {
+        projects: i64,
+        apps: i64,
+        sessions: i64,
+        manual: i64,
+        tombstones: i64,
+    }
+
+    fn counts(conn: &rusqlite::Connection) -> Counts {
+        let q = |sql: &str| -> i64 {
+            conn.query_row(sql, [], |row| row.get(0)).unwrap_or(-1)
+        };
+        Counts {
+            projects: q("SELECT COUNT(*) FROM projects"),
+            apps: q("SELECT COUNT(*) FROM applications"),
+            sessions: q("SELECT COUNT(*) FROM sessions"),
+            manual: q("SELECT COUNT(*) FROM manual_sessions"),
+            tombstones: q("SELECT COUNT(*) FROM tombstones"),
+        }
+    }
+
+    /// Seed disjoint data so master + slave should reach a perfect union.
+    /// Prefix is a single character so unique keys never collide across peers.
+    fn seed(conn: &rusqlite::Connection, prefix: &str) {
+        let ts = "2026-04-20 10:00:00";
+
+        for i in 1..=3 {
+            conn.execute(
+                "INSERT INTO projects (name, color, updated_at) VALUES (?1, '#abcdef', ?2)",
+                rusqlite::params![format!("{}-proj-{}", prefix, i), ts],
+            )
+            .unwrap();
+        }
+
+        for i in 1..=2 {
+            conn.execute(
+                "INSERT INTO applications (executable_name, display_name, project_id, updated_at) \
+                 VALUES (?1, ?2, NULL, ?3)",
+                rusqlite::params![
+                    format!("{}-app-{}.exe", prefix, i),
+                    format!("{} App {}", prefix, i),
+                    ts
+                ],
+            )
+            .unwrap();
+        }
+
+        let app_ids: Vec<i64> = {
+            let mut stmt = conn.prepare("SELECT id FROM applications").unwrap();
+            stmt.query_map([], |row| row.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        let project_ids: Vec<i64> = {
+            let mut stmt = conn.prepare("SELECT id FROM projects").unwrap();
+            stmt.query_map([], |row| row.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+
+        for i in 1..=5 {
+            let st = format!("2026-04-20 1{}:00:00 {}", i, prefix);
+            conn.execute(
+                "INSERT INTO sessions (app_id, project_id, start_time, end_time, duration_seconds, \
+                 date, rate_multiplier, updated_at) VALUES (?1, ?2, ?3, ?4, 600, '2026-04-20', 1.0, ?5)",
+                rusqlite::params![
+                    app_ids[(i - 1) % app_ids.len()],
+                    project_ids[(i - 1) % project_ids.len()],
+                    st,
+                    format!("2026-04-20 1{}:10:00 {}", i, prefix),
+                    ts,
+                ],
+            )
+            .unwrap();
+        }
+
+        for i in 1..=2 {
+            let st = format!("2026-04-21 09:0{}:00 {}", i, prefix);
+            conn.execute(
+                "INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, \
+                 end_time, duration_seconds, date, created_at, updated_at) \
+                 VALUES (?1, 'work', ?2, ?3, ?4, ?5, 1800, '2026-04-21', ?6, ?6)",
+                rusqlite::params![
+                    format!("{}-manual-{}", prefix, i),
+                    project_ids[0],
+                    app_ids[0],
+                    st,
+                    format!("2026-04-21 09:30:00 {}", i),
+                    ts,
+                ],
+            )
+            .unwrap();
+        }
+    }
+
+    /// Both peers share the same application name (e.g. Chrome on both
+    /// machines) but with DIFFERENT local IDs — typical real-world state.
+    /// Merge resolves by `executable_name`, but each side has its own
+    /// sessions tied to the local app row. The roundtrip must preserve
+    /// all sessions from both sides.
+    fn seed_with_shared_app(conn: &rusqlite::Connection, prefix: &str) {
+        let ts = "2026-04-20 10:00:00";
+
+        for i in 1..=2 {
+            conn.execute(
+                "INSERT INTO projects (name, color, updated_at) VALUES (?1, '#abcdef', ?2)",
+                rusqlite::params![format!("{}-proj-{}", prefix, i), ts],
+            )
+            .unwrap();
+        }
+
+        // Shared app: both sides have "chrome.exe" but with their own local id.
+        conn.execute(
+            "INSERT INTO applications (executable_name, display_name, project_id, updated_at) \
+             VALUES ('chrome.exe', 'Chrome', NULL, ?1)",
+            rusqlite::params![ts],
+        )
+        .unwrap();
+        // Side-specific app
+        conn.execute(
+            "INSERT INTO applications (executable_name, display_name, project_id, updated_at) \
+             VALUES (?1, ?2, NULL, ?3)",
+            rusqlite::params![
+                format!("{}-only.exe", prefix),
+                format!("{} Only", prefix),
+                ts
+            ],
+        )
+        .unwrap();
+
+        let chrome_id: i64 = conn
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name = 'chrome.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let only_id: i64 = conn
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name LIKE ?1",
+                [format!("{}-only.exe", prefix)],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // 5 sessions on shared chrome.exe with start_times that differ by side
+        for i in 1..=5 {
+            conn.execute(
+                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, \
+                 rate_multiplier, updated_at) VALUES (?1, ?2, ?3, 600, '2026-04-20', 1.0, ?4)",
+                rusqlite::params![
+                    chrome_id,
+                    format!("2026-04-20 1{}:00:00 {}", i, prefix),
+                    format!("2026-04-20 1{}:10:00 {}", i, prefix),
+                    ts,
+                ],
+            )
+            .unwrap();
+        }
+        // 3 sessions on side-only app
+        for i in 1..=3 {
+            conn.execute(
+                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, \
+                 rate_multiplier, updated_at) VALUES (?1, ?2, ?3, 300, '2026-04-20', 1.0, ?4)",
+                rusqlite::params![
+                    only_id,
+                    format!("2026-04-20 1{}:30:00 {}only", i, prefix),
+                    format!("2026-04-20 1{}:35:00 {}only", i, prefix),
+                    ts,
+                ],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn diagnostic_sync_roundtrip_with_shared_app() {
+        use crate::lan_server::build_delta_for_pull_public;
+
+        let mut master = open_test_db();
+        let mut slave = open_test_db();
+
+        seed_with_shared_app(&master, "M");
+        seed_with_shared_app(&slave, "S");
+
+        let m_pre = counts(&master);
+        let s_pre = counts(&slave);
+        eprintln!("PRE  master: {:?}", m_pre);
+        eprintln!("PRE  slave : {:?}", s_pre);
+
+        let slave_export = build_delta_for_pull_public(&slave, "1970-01-01 00:00:00")
+            .expect("slave export");
+        merge_incoming_data(&mut master, &slave_export).expect("master merge");
+
+        let master_export = build_delta_for_pull_public(&master, "1970-01-01 00:00:00")
+            .expect("master export");
+        merge_incoming_data(&mut slave, &master_export).expect("slave merge");
+
+        let m_post = counts(&master);
+        let s_post = counts(&slave);
+        eprintln!("POST master: {:?}", m_post);
+        eprintln!("POST slave : {:?}", s_post);
+
+        // Expected: 4 projects (M-proj-1, M-proj-2, S-proj-1, S-proj-2)
+        // 3 apps   (chrome.exe shared, M-only.exe, S-only.exe)
+        // 16 sessions (5 chrome + 3 only on each side; start_times differ → no collision)
+        let total_proj = 4;
+        let total_apps = 3;
+        let total_sess = 16;
+        eprintln!("EXPECTED both sides: projects={} apps={} sessions={}", total_proj, total_apps, total_sess);
+
+        assert_eq!(m_post.projects, total_proj, "MASTER projects: {} (expected {})", m_post.projects, total_proj);
+        assert_eq!(s_post.projects, total_proj, "SLAVE  projects: {} (expected {})", s_post.projects, total_proj);
+        assert_eq!(m_post.apps, total_apps, "MASTER apps: {} (expected {})", m_post.apps, total_apps);
+        assert_eq!(s_post.apps, total_apps, "SLAVE  apps: {} (expected {})", s_post.apps, total_apps);
+        assert_eq!(m_post.sessions, total_sess, "MASTER sessions: {} (expected {})", m_post.sessions, total_sess);
+        assert_eq!(s_post.sessions, total_sess, "SLAVE  sessions: {} (expected {})", s_post.sessions, total_sess);
+    }
+
+    #[test]
+    #[ignore]
+    fn diagnostic_sync_roundtrip_does_not_lose_records() {
+        use crate::lan_server::build_delta_for_pull_public;
+
+        let mut master = open_test_db();
+        let mut slave = open_test_db();
+
+        seed(&master, "M");
+        seed(&slave, "S");
+
+        let m_pre = counts(&master);
+        let s_pre = counts(&slave);
+        eprintln!("PRE  master: {:?}", m_pre);
+        eprintln!("PRE  slave : {:?}", s_pre);
+
+        // Step 6 in protocol: master pulls slave (slave exports its own data).
+        let slave_export = build_delta_for_pull_public(&slave, "1970-01-01 00:00:00")
+            .expect("slave export");
+        // Step 9: master merges slave's data.
+        merge_incoming_data(&mut master, &slave_export).expect("master merges slave");
+
+        let m_after_pull = counts(&master);
+        eprintln!("MID  master: {:?}  (after merging slave)", m_after_pull);
+
+        // Step 11: master builds merged export and uploads to slave.
+        let master_export = build_delta_for_pull_public(&master, "1970-01-01 00:00:00")
+            .expect("master export");
+        // Step 12 (slave side): slave merges merged data from master.
+        merge_incoming_data(&mut slave, &master_export).expect("slave merges master");
+
+        let m_post = counts(&master);
+        let s_post = counts(&slave);
+        eprintln!("POST master: {:?}", m_post);
+        eprintln!("POST slave : {:?}", s_post);
+
+        let total_proj = m_pre.projects + s_pre.projects;
+        let total_apps = m_pre.apps + s_pre.apps;
+        let total_sess = m_pre.sessions + s_pre.sessions;
+        let total_man = m_pre.manual + s_pre.manual;
+        eprintln!(
+            "EXPECTED both sides: projects={} apps={} sessions={} manual={}",
+            total_proj, total_apps, total_sess, total_man
+        );
+
+        assert_eq!(m_post.projects, total_proj, "MASTER projects: {} (expected {})", m_post.projects, total_proj);
+        assert_eq!(s_post.projects, total_proj, "SLAVE  projects: {} (expected {})", s_post.projects, total_proj);
+        assert_eq!(m_post.apps, total_apps, "MASTER apps: {} (expected {})", m_post.apps, total_apps);
+        assert_eq!(s_post.apps, total_apps, "SLAVE  apps: {} (expected {})", s_post.apps, total_apps);
+        assert_eq!(m_post.sessions, total_sess, "MASTER sessions: {} (expected {})", m_post.sessions, total_sess);
+        assert_eq!(s_post.sessions, total_sess, "SLAVE  sessions: {} (expected {})", s_post.sessions, total_sess);
+        assert_eq!(m_post.manual, total_man, "MASTER manual: {} (expected {})", m_post.manual, total_man);
+        assert_eq!(s_post.manual, total_man, "SLAVE  manual: {} (expected {})", s_post.manual, total_man);
+    }
 }
