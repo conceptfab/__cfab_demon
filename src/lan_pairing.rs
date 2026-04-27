@@ -184,3 +184,25 @@ pub fn get_paired_secret(device_id: &str) -> Option<String> {
         .map(|d| d.secret.clone())
         .filter(|s| !s.is_empty())
 }
+
+/// Drop any paired-device entries with an empty secret. These are leftovers
+/// from a broken bridge implementation that submitted `slave_secret=""` to
+/// the master (the `/lan/local-identity` endpoint stopped returning the
+/// secret as part of a P0 fix, but the bridge kept reading the missing
+/// field). Keeping them around means master rejects every sync with HTTP
+/// 412 `not_paired` while the UI still lists the device. Returns the
+/// number of entries removed.
+pub fn cleanup_empty_secrets() -> usize {
+    let mut devices = load_paired_devices();
+    let before = devices.len();
+    devices.retain(|_, d| !d.secret.is_empty());
+    let removed = before - devices.len();
+    if removed > 0 {
+        save_paired_devices(&devices);
+        log::warn!(
+            "LAN pairing: dropped {} paired-device entries with empty secret (re-pair required)",
+            removed
+        );
+    }
+    removed
+}

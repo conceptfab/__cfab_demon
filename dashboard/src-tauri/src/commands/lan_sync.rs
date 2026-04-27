@@ -445,15 +445,6 @@ pub struct PairedDeviceInfo {
     pub last_auth_error_at: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct PairResponse {
-    ok: bool,
-    device_id: Option<String>,
-    secret: Option<String>,
-    machine_name: Option<String>,
-    error: Option<String>,
-}
-
 // ── Pairing commands ──
 
 #[tauri::command]
@@ -493,75 +484,63 @@ pub async fn submit_pairing_code(
     peer_port: u16,
     code: String,
 ) -> Result<PairedDeviceInfo, String> {
+    // The bridge no longer reads or forwards the local secret — the daemon
+    // owns that. We just hand it the peer address + code and the daemon
+    // does the full handshake locally (`/lan/initiate-pair`). This was
+    // forced after the P0 fix that removed `secret` from
+    // `/lan/local-identity`: the old bridge ended up sending
+    // `slave_secret=""` to the master, which then stored the peer with
+    // an empty secret and failed every subsequent sync with 412 not_paired.
     let result = tokio::task::spawn_blocking(move || {
         let client = build_http_client()?;
-
-        // Get local identity + secret so master can store it (mutual pairing)
-        let local_info: serde_json::Value = client
-            .get("http://127.0.0.1:47891/lan/local-identity")
-            .send()
-            .and_then(|r| r.json())
-            .unwrap_or_default();
-        let local_device_id = local_info
-            .get("device_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let local_secret = local_info
-            .get("secret")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let local_machine_name = local_info
-            .get("machine_name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-
         let body = serde_json::json!({
+            "peer_ip": peer_ip,
+            "peer_port": peer_port,
             "code": code,
-            "slave_device_id": local_device_id,
-            "slave_secret": local_secret,
-            "slave_machine_name": local_machine_name,
         });
-        let url = format!("http://{}:{}/lan/pair", peer_ip, peer_port);
+        let url = "http://127.0.0.1:47891/lan/initiate-pair";
         let resp = client
-            .post(&url)
+            .post(url)
             .json(&body)
             .send()
-            .map_err(|e| format!("Peer unreachable: {}", e))?;
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
         let status = resp.status();
-        let pair_resp: PairResponse = resp
+        let json: serde_json::Value = resp
             .json()
             .map_err(|e| format!("Invalid response: {}", e))?;
 
-        if !status.is_success() || !pair_resp.ok {
-            return Err(pair_resp
-                .error
+        if !status.is_success() || json.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(json
+                .get("error")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
                 .unwrap_or_else(|| format!("Pairing failed ({})", status)));
         }
 
-        let device_id = pair_resp.device_id.ok_or("Missing device_id in response")?;
-        let secret = pair_resp.secret.ok_or("Missing secret in response")?;
-        let machine_name = pair_resp.machine_name.unwrap_or_default();
-
-        // Store in local paired devices via daemon
-        let store_body = serde_json::json!({
-            "device_id": device_id,
-            "secret": secret,
-            "machine_name": machine_name,
-        });
-        let store_url = "http://127.0.0.1:47891/lan/store-paired-device";
-        let store_resp = client
-            .post(store_url)
-            .json(&store_body)
-            .send()
-            .map_err(|e| format!("Failed to store pairing: {}", e))?;
-        if !store_resp.status().is_success() {
-            return Err("Failed to store paired device in daemon".to_string());
-        }
+        let device_id = json
+            .get("device_id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing device_id in response")?
+            .to_string();
+        let machine_name = json
+            .get("machine_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let paired_at = json
+            .get("paired_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         Ok::<PairedDeviceInfo, String>(PairedDeviceInfo {
             device_id,
-            machine_name: machine_name.clone(),
-            paired_at: chrono::Utc::now().to_rfc3339(),
+            machine_name,
+            paired_at: if paired_at.is_empty() {
+                chrono::Utc::now().to_rfc3339()
+            } else {
+                paired_at
+            },
             last_auth_error_at: None,
         })
     })

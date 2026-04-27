@@ -98,6 +98,13 @@ fn main() {
     // Start LAN discovery thread (UDP broadcast for peer-to-peer sync)
     let discovery_handle = lan_discovery::start(stop_signal.clone(), Some(sync_state.clone()));
 
+    // Drop paired-device entries that were poisoned with an empty secret by
+    // the previous bridge bug (sent slave_secret="" because /lan/local-identity
+    // stopped returning the secret). Such entries cannot authenticate, so
+    // sync would return 412 not_paired forever — better to force a clean
+    // re-pair on next launch.
+    let _ = lan_pairing::cleanup_empty_secrets();
+
     // Start LAN HTTP server (sync endpoints — works even without dashboard)
     let lan_server_handle = lan_server::start(stop_signal.clone(), sync_state.clone());
 

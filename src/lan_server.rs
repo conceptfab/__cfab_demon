@@ -426,7 +426,7 @@ fn handle_connection(
         "/lan/ping" | "/lan/pair" | "/lan/sync-progress" | "/online/sync-progress"
         | "/lan/paired-devices" | "/lan/generate-pairing-code"
         | "/lan/store-paired-device" | "/lan/remove-paired-device"
-        | "/lan/local-identity"
+        | "/lan/local-identity" | "/lan/initiate-pair"
         | "/lan/trigger-sync" | "/online/trigger-sync" | "/online/cancel-sync"
     );
     if requires_auth {
@@ -482,6 +482,7 @@ fn handle_connection(
         ("POST", "/lan/db-ready") => handle_db_ready(&state, &body),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
         ("POST", "/lan/pair") => handle_pair(&body, client_ip),
+        ("POST", "/lan/initiate-pair") => handle_initiate_pair(&body, client_ip),
         ("POST", "/lan/generate-pairing-code") => handle_generate_pairing_code(),
         ("POST", "/lan/store-paired-device") => handle_store_paired_device(&body),
         ("POST", "/lan/remove-paired-device") => handle_remove_paired_device(&body),
@@ -1098,14 +1099,28 @@ fn handle_pair(body: &str, client_ip: IpAddr) -> (u16, String) {
         return (429, json_error("too many pairing attempts; try again later"));
     }
 
+    // Defence in depth: refuse to register a peer without a real secret.
+    // Without this guard a buggy/old initiator can poison the paired-devices
+    // map with `secret=""`, which the UI happily lists as "paired" while the
+    // sync endpoint rejects every request with HTTP 412 `not_paired`. Force
+    // the caller to re-pair with a complete identity instead.
+    let slave_id = req.slave_device_id.as_deref().unwrap_or("").trim();
+    let slave_sec = req.slave_secret.as_deref().unwrap_or("").trim();
+    if slave_id.is_empty() || slave_sec.is_empty() {
+        log::warn!(
+            "LAN pair attempt rejected: slave identity incomplete (id={}, secret_len={})",
+            !slave_id.is_empty(),
+            slave_sec.len()
+        );
+        return (400, json_error("missing_slave_identity"));
+    }
+
     match crate::lan_pairing::validate_code(&req.code) {
         Ok(()) => {
             // Master stores slave's secret (mutual pairing)
-            if let (Some(slave_id), Some(slave_sec)) = (&req.slave_device_id, &req.slave_secret) {
-                let slave_name = req.slave_machine_name.as_deref().unwrap_or("");
-                crate::lan_pairing::store_paired_device(slave_id, slave_sec, slave_name);
-                log::info!("LAN pairing: master stored slave secret for {}", slave_id);
-            }
+            let slave_name = req.slave_machine_name.as_deref().unwrap_or("");
+            crate::lan_pairing::store_paired_device(slave_id, slave_sec, slave_name);
+            log::info!("LAN pairing: master stored slave secret for {}", slave_id);
 
             let device_id = crate::lan_common::get_device_id();
             let secret = get_or_create_lan_secret();
@@ -1122,6 +1137,126 @@ fn handle_pair(body: &str, client_ip: IpAddr) -> (u16, String) {
             log::warn!("LAN pair attempt failed: {}", reason);
             (403, json_error(reason))
         }
+    }
+}
+
+/// Localhost-only: drives a complete pairing handshake with a remote peer
+/// without ever exposing this device's secret to the dashboard process.
+/// The dashboard bridge calls this with `{peer_ip, peer_port, code}`; the
+/// daemon reads its own identity, POSTs to the peer's `/lan/pair`, and
+/// stores the returned peer identity locally. This replaces the previous
+/// flow that relied on `/lan/local-identity` returning the secret (P0
+/// fix `bd8dad1` removed it, breaking mutual pairing — master ended up
+/// with `secret=""` for every peer).
+fn handle_initiate_pair(body: &str, client_ip: IpAddr) -> (u16, String) {
+    if !is_loopback(client_ip) {
+        log::warn!("LAN initiate-pair rejected from non-loopback {}", client_ip);
+        return (403, json_error("loopback_only"));
+    }
+
+    #[derive(Deserialize)]
+    struct Req {
+        peer_ip: String,
+        peer_port: u16,
+        code: String,
+    }
+    let req: Req = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
+    };
+
+    let local_device_id = crate::lan_common::get_device_id();
+    let local_secret = get_or_create_lan_secret();
+    let local_machine_name = crate::lan_common::get_machine_name();
+    if local_device_id.trim().is_empty() || local_secret.trim().is_empty() {
+        log::error!("LAN initiate-pair: own identity unavailable (device_id or secret empty)");
+        return (500, json_error("local_identity_unavailable"));
+    }
+
+    let pair_url = format!("http://{}:{}/lan/pair", req.peer_ip, req.peer_port);
+    let pair_body = serde_json::json!({
+        "code": req.code,
+        "slave_device_id": local_device_id,
+        "slave_secret": local_secret,
+        "slave_machine_name": local_machine_name,
+    })
+    .to_string();
+
+    let resp = match ureq::post(&pair_url)
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(15))
+        .send_string(&pair_body)
+    {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, r)) => {
+            let body = r.into_string().unwrap_or_default();
+            log::warn!("LAN initiate-pair: peer responded {} — {}", code, body);
+            return (code, body);
+        }
+        Err(e) => {
+            log::warn!("LAN initiate-pair: peer unreachable: {}", e);
+            return (502, json_error(&format!("peer_unreachable: {}", e)));
+        }
+    };
+
+    let peer_body = match resp.into_string() {
+        Ok(s) => s,
+        Err(e) => return (502, json_error(&format!("peer_read: {}", e))),
+    };
+    let peer_json: serde_json::Value = match serde_json::from_str(&peer_body) {
+        Ok(v) => v,
+        Err(e) => return (502, json_error(&format!("peer_invalid_json: {}", e))),
+    };
+
+    if peer_json.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+        let err = peer_json
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("peer_rejected");
+        return (502, json_error(err));
+    }
+
+    let peer_device_id = peer_json
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let peer_secret = peer_json
+        .get("secret")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let peer_machine_name = peer_json
+        .get("machine_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if peer_device_id.is_empty() || peer_secret.is_empty() {
+        log::warn!("LAN initiate-pair: peer returned incomplete identity");
+        return (502, json_error("peer_identity_incomplete"));
+    }
+
+    crate::lan_pairing::store_paired_device(&peer_device_id, &peer_secret, &peer_machine_name);
+    log::info!(
+        "LAN initiate-pair: stored peer {} ({})",
+        peer_device_id,
+        peer_machine_name
+    );
+
+    let resp = serde_json::json!({
+        "ok": true,
+        "device_id": peer_device_id,
+        "machine_name": peer_machine_name,
+        "paired_at": chrono::Utc::now().to_rfc3339(),
+    });
+    (200, resp.to_string())
+}
+
+fn is_loopback(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => v6.is_loopback(),
     }
 }
 
@@ -1298,9 +1433,52 @@ impl PartialEq for TableHashes {
 
 #[cfg(test)]
 mod tests {
-    use super::{handle_local_identity, LanSyncState, AUTO_UNFREEZE_TIMEOUT};
+    use super::{handle_local_identity, handle_pair, LanSyncState, AUTO_UNFREEZE_TIMEOUT};
+    use std::net::{IpAddr, Ipv4Addr};
     use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn pair_rejects_empty_slave_secret() {
+        // Regression for the bridge bug where slave_secret="" was sent because
+        // /lan/local-identity stopped returning the secret. Master must refuse
+        // to register a peer without a real secret — otherwise it gets stored
+        // with secret="" and every later sync returns 412 not_paired while
+        // the UI still lists the peer as paired.
+        let body = serde_json::json!({
+            "code": "000000",
+            "slave_device_id": "test-device",
+            "slave_secret": "",
+            "slave_machine_name": "TestBox",
+        })
+        .to_string();
+        let (status, resp) =
+            handle_pair(&body, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)));
+        assert_eq!(status, 400, "empty slave_secret must be rejected");
+        let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(
+            json.get("error").and_then(|v| v.as_str()),
+            Some("missing_slave_identity")
+        );
+    }
+
+    #[test]
+    fn pair_rejects_missing_slave_device_id() {
+        let body = serde_json::json!({
+            "code": "000000",
+            "slave_secret": "some-secret",
+            "slave_machine_name": "TestBox",
+        })
+        .to_string();
+        let (status, resp) =
+            handle_pair(&body, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)));
+        assert_eq!(status, 400);
+        let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(
+            json.get("error").and_then(|v| v.as_str()),
+            Some("missing_slave_identity")
+        );
+    }
 
     #[test]
     fn local_identity_does_not_leak_secret() {
