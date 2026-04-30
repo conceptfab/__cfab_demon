@@ -932,9 +932,8 @@ fn handle_pull(body: &str) -> (u16, String) {
         #[allow(dead_code)]
         device_id: String,
         since: String,
-        /// Master signals a full snapshot (force sync or first sync). In that
-        /// case slave must NOT include tombstones — otherwise the historical
-        /// deletion log gets replayed against master's live records.
+        /// Master signals a full snapshot (force sync or first sync). Full
+        /// snapshots include tombstones so deletions converge too.
         #[serde(default)]
         full_sync: bool,
     }
@@ -1337,13 +1336,11 @@ pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str) -> 
     build_delta_for_pull(conn, since, true)
 }
 
-/// Like `build_delta_for_pull_public` but lets the caller suppress tombstones.
-/// Full sync (`since=1970-01-01`) MUST pass `include_tombstones=false` — otherwise
-/// every historical deletion ever recorded is broadcast to the peer and wipes out
-/// records the peer just received in the same merge cycle (root cause of the
-/// "both sides lose data" regression — see project memory 2026-04-27).
+/// Full snapshot used to converge peers after the master has merged incoming data.
+/// It includes tombstones: merge applies deletions first, then live rows from the
+/// same snapshot re-introduce records that still exist in the final master state.
 pub fn build_full_snapshot_public(conn: &rusqlite::Connection) -> Result<String, String> {
-    build_delta_for_pull(conn, "1970-01-01 00:00:00", false)
+    build_delta_for_pull(conn, "1970-01-01 00:00:00", true)
 }
 
 fn build_delta_for_pull(

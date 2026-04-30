@@ -41,9 +41,9 @@ pub fn insert_sync_marker_db(
 }
 
 pub fn build_full_export(conn: &rusqlite::Connection) -> Result<String, String> {
-    // Full snapshot: NO tombstones. The receiver shouldn't replay every historical
-    // deletion against its live records — that wipes out everything the receiver
-    // has under the same sync_key (the bug that lost data on both sides).
+    // Full convergence snapshot: include tombstones so deletes propagate in full
+    // and force sync. The merge path applies tombstones before live rows, so rows
+    // still present in the snapshot are restored by the following record merge.
     lan_server::build_full_snapshot_public(conn)
 }
 
@@ -269,6 +269,49 @@ fn log_merge_conflict(
          VALUES (?1, ?2, 'last_writer_wins', ?3, ?4, ?5)",
         rusqlite::params![table_name, record_key, local_updated_at, remote_updated_at, winner],
     );
+}
+
+fn local_tombstone_covers(
+    tx: &rusqlite::Transaction,
+    table_name: &str,
+    sync_key: &str,
+    record_updated_at: &str,
+) -> bool {
+    let deleted_at: Option<String> = tx
+        .query_row(
+            "SELECT MAX(deleted_at) FROM tombstones WHERE table_name = ?1 AND sync_key = ?2",
+            rusqlite::params![table_name, sync_key],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+
+    deleted_at
+        .as_deref()
+        .map(|deleted| normalize_ts(deleted) >= normalize_ts(record_updated_at))
+        .unwrap_or(false)
+}
+
+fn local_manual_tombstone_covers(
+    tx: &rusqlite::Transaction,
+    start_time: &str,
+    title: &str,
+    record_updated_at: &str,
+) -> bool {
+    let pattern = format!("%|{}|{}", start_time, title);
+    let deleted_at: Option<String> = tx
+        .query_row(
+            "SELECT MAX(deleted_at) FROM tombstones WHERE table_name = 'manual_sessions' AND sync_key LIKE ?1",
+            rusqlite::params![pattern],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+
+    deleted_at
+        .as_deref()
+        .map(|deleted| normalize_ts(deleted) >= normalize_ts(record_updated_at))
+        .unwrap_or(false)
 }
 
 // ── Merge ──
@@ -499,6 +542,13 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             if name.is_empty() {
                 continue;
             }
+            if local_tombstone_covers(&tx, "projects", name, updated_at) {
+                lan_common::sync_log(&format!(
+                    "  SKIP projekt '{}' — lokalny tombstone jest nowszy niz rekord peera",
+                    name
+                ));
+                continue;
+            }
 
             let existing: Option<String> = tx
                 .query_row("SELECT updated_at FROM projects WHERE name = ?1", [name], |row| row.get(0))
@@ -617,6 +667,13 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             if exe_name.is_empty() {
                 continue;
             }
+            if local_tombstone_covers(&tx, "applications", exe_name, updated_at) {
+                lan_common::sync_log(&format!(
+                    "  SKIP aplikacja '{}' — lokalny tombstone jest nowszy niz rekord peera",
+                    exe_name
+                ));
+                continue;
+            }
 
             // Resolve remote project_id → local project_id via name
             let remote_project_id = app.get("project_id").and_then(|v| v.as_i64());
@@ -686,15 +743,28 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             diag_sess_total += 1;
 
             // Resolve remote app_id → local app_id via executable_name
-            let local_app_id = match remote_app_id_to_name.get(&remote_app_id)
-                .and_then(|name| app_name_to_local_id.get(name))
-            {
+            let remote_app_name = match remote_app_id_to_name.get(&remote_app_id) {
+                Some(name) => name,
+                None => {
+                    lan_common::sync_log(&format!("  SKIP sesja (brak nazwy app dla remote={})", remote_app_id));
+                    continue;
+                }
+            };
+            let local_app_id = match app_name_to_local_id.get(remote_app_name) {
                 Some(&id) => id,
                 None => {
                     lan_common::sync_log(&format!("  SKIP sesja (brak lokalnego app_id dla remote={})", remote_app_id));
                     continue;
                 }
             };
+            let session_sync_key = format!("{}|{}", remote_app_name, start_time);
+            if local_tombstone_covers(&tx, "sessions", &session_sync_key, updated_at) {
+                lan_common::sync_log(&format!(
+                    "  SKIP sesja '{}' — lokalny tombstone jest nowszy niz rekord peera",
+                    session_sync_key
+                ));
+                continue;
+            }
 
             // Resolve remote project_id → local project_id via name
             let remote_pid_opt = sess.get("project_id").and_then(|v| v.as_i64());
@@ -810,6 +880,13 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             let start_time = ms.get("start_time").and_then(|v| v.as_str()).unwrap_or("");
             let updated_at = ms.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
             if title.is_empty() || start_time.is_empty() {
+                continue;
+            }
+            if local_manual_tombstone_covers(&tx, start_time, title, updated_at) {
+                lan_common::sync_log(&format!(
+                    "  SKIP sesja manualna '{}|{}' — lokalny tombstone jest nowszy niz rekord peera",
+                    start_time, title
+                ));
                 continue;
             }
 
@@ -1234,6 +1311,46 @@ mod tests {
         }
     }
 
+    fn query_snapshot_rows(conn: &rusqlite::Connection, sql: &str) -> Vec<String> {
+        let mut stmt = conn.prepare(sql).expect("snapshot query");
+        stmt.query_map([], |row| row.get::<_, String>(0))
+            .expect("snapshot rows")
+            .map(|row| row.expect("snapshot row"))
+            .collect()
+    }
+
+    fn user_data_snapshot(conn: &rusqlite::Connection) -> Vec<String> {
+        let mut rows = Vec::new();
+        rows.extend(query_snapshot_rows(
+            conn,
+            "SELECT 'P|' || name || '|' || COALESCE(color, '') || '|' || COALESCE(hourly_rate, '') || '|' || COALESCE(excluded_at, '') || '|' || COALESCE(frozen_at, '')
+             FROM projects ORDER BY name",
+        ));
+        rows.extend(query_snapshot_rows(
+            conn,
+            "SELECT 'A|' || a.executable_name || '|' || COALESCE(a.display_name, '') || '|' || COALESCE(p.name, '')
+             FROM applications a LEFT JOIN projects p ON p.id = a.project_id
+             ORDER BY a.executable_name",
+        ));
+        rows.extend(query_snapshot_rows(
+            conn,
+            "SELECT 'S|' || a.executable_name || '|' || s.start_time || '|' || s.end_time || '|' || s.duration_seconds || '|' || s.date || '|' || COALESCE(s.rate_multiplier, 1.0) || '|' || COALESCE(p.name, s.project_name, '') || '|' || COALESCE(s.comment, '') || '|' || COALESCE(s.is_hidden, 0)
+             FROM sessions s
+             JOIN applications a ON a.id = s.app_id
+             LEFT JOIN projects p ON p.id = s.project_id
+             ORDER BY a.executable_name, s.start_time",
+        ));
+        rows.extend(query_snapshot_rows(
+            conn,
+            "SELECT 'M|' || title || '|' || session_type || '|' || start_time || '|' || end_time || '|' || duration_seconds || '|' || date || '|' || COALESCE(p.name, manual_sessions.project_name, CAST(manual_sessions.project_id AS TEXT), '') || '|' || COALESCE(a.executable_name, '')
+             FROM manual_sessions
+             LEFT JOIN projects p ON p.id = manual_sessions.project_id
+             LEFT JOIN applications a ON a.id = manual_sessions.app_id
+             ORDER BY title, start_time",
+        ));
+        rows
+    }
+
     /// Seed disjoint data so master + slave should reach a perfect union.
     /// Prefix is a single character so unique keys never collide across peers.
     fn seed(conn: &rusqlite::Connection, prefix: &str) {
@@ -1308,6 +1425,215 @@ mod tests {
             )
             .unwrap();
         }
+    }
+
+    #[derive(Clone, Copy)]
+    enum SimulatorPullMode {
+        Delta,
+        Full,
+    }
+
+    struct LanSyncSimulator {
+        master: rusqlite::Connection,
+        slave: rusqlite::Connection,
+    }
+
+    impl LanSyncSimulator {
+        fn new() -> Self {
+            Self {
+                master: open_test_db(),
+                slave: open_test_db(),
+            }
+        }
+
+        fn seeded() -> Self {
+            let sim = Self::new();
+            seed(&sim.master, "M");
+            seed(&sim.slave, "S");
+            sim
+        }
+
+        fn run_master_cycle(&mut self, mode: SimulatorPullMode, since: &str) -> Result<(), String> {
+            let slave_export = match mode {
+                SimulatorPullMode::Delta => build_delta_export(&self.slave, Some(since))?.0,
+                SimulatorPullMode::Full => build_full_export(&self.slave)?,
+            };
+
+            merge_incoming_data(&mut self.master, &slave_export)?;
+
+            // This mirrors the LAN orchestrator contract: negotiation decides how
+            // much master pulls, but slave always receives the final merged state.
+            let master_export = build_full_export(&self.master)?;
+            merge_incoming_data(&mut self.slave, &master_export)
+        }
+
+        fn assert_converged(&self) {
+            assert_eq!(user_data_snapshot(&self.master), user_data_snapshot(&self.slave));
+        }
+    }
+
+    fn query_string(conn: &rusqlite::Connection, sql: &str) -> String {
+        conn.query_row(sql, [], |row| row.get(0)).expect("query string")
+    }
+
+    #[test]
+    fn lan_sync_simulator_delta_and_full_converge_disjoint_data() {
+        for mode in [SimulatorPullMode::Delta, SimulatorPullMode::Full] {
+            let mut sim = LanSyncSimulator::seeded();
+            let m_pre = counts(&sim.master);
+            let s_pre = counts(&sim.slave);
+
+            sim.run_master_cycle(mode, "1970-01-01 00:00:00")
+                .expect("simulated LAN sync");
+            sim.assert_converged();
+
+            let final_counts = counts(&sim.master);
+            assert_eq!(final_counts.projects, m_pre.projects + s_pre.projects);
+            assert_eq!(final_counts.apps, m_pre.apps + s_pre.apps);
+            assert_eq!(final_counts.sessions, m_pre.sessions + s_pre.sessions);
+            assert_eq!(final_counts.manual, m_pre.manual + s_pre.manual);
+        }
+    }
+
+    #[test]
+    fn lan_sync_simulator_newer_update_wins_on_both_peers() {
+        for mode in [SimulatorPullMode::Delta, SimulatorPullMode::Full] {
+            let mut sim = LanSyncSimulator::new();
+
+            sim.master
+                .execute(
+                    "INSERT INTO applications (executable_name, display_name, updated_at)
+                     VALUES ('conflict.exe', 'Older Master Name', '2026-04-20 10:00:00')",
+                    [],
+                )
+                .unwrap();
+            sim.slave
+                .execute(
+                    "INSERT INTO applications (executable_name, display_name, updated_at)
+                     VALUES ('conflict.exe', 'Newer Slave Name', '2026-04-20 11:00:00')",
+                    [],
+                )
+                .unwrap();
+
+            sim.run_master_cycle(mode, "1970-01-01 00:00:00")
+                .expect("simulated LAN sync");
+            sim.assert_converged();
+
+            for conn in [&sim.master, &sim.slave] {
+                assert_eq!(
+                    query_string(conn, "SELECT display_name FROM applications WHERE executable_name = 'conflict.exe'"),
+                    "Newer Slave Name"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn lan_sync_simulator_master_delete_wins_over_stale_slave_row() {
+        for mode in [SimulatorPullMode::Delta, SimulatorPullMode::Full] {
+            let mut sim = LanSyncSimulator::new();
+
+            sim.slave
+                .execute(
+                    "INSERT INTO applications (executable_name, display_name, updated_at)
+                     VALUES ('deleted-on-master.exe', 'Deleted On Master', '2026-04-19 08:00:00')",
+                    [],
+                )
+                .unwrap();
+            sim.master
+                .execute(
+                    "INSERT INTO tombstones (table_name, sync_key, deleted_at)
+                     VALUES ('applications', 'deleted-on-master.exe', '2026-04-22 12:00:00')",
+                    [],
+                )
+                .unwrap();
+
+            sim.run_master_cycle(mode, "1970-01-01 00:00:00")
+                .expect("simulated LAN sync");
+            sim.assert_converged();
+
+            for conn in [&sim.master, &sim.slave] {
+                assert!(
+                    conn.query_row(
+                        "SELECT 1 FROM applications WHERE executable_name = 'deleted-on-master.exe'",
+                        [],
+                        |_| Ok(()),
+                    )
+                    .is_err(),
+                    "stale row must stay deleted after convergence"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn full_master_snapshot_converges_and_keeps_local_deletes() {
+        use crate::lan_server::build_full_snapshot_public;
+
+        let mut master = open_test_db();
+        let mut slave = open_test_db();
+
+        seed(&master, "M");
+        seed(&slave, "S");
+
+        slave
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, updated_at)
+                 VALUES ('deleted-on-master.exe', 'Deleted On Master', '2026-04-19 08:00:00')",
+                [],
+            )
+            .unwrap();
+        let deleted_app_id: i64 = slave
+            .query_row(
+                "SELECT id FROM applications WHERE executable_name = 'deleted-on-master.exe'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        slave
+            .execute(
+                "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier, updated_at)
+                 VALUES (?1, '2026-04-19 08:00:00', '2026-04-19 08:10:00', 600, '2026-04-19', 1.0, '2026-04-19 08:00:00')",
+                [deleted_app_id],
+            )
+            .unwrap();
+
+        master
+            .execute(
+                "INSERT INTO tombstones (table_name, sync_key, deleted_at)
+                 VALUES ('applications', 'deleted-on-master.exe', '2026-04-22 12:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let slave_export = build_full_snapshot_public(&slave).expect("slave full snapshot");
+        merge_incoming_data(&mut master, &slave_export).expect("master merges slave");
+
+        assert!(
+            master
+                .query_row(
+                    "SELECT 1 FROM applications WHERE executable_name = 'deleted-on-master.exe'",
+                    [],
+                    |_| Ok(()),
+                )
+                .is_err(),
+            "master must not resurrect a row covered by a newer local tombstone"
+        );
+
+        let master_export = build_full_snapshot_public(&master).expect("master final snapshot");
+        merge_incoming_data(&mut slave, &master_export).expect("slave merges master");
+
+        assert_eq!(user_data_snapshot(&master), user_data_snapshot(&slave));
+        assert!(
+            slave
+                .query_row(
+                    "SELECT 1 FROM applications WHERE executable_name = 'deleted-on-master.exe'",
+                    [],
+                    |_| Ok(()),
+                )
+                .is_err(),
+            "slave must receive master's deletion in the final convergence snapshot"
+        );
     }
 
     /// Both peers share the same application name (e.g. Chrome on both
@@ -1490,14 +1816,9 @@ mod tests {
         assert_eq!(s_post.manual, total_man, "SLAVE  manual: {} (expected {})", s_post.manual, total_man);
     }
 
-    /// Regression for the data-loss bug seen on 2026-04-27:
-    /// in a force/full sync, master's historical tombstones (e.g. an app
-    /// deleted long ago) were broadcast to slave and wiped out slave's
-    /// live records under the same sync_key. Same in the other direction.
-    /// After the fix:
-    ///   - full snapshots no longer carry tombstones
-    ///   - tombstone merge is applied BEFORE record merge so a fresh
-    ///     INSERT cannot be wiped by a stale tombstone in the same payload
+    /// Full/convergence sync must propagate deletions. If master has a newer
+    /// tombstone for a sync_key and slave still has an older live row, the
+    /// deletion wins and both sides converge to the deleted state.
     #[test]
     #[ignore]
     fn diagnostic_full_sync_does_not_lose_records_when_tombstones_present() {
@@ -1607,8 +1928,8 @@ mod tests {
         eprintln!("PRE  master: {:?}  (1 active app, 5 sessions, 1 tombstone for old-app.exe)", m_pre);
         eprintln!("PRE  slave : {:?}  (2 apps incl. old-app.exe, 8 sessions)", s_pre);
 
-        // Master flow (full): pulls slave's full snapshot (no tombstones), merges,
-        // then exports its own full snapshot to slave (no tombstones either).
+        // Master flow (full): pulls slave's full snapshot, merges, then exports
+        // its final convergence snapshot to slave.
         let slave_export = build_full_snapshot_public(&slave).expect("slave full snapshot");
         merge_incoming_data(&mut master, &slave_export).expect("master merges slave");
         let master_export = build_full_snapshot_public(&master).expect("master full snapshot");
@@ -1619,11 +1940,12 @@ mod tests {
         eprintln!("POST master: {:?}", m_post);
         eprintln!("POST slave : {:?}", s_post);
 
-        // Both sides should converge to the union: 2 apps (chrome + old-app),
-        // 5 master sessions + 8 slave sessions = 13 sessions on each side.
-        assert_eq!(m_post.apps, 2, "MASTER lost old-app.exe (tombstone bled into full snapshot)");
-        assert_eq!(s_post.apps, 2, "SLAVE  lost old-app.exe (tombstone bled into full snapshot)");
-        assert_eq!(m_post.sessions, 13, "MASTER sessions {} (expected 13)", m_post.sessions);
-        assert_eq!(s_post.sessions, 13, "SLAVE  sessions {} (expected 13)", s_post.sessions);
+        // Both sides should converge to chrome.exe only. old-app.exe is older
+        // than master's tombstone, so the delete propagates and its 3 sessions
+        // disappear on both sides.
+        assert_eq!(m_post.apps, 1, "MASTER should keep only chrome.exe");
+        assert_eq!(s_post.apps, 1, "SLAVE should keep only chrome.exe");
+        assert_eq!(m_post.sessions, 10, "MASTER sessions {} (expected 10)", m_post.sessions);
+        assert_eq!(s_post.sessions, 10, "SLAVE  sessions {} (expected 10)", s_post.sessions);
     }
 }

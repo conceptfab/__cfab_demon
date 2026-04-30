@@ -526,8 +526,8 @@ fn execute_master_sync(
     let pull_body = serde_json::json!({
         "device_id": device_id,
         "since": since,
-        // Tell slave to omit tombstones in full sync — otherwise the historical
-        // deletion log overwrites our live data on merge.
+        // Full sync asks for the slave's whole convergence snapshot, including
+        // tombstones. Tombstones are merged before live rows.
         "full_sync": transfer_mode == "full",
     });
 
@@ -606,16 +606,12 @@ fn execute_master_sync(
 
     // Step 11: Upload merged data to SLAVE
     sync_state.set_progress(11, "uploading_to_slave", "upload");
-    let merged_export = if transfer_mode == "delta" {
-        sync_log("[11/13] Budowanie delta eksportu dla peera...");
-        let (data, _size) = sync_common::build_delta_export(&conn, Some(&since))
-            .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania delta eksportu: {}", e)); e })?;
-        data
-    } else {
-        sync_log("[11/13] Budowanie pelnego eksportu dla peera...");
-        sync_common::build_full_export(&conn)
-            .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?
-    };
+    sync_log(&format!(
+        "[11/13] Budowanie finalnego snapshotu po merge (tryb negocjacji: {})...",
+        transfer_mode
+    ));
+    let merged_export = sync_common::build_full_export(&conn)
+        .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?;
     let export_kb = merged_export.len() as f64 / 1024.0;
     sync_log(&format!("[11/13] Wysylanie {:.1} KB do peera...", export_kb));
 

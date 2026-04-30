@@ -17,6 +17,7 @@ export function HelpLanSyncSection() {
         t18n('help_page.lan_sync_udp_discovery'),
         t18n('help_page.lan_sync_http_server'),
         t18n('help_page.lan_sync_delta_merge'),
+        t18n('help_page.lan_sync_convergence_snapshot'),
         t18n('help_page.lan_sync_project_name_persist'),
         t18n('help_page.lan_sync_sync_markers'),
         t18n('help_page.lan_sync_scheduled'),

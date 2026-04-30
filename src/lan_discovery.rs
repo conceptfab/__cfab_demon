@@ -505,6 +505,14 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                 if role == "master" && !in_progress && handle_done && completed_cooldown_ok && last_sync_attempt.elapsed() >= sync_cooldown {
                     // Find a slave peer to sync with
                     if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
+                        if state.sync_in_progress.compare_exchange(
+                            false,
+                            true,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        ).is_err() {
+                            continue;
+                        }
                         log::info!("LAN discovery: auto-triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
                         last_sync_attempt = Instant::now();
                         let target = lan_sync_orchestrator::PeerTarget {

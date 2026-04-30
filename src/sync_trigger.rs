@@ -4,7 +4,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use crate::lan_server::{LanSyncState, SyncGuard};
+use crate::lan_server::LanSyncState;
 
 /// Uruchamia odpowiednią ścieżkę synchronizacji (online lub LAN) w nowym wątku.
 /// Pełni guard `sync_in_progress` — kolejne wywołania podczas trwającej sync
@@ -63,17 +63,18 @@ pub fn trigger_sync(sync_state: Arc<LanSyncState>, force: bool) {
     if lan_settings.enabled {
         let state = sync_state.clone();
         std::thread::spawn(move || {
-            let _guard = SyncGuard(state.clone());
             match crate::lan_discovery::find_first_peer() {
                 Some(peer) => {
                     state.set_role("master");
                     let stop = Arc::new(AtomicBool::new(false));
-                    crate::lan_sync_orchestrator::run_sync_as_master_with_options(
+                    let handle = crate::lan_sync_orchestrator::run_sync_as_master_with_options(
                         peer, state, stop, force,
                     );
+                    let _ = handle.join();
                 }
                 None => {
                     log::warn!("No LAN peer found for tray-triggered sync");
+                    state.sync_in_progress.store(false, Ordering::SeqCst);
                 }
             }
         });

@@ -61,76 +61,76 @@ Zasada:
 <claude-mem-context>
 # Memory Context
 
-# [__cfab_demon] recent context, 2026-04-25 12:13am GMT+2
+# [__cfab_demon] recent context, 2026-04-30 8:17pm GMT+2
 
 Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
 Format: ID TIME TYPE TITLE
 Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Stats: 50 obs (16,369t read) | 343,100t work | 95% savings
+Stats: 50 obs (21,614t read) | 953,612t work | 98% savings
 
-### Apr 23, 2026
-S21 LAN sync broken — local projects not transferring, sessions showing as UNASSIGNED after sync (Apr 23 at 8:55 AM)
-S39 Fix macOS daemon recording activity during system sleep — full root cause analysis and fix plan (Apr 23 at 9:11 AM)
-S42 macOS Sleep Bug Fix — cfab_demon phantom activity during sleep — full implementation complete and verified (Apr 23 at 10:10 AM)
-S54 macOS native window controls (traffic lights) integration in Tauri dashboard — replacing custom minimize/maximize/close buttons with native macOS traffic lights (Apr 23 at 10:24 AM)
-S62 macOS titlebar redesign: native traffic-light dots in default position + TIMEFLOW logo moved to right side of window (Windows unchanged) (Apr 23 at 5:51 PM)
-S73 TIMEFLOW Comprehensive Codebase Audit — raport.md Written (Apr 23 at 5:59 PM)
-S74 Implementation Plan Initiated from TIMEFLOW Audit Report (Apr 23 at 6:49 PM)
-S163 TIMEFLOW codex Branch: Completed UI Refactor Tasks Visible in Git Log (Apr 23 at 9:29 PM)
-### Apr 24, 2026
-S225 plan_implementacji.md implementation state analysis — session progress checkpoint after 16 tasks completed (Apr 24 at 7:37 PM)
-419 8:51p 🔄 monitor.rs (Windows) Task 21 Complete: extract_file_from_title and collect_descendants Replaced with title_parser Imports
-420 " 🔄 monitor.rs Duplicate extract_file Tests Removed — Now Covered by title_parser.rs Tests
-421 " 🔄 Task 21 Complete: cargo check Passes Clean After title_parser Dedup Refactor
-422 8:52p 🔴 collect_descendants Cycle Test Fails — Child Pushed to result Before Visited Check
-423 " ⚖️ collect_descendants Cycle Test Fixed by Adjusting Expected Value, Not Fixing the Push-Before-Check Order
-424 " 🔄 Task 21 Committed: refactor(monitor) deduplicate title parsing and process walking
-425 " 🔵 training.rs Task 39 Investigation: reset_assignment_model_knowledge_sync Deletes assignment_feedback
-426 8:53p 🔵 Task 39 Callsite Map: Single Reset Button in AiModelStatusCard Calls Full Delete Including Feedback
-427 " 🟣 Task 39: Soft Reset Implemented — reset_model_weights_sync Preserves assignment_feedback
-428 8:54p 🟣 Task 39: Two Tauri IPC Commands Replace Single reset_assignment_model_knowledge
-429 " ✅ Task 39 Rust Backend Complete: lib.rs Updated and Tauri Backend Compiles Clean
-430 " ✅ Task 39: TypeScript ai.ts Updated with resetModelWeights and resetModelFull Exports
-432 9:02p ✅ Task 82: Dev-Only Artifact Cleanup Committed
-433 9:03p ✅ CHANGELOG.md Created — Full Plan Implementation Summary
-434 " 🔵 PARITY.md Current State: Two Open macOS Gaps Remain
-435 9:04p 🔵 LAN Server HTTP Endpoint Map — Full API Surface in lan_server.rs
-436 " ✅ Task 93: docs/SECURITY_AUDIT.md Created — LAN/Online HTTP Endpoint Security Roadmap
-437 9:05p ✅ Task 91 Marked Complete in plan_implementacji.md — PARITY.md Finalization Done
-438 9:06p ✅ Tasks 91–93 All Marked Complete — P5 Documentation Phase Finished
-439 9:07p 🔵 Dashboard Uses ESLint Flat Config (eslint.config.js) — Not Legacy .eslintrc
-440 " 🟣 Task 90: Zustand Selector Lint Rule Added to eslint.config.js
-441 9:09p 🔵 ESLint Must Be Run from dashboard/ Subdirectory, Not Project Root
-442 " 🔵 Pre-existing ESLint Errors in Dashboard — 15 Errors, 8 Warnings; Zustand Rule Produces Zero Violations
-443 " 🟣 Task 90 ESLint Zustand Rule Verified Working via Synthetic Fixture Test
-444 9:10p ✅ Task 90 Committed — Zustand Lint Rule Shipped in commit 92ffacc
-445 " 🔵 run_db_blocking Signature Confirmed — Takes AppHandle, Returns async Result
-446 9:11p 🔄 Task 27 (Part 1): manual_sessions.rs — All 5 Commands Migrated to run_db_blocking
-447 " 🔴 Task 27 Compile Error — report.rs Calls get_manual_sessions Synchronously Inside run_app_blocking
-448 " 🔄 Task 27: report.rs Fixed After manual_sessions Async Migration — Compiles Clean
-450 9:17p 🔵 TIMEFLOW DB Schema Version is 22 with Once-Guard Initialization Pattern
-452 " 🔵 db.rs Has No Test Module — initialize_database_file Is Private
-453 " 🔵 dashboard/src-tauri Has No dev-dependencies — tempfile Crate Not Present
-454 " 🔵 TIMEFLOW Schema Is Fully Migration-Driven — No Static CREATE TABLE in db.rs
-455 " 🔵 TIMEFLOW Uses Hybrid Schema: Base Tables in schema.sql + Additional Tables via Migrations
-456 9:18p 🟣 Task 89: DB Schema Regression Test Added to db.rs
-457 " 🔴 LATEST_SCHEMA_VERSION Visibility Fixed for Cross-Module Test Access
-458 " 🔵 Task 89 Test Fails: Rust Borrow Checker Rejects Explicit drop(conn) While stmt Borrows It
-459 9:19p 🔴 Task 89 Test: Borrow Checker Fix — stmt Scoped to Inner Block
-460 " 🟣 Task 89: DB Schema Regression Test Passing
-461 " ✅ Task 89 Marked Complete in plan_implementacji.md
-464 9:23p ✅ Task 89 Committed — commit 373fffa on branch codex
-466 " 🟣 Task 25: Chunked Upload with Progress Callbacks Implemented in LAN Sync
-468 " ✅ Task 25 Chunked Upload: Daemon Compiles Clean, All 29 Tests Pass
-469 9:24p ✅ Task 25 Marked Complete in plan_implementacji.md
-470 " ✅ Task 25 Committed — commit bce94a7 on branch codex
-471 9:25p 🔵 Task 19 Investigation: Session Gap vs Idle Threshold — Current Behavior
-472 " 🔴 Task 19: Idle Transition Now Clears active_sessions — Prevents Inflated Session Durations
-473 " ✅ Task 19 Marked Complete in plan_implementacji.md with Implementation Note
-474 9:26p ✅ Task 19 Committed — commit fcca7e8 on branch codex
-475 9:29p ✅ plan_pozostale.md — Supplementary TODO Snapshot Created and Committed
-S227 plan_pozostale.md — Supplementary TODO Snapshot Created and Committed (Apr 24 at 9:29 PM)
+### Apr 27, 2026
+S758 LAN Sync Pairing Asymmetry Fix — Full implementation of mutual pairing fix for Windows master / macOS client divergence (Apr 27 at 12:56 PM)
+S764 LAN Sync Completely Broken After Apr 27 Pairing Refactor — Both Delta and Force Sync Non-Functional (Apr 27 at 1:11 PM)
+S770 LAN Sync — Slave (Windows/MICZ_NX) not receiving full database after sync; investigation of root cause (Apr 27 at 1:17 PM)
+S779 LAN Sync Completely Broken After Last Refactoring Session — Both Delta and Force Sync Non-Functional (Apr 27 at 1:25 PM)
+1008 1:27p 🔵 __cfab_demon sync_markers and sync_merge_log Full Schema Confirmed
+1009 1:28p 🔵 __cfab_demon LAN Sync Merge Logic Detailed — Sessions, Manual Sessions, Tombstones Resolution Strategy
+1011 " 🔵 __cfab_demon sessions.updated_at Triggers — Critical Sync Guard Behavior Confirmed
+1012 1:30p 🟣 __cfab_demon — Diagnostic Sync Roundtrip Test Added to sync_common.rs
+1013 " 🔵 __cfab_demon Is a Binary-Only Crate — Tests Must Use `cargo test` Not `cargo test --lib`
+1014 " 🔵 __cfab_demon Diagnostic Roundtrip Test PASSES — Core Sync Merge Logic Is Correct
+1015 " 🟣 __cfab_demon — Second Diagnostic Test Added: Shared App Name with Different Local IDs
+S780 LAN Sync Data Loss — Detailed Diagnostic State Captured Before Two-Machine Test (Apr 27 at 1:32 PM)
+1016 1:33p 🔵 LAN Sync Investigation — Work Paused for Two-Machine Compile and Test
+1017 1:34p 🔵 LAN Sync Data Loss — Detailed Diagnostic State Captured Before Two-Machine Test
+S782 LAN Sync Data Loss — Save Investigation Status Before Two-Machine Compile and Test (Apr 27 at 1:34 PM)
+S788 LAN Sync Full Sync Destroys Slave Data — Two-Machine Hardware Test Confirmed, Root Cause Investigation (Apr 27 at 1:34 PM)
+1018 2:16p 🔵 LAN Sync Full Sync Destroys Slave's Own Data — Critical Bug Confirmed via Hardware Test
+1020 2:17p 🔵 LAN Sync Slave-Side Full Sync Flow Mapped — verify_merge_integrity Confirmed to Zero project_id
+1021 " 🔵 LAN Sync Data Loss Root Cause — verify_merge_integrity Deletes Sessions with Orphan app_id
+S790 LAN Sync Completely Broken After Refactor — Both Delta and Force Sync Non-Functional (Apr 27 at 2:18 PM)
+1023 2:20p 🔵 LAN Sync Completely Broken After Refactor — Both Delta and Force Sync Non-Functional
+S795 Version Bumped to 0.1.5699 for LAN Sync Fix Release (Apr 27 at 2:20 PM)
+1024 2:22p 🔴 LAN Full Sync Data Loss — Tombstones Suppressed in Full Snapshots
+1025 " 🔴 LAN Pull Endpoint — full_sync Flag Added to Suppress Tombstones on Slave Side
+1026 " 🔴 sync_common::build_full_export — Switched to Tombstone-Free Snapshot
+1027 2:23p 🔵 Orchestrator pull_body Missing full_sync Flag
+1028 " 🔴 Orchestrator pull_body Now Passes full_sync Flag to Slave
+1029 2:24p 🔴 Merge Ordering Fix — Tombstones Now Applied Before Record Inserts
+1031 2:26p 🔵 LAN Sync Fixes Compile Clean — cargo check Passes With No Errors
+1033 " 🟣 Regression Test Added: Full Sync Must Not Lose Records When Tombstones Present
+1034 2:27p 🔴 LAN Sync Data-Loss Fix Verified — All 3 Diagnostic Tests Pass GREEN
+1035 " 🔴 LAN Sync Fix Complete — Full Test Suite 34/34 PASS
+1036 2:28p 🔵 Tauri Dashboard Bridge Also Compiles Clean After LAN Sync API Changes
+1037 " ✅ Version Bumped to 0.1.5699 for LAN Sync Fix Release
+S796 LAN Sync Completely Broken After Refactor — Critical Data Loss Fixed (Tombstones in Full Sync + Merge Ordering) (Apr 27 at 2:28 PM)
+### Apr 30, 2026
+1241 7:54p 🔵 Synchronization Audit Initiated for cfab_demon Application
+1242 " 🔵 cfab_demon (TimeFlow) Dual-Mode Sync Architecture Mapped
+1243 " 🔵 Sync Merge Engine: Last-Write-Wins with Tombstones, Mutex, and DB Freeze
+1244 " 🔵 Frontend Sync Orchestration: SSE Push + Job Pool Intervals + Exponential Backoff
+1245 7:55p 🔵 Sync Architecture Audit: useJobPool + LAN Sync System
+1246 7:56p 🔵 run_lan_sync Rust Command Ignores the `since` Timestamp Parameter
+1247 " 🔵 invokeMutation Auto-Fires LOCAL_DATA_CHANGED_EVENT, Triggering 1.5s Sync Debounce
+1248 " 🔵 Online Sync Settings Stored Plaintext Including auth_token
+1249 " 🔵 Database Schema Uses updated_at Triggers and Tombstones Table for Delta Sync
+1250 " 🔵 useJobPool Event Loop: 1s Tick + Visibility Guard + Startup Sync
+1251 7:57p 🔵 Sync Test Coverage: 18 Frontend + 13 Rust Tests Pass; No Tests for Core Sync Logic
+1252 " 🔵 Daemon Config: sync_mode Field ("session"/"async"/"auto") + tombstone GC + group_id
+1253 " 🔵 Security Audit Document: 20 HTTP Endpoints, None Yet Reviewed; 4 Known Gaps
+1255 " 🔵 LAN Sync Orchestration: 13-Step Master Flow with MERGE_MUTEX, SyncGuard, and Pre-Sync Backup
+1254 7:58p 🔵 LAN Server Security: Access-Control-Allow-Origin: * on All Responses + Unauthenticated Trigger Endpoints
+1256 7:59p 🔵 LAN Sync Broken Across All Modes — Master/Slave Merge Flow Identified
+1257 8:08p 🟣 LAN Sync Convergence Snapshot — Master Pulls, Merges, Pushes Back to Slave
+1258 8:10p 🟣 Rust Unit Test Suite Added to sync_common.rs — Convergence Protocol Verified In-Memory
+1259 " 🔵 sync_common.rs — MERGE_MUTEX Serializes Concurrent Merges; normalize_ts Handles Mixed Timestamp Formats
+1260 " 🟣 LanSyncSimulator Test Harness Added — Three Parametric Tests Cover Delta+Full Mode Convergence
+1261 8:11p 🟣 LanSyncSimulator Tests Pass — 10/13 sync_common Tests Green; Dashboard Bumped to v0.1.5699
+1262 " 🔴 Core Merge Logic Fixed — Tombstones Now Included in Full Snapshots With Local Guard Preventing Row Resurrection
+1263 8:15p 🔵 TIMEFLOW Project Build Structure — Rust Workspace with Tauri Dashboard and Daemon Binary
+1264 " 🟣 scripts/lan_sync_simulator.py — Python Harness to Run LAN Sync Rust Tests by Suite Name
+1265 " 🟣 scripts/lan_sync_simulator.py Verified Working — 3 Tests Pass in 0.01s, Cargo.lock Auto-Restored
 
-Access 343k tokens of past work via get_observations([IDs]) or mem-search skill.
+Access 954k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>
