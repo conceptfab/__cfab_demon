@@ -5040,7 +5040,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-dashboard"
-version = "0.1.5699"
+version = "0.1.5700"
 dependencies = [
  "chrono",
  "dotenvy",
