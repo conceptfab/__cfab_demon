@@ -343,8 +343,8 @@ def build_dashboard_macos(dist: Path) -> None:
         print("   'node' nie znaleziony w PATH. Zainstaluj Node.js: https://nodejs.org")
         return
 
-    if not (DASHBOARD_DIR / "node_modules").exists():
-        print("   node_modules brakuje — uruchamiam 'npm install'...")
+    if not (DASHBOARD_DIR / "node_modules" / ".bin" / "tauri").exists():
+        print("   Brak zaleznosci (tauri) — uruchamiam 'npm install'...")
         result = subprocess.run(["npm", "install"], cwd=DASHBOARD_DIR)
         if result.returncode != 0:
             die("npm install zakonczyl sie bledem — sprawdz logi powyzej.")
