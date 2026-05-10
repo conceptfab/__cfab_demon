@@ -113,7 +113,7 @@ export function WeeklyHeatmap({ weeklyHourlyGrid }: WeeklyHeatmapProps) {
       {/* Hour labels */}
       <div className="flex text-xs text-muted-foreground mb-1 pl-24">
         {Array.from({ length: 24 }, (_, i) => (
-          <div key={i} className="flex-1 text-center">
+          <div key={`hour-label-${i}`} className="flex-1 text-center">
             {i.toString().padStart(2, '0')}
           </div>
         ))}

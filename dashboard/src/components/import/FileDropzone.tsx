@@ -140,8 +140,8 @@ export function FileDropzone() {
             </div>
             {results
               .filter((r) => !r.success)
-              .map((r, i) => (
-                <p key={i} className="text-xs text-destructive">
+              .map((r) => (
+                <p key={r.file_path} className="text-xs text-destructive">
                   {r.file_path}: {r.error}
                 </p>
               ))}

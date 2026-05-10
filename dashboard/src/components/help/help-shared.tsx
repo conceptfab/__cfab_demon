@@ -70,7 +70,7 @@ export function SectionHelp({
           </h4>
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
             {features.map((f, i) => (
-              <li key={i} className="flex items-start gap-3 text-sm group">
+              <li key={`feature-${i}-${f}`} className="flex items-start gap-3 text-sm group">
                 <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary transition-colors" />
                 <span className="text-foreground/80 leading-snug">{f}</span>
               </li>

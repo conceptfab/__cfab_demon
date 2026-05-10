@@ -22,9 +22,9 @@ export function TopAppsChart({ apps }: Props) {
           {apps.length === 0 && (
             <p className="py-3 text-xs text-muted-foreground text-center">{t("components.top_apps.no_data")}</p>
           )}
-          {apps.map((app, i) => (
+          {apps.map((app) => (
             <div
-              key={`${app.name}-${i}`}
+              key={app.name}
               className="space-y-1 rounded-md p-1.5 -mx-1.5 cursor-pointer transition-colors hover:bg-muted/40"
             >
               <div className="flex items-start justify-between gap-2">

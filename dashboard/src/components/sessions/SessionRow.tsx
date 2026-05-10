@@ -211,9 +211,9 @@ export const SessionRow = memo(function SessionRow({
           <div className="flex items-center justify-between min-w-0">
             <div className="flex flex-wrap gap-x-2 gap-y-0.5 content-center overflow-hidden h-4">
               {s.files.length > 0 ? (
-                s.files.slice(0, 5).map((f, i) => (
+                s.files.slice(0, 5).map((f) => (
                   <div
-                    key={i}
+                    key={f.file_name}
                     className="flex items-center gap-0.5 text-[9px] leading-none opacity-40"
                   >
                     <span className="truncate max-w-[120px]">
@@ -404,9 +404,9 @@ export const SessionRow = memo(function SessionRow({
         <div className="flex flex-col min-w-0">
           <div className="flex flex-wrap gap-x-3 gap-y-1 content-start overflow-hidden">
             {s.files.length > 0 ? (
-              s.files.map((f, i) => (
+              s.files.map((f) => (
                 <div
-                  key={i}
+                  key={f.file_name}
                   className="flex items-center gap-1 text-[10px] leading-tight"
                 >
                   {f.project_name && f.project_name !== s.project_name && (

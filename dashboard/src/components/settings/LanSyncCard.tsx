@@ -180,7 +180,7 @@ function PairCodeDialog({
             <div className="flex justify-center gap-2 mb-4" onPaste={handlePaste}>
               {digits.map((digit, i) => (
                 <input
-                  key={i}
+                  key={`pin-digit-${i}`}
                   ref={(el) => { inputRefs.current[i] = el; }}
                   type="text"
                   inputMode="numeric"

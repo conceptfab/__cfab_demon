@@ -186,9 +186,9 @@ export function ProjectEstimatesSection({
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {extraInfo?.top_apps.map((app, index) => (
+            {extraInfo?.top_apps.map((app) => (
               <div
-                key={`${app.name}-${index}`}
+                key={app.name}
                 className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-secondary/20"
               >
                 <div

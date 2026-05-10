@@ -133,7 +133,7 @@ export function QuickStart() {
 
       <div className="flex flex-col gap-6 pb-6 w-full border-b border-border/10">
         {steps.map((step, idx) => (
-          <div key={idx} className="flex gap-8 items-start w-full group">
+          <div key={step.title} className="flex gap-8 items-start w-full group">
             <div
               className={cn(
                 'flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset shadow-sm transition-all duration-500',

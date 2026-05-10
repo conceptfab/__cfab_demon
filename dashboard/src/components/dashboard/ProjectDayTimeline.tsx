@@ -526,7 +526,7 @@ export function ProjectDayTimeline({
                       title={`Working hours: ${model.workingRange.label}`}
                     />
                   )}
-                  {row.segments.map((segment, idx) => {
+                  {row.segments.map((segment) => {
                     const left = ((segment.startMs - model.rangeStart) / model.rangeSpan) * 100;
                     const width = ((segment.endMs - segment.startMs) / model.rangeSpan) * 100;
                     const fragmentCount = segment.fragmentCount ?? 1;
@@ -549,7 +549,7 @@ export function ProjectDayTimeline({
                       : "";
                     return (
                       <div
-                        key={`${row.name}-${idx}-${segment.startMs}`}
+                        key={`${row.name}-${segment.startMs}-${segment.endMs}`}
                         className={`absolute top-1 bottom-1 rounded-sm${(onAssignSession || onUpdateSessionRateMultiplier) ? " cursor-context-menu" : ""}`}
                         style={{
                           left: `${Math.max(0, Math.min(100, left))}%`,
@@ -903,12 +903,12 @@ export function ProjectDayTimeline({
                   </p>
                 </div>
                 <div className="max-h-[50vh] space-y-1 overflow-y-auto rounded-md border p-2">
-                  {clusterDetailsSummary.fragments.map((f, idx) => {
+                  {clusterDetailsSummary.fragments.map((f) => {
                     const durationSec = Math.max(0, Math.round((f.endMs - f.startMs) / 1000));
                     const multiplierValue = f.rateMultiplier ?? 1;
                     return (
                       <div
-                        key={`${f.sessionId}-${idx}-${f.startMs}`}
+                        key={`${f.sessionId}-${f.startMs}-${f.endMs}`}
                         className="flex items-center justify-between gap-3 rounded border border-border/60 px-2 py-1.5 text-xs"
                       >
                         <div className="min-w-0">

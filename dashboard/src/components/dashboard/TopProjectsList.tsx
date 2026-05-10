@@ -54,7 +54,7 @@ export function TopProjectsList({
 
   return (
     <div className="space-y-0.5">
-      {projects.map((p, i) => {
+      {projects.map((p) => {
         const projectKey =
           p.project_id == null ? UNASSIGNED_PROJECT_KEY : String(p.project_id);
         const projectLabel = localizeProjectLabel(p.name, {
@@ -66,7 +66,7 @@ export function TopProjectsList({
             : (allProjectsList.find((x) => x.id === p.project_id) ?? null);
         return (
           <div
-            key={`${projectKey}-${i}`}
+            key={projectKey}
             data-project-id={linkedProject?.id}
             data-project-name={linkedProject?.name}
             role="button"

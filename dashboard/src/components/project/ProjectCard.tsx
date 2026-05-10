@@ -295,8 +295,8 @@ function ProjectCardComponent({
                 </p>
               ) : (
                 <div className="space-y-1.5">
-                  {extraInfo?.top_apps.map((app, index) => (
-                    <div key={index} className="flex items-center gap-2 text-xs">
+                  {extraInfo?.top_apps.map((app) => (
+                    <div key={app.name} className="flex items-center gap-2 text-xs">
                       <div
                         className="size-2 shrink-0 rounded-full"
                         style={{ backgroundColor: app.color || '#64748b' }}

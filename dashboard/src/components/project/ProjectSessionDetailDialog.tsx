@@ -146,9 +146,9 @@ export function ProjectSessionDetailDialog({
                   {labels.filesAccessed}
                 </p>
                 <div className="max-h-[200px] overflow-y-auto rounded-md border border-white/5 bg-white/5 p-2 space-y-1">
-                  {session.files.map((file, index) => (
+                  {session.files.map((file) => (
                     <div
-                      key={index}
+                      key={file.file_name}
                       className="flex items-center justify-between gap-4 px-2 py-1.5 rounded hover:bg-white/5 text-[12px] border-b border-white/5 last:border-0"
                     >
                       <span

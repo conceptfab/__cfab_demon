@@ -263,7 +263,7 @@ export function MultiSplitSessionModal({
             <div className="space-y-2">
               {parts.map((part, idx) => (
                 <div
-                  key={`split-part-${idx}`}
+                  key={`split-part-${part.project_id ?? `unassigned-${idx}`}`}
                   className="grid grid-cols-[1.3fr_1fr_80px] items-center gap-2 rounded-lg border border-border/30 bg-secondary/5 px-3 py-2"
                 >
                   <div className="flex items-center gap-2 overflow-hidden">
@@ -338,7 +338,7 @@ export function MultiSplitSessionModal({
                         : '#6b7280';
                     return (
                       <div
-                        key={`preview-${idx}`}
+                        key={`preview-${part.project_id ?? `unassigned-${idx}`}`}
                         style={{
                           width: `${part.percent}%`,
                           backgroundColor: projectColor,

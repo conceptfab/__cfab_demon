@@ -165,7 +165,7 @@ export function PmTemplateManager({ open, onClose }: Props) {
                   {edit.foldersText.split('\n').filter((l) => l.trim()).map((f, i) => {
                     const resolved = f.trim().replace('{name}', exampleName);
                     return (
-                      <div key={i} className="text-muted-foreground">
+                      <div key={`folder-${i}-${f}`} className="text-muted-foreground">
                         {String(i).padStart(2, '0')}_{exampleCode}{resolved}
                       </div>
                     );

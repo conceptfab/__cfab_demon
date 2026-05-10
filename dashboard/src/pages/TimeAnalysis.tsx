@@ -143,8 +143,8 @@ export function TimeAnalysis() {
                   stroke="none"
                   isAnimationActive={isAnimationActive}
                 >
-                  {pieChartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.fill} />
+                  {pieChartData.map((entry) => (
+                    <Cell key={entry.name} fill={entry.fill} />
                   ))}
                 </Pie>
                 {hasPieProjectData && (
@@ -172,9 +172,9 @@ export function TimeAnalysis() {
             </div>
             <div className="flex w-full flex-col gap-2.5 overflow-y-auto pr-1 md:max-h-full md:min-w-[220px] md:flex-1 md:pr-4">
               {hasPieProjectData ? (
-                d.pieData.map((entry, i) => (
+                d.pieData.map((entry) => (
                   <div
-                    key={i}
+                    key={entry.name}
                     className="flex items-center justify-between gap-4 text-[11px]"
                   >
                     <div className="flex items-center gap-2.5">
