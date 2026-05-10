@@ -1,13 +1,7 @@
-pub use timeflow_shared::process_utils::no_console;
+// Windows process snapshot via tlhelp32.
 
-#[derive(Debug, Clone)]
-pub struct ProcessEntryInfo {
-    pub process_id: u32,
-    pub parent_process_id: u32,
-    pub exe_name: String,
-}
+use crate::platform::process_info::ProcessEntryInfo;
 
-#[cfg(windows)]
 pub fn collect_process_entries() -> Option<Vec<ProcessEntryInfo>> {
     use winapi::um::handleapi::{CloseHandle, INVALID_HANDLE_VALUE};
     use winapi::um::tlhelp32::{
@@ -47,9 +41,4 @@ pub fn collect_process_entries() -> Option<Vec<ProcessEntryInfo>> {
         CloseHandle(snapshot);
         Some(entries)
     }
-}
-
-#[cfg(not(windows))]
-pub fn collect_process_entries() -> Option<Vec<ProcessEntryInfo>> {
-    Some(Vec::new())
 }

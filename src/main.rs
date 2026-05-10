@@ -1,34 +1,40 @@
-// TimeFlow Demon - Windows tray daemon with application monitor
-#![windows_subsystem = "windows"]
+// TIMEFLOW Demon - cross-platform tray daemon with application monitor.
+// `windows_subsystem` ukrywa konsolę na Windows; na macOS atrybut nie obowiązuje.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 use std::process::Command;
-use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use lan_server::SyncGuard;
 
 mod activity;
 mod config;
-mod firewall;
-mod foreground_hook;
 mod i18n;
 mod lan_common;
 mod lan_discovery;
+mod lan_pair_throttle;
 mod lan_pairing;
 mod lan_server;
 mod lan_sync_orchestrator;
+#[cfg(windows)]
+mod monitor;
+#[cfg(target_os = "macos")]
+#[path = "monitor_macos.rs"]
+mod monitor;
+mod online_sync;
+mod platform;
+mod sftp_client;
+mod storage;
+mod title_parser;
 mod sync_common;
 mod sync_encryption;
-mod sftp_client;
-mod online_sync;
-mod monitor;
-mod single_instance;
-mod storage;
+#[cfg(target_os = "macos")]
+mod sync_trigger;
 mod tracker;
-mod tray;
-mod win_process_snapshot;
-use crate::win_process_snapshot::no_console;
+
+use timeflow_shared::process_utils::no_console;
 pub use timeflow_shared::daily_store;
 
 /// Application name — single constant used everywhere
@@ -53,7 +59,7 @@ fn main() {
     log::logger().flush();
 
     // Single instance lock
-    let _guard = match single_instance::try_acquire() {
+    let _guard = match platform::single_instance::try_acquire() {
         Ok(guard) => guard,
         Err(msg) => {
             log::warn!("{}", msg);
@@ -68,20 +74,21 @@ fn main() {
         log::warn!("Failed to create application directories: {}", e);
     }
 
-    // Ensure Windows Firewall allows LAN discovery and sync traffic
-    firewall::ensure_firewall_rules();
+    // Ensure firewall (Windows) allows LAN discovery and sync traffic.
+    // On macOS this is a no-op (user prompt on first bind).
+    platform::firewall::ensure_firewall_rules();
 
     // Monitor thread control signal
     let stop_signal = Arc::new(AtomicBool::new(false));
 
-    // Start event-driven foreground detection (SetWinEventHook)
-    let (foreground_signal, hook_handle) = foreground_hook::start(stop_signal.clone());
+    // Start event-driven foreground detection (SetWinEventHook on Windows,
+    // polling-only stub on macOS in Phase 1).
+    let (foreground_signal, hook_handle) = platform::foreground::start(stop_signal.clone());
 
     // Shared LAN sync state (role, freeze, markers)
     let sync_state = Arc::new(lan_server::LanSyncState::new());
 
     // Start monitoring thread with foreground signal for instant wake
-    // Pass sync_state so tracker skips saves when db_frozen is true
     let monitor_handle = tracker::start(
         stop_signal.clone(),
         Some(foreground_signal.clone()),
@@ -91,10 +98,18 @@ fn main() {
     // Start LAN discovery thread (UDP broadcast for peer-to-peer sync)
     let discovery_handle = lan_discovery::start(stop_signal.clone(), Some(sync_state.clone()));
 
+    // Drop paired-device entries that were poisoned with an empty secret by
+    // the previous bridge bug (sent slave_secret="" because /lan/local-identity
+    // stopped returning the secret). Such entries cannot authenticate, so
+    // sync would return 412 not_paired forever — better to force a clean
+    // re-pair on next launch.
+    let _ = lan_pairing::cleanup_empty_secrets();
+
     // Start LAN HTTP server (sync endpoints — works even without dashboard)
     let lan_server_handle = lan_server::start(stop_signal.clone(), sync_state.clone());
 
     // Optionally trigger online sync on startup
+    let mut online_sync_handle: Option<std::thread::JoinHandle<()>> = None;
     {
         let online_settings = config::load_online_sync_settings();
         if !(online_settings.enabled && online_settings.auto_sync_on_startup
@@ -113,11 +128,13 @@ fn main() {
         {
             let sync_state_clone = sync_state.clone();
             let stop_signal_clone = stop_signal.clone();
-            std::thread::spawn(move || {
+            online_sync_handle = Some(std::thread::spawn(move || {
                 // Wait 10 seconds for daemon to fully start up
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                if stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
-                    return;
+                for _ in 0..10 {
+                    if stop_signal_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 if sync_state_clone.sync_in_progress.compare_exchange(
                     false, true,
@@ -137,12 +154,12 @@ fn main() {
                     }
                     // _guard drops here, resets flag
                 }
-            });
+            }));
         }
     }
 
     // Start tray icon event loop (pass sync_state for sync icon)
-    let tray_action = tray::run(stop_signal.clone(), Some(sync_state.clone()));
+    let tray_action = platform::tray::run(stop_signal.clone(), Some(sync_state.clone()));
 
     // After tray closes — cleanly stop all threads
     stop_signal.store(true, Ordering::SeqCst);
@@ -160,12 +177,20 @@ fn main() {
     if lan_server_handle.join().is_err() {
         log::error!("LAN server thread panicked");
     }
+    if let Some(handle) = online_sync_handle.take() {
+        if handle.join().is_err() {
+            log::error!("Online sync thread panicked");
+        } else {
+            log::info!("Online sync thread joined cleanly");
+        }
+    }
 
     log::info!("{} - stopped", APP_NAME);
     log::logger().flush();
 
-    if matches!(tray_action, tray::TrayExitAction::Restart) {
+    if matches!(tray_action, platform::tray_common::TrayExitAction::Restart) {
         drop(_guard);
+        std::thread::sleep(Duration::from_millis(200));
         if let Ok(exe) = std::env::current_exe() {
             let mut cmd = Command::new(exe);
             no_console(&mut cmd);
@@ -178,7 +203,9 @@ fn main() {
     }
 }
 
+#[cfg(windows)]
 fn show_already_running_message(msg: &str) {
+    use std::ptr;
     let title: Vec<u16> = APP_NAME.encode_utf16().chain(std::iter::once(0)).collect();
     let text: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
     unsafe {
@@ -189,6 +216,26 @@ fn show_already_running_message(msg: &str) {
             winapi::um::winuser::MB_OK | winapi::um::winuser::MB_ICONINFORMATION,
         );
     }
+}
+
+#[cfg(target_os = "macos")]
+fn show_already_running_message(msg: &str) {
+    let escaped_msg = msg.replace('\\', "\\\\").replace('"', "\\\"");
+    let escaped_title = APP_NAME.replace('\\', "\\\\").replace('"', "\\\"");
+    let script = format!(
+        "display dialog \"{}\" buttons {{\"OK\"}} default button \"OK\" with title \"{}\"",
+        escaped_msg, escaped_title
+    );
+    if Command::new("osascript").arg("-e").arg(script).status().is_err() {
+        eprintln!("{}: {}", APP_NAME, msg);
+    }
+    log::warn!("{}", msg);
+}
+
+#[cfg(all(not(windows), not(target_os = "macos")))]
+fn show_already_running_message(msg: &str) {
+    eprintln!("{}: {}", APP_NAME, msg);
+    log::warn!("{}", msg);
 }
 
 /// Install panic hook so panics are logged to file instead of being swallowed
@@ -211,7 +258,7 @@ fn install_panic_hook() {
     }));
 }
 
-/// Initialize file logging to %APPDATA%/TimeFlow/logs/daemon.log.
+/// Initialize file logging to logs_dir()/daemon.log.
 /// Falls back to exe directory if config_dir is unavailable.
 fn init_logging() {
     use std::fs;
@@ -238,10 +285,20 @@ fn init_logging() {
     if log_path.exists() {
         if let Ok(meta) = fs::metadata(&log_path) {
             if meta.len() > max_bytes {
-                let _ = fs::OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .open(&log_path);
+                let rotated_path = log_path.with_file_name(format!(
+                    "{}.1",
+                    log_path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("daemon.log")
+                ));
+                let _ = fs::remove_file(&rotated_path);
+                if fs::rename(&log_path, &rotated_path).is_err() {
+                    let _ = fs::OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .open(&log_path);
+                }
             }
         }
     }
@@ -253,7 +310,6 @@ fn init_logging() {
     {
         Ok(f) => f,
         Err(e) => {
-            // Cannot open log file — write diagnostic to a fallback location
             let fallback = log_path.with_extension("err");
             let _ = fs::write(&fallback, format!("Failed to open {}: {}\n", log_path.display(), e));
             return;
@@ -298,7 +354,6 @@ impl log::Log for FileLogger {
 
     fn log(&self, record: &log::Record) {
         if self.enabled(record.metadata()) {
-            // Recover from poison — logging should never silently stop
             let mut guard = match self.writer.lock() {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),

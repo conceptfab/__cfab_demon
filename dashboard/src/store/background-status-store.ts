@@ -139,13 +139,11 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
             currentState.daemonStatus,
             result.daemon_status,
           ) ||
-          !areAssignmentStatusesEqual(currentState.aiStatus, result.ai_status) ||
           currentState.todayUnassigned !== nextTodayUnassigned ||
           currentState.allUnassigned !== nextAllUnassigned
         ) {
           set({
             daemonStatus: result.daemon_status,
-            aiStatus: result.ai_status,
             todayUnassigned: nextTodayUnassigned,
             allUnassigned: nextAllUnassigned,
           });

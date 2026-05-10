@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::OnceLock;
 
 /// Activity type categories for file activity tagging.
@@ -17,13 +18,17 @@ impl ActivityType {
             Self::Design => "design",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for ActivityType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "coding" => Some(Self::Coding),
-            "browsing" => Some(Self::Browsing),
-            "design" => Some(Self::Design),
-            _ => None,
+            "coding" => Ok(Self::Coding),
+            "browsing" => Ok(Self::Browsing),
+            "design" => Ok(Self::Design),
+            _ => Err(()),
         }
     }
 }
@@ -33,7 +38,7 @@ pub fn default_classification_map() -> &'static HashMap<&'static str, ActivityTy
     static MAP: OnceLock<HashMap<&'static str, ActivityType>> = OnceLock::new();
     MAP.get_or_init(|| {
         let mut map = HashMap::new();
-        // Coding
+        // Coding (Windows .exe + macOS localizedName lowercase)
         for exe in &[
             "code.exe",
             "code-insiders.exe",
@@ -47,10 +52,22 @@ pub fn default_classification_map() -> &'static HashMap<&'static str, ActivityTy
             "notepad++.exe",
             "vim.exe",
             "nvim.exe",
+            // macOS
+            "visual studio code",
+            "code",
+            "cursor",
+            "intellij idea",
+            "pycharm",
+            "webstorm",
+            "clion",
+            "rider",
+            "xcode",
+            "zed",
+            "nova",
         ] {
             map.insert(*exe, ActivityType::Coding);
         }
-        // Browsing
+        // Browsing (Windows .exe + macOS localizedName lowercase)
         for exe in &[
             "chrome.exe",
             "msedge.exe",
@@ -60,10 +77,19 @@ pub fn default_classification_map() -> &'static HashMap<&'static str, ActivityTy
             "opera_gx.exe",
             "vivaldi.exe",
             "arc.exe",
+            // macOS
+            "google chrome",
+            "microsoft edge",
+            "firefox",
+            "brave browser",
+            "opera",
+            "vivaldi",
+            "arc",
+            "safari",
         ] {
             map.insert(*exe, ActivityType::Browsing);
         }
-        // Design
+        // Design (Windows .exe + macOS localizedName lowercase)
         for exe in &[
             "figma.exe",
             "photoshop.exe",
@@ -72,6 +98,19 @@ pub fn default_classification_map() -> &'static HashMap<&'static str, ActivityTy
             "gimp-2.10.exe",
             "inkscape.exe",
             "adobexd.exe",
+            // macOS
+            "figma",
+            "adobe photoshop 2024",
+            "adobe photoshop 2025",
+            "adobe illustrator 2024",
+            "adobe illustrator 2025",
+            "adobe xd",
+            "blender",
+            "gimp",
+            "inkscape",
+            "sketch",
+            "affinity designer",
+            "affinity photo",
         ] {
             map.insert(*exe, ActivityType::Design);
         }
@@ -89,7 +128,7 @@ pub fn classify_activity_type(
     // Check overrides first
     if let Some(overrides) = overrides {
         if let Some(type_str) = overrides.get(&exe) {
-            return ActivityType::from_str(type_str);
+            return type_str.parse().ok();
         }
     }
 

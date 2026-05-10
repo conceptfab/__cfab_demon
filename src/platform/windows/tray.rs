@@ -12,8 +12,10 @@ use timeflow_shared::session_settings;
 
 use crate::i18n::{self, Lang, TrayText};
 use crate::lan_server::SyncGuard;
-use crate::win_process_snapshot::{collect_process_entries, no_console};
+use crate::platform::process_snapshot::collect_process_entries;
+use crate::platform::tray_common::TrayExitAction;
 use crate::APP_NAME;
+use timeflow_shared::process_utils::no_console;
 
 const TRAY_DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 const TRAY_ATTENTION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
@@ -32,13 +34,6 @@ fn set_menu_item_text(item: &nwg::MenuItem, text: &str) {
             );
         }
     }
-}
-
-/// Tray loop exit action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrayExitAction {
-    Exit,
-    Restart,
 }
 
 struct AttentionState {

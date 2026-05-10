@@ -7,7 +7,7 @@ use winapi::um::processthreadsapi::{GetProcessTimes, OpenProcess};
 
 use crate::activity::ActivityType;
 
-use super::{classify_activity_type, filetime_to_u64, get_exe_name_and_creation_time};
+use super::{filetime_to_u64, get_exe_name_and_creation_time};
 
 /// Cache PID -> metadata used for PID reuse validation and detected path hints.
 #[derive(Debug, Clone)]
@@ -87,7 +87,8 @@ pub(crate) fn ensure_pid_cache_entry(
     }
 
     let (exe_name, creation_time) = get_exe_name_and_creation_time(pid)?;
-    let activity_type = classify_activity_type(&exe_name);
+    let activity_type =
+        timeflow_shared::activity_classification::classify_activity_type(&exe_name, None);
     pid_cache.insert(
         pid,
         PidCacheEntry {

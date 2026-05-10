@@ -21,6 +21,7 @@ export function HelpOnlineSyncSection() {
         t18n('help_page.server_snapshot_pruned_scenario_if_the_server_payload_wa'),
         t18n('help_page.sync_logging_you_can_enable_file_logging_for_synchroniza'),
         t18n('help_page.online_sync_daemon_mode'),
+        t18n('help_page.online_sync_cancel'),
         t18n('help_page.delta_sync_description'),
         t18n('help_page.online_sync_sse_realtime'),
         t18n('help_page.license_activation'),

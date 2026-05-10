@@ -1536,7 +1536,10 @@ mod tests {
             CREATE TABLE project_folders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 path TEXT NOT NULL UNIQUE,
-                added_at TEXT NOT NULL
+                added_at TEXT NOT NULL,
+                color TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
+                badge TEXT NOT NULL DEFAULT ''
             );",
         )
         .expect("schema");

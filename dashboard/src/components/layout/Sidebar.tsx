@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent } from 'react';
 import {
   LayoutDashboard,
@@ -29,12 +29,12 @@ import { AppTooltip } from '@/components/ui/app-tooltip';
 import { useUIStore } from '@/store/ui-store';
 import { useBackgroundStatusStore } from '@/store/background-status-store';
 import { lanSyncApi } from '@/lib/tauri';
-import type { LanPeer } from '@/lib/lan-sync-types';
 import { loadLanSyncSettings, loadLanSyncState, saveLanSyncState } from '@/lib/lan-sync';
 import { useDataStore } from '@/store/data-store';
 import { BugHunter } from './BugHunter';
 import { helpTabForPage } from '@/lib/help-navigation';
 import { tryStartWindowDrag } from '@/lib/window-drag';
+import { isMacOS } from '@/lib/platform';
 import { getAiModeLabel, hasPendingAssignmentModelTrainingData } from '@/lib/assignment-model';
 import {
   getOnlineSyncIndicatorSnapshot,
@@ -122,8 +122,11 @@ function StatusIndicator({
 
 export function Sidebar() {
   const { t, i18n } = useTranslation();
-  const { currentPage, setCurrentPage, helpTab, setHelpTab, firstRun } =
-    useUIStore();
+  const currentPage = useUIStore((s) => s.currentPage);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const helpTab = useUIStore((s) => s.helpTab);
+  const setHelpTab = useUIStore((s) => s.setHelpTab);
+  const firstRun = useUIStore((s) => s.firstRun);
   const status = useBackgroundStatusStore((s) => s.daemonStatus);
   const aiStatus = useBackgroundStatusStore(
     (s) => s.aiStatus as AssignmentModelStatus | null,
@@ -141,15 +144,33 @@ export function Sidebar() {
   const lanIsSlave = useBackgroundStatusStore((s) => s.lanIsSlave);
   const refreshLanPeers = useBackgroundStatusStore((s) => s.refreshLanPeers);
   const [lanSyncing, setLanSyncing] = useState(false);
-  const [lanSyncStatus, setLanSyncStatus] = useState<'idle' | 'ok' | 'error'>('idle');
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
   const [lanScanning, setLanScanning] = useState(false);
+  const lanSyncMessageTimerRef = useRef<number | null>(null);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+
+  const clearLanSyncMessageLater = useCallback((delayMs: number) => {
+    if (lanSyncMessageTimerRef.current) {
+      window.clearTimeout(lanSyncMessageTimerRef.current);
+    }
+    lanSyncMessageTimerRef.current = window.setTimeout(() => {
+      lanSyncMessageTimerRef.current = null;
+      setLanSyncMessage(null);
+    }, delayMs);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (lanSyncMessageTimerRef.current) {
+        window.clearTimeout(lanSyncMessageTimerRef.current);
+        lanSyncMessageTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleLanSync = useCallback(async () => {
     if (!lanPeer || lanSyncing || lanIsSlave) return;
     setLanSyncing(true);
-    setLanSyncStatus('idle');
     setLanSyncMessage(t('settings.lan_sync.syncing'));
     try {
       // Ensure our server is running so the peer can push back
@@ -188,24 +209,22 @@ export function Sidebar() {
         peers: [lanPeer],
       });
       triggerRefresh('lan_sync_pull');
-      setLanSyncStatus('ok');
       setLanSyncMessage(t('layout.status.lan_synced'));
-      setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 8_000);
+      clearLanSyncMessageLater(8_000);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.warn('LAN sync failed:', msg);
-      setLanSyncStatus('error');
       if (msg.includes('Ping failed') || msg.includes('refused') || msg.includes('connection') || msg.includes('unreachable')) {
         setLanSyncMessage(t('settings.lan_sync.error_peer_unreachable'));
         void refreshLanPeers();
       } else {
         setLanSyncMessage(msg.length > 60 ? msg.slice(0, 60) + '…' : msg);
       }
-      setTimeout(() => { setLanSyncStatus('idle'); setLanSyncMessage(null); }, 10_000);
+      clearLanSyncMessageLater(10_000);
     } finally {
       setLanSyncing(false);
     }
-  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t]);
+  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t, clearLanSyncMessageLater, refreshLanPeers]);
 
   const handleLanScan = useCallback(async () => {
     if (lanScanning || lanSyncing) return;
@@ -215,8 +234,6 @@ export function Sidebar() {
       const results = await lanSyncApi.scanLanSubnet();
       if (results.length > 0) {
         // Re-poll peers to pick up discovered ones
-        const peers = await lanSyncApi.getLanPeers();
-        const online = peers.find((p) => p.dashboard_running);
         void refreshLanPeers();
       }
     } catch {
@@ -225,7 +242,7 @@ export function Sidebar() {
       setLanScanning(false);
       setLanSyncMessage(null);
     }
-  }, [lanScanning, lanSyncing, t]);
+  }, [lanScanning, lanSyncing, t, refreshLanPeers]);
 
   const [isBugHunterOpen, setIsBugHunterOpen] = useState(false);
   const openContextHelp = useCallback(() => {
@@ -241,8 +258,14 @@ export function Sidebar() {
 
   // LAN peer polling moved to background-status-store (single source of truth)
   useEffect(() => {
-    void refreshLanPeers();
-    const timer = window.setInterval(() => void refreshLanPeers(), 5_000);
+    if (document.visibilityState === 'visible') {
+      void refreshLanPeers();
+    }
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void refreshLanPeers();
+      }
+    }, 5_000);
     return () => clearInterval(timer);
   }, [refreshLanPeers]);
 
@@ -285,9 +308,11 @@ export function Sidebar() {
         className="flex h-12 select-none items-center border-b border-border/25 px-4"
         onMouseDown={handleSidebarDragMouseDown}
       >
-        <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-          TIMEFLOW
-        </span>
+        {!isMacOS() && (
+          <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            TIMEFLOW
+          </span>
+        )}
       </div>
 
       <nav

@@ -1,4 +1,11 @@
-pub fn run(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
+/// Zwraca `true` w `needs_vacuum`, jeśli dedup fizycznie usunął wiersze albo
+/// pula wolnych stron SQLite przekroczyła próg — VACUUM sam NIE może działać
+/// w obrębie transakcji (SQLite wymaga auto-commit), więc przenosimy go
+/// do `run_migrations` po `tx.commit()`.
+pub fn run(
+    db: &rusqlite::Connection,
+    needs_vacuum: &mut bool,
+) -> Result<(), rusqlite::Error> {
     // Add manual_sessions table if it doesn't exist
     let has_manual_sessions: bool = db
         .prepare(
@@ -48,10 +55,10 @@ pub fn run(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
             );
             CREATE UNIQUE INDEX IF NOT EXISTS idx_manual_sessions_unique ON manual_sessions(project_id, start_time, title);",
         )?;
-        log::info!("Running VACUUM after manual_sessions dedup");
-        db.execute_batch("VACUUM;")?;
+        // VACUUM wykonany w post-migration phase (poza transakcją).
+        *needs_vacuum = true;
     } else {
-        // One-time VACUUM for DBs where dedup ran but VACUUM didn't
+        // One-time VACUUM dla DB, w których dedup przebiegł ale VACUUM nie.
         let page_count: i64 = db
             .pragma_query_value(None, "page_count", |row| row.get(0))
             .unwrap_or(0);
@@ -60,11 +67,11 @@ pub fn run(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
             .unwrap_or(0);
         if page_count > 0 && freelist_count > page_count / 4 {
             log::info!(
-                "DB has {} free pages out of {} — running VACUUM",
+                "DB has {} free pages out of {} — will run post-migration VACUUM",
                 freelist_count,
                 page_count
             );
-            db.execute_batch("VACUUM;")?;
+            *needs_vacuum = true;
         }
     }
     Ok(())

@@ -80,7 +80,12 @@ impl Lang {
     }
 }
 
+// Większość wariantów konsumowana jest wyłącznie przez tray Windowsa
+// (platform/windows/tray.rs); na macOS tray ma inne menu i `cargo check`
+// oznacza je jako dead_code. `#[allow]` trzyma ostrzeżenia z daleka bez
+// ukrywania prawdziwych nieużywanych tłumaczeń.
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 pub enum TrayText {
     RunningInBackground,
     UnassignedSessions,
@@ -113,6 +118,7 @@ fn language_file_path() -> Option<PathBuf> {
 }
 
 static LANG_CACHE: Mutex<Option<(SystemTime, Lang)>> = Mutex::new(None);
+const MISSING_LANGUAGE_FILE_MTIME: SystemTime = SystemTime::UNIX_EPOCH;
 
 /// Odczytuje język z pliku współdzielonego z dashboardem.
 /// Fallback: PL (zachowanie dotychczasowe).
@@ -122,10 +128,7 @@ pub fn load_language() -> Lang {
         Some(p) => p,
         None => return Lang::Pl,
     };
-    let mtime = match config::file_mtime(&path) {
-        Some(t) => t,
-        None => return Lang::Pl,
-    };
+    let mtime = config::file_mtime(&path).unwrap_or(MISSING_LANGUAGE_FILE_MTIME);
     // Hold the lock for the entire check-read-update cycle to avoid TOCTOU
     let mut guard = match LANG_CACHE.lock() {
         Ok(g) => g,
@@ -136,9 +139,16 @@ pub fn load_language() -> Lang {
             return *cached_lang;
         }
     }
+    if mtime == MISSING_LANGUAGE_FILE_MTIME {
+        *guard = Some((mtime, Lang::Pl));
+        return Lang::Pl;
+    }
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
-        Err(_) => return Lang::Pl,
+        Err(_) => {
+            *guard = Some((mtime, Lang::Pl));
+            return Lang::Pl;
+        }
     };
     let lang = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
         if parsed

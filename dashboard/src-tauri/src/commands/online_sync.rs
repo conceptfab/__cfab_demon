@@ -110,10 +110,25 @@ pub async fn get_online_sync_progress() -> Result<super::lan_sync::SyncProgress,
     Ok(progress)
 }
 
-/// Cancel online sync — placeholder until daemon exposes /online/cancel-sync endpoint.
+/// Cancel online sync via daemon HTTP endpoint.
 #[tauri::command]
-pub fn cancel_online_sync() -> Result<(), String> {
-    log::warn!("cancel_online_sync called but daemon endpoint not yet implemented");
-    // TODO: implement /online/cancel-sync endpoint in daemon
-    Ok(())
+pub async fn cancel_online_sync() -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let client = build_http_client();
+        let url = format!("{}/online/cancel-sync", DAEMON_BASE);
+        let resp = client
+            .post(&url)
+            .send()
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
+        let status = resp.status();
+        let body = resp
+            .text()
+            .map_err(|e| format!("Read response failed: {}", e))?;
+        if !status.is_success() {
+            return Err(format!("Daemon refused: {} — {}", status, body));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }

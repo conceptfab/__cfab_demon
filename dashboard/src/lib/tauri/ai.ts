@@ -52,11 +52,17 @@ export const setTrainingBlacklists = (
     folderBlacklist,
   });
 
-export const resetAssignmentModelKnowledge = () =>
-  invokeMutation<AssignmentModelStatus>('reset_assignment_model_knowledge');
+export const resetModelWeights = () =>
+  invokeMutation<AssignmentModelStatus>('reset_model_weights');
 
-export const trainAssignmentModel = (force = false) =>
-  invokeMutation<AssignmentModelStatus>('train_assignment_model', { force });
+export const resetModelFull = () =>
+  invokeMutation<AssignmentModelStatus>('reset_model_full');
+
+export const trainAssignmentModel = (force = false, fullRebuild = false) =>
+  invokeMutation<AssignmentModelStatus>('train_assignment_model', {
+    force,
+    fullRebuild,
+  });
 
 export const runAutoSafeAssignment = (
   limit?: number,
@@ -86,8 +92,6 @@ export const applyDeterministicAssignment = (minHistory?: number) =>
     notify: (result) => result.sessions_assigned > 0,
   });
 
-export const getFeedbackWeight = () => invoke<number>('get_feedback_weight');
-
 export const setFeedbackWeight = (weight: number) =>
   invokeMutation<void>('set_feedback_weight', { weight });
 
@@ -108,13 +112,13 @@ export const aiApi = {
   setTrainingHorizonDays,
   setDecayHalfLifeDays,
   setTrainingBlacklists,
-  resetAssignmentModelKnowledge,
+  resetModelWeights,
+  resetModelFull,
   trainAssignmentModel,
   runAutoSafeAssignment,
   rollbackLastAutoSafeRun,
   autoRunIfNeeded,
   applyDeterministicAssignment,
-  getFeedbackWeight,
   setFeedbackWeight,
   scanProjectFoldersForAi,
   getFolderScanStatus,

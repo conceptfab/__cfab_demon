@@ -46,6 +46,7 @@ pub struct AssignmentModelStatus {
     pub last_auto_assigned_count: i64,
     pub last_auto_rolled_back_at: Option<String>,
     pub can_rollback_last_auto_run: bool,
+    pub feedback_weight: f64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -224,6 +225,7 @@ pub async fn get_assignment_model_status(app: AppHandle) -> Result<AssignmentMod
             last_auto_assigned_count: 0,
             last_auto_rolled_back_at: None,
             can_rollback_last_auto_run: false,
+            feedback_weight: parse_state_f64(&state, "feedback_weight", DEFAULT_FEEDBACK_WEIGHT),
         };
 
         let last_auto = conn
@@ -496,6 +498,7 @@ pub async fn set_assignment_mode(
         let suggest_conf = clamp01(suggest_conf, DEFAULT_MIN_CONFIDENCE_SUGGEST);
         let auto_conf = clamp01(auto_conf, DEFAULT_MIN_CONFIDENCE_AUTO);
         let auto_ev = clamp_i64(auto_ev, 1, 50);
+        validate_assignment_confidences(suggest_conf, auto_conf)?;
 
         upsert_state(conn, "mode", &mode)?;
         upsert_state(
@@ -509,6 +512,15 @@ pub async fn set_assignment_mode(
         Ok(())
     })
     .await
+}
+
+fn validate_assignment_confidences(suggest_conf: f64, auto_conf: f64) -> Result<(), String> {
+    if auto_conf < suggest_conf {
+        return Err(
+            "auto_confidence must be greater than or equal to suggest_confidence".to_string(),
+        );
+    }
+    Ok(())
 }
 
 #[command]
@@ -584,13 +596,14 @@ pub async fn set_training_blacklists(
 }
 
 #[command]
-pub async fn reset_assignment_model_knowledge(
-    app: AppHandle,
-) -> Result<AssignmentModelStatus, String> {
-    run_db_blocking(app.clone(), move |mut conn| {
-        reset_assignment_model_knowledge_sync(&mut conn)
-    })
-    .await?;
+pub async fn reset_model_weights(app: AppHandle) -> Result<AssignmentModelStatus, String> {
+    run_db_blocking(app.clone(), move |mut conn| reset_model_weights_sync(&mut conn)).await?;
+    get_assignment_model_status(app).await
+}
+
+#[command]
+pub async fn reset_model_full(app: AppHandle) -> Result<AssignmentModelStatus, String> {
+    run_db_blocking(app.clone(), move |mut conn| reset_model_full_sync(&mut conn)).await?;
     get_assignment_model_status(app).await
 }
 
@@ -598,8 +611,10 @@ pub async fn reset_assignment_model_knowledge(
 pub async fn train_assignment_model(
     app: AppHandle,
     force: bool,
+    full_rebuild: Option<bool>,
 ) -> Result<AssignmentModelStatus, String> {
     let status = get_assignment_model_status(app.clone()).await?;
+    let should_full_rebuild = full_rebuild.unwrap_or(false);
 
     if status.is_training {
         return Err("Training already in progress".to_string());
@@ -622,7 +637,11 @@ pub async fn train_assignment_model(
     }
 
     run_db_blocking(app.clone(), move |mut conn| {
-        retrain_model_sync(&mut conn)?;
+        if should_full_rebuild {
+            retrain_model_sync(&mut conn)?;
+        } else {
+            retrain_model_incremental_sync(&mut conn)?;
+        }
         Ok(())
     })
     .await?;
@@ -694,19 +713,6 @@ pub async fn get_session_score_breakdown(
 }
 
 #[command]
-pub async fn get_feedback_weight(app: AppHandle) -> Result<f64, String> {
-    run_db_blocking(app, move |conn| {
-        let state = load_state_map(conn)?;
-        Ok(parse_state_f64(
-            &state,
-            "feedback_weight",
-            DEFAULT_FEEDBACK_WEIGHT,
-        ))
-    })
-    .await
-}
-
-#[command]
 pub async fn set_feedback_weight(app: AppHandle, weight: f64) -> Result<(), String> {
     if !weight.is_finite() || !(1.0..=50.0).contains(&weight) {
         return Err("Feedback weight must be between 1.0 and 50.0".to_string());
@@ -736,4 +742,20 @@ pub async fn get_folder_scan_status(app: AppHandle) -> Result<FolderScanStatus, 
 #[command]
 pub async fn clear_folder_scan_data(app: AppHandle) -> Result<(), String> {
     run_db_blocking(app, |conn| folder_scan::clear_folder_scan_sync(conn)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_assignment_confidences;
+
+    #[test]
+    fn rejects_auto_confidence_below_suggest_confidence() {
+        assert!(validate_assignment_confidences(0.95, 0.5).is_err());
+    }
+
+    #[test]
+    fn accepts_auto_confidence_equal_or_above_suggest_confidence() {
+        assert!(validate_assignment_confidences(0.6, 0.6).is_ok());
+        assert!(validate_assignment_confidences(0.6, 0.85).is_ok());
+    }
 }

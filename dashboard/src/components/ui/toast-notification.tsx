@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -53,9 +53,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showError = useCallback((msg: string) => addToast(msg, "error"), [addToast]);
   const showInfo = useCallback((msg: string) => addToast(msg, "info"), [addToast]);
+  const value = useMemo(() => ({ showError, showInfo }), [showError, showInfo]);
 
   return (
-    <ToastContext.Provider value={{ showError, showInfo }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div
         className="fixed bottom-4 right-4 z-[10001] flex max-w-sm flex-col gap-2"

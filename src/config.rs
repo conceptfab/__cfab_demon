@@ -48,14 +48,8 @@ pub struct Config {
 
 /// Tworzy katalogi aplikacji raz przy starcie. Wywołać na początku main().
 pub fn ensure_app_dirs() -> Result<()> {
-    let appdata = std::env::var("APPDATA").context("APPDATA environment variable is missing")?;
-    let appdata_path = PathBuf::from(&appdata);
-    let base = timeflow_paths::ensure_timeflow_base_dir(&appdata_path).with_context(|| {
-        format!(
-            "Failed to prepare application directory: {:?}",
-            appdata_path
-        )
-    })?;
+    let base = timeflow_paths::timeflow_data_dir()
+        .with_context(|| "Failed to prepare TimeFlow application directory")?;
 
     let data = base.join("data");
     let import = base.join("import");
@@ -72,10 +66,9 @@ pub fn ensure_app_dirs() -> Result<()> {
     Ok(())
 }
 
-/// Zwraca ścieżkę do katalogu konfiguracji: %APPDATA%/TimeFlow
+/// Zwraca ścieżkę do katalogu konfiguracji (`<user_data_root>/TimeFlow`).
 pub fn config_dir() -> Result<PathBuf> {
-    let appdata = std::env::var("APPDATA").context("APPDATA environment variable is missing")?;
-    Ok(PathBuf::from(appdata).join("TimeFlow"))
+    timeflow_paths::timeflow_data_dir().context("Failed to resolve TimeFlow data directory")
 }
 
 /// Ścieżka do pliku konfiguracyjnego

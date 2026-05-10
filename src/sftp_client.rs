@@ -25,10 +25,11 @@ impl Drop for SftpClient {
     fn drop(&mut self) {
         // Zero sensitive fields — clear + shrink deallocates the buffer,
         // avoiding UB from as_mut_vec() invalidating String invariants.
-        for field in [&mut self.password, &mut self.username] {
+        for field in [&mut self.password, &mut self.username, &mut self.host] {
             field.clear();
             field.shrink_to_fit();
         }
+        self.port = 0;
     }
 }
 

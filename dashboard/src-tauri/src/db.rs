@@ -2,7 +2,7 @@ mod pool;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
 use timeflow_shared::timeflow_paths;
@@ -14,6 +14,8 @@ const SCHEMA: &str = include_str!("../resources/sql/schema.sql");
 const PRIMARY_DB_FILE_NAME: &str = "timeflow_dashboard.db";
 const DEMO_DB_FILE_NAME: &str = "timeflow_dashboard_demo.db";
 const DB_MODE_FILE_NAME: &str = "timeflow_dashboard_mode.json";
+// TODO(2026-12-31): remove legacy cfab_dashboard* migration once old installs
+// have had a full release window to copy data into TIMEFLOW-named files.
 const LEGACY_PRIMARY_DB_FILE_NAME: &str = "cfab_dashboard.db";
 const LEGACY_DEMO_DB_FILE_NAME: &str = "cfab_dashboard_demo.db";
 const LEGACY_DB_MODE_FILE_NAME: &str = "cfab_dashboard_mode.json";
@@ -76,31 +78,22 @@ fn copy_first_existing_file_if_missing(
 }
 
 fn app_storage_dir(app: &AppHandle) -> PathBuf {
-    let app_dir = if let Ok(appdata) = std::env::var("APPDATA") {
-        let appdata_path = PathBuf::from(&appdata);
-        match timeflow_paths::ensure_timeflow_base_dir(&appdata_path) {
-            Ok(path) => path,
-            Err(error) => {
-                let fallback = appdata_path.join("TimeFlow");
-                log::warn!(
-                    "Failed to resolve TIMEFLOW storage dir via shared helper, falling back to '{}': {}",
-                    fallback.display(),
-                    error
-                );
-                std::fs::create_dir_all(&fallback).ok();
-                fallback
-            }
-        }
-    } else {
-        match app.path().app_data_dir() {
-            Ok(dir) => dir,
-            Err(e) => {
-                log::error!("Failed to get app data dir: {}", e);
-                let fallback = std::env::current_dir()
-                    .unwrap_or_default()
-                    .join("timeflow_data");
-                std::fs::create_dir_all(&fallback).ok();
-                fallback
+    let app_dir = match timeflow_paths::timeflow_data_dir() {
+        Ok(path) => path,
+        Err(error) => {
+            log::warn!(
+                "Failed to resolve TIMEFLOW storage dir via shared helper: {}. \
+                 Falling back to Tauri app_data_dir.",
+                error
+            );
+            match app.path().app_data_dir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    log::error!("Failed to get app data dir: {}", e);
+                    std::env::current_dir()
+                        .unwrap_or_default()
+                        .join("timeflow_data")
+                }
             }
         }
     };
@@ -416,7 +409,10 @@ fn initialize_database_file_once(path_str: &str) -> Result<(), String> {
         .lock()
         .map_err(|_| "Initialized DB paths mutex poisoned".to_string())?;
     if initialized_paths.contains(path_str) {
-        return Ok(());
+        if Path::new(path_str).exists() {
+            return Ok(());
+        }
+        initialized_paths.remove(path_str);
     }
 
     initialize_database_file(path_str)?;
@@ -535,4 +531,75 @@ pub fn set_demo_mode(app: &AppHandle, enabled: bool) -> Result<DemoModeStatus, S
     );
 
     get_demo_mode_status(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Task 89: a freshly created database goes through `schema.sql` + all
+    /// migrations and lands at the latest schema version, with the `sessions`
+    /// table carrying every column the runtime expects.
+    #[test]
+    fn fresh_database_lands_on_latest_schema() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("timeflow_fresh_db_test_{}.db", nanos));
+        let path_str = path.to_string_lossy().to_string();
+
+        // Clean up leftovers from previous interrupted runs.
+        let _ = std::fs::remove_file(&path);
+
+        initialize_database_file(&path_str).expect("fresh init should succeed");
+
+        let conn = rusqlite::Connection::open(&path).expect("open fresh DB");
+        let version: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+                row.get(0)
+            })
+            .expect("schema_version row exists");
+        assert_eq!(
+            version,
+            crate::db_migrations::LATEST_SCHEMA_VERSION,
+            "fresh DB should be at LATEST_SCHEMA_VERSION"
+        );
+
+        // Snapshot of columns the dashboard + daemon rely on. If a migration
+        // drops or renames one of these, this test catches it before release.
+        let expected_columns = [
+            "id",
+            "app_id",
+            "start_time",
+            "end_time",
+            "duration_seconds",
+            "date",
+            "project_id",
+            "project_name",
+            "updated_at",
+        ];
+        let actual: std::collections::HashSet<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM pragma_table_info('sessions')")
+                .expect("pragma_table_info sessions");
+            stmt.query_map([], |row| row.get::<_, String>(0))
+                .expect("query columns")
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+
+        for col in expected_columns {
+            assert!(
+                actual.contains(col),
+                "fresh sessions table missing expected column `{}` (have: {:?})",
+                col,
+                actual
+            );
+        }
+
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
 }

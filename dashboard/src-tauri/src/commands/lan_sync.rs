@@ -3,8 +3,8 @@
 
 use super::delta_export::TableHashes;
 use super::helpers::{build_table_hashes, timeflow_data_dir};
-use crate::db;
 use serde::{Deserialize, Serialize};
+use std::net::Ipv4Addr;
 use tauri::AppHandle;
 
 /// Write a line to logs/lan_sync.log in the TimeFlow data dir (visible to user).
@@ -15,7 +15,11 @@ fn sync_log(msg: &str) {
         let _ = std::fs::create_dir_all(&logs_dir);
         let path = logs_dir.join("lan_sync.log");
         use std::io::Write;
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
             let _ = writeln!(f, "[{}] {}", ts, msg);
         }
@@ -58,7 +62,6 @@ pub struct LanImportSummary {
     pub manual_sessions_merged: usize,
     pub tombstones_applied: usize,
 }
-
 
 #[derive(Serialize)]
 pub struct LanServerStatus {
@@ -111,7 +114,11 @@ pub fn upsert_lan_peer(peer: LanPeer) -> Result<(), String> {
         }
     };
     file.updated_at = chrono::Utc::now().to_rfc3339();
-    if let Some(existing) = file.peers.iter_mut().find(|p| p.device_id == peer.device_id) {
+    if let Some(existing) = file
+        .peers
+        .iter_mut()
+        .find(|p| p.device_id == peer.device_id)
+    {
         *existing = peer;
     } else {
         file.peers.push(peer);
@@ -179,7 +186,10 @@ pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, S
         role: String,
         version: String,
     }
-    let ping: PingResp = resp.json().await.map_err(|e| format!("Invalid response: {}", e))?;
+    let ping: PingResp = resp
+        .json()
+        .await
+        .map_err(|e| format!("Invalid response: {}", e))?;
 
     Ok(PingLanPeerResult {
         device_id: ping.device_id,
@@ -191,81 +201,105 @@ pub async fn ping_lan_peer(ip: String, port: u16) -> Result<PingLanPeerResult, S
     })
 }
 
+fn is_private_lan_ip(ip: Ipv4Addr) -> bool {
+    let [a, b, _, _] = ip.octets();
+    a == 10 || (a == 172 && (16..=31).contains(&b)) || (a == 192 && b == 168)
+}
+
+async fn ping_lan_scan_host(client: reqwest::Client, ip: String) -> Option<PingLanPeerResult> {
+    let url = format!("http://{}:47891/lan/ping", ip);
+    let resp = match client.get(&url).send().await {
+        Ok(r) if r.status().is_success() => r,
+        _ => return None,
+    };
+    #[derive(Deserialize)]
+    struct PingResp {
+        device_id: String,
+        machine_name: String,
+        role: String,
+        version: String,
+    }
+    let ping: PingResp = resp.json().await.ok()?;
+    Some(PingLanPeerResult {
+        device_id: ping.device_id,
+        machine_name: ping.machine_name,
+        ip,
+        dashboard_port: 47891,
+        role: ping.role,
+        version: ping.version,
+    })
+}
+
 /// Scan the local /24 subnet for TIMEFLOW peers by pinging port 47891 on each IP.
-/// Returns all peers that responded. Runs up to 254 requests in parallel with a short timeout.
+/// Returns all peers that responded. Runs requests in batches of 32 with a short timeout.
 #[tauri::command]
 pub async fn scan_lan_subnet() -> Result<Vec<PingLanPeerResult>, String> {
     // 1. Determine our own IP (default route)
-    let my_ip = {
+    let my_ip_addr = {
         let socket = std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
         socket.connect("8.8.8.8:80").map_err(|e| e.to_string())?;
-        socket.local_addr().map_err(|e| e.to_string())?.ip().to_string()
+        match socket.local_addr().map_err(|e| e.to_string())?.ip() {
+            std::net::IpAddr::V4(ip) => ip,
+            other => return Err(format!("Cannot scan LAN from non-IPv4 address: {}", other)),
+        }
     };
 
-    let octets: Vec<&str> = my_ip.split('.').collect();
-    if octets.len() != 4 {
-        return Err(format!("Cannot parse local IP: {}", my_ip));
+    if !is_private_lan_ip(my_ip_addr) {
+        return Err(format!(
+            "LAN scan supports private IPv4 ranges only: {}",
+            my_ip_addr
+        ));
     }
+    let octets = my_ip_addr.octets();
+    let my_ip = my_ip_addr.to_string();
     let prefix = format!("{}.{}.{}", octets[0], octets[1], octets[2]);
 
-    sync_log(&format!("LAN scan: scanning {}.1-254 on port 47891 (my IP: {})", prefix, my_ip));
+    sync_log(&format!(
+        "LAN scan: scanning {}.1-254 on port 47891 (my IP: {})",
+        prefix, my_ip
+    ));
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_millis(800))
         .build()
         .map_err(|e| e.to_string())?;
 
-    // 2. Ping all 254 hosts in parallel
-    let mut handles = Vec::with_capacity(254);
-    for i in 1..=254u8 {
-        let ip = format!("{}.{}", prefix, i);
-        if ip == my_ip {
-            continue;
-        }
-        let client = client.clone();
-        handles.push(tokio::spawn(async move {
-            let url = format!("http://{}:47891/lan/ping", ip);
-            let resp = match client.get(&url).send().await {
-                Ok(r) if r.status().is_success() => r,
-                _ => return None,
-            };
-            #[derive(Deserialize)]
-            struct PingResp {
-                device_id: String,
-                machine_name: String,
-                role: String,
-                version: String,
-            }
-            let ping: PingResp = resp.json().await.ok()?;
-            Some(PingLanPeerResult {
-                device_id: ping.device_id,
-                machine_name: ping.machine_name,
-                ip,
-                dashboard_port: 47891,
-                role: ping.role,
-                version: ping.version,
-            })
-        }));
-    }
-
+    // 2. Ping all 254 hosts, capped at 32 concurrent requests.
     let mut found = Vec::new();
-    for handle in handles {
-        if let Ok(Some(peer)) = handle.await {
-            sync_log(&format!("LAN scan: found peer {} ({}) at {}", peer.machine_name, peer.device_id, peer.ip));
-            // Also persist to lan_peers.json so the UI picks it up immediately
-            let _ = upsert_lan_peer(LanPeer {
-                device_id: peer.device_id.clone(),
-                machine_name: peer.machine_name.clone(),
-                ip: peer.ip.clone(),
-                dashboard_port: peer.dashboard_port,
-                last_seen: chrono::Utc::now().to_rfc3339(),
-                dashboard_running: true,
-            });
-            found.push(peer);
+    let targets: Vec<String> = (1..=254u8)
+        .map(|i| format!("{}.{}", prefix, i))
+        .filter(|ip| ip != &my_ip)
+        .collect();
+
+    for chunk in targets.chunks(32) {
+        let mut handles = Vec::with_capacity(chunk.len());
+        for ip in chunk {
+            handles.push(tokio::spawn(ping_lan_scan_host(client.clone(), ip.clone())));
+        }
+        for handle in handles {
+            if let Ok(Some(peer)) = handle.await {
+                sync_log(&format!(
+                    "LAN scan: found peer {} ({}) at {}",
+                    peer.machine_name, peer.device_id, peer.ip
+                ));
+                // Also persist to lan_peers.json so the UI picks it up immediately
+                let _ = upsert_lan_peer(LanPeer {
+                    device_id: peer.device_id.clone(),
+                    machine_name: peer.machine_name.clone(),
+                    ip: peer.ip.clone(),
+                    dashboard_port: peer.dashboard_port,
+                    last_seen: chrono::Utc::now().to_rfc3339(),
+                    dashboard_running: true,
+                });
+                found.push(peer);
+            }
         }
     }
 
-    sync_log(&format!("LAN scan: complete — {} peer(s) found", found.len()));
+    sync_log(&format!(
+        "LAN scan: complete — {} peer(s) found",
+        found.len()
+    ));
     Ok(found)
 }
 
@@ -287,9 +321,8 @@ pub async fn get_lan_sync_progress() -> Result<SyncProgress, String> {
 }
 
 #[tauri::command]
-pub fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
-    let conn = db::get_connection(&app)?;
-    Ok(build_table_hashes(&conn))
+pub async fn build_table_hashes_only(app: AppHandle) -> Result<TableHashes, String> {
+    super::helpers::run_db_blocking(app, |conn| Ok(build_table_hashes(conn))).await
 }
 
 #[tauri::command]
@@ -301,25 +334,41 @@ pub async fn run_lan_sync(
     force: Option<bool>,
 ) -> Result<LanSyncResult, String> {
     let force = force.unwrap_or(false);
-    sync_log(&format!("LAN sync: delegating to daemon for peer {}:{}{}", peer_ip, peer_port, if force { " [FORCE]" } else { "" }));
+    sync_log(&format!(
+        "LAN sync: delegating to daemon for peer {}:{}{}",
+        peer_ip,
+        peer_port,
+        if force { " [FORCE]" } else { "" }
+    ));
 
     // 1. Ping peer first to get device_id and verify version
     let ip_c = peer_ip.clone();
     let port_c = peer_port;
     let ping_result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = format!("http://{}:{}/lan/ping", ip_c, port_c);
-        let resp = client.get(&url).send().map_err(|e| format!("Peer unreachable: {}", e))?;
-        let body = resp.text().map_err(|e| format!("Ping read failed: {}", e))?;
-        let ping: serde_json::Value = serde_json::from_str(&body)
-            .map_err(|e| format!("Ping parse failed: {}", e))?;
+        let resp = client
+            .get(&url)
+            .send()
+            .map_err(|e| format!("Peer unreachable: {}", e))?;
+        let body = resp
+            .text()
+            .map_err(|e| format!("Ping read failed: {}", e))?;
+        let ping: serde_json::Value =
+            serde_json::from_str(&body).map_err(|e| format!("Ping parse failed: {}", e))?;
         Ok::<serde_json::Value, String>(ping)
     })
     .await
     .map_err(|e| format!("Ping task failed: {}", e))??;
 
-    let peer_version = ping_result.get("version").and_then(|v| v.as_str()).unwrap_or("unknown");
-    let peer_device_id = ping_result.get("device_id").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let peer_version = ping_result
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let peer_device_id = ping_result
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     let local_version = crate::VERSION.trim();
 
     sync_log(&format!(
@@ -347,14 +396,17 @@ pub async fn run_lan_sync(
     });
 
     let _trigger_result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/trigger-sync";
-        let resp = client.post(url)
+        let resp = client
+            .post(url)
             .json(&trigger_body)
             .send()
             .map_err(|e| format!("Daemon unreachable: {}", e))?;
         let status = resp.status();
-        let body = resp.text().map_err(|e| format!("Read response failed: {}", e))?;
+        let body = resp
+            .text()
+            .map_err(|e| format!("Read response failed: {}", e))?;
         if !status.is_success() {
             return Err(format!("Daemon refused: {} — {}", status, body));
         }
@@ -393,30 +445,27 @@ pub struct PairedDeviceInfo {
     pub last_auth_error_at: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct PairResponse {
-    ok: bool,
-    device_id: Option<String>,
-    secret: Option<String>,
-    machine_name: Option<String>,
-    error: Option<String>,
-}
-
 // ── Pairing commands ──
 
 #[tauri::command]
 pub async fn generate_pairing_code() -> Result<PairingCodeInfo, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/generate-pairing-code";
-        let resp = client.post(url)
+        let resp = client
+            .post(url)
             .send()
             .map_err(|e| format!("Daemon unreachable: {}", e))?;
-        let body: serde_json::Value = resp.json()
+        let body: serde_json::Value = resp
+            .json()
             .map_err(|e| format!("Invalid response: {}", e))?;
 
         if body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
-            return Err(body.get("error").and_then(|v| v.as_str()).unwrap_or("unknown error").to_string());
+            return Err(body
+                .get("error")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown error")
+                .to_string());
         }
 
         Ok::<PairingCodeInfo, String>(PairingCodeInfo {
@@ -435,77 +484,84 @@ pub async fn submit_pairing_code(
     peer_port: u16,
     code: String,
 ) -> Result<PairedDeviceInfo, String> {
+    // The bridge no longer reads or forwards the local secret — the daemon
+    // owns that. We just hand it the peer address + code and the daemon
+    // does the full handshake locally (`/lan/initiate-pair`). This was
+    // forced after the P0 fix that removed `secret` from
+    // `/lan/local-identity`: the old bridge ended up sending
+    // `slave_secret=""` to the master, which then stored the peer with
+    // an empty secret and failed every subsequent sync with 412 not_paired.
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
-
-        // Get local identity + secret so master can store it (mutual pairing)
-        let local_info: serde_json::Value = client.get("http://127.0.0.1:47891/lan/local-identity")
-            .send()
-            .and_then(|r| r.json())
-            .unwrap_or_default();
-        let local_device_id = local_info.get("device_id").and_then(|v| v.as_str()).unwrap_or("");
-        let local_secret = local_info.get("secret").and_then(|v| v.as_str()).unwrap_or("");
-        let local_machine_name = local_info.get("machine_name").and_then(|v| v.as_str()).unwrap_or("");
-
+        let client = build_http_client()?;
         let body = serde_json::json!({
+            "peer_ip": peer_ip,
+            "peer_port": peer_port,
             "code": code,
-            "slave_device_id": local_device_id,
-            "slave_secret": local_secret,
-            "slave_machine_name": local_machine_name,
         });
-        let url = format!("http://{}:{}/lan/pair", peer_ip, peer_port);
-        let resp = client.post(&url)
+        let url = "http://127.0.0.1:47891/lan/initiate-pair";
+        let resp = client
+            .post(url)
             .json(&body)
             .send()
-            .map_err(|e| format!("Peer unreachable: {}", e))?;
+            .map_err(|e| format!("Daemon unreachable: {}", e))?;
         let status = resp.status();
-        let pair_resp: PairResponse = resp.json()
+        let json: serde_json::Value = resp
+            .json()
             .map_err(|e| format!("Invalid response: {}", e))?;
 
-        if !status.is_success() || !pair_resp.ok {
-            return Err(pair_resp.error.unwrap_or_else(|| format!("Pairing failed ({})", status)));
+        if !status.is_success() || json.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(json
+                .get("error")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| format!("Pairing failed ({})", status)));
         }
 
-        let device_id = pair_resp.device_id.ok_or("Missing device_id in response")?;
-        let secret = pair_resp.secret.ok_or("Missing secret in response")?;
-        let machine_name = pair_resp.machine_name.unwrap_or_default();
-
-        // Store in local paired devices via daemon
-        let store_body = serde_json::json!({
-            "device_id": device_id,
-            "secret": secret,
-            "machine_name": machine_name,
-        });
-        let store_url = "http://127.0.0.1:47891/lan/store-paired-device";
-        let store_resp = client.post(store_url)
-            .json(&store_body)
-            .send()
-            .map_err(|e| format!("Failed to store pairing: {}", e))?;
-        if !store_resp.status().is_success() {
-            return Err("Failed to store paired device in daemon".to_string());
-        }
+        let device_id = json
+            .get("device_id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing device_id in response")?
+            .to_string();
+        let machine_name = json
+            .get("machine_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let paired_at = json
+            .get("paired_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         Ok::<PairedDeviceInfo, String>(PairedDeviceInfo {
             device_id,
-            machine_name: machine_name.clone(),
-            paired_at: chrono::Utc::now().to_rfc3339(),
+            machine_name,
+            paired_at: if paired_at.is_empty() {
+                chrono::Utc::now().to_rfc3339()
+            } else {
+                paired_at
+            },
             last_auth_error_at: None,
         })
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))??;
 
-    sync_log(&format!("LAN pairing: successfully paired with {}", result.machine_name));
+    sync_log(&format!(
+        "LAN pairing: successfully paired with {}",
+        result.machine_name
+    ));
     Ok(result)
 }
 
 #[tauri::command]
 pub async fn unpair_device(device_id: String) -> Result<bool, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let body = serde_json::json!({ "device_id": device_id });
         let url = "http://127.0.0.1:47891/lan/remove-paired-device";
-        let resp = client.post(url)
+        let resp = client
+            .post(url)
             .json(&body)
             .send()
             .map_err(|e| format!("Daemon unreachable: {}", e))?;
@@ -519,27 +575,34 @@ pub async fn unpair_device(device_id: String) -> Result<bool, String> {
 #[tauri::command]
 pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
     let result = tokio::task::spawn_blocking(move || {
-        let client = build_http_client();
+        let client = build_http_client()?;
         let url = "http://127.0.0.1:47891/lan/paired-devices";
-        let resp = client.get(url)
+        let resp = client
+            .get(url)
             .send()
             .map_err(|e| format!("Daemon unreachable: {}", e))?;
-        let body: serde_json::Value = resp.json()
+        let body: serde_json::Value = resp
+            .json()
             .map_err(|e| format!("Invalid response: {}", e))?;
-        let devices = body.get("devices")
+        let devices = body
+            .get("devices")
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default();
-        let result: Vec<PairedDeviceInfo> = devices.iter().filter_map(|d| {
-            Some(PairedDeviceInfo {
-                device_id: d.get("device_id")?.as_str()?.to_string(),
-                machine_name: d.get("machine_name")?.as_str()?.to_string(),
-                paired_at: d.get("paired_at")?.as_str()?.to_string(),
-                last_auth_error_at: d.get("last_auth_error_at")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
+        let result: Vec<PairedDeviceInfo> = devices
+            .iter()
+            .filter_map(|d| {
+                Some(PairedDeviceInfo {
+                    device_id: d.get("device_id")?.as_str()?.to_string(),
+                    machine_name: d.get("machine_name")?.as_str()?.to_string(),
+                    paired_at: d.get("paired_at")?.as_str()?.to_string(),
+                    last_auth_error_at: d
+                        .get("last_auth_error_at")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                })
             })
-        }).collect();
+            .collect();
         Ok::<Vec<PairedDeviceInfo>, String>(result)
     })
     .await
@@ -549,9 +612,9 @@ pub async fn get_paired_devices() -> Result<Vec<PairedDeviceInfo>, String> {
 
 // ── Helpers ──
 
-fn build_http_client() -> reqwest::blocking::Client {
+fn build_http_client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()
-        .unwrap_or_else(|_| reqwest::blocking::Client::new())
+        .map_err(|e| format!("Failed to build HTTP client: {}", e))
 }

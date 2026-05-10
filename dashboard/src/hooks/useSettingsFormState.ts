@@ -1,62 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { TFunction } from 'i18next';
-import { sessionsApi, settingsApi, setSecureToken } from '@/lib/tauri';
-import { normalizeHexColor } from '@/lib/normalize';
-import { splitTime } from '@/lib/form-validation';
+import { settingsApi } from '@/lib/tauri';
+import { saveOnlineSyncSettings } from '@/lib/online-sync';
+import { logTauriWarn } from '@/lib/utils';
 import {
-  activateLicense,
-  clearLicenseInfo,
-  loadLicenseInfo,
-  loadOnlineSyncState,
-  loadOnlineSyncSettings,
-  loadSecureApiToken,
-  saveLicenseInfo,
-  saveOnlineSyncSettings,
-  type LicenseInfo,
-  type OnlineSyncSettings,
-  type OnlineSyncRunResult,
-  type OnlineSyncState,
-} from '@/lib/online-sync';
-import { triggerDaemonOnlineSync } from '@/lib/tauri';
-import { emitProjectsAllTimeInvalidated } from '@/lib/sync-events';
-import { getErrorMessage, logTauriWarn } from '@/lib/utils';
-import {
-  type AppearanceSettings,
   type CurrencySettings,
-  type FreezeSettings,
   type LanguageSettings,
-  type SessionSettings,
   type SplitSettings,
   type WorkingHoursSettings,
-  loadAppearanceSettings,
-  loadCurrencySettings,
-  loadFreezeSettings,
-  loadLanguageSettings,
-  loadSessionSettings,
-  loadSplitSettings,
-  loadWorkingHoursSettings,
   saveAppearanceSettings,
   saveCurrencySettings,
   saveFreezeSettings,
   saveLanguageSettings,
   saveSessionSettings,
-  saveSplitSettings,
   saveWorkingHoursSettings,
   timeToMinutes,
 } from '@/lib/user-settings';
-
-type PageChangeGuard = (
-  nextPage: string,
-  currentPage: string,
-) => boolean | Promise<boolean>;
-
-type StateUpdater<T> = T | ((prev: T) => T);
-
-function resolveStateUpdate<T>(prev: T, next: StateUpdater<T>): T {
-  return typeof next === 'function'
-    ? (next as (value: T) => T)(prev)
-    : next;
-}
+import {
+  type PageChangeGuard,
+} from './settings/useSettingsFormTypes';
+import { useGeneralSettings } from './settings/useGeneralSettings';
+import { useSettingsGuards } from './settings/useSettingsGuards';
+import { useSettingsMaintenance } from './settings/useSettingsMaintenance';
+import { useSyncSettings } from './settings/useSyncSettings';
+import { useUiSettings } from './settings/useUiSettings';
 
 interface UseSettingsFormStateOptions {
   confirm: (message: string) => Promise<boolean>;
@@ -90,241 +57,43 @@ export function useSettingsFormState({
   setStoreLanguage,
   setStoreSplitSettings,
 }: UseSettingsFormStateOptions) {
-  const [clearing, setClearing] = useState(false);
-  const [clearArmed, setClearArmed] = useState(false);
-  const [workingHours, setWorkingHours] = useState<WorkingHoursSettings>(() =>
-    loadWorkingHoursSettings(),
-  );
-  const [sessionSettings, setSessionSettings] = useState<SessionSettings>(() =>
-    loadSessionSettings(),
-  );
-  const [onlineSyncSettings, setOnlineSyncSettings] =
-    useState<OnlineSyncSettings>(() => loadOnlineSyncSettings());
-  const [freezeSettings, setFreezeSettings] = useState<FreezeSettings>(() =>
-    loadFreezeSettings(),
-  );
-  const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(
-    () => loadCurrencySettings(),
-  );
-  const [languageSettings, setLanguageSettings] = useState<LanguageSettings>(
-    () => loadLanguageSettings(),
-  );
-  const [appearanceSettings, setAppearanceSettings] =
-    useState<AppearanceSettings>(() => loadAppearanceSettings());
-  const [splitSettings, setSplitSettings] = useState<SplitSettings>(() =>
-    loadSplitSettings(),
-  );
-  const [workingHoursError, setWorkingHoursError] = useState<string | null>(
-    null,
-  );
   const [savedSettings, setSavedSettings] = useState(true);
-  const [rebuilding, setRebuilding] = useState(false);
-  const [manualSyncing, setManualSyncing] = useState(false);
-  const [manualSyncResult, setManualSyncResult] =
-    useState<OnlineSyncRunResult | null>(null);
-  const [onlineSyncState, setOnlineSyncState] = useState<OnlineSyncState>(() =>
-    loadOnlineSyncState(),
-  );
-  const [showOnlineSyncToken, setShowOnlineSyncToken] = useState(false);
-  const [licenseInfo, setLicenseInfo] = useState<LicenseInfo | null>(() =>
-    loadLicenseInfo(),
-  );
-  const [licenseKeyInput, setLicenseKeyInput] = useState('');
-  const [licenseActivating, setLicenseActivating] = useState(false);
-  const [licenseError, setLicenseError] = useState<string | null>(null);
-  const [testingRoundtrip, setTestingRoundtrip] = useState(false);
-  const [testRoundtripResult, setTestRoundtripResult] = useState<string | null>(null);
-  const [testRoundtripSuccess, setTestRoundtripSuccess] = useState(false);
+  const uiSettings = useUiSettings({ setSavedSettings });
+  const generalSettings = useGeneralSettings({ setSavedSettings, t });
+  const syncSettings = useSyncSettings({
+    setSavedSettings,
+    showInfo,
+    t,
+    triggerRefresh,
+  });
+  const maintenance = useSettingsMaintenance({
+    confirm,
+    gapFillMinutes: generalSettings.sessionSettings.gapFillMinutes,
+    showError,
+    showInfo,
+    t,
+  });
 
-  useEffect(() => {
-    loadSecureApiToken().then((token) => {
-      if (token) {
-        setOnlineSyncSettings((prev) => ({ ...prev, apiToken: token }));
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (savedSettings) {
-      setPageChangeGuard(null);
-      return;
-    }
-
-    const pageChangeGuard: PageChangeGuard = async (nextPage, currentPage) => {
-      if (currentPage !== 'settings' || nextPage === 'settings') return true;
-      return confirm(t('settings_page.unsaved_changes_confirm'));
-    };
-
-    setPageChangeGuard(pageChangeGuard);
-    return () => setPageChangeGuard(null);
-  }, [confirm, savedSettings, setPageChangeGuard, t]);
-
-  useEffect(() => {
-    if (savedSettings) return;
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [savedSettings]);
-
-  const [startHour, startMinute] = useMemo(
-    () => splitTime(workingHours.start),
-    [workingHours.start],
-  );
-  const [endHour, endMinute] = useMemo(
-    () => splitTime(workingHours.end),
-    [workingHours.end],
-  );
-  const normalizedColor = useMemo(
-    () => normalizeHexColor(workingHours.color),
-    [workingHours.color],
-  );
-  const sliderValue = useMemo(
-    () => Math.min(30, Math.max(0, sessionSettings.gapFillMinutes)),
-    [sessionSettings.gapFillMinutes],
-  );
-
-  const lastSyncLabel = onlineSyncState.lastSyncAt
-    ? new Date(onlineSyncState.lastSyncAt).toLocaleString()
-    : t('settings_page.never');
-  const shortHash = onlineSyncState.serverHash
-    ? `${onlineSyncState.serverHash.slice(0, 12)}...`
-    : 'n/a';
-  const localHashShort = onlineSyncState.localHash
-    ? `${onlineSyncState.localHash.slice(0, 12)}...`
-    : 'n/a';
-  const pendingAckHashShort = onlineSyncState.pendingAck?.payloadSha256
-    ? `${onlineSyncState.pendingAck.payloadSha256.slice(0, 12)}...`
-    : 'n/a';
-  const splitToleranceDescription =
-    splitSettings.toleranceThreshold >= 0.9
-      ? t(
-          'settings.splitToleranceDesc1',
-          'Split only when projects have nearly identical scores.',
-        )
-      : splitSettings.toleranceThreshold >= 0.6
-        ? t(
-            'settings.splitToleranceDesc2',
-            `Split when second project has >=${Math.round(splitSettings.toleranceThreshold * 100)}% of leader's score.`,
-          )
-        : t(
-            'settings.splitToleranceDesc3',
-            'Split even with large score disparity.',
-          );
-  const manualSyncResultText = manualSyncResult
-    ? manualSyncResult.ok
-      ? manualSyncResult.skipped && manualSyncResult.reason === 'demo_mode'
-        ? t('settings_page.last_manual_sync_skipped_disabled_in_demo_mode')
-        : manualSyncResult.ackPending
-          ? t('settings_page.last_manual_sync_pull_applied_ack_pending', {
-              detail: manualSyncResult.ackReason ?? manualSyncResult.reason,
-            })
-          : t('settings_page.last_manual_sync', {
-              action: manualSyncResult.action,
-              reason: manualSyncResult.reason,
-            })
-      : t('settings_page.last_manual_sync_failed', {
-          error: manualSyncResult.error ?? manualSyncResult.reason,
-        })
-    : null;
-  const manualSyncResultSuccess = manualSyncResult?.ok ?? false;
-
-  const updateTimePart = useCallback(
-    (field: 'start' | 'end', part: 'hour' | 'minute', value: string) => {
-      setWorkingHours((prev) => {
-        const [hour, minute] = splitTime(prev[field]);
-        const nextHour = part === 'hour' ? value : hour;
-        const nextMinute = part === 'minute' ? value : minute;
-        return { ...prev, [field]: `${nextHour}:${nextMinute}` };
-      });
-      setWorkingHoursError(null);
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateWorkingHours = useCallback(
-    (next: StateUpdater<WorkingHoursSettings>) => {
-      setWorkingHours((prev) => resolveStateUpdate(prev, next));
-      setWorkingHoursError(null);
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateSessionSettings = useCallback(
-    (next: StateUpdater<SessionSettings>) => {
-      setSessionSettings((prev) => resolveStateUpdate(prev, next));
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateOnlineSyncSettings = useCallback(
-    (next: StateUpdater<OnlineSyncSettings>) => {
-      setOnlineSyncSettings((prev) => resolveStateUpdate(prev, next));
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateFreezeSettings = useCallback(
-    (next: StateUpdater<FreezeSettings>) => {
-      setFreezeSettings((prev) => resolveStateUpdate(prev, next));
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateCurrencySettings = useCallback(
-    (next: StateUpdater<CurrencySettings>) => {
-      setCurrencySettings((prev) => resolveStateUpdate(prev, next));
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateLanguageSettings = useCallback(
-    (next: StateUpdater<LanguageSettings>) => {
-      setLanguageSettings((prev) => resolveStateUpdate(prev, next));
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateAppearanceSettings = useCallback(
-    (next: StateUpdater<AppearanceSettings>) => {
-      setAppearanceSettings((prev) => resolveStateUpdate(prev, next));
-      setSavedSettings(false);
-    },
-    [],
-  );
-
-  const updateSplitSetting = useCallback(
-    <K extends keyof SplitSettings>(key: K, value: SplitSettings[K]) => {
-      setSplitSettings((prev) => saveSplitSettings({ ...prev, [key]: value }));
-      setSavedSettings(false);
-    },
-    [],
-  );
+  useSettingsGuards({
+    confirm,
+    savedSettings,
+    setPageChangeGuard,
+    t,
+  });
 
   const handleSaveSettings = useCallback(() => {
-    const startMinutes = timeToMinutes(workingHours.start);
-    const endMinutes = timeToMinutes(workingHours.end);
+    const startMinutes = timeToMinutes(uiSettings.workingHours.start);
+    const endMinutes = timeToMinutes(uiSettings.workingHours.end);
 
     if (startMinutes === null || endMinutes === null) {
-      setWorkingHoursError(
+      uiSettings.setWorkingHoursError(
         t('settings_page.please_use_a_valid_hh_mm_time'),
       );
       setSavedSettings(false);
       return;
     }
     if (endMinutes <= startMinutes) {
-      setWorkingHoursError(
+      uiSettings.setWorkingHoursError(
         t('settings_page.to_time_must_be_later_than_from_time'),
       );
       setSavedSettings(false);
@@ -332,31 +101,36 @@ export function useSettingsFormState({
     }
 
     const savedWorking = saveWorkingHoursSettings({
-      ...workingHours,
-      color: normalizedColor,
+      ...uiSettings.workingHours,
+      color: uiSettings.normalizedColor,
     });
-    const savedSession = saveSessionSettings(sessionSettings);
-    const uiApiToken = onlineSyncSettings.apiToken;
-    const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
+    const savedSession = saveSessionSettings(generalSettings.sessionSettings);
+    const uiApiToken = syncSettings.onlineSyncSettings.apiToken;
+    const savedOnlineSync = saveOnlineSyncSettings(
+      syncSettings.onlineSyncSettings,
+    );
 
-    // Also persist settings to daemon's online_sync_settings.json
-    void import('@/lib/tauri/online-sync').then(({ saveDaemonOnlineSyncSettings }) =>
-      saveDaemonOnlineSyncSettings({
-        enabled: savedOnlineSync.enabled,
-        server_url: savedOnlineSync.serverUrl,
-        auth_token: uiApiToken,
-        device_id: savedOnlineSync.deviceId,
-        encryption_key: savedOnlineSync.encryptionKey ?? '',
-        sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
-        auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-      }).catch((err) => {
-        logTauriWarn('Failed to persist online sync settings to daemon:', err);
-      })
-    ).catch(() => { /* Daemon not available — ignore */ });
+    void import('@/lib/tauri/online-sync')
+      .then(({ saveDaemonOnlineSyncSettings }) =>
+        saveDaemonOnlineSyncSettings({
+          enabled: savedOnlineSync.enabled,
+          server_url: savedOnlineSync.serverUrl,
+          auth_token: uiApiToken,
+          device_id: savedOnlineSync.deviceId,
+          encryption_key: savedOnlineSync.encryptionKey ?? '',
+          sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
+          auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
+        }).catch((err) => {
+          logTauriWarn('Failed to persist online sync settings to daemon:', err);
+        }),
+      )
+      .catch(() => {
+        // Daemon not available; local UI settings are still saved.
+      });
 
-    const savedFreeze = saveFreezeSettings(freezeSettings);
-    const savedCurrency = saveCurrencySettings(currencySettings);
-    const savedLanguage = saveLanguageSettings(languageSettings);
+    const savedFreeze = saveFreezeSettings(generalSettings.freezeSettings);
+    const savedCurrency = saveCurrencySettings(uiSettings.currencySettings);
+    const savedLanguage = saveLanguageSettings(uiSettings.languageSettings);
     void settingsApi
       .persistSessionSettingsForDaemon(savedSession.minSessionDurationSeconds)
       .catch((err) => {
@@ -367,442 +141,53 @@ export function useSettingsFormState({
         logTauriWarn('Failed to persist language for daemon:', err);
       },
     );
-    const savedAppearance = saveAppearanceSettings(appearanceSettings);
+    const savedAppearance = saveAppearanceSettings(uiSettings.appearanceSettings);
 
-    setWorkingHours(savedWorking);
-    setSessionSettings(savedSession);
-    setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiApiToken });
-    setFreezeSettings(savedFreeze);
-    setCurrencySettings(savedCurrency);
-    setLanguageSettings(savedLanguage);
-    setAppearanceSettings(savedAppearance);
+    uiSettings.setWorkingHours(savedWorking);
+    generalSettings.setSessionSettings(savedSession);
+    syncSettings.setOnlineSyncSettings({
+      ...savedOnlineSync,
+      apiToken: uiApiToken,
+    });
+    generalSettings.setFreezeSettings(savedFreeze);
+    uiSettings.setCurrencySettings(savedCurrency);
+    uiSettings.setLanguageSettings(savedLanguage);
+    uiSettings.setAppearanceSettings(savedAppearance);
     setCurrencyCode(savedCurrency.code);
     setChartAnimations(savedAppearance.chartAnimations);
     setStoreWorkingHours?.(savedWorking);
     setStoreLanguage?.(savedLanguage.code);
-    setStoreSplitSettings?.(splitSettings);
+    setStoreSplitSettings?.(generalSettings.splitSettings);
     if (i18n.resolvedLanguage !== savedLanguage.code) {
       void i18n.changeLanguage(savedLanguage.code).catch((error) => {
         logTauriWarn('Failed to apply language change:', error);
       });
     }
-    setWorkingHoursError(null);
+    uiSettings.setWorkingHoursError(null);
     setSavedSettings(true);
     showInfo(t('settings_page.saved'));
     triggerRefresh('settings_saved');
   }, [
-    appearanceSettings,
-    currencySettings,
-    freezeSettings,
+    generalSettings,
     i18n,
-    languageSettings,
-    normalizedColor,
-    onlineSyncSettings,
-    sessionSettings,
     setChartAnimations,
     setCurrencyCode,
     setStoreLanguage,
     setStoreSplitSettings,
     setStoreWorkingHours,
     showInfo,
-    splitSettings,
+    syncSettings,
     t,
     triggerRefresh,
-    workingHours,
+    uiSettings,
   ]);
 
-  const handleRebuildSessions = useCallback(async () => {
-    setRebuilding(true);
-    try {
-      const merged = await sessionsApi.rebuildSessions(
-        sessionSettings.gapFillMinutes,
-      );
-      showInfo(
-        t('settings_page.successfully_merged_close_sessions', { merged }),
-      );
-    } catch (e) {
-      logTauriWarn('Settings operation failed:', e);
-      showError(
-        t('settings_page.error_linking_sessions') +
-          getErrorMessage(e, t('ui.common.unknown_error')),
-      );
-    } finally {
-      setRebuilding(false);
-    }
-  }, [sessionSettings.gapFillMinutes, showError, showInfo, t]);
-
-  const handleClearData = useCallback(async () => {
-    const confirmed = await confirm(
-      t('settings_page.are_you_sure_you_want_to_delete_all_data_this_cannot_be'),
-    );
-    if (!confirmed) return;
-
-    setClearing(true);
-    try {
-      await settingsApi.clearAllData();
-      setClearArmed(false);
-      showInfo(t('settings_page.all_data_removed'));
-    } catch (e) {
-      logTauriWarn('Settings operation failed:', e);
-      showError(
-        t('settings_page.failed_to_clear_data') +
-          getErrorMessage(e, t('ui.common.unknown_error')),
-      );
-    } finally {
-      setClearing(false);
-    }
-  }, [confirm, showError, showInfo, t]);
-
-  const handleSyncNow = useCallback(
-    async (demoModeEnabled: boolean) => {
-      if (demoModeEnabled) {
-        setManualSyncResult({
-          ok: true,
-          skipped: true,
-          action: 'none',
-          reason: 'demo_mode',
-          serverRevision: onlineSyncState.serverRevision,
-        });
-        return;
-      }
-
-      setManualSyncing(true);
-      setManualSyncResult(null);
-      try {
-        const uiToken = onlineSyncSettings.apiToken;
-        const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
-        setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
-
-        // Also persist settings to daemon's online_sync_settings.json
-        try {
-          const { saveDaemonOnlineSyncSettings } = await import('@/lib/tauri/online-sync');
-          await saveDaemonOnlineSyncSettings({
-            enabled: savedOnlineSync.enabled,
-            server_url: savedOnlineSync.serverUrl,
-            auth_token: uiToken,
-            device_id: savedOnlineSync.deviceId,
-            encryption_key: savedOnlineSync.encryptionKey ?? '',
-            sync_interval_minutes: savedOnlineSync.autoSyncIntervalMinutes,
-            auto_sync_on_startup: savedOnlineSync.autoSyncOnStartup,
-          });
-        } catch {
-          // Daemon not available — ignore
-        }
-
-        await triggerDaemonOnlineSync();
-        // Wait briefly for daemon to process, then refresh state
-        await new Promise((r) => setTimeout(r, 2_000));
-        setOnlineSyncState(loadOnlineSyncState());
-        setManualSyncResult({
-          ok: true,
-          action: 'push',
-          reason: 'daemon_sync_triggered',
-          serverRevision: null,
-        });
-        triggerRefresh('settings_manual_sync');
-      } catch (e) {
-        setManualSyncResult({
-          ok: false,
-          action: 'none',
-          reason: 'daemon_unreachable',
-          serverRevision: onlineSyncState.serverRevision,
-          error: getErrorMessage(e, t('ui.common.unknown_error')),
-        });
-      } finally {
-        setManualSyncing(false);
-      }
-    },
-    [onlineSyncSettings, onlineSyncState.serverRevision, t, triggerRefresh],
-  );
-
-  const handleForceSyncNow = useCallback(
-    async (demoModeEnabled: boolean) => {
-      if (demoModeEnabled) return;
-
-      setManualSyncing(true);
-      setManualSyncResult(null);
-      try {
-        const uiToken = onlineSyncSettings.apiToken;
-        const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
-        setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
-
-        await triggerDaemonOnlineSync();
-        await new Promise((r) => setTimeout(r, 2_000));
-        setOnlineSyncState(loadOnlineSyncState());
-        setManualSyncResult({
-          ok: true,
-          action: 'push',
-          reason: 'daemon_force_sync_triggered',
-          serverRevision: null,
-        });
-      } catch (e) {
-        setManualSyncResult({
-          ok: false,
-          action: 'none',
-          reason: 'force_sync_failed',
-          serverRevision: onlineSyncState.serverRevision,
-          error: getErrorMessage(e, t('ui.common.unknown_error')),
-        });
-      } finally {
-        setManualSyncing(false);
-      }
-    },
-    [onlineSyncSettings, onlineSyncState.serverRevision, t],
-  );
-
-  const resetManualSyncResult = useCallback(() => {
-    setManualSyncResult(null);
-  }, []);
-
-  const handleActivateLicense = useCallback(
-    async () => {
-      const key = licenseKeyInput.trim();
-      if (!key) return;
-
-      const serverUrl = onlineSyncSettings.serverUrl;
-      if (!serverUrl) {
-        setLicenseError(t('settings.license.no_server_url'));
-        return;
-      }
-
-      setLicenseActivating(true);
-      setLicenseError(null);
-
-      try {
-        const deviceId = onlineSyncSettings.deviceId || crypto.randomUUID();
-        const deviceName = `${navigator.platform || 'Desktop'} — TIMEFLOW`;
-
-        const result = await activateLicense(serverUrl, key, deviceId, deviceName);
-
-        if (!result.ok) {
-          setLicenseError(result.error || 'Activation failed');
-          return;
-        }
-
-        const info: LicenseInfo = {
-          licenseKey: key,
-          licenseId: result.licenseId!,
-          plan: result.plan!,
-          status: result.status!,
-          groupId: result.groupId!,
-          groupName: result.groupName!,
-          maxDevices: result.maxDevices!,
-          activeDevices: result.activeDevices!,
-          expiresAt: result.expiresAt ?? null,
-          activatedAt: new Date().toISOString(),
-        };
-        saveLicenseInfo(info);
-        setLicenseInfo(info);
-        setLicenseKeyInput('');
-
-        // Auto-save API token from activation response
-        if (result.apiToken) {
-          try {
-            await setSecureToken(result.apiToken);
-            setOnlineSyncSettings((prev) => ({ ...prev, apiToken: result.apiToken! }));
-          } catch {
-            logTauriWarn('[license] Failed to auto-save API token');
-          }
-        }
-
-        // Auto-fill deviceId if empty
-        const effectiveDeviceId = onlineSyncSettings.deviceId || deviceId;
-        if (!onlineSyncSettings.deviceId) {
-          setOnlineSyncSettings((prev) => ({ ...prev, deviceId }));
-        }
-
-        // Immediately persist to daemon's online_sync_settings.json so sync can work without manual "Save"
-        if (result.apiToken) {
-          void import('@/lib/tauri/online-sync').then(({ saveDaemonOnlineSyncSettings }) =>
-            saveDaemonOnlineSyncSettings({
-              enabled: onlineSyncSettings.enabled,
-              server_url: onlineSyncSettings.serverUrl,
-              auth_token: result.apiToken!,
-              device_id: effectiveDeviceId,
-              encryption_key: onlineSyncSettings.encryptionKey ?? '',
-              sync_interval_minutes: onlineSyncSettings.autoSyncIntervalMinutes,
-              auto_sync_on_startup: onlineSyncSettings.autoSyncOnStartup,
-            }).catch((err) => {
-              logTauriWarn('[license] Failed to persist daemon settings after activation:', err);
-            })
-          ).catch(() => { /* Daemon not available */ });
-        }
-
-        showInfo(t('settings.license.activated_success'));
-      } catch (e) {
-        setLicenseError(getErrorMessage(e, t('ui.common.unknown_error')));
-      } finally {
-        setLicenseActivating(false);
-      }
-    },
-    [licenseKeyInput, onlineSyncSettings, t, showInfo],
-  );
-
-  const handleDeactivateLicense = useCallback(() => {
-    clearLicenseInfo();
-    setLicenseInfo(null);
-  }, []);
-
-  const handleTestRoundtrip = useCallback(async () => {
-    const serverUrl = onlineSyncSettings.serverUrl;
-    if (!serverUrl) {
-      setTestRoundtripResult('Brak adresu serwera / No server URL');
-      setTestRoundtripSuccess(false);
-      return;
-    }
-
-    setTestingRoundtrip(true);
-    setTestRoundtripResult(null);
-
-    try {
-      const { postJson, getLocalDatasetState } = await import('@/lib/sync/sync-http');
-      const token = onlineSyncSettings.apiToken || (await loadSecureApiToken()) || '';
-      const deviceId = onlineSyncSettings.deviceId || 'test-device';
-      const syncState = loadOnlineSyncState();
-
-      // Export real data archive for realistic test
-      setTestRoundtripResult('Eksport danych...');
-      const local = await getLocalDatasetState(syncState);
-      const archive = local.archive;
-      const archiveSize = archive ? JSON.stringify(archive).length : 0;
-
-      const testPayload = {
-        timestamp: new Date().toISOString(),
-        archiveSizeBytes: archiveSize,
-        exportOk: local.exportOk,
-        hasData: local.hasReseedData,
-        hash: local.payloadSha256?.substring(0, 12) ?? null,
-        // Send the real archive as payload to test full transfer
-        archive: archive ?? { data: {} },
-      };
-
-      // Measure compression locally
-      const rawJsonStr = JSON.stringify({
-        userId: onlineSyncSettings.userId,
-        deviceId,
-        testPayload,
-      });
-      const rawBytes = new TextEncoder().encode(rawJsonStr);
-      const { compressGzip } = await import('@/lib/sync/sync-http');
-      const gzipAvailable = typeof CompressionStream !== 'undefined';
-      let compressedSize = rawBytes.length;
-      if (gzipAvailable) {
-        const compressed = await compressGzip(rawBytes);
-        compressedSize = compressed.length;
-      }
-      const ratio = ((1 - compressedSize / rawBytes.length) * 100).toFixed(0);
-
-      setTestRoundtripResult(
-        gzipAvailable
-          ? `Wysyłanie ${(compressedSize / 1024).toFixed(0)} KB (gzip ${ratio}% kompresji z ${(rawBytes.length / 1024).toFixed(0)} KB)...`
-          : `Wysyłanie ${(rawBytes.length / 1024).toFixed(0)} KB (brak kompresji)...`
-      );
-      const t0 = Date.now();
-      const timeoutMs = Math.max(30000, Math.ceil(archiveSize / 1024) * 20);
-      const result = await postJson<{
-        ok: boolean;
-        steps: {
-          write: { success: boolean; sizeBytes: number };
-          read: { success: boolean; matches: boolean };
-          cleanup: { success: boolean };
-        };
-        echoPayload: Record<string, unknown>;
-        serverTimestamp: string;
-        roundtripMs: number;
-      }>(serverUrl, '/api/sync/test-roundtrip', {
-        userId: onlineSyncSettings.userId,
-        deviceId,
-        testPayload,
-      }, timeoutMs, token);
-
-      const clientMs = Date.now() - t0;
-      const allOk = result.steps.write.success && result.steps.read.success && result.steps.read.matches;
-      const dataMB = (result.steps.write.sizeBytes / (1024 * 1024)).toFixed(2);
-      const transferKB = (compressedSize / 1024).toFixed(0);
-      const speedKBs = clientMs > 0 ? ((compressedSize / 1024) / (clientMs / 1000)).toFixed(0) : '?';
-
-      if (allOk) {
-        const gzipInfo = gzipAvailable
-          ? `gzip: ${transferKB} KB/${(rawBytes.length / 1024).toFixed(0)} KB (${ratio}%)`
-          : 'bez kompresji';
-        setTestRoundtripResult(
-          `OK | dane: ${dataMB} MB | ${gzipInfo} | ${speedKBs} KB/s | ${clientMs}ms | dekompresja+match: OK`
-        );
-        setTestRoundtripSuccess(true);
-      } else {
-        setTestRoundtripResult(
-          `FAIL | write: ${result.steps.write.success} | read: ${result.steps.read.success} | match: ${result.steps.read.matches}`
-        );
-        setTestRoundtripSuccess(false);
-      }
-    } catch (e) {
-      setTestRoundtripResult(
-        `ERROR: ${e instanceof Error ? e.message : String(e)}`
-      );
-      setTestRoundtripSuccess(false);
-    } finally {
-      setTestingRoundtrip(false);
-    }
-  }, [onlineSyncSettings]);
-
   return {
-    clearing,
-    clearArmed,
-    workingHours,
-    sessionSettings,
-    onlineSyncSettings,
-    freezeSettings,
-    currencySettings,
-    languageSettings,
-    appearanceSettings,
-    splitSettings,
-    workingHoursError,
+    ...maintenance,
+    ...uiSettings,
+    ...generalSettings,
+    ...syncSettings,
     savedSettings,
-    rebuilding,
-    manualSyncing,
-    manualSyncResult,
-    manualSyncResultText,
-    manualSyncResultSuccess,
-    onlineSyncState,
-    showOnlineSyncToken,
-    startHour,
-    startMinute,
-    endHour,
-    endMinute,
-    sliderValue,
-    normalizedColor,
-    lastSyncLabel,
-    shortHash,
-    localHashShort,
-    pendingAckHashShort,
-    splitToleranceDescription,
-    setClearArmed,
-    setShowOnlineSyncToken,
-    updateTimePart,
-    updateWorkingHours,
-    updateSessionSettings,
-    updateOnlineSyncSettings,
-    updateFreezeSettings,
-    updateCurrencySettings,
-    updateLanguageSettings,
-    updateAppearanceSettings,
-    updateSplitSetting,
     handleSaveSettings,
-    handleRebuildSessions,
-    handleClearData,
-    handleSyncNow,
-    handleForceSyncNow,
-    resetManualSyncResult,
-    licenseInfo,
-    licenseKeyInput,
-    licenseActivating,
-    licenseError,
-    setLicenseKeyInput,
-    handleActivateLicense,
-    handleDeactivateLicense,
-    testingRoundtrip,
-    testRoundtripResult,
-    testRoundtripSuccess,
-    handleTestRoundtrip,
   };
 }

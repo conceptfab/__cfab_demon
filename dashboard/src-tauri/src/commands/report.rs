@@ -2,7 +2,7 @@ use tauri::AppHandle;
 
 use super::analysis::query_activity_date_range;
 use super::daemon::load_persisted_session_min_duration;
-use super::helpers::{run_app_blocking, run_db_blocking};
+use super::helpers::run_db_blocking;
 use super::manual_sessions::get_manual_sessions;
 use super::projects::{query_active_project_with_stats, query_project_extra_info};
 use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
@@ -159,15 +159,13 @@ pub async fn get_project_report_data(
         let t0 = t0;
         async move {
             log::info!("[report] get_manual_sessions START");
-            let r = run_app_blocking(app, move |app| {
-                get_manual_sessions(
-                    app,
-                    ManualSessionFilters {
-                        date_range: Some(date_range),
-                        project_id: Some(project_id),
-                    },
-                )
-            })
+            let r = get_manual_sessions(
+                app,
+                ManualSessionFilters {
+                    date_range: Some(date_range),
+                    project_id: Some(project_id),
+                },
+            )
             .await;
             log::info!("[report] get_manual_sessions DONE ({:?})", t0.elapsed());
             r

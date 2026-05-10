@@ -8,17 +8,17 @@ use crate::lan_common::{self, sync_log};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::net::{IpAddr, Ipv4Addr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_LAN_PORT: u16 = 47891;
 const MAX_REQUEST_BODY: usize = 50 * 1024 * 1024; // 50MB
 const MAX_CONNECTIONS: usize = 32;
-/// Minimum seconds after a completed sync before accepting a new manual trigger.
-const TRIGGER_SYNC_COOLDOWN_SECS: u64 = 30;
+/// Minimum seconds after a completed sync before accepting another LAN sync.
+pub(crate) const SYNC_COOLDOWN_SECS: u64 = 30;
 
 struct ConnectionGuard(Arc<AtomicUsize>);
 impl Drop for ConnectionGuard {
@@ -35,21 +35,6 @@ pub struct TableHashes {
     pub applications: String,
     pub sessions: String,
     pub manual_sessions: String,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct StatusRequest {
-    device_id: String,
-    table_hashes: TableHashes,
-}
-
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct StatusResponse {
-    needs_push: bool,
-    needs_pull: bool,
-    their_hashes: TableHashes,
 }
 
 #[derive(Serialize)]
@@ -158,7 +143,7 @@ impl Drop for SyncGuard {
     }
 }
 
-const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(300); // 5 minutes
+const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
 
 impl LanSyncState {
     pub fn new() -> Self {
@@ -260,9 +245,24 @@ impl LanSyncState {
         };
         if should_unfreeze {
             log::warn!("Auto-unfreezing database after {:?} timeout", AUTO_UNFREEZE_TIMEOUT);
-            self.unfreeze();
-            self.reset_progress();
-            self.set_role("undecided");
+            let phase = self.get_progress().phase;
+            let can_clear_sync_lock = phase == "idle" || phase == "completed";
+
+            self.db_frozen.store(false, Ordering::SeqCst);
+            let mut guard = self.frozen_at.lock().unwrap_or_else(|e| e.into_inner());
+            *guard = None;
+            drop(guard);
+
+            if can_clear_sync_lock {
+                self.sync_in_progress.store(false, Ordering::SeqCst);
+                self.reset_progress();
+                self.set_role("undecided");
+            } else {
+                log::warn!(
+                    "Auto-unfreeze kept sync_in_progress=true because sync phase is '{}'",
+                    phase
+                );
+            }
             return true;
         }
         false
@@ -380,6 +380,10 @@ fn handle_connection(
     stream
         .set_write_timeout(Some(Duration::from_secs(30)))
         .map_err(|e| e.to_string())?;
+    let client_ip = stream
+        .peer_addr()
+        .map(|addr| addr.ip())
+        .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
 
     let mut reader = BufReader::new(&stream);
 
@@ -422,8 +426,8 @@ fn handle_connection(
         "/lan/ping" | "/lan/pair" | "/lan/sync-progress" | "/online/sync-progress"
         | "/lan/paired-devices" | "/lan/generate-pairing-code"
         | "/lan/store-paired-device" | "/lan/remove-paired-device"
-        | "/lan/local-identity"
-        | "/lan/trigger-sync" | "/online/trigger-sync"
+        | "/lan/local-identity" | "/lan/initiate-pair"
+        | "/lan/trigger-sync" | "/online/trigger-sync" | "/online/cancel-sync"
     );
     if requires_auth {
         let expected = get_or_create_lan_secret();
@@ -471,16 +475,14 @@ fn handle_connection(
         ("GET", "/lan/ping") => handle_ping(&state),
         ("POST", "/lan/preflight") => handle_preflight(&state),
         ("GET", "/lan/sync-progress") => handle_sync_progress(&state),
-        ("POST", "/lan/status") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/negotiate") => handle_negotiate(&state, &body),
         ("POST", "/lan/freeze-ack") => handle_freeze_ack(&state),
         ("POST", "/lan/upload-db") => handle_upload_db(&state, &body),
         ("POST", "/lan/upload-ack") => (200, json_ok()),
         ("POST", "/lan/db-ready") => handle_db_ready(&state, &body),
-        ("GET", "/lan/download-db") => handle_download_db(),
-        ("POST", "/lan/verify-ack") => (410, json_error("deprecated endpoint")),
         ("POST", "/lan/unfreeze") => handle_unfreeze(&state),
-        ("POST", "/lan/pair") => handle_pair(&body),
+        ("POST", "/lan/pair") => handle_pair(&body, client_ip),
+        ("POST", "/lan/initiate-pair") => handle_initiate_pair(&body, client_ip),
         ("POST", "/lan/generate-pairing-code") => handle_generate_pairing_code(),
         ("POST", "/lan/store-paired-device") => handle_store_paired_device(&body),
         ("POST", "/lan/remove-paired-device") => handle_remove_paired_device(&body),
@@ -489,10 +491,10 @@ fn handle_connection(
         ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body),
         // Online sync endpoints
         ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal),
+        ("POST", "/online/cancel-sync") => handle_online_cancel_sync(&state),
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
         // Legacy endpoints — /lan/pull used by 13-step protocol (step 6, master fetches from slave)
         ("POST", "/lan/pull") => handle_pull(&body),
-        ("POST", "/lan/push") => (410, json_error("deprecated: use 13-step sync protocol")),
         _ => (404, r#"{"ok":false,"error":"not found"}"#.to_string()),
     };
 
@@ -516,6 +518,7 @@ fn status_text(code: u16) -> &'static str {
         404 => "Not Found",
         409 => "Conflict",
         413 => "Payload Too Large",
+        429 => "Too Many Requests",
         500 => "Internal Server Error",
         _ => "Unknown",
     }
@@ -604,14 +607,6 @@ fn get_or_create_lan_secret() -> String {
 /// Public accessor for the LAN secret (used by orchestrator to send with requests).
 // ── DB helpers ──
 
-fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
-    lan_common::open_dashboard_db()
-}
-
-fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
-    config::open_dashboard_db_readonly().map_err(|e| e.to_string())
-}
-
 fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     lan_common::compute_table_hash(conn, table)
 }
@@ -698,32 +693,6 @@ fn handle_preflight(state: &LanSyncState) -> (u16, String) {
     (200, resp.to_string())
 }
 
-#[allow(dead_code)]
-fn handle_status(body: &str) -> (u16, String) {
-    let req: StatusRequest = match serde_json::from_str(body) {
-        Ok(r) => r,
-        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
-    };
-    log::debug!("LAN server: /lan/status from device_id={}", req.device_id);
-
-    let conn = match open_dashboard_db_readonly() {
-        Ok(c) => c,
-        Err(e) => return (500, json_error(&e)),
-    };
-
-    let local_hashes = build_table_hashes(&conn);
-
-    let needs_push = local_hashes != req.table_hashes;
-    let needs_pull = needs_push;
-
-    let resp = StatusResponse {
-        needs_push,
-        needs_pull,
-        their_hashes: local_hashes,
-    };
-    (200, serde_json::to_string(&resp).unwrap_or_default())
-}
-
 fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
     let req: NegotiateRequest = match serde_json::from_str(body) {
         Ok(r) => r,
@@ -746,7 +715,7 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
         }
     }
 
-    let db = open_dashboard_db_readonly().ok();
+    let db = lan_common::open_dashboard_db_readonly().ok();
     let local_marker = db.as_ref().and_then(|conn| get_latest_marker_hash(conn));
 
     let mode = match (&local_marker, &req.master_marker_hash) {
@@ -869,7 +838,7 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
     sync_log(&format!("[SLAVE] Importuje {:.1} KB scalonych danych...", data_kb));
 
     // Open DB connection
-    let mut conn = match open_dashboard_db() {
+    let mut conn = match lan_common::open_dashboard_db() {
         Ok(c) => c,
         Err(e) => return (500, json_error(&format!("DB open error: {}", e))),
     };
@@ -931,9 +900,6 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         *guard = Some(own_marker.clone());
     }
 
-    // Clean up temp file
-    let _ = std::fs::remove_file(&incoming_path);
-
     state.set_progress(12, "slave_import_done", "local");
     sync_log("[SLAVE] Import zakonczony — dane scalone i zweryfikowane");
 
@@ -943,41 +909,6 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         transfer_mode: req.transfer_mode,
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
-}
-
-fn handle_download_db() -> (u16, String) {
-    let dir = match config::config_dir() {
-        Ok(d) => d,
-        Err(e) => return (500, json_error(&format!("Config dir error: {}", e))),
-    };
-    let merged_path = dir.join("lan_sync_merged.json");
-    match std::fs::read_to_string(&merged_path) {
-        Ok(data) => {
-            // Validate JSON once; the raw string is sent as the response body
-            match serde_json::from_str::<serde_json::Value>(&data) {
-                Err(_) => return (500, json_error("Merged JSON file is corrupted")),
-                Ok(_) => {}
-            }
-            let kb = data.len() as f64 / 1024.0;
-            sync_log(&format!("[SLAVE] Wysylam {:.1} KB scalonych danych do mastera", kb));
-            (200, data)
-        },
-        Err(e) => (500, json_error(&format!("No merged data available: {}", e))),
-    }
-}
-
-/// DEPRECATED: This endpoint is not called by the orchestrator. Kept for backwards compatibility.
-#[allow(dead_code)]
-fn handle_verify_ack(state: &LanSyncState) -> (u16, String) {
-    state.set_progress(12, "verifying", "local");
-    sync_log("[SLAVE] Weryfikacja scalonych danych...");
-    let dir = config::config_dir().ok();
-    if let Some(d) = &dir {
-        let _ = std::fs::remove_file(d.join("lan_sync_incoming.json"));
-        let _ = std::fs::remove_file(d.join("lan_sync_merged.json"));
-    }
-    state.unfreeze();
-    (200, json_ok())
 }
 
 fn handle_unfreeze(state: &LanSyncState) -> (u16, String) {
@@ -1001,19 +932,32 @@ fn handle_pull(body: &str) -> (u16, String) {
         #[allow(dead_code)]
         device_id: String,
         since: String,
+        /// Master signals a full snapshot (force sync or first sync). Full
+        /// snapshots include tombstones so deletions converge too.
+        #[serde(default)]
+        full_sync: bool,
     }
     let req: PullRequest = match serde_json::from_str(body) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
-    sync_log(&format!("[SLAVE] Master pobiera dane (since={})...", req.since));
+    sync_log(&format!(
+        "[SLAVE] Master pobiera dane (since={}, full_sync={})...",
+        req.since, req.full_sync
+    ));
 
-    let conn = match open_dashboard_db_readonly() {
+    let conn = match lan_common::open_dashboard_db_readonly() {
         Ok(c) => c,
         Err(e) => return (500, json_error(&e)),
     };
 
-    match build_delta_for_pull(&conn, &req.since) {
+    let result = if req.full_sync {
+        build_full_snapshot_public(&conn)
+    } else {
+        build_delta_for_pull(&conn, &req.since, true)
+    };
+
+    match result {
         Ok(json) => {
             let kb = json.len() as f64 / 1024.0;
             sync_log(&format!("[SLAVE] Wyslano {:.1} KB danych do mastera", kb));
@@ -1023,25 +967,6 @@ fn handle_pull(body: &str) -> (u16, String) {
             sync_log(&format!("[SLAVE] BLAD przygotowania danych: {}", e));
             (500, json_error(&e))
         },
-    }
-}
-
-#[allow(dead_code)]
-fn handle_push(body: &str) -> (u16, String) {
-    let mut conn = match open_dashboard_db() {
-        Ok(c) => c,
-        Err(e) => return (500, json_error(&e)),
-    };
-
-    match crate::sync_common::merge_incoming_data(&mut conn, body) {
-        Ok(()) => {
-            sync_log("[SLAVE] Push data merged successfully");
-            (200, r#"{"ok":true}"#.to_string())
-        }
-        Err(e) => {
-            sync_log(&format!("[SLAVE] Push merge failed: {}", e));
-            (500, json_error(&e))
-        }
     }
 }
 
@@ -1059,7 +984,7 @@ fn handle_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<AtomicBool>,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
-    if !req.force && state.secs_since_last_sync() < TRIGGER_SYNC_COOLDOWN_SECS {
+    if !req.force && state.secs_since_last_sync() < SYNC_COOLDOWN_SECS {
         return (429, json_error("Sync completed recently, wait before retrying"));
     }
 
@@ -1152,7 +1077,24 @@ fn handle_online_trigger_sync(state: &Arc<LanSyncState>, stop_signal: &Arc<Atomi
     (200, r#"{"ok":true,"message":"online sync started"}"#.to_string())
 }
 
-fn handle_pair(body: &str) -> (u16, String) {
+fn handle_online_cancel_sync(state: &Arc<LanSyncState>) -> (u16, String) {
+    let progress = state.get_progress();
+    if !state.sync_in_progress.load(Ordering::SeqCst) || progress.sync_type != "online" {
+        return (409, json_error("No online sync in progress"));
+    }
+
+    crate::online_sync::request_cancel();
+    state.set_progress(progress.step, "cancelling", "local");
+    log::info!("Online cancel-sync: cancellation requested");
+    (200, r#"{"ok":true,"message":"online sync cancellation requested"}"#.to_string())
+}
+
+fn pair_throttle() -> &'static crate::lan_pair_throttle::PairThrottle {
+    static PAIR_THROTTLE: OnceLock<crate::lan_pair_throttle::PairThrottle> = OnceLock::new();
+    PAIR_THROTTLE.get_or_init(crate::lan_pair_throttle::PairThrottle::new)
+}
+
+fn handle_pair(body: &str, client_ip: IpAddr) -> (u16, String) {
     #[derive(Deserialize)]
     struct PairReq {
         code: String,
@@ -1166,14 +1108,32 @@ fn handle_pair(body: &str) -> (u16, String) {
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
+    if pair_throttle().check_and_record(client_ip).is_err() {
+        return (429, json_error("too many pairing attempts; try again later"));
+    }
+
+    // Defence in depth: refuse to register a peer without a real secret.
+    // Without this guard a buggy/old initiator can poison the paired-devices
+    // map with `secret=""`, which the UI happily lists as "paired" while the
+    // sync endpoint rejects every request with HTTP 412 `not_paired`. Force
+    // the caller to re-pair with a complete identity instead.
+    let slave_id = req.slave_device_id.as_deref().unwrap_or("").trim();
+    let slave_sec = req.slave_secret.as_deref().unwrap_or("").trim();
+    if slave_id.is_empty() || slave_sec.is_empty() {
+        log::warn!(
+            "LAN pair attempt rejected: slave identity incomplete (id={}, secret_len={})",
+            !slave_id.is_empty(),
+            slave_sec.len()
+        );
+        return (400, json_error("missing_slave_identity"));
+    }
+
     match crate::lan_pairing::validate_code(&req.code) {
         Ok(()) => {
             // Master stores slave's secret (mutual pairing)
-            if let (Some(slave_id), Some(slave_sec)) = (&req.slave_device_id, &req.slave_secret) {
-                let slave_name = req.slave_machine_name.as_deref().unwrap_or("");
-                crate::lan_pairing::store_paired_device(slave_id, slave_sec, slave_name);
-                log::info!("LAN pairing: master stored slave secret for {}", slave_id);
-            }
+            let slave_name = req.slave_machine_name.as_deref().unwrap_or("");
+            crate::lan_pairing::store_paired_device(slave_id, slave_sec, slave_name);
+            log::info!("LAN pairing: master stored slave secret for {}", slave_id);
 
             let device_id = crate::lan_common::get_device_id();
             let secret = get_or_create_lan_secret();
@@ -1193,14 +1153,132 @@ fn handle_pair(body: &str) -> (u16, String) {
     }
 }
 
+/// Localhost-only: drives a complete pairing handshake with a remote peer
+/// without ever exposing this device's secret to the dashboard process.
+/// The dashboard bridge calls this with `{peer_ip, peer_port, code}`; the
+/// daemon reads its own identity, POSTs to the peer's `/lan/pair`, and
+/// stores the returned peer identity locally. This replaces the previous
+/// flow that relied on `/lan/local-identity` returning the secret (P0
+/// fix `bd8dad1` removed it, breaking mutual pairing — master ended up
+/// with `secret=""` for every peer).
+fn handle_initiate_pair(body: &str, client_ip: IpAddr) -> (u16, String) {
+    if !is_loopback(client_ip) {
+        log::warn!("LAN initiate-pair rejected from non-loopback {}", client_ip);
+        return (403, json_error("loopback_only"));
+    }
+
+    #[derive(Deserialize)]
+    struct Req {
+        peer_ip: String,
+        peer_port: u16,
+        code: String,
+    }
+    let req: Req = match serde_json::from_str(body) {
+        Ok(r) => r,
+        Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
+    };
+
+    let local_device_id = crate::lan_common::get_device_id();
+    let local_secret = get_or_create_lan_secret();
+    let local_machine_name = crate::lan_common::get_machine_name();
+    if local_device_id.trim().is_empty() || local_secret.trim().is_empty() {
+        log::error!("LAN initiate-pair: own identity unavailable (device_id or secret empty)");
+        return (500, json_error("local_identity_unavailable"));
+    }
+
+    let pair_url = format!("http://{}:{}/lan/pair", req.peer_ip, req.peer_port);
+    let pair_body = serde_json::json!({
+        "code": req.code,
+        "slave_device_id": local_device_id,
+        "slave_secret": local_secret,
+        "slave_machine_name": local_machine_name,
+    })
+    .to_string();
+
+    let resp = match ureq::post(&pair_url)
+        .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(15))
+        .send_string(&pair_body)
+    {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, r)) => {
+            let body = r.into_string().unwrap_or_default();
+            log::warn!("LAN initiate-pair: peer responded {} — {}", code, body);
+            return (code, body);
+        }
+        Err(e) => {
+            log::warn!("LAN initiate-pair: peer unreachable: {}", e);
+            return (502, json_error(&format!("peer_unreachable: {}", e)));
+        }
+    };
+
+    let peer_body = match resp.into_string() {
+        Ok(s) => s,
+        Err(e) => return (502, json_error(&format!("peer_read: {}", e))),
+    };
+    let peer_json: serde_json::Value = match serde_json::from_str(&peer_body) {
+        Ok(v) => v,
+        Err(e) => return (502, json_error(&format!("peer_invalid_json: {}", e))),
+    };
+
+    if peer_json.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+        let err = peer_json
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("peer_rejected");
+        return (502, json_error(err));
+    }
+
+    let peer_device_id = peer_json
+        .get("device_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let peer_secret = peer_json
+        .get("secret")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let peer_machine_name = peer_json
+        .get("machine_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if peer_device_id.is_empty() || peer_secret.is_empty() {
+        log::warn!("LAN initiate-pair: peer returned incomplete identity");
+        return (502, json_error("peer_identity_incomplete"));
+    }
+
+    crate::lan_pairing::store_paired_device(&peer_device_id, &peer_secret, &peer_machine_name);
+    log::info!(
+        "LAN initiate-pair: stored peer {} ({})",
+        peer_device_id,
+        peer_machine_name
+    );
+
+    let resp = serde_json::json!({
+        "ok": true,
+        "device_id": peer_device_id,
+        "machine_name": peer_machine_name,
+        "paired_at": chrono::Utc::now().to_rfc3339(),
+    });
+    (200, resp.to_string())
+}
+
+fn is_loopback(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => v6.is_loopback(),
+    }
+}
+
 fn handle_local_identity() -> (u16, String) {
     let device_id = crate::lan_common::get_device_id();
     let machine_name = crate::lan_common::get_machine_name();
-    let secret = get_or_create_lan_secret();
     let resp = serde_json::json!({
         "ok": true,
         "device_id": device_id,
-        "secret": secret,
         "machine_name": machine_name,
     });
     (200, resp.to_string())
@@ -1255,10 +1333,21 @@ fn handle_get_paired_devices() -> (u16, String) {
 
 /// Public wrapper for the orchestrator to call.
 pub fn build_delta_for_pull_public(conn: &rusqlite::Connection, since: &str) -> Result<String, String> {
-    build_delta_for_pull(conn, since)
+    build_delta_for_pull(conn, since, true)
 }
 
-fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<String, String> {
+/// Full snapshot used to converge peers after the master has merged incoming data.
+/// It includes tombstones: merge applies deletions first, then live rows from the
+/// same snapshot re-introduce records that still exist in the final master state.
+pub fn build_full_snapshot_public(conn: &rusqlite::Connection) -> Result<String, String> {
+    build_delta_for_pull(conn, "1970-01-01 00:00:00", true)
+}
+
+fn build_delta_for_pull(
+    conn: &rusqlite::Connection,
+    since: &str,
+    include_tombstones: bool,
+) -> Result<String, String> {
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
     let since_ref = if since_norm.len() > 19 { &since_norm[..19] } else { &since_norm };
@@ -1269,9 +1358,11 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, updated_at FROM applications ORDER BY executable_name")?;
 
-    // Fetch sessions since timestamp (parameterized — no SQL injection)
+    // Fetch sessions since timestamp (parameterized — no SQL injection).
+    // project_name carries the peer's project label so receiving peers can preserve
+    // the assignment even when the project row is absent in their local DB.
     let sessions = fetch_all_rows_params(conn,
-        "SELECT s.id, s.app_id, s.project_id, s.start_time, s.end_time, s.duration_seconds, \
+        "SELECT s.id, s.app_id, s.project_id, s.project_name, s.start_time, s.end_time, s.duration_seconds, \
          s.date, s.rate_multiplier, s.comment, s.is_hidden, s.updated_at \
          FROM sessions s WHERE s.updated_at >= ?1 ORDER BY s.start_time",
         &[&since_ref as &dyn rusqlite::types::ToSql],
@@ -1279,18 +1370,25 @@ fn build_delta_for_pull(conn: &rusqlite::Connection, since: &str) -> Result<Stri
 
     // Fetch manual_sessions since timestamp (parameterized)
     let manual = fetch_all_rows_params(conn,
-        "SELECT id, title, session_type, project_id, app_id, start_time, end_time, \
+        "SELECT id, title, session_type, project_id, project_name, app_id, start_time, end_time, \
          duration_seconds, date, created_at, updated_at \
          FROM manual_sessions WHERE updated_at >= ?1 ORDER BY start_time",
         &[&since_ref as &dyn rusqlite::types::ToSql],
     )?;
 
-    // Fetch tombstones since timestamp (parameterized)
-    let tombstones = fetch_all_rows_params(conn,
-        "SELECT id, table_name, record_id, record_uuid, deleted_at, sync_key \
-         FROM tombstones WHERE deleted_at >= ?1 ORDER BY deleted_at",
-        &[&since_ref as &dyn rusqlite::types::ToSql],
-    )?;
+    // Tombstones are delta-only events. In full snapshots we'd be replaying the
+    // entire deletion history against the peer's live records — guaranteed to
+    // wipe out anything the peer happens to have under the same sync_key but
+    // with a stale `updated_at` (the skip_tombstone guard fails on old rows).
+    let tombstones: Vec<serde_json::Value> = if include_tombstones {
+        fetch_all_rows_params(conn,
+            "SELECT id, table_name, record_id, record_uuid, deleted_at, sync_key \
+             FROM tombstones WHERE deleted_at >= ?1 ORDER BY deleted_at",
+            &[&since_ref as &dyn rusqlite::types::ToSql],
+        )?
+    } else {
+        Vec::new()
+    };
 
     let table_hashes = build_table_hashes(conn);
 
@@ -1361,5 +1459,97 @@ impl PartialEq for TableHashes {
             && self.applications == other.applications
             && self.sessions == other.sessions
             && self.manual_sessions == other.manual_sessions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{handle_local_identity, handle_pair, LanSyncState, AUTO_UNFREEZE_TIMEOUT};
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn pair_rejects_empty_slave_secret() {
+        // Regression for the bridge bug where slave_secret="" was sent because
+        // /lan/local-identity stopped returning the secret. Master must refuse
+        // to register a peer without a real secret — otherwise it gets stored
+        // with secret="" and every later sync returns 412 not_paired while
+        // the UI still lists the peer as paired.
+        let body = serde_json::json!({
+            "code": "000000",
+            "slave_device_id": "test-device",
+            "slave_secret": "",
+            "slave_machine_name": "TestBox",
+        })
+        .to_string();
+        let (status, resp) =
+            handle_pair(&body, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)));
+        assert_eq!(status, 400, "empty slave_secret must be rejected");
+        let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(
+            json.get("error").and_then(|v| v.as_str()),
+            Some("missing_slave_identity")
+        );
+    }
+
+    #[test]
+    fn pair_rejects_missing_slave_device_id() {
+        let body = serde_json::json!({
+            "code": "000000",
+            "slave_secret": "some-secret",
+            "slave_machine_name": "TestBox",
+        })
+        .to_string();
+        let (status, resp) =
+            handle_pair(&body, IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)));
+        assert_eq!(status, 400);
+        let json: serde_json::Value = serde_json::from_str(&resp).unwrap();
+        assert_eq!(
+            json.get("error").and_then(|v| v.as_str()),
+            Some("missing_slave_identity")
+        );
+    }
+
+    #[test]
+    fn local_identity_does_not_leak_secret() {
+        let (status, body) = handle_local_identity();
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        assert_eq!(status, 200);
+        assert!(
+            json.get("secret").is_none(),
+            "secret MUST NOT be in /lan/local-identity response"
+        );
+        assert!(json.get("device_id").is_some());
+        assert!(json.get("machine_name").is_some());
+    }
+
+    #[test]
+    fn auto_unfreeze_keeps_active_sync_lock() {
+        let state = LanSyncState::new();
+        state.freeze();
+        state.set_progress(4, "uploading", "push");
+        *state.frozen_at.lock().unwrap() =
+            Some(Instant::now() - AUTO_UNFREEZE_TIMEOUT - Duration::from_secs(1));
+
+        assert!(state.check_auto_unfreeze());
+        assert!(!state.db_frozen.load(Ordering::SeqCst));
+        assert!(state.sync_in_progress.load(Ordering::SeqCst));
+        assert_eq!(state.get_progress().phase, "uploading");
+    }
+
+    #[test]
+    fn auto_unfreeze_clears_completed_sync_lock() {
+        let state = LanSyncState::new();
+        state.freeze();
+        state.set_progress(13, "completed", "pull");
+        *state.frozen_at.lock().unwrap() =
+            Some(Instant::now() - AUTO_UNFREEZE_TIMEOUT - Duration::from_secs(1));
+
+        assert!(state.check_auto_unfreeze());
+        assert!(!state.db_frozen.load(Ordering::SeqCst));
+        assert!(!state.sync_in_progress.load(Ordering::SeqCst));
+        assert_eq!(state.get_progress().phase, "idle");
     }
 }

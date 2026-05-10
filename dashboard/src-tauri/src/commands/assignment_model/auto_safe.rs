@@ -10,6 +10,8 @@ use crate::commands::types::DateRange;
 use rusqlite::{OptionalExtension, ToSql};
 use timeflow_shared::activity_classification::{classify_activity_type, ActivityType};
 
+const AUTO_SAFE_BATCH_SIZE: usize = 500;
+
 pub fn fetch_unassigned_session_ids(
     conn: &rusqlite::Connection,
     limit: i64,
@@ -98,10 +100,12 @@ pub fn run_auto_safe_sync(
         skipped_already_assigned: 0,
     };
 
+    let total_sessions = session_ids.len();
     let run_work = (|| -> Result<(), String> {
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        for batch in session_ids.chunks(AUTO_SAFE_BATCH_SIZE) {
+            let tx = conn.transaction().map_err(|e| e.to_string())?;
 
-        for session_id in session_ids {
+            for &session_id in batch {
             result.scanned += 1;
 
             let session = tx
@@ -238,8 +242,33 @@ pub fn run_auto_safe_sync(
             .map_err(|e| e.to_string())?;
 
             result.assigned += 1;
+            }
+            tx.commit().map_err(|e| e.to_string())?;
+
+            conn.execute(
+                "UPDATE assignment_auto_runs
+                 SET sessions_scanned = ?2,
+                     sessions_suggested = ?3,
+                     sessions_assigned = ?4
+                 WHERE id = ?1",
+                rusqlite::params![
+                    run_id,
+                    result.scanned,
+                    result.suggested,
+                    result.assigned
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+
+            log::info!(
+                "[auto_safe] batch done run_id={} scanned={}/{} suggested={} assigned={}",
+                run_id,
+                result.scanned,
+                total_sessions,
+                result.suggested,
+                result.assigned
+            );
         }
-        tx.commit().map_err(|e| e.to_string())?;
         Ok(())
     })();
 

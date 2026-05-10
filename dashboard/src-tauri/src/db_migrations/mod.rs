@@ -17,8 +17,11 @@ mod m16_file_activity_spans;
 mod m17_project_folder_meta;
 mod m18_project_folder_tokens;
 mod m19_clear_zero_hourly_rate;
+mod m20_session_project_name;
+mod m21_tombstone_session_sync_key;
+mod m22_updated_at_indexes;
 
-const LATEST_SCHEMA_VERSION: i64 = 19;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 22;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -43,6 +46,11 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     // don't leave the DB in an inconsistent state with an outdated schema_version.
     let tx = db.unchecked_transaction()?;
 
+    // Niektóre migracje zgłaszają chęć wykonania VACUUM (zwalnianie stron po
+    // dedupie) — VACUUM MUSI być poza transakcją (SQLite wymaga auto-commit),
+    // więc zbieramy flag i uruchamiamy VACUUM po `tx.commit()`.
+    let mut needs_vacuum = false;
+
     if current_version < 1 {
         m01_vital_tables::run(&tx)?;
     }
@@ -50,7 +58,7 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
         m02_file_activities::run(&tx)?;
     }
     if current_version < 3 {
-        m03_manual_sessions::run(&tx)?;
+        m03_manual_sessions::run(&tx, &mut needs_vacuum)?;
     }
     if current_version < 4 {
         m04_sessions_unique::run(&tx)?;
@@ -100,6 +108,15 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     if current_version < 19 {
         m19_clear_zero_hourly_rate::run(&tx)?;
     }
+    if current_version < 20 {
+        m20_session_project_name::run(&tx)?;
+    }
+    if current_version < 21 {
+        m21_tombstone_session_sync_key::run(&tx)?;
+    }
+    if current_version < 22 {
+        m22_updated_at_indexes::run(&tx)?;
+    }
 
     tx.execute(
         "INSERT OR REPLACE INTO schema_version (rowid, version) VALUES (1, ?1)",
@@ -107,6 +124,11 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     )?;
 
     tx.commit()?;
+
+    if needs_vacuum {
+        log::info!("Running post-migration VACUUM (outside transaction)");
+        db.execute_batch("VACUUM;")?;
+    }
 
     Ok(())
 }

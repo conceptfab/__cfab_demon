@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Bug, Paperclip, X, Send, Check } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/lib/tauri";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast-notification";
 
 interface BugHunterProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
   const { t } = useTranslation();
+  const { showError } = useToast();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [attachments, setAttachments] = useState<AttachedFile[]>([]);
@@ -42,7 +44,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
     const newAttachments: AttachedFile[] = [];
     for (let i = 0; i < files.length; i++) {
         if (files[i].size > MAX_FILE_SIZE) {
-            alert(t("components.bughunter.errors.file_too_large", { name: files[i].name }));
+            showError(t("components.bughunter.errors.file_too_large", { name: files[i].name }));
             continue;
         }
         newAttachments.push({
@@ -93,7 +95,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
       }, 2000);
     } catch (error) {
       console.error("BugHunter failed to send:", error);
-      alert(t("components.bughunter.errors.send_failed", { error: String(error) }));
+      showError(t("components.bughunter.errors.send_failed", { error: String(error) }));
       setIsSending(false);
     }
   };

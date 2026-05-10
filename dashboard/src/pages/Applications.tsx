@@ -23,7 +23,8 @@ import { AppTooltip } from '@/components/ui/app-tooltip';
 import { formatDuration, getErrorMessage, logTauriError } from '@/lib/utils';
 import { useDataStore } from '@/store/data-store';
 import { useToast } from '@/components/ui/toast-notification';
-import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import type { AppWithStats, MonitoredApp } from '@/lib/db-types';
 import type { PromptConfig } from '@/lib/ui-types';
 import { usePageRefreshListener } from '@/hooks/usePageRefreshListener';
@@ -34,9 +35,9 @@ const APP_ROWS_PAGE_SIZE = 100;
 
 export function Applications() {
   const { i18n, t } = useTranslation();
-  const { triggerRefresh } = useDataStore();
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const { showError, showInfo } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
   const [apps, setApps] = useState<AppWithStats[]>([]);
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('total_seconds');
@@ -761,8 +762,7 @@ export function Applications() {
         initialValue={promptConfig?.initialValue ?? ''}
         onConfirm={promptConfig?.onConfirm ?? (() => {})}
       />
-      <ConfirmDialog />
+      <ConfirmDialog {...confirmDialogProps} />
     </div>
   );
 }
-

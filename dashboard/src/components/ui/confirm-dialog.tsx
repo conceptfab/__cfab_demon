@@ -1,4 +1,3 @@
-import { useCallback, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -8,55 +7,37 @@ import {
 } from '@/components/ui/dialog';
 import { useTranslation } from 'react-i18next';
 
-interface ConfirmState {
+interface ConfirmDialogProps {
   open: boolean;
   message: string;
-  resolve: ((ok: boolean) => void) | null;
+  onConfirm: () => void;
+  onCancel: () => void;
 }
 
-export function useConfirm() {
+export function ConfirmDialog({
+  open,
+  message,
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
   const { t } = useTranslation();
-  const [state, setState] = useState<ConfirmState>({
-    open: false,
-    message: '',
-    resolve: null,
-  });
-  const resolveRef = useRef<((ok: boolean) => void) | null>(null);
 
-  const confirm = useCallback((message: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      resolveRef.current = resolve;
-      setState({ open: true, message, resolve });
-    });
-  }, []);
-
-  const handleClose = useCallback((ok: boolean) => {
-    resolveRef.current?.(ok);
-    resolveRef.current = null;
-    setState((s) => ({ ...s, open: false }));
-  }, []);
-
-  const ConfirmDialog = useCallback(
-    () => (
-      <Dialog open={state.open} onOpenChange={(open) => { if (!open) handleClose(false); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t('components.confirm_dialog.title')}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">{state.message}</p>
-          <div className="flex justify-end gap-2 pt-1">
-            <Button variant="ghost" size="sm" onClick={() => handleClose(false)}>
-              {t('ui.buttons.cancel')}
-            </Button>
-            <Button variant="destructive" size="sm" onClick={() => handleClose(true)}>
-              {t('ui.buttons.confirm')}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    ),
-    [state.open, state.message, handleClose, t],
+  return (
+    <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onCancel(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t('components.confirm_dialog.title')}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">{message}</p>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            {t('ui.buttons.cancel')}
+          </Button>
+          <Button variant="destructive" size="sm" onClick={onConfirm}>
+            {t('ui.buttons.confirm')}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
-
-  return { confirm, ConfirmDialog };
 }

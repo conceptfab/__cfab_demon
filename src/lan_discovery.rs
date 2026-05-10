@@ -11,7 +11,8 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use timeflow_shared::process_utils::no_console;
 
 use crate::config;
 use crate::lan_common;
@@ -21,9 +22,12 @@ use crate::lan_sync_orchestrator;
 /// Cached ipconfig output to avoid spawning the process on every beacon (every 30s).
 /// TTL: 120 seconds.
 /// TODO: Replace with WinAPI GetAdaptersAddresses for locale-independent results.
+#[cfg(windows)]
 static IPCONFIG_CACHE: std::sync::Mutex<Option<(Instant, String)>> = std::sync::Mutex::new(None);
+#[cfg(windows)]
 const IPCONFIG_CACHE_TTL: Duration = Duration::from_secs(120);
 
+#[cfg(windows)]
 fn get_ipconfig_output() -> Option<String> {
     if let Ok(guard) = IPCONFIG_CACHE.lock() {
         if let Some((ts, ref cached)) = *guard {
@@ -32,15 +36,19 @@ fn get_ipconfig_output() -> Option<String> {
             }
         }
     }
-    let output = std::process::Command::new("ipconfig")
-        .creation_flags(0x08000000)
-        .output()
-        .ok()?;
+    let mut cmd = std::process::Command::new("ipconfig");
+    no_console(&mut cmd);
+    let output = cmd.output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
     if let Ok(mut guard) = IPCONFIG_CACHE.lock() {
         *guard = Some((Instant::now(), text.clone()));
     }
     Some(text)
+}
+
+#[cfg(not(windows))]
+fn get_ipconfig_output() -> Option<String> {
+    None
 }
 
 const DISCOVERY_PORT: u16 = 47892;
@@ -49,9 +57,6 @@ const BEACON_INTERVAL: Duration = Duration::from_secs(30);
 const PEER_EXPIRY: Duration = Duration::from_secs(120);
 const RECV_TIMEOUT: Duration = Duration::from_secs(1);
 const PROTOCOL_VERSION: u32 = 1;
-/// Minimum seconds after a completed sync before auto-triggering another.
-const AUTO_SYNC_COOLDOWN_SECS: u64 = 60;
-
 // ── Beacon / Discovery packets ──
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -121,13 +126,6 @@ pub struct PeerInfo {
 pub struct PeersFile {
     pub updated_at: String,
     pub peers: Vec<PeerInfo>,
-}
-
-// ── Device ID ──
-// Unified: uses lan_common::get_device_id() which creates the file if missing.
-
-fn get_machine_name() -> String {
-    lan_common::get_machine_name()
 }
 
 // ── Peers file I/O ──
@@ -211,7 +209,7 @@ pub fn start(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>
 
 fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSyncState>>) {
     let device_id = lan_common::get_device_id();
-    let machine_name = get_machine_name();
+    let machine_name = lan_common::get_machine_name();
     let version_str = crate::VERSION.trim().to_string();
     let started_at = Instant::now();
 
@@ -502,10 +500,19 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
 
             if should_auto_sync {
                 let sync_cooldown = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
-                let completed_cooldown_ok = state.secs_since_last_sync() >= AUTO_SYNC_COOLDOWN_SECS;
+                let completed_cooldown_ok =
+                    state.secs_since_last_sync() >= crate::lan_server::SYNC_COOLDOWN_SECS;
                 if role == "master" && !in_progress && handle_done && completed_cooldown_ok && last_sync_attempt.elapsed() >= sync_cooldown {
                     // Find a slave peer to sync with
                     if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {
+                        if state.sync_in_progress.compare_exchange(
+                            false,
+                            true,
+                            Ordering::SeqCst,
+                            Ordering::SeqCst,
+                        ).is_err() {
+                            continue;
+                        }
                         log::info!("LAN discovery: auto-triggering sync as MASTER with peer {} ({})", slave.device_id, slave.ip);
                         last_sync_attempt = Instant::now();
                         let target = lan_sync_orchestrator::PeerTarget {

@@ -6,7 +6,8 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -134,7 +135,7 @@ export function AIPage() {
   const refreshAiStatus = useBackgroundStatusStore((s) => s.refreshAiStatus);
   const setAiStatus = useBackgroundStatusStore((s) => s.setAiStatus);
   const { showError, showInfo } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
 
   const isFetchingMetricsRef = useRef(false);
   const [metrics, setMetrics] = useState<AssignmentModelMetrics | null>(null);
@@ -174,6 +175,7 @@ export function AIPage() {
         setAutoEvidence(nextStatus.min_evidence_auto);
         setTrainingHorizonDays(nextStatus.training_horizon_days);
         setDecayHalfLifeDays(nextStatus.decay_half_life_days);
+        setFeedbackWeight(nextStatus.feedback_weight);
       }
     },
     [],
@@ -243,14 +245,11 @@ export function AIPage() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const results = await Promise.all([
+      const [, scan] = await Promise.all([
         refreshAiStatus(),
-        aiApi.getFeedbackWeight(),
         aiApi.getFolderScanStatus(),
       ]);
-      const fw = results[1];
-      if (!dirtyRef.current) setFeedbackWeight(fw);
-      setScanStatus(results[2]);
+      setScanStatus(scan);
     } catch (e) {
       console.error(e);
       showTranslatedError('ai_page.errors.status_load_failed', e);
@@ -333,6 +332,11 @@ export function AIPage() {
       const normalizedAuto = clampNumber(autoConf, 0, 1);
       const normalizedEvidence = Math.round(clampNumber(autoEvidence, 1, 50));
 
+      if (normalizedAuto < normalizedSuggest) {
+        showError(tr('ai_page.text.auto_confidence_must_be_at_least_suggest'));
+        return;
+      }
+
       await Promise.all([
         aiApi.setAssignmentMode(
           mode,
@@ -345,15 +349,13 @@ export function AIPage() {
         aiApi.setFeedbackWeight(feedbackWeight),
       ]);
 
-      await refreshAiStatus();
-      // Read from store after refresh completes — getState() is safe here because
-      // refreshAiStatus() just called set({aiStatus}), so the store is up-to-date.
-      const freshStatus = useBackgroundStatusStore.getState().aiStatus;
-      if (freshStatus) {
-        syncFormWithStatus(freshStatus, true);
-      }
-      const freshFw = await aiApi.getFeedbackWeight();
-      setFeedbackWeight(freshFw);
+      // Bypass refreshAiStatus() in-flight guard — fetch directly so we always get
+      // post-save values. Otherwise a concurrent background poll can no-op the
+      // refresh and we'd sync the form from STALE store data (the bug where
+      // entering 60 displayed 244 after Save).
+      const freshStatus = await aiApi.getAssignmentModelStatus();
+      setAiStatus(freshStatus);
+      syncFormWithStatus(freshStatus, true);
       dirtyRef.current = false;
       await fetchMetrics(true);
     } catch (e) {
@@ -366,10 +368,10 @@ export function AIPage() {
     }
   };
 
-  const handleTrainNow = async () => {
+  const handleTrainNow = async (fullRebuild = false) => {
     setTraining(true);
     try {
-      const nextStatus = await aiApi.trainAssignmentModel(true);
+      const nextStatus = await aiApi.trainAssignmentModel(true, fullRebuild);
       setAiStatus(nextStatus);
       syncFormWithStatus(nextStatus);
       await fetchMetrics(true);
@@ -386,28 +388,65 @@ export function AIPage() {
     }
   };
 
-  const handleResetKnowledge = async () => {
-    const confirmed = await confirm(
-      tr('ai_page.prompts.reset_knowledge_confirm'),
-    );
-    if (!confirmed) return;
+  const runReset = useCallback(
+    async (
+      mode: 'weights' | 'full',
+      apiCall: () => Promise<AssignmentModelStatus>,
+    ) => {
+      const confirmed = await confirm(
+        tr(
+          mode === 'weights'
+            ? 'ai_page.prompts.reset_weights_confirm'
+            : 'ai_page.prompts.reset_full_confirm',
+        ),
+      );
+      if (!confirmed) return;
 
-    setResettingKnowledge(true);
-    try {
-      const nextStatus = await aiApi.resetAssignmentModelKnowledge();
-      dirtyRef.current = false;
-      setAiStatus(nextStatus);
-      syncFormWithStatus(nextStatus, true);
-      await fetchMetrics(true);
-      triggerRefresh('ai_knowledge_reset');
-      showInfo(tr('ai_page.info.knowledge_reset'));
-    } catch (e) {
-      console.error(e);
-      showError(`${tr('ai_page.errors.knowledge_reset_failed')} ${String(e)}`);
-    } finally {
-      setResettingKnowledge(false);
-    }
-  };
+      setResettingKnowledge(true);
+      try {
+        const nextStatus = await apiCall();
+        dirtyRef.current = false;
+        setAiStatus(nextStatus);
+        syncFormWithStatus(nextStatus, true);
+        await fetchMetrics(true);
+        triggerRefresh(
+          mode === 'weights' ? 'ai_weights_reset' : 'ai_knowledge_reset',
+        );
+        showInfo(
+          tr(
+            mode === 'weights'
+              ? 'ai_page.info.weights_reset'
+              : 'ai_page.info.knowledge_reset',
+          ),
+        );
+      } catch (e) {
+        console.error(e);
+        showError(`${tr('ai_page.errors.knowledge_reset_failed')} ${String(e)}`);
+      } finally {
+        setResettingKnowledge(false);
+      }
+    },
+    [
+      confirm,
+      fetchMetrics,
+      setAiStatus,
+      showError,
+      showInfo,
+      syncFormWithStatus,
+      tr,
+      triggerRefresh,
+    ],
+  );
+
+  const handleResetWeights = useCallback(
+    () => runReset('weights', aiApi.resetModelWeights),
+    [runReset],
+  );
+
+  const handleResetFull = useCallback(
+    () => runReset('full', aiApi.resetModelFull),
+    [runReset],
+  );
 
   const handleRunAutoSafe = async () => {
     if (status?.mode !== 'auto_safe') {
@@ -598,11 +637,15 @@ export function AIPage() {
           highlightTrainAction={highlightTrainAction}
           snoozedUntil={trainingReminder.cooldownUntil}
           reminderSuppressed={!trainingReminder.shouldShow}
-          onTrainNow={handleTrainNow}
+          onTrainNow={() => handleTrainNow()}
+          onFullRebuild={() => {
+            void handleTrainNow(true);
+          }}
           onRefreshStatus={() => {
             void handleRefreshStatus();
           }}
-          onResetKnowledge={handleResetKnowledge}
+          onResetWeights={handleResetWeights}
+          onResetFull={handleResetFull}
         />
 
         <AiFolderScanCard
@@ -631,7 +674,9 @@ export function AIPage() {
               <div className="flex flex-wrap gap-2">
                 <Button
                   className="h-8"
-                  onClick={handleTrainNow}
+                  onClick={() => {
+                    void handleTrainNow();
+                  }}
                   disabled={training || status?.is_training}
                 >
                   <PlayCircle className="mr-2 h-4 w-4" />
@@ -702,7 +747,7 @@ export function AIPage() {
           sections={howToSections}
         />
       </div>
-      <ConfirmDialog />
+      <ConfirmDialog {...confirmDialogProps} />
     </>
   );
 }

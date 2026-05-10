@@ -43,8 +43,12 @@ export function invokeMutation<T>(
     return Promise.reject(new Error('Tauri runtime not available'));
   }
   return tauriInvoke<T>(command, args).then((res) => {
-    if (shouldNotifyMutation(options?.notify, res)) {
-      emitLocalDataChanged(command);
+    try {
+      if (shouldNotifyMutation(options?.notify, res)) {
+        emitLocalDataChanged(command);
+      }
+    } catch (err) {
+      console.error('[invokeMutation] emitLocalDataChanged threw:', err);
     }
     return res;
   });

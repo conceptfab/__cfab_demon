@@ -22,13 +22,12 @@ const RULES: &[FirewallRule] = &[
 fn rule_exists(name: &str) -> bool {
     Command::new("netsh")
         .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", name)])
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .creation_flags(0x08000000)
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
 }
 
-/// Check if the rule already has profile=Any (no need to recreate).
 fn rule_has_correct_profile(name: &str) -> bool {
     Command::new("netsh")
         .args(["advfirewall", "firewall", "show", "rule", &format!("name={}", name)])
@@ -73,7 +72,7 @@ fn add_rule(rule: &FirewallRule) -> Result<(), String> {
 
     let output = Command::new("netsh")
         .args(&args)
-        .creation_flags(0x08000000) // CREATE_NO_WINDOW
+        .creation_flags(0x08000000)
         .output()
         .map_err(|e| format!("Failed to run netsh: {}", e))?;
 
@@ -85,17 +84,13 @@ fn add_rule(rule: &FirewallRule) -> Result<(), String> {
     }
 }
 
-/// Ensure all TIMEFLOW firewall rules exist with correct settings.
-/// Deletes and recreates rules to ensure profile=any (fixes stale rules from older versions).
 pub fn ensure_firewall_rules() {
-    // Always delete and recreate to ensure correct profile (older versions used private,domain)
     let mut recreated = 0;
     let mut created = 0;
 
     for rule in RULES {
         if rule_exists(rule.name) {
             if rule_has_correct_profile(rule.name) {
-                // Rule exists with correct profile — skip recreation
                 continue;
             }
             delete_rule(rule.name);

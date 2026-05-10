@@ -207,16 +207,39 @@ pub fn load_today() -> DailyData {
     load_daily(Local::now().date_naive())
 }
 
-/// Zapisuje dane dzienne w SQLite daily store.
-pub fn save_daily(data: &mut DailyData) -> Result<()> {
-    // Aktualizuj timestamp i podsumowanie
-    data.generated_at = Local::now().to_rfc3339();
-    prepare_daily_for_storage(data);
-    update_summary(data);
-    let mut conn = open_daily_store()?;
-    crate::daily_store::replace_day_snapshot(&mut conn, &to_stored_daily(data))
-        .map(|_| ())
-        .map_err(anyhow::Error::msg)
+/// Long-lived handle to the daily snapshots SQLite database.
+///
+/// The tracker opens one `DailyStore` per `run_loop` and reuses it for every
+/// save tick. The connection is kept alive across ticks so WAL state and
+/// prepared-statement caches stay warm.
+pub struct DailyStore {
+    conn: rusqlite::Connection,
+}
+
+impl DailyStore {
+    /// Open the default daily store. Errors if the config dir or DB cannot be prepared.
+    pub fn open() -> Result<Self> {
+        Ok(Self {
+            conn: open_daily_store()?,
+        })
+    }
+
+    /// Reopen the underlying SQLite connection. Intended for post-sleep recovery,
+    /// where keeping a stale WAL handle across suspend may cause surprises.
+    pub fn reopen(&mut self) -> Result<()> {
+        self.conn = open_daily_store()?;
+        Ok(())
+    }
+
+    /// Persist the current day snapshot using the cached connection.
+    pub fn save(&mut self, data: &mut DailyData) -> Result<()> {
+        data.generated_at = Local::now().to_rfc3339();
+        prepare_daily_for_storage(data);
+        update_summary(data);
+        crate::daily_store::replace_day_snapshot(&mut self.conn, &to_stored_daily(data))
+            .map(|_| ())
+            .map_err(anyhow::Error::msg)
+    }
 }
 
 /// Tworzy pustą strukturę dzienną
@@ -305,6 +328,7 @@ mod tests {
                             "n".repeat(400),
                         ],
                         activity_type: Some("coding".to_string()),
+                        activity_spans: Vec::new(),
                     }],
                 },
             )]),

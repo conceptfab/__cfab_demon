@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CalendarPlus,
@@ -55,7 +55,7 @@ type ProjectCardProps = {
   minimal?: boolean;
 };
 
-export function ProjectCard({
+function ProjectCardComponent({
   project,
   currencyCode,
   estimateValue,
@@ -75,16 +75,12 @@ export function ProjectCard({
   onPendingColorChange,
   onSavePendingColor,
   onSelectPresetColor,
-  onResetProjectTime,
   onToggleFreeze,
-  onExclude,
-  onDelete,
   onOpenManualSession,
   onOpenProjectPage,
   onToggleAssignOpen,
   onAssignApp,
   onCompactProject,
-  minimal,
 }: ProjectCardProps) {
   const { t } = useTranslation();
 
@@ -434,3 +430,5 @@ export function ProjectCard({
     </Card>
   );
 }
+
+export const ProjectCard = memo(ProjectCardComponent);

@@ -13,7 +13,7 @@ use winapi::um::processthreadsapi::{GetProcessTimes, OpenProcess};
 use winapi::um::winuser::{GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId};
 
 use crate::activity::ActivityType;
-use crate::win_process_snapshot::collect_process_entries;
+use crate::platform::process_snapshot::collect_process_entries;
 
 use pid_cache::ensure_pid_cache_entry;
 #[cfg(test)]
@@ -156,52 +156,8 @@ fn get_exe_name_and_creation_time(pid: u32) -> Option<(String, u64)> {
     }
 }
 
-/// Lightweight app category used by the tracker to tag file activities.
-/// Delegates to the shared classification map; supports config overrides.
-pub fn classify_activity_type(exe_name: &str) -> Option<ActivityType> {
-    timeflow_shared::activity_classification::classify_activity_type(exe_name, None)
-}
-
 /// Parsuje tytuł okna i wyciąga nazwę pliku/projektu.
-/// Heurystyka: bierze pierwszą część przed separatorem (` - `, ` — `, ` | `).
-/// Przykłady:
-///   "main.rs - timeflow_demon - Visual Studio Code" → "main.rs - timeflow_demon"
-///   "projekt.psd @ 100% (RGB/8)" → "projekt.psd"
-///   "Blender" → "Blender"
-pub fn extract_file_from_title(title: &str) -> String {
-    // Priority: " — " and " | " (checked via rfind) take precedence over " - ".
-    // For "file.py - projekt | VS Code", rfind(" | ") matches first → result is "file.py - projekt".
-    // This is intentional: " - " is last because it often appears inside file paths / project names.
-    let separators = [" — ", " | "];
-
-    for sep in separators {
-        if let Some(pos) = title.rfind(sep) {
-            let left = title[..pos].trim();
-            if !left.is_empty() {
-                return left.to_string();
-            }
-        }
-    }
-
-    // Dla " - " — specjalne traktowanie: bierzemy wszystko oprócz ostatniego segmentu
-    // "main.rs - timeflow_demon - Visual Studio Code" → "main.rs - timeflow_demon"
-    if let Some(pos) = title.rfind(" - ") {
-        let left = title[..pos].trim();
-        if !left.is_empty() {
-            return left.to_string();
-        }
-    }
-
-    // Dla " @ " — bierzemy lewą część
-    if let Some(pos) = title.find(" @ ") {
-        let left = title[..pos].trim();
-        if !left.is_empty() {
-            return left.to_string();
-        }
-    }
-
-    title.trim().to_string()
-}
+pub use crate::title_parser::extract_file_from_title;
 
 // ── Idle detection ────────────────────────────────────────────
 
@@ -221,7 +177,11 @@ pub fn get_idle_time_ms() -> u64 {
         // Use GetTickCount (32-bit) for consistency with dwTime (also 32-bit DWORD).
         // GetTickCount64 would give wrong results after ~49 days when dwTime wraps.
         let now = winapi::um::sysinfoapi::GetTickCount();
-        u64::from(now.wrapping_sub(lii.dwTime))
+        let idle_ms = u64::from(now.wrapping_sub(lii.dwTime));
+        if idle_ms > 48 * 3600 * 1000 {
+            return 0;
+        }
+        idle_ms
     }
 }
 
@@ -274,23 +234,7 @@ pub fn build_process_snapshot() -> ProcessSnapshot {
     ProcessSnapshot { tree, exe_pids }
 }
 
-/// Recursively collects all descendant PIDs.
-fn collect_descendants(
-    tree: &HashMap<u32, Vec<u32>>,
-    root: u32,
-    result: &mut Vec<u32>,
-    visited: &mut std::collections::HashSet<u32>,
-) {
-    if !visited.insert(root) {
-        return; // Cycle detected or already visited
-    }
-    if let Some(children) = tree.get(&root) {
-        for &child in children {
-            result.push(child);
-            collect_descendants(tree, child, result, visited);
-        }
-    }
-}
+use crate::title_parser::collect_descendants;
 
 /// Pobiera sumaryczny czas CPU (kernel + user) dla zbioru PIDów.
 /// Zwraca sumę w 100-ns jednostkach.
@@ -371,9 +315,8 @@ pub fn measure_cpu_for_app(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_wmi_process_command_line_query, classify_activity_type,
-        collect_pending_detected_path_pids, decode_window_title, extract_file_from_title,
-        extract_path_from_command_line, PidCache, PidCacheEntry,
+        build_wmi_process_command_line_query, collect_pending_detected_path_pids,
+        decode_window_title, extract_path_from_command_line, PidCache, PidCacheEntry,
     };
     use crate::activity::ActivityType;
     use std::time::Instant;
@@ -395,51 +338,6 @@ mod tests {
             activity_type,
             path_detection_attempted,
         }
-    }
-
-    #[test]
-    fn extract_file_single_separator() {
-        assert_eq!(
-            extract_file_from_title("main.rs - timeflow_demon - Visual Studio Code"),
-            "main.rs - timeflow_demon"
-        );
-    }
-
-    #[test]
-    fn extract_file_at_separator() {
-        assert_eq!(
-            extract_file_from_title("projekt.psd @ 100% (RGB/8)"),
-            "projekt.psd"
-        );
-    }
-
-    #[test]
-    fn extract_file_no_separator() {
-        assert_eq!(extract_file_from_title("Blender"), "Blender");
-    }
-
-    #[test]
-    fn extract_file_pipe_separator() {
-        assert_eq!(extract_file_from_title("file.py | VS Code"), "file.py");
-    }
-
-    #[test]
-    fn extract_file_mixed_separators() {
-        // " - " ma pierwszeństwo przed " | " przy rfind — bierzemy lewą część przed ostatnim " - "
-        assert_eq!(
-            extract_file_from_title("file.py - projekt | VS Code"),
-            "file.py - projekt"
-        );
-    }
-
-    #[test]
-    fn extract_file_empty_after_trim() {
-        assert_eq!(extract_file_from_title("   "), "");
-    }
-
-    #[test]
-    fn extract_file_em_dash() {
-        assert_eq!(extract_file_from_title("dokument — Edytor"), "dokument");
     }
 
     #[test]
@@ -499,20 +397,4 @@ mod tests {
         assert_eq!(pending, vec![11, 12]);
     }
 
-    #[test]
-    fn classify_activity_type_for_known_apps() {
-        assert_eq!(
-            classify_activity_type("code.exe"),
-            Some(ActivityType::Coding)
-        );
-        assert_eq!(
-            classify_activity_type("chrome.exe"),
-            Some(ActivityType::Browsing)
-        );
-        assert_eq!(
-            classify_activity_type("blender.exe"),
-            Some(ActivityType::Design)
-        );
-        assert_eq!(classify_activity_type("unknown.exe"), None);
-    }
 }

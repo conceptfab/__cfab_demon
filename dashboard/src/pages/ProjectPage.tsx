@@ -10,7 +10,8 @@ import {
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { PromptModal } from '@/components/ui/prompt-modal';
 import { useToast } from '@/components/ui/toast-notification';
-import { useConfirm } from '@/components/ui/confirm-dialog';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { ProjectSessionDetailDialog } from '@/components/project/ProjectSessionDetailDialog';
 import {
   dashboardApi,
@@ -139,11 +140,14 @@ function upsertProjectInList(
 
 export function ProjectPage() {
   const { t, i18n } = useTranslation();
-  const { projectPageId, projectPageMinimal, setProjectPageId, setCurrentPage } = useUIStore();
-  const { triggerRefresh } = useDataStore();
-  const { currencyCode } = useSettingsStore();
+  const projectPageId = useUIStore((s) => s.projectPageId);
+  const projectPageMinimal = useUIStore((s) => s.projectPageMinimal);
+  const setProjectPageId = useUIStore((s) => s.setProjectPageId);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+  const currencyCode = useSettingsStore((s) => s.currencyCode);
   const { showError, showInfo } = useToast();
-  const { confirm, ConfirmDialog } = useConfirm();
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
   const {
     assignSessions,
     updateSessionRateMultipliers,
@@ -1210,7 +1214,7 @@ export function ProjectPage() {
         editSession={editManualSession || undefined}
         onSaved={() => triggerRefresh('project_page_manual_session_saved')}
       />
-      <ConfirmDialog />
+      <ConfirmDialog {...confirmDialogProps} />
       {showTemplateSelector && (
         <ReportTemplateSelector
           onSelect={(templateId) => {
@@ -1229,4 +1233,3 @@ export function ProjectPage() {
     </div>
   );
 }
-

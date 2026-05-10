@@ -106,6 +106,7 @@ export interface AssignmentModelStatus {
   last_auto_assigned_count: number;
   last_auto_rolled_back_at: string | null;
   can_rollback_last_auto_run: boolean;
+  feedback_weight: number;
 }
 
 export interface AssignmentModelMetricsPoint {

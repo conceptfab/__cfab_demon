@@ -16,7 +16,9 @@ import {
 } from '@/lib/background-helpers';
 
 export function useAutoImporter() {
-  const { autoImportDone, setAutoImportDone, triggerRefresh } = useDataStore();
+  const autoImportDone = useDataStore((s) => s.autoImportDone);
+  const setAutoImportDone = useDataStore((s) => s.setAutoImportDone);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
 
   useEffect(() => {
     if (autoImportDone) return;
@@ -98,8 +100,9 @@ export function useAutoSessionRebuild() {
 }
 
 export function useStartupProjectSyncAndAiAssignment() {
-  const { autoImportDone, autoImportResult, setDiscoveredProjects } =
-    useDataStore();
+  const autoImportDone = useDataStore((s) => s.autoImportDone);
+  const autoImportResult = useDataStore((s) => s.autoImportResult);
+  const setDiscoveredProjects = useDataStore((s) => s.setDiscoveredProjects);
   const hasProcessedStartupRef = useRef(false);
 
   useEffect(() => {

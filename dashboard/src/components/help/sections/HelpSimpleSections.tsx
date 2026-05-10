@@ -33,6 +33,7 @@ export function HelpDashboardSection() {
         t18n('help_page.all_projects_overview_chart_showing_work_time_distributi'),
         t18n('help_page.timeline_states_loading_empty_and_error_messages_help_yo'),
         t18n('help_page.dashboard_sidebar_backup_indicator'),
+        t18n('help_page.dashboard_macos_native_window_controls'),
       ]}
     />
   );
@@ -128,12 +129,15 @@ export function HelpDaemonSection() {
         t18n('help_page.version_insight_information_on_the_compatibility_of_daem'),
         t18n('help_page.localization_the_daemon_tray_menu_automatically_switches'),
         t18n('help_page.monitor_all_fallback_if_the_monitored_process_list_is_em'),
+        t18n('help_page.daemon_macos_window_title'),
+        t18n('help_page.daemon_macos_foreground_notifications'),
         t18n('help_page.monitored_apps_with_empty_window_titles_are_still_counted'),
         t18n('help_page.unassigned_sessions_indicator_badge_with_the_count_of_se'),
         t18n('help_page.log_auto_refresh_button_to_enable_automatic_real_time_lo'),
         t18n('help_page.log_auto_refresh_runs_only_while_the_daemon_screen_is_v'),
         t18n('help_page.log_coloring_error_and_warn_lines_are_highlighted_with_c'),
         t18n('help_page.daemon_windows_autostart_details'),
+        t18n('help_page.daemon_sleep_pause'),
       ]}
     />
   );
@@ -161,6 +165,7 @@ export function HelpPmSection() {
         t18n('help_page.pm_feature_folder_size'),
         t18n('help_page.pm_feature_compat'),
         t18n('help_page.pm_template_manager'),
+        t18n('help_page.pm_template_manager_howto'),
         t18n('help_page.pm_project_detail_dialog'),
         t18n('help_page.pm_clients_management'),
       ]}

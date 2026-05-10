@@ -155,10 +155,12 @@ fn http_request_with_timeout(
     let path = url_path(url);
     let content_length = body.map(|b| b.len()).unwrap_or(0);
 
-    let request = if let Some(body) = body {
+    // Send headers first; body is streamed below so progress callbacks
+    // can fire between chunks rather than after a single monolithic write.
+    let headers = if body.is_some() {
         format!(
-            "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-TimeFlow-Secret: {}\r\nConnection: close\r\n\r\n{}",
-            method, path, content_length, secret, body
+            "{} {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nX-TimeFlow-Secret: {}\r\nConnection: close\r\n\r\n",
+            method, path, content_length, secret
         )
     } else {
         format!(
@@ -166,8 +168,29 @@ fn http_request_with_timeout(
             method, path, secret
         )
     };
+    stream
+        .write_all(headers.as_bytes())
+        .map_err(|e| e.to_string())?;
 
-    stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+    if let Some(body) = body {
+        const UPLOAD_CHUNK: usize = 256 * 1024;
+        let total = content_length as u64;
+        let mut sent: u64 = 0;
+        let bytes = body.as_bytes();
+
+        if let Some(cb) = &on_progress {
+            cb(0, total);
+        }
+
+        for chunk in bytes.chunks(UPLOAD_CHUNK) {
+            stream.write_all(chunk).map_err(|e| e.to_string())?;
+            sent += chunk.len() as u64;
+            if let Some(cb) = &on_progress {
+                cb(sent, total);
+            }
+        }
+    }
+
     stream.flush().map_err(|e| e.to_string())?;
 
     let mut reader = BufReader::new(&stream);
@@ -503,6 +526,9 @@ fn execute_master_sync(
     let pull_body = serde_json::json!({
         "device_id": device_id,
         "since": since,
+        // Full sync asks for the slave's whole convergence snapshot, including
+        // tombstones. Tombstones are merged before live rows.
+        "full_sync": transfer_mode == "full",
     });
 
     let slave_data = http_post_with_progress(
@@ -580,16 +606,12 @@ fn execute_master_sync(
 
     // Step 11: Upload merged data to SLAVE
     sync_state.set_progress(11, "uploading_to_slave", "upload");
-    let merged_export = if transfer_mode == "delta" {
-        sync_log("[11/13] Budowanie delta eksportu dla peera...");
-        let (data, _size) = sync_common::build_delta_export(&conn, Some(&since))
-            .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania delta eksportu: {}", e)); e })?;
-        data
-    } else {
-        sync_log("[11/13] Budowanie pelnego eksportu dla peera...");
-        sync_common::build_full_export(&conn)
-            .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?
-    };
+    sync_log(&format!(
+        "[11/13] Budowanie finalnego snapshotu po merge (tryb negocjacji: {})...",
+        transfer_mode
+    ));
+    let merged_export = sync_common::build_full_export(&conn)
+        .map_err(|e| { sync_log(&format!("[11/13] BLAD budowania eksportu: {}", e)); e })?;
     let export_kb = merged_export.len() as f64 / 1024.0;
     sync_log(&format!("[11/13] Wysylanie {:.1} KB do peera...", export_kb));
 
@@ -720,10 +742,6 @@ fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String
     get_latest_marker(conn).map(|(hash, _)| hash)
 }
 
-fn get_local_marker_created_at_with_conn(conn: &rusqlite::Connection) -> Option<String> {
-    get_latest_marker(conn).map(|(_, created_at)| created_at)
-}
-
 /// Find the created_at timestamp for a specific marker hash.
 /// Used to determine the correct `since` for delta sync — we need
 /// the date of the marker matching the remote peer's hash, not our latest.
@@ -734,7 +752,4 @@ fn get_marker_created_at_by_hash(conn: &rusqlite::Connection, hash: &str) -> Opt
         |row| row.get(0),
     )
     .ok()
-    // Fallback to latest marker if hash not found locally
-    .or_else(|| get_local_marker_created_at_with_conn(conn))
 }
-

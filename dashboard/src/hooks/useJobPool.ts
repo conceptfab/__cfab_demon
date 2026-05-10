@@ -29,14 +29,17 @@ import {
 } from '@/lib/background-helpers';
 
 export function useJobPool() {
-  const { autoImportDone, triggerRefresh } = useDataStore();
+  const autoImportDone = useDataStore((s) => s.autoImportDone);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const refreshDiagnostics = useBackgroundStatusStore((s) => s.refreshDiagnostics);
   const refreshDatabaseSettings = useBackgroundStatusStore(
     (s) => s.refreshDatabaseSettings,
   );
+  const refreshAiStatus = useBackgroundStatusStore((s) => s.refreshAiStatus);
   const loopRef = useRef<number | null>(null);
 
   const nextDiagnosticsRef = useRef(0);
+  const nextAiStatusRef = useRef(0);
   const nextRefreshRef = useRef(0);
   const nextSigCheckRef = useRef(0);
   const nextAutoSplitRef = useRef(0);
@@ -54,6 +57,7 @@ export function useJobPool() {
   const lastSignatureRef = useRef<string | null>(null);
   const localChangeRefreshTimer = useRef<number | null>(null);
   const localChangeSyncTimer = useRef<number | null>(null);
+  const syncRefreshTimer = useRef<number | null>(null);
   const visibilityDebounceTimer = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const isSyncingRef = useRef(false);
@@ -107,6 +111,10 @@ export function useJobPool() {
     if (visibilityDebounceTimer.current) {
       window.clearTimeout(visibilityDebounceTimer.current);
       visibilityDebounceTimer.current = null;
+    }
+    if (syncRefreshTimer.current) {
+      window.clearTimeout(syncRefreshTimer.current);
+      syncRefreshTimer.current = null;
     }
   }, []);
 
@@ -208,7 +216,11 @@ export function useJobPool() {
         await triggerDaemonOnlineSync();
         // Daemon handles the sync — refresh UI after delay to pick up changes
         // 5s allows for larger databases to complete processing
-        setTimeout(() => {
+        if (syncRefreshTimer.current) {
+          window.clearTimeout(syncRefreshTimer.current);
+        }
+        syncRefreshTimer.current = window.setTimeout(() => {
+          syncRefreshTimer.current = null;
           triggerRefresh(`background_sync_${reason}`);
         }, 5_000);
         syncFailCountRef.current = 0;
@@ -266,6 +278,7 @@ export function useJobPool() {
     visibilityDebounceTimer.current = window.setTimeout(() => {
       visibilityDebounceTimer.current = null;
       nextDiagnosticsRef.current = 0;
+      nextAiStatusRef.current = 0;
       handleDiagnosticsRefresh();
       handleDatabaseSettingsRefresh();
 
@@ -286,6 +299,7 @@ export function useJobPool() {
     if (!isDocumentVisible()) return;
 
     handleDatabaseSettingsRefresh();
+    nextAiStatusRef.current = 0;
 
     if (localChangeRefreshTimer.current) {
       window.clearTimeout(localChangeRefreshTimer.current);
@@ -341,6 +355,12 @@ export function useJobPool() {
       if (autoImportDone && now >= nextDaemonOnlineSyncRef.current) {
         void runDaemonOnlineSyncInterval();
       }
+
+      // Periodic AI status refresh — keeps sidebar training badge up to date
+      if (isDocumentVisible() && now >= nextAiStatusRef.current) {
+        nextAiStatusRef.current = now + 120_000;
+        void refreshAiStatus().catch((e) => logger.warn('[useJobPool] AI status refresh failed:', e));
+      }
     }, JOB_LOOP_TICK_MS);
 
     return () => {
@@ -354,6 +374,7 @@ export function useJobPool() {
     runSync,
     runLanSyncInterval,
     runDaemonOnlineSyncInterval,
+    refreshAiStatus,
   ]);
 
   useEffect(() => {

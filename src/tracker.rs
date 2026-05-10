@@ -7,14 +7,14 @@ use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use chrono::{DateTime, Local, Timelike};
 use timeflow_shared::version_compat;
 
 use crate::activity::ActivityType;
 use crate::config;
-use crate::foreground_hook::ForegroundSignal;
+use crate::platform::foreground_signal::ForegroundSignal;
 use crate::monitor::{self, CpuState, PidCache};
 use crate::storage::{self, AppDailyData, FileEntry, Session};
 
@@ -23,7 +23,7 @@ fn rebuild_file_index_cache(
 ) -> HashMap<String, HashMap<String, usize>> {
     let mut cache: HashMap<String, HashMap<String, usize>> = HashMap::new();
     for (exe_name, app_data) in &daily_data.apps {
-        let file_map = cache.entry(exe_name.clone()).or_insert_with(HashMap::new);
+        let file_map = cache.entry(exe_name.clone()).or_default();
         for (idx, file_entry) in app_data.files.iter().enumerate() {
             if let Some(cache_key) = build_file_cache_key(
                 &file_entry.name,
@@ -78,6 +78,10 @@ fn write_heartbeat() {
     }
 }
 
+fn wall_delta_since(last: SystemTime, now: SystemTime) -> Duration {
+    now.duration_since(last).unwrap_or(Duration::ZERO)
+}
+
 static WARNING_SHOWN: AtomicBool = AtomicBool::new(false);
 const BACKGROUND_PROCESS_SNAPSHOT_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -100,6 +104,9 @@ fn check_dashboard_compatibility() {
                     log::error!("{}", msg);
 
                     // Display warning without blocking the monitoring loop.
+                    // Nativeowy dialog tylko na Windows; na innych platformach
+                    // zostaje log::error! powyżej.
+                    #[cfg(windows)]
                     std::thread::spawn(move || unsafe {
                         use std::ptr;
                         let title_text = lang_obj
@@ -119,6 +126,11 @@ fn check_dashboard_compatibility() {
                                 | winapi::um::winuser::MB_TOPMOST,
                         );
                     });
+                    #[cfg(not(windows))]
+                    {
+                        let _ = lang_obj;
+                        let _ = msg;
+                    }
                 }
             } else {
                 // Reset flag if versions become compatible again (e.g. after update)
@@ -138,6 +150,48 @@ fn should_refresh_background_process_snapshot(last_refresh: Option<Instant>, now
         Some(last_refresh) => {
             now.duration_since(last_refresh) >= BACKGROUND_PROCESS_SNAPSHOT_INTERVAL
         }
+    }
+}
+
+fn is_db_frozen(sync_state: Option<&Arc<crate::lan_server::LanSyncState>>) -> bool {
+    sync_state.is_some_and(|s| s.db_frozen.load(Ordering::Acquire))
+}
+
+fn save_daily_if_unfrozen(
+    store: &mut storage::DailyStore,
+    daily_data: &mut storage::DailyData,
+    sync_state: Option<&Arc<crate::lan_server::LanSyncState>>,
+    context: &str,
+) -> bool {
+    if is_db_frozen(sync_state) {
+        log::debug!("Skipping {} save — database frozen for sync", context);
+        return false;
+    }
+
+    if let Err(e) = store.save(daily_data) {
+        log::error!("Error saving daily data during {}: {}", context, e);
+        log::logger().flush();
+    }
+    true
+}
+
+fn should_flush_skipped_save(
+    sync_state: Option<&Arc<crate::lan_server::LanSyncState>>,
+    save_skipped_while_frozen: bool,
+) -> bool {
+    save_skipped_while_frozen && !is_db_frozen(sync_state)
+}
+
+fn close_sessions_on_idle_transition(
+    is_idle: bool,
+    was_idle: bool,
+    active_sessions: &mut HashMap<String, Instant>,
+) -> bool {
+    if is_idle && !was_idle && !active_sessions.is_empty() {
+        active_sessions.clear();
+        true
+    } else {
+        false
     }
 }
 
@@ -407,6 +461,7 @@ fn record_app_activity(
 
 fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<ForegroundSignal>>, sync_state: Option<Arc<crate::lan_server::LanSyncState>>) {
     let mut pid_cache: PidCache = HashMap::new();
+    #[cfg(windows)]
     monitor::warm_path_detection_wmi();
     let mut cfg = config::load();
     let mut monitored: HashSet<String> = config::monitored_exe_names(&cfg);
@@ -418,13 +473,24 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
     let mut daily_data = storage::load_today();
     let mut current_date = Local::now().date_naive();
+    let mut daily_store = match storage::DailyStore::open() {
+        Ok(store) => store,
+        Err(e) => {
+            log::error!("Failed to open DailyStore: {} — monitor thread aborting", e);
+            return;
+        }
+    };
 
-    let mut last_save = Instant::now();
     let mut save_skipped_while_frozen = false;
     let mut last_cache_evict = Instant::now();
     let mut last_config_reload = Instant::now();
     let mut last_heartbeat = Instant::now();
     let mut last_tracking_tick = Instant::now();
+    // Wall-clock twin of last_tracking_tick. Used to detect system sleep:
+    // Instant is uptime-based (stops during sleep on macOS/Windows), but
+    // SystemTime keeps advancing in UTC. A large wall-vs-uptime delta means
+    // the OS suspended us and no activity should be credited for that gap.
+    let mut last_tracking_tick_wall = SystemTime::now();
     write_heartbeat();
 
     // Active session state per application
@@ -438,6 +504,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
     let mut poll_interval = Duration::from_secs(iv.poll_secs);
     let mut save_interval = Duration::from_secs(iv.save_secs);
+    let mut last_save = Instant::now() - save_interval.saturating_sub(Duration::from_secs(30));
     let mut cache_evict_interval = Duration::from_secs(iv.cache_evict_secs);
     let mut cache_max_age = Duration::from_secs(iv.cache_max_age_secs);
     let mut session_gap = Duration::from_secs(iv.session_gap_secs);
@@ -452,7 +519,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // Check stop signal
         if stop_signal.load(Ordering::Relaxed) {
             // Final save before exiting
-            let _ = storage::save_daily(&mut daily_data);
+            save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "shutdown");
             break;
         }
 
@@ -460,7 +527,8 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         let today = Local::now().date_naive();
         if today != current_date {
             log::info!("Date changed: {} → {}", current_date, today);
-            let _ = storage::save_daily(&mut daily_data);
+            save_skipped_while_frozen =
+                !save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "date change");
             daily_data = storage::load_daily(today);
             current_date = today;
             active_sessions.clear();
@@ -489,6 +557,43 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Calculate actual elapsed time since last poll (D-9, D-11)
         let now = Instant::now();
+        let now_wall = SystemTime::now();
+
+        // System sleep detection: Instant (uptime clock) freezes during
+        // macOS/Windows sleep, but wall clock advances. If wall delta exceeds
+        // uptime delta by SLEEP_DETECTION_THRESHOLD, the box was asleep —
+        // discard this tick, close active sessions, flush state, force
+        // idle→active transition so next real input opens a fresh session.
+        const SLEEP_DETECTION_THRESHOLD: Duration = Duration::from_secs(30);
+        let uptime_delta = now.duration_since(last_tracking_tick);
+        let wall_delta = wall_delta_since(last_tracking_tick_wall, now_wall);
+        let sleep_gap = wall_delta.saturating_sub(uptime_delta);
+        if sleep_gap > SLEEP_DETECTION_THRESHOLD {
+            log::info!(
+                "System sleep detected: wall={}s uptime={}s gap={}s — pausing tracker, closing sessions",
+                wall_delta.as_secs(),
+                uptime_delta.as_secs(),
+                sleep_gap.as_secs(),
+            );
+            if let Some(ref signal) = foreground_signal {
+                let _ = signal.take_last_switch_time();
+            }
+            if save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "sleep detection") {
+                last_save = Instant::now();
+                save_skipped_while_frozen = false;
+            } else {
+                save_skipped_while_frozen = true;
+            }
+            if let Err(e) = daily_store.reopen() {
+                log::warn!("DailyStore reopen after sleep failed: {}", e);
+            }
+            active_sessions.clear();
+            was_idle = true;
+            last_tracking_tick = now;
+            last_tracking_tick_wall = now_wall;
+            continue;
+        }
+
         let max_elapsed = poll_interval.saturating_mul(3);
         let actual_elapsed = now.duration_since(last_tracking_tick).min(max_elapsed);
 
@@ -496,14 +601,13 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // If a switch happened mid-tick, the CURRENT foreground app only gets
         // time from the last switch to now; previous app(s) got their share
         // from last_tick to the switch.
-        let switch_times: Vec<Instant> = foreground_signal
+        let last_switch_time = foreground_signal
             .as_ref()
-            .map(|s| s.drain_switch_times())
-            .unwrap_or_default();
+            .and_then(|s| s.take_last_switch_time());
 
         // Determine the effective elapsed for the current foreground app.
         // If a switch happened, the current app only gets time since the last switch.
-        let effective_elapsed = if let Some(&last_switch) = switch_times.last() {
+        let effective_elapsed = if let Some(last_switch) = last_switch_time {
             // Clamp: last_switch must be between last_tracking_tick and now
             if last_switch > last_tracking_tick && last_switch < now {
                 now.duration_since(last_switch).min(actual_elapsed)
@@ -515,6 +619,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         };
 
         last_tracking_tick = now;
+        last_tracking_tick_wall = now_wall;
 
         // Poll foreground window
         let foreground_exe = monitor::get_foreground_info(&mut pid_cache).and_then(|info| {
@@ -539,11 +644,12 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         // Idle detection: skip foreground recording when user is idle (no kb/mouse input)
         let idle_ms = monitor::get_idle_time_ms();
         let is_idle = idle_ms >= IDLE_THRESHOLD_MS;
+        let was_idle_before_tick = was_idle;
 
         // When transitioning from idle to active, use the full tick duration.
         // idle_ms is near 0 here (user just moved mouse), so it can't estimate
         // the active portion. The tick itself is the first active period.
-        let effective_elapsed_for_foreground = if !is_idle && was_idle {
+        let effective_elapsed_for_activity = if !is_idle && was_idle_before_tick {
             log::debug!(
                 "Idle→active transition: recording full {}ms tick",
                 effective_elapsed.as_millis()
@@ -552,7 +658,6 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
         } else {
             effective_elapsed
         };
-        was_idle = is_idle;
 
         // Foreground tracking (skip when idle — don't count time without user input)
         if !is_idle {
@@ -565,7 +670,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                         window_title: &info.window_title,
                         detected_path: info.detected_path.as_deref(),
                         activity_type: info.activity_type,
-                        elapsed: effective_elapsed_for_foreground,
+                        elapsed: effective_elapsed_for_activity,
                         session_gap,
                     },
                     &cfg,
@@ -576,8 +681,21 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 recorded_this_tick.insert(info.exe_name.clone());
             }
         } else {
+            // On transition into idle, forget active sessions so that the
+            // next active tick opens a fresh session instead of extending
+            // the pre-idle one across the idle gap (Task 19).
+            let active_before_clear = active_sessions.len();
+            if close_sessions_on_idle_transition(is_idle, was_idle_before_tick, &mut active_sessions) {
+                log::info!(
+                    "Idle transition ({}ms ≥ {}ms): closing {} active session(s)",
+                    idle_ms,
+                    IDLE_THRESHOLD_MS,
+                    active_before_clear
+                );
+            }
             log::debug!("User idle for {}ms, skipping foreground recording", idle_ms);
         }
+        was_idle = is_idle;
 
         // CPU-based background tracking (for monitored apps NOT in foreground)
         // Build process snapshot at most every 30s for background apps.
@@ -607,7 +725,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 if recorded_this_tick.contains(exe_name) {
                     // Already counted by foreground — just update CPU snapshot
                     let (_, snapshot) =
-                        monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), &proc_snap);
+                        monitor::measure_cpu_for_app(exe_name, cpu_state.get(exe_name), proc_snap);
                     cpu_state.insert(exe_name.clone(), snapshot);
                     continue;
                 }
@@ -615,7 +733,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                 let prev = cpu_state.get(exe_name);
                 let had_prev = prev.is_some();
                 let (cpu_fraction, snapshot) =
-                    monitor::measure_cpu_for_app(exe_name, prev, &proc_snap);
+                    monitor::measure_cpu_for_app(exe_name, prev, proc_snap);
                 cpu_state.insert(exe_name.clone(), snapshot);
 
                 if had_prev && cpu_fraction > cpu_thresh {
@@ -634,7 +752,7 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
                             window_title: "",
                             detected_path: None,
                             activity_type: background_activity_type,
-                            elapsed: actual_elapsed,
+                            elapsed: effective_elapsed_for_activity,
                             session_gap,
                         },
                         &cfg,
@@ -656,29 +774,17 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 
         // Periodic save (skip while database is frozen for LAN sync)
         if last_save.elapsed() >= save_interval {
-            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
-            if is_frozen {
-                log::debug!("Skipping periodic save — database frozen for sync");
-                save_skipped_while_frozen = true;
+            if save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "periodic") {
+                save_skipped_while_frozen = false;
+                last_save = Instant::now();
             } else {
-                if let Err(e) = storage::save_daily(&mut daily_data) {
-                    log::error!("Error saving daily data: {}", e);
-                    log::logger().flush();
-                }
-                save_skipped_while_frozen = false;
-                last_save = Instant::now();
+                save_skipped_while_frozen = true;
             }
-        } else if save_skipped_while_frozen {
-            let is_frozen = sync_state.as_ref().map_or(false, |s| s.db_frozen.load(Ordering::Acquire));
-            if !is_frozen {
-                log::info!("Database unfrozen — saving skipped data now");
-                if let Err(e) = storage::save_daily(&mut daily_data) {
-                    log::error!("Error saving daily data: {}", e);
-                    log::logger().flush();
-                }
-                save_skipped_while_frozen = false;
-                last_save = Instant::now();
-            }
+        } else if should_flush_skipped_save(sync_state.as_ref(), save_skipped_while_frozen) {
+            log::info!("Database unfrozen — saving skipped data now");
+            save_daily_if_unfrozen(&mut daily_store, &mut daily_data, sync_state.as_ref(), "post-unfreeze");
+            save_skipped_while_frozen = false;
+            last_save = Instant::now();
         }
 
         // Evict old PID cache entries
@@ -717,16 +823,19 @@ fn run_loop(stop_signal: Arc<AtomicBool>, foreground_signal: Option<Arc<Foregrou
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_session_duration_seconds, record_app_activity, session_start_time_for_elapsed,
-        should_refresh_background_process_snapshot, ActivityContext,
+        close_sessions_on_idle_transition, compute_session_duration_seconds, record_app_activity,
+        session_start_time_for_elapsed, should_flush_skipped_save,
+        should_refresh_background_process_snapshot, wall_delta_since, ActivityContext,
         BACKGROUND_PROCESS_SNAPSHOT_INTERVAL,
     };
     use crate::activity::ActivityType;
     use crate::config::Config;
+    use crate::lan_server::LanSyncState;
     use crate::storage::{DailyData, DailySummary};
     use chrono::{Local, TimeZone, Timelike};
     use std::collections::HashMap;
-    use std::time::{Duration, Instant};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant, SystemTime};
     use timeflow_shared::monitored_app::MonitoredApp;
 
     #[test]
@@ -770,6 +879,27 @@ mod tests {
             .expect("zero nanos");
         let duration = compute_session_duration_seconds("2026-03-11T12:00:15+01:00", end, 0);
         assert_eq!(duration, 285);
+    }
+
+    #[test]
+    fn wall_delta_uses_system_time_duration() {
+        let last = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000);
+        let now = last + Duration::from_secs(5);
+
+        assert_eq!(wall_delta_since(last, now), Duration::from_secs(5));
+    }
+
+    #[test]
+    fn skipped_save_flushes_only_after_db_unfreeze() {
+        let sync_state = Arc::new(LanSyncState::new());
+        sync_state.freeze();
+
+        assert!(!should_flush_skipped_save(Some(&sync_state), false));
+        assert!(!should_flush_skipped_save(Some(&sync_state), true));
+
+        sync_state.unfreeze();
+
+        assert!(should_flush_skipped_save(Some(&sync_state), true));
     }
 
     #[test]
@@ -844,6 +974,79 @@ mod tests {
                 .map(|file| file.total_seconds)
                 .collect::<Vec<_>>(),
             vec![10, 15]
+        );
+    }
+
+    #[test]
+    fn idle_transition_closes_session_before_next_activity() {
+        let cfg = Config {
+            apps: vec![MonitoredApp {
+                exe_name: "code.exe".to_string(),
+                display_name: "Code".to_string(),
+                added_at: "2026-03-12T00:00:00Z".to_string(),
+            }],
+            intervals: Default::default(),
+        };
+        let mut daily_data = DailyData {
+            date: "2026-03-12".to_string(),
+            generated_at: "2026-03-12T00:00:00Z".to_string(),
+            apps: HashMap::new(),
+            summary: DailySummary {
+                total_app_seconds: 0,
+                total_app_formatted: String::new(),
+                apps_active_count: 0,
+            },
+        };
+        let mut active_sessions = HashMap::new();
+        let mut file_index_cache = HashMap::new();
+        let session_gap = Duration::from_secs(5 * 60);
+
+        record_app_activity(
+            ActivityContext {
+                exe_name: "code.exe",
+                file_name: "main.rs",
+                window_title: "TIMEFLOW - main.rs",
+                detected_path: Some("/repo/src/main.rs"),
+                activity_type: Some(ActivityType::Coding),
+                elapsed: Duration::from_secs(5 * 60),
+                session_gap,
+            },
+            &cfg,
+            &mut daily_data,
+            &mut active_sessions,
+            &mut file_index_cache,
+        );
+
+        assert!(close_sessions_on_idle_transition(
+            true,
+            false,
+            &mut active_sessions
+        ));
+
+        record_app_activity(
+            ActivityContext {
+                exe_name: "code.exe",
+                file_name: "main.rs",
+                window_title: "TIMEFLOW - main.rs",
+                detected_path: Some("/repo/src/main.rs"),
+                activity_type: Some(ActivityType::Coding),
+                elapsed: Duration::from_secs(5 * 60),
+                session_gap,
+            },
+            &cfg,
+            &mut daily_data,
+            &mut active_sessions,
+            &mut file_index_cache,
+        );
+
+        let sessions = &daily_data.apps.get("code.exe").expect("app tracked").sessions;
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(
+            sessions
+                .iter()
+                .map(|session| session.duration_seconds)
+                .collect::<Vec<_>>(),
+            vec![300, 300]
         );
     }
 }

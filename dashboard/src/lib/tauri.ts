@@ -1,4 +1,4 @@
-export { hasTauriRuntime, runtimeApi } from './tauri/core';
+export { hasTauriRuntime, invoke, invokeMutation, runtimeApi } from './tauri/core';
 export * from './tauri/projects';
 export * from './tauri/dashboard';
 export * from './tauri/applications';

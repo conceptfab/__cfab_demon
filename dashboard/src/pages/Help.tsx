@@ -54,11 +54,9 @@ import {
 
 export function Help() {
   const { t: t18n } = useTranslation();
-  const {
-    helpTab: activeTab,
-    setHelpTab: setActiveTab,
-    setCurrentPage,
-  } = useUIStore();
+  const activeTab = useUIStore((s) => s.helpTab);
+  const setActiveTab = useUIStore((s) => s.setHelpTab);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
 
   const [version, setVersion] = useState<string>('');
   useEffect(() => {

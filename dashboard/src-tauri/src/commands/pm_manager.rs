@@ -90,7 +90,10 @@ pub fn write_projects(work_folder: &str, projects: &[PmProject]) -> Result<(), S
 fn backup_projects_file(path: &Path) -> Result<(), String> {
     let timestamp = Local::now().format("_%H%M%S_%d%m%Y").to_string();
     let backup_name = format!("backup_projects_list{}.json", timestamp);
-    let backup_path = path.parent().unwrap().join("backup").join(backup_name);
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("Cannot create backup for path without parent: {}", path.display()))?;
+    let backup_path = parent.join("backup").join(backup_name);
     fs::copy(path, &backup_path)
         .map_err(|e| format!("Backup failed: {}", e))?;
     Ok(())

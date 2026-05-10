@@ -2,7 +2,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -32,10 +31,6 @@ import {
   type SessionIndicatorSettings,
 } from '@/lib/user-settings';
 import { resolveDateFnsLocale } from '@/lib/date-helpers';
-import {
-  compareProjectsByName,
-  isRecentProject,
-} from '@/lib/project-utils';
 import { useSessionActions } from '@/hooks/useSessionActions';
 import { useSessionsData } from '@/hooks/useSessionsData';
 import { useSessionsFilters } from '@/hooks/useSessionsFilters';
@@ -51,20 +46,8 @@ import { shouldRefreshSessionsPage } from '@/lib/page-refresh-reasons';
 import { useSettingsStore } from '@/store/settings-store';
 import { useSessionBulkActions } from '@/hooks/useSessionBulkActions';
 import { useSessionContextMenuActions } from '@/hooks/useSessionContextMenuActions';
-
-interface ContextMenu {
-  x: number;
-  y: number;
-  session: SessionWithApp;
-}
-
-interface ProjectHeaderMenu {
-  x: number;
-  y: number;
-  projectId: number | null;
-  projectName: string;
-  sessionIds: number[];
-}
+import { useAssignProjectSections } from '@/hooks/useAssignProjectSections';
+import { useSessionsContextMenu } from '@/hooks/useSessionsContextMenu';
 
 interface GroupedProject {
   projectId: number | null;
@@ -75,18 +58,14 @@ interface GroupedProject {
   sessions: SessionWithApp[];
 }
 
-const TOP_PROJECTS_LIMIT = 5;
-
 export function Sessions() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
-  const {
-    setProjectPageId,
-    setCurrentPage,
-    assignProjectListMode,
-    setAssignProjectListMode,
-  } = useUIStore();
-  const { triggerRefresh } = useDataStore();
+  const setProjectPageId = useUIStore((s) => s.setProjectPageId);
+  const setCurrentPage = useUIStore((s) => s.setCurrentPage);
+  const assignProjectListMode = useUIStore((s) => s.assignProjectListMode);
+  const setAssignProjectListMode = useUIStore((s) => s.setAssignProjectListMode);
+  const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const {
     assignSessions,
     updateSessionRateMultipliers,
@@ -100,9 +79,6 @@ export function Sessions() {
     },
   });
   const projects = useProjectsCacheStore((state) => state.projectsAllTime);
-  const [ctxMenu, setCtxMenu] = useState<ContextMenu | null>(null);
-  const [projectCtxMenu, setProjectCtxMenu] =
-    useState<ProjectHeaderMenu | null>(null);
   const [viewMode, setViewMode] = useState<
     'detailed' | 'compact' | 'ai_detailed'
   >('detailed');
@@ -114,8 +90,6 @@ export function Sessions() {
     loadIndicatorSettings(),
   );
   const splitSettings = useSettingsStore((s) => s.splitSettings);
-  const ctxRef = useRef<HTMLDivElement>(null);
-  const projectCtxRef = useRef<HTMLDivElement>(null);
   const [customScrollParent, setCustomScrollParent] = useState<
     HTMLElement | undefined
   >(undefined);
@@ -243,104 +217,6 @@ export function Sessions() {
     void loadProjectsAllTime();
   }, []);
 
-  const [ctxMenuPlacement, setCtxMenuPlacement] = useState<{
-    left: number;
-    top: number;
-    maxHeight: number;
-  } | null>(null);
-
-  // TODO: Extract shared context menu placement logic with ProjectDayTimeline (timeline-calculations.ts)
-  const resolveContextMenuPlacement = useCallback(
-    (
-      x: number,
-      y: number,
-      viewportWidth: number,
-      viewportHeight: number,
-      menuSize: { width: number; height: number } | null,
-    ) => {
-      const width = Math.max(240, menuSize?.width ?? 0);
-      const maxHeight = Math.max(200, viewportHeight - 16);
-      const height = Math.min(Math.max(400, menuSize?.height ?? 0), maxHeight);
-
-      const maxLeft = Math.max(8, viewportWidth - width - 8);
-      const left = Math.min(Math.max(x, 8), maxLeft);
-
-      const overflowsDown = y + height > viewportHeight - 8;
-      const canFlipUp = y - height >= 8;
-      const maxTop = Math.max(8, viewportHeight - height - 8);
-      const top =
-        overflowsDown && canFlipUp
-          ? y - height
-          : Math.min(Math.max(y, 8), maxTop);
-
-      return { left, top, maxHeight };
-    },
-    [],
-  );
-
-  // Update placement when menu opens or window resizes
-  useEffect(() => {
-    if (!ctxMenu || typeof window === 'undefined') return;
-
-    const updatePlacement = () => {
-      const next = resolveContextMenuPlacement(
-        ctxMenu.x,
-        ctxMenu.y,
-        window.innerWidth,
-        window.innerHeight,
-        ctxRef.current
-          ? {
-              width: ctxRef.current.offsetWidth,
-              height: ctxRef.current.offsetHeight,
-            }
-          : null,
-      );
-      setCtxMenuPlacement(next);
-    };
-
-    updatePlacement();
-    const raf = window.requestAnimationFrame(updatePlacement);
-    window.addEventListener('resize', updatePlacement);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      window.removeEventListener('resize', updatePlacement);
-    };
-  }, [ctxMenu, resolveContextMenuPlacement]);
-
-  // Close context menus on click outside or Escape
-  // TODO: Extract to a reusable useClickOutsideDismiss hook (shared with ProjectDayTimeline)
-  useEffect(() => {
-    if (!ctxMenu && !projectCtxMenu) return;
-    const handleClick = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ctxRef.current && !ctxRef.current.contains(target)) setCtxMenu(null);
-      if (projectCtxRef.current && !projectCtxRef.current.contains(target))
-        setProjectCtxMenu(null);
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setCtxMenu(null);
-        setProjectCtxMenu(null);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleKey);
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleKey);
-    };
-  }, [ctxMenu, projectCtxMenu]);
-
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent, session: SessionWithApp) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setProjectCtxMenu(null);
-      setCtxMenu({ x: e.clientX, y: e.clientY, session });
-    },
-    [setProjectCtxMenu, setCtxMenu],
-  );
-
   const projectIdByName = useMemo(() => {
     const map = new Map<string, number>();
     for (const project of projects) {
@@ -402,19 +278,17 @@ export function Sessions() {
     });
   }, [mergedSessions, unassignedLabel, projectIdByName]);
 
-  const handleProjectContextMenu = useCallback(
-    (e: React.MouseEvent, projectId: number | null, projectName: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setCtxMenu(null);
-      const group = groupedByProject.find(
-        (g) => g.projectName === projectName,
-      );
-      const sessionIds = group?.sessions.map((s) => s.id) ?? [];
-      setProjectCtxMenu({ x: e.clientX, y: e.clientY, projectId, projectName, sessionIds });
-    },
-    [setCtxMenu, setProjectCtxMenu, groupedByProject],
-  );
+  const {
+    ctxMenu,
+    ctxMenuPlacement,
+    ctxRef,
+    handleContextMenu,
+    handleProjectContextMenu,
+    projectCtxMenu,
+    projectCtxRef,
+    setCtxMenu,
+    setProjectCtxMenu,
+  } = useSessionsContextMenu({ groupedByProject });
 
   const {
     ensureCommentForBoost,
@@ -454,113 +328,15 @@ export function Sessions() {
     () => loadFreezeSettings().thresholdDays,
   );
 
-  const assignProjectSections = useMemo(() => {
-    const activeProjects = projects.filter((p) => !p.frozen_at);
-    const activeAlpha = [...activeProjects].sort(compareProjectsByName);
-    const newProjectMaxAgeMs = Math.max(1, freezeThresholdDays) * 24 * 60 * 60 * 1000;
-
-    if (assignProjectListMode === 'alpha_active') {
-      return [
-        {
-          key: 'all',
-          label: t(
-            'sessions.menu.active_projects_az',
-            'Active projects (A-Z)',
-          ),
-          projects: activeAlpha,
-        },
-      ];
-    }
-
-    const topProjectIds = new Set(
-      [...activeProjects]
-        .sort((a, b) => {
-          const byTime = b.total_seconds - a.total_seconds;
-          if (byTime !== 0) return byTime;
-          return compareProjectsByName(a, b);
-        })
-        .slice(0, TOP_PROJECTS_LIMIT)
-        .map((p) => p.id),
-    );
-    const newestAlpha = activeAlpha.filter((p) =>
-      isRecentProject(p, newProjectMaxAgeMs),
-    );
-    const topAlpha = activeAlpha.filter((p) => topProjectIds.has(p.id));
-
-    if (assignProjectListMode === 'new_top_rest') {
-      const used = new Set<number>();
-      const newest = newestAlpha;
-      newest.forEach((p) => used.add(p.id));
-      const top = topAlpha.filter((p) => !used.has(p.id));
-      top.forEach((p) => used.add(p.id));
-      const rest = activeAlpha.filter((p) => !used.has(p.id));
-
-      return [
-        {
-          key: 'new',
-          label: t(
-            'sessions.menu.newest_projects_az',
-            'Newest projects (A-Z)',
-          ),
-          projects: newest,
-        },
-        {
-          key: 'top',
-          label: t('sessions.menu.top_projects_az', 'Top projects (A-Z)'),
-          projects: top,
-        },
-        {
-          key: 'rest',
-          label: t(
-            'sessions.menu.remaining_active_az',
-            'Remaining active (A-Z)',
-          ),
-          projects: rest,
-        },
-      ];
-    }
-
-    const used = new Set<number>();
-    const top = topAlpha;
-    top.forEach((p) => used.add(p.id));
-    const newest = newestAlpha.filter((p) => !used.has(p.id));
-    newest.forEach((p) => used.add(p.id));
-    const rest = activeAlpha.filter((p) => !used.has(p.id));
-
-    return [
-      {
-        key: 'top',
-        label: t('sessions.menu.top_projects_az', 'Top projects (A-Z)'),
-        projects: top,
-      },
-      {
-        key: 'new',
-        label: t(
-          'sessions.menu.newest_projects_az',
-          'Newest projects (A-Z)',
-        ),
-        projects: newest,
-      },
-      {
-        key: 'rest',
-        label: t(
-          'sessions.menu.remaining_active_az',
-          'Remaining active (A-Z)',
-        ),
-        projects: rest,
-      },
-    ];
-  }, [assignProjectListMode, freezeThresholdDays, projects, t]);
-
-  const assignProjectsCount = useMemo(
-    () =>
-      assignProjectSections.reduce(
-        (total, section) => total + section.projects.length,
-        0,
-      ),
-    [assignProjectSections],
-  );
-  const showAssignSectionHeaders = assignProjectListMode !== 'alpha_active';
+  const {
+    assignProjectSections,
+    assignProjectsCount,
+    showAssignSectionHeaders,
+  } = useAssignProjectSections({
+    assignProjectListMode,
+    freezeThresholdDays,
+    projects,
+  });
 
   type FlatItem =
     | { type: 'header'; group: GroupedProject; isCompact: boolean }

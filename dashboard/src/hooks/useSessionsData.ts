@@ -154,7 +154,6 @@ export function useSessionsData(params: {
     error,
     hasMore,
     isLoading,
-    loadFirstSessionsPage,
     loadMore,
     sessions,
     sessionsRef,

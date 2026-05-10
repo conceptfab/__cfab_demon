@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Brain, PlayCircle, RefreshCw, Trash2 } from 'lucide-react';
+import { Brain, PlayCircle, RefreshCw, RotateCcw, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,8 +15,10 @@ interface AiModelStatusCardProps {
   snoozedUntil: Date | null;
   reminderSuppressed: boolean;
   onTrainNow: () => void;
+  onFullRebuild: () => void;
   onRefreshStatus: () => void;
-  onResetKnowledge: () => void;
+  onResetWeights: () => void;
+  onResetFull: () => void;
 }
 
 export function AiModelStatusCard({
@@ -28,8 +30,10 @@ export function AiModelStatusCard({
   snoozedUntil,
   reminderSuppressed,
   onTrainNow,
+  onFullRebuild,
   onRefreshStatus,
-  onResetKnowledge,
+  onResetWeights,
+  onResetFull,
 }: AiModelStatusCardProps) {
   const { t: tr } = useTranslation();
   const trainActionHighlighted =
@@ -151,6 +155,15 @@ export function AiModelStatusCard({
           <Button
             variant="outline"
             className="h-8"
+            onClick={onFullRebuild}
+            disabled={training || status?.is_training}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" />
+            {tr('ai_page.text.full_rebuild')}
+          </Button>
+          <Button
+            variant="outline"
+            className="h-8"
             onClick={onRefreshStatus}
             disabled={refreshingStatus}
           >
@@ -162,15 +175,26 @@ export function AiModelStatusCard({
               : tr('ai_page.text.refresh_status')}
           </Button>
           <Button
-            variant="destructive"
+            variant="outline"
             className="h-8"
-            onClick={onResetKnowledge}
+            onClick={onResetWeights}
             disabled={resettingKnowledge}
           >
             <Trash2 className="mr-2 h-4 w-4" />
             {resettingKnowledge
               ? tr('ai_page.text.resetting')
-              : tr('ai_page.text.reset_ai_knowledge')}
+              : tr('ai_page.text.reset_ai_weights')}
+          </Button>
+          <Button
+            variant="destructive"
+            className="h-8"
+            onClick={onResetFull}
+            disabled={resettingKnowledge}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            {resettingKnowledge
+              ? tr('ai_page.text.resetting')
+              : tr('ai_page.text.reset_ai_full')}
           </Button>
         </div>
       </CardContent>

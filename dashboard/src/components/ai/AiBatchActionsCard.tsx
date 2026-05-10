@@ -1,4 +1,5 @@
 import { RotateCcw, WandSparkles } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { AppTooltip } from '@/components/ui/app-tooltip';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,8 @@ export function AiBatchActionsCard({
   onRun,
   onRollback,
 }: AiBatchActionsCardProps) {
+  const { t } = useTranslation();
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -62,7 +65,11 @@ export function AiBatchActionsCard({
 
         <div className="flex flex-wrap gap-2">
           <AppTooltip
-            content={!modeIsAutoSafe ? 'Set mode to "auto safe" first' : undefined}
+            content={
+              !modeIsAutoSafe
+                ? t('ai_page.batch.tooltip_requires_auto_safe')
+                : undefined
+            }
           >
             <span>
               <Button
