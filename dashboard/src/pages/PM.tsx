@@ -41,7 +41,7 @@ function ensureClientColors(projects: PmProject[], saved: PmClientColors): PmCli
 
   const result = { ...saved };
   let nextIdx = 0;
-  for (const g of [...groups].sort()) {
+  for (const g of [...groups].toSorted()) {
     if (!result[g]) {
       result[g] = { color: DEFAULT_PALETTE[nextIdx % DEFAULT_PALETTE.length], comment: '', contact: '' };
       nextIdx++;
@@ -137,7 +137,7 @@ export function PM() {
         for (const e of estRows) estimates.set(e.project_id, e);
         // Top 5 projects by time = "hot"
         const hotIds = new Set(
-          [...tfActive].sort((a, b) => b.total_seconds - a.total_seconds).slice(0, 5).map((p) => p.id),
+          tfActive.toSorted((a, b) => b.total_seconds - a.total_seconds).slice(0, 5).map((p) => p.id),
         );
         // Enrich PM with TF data (status, time, value)
         const matchMap: Record<string, PmTfMatch> = {};

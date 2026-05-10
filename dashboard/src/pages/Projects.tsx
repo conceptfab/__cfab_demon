@@ -52,7 +52,7 @@ function sortProjectList(
   sortBy: string,
   estimates: Record<number, number>,
 ): ProjectWithStats[] {
-  return [...list].sort((a, b) => {
+  return list.toSorted((a, b) => {
     const valA = estimates[a.id] || 0;
     const valB = estimates[b.id] || 0;
     switch (sortBy) {

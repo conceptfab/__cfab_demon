@@ -243,7 +243,7 @@ export function Applications() {
           a.executable_name.toLowerCase().includes(q),
       );
     }
-    result = [...result].sort((a, b) => {
+    result = result.toSorted((a, b) => {
       let cmp = 0;
       if (sortKey === 'display_name')
         cmp = a.display_name.localeCompare(b.display_name);

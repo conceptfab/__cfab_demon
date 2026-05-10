@@ -155,7 +155,7 @@ export function Sessions() {
     const manualAsSession = manualSessions.map((m) =>
       manualToSessionRow(m, t('project_page.text.manual_session', 'Manual Session')),
     );
-    return [...sessions, ...manualAsSession].sort((a, b) =>
+    return [...sessions, ...manualAsSession].toSorted((a, b) =>
       b.start_time.localeCompare(a.start_time),
     );
   }, [sessions, manualSessions, t]);

@@ -213,7 +213,7 @@ export function summarizeCluster(segment: SegmentData) {
 export function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
   if (segments.length <= 1) return segments;
 
-  const sorted = [...segments].sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
+  const sorted = segments.toSorted((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
   const out: SegmentData[] = [];
 
   for (const segment of sorted) {
@@ -250,7 +250,7 @@ export function mergeSessionFragments(segments: SegmentData[]): SegmentData[] {
 
     const prevFragments = getSegmentFragments(prev);
     const nextFragments = getSegmentFragments(segment);
-    const mergedFragments = [...prevFragments, ...nextFragments].sort(
+    const mergedFragments = [...prevFragments, ...nextFragments].toSorted(
       (left, right) => left.startMs - right.startMs || left.endMs - right.endMs,
     );
     const appNames = Array.from(new Set(mergedFragments.map((fragment) => fragment.appName)));
@@ -566,7 +566,7 @@ export function buildAssignProjectSections(params: {
   } = params;
 
   const activeProjects = (projects ?? []).filter((project) => !project.frozen_at);
-  const activeAlpha = [...activeProjects].sort(compareProjectsByName);
+  const activeAlpha = activeProjects.toSorted(compareProjectsByName);
 
   if (assignProjectListMode === 'alpha_active') {
     return [
