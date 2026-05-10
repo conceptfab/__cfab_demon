@@ -73,8 +73,7 @@ export function PmTemplateManager({ open, onClose }: Props) {
 
     const folders = edit.foldersText
       .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
+      .flatMap((l) => { const t = l.trim(); return t ? [t] : []; });
 
     if (folders.length === 0) { setError('At least one folder required'); return; }
 

@@ -156,10 +156,11 @@ export function TimelineChart({
     if (granularity === "day" && dateRange?.start && dateRange?.end) {
       let fillStart = dateRange.start;
       if (trimLeadingToFirstData && data.length > 0) {
-        const firstDataDate = data
-          .map((row) => row.date)
-          .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
-          .sort()[0];
+        const firstDataDate = data.reduce<string | undefined>((acc, row) => {
+          const d = row.date;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(d) && (!acc || d < acc)) return d;
+          return acc;
+        }, undefined);
         if (firstDataDate && firstDataDate > fillStart) {
           fillStart = firstDataDate;
         }
@@ -282,15 +283,17 @@ export function TimelineChart({
     if (!active || !payload || payload.length === 0) return null;
 
     const items = payload
-      .map((entry) => ({
-        name: getStackedSeriesLabel(
-          seriesMetaByKey,
-          String(entry.name ?? ""),
-        ),
-        color: entry.color ?? CHART_MUTED_SERIES_COLOR,
-        value: Number(entry.value ?? 0),
-      }))
-      .filter((entry) => Number.isFinite(entry.value) && entry.value > 0)
+      .reduce<Array<{ name: string; color: string; value: number }>>((acc, entry) => {
+        const value = Number(entry.value ?? 0);
+        if (Number.isFinite(value) && value > 0) {
+          acc.push({
+            name: getStackedSeriesLabel(seriesMetaByKey, String(entry.name ?? "")),
+            color: entry.color ?? CHART_MUTED_SERIES_COLOR,
+            value,
+          });
+        }
+        return acc;
+      }, [])
       .sort((a, b) => b.value - a.value);
 
     const row = payload[0]?.payload;

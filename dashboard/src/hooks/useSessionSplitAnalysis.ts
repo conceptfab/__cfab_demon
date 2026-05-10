@@ -120,13 +120,15 @@ export function useSessionSplitAnalysis({
       splitAnalysisBatchTimerRef.current = null;
     }
 
-    const pendingSessionIds = sessions
-      .filter((session) => !isAlreadySplitSession(session))
-      .map((session) => session.id)
-      .filter(
-        (sessionId) =>
-          splitEligibilityCacheRef.current.get(sessionId) !== splitSettingsKey,
-      );
+    const pendingSessionIds = sessions.reduce<number[]>((acc, session) => {
+      if (
+        !isAlreadySplitSession(session) &&
+        splitEligibilityCacheRef.current.get(session.id) !== splitSettingsKey
+      ) {
+        acc.push(session.id);
+      }
+      return acc;
+    }, []);
 
     if (pendingSessionIds.length === 0) {
       return;

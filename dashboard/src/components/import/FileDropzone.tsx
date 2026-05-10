@@ -62,9 +62,10 @@ export function FileDropzone() {
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      const files = Array.from(e.dataTransfer.files)
-        .filter((f) => f.name.endsWith('.json'))
-        .map((f) => (f as File & { path?: string }).path ?? f.name);
+      const files = Array.from(e.dataTransfer.files).reduce<string[]>((acc, f) => {
+        if (f.name.endsWith('.json')) acc.push((f as File & { path?: string }).path ?? f.name);
+        return acc;
+      }, []);
       // Note: In Tauri, we get file paths from drag events
       if (files.length > 0) handleImport(files);
     },

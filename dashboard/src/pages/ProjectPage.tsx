@@ -221,33 +221,33 @@ export function ProjectPage() {
   }, [recentSessions, manualSessions, t]);
 
   const recentComments = useMemo<RecentCommentItem[]>(() => {
-    const automatic = recentSessions
-      .map((s) => {
-        const text = s.comment?.trim();
-        if (!text) return null;
-        return {
+    const automatic = recentSessions.reduce<RecentCommentItem[]>((acc, s) => {
+      const text = s.comment?.trim();
+      if (text) {
+        acc.push({
           key: `auto-${s.id}`,
           start_time: s.start_time,
           duration_seconds: s.duration_seconds,
           comment: text,
           source: s.app_name,
-        };
-      })
-      .filter((item): item is RecentCommentItem => item !== null);
+        });
+      }
+      return acc;
+    }, []);
 
-    const manual = manualSessions
-      .map((m) => {
-        const text = m.title?.trim();
-        if (!text) return null;
-        return {
+    const manual = manualSessions.reduce<RecentCommentItem[]>((acc, m) => {
+      const text = m.title?.trim();
+      if (text) {
+        acc.push({
           key: `manual-${m.id}`,
           start_time: m.start_time,
           duration_seconds: m.duration_seconds,
           comment: text,
           source: t('project_page.text.manual_session'),
-        };
-      })
-      .filter((item): item is RecentCommentItem => item !== null);
+        });
+      }
+      return acc;
+    }, []);
 
     return [...automatic, ...manual]
       .sort((a, b) => b.start_time.localeCompare(a.start_time))
@@ -640,12 +640,14 @@ export function ProjectPage() {
     )
       return;
     try {
-      const manualIds = sessions
-        .filter((s): s is ManualSessionRow => s.isManual)
-        .map((s) => s.id);
-      const autoIds = sessions
-        .filter((s): s is AutoSessionRow => !s.isManual)
-        .map((s) => s.id);
+      const manualIds = sessions.reduce<number[]>((acc, s) => {
+        if (s.isManual) acc.push(s.id);
+        return acc;
+      }, []);
+      const autoIds = sessions.reduce<number[]>((acc, s) => {
+        if (!s.isManual) acc.push(s.id);
+        return acc;
+      }, []);
       await Promise.all([
         deleteManualSessions(manualIds),
         deleteSessions(autoIds),
@@ -681,7 +683,7 @@ export function ProjectPage() {
     if (!ctxMenu) return;
     const ids =
       ctxMenu.type === 'chart'
-        ? ctxMenu.sessions.filter((s) => !s.isManual).map((s) => s.id)
+        ? ctxMenu.sessions.reduce<number[]>((acc, s) => { if (!s.isManual) acc.push(s.id); return acc; }, [])
         : [ctxMenu.session.id];
     const currentMultiplier =
       ctxMenu.type === 'session'
@@ -785,12 +787,14 @@ export function ProjectPage() {
           setSessionDialogOpen(true);
         }}
         onBarContextMenu={(date, x, y) => {
-          const dayLogSessions: ProjectSessionRow[] = recentSessions
-            .filter((s) => s.start_time.startsWith(date))
-            .map((s) => ({ ...s, isManual: false as const }));
-          const dayManualSessions: ProjectSessionRow[] = manualSessions
-            .filter((s) => s.start_time.startsWith(date))
-            .map((m) => manualToSessionRow(m, t('project_page.text.manual_session')));
+          const dayLogSessions: ProjectSessionRow[] = recentSessions.reduce<ProjectSessionRow[]>((acc, s) => {
+            if (s.start_time.startsWith(date)) acc.push({ ...s, isManual: false as const });
+            return acc;
+          }, []);
+          const dayManualSessions: ProjectSessionRow[] = manualSessions.reduce<ProjectSessionRow[]>((acc, m) => {
+            if (m.start_time.startsWith(date)) acc.push(manualToSessionRow(m, t('project_page.text.manual_session')));
+            return acc;
+          }, []);
           const daySessions = [...dayLogSessions, ...dayManualSessions];
           setCtxMenu({
             type: 'chart',

@@ -37,14 +37,13 @@ export function getStackedSeriesKeys(row: StackedBarData): string[] {
 export function getStackedSeriesEntries(
   row: StackedBarData,
 ): Array<[string, number]> {
-  return getStackedSeriesKeys(row)
-    .map((key) => [key, row[key]] as const)
-    .filter(
-      (entry): entry is [string, number] =>
-        typeof entry[1] === 'number' &&
-        Number.isFinite(entry[1]) &&
-        entry[1] > 0,
-    );
+  return getStackedSeriesKeys(row).reduce<Array<[string, number]>>((acc, key) => {
+    const val = row[key];
+    if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+      acc.push([key, val]);
+    }
+    return acc;
+  }, []);
 }
 
 export function getStackedSeriesLabel(

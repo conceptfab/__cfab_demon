@@ -718,7 +718,7 @@ export function Projects() {
       projectCount += group.length;
 
       const groupNames = Array.from(
-        new Set(group.map((project) => project.name.trim()).filter(Boolean)),
+        new Set(group.flatMap((project) => { const n = project.name.trim(); return n ? [n] : []; })),
       );
 
       for (const project of group) {

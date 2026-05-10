@@ -78,6 +78,7 @@ export async function runAutoSplitCycle(
 
     let splitCount = 0;
     let firstIteration = true;
+    // sequential by design: throttled one-by-one to avoid hammering the AI backend
     for (const session of sessions) {
       if (!firstIteration) {
         await sleep(AUTO_SPLIT_THROTTLE_MS);

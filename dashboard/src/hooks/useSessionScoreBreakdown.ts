@@ -172,8 +172,10 @@ export function useSessionScoreBreakdown({
   const breakdownPrefetchIdsKey = useMemo(
     () =>
       sessions
-        .filter((session) => !isAlreadySplitSession(session))
-        .map((session) => session.id)
+        .reduce<number[]>((acc, session) => {
+          if (!isAlreadySplitSession(session)) acc.push(session.id);
+          return acc;
+        }, [])
         .join(','),
     [sessions],
   );
@@ -182,10 +184,11 @@ export function useSessionScoreBreakdown({
     if (viewMode !== 'ai_detailed') return;
 
     const sessionIds = breakdownPrefetchIdsKey
-      ? breakdownPrefetchIdsKey
-          .split(',')
-          .map((value) => Number(value))
-          .filter((value) => Number.isFinite(value))
+      ? breakdownPrefetchIdsKey.split(',').reduce<number[]>((acc, value) => {
+          const n = Number(value);
+          if (Number.isFinite(n)) acc.push(n);
+          return acc;
+        }, [])
       : [];
     if (sessionIds.length === 0) return;
 

@@ -30,6 +30,7 @@ export async function fetchAllSessions(
   const allSessions: SessionWithApp[] = [];
   let offset = 0;
 
+  // sequential by design: cursor-based pagination — each batch offset depends on previous result
   for (;;) {
     const batch = await getSessions({
       ...sessionFilters,

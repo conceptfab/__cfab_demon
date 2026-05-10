@@ -45,14 +45,14 @@ function groupClients(projects: PmProject[]) {
   // Build group stats
   const stats = new Map<string, { count: number; budgetSum: number; variants: string[] }>();
   for (const p of projects) {
-    const group = groupMap.get(p.prj_client.toUpperCase()) || p.prj_client.toUpperCase();
+    const clientUpper = p.prj_client.toUpperCase();
+    const group = groupMap.get(clientUpper) || clientUpper;
     let s = stats.get(group);
     if (!s) { s = { count: 0, budgetSum: 0, variants: [] }; stats.set(group, s); }
     s.count++;
     const b = parseFloat(p.prj_budget);
     if (!isNaN(b)) s.budgetSum += b;
-    const variant = p.prj_client.toUpperCase();
-    if (!s.variants.includes(variant)) s.variants.push(variant);
+    if (!s.variants.includes(clientUpper)) s.variants.push(clientUpper);
   }
 
   return { stats, groups: [...stats.keys()].sort((a, b) => a.localeCompare(b)) };

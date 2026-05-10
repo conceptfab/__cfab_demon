@@ -348,23 +348,25 @@ export function buildProjectTimelineModel(params: {
 }): TimelineModel | null {
   const { sessions, manualSessions, workingHours, projects, sortMode, unassignedLabel } = params;
   const valid = sessions
-    .map((session) => {
+    .reduce<Array<{ session: (typeof sessions)[0]; startMs: number; endMs: number }>>((acc, session) => {
       const startMs = new Date(session.start_time).getTime();
       const endMs = new Date(session.end_time).getTime();
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
-      return { session, startMs, endMs };
-    })
-    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+        acc.push({ session, startMs, endMs });
+      }
+      return acc;
+    }, [])
     .sort((left, right) => left.startMs - right.startMs);
 
   const validManual = manualSessions
-    .map((manualSession) => {
+    .reduce<Array<{ manualSession: (typeof manualSessions)[0]; startMs: number; endMs: number }>>((acc, manualSession) => {
       const startMs = new Date(manualSession.start_time).getTime();
       const endMs = new Date(manualSession.end_time).getTime();
-      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
-      return { manualSession, startMs, endMs };
-    })
-    .filter((value): value is NonNullable<typeof value> => Boolean(value));
+      if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs) {
+        acc.push({ manualSession, startMs, endMs });
+      }
+      return acc;
+    }, []);
 
   if (valid.length === 0 && validManual.length === 0) {
     return null;

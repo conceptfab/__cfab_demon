@@ -164,9 +164,10 @@ export function useLanSyncManager() {
       // Hydrate expired set from daemon-reported auth-error flag so the badge
       // survives reloads and appears even for syncs triggered outside the UI.
       const expiredFromDaemon = new Set(
-        devices
-          .filter((d) => d.last_auth_error_at)
-          .map((d) => d.device_id),
+        devices.reduce<string[]>((acc, d) => {
+          if (d.last_auth_error_at) acc.push(d.device_id);
+          return acc;
+        }, []),
       );
       setPairingExpiredDeviceIds((prev) => {
         if (

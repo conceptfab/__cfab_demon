@@ -134,9 +134,10 @@ export function MultiSplitSessionModal({
       if (newTotal === 100) return nextParts;
 
       const diff = 100 - newTotal;
-      const otherIndices = nextParts
-        .map((_, i) => i)
-        .filter((i) => i !== index);
+      const otherIndices = nextParts.reduce<number[]>((acc, _, i) => {
+        if (i !== index) acc.push(i);
+        return acc;
+      }, []);
       if (otherIndices.length === 0) return nextParts;
 
       let remainingDiff = diff;
