@@ -5,11 +5,15 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use timeflow_shared::{session_settings, version_compat};
 
-use super::helpers::{no_console, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME};
+use super::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
+#[cfg(not(windows))]
+use super::helpers::DAEMON_AUTOSTART_LNK;
 use super::types::DaemonStatus;
 use crate::commands::sql_fragments::ACTIVE_SESSION_FILTER_S;
 use crate::db;
 
+#[cfg(windows)]
+mod autostart_win;
 mod control;
 mod status;
 
@@ -219,6 +223,21 @@ pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
         .join("autostart"))
 }
 
+/// Czy autostart demona jest aktywny:
+/// - Windows: wartość w `HKCU\...\Run\TIMEFLOW Demon`
+/// - inne: obecność pliku artefaktu (`.plist` / `.desktop` / itp.) w `startup_dir()`
+#[cfg(windows)]
+pub(super) fn autostart_enabled_probe() -> bool {
+    autostart_win::is_enabled()
+}
+
+#[cfg(not(windows))]
+pub(super) fn autostart_enabled_probe() -> bool {
+    startup_dir()
+        .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
+        .unwrap_or(false)
+}
+
 pub(super) fn read_last_n_lines(path: &std::path::Path, n: usize) -> Result<String, String> {
     if n == 0 {
         return Ok(String::new());
@@ -356,9 +375,7 @@ pub(super) fn build_daemon_status(
     let (running, pid) = load_daemon_process_status(use_cached_process)?;
     let daemon_exe = find_daemon_exe().ok();
     let exe_path = daemon_exe.as_ref().map(|p| p.to_string_lossy().to_string());
-    let autostart = startup_dir()
-        .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
-        .unwrap_or(false);
+    let autostart = autostart_enabled_probe();
 
     let (unassigned_sessions, unassigned_apps) = if include_assignment_counts {
         let min_dur = min_duration.unwrap_or_else(load_persisted_session_min_duration);

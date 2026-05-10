@@ -1,38 +1,38 @@
 use std::process::Command;
 
-use crate::commands::helpers::{
-    no_console, timeflow_data_dir, DAEMON_AUTOSTART_LNK, DAEMON_EXE_NAME,
-};
+use crate::commands::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
+#[cfg(not(windows))]
+use crate::commands::helpers::DAEMON_AUTOSTART_LNK;
 
 use super::{clear_cached_daemon_process_status, find_daemon_exe, session_settings, startup_dir};
+#[cfg(windows)]
+use super::autostart_win;
 
+/// Windows autostart przez klucz rejestru `HKCU\...\Run`. Wcześniejsza wersja
+/// tworzyła plik `.lnk` w Start Menu\Programs\Startup przez PowerShell, ale
+/// była podatna na ciche błędy COM, OneDrive Known Folder Move oraz brak
+/// `WorkingDirectory`. Klucz rejestru jest niezależny od shellu i synchronizacji.
+///
+/// Dodatkowo każde wywołanie sprząta starą wartość `.lnk` (jeśli istnieje
+/// po poprzednich wersjach), żeby demon nie wystartował dwa razy po
+/// migracji.
 #[cfg(windows)]
 #[tauri::command]
 pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
-    let dir = startup_dir()?;
-    let lnk_path = dir.join(DAEMON_AUTOSTART_LNK);
+    // Cleanup po starym mechanizmie — niezależnie od `enabled`.
+    if let Ok(dir) = startup_dir() {
+        let legacy_lnk = dir.join(crate::commands::helpers::DAEMON_AUTOSTART_LNK);
+        if legacy_lnk.exists() {
+            let _ = std::fs::remove_file(&legacy_lnk);
+        }
+    }
 
     if enabled {
         let exe = find_daemon_exe()?;
-        let ps_script = format!(
-            "$ws = New-Object -ComObject WScript.Shell; $sc = $ws.CreateShortcut('{}'); $sc.TargetPath = '{}'; $sc.Save()",
-            lnk_path.to_string_lossy().replace('\'', "''"),
-            exe.to_string_lossy().replace('\'', "''")
-        );
-        let mut cmd = Command::new("powershell");
-        no_console(&mut cmd);
-        let output = cmd
-            .args(["-NoProfile", "-Command", &ps_script])
-            .output()
-            .map_err(|e| e.to_string())?;
-        if !output.status.success() {
-            return Err(format!(
-                "Failed to create shortcut: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-    } else if lnk_path.exists() {
-        std::fs::remove_file(&lnk_path).map_err(|e| e.to_string())?;
+        let command = autostart_win::build_command(&exe);
+        autostart_win::write(&command)?;
+    } else {
+        autostart_win::delete()?;
     }
 
     Ok(())

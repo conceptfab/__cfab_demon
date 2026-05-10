@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-dashboard"
-version = "0.1.5700"
+version = "0.1.5701"
 description = "TimeFlow Dashboard"
 authors = ["you"]
 license = ""
@@ -38,4 +38,4 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "blo
 timeflow-shared = { path = "../../shared" }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
+windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_Foundation", "Win32_System_Registry"] }

@@ -4,8 +4,8 @@ use crate::commands::helpers::run_app_blocking;
 use crate::commands::types::{BackgroundDiagnostics, DateRange};
 
 use super::{
-    build_daemon_status, daemon_log_path, load_persisted_session_min_duration, read_last_n_lines,
-    startup_dir, DAEMON_AUTOSTART_LNK,
+    autostart_enabled_probe, build_daemon_status, daemon_log_path,
+    load_persisted_session_min_duration, read_last_n_lines,
 };
 
 #[tauri::command]
@@ -36,8 +36,7 @@ pub async fn get_daemon_logs(tail_lines: Option<usize>) -> Result<String, String
 
 #[tauri::command]
 pub async fn get_autostart_enabled() -> Result<bool, String> {
-    let dir = startup_dir()?;
-    Ok(dir.join(DAEMON_AUTOSTART_LNK).exists())
+    Ok(autostart_enabled_probe())
 }
 
 #[tauri::command]
