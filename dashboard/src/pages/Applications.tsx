@@ -54,6 +54,7 @@ export function Applications() {
   const [monitoredError, setMonitoredError] = useState('');
   const [addingApp, setAddingApp] = useState(false);
   const [syncingMonitored, setSyncingMonitored] = useState(false);
+  // force-refresh via useState — deliberately triggers re-render on increment
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [loadingApps, setLoadingApps] = useState(true);
   const [loadingMonitored, setLoadingMonitored] = useState(true);

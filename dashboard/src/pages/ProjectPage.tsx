@@ -165,7 +165,7 @@ export function ProjectPage() {
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [project, setProject] = useState<ProjectWithStats | null>(null);
   const [projectsList, setProjectsList] = useState<ProjectWithStats[]>([]);
-  const [hasLoadedProjectsList, setHasLoadedProjectsList] = useState(false);
+  const hasLoadedProjectsListRef = useRef(false);
   const [extraInfo, setExtraInfo] = useState<ProjectExtraInfo | null>(null);
   const [timelineData, setTimelineData] = useState<StackedBarData[]>([]);
   const [timelineError, setTimelineError] = useState<string | null>(null);
@@ -257,6 +257,7 @@ export function ProjectPage() {
   const [estimate, setEstimate] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  // force-refresh via useState — deliberately triggers re-render on increment
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [sessionDetailOpen, setSessionDetailOpen] = useState(false);
@@ -283,7 +284,7 @@ export function ProjectPage() {
     if (projectPageId === null) {
       setProject(null);
       setProjectsList([]);
-      setHasLoadedProjectsList(false);
+      hasLoadedProjectsListRef.current = false;
       setCurrentPage('projects');
       return;
     }
@@ -359,7 +360,7 @@ export function ProjectPage() {
   }, [projectPageId, dataReloadVersion, setCurrentPage, t]);
 
   useEffect(() => {
-    if (!sessionDialogOpen || projectPageId === null || hasLoadedProjectsList) {
+    if (!sessionDialogOpen || projectPageId === null || hasLoadedProjectsListRef.current) {
       return;
     }
 
@@ -368,7 +369,7 @@ export function ProjectPage() {
       .then((projects) => {
         if (cancelled) return;
         setProjectsList(projects);
-        setHasLoadedProjectsList(true);
+        hasLoadedProjectsListRef.current = true;
       })
       .catch((error) => {
         if (cancelled) return;
@@ -378,7 +379,7 @@ export function ProjectPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasLoadedProjectsList, projectPageId, sessionDialogOpen]);
+  }, [projectPageId, sessionDialogOpen]);
 
   // Handle click outside for context menu
   useEffect(() => {
@@ -742,7 +743,7 @@ export function ProjectPage() {
         onGenerateReport={() => setShowTemplateSelector(true)}
         onSaveColor={async (color) => {
           await projectsApi.updateProject(project.id, color);
-          setProject({ ...project, color });
+          setProject(prev => ({ ...prev!, color }));
         }}
       />
 

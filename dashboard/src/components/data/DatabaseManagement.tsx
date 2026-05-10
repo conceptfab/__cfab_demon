@@ -163,7 +163,7 @@ export function DatabaseManagement() {
   const handleBackupIntervalChange = (val: string) => {
     if (!settings) return;
     const days = parseInt(val, 10) || 1;
-    setSettings({ ...settings, backup_interval_days: days });
+    setSettings(prev => ({ ...prev!, backup_interval_days: days }));
   };
 
   const saveSettings = async (successMessage: string, errorMessage: string) => {
@@ -313,13 +313,13 @@ export function DatabaseManagement() {
                     max={24 * 30}
                     value={settings.auto_optimize_interval_hours}
                     onChange={(e) =>
-                      setSettings({
-                        ...settings,
+                      setSettings(prev => ({
+                        ...prev!,
                         auto_optimize_interval_hours: Math.max(
                           1,
                           Math.min(24 * 30, parseInt(e.target.value, 10) || 1),
                         ),
-                      })
+                      }))
                     }
                     className="h-8 text-[11px]"
                   />

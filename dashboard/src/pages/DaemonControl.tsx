@@ -34,6 +34,7 @@ export function DaemonControl() {
   const [logs, setLogs] = useState("");
   const [loading, setLoading] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(true);
+  // useState intentional — triggers re-render to start/stop auto-refresh interval when window visibility changes
   const [isWindowVisible, setIsWindowVisible] = useState(() => isDocumentVisible());
   const refreshAsync = useCancellableAsync();
   const logsEndRef = useRef<HTMLDivElement>(null);

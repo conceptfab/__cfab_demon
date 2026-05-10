@@ -52,7 +52,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
             id: Math.random().toString(36).substring(7)
         });
     }
-    setAttachments([...attachments, ...newAttachments]);
+    setAttachments(prev => [...prev, ...newAttachments]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 

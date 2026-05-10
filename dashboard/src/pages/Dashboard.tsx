@@ -202,6 +202,7 @@ export function Dashboard() {
   const [editingManualSession, setEditingManualSession] =
     useState<ManualSessionWithProject | null>(null);
   const workingHours = useSettingsStore((s) => s.workingHours);
+  // force-refresh via useState — deliberately triggers re-render on increment
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
   const projectsList = useProjectsCacheStore((s) => s.projectsAllTime);
   const projectCount = projectsList.length;

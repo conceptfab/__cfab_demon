@@ -137,7 +137,7 @@ export function PmTemplateManager({ open, onClose }: Props) {
               <input
                 className={inputClass}
                 value={edit.name}
-                onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                onChange={(e) => setEdit(prev => ({ ...prev!, name: e.target.value }))}
               />
             </div>
             <div>
@@ -150,7 +150,7 @@ export function PmTemplateManager({ open, onClose }: Props) {
               <textarea
                 className={cn(inputClass, 'font-mono text-xs')}
                 value={edit.foldersText}
-                onChange={(e) => setEdit({ ...edit, foldersText: e.target.value })}
+                onChange={(e) => setEdit(prev => ({ ...prev!, foldersText: e.target.value }))}
                 rows={10}
                 placeholder={"_Sent_files_\n__Final_files__\n_CAD_files"}
               />

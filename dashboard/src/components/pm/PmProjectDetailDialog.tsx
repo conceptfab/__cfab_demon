@@ -112,34 +112,34 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">{t('pm.create.client')}</label>
                   <input className={inputClass} value={form.prj_client}
-                    onChange={(e) => setForm({ ...form, prj_client: e.target.value })} />
+                    onChange={(e) => setForm(prev => ({ ...prev, prj_client: e.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">{t('pm.create.name')}</label>
                   <input className={inputClass} value={form.prj_name}
-                    onChange={(e) => setForm({ ...form, prj_name: e.target.value })} />
+                    onChange={(e) => setForm(prev => ({ ...prev, prj_name: e.target.value }))} />
                 </div>
               </div>
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">{t('pm.create.desc')}</label>
                 <textarea className={inputClass} value={form.prj_desc} rows={2}
-                  onChange={(e) => setForm({ ...form, prj_desc: e.target.value })} />
+                  onChange={(e) => setForm(prev => ({ ...prev, prj_desc: e.target.value }))} />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">{t('pm.create.budget')}</label>
                   <input className={inputClass} value={form.prj_budget}
-                    onChange={(e) => setForm({ ...form, prj_budget: e.target.value })} />
+                    onChange={(e) => setForm(prev => ({ ...prev, prj_budget: e.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">{t('pm.create.term')}</label>
                   <input type="date" className={inputClass} value={form.prj_term}
-                    onChange={(e) => setForm({ ...form, prj_term: e.target.value })} />
+                    onChange={(e) => setForm(prev => ({ ...prev, prj_term: e.target.value }))} />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs text-muted-foreground">{t('pm.columns.status')}</label>
                   <select className={inputClass} value={form.prj_status}
-                    onChange={(e) => setForm({ ...form, prj_status: e.target.value })}>
+                    onChange={(e) => setForm(prev => ({ ...prev, prj_status: e.target.value }))}>
                     {STATUS_OPTIONS.map((s) => (
                       <option key={s} value={s}>{t(`pm.status.${s}`, s)}</option>
                     ))}

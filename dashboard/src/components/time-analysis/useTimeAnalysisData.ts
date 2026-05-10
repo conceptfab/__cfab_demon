@@ -27,6 +27,7 @@ export function useTimeAnalysisData() {
   );
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  // useState intentional — wraps async fetch; useTransition not applicable here
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 

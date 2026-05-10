@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -61,17 +61,17 @@ export function ManualSessionDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [initializedId, setInitializedId] = useState<number | "new" | null>(null);
+  const initializedIdRef = useRef<number | "new" | null>(null);
 
   useEffect(() => {
     if (!open) {
-      setInitializedId(null);
+      initializedIdRef.current = null;
       return;
     }
 
     const currentId = editSession?.id ?? "new";
-    if (initializedId === currentId) return;
-    setInitializedId(currentId);
+    if (initializedIdRef.current === currentId) return;
+    initializedIdRef.current = currentId;
 
     if (editSession) {
       setTitle(editSession.title);
@@ -106,7 +106,7 @@ export function ManualSessionDialog({
 
     // Fetch applications
     getApplications().then(setApps).catch(console.error);
-  }, [open, editSession, defaultProjectId, defaultStartTime, projects, initializedId]);
+  }, [open, editSession, defaultProjectId, defaultStartTime, projects]);
 
   const handleStartTimeChange = (newStartTime: string) => {
     setStartTime(newStartTime);

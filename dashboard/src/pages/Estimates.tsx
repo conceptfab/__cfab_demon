@@ -60,6 +60,7 @@ export function Estimates() {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [tableMessage, setTableMessage] = useState<string | null>(null);
   const [tableError, setTableError] = useState<string | null>(null);
+  // force-refresh via useState — deliberately triggers re-render on increment
   const [dataReloadVersion, setDataReloadVersion] = useState(0);
 
   const locale = i18n.resolvedLanguage;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Loader2, CheckCircle2, XCircle, RotateCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { lanSyncApi } from '@/lib/tauri';
@@ -39,6 +39,9 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
   const prevTimeRef = useRef(Date.now());
   const finishedRef = useRef(false);
 
+  const stableOnFinished = useEffectEvent((success: boolean) => onFinished?.(success));
+  const hasOnRetry = useEffectEvent(() => !!onRetry);
+
   useEffect(() => {
     if (!active) {
       setProgress(null);
@@ -78,12 +81,12 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
         // Detect completion (including "not_needed" — databases already identical)
         if ((p.phase === 'completed' || p.phase === 'not_needed') && !finishedRef.current) {
           finishedRef.current = true;
-          setTimeout(() => onFinished?.(true), 1500);
+          setTimeout(() => stableOnFinished(true), 1500);
         }
         if (p.phase.startsWith('error') && !finishedRef.current) {
           finishedRef.current = true;
-          if (!onRetry) {
-            setTimeout(() => onFinished?.(false), 2500);
+          if (!hasOnRetry()) {
+            setTimeout(() => stableOnFinished(false), 2500);
           }
           // When onRetry is provided, overlay stays visible with retry button
         }
@@ -95,7 +98,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
     void poll();
     const id = window.setInterval(poll, POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
-  }, [active, onFinished, syncType, onRetry]);
+  }, [active, syncType]);
 
   if (!active || !progress || progress.phase === 'idle') return null;
 

@@ -50,10 +50,11 @@ interface Props {
 
 const TIMELINE_SORT_STORAGE_KEY = "timeflow-dashboard-activity-timeline-sort-mode";
 const TIMELINE_SAVE_VIEW_STORAGE_KEY = "timeflow-dashboard-activity-timeline-save-view";
+const EMPTY_MANUAL_SESSIONS: ManualSessionWithProject[] = [];
 
 export function ProjectDayTimeline({
   sessions,
-  manualSessions = [],
+  manualSessions = EMPTY_MANUAL_SESSIONS,
   workingHours,
   title,
   minHeightClassName,
