@@ -7,7 +7,7 @@ export function HelpAiSection() {
 
   return (
     <SectionHelp
-      icon={<Brain className="h-6 w-6" />}
+      icon={<Brain className="size-6" />}
       title={t18n('help_page.ai_model')}
       description={t18n('help_page.proprietary_local_ml_engine_rust_analyzing_app_context_t')}
       footer={t18n('help_page.key_functionalities')}

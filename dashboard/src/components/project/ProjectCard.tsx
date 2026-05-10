@@ -102,7 +102,7 @@ function ProjectCardComponent({
               <button
                 type="button"
                 aria-label={t('projects.labels.change_color')}
-                className="h-3 w-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
+                className="size-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
                 style={{
                   backgroundColor:
                     isColorEditorOpen && pendingColor ? pendingColor : project.color,
@@ -126,12 +126,12 @@ function ProjectCardComponent({
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-green-500 hover:text-green-400"
+                      className="size-8 text-green-500 hover:text-green-400"
                       aria-label={t('projects.labels.save')}
                       onClick={onSavePendingColor}
                       title={t('projects.labels.save')}
                     >
-                      <Save className="h-4 w-4" />
+                      <Save className="size-4" />
                     </Button>
                   )}
                 </div>
@@ -140,7 +140,7 @@ function ProjectCardComponent({
                     <AppTooltip key={color} content={color}>
                       <button
                         type="button"
-                        className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
+                        className="size-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                         style={{ backgroundColor: color }}
                         onClick={() => onSelectPresetColor(color)}
                         aria-label={`${t('projects.labels.choose_color')}: ${color}`}
@@ -195,7 +195,7 @@ function ProjectCardComponent({
                   : t('projects.labels.freeze_project')
               }
               className={cn(
-                'h-7 w-7',
+                'size-7',
                 project.frozen_at
                   ? 'bg-blue-500/10 text-blue-400'
                   : 'text-muted-foreground',
@@ -203,7 +203,7 @@ function ProjectCardComponent({
               onClick={onToggleFreeze}
               disabled={isDeleting}
             >
-              <Snowflake className="h-3.5 w-3.5" />
+              <Snowflake className="size-3.5" />
             </Button>
           </AppTooltip>
         </div>
@@ -224,7 +224,7 @@ function ProjectCardComponent({
                 {isHotProject && (
                   <AppTooltip content={t('projects.labels.hot_project')}>
                     <span>
-                      <Trophy className="h-4 w-4 fill-amber-500/10 text-amber-500" />
+                      <Trophy className="size-4 fill-amber-500/10 text-amber-500" />
                     </span>
                   </AppTooltip>
                 )}
@@ -235,7 +235,7 @@ function ProjectCardComponent({
                     })}
                   >
                     <span>
-                      <MousePointerClick className="h-4 w-4 fill-sky-400/10 text-sky-400" />
+                      <MousePointerClick className="size-4 fill-sky-400/10 text-sky-400" />
                     </span>
                   </AppTooltip>
                 )}
@@ -244,7 +244,7 @@ function ProjectCardComponent({
                     content={`${t('projects.labels.comments')} ${extraInfo.db_stats.comment_count}`}
                   >
                     <span>
-                      <MessageSquare className="h-4 w-4 fill-blue-400/20 text-blue-400" />
+                      <MessageSquare className="size-4 fill-blue-400/20 text-blue-400" />
                     </span>
                   </AppTooltip>
                 )}
@@ -260,10 +260,10 @@ function ProjectCardComponent({
                 size="sm"
                 aria-label={t('projects.labels.add_manual_session')}
                 onClick={onOpenManualSession}
-                className="h-9 w-9 shrink-0"
+                className="size-9 shrink-0"
                 disabled={isDeleting}
               >
-                <CalendarPlus className="h-4 w-4" />
+                <CalendarPlus className="size-4" />
               </Button>
             </AppTooltip>
 
@@ -274,10 +274,10 @@ function ProjectCardComponent({
                 size="sm"
                 aria-label={t('projects.labels.project_card')}
                 onClick={onOpenProjectPage}
-                className="h-9 w-9 shrink-0"
+                className="size-9 shrink-0"
                 disabled={isDeleting}
               >
-                <LayoutDashboard className="h-4 w-4" />
+                <LayoutDashboard className="size-4" />
               </Button>
             </AppTooltip>
           </div>
@@ -298,7 +298,7 @@ function ProjectCardComponent({
                   {extraInfo?.top_apps.map((app, index) => (
                     <div key={index} className="flex items-center gap-2 text-xs">
                       <div
-                        className="h-2 w-2 shrink-0 rounded-full"
+                        className="size-2 shrink-0 rounded-full"
                         style={{ backgroundColor: app.color || '#64748b' }}
                       />
                       <span className="flex-1 truncate">{app.name}</span>

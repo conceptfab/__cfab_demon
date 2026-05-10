@@ -57,7 +57,7 @@ function ProjectListComponent({
               onClick={() => onOpenProject(project)}
             >
               <div
-                className="h-3 w-3 shrink-0 rounded-full"
+                className="size-3 shrink-0 rounded-full"
                 style={{ backgroundColor: project.color }}
               />
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -80,13 +80,13 @@ function ProjectListComponent({
                   })}>
                     <button
                       type="button"
-                      className="inline-flex cursor-pointer items-center rounded px-0.5 py-0.5 text-blue-400 transition-colors hover:bg-blue-500/20"
+                      className="inline-flex cursor-pointer items-center rounded p-0.5 text-blue-400 transition-colors hover:bg-blue-500/20"
                       onClick={(event) => {
                         event.stopPropagation();
                         onUnfreeze(project.id);
                       }}
                     >
-                      <Snowflake className="h-3 w-3 shrink-0" />
+                      <Snowflake className="size-3 shrink-0" />
                     </button>
                   </AppTooltip>
                 )}
@@ -94,7 +94,7 @@ function ProjectListComponent({
                 {hotProjectIds.has(project.id) && (
                   <AppTooltip content={t('projects.labels.hot_project')}>
                     <span className="shrink-0">
-                      <Trophy className="h-3.5 w-3.5 fill-amber-500/20 text-amber-500" />
+                      <Trophy className="size-3.5 fill-amber-500/20 text-amber-500" />
                     </span>
                   </AppTooltip>
                 )}

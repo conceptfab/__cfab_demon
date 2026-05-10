@@ -55,7 +55,7 @@ export function PmSettingsCard() {
                 {settings?.work_folder || t('pm.no_work_folder')}
               </div>
               <Button variant="outline" size="sm" onClick={handleSetWorkFolder}>
-                <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+                <FolderOpen className="mr-1.5 size-3.5" />
                 {t('pm.set_work_folder')}
               </Button>
             </div>
@@ -73,7 +73,7 @@ export function PmSettingsCard() {
             </label>
             <p className="text-[10px] text-muted-foreground">{t('pm.settings_templates_desc')}</p>
             <Button variant="outline" size="sm" onClick={() => setTemplatesOpen(true)} disabled={!settings?.work_folder}>
-              <LayoutTemplate className="mr-1.5 h-3.5 w-3.5" />
+              <LayoutTemplate className="mr-1.5 size-3.5" />
               {t('pm.template_manager.title')}
             </Button>
           </div>

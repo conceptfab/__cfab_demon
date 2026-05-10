@@ -70,10 +70,10 @@ export function TimeAnalysis() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="size-8"
               onClick={() => d.shiftDateRange(-1)}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="size-4" />
             </Button>
           </AppTooltip>
           <span className="text-xs text-muted-foreground min-w-[5rem] text-center">
@@ -83,11 +83,11 @@ export function TimeAnalysis() {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="size-8"
               onClick={() => d.shiftDateRange(1)}
               disabled={!d.canShiftForward}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="size-4" />
             </Button>
           </AppTooltip>
         </div>
@@ -179,7 +179,7 @@ export function TimeAnalysis() {
                   >
                     <div className="flex items-center gap-2.5">
                       <div
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        className="size-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: entry.fill }}
                       />
                       <span className="text-muted-foreground line-clamp-1 font-medium">
@@ -193,7 +193,7 @@ export function TimeAnalysis() {
                 ))
               ) : (
                 <div className="flex items-center gap-2.5 text-[11px] text-muted-foreground">
-                  <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-slate-600" />
+                  <div className="size-2.5 rounded-full shrink-0 bg-slate-600" />
                   <span>{t('time_analysis_page.awaiting_project_activity')}</span>
                 </div>
               )}

@@ -108,7 +108,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
         <DialogHeader className="space-y-1">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
-                <Bug className="h-4 w-4" />
+                <Bug className="size-4" />
             </div>
             <DialogTitle className="text-xl font-semibold tracking-tight">{t("components.bughunter.title")}</DialogTitle>
           </div>
@@ -119,8 +119,8 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
 
         {isSent ? (
           <div className="flex flex-col items-center justify-center py-10 space-y-4 animate-in fade-in zoom-in duration-300">
-            <div className="h-12 w-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-              <Check className="h-6 w-6 stroke-[3px]" />
+            <div className="size-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+              <Check className="size-6 stroke-[3px]" />
             </div>
             <p className="text-sm font-medium text-emerald-300">{t("components.bughunter.sent")}</p>
           </div>
@@ -156,7 +156,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                     onClick={() => fileInputRef.current?.click()}
                     className="flex items-center gap-1.5 text-[10px] text-sky-400 hover:text-sky-300 transition-colors font-semibold"
                 >
-                    <Paperclip className="h-3 w-3" />
+                    <Paperclip className="size-3" />
                     {t("components.bughunter.actions.add_files")}
                 </button>
               </div>
@@ -180,7 +180,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                         onClick={() => removeAttachment(atch.id)}
                         className="text-muted-foreground group-hover:text-destructive transition-colors"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="size-3" />
                       </button>
                     </div>
                   ))}
@@ -202,9 +202,9 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
                 className="bg-primary text-primary-foreground text-xs font-semibold h-9 px-5 flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-primary/10"
               >
                 {isSending ? (
-                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                  <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
                 ) : (
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="size-3.5" />
                 )}
                 {isSending ? t("components.bughunter.actions.sending") : t("components.bughunter.actions.send_report")}
               </Button>

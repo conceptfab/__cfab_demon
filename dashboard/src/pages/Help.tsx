@@ -80,7 +80,7 @@ export function Help() {
               <img
                 src={logo}
                 alt="TIMEFLOW"
-                className="h-11 w-11 object-contain"
+                className="size-11 object-contain"
               />
               <span className="font-semibold tracking-[0.2em]">TIMEFLOW</span>
             </div>
@@ -113,7 +113,7 @@ export function Help() {
       <Card className="border-none bg-transparent shadow-none">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5 text-primary" />
+            <Info className="size-5 text-primary" />
             {t18n('help_page.about_the_software')}
           </CardTitle>
         </CardHeader>
@@ -126,7 +126,7 @@ export function Help() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
-                <Activity className="h-4 w-4 text-emerald-500" />
+                <Activity className="size-4 text-emerald-500" />
                 {t18n('help_page.automatic_tracking')}
               </h4>
               <p className="text-xs text-muted-foreground">
@@ -135,7 +135,7 @@ export function Help() {
             </div>
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
-                <Brain className="h-4 w-4 text-purple-400" />
+                <Brain className="size-4 text-purple-400" />
                 {t18n('help_page.intelligent_categorization')}
               </h4>
               <p className="text-xs text-muted-foreground">
@@ -144,7 +144,7 @@ export function Help() {
             </div>
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
-                <CircleDollarSign className="h-4 w-4 text-amber-500" />
+                <CircleDollarSign className="size-4 text-amber-500" />
                 {t18n('help_page.financial_analysis')}
               </h4>
               <p className="text-xs text-muted-foreground">
@@ -153,7 +153,7 @@ export function Help() {
             </div>
             <div className="space-y-1">
               <h4 className="font-medium text-sm flex items-center gap-2 text-foreground/90">
-                <Settings className="h-4 w-4 text-blue-400" />
+                <Settings className="size-4 text-blue-400" />
                 {t18n('help_page.privacy_and_locality')}
               </h4>
               <p className="text-xs text-muted-foreground">
@@ -169,10 +169,10 @@ export function Help() {
             onClick={() => setCurrentPage('quickstart')}
           >
             <span className="flex items-center gap-2">
-              <Rocket className="h-4 w-4" />
+              <Rocket className="size-4" />
               {t18n('help_page.launch_quick_start_tutorial')}
             </span>
-            <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
           </Button>
         </div>
       </Card>
@@ -191,7 +191,7 @@ export function Help() {
             {activeTabValue === 'quickstart'
               ? t18n('help_page.open_full_tutorial')
               : t18n('help_page.open_this_module')}
-            <ArrowRight className="ml-2 h-3.5 w-3.5" />
+            <ArrowRight className="ml-2 size-3.5" />
           </Button>
         </div>
 
@@ -204,22 +204,22 @@ export function Help() {
           className="flex flex-col md:flex-row gap-0 items-start"
         >
           <TabsList className="flex flex-col h-auto bg-transparent p-0 gap-1 w-full md:w-56 shrink-0 border-r border-border/10 pr-6">
-            <HelpTabTrigger value="quickstart" icon={<Rocket className="h-3.5 w-3.5" />} label={t18n('help_page.quick_start')} />
-            <HelpTabTrigger value="dashboard" icon={<LayoutDashboard className="h-3.5 w-3.5" />} label={t18n('help_page.dashboard')} />
-            <HelpTabTrigger value="sessions" icon={<List className="h-3.5 w-3.5" />} label={t18n('help_page.sessions')} />
-            <HelpTabTrigger value="projects" icon={<FolderKanban className="h-3.5 w-3.5" />} label={t18n('help_page.projects')} />
-            <HelpTabTrigger value="estimates" icon={<CircleDollarSign className="h-3.5 w-3.5" />} label={t18n('help_page.estimates')} />
-            <HelpTabTrigger value="apps" icon={<AppWindow className="h-3.5 w-3.5" />} label={t18n('help_page.applications')} />
-            <HelpTabTrigger value="analysis" icon={<BarChart3 className="h-3.5 w-3.5" />} label={t18n('help_page.time_analysis')} />
-            <HelpTabTrigger value="ai" icon={<Brain className="h-3.5 w-3.5" />} label={t18n('help_page.ai_model')} />
-            <HelpTabTrigger value="data" icon={<Import className="h-3.5 w-3.5" />} label={t18n('help_page.data')} />
-            <HelpTabTrigger value="reports" icon={<FileText className="h-3.5 w-3.5" />} label={t18n('help_page.reports')} />
-            <HelpTabTrigger value="pm" icon={<Briefcase className="h-3.5 w-3.5" />} label={t18n('help_page.pm')} />
-            <HelpTabTrigger value="daemon" icon={<Cpu className="h-3.5 w-3.5" />} label={t18n('help_page.daemon')} />
-            <HelpTabTrigger value="online-sync" icon={<Activity className="h-3.5 w-3.5" />} label={t18n('help_page.online_sync')} />
-            <HelpTabTrigger value="lan-sync" icon={<Wifi className="h-3.5 w-3.5" />} label={t18n('help_page.lan_sync_title')} />
-            <HelpTabTrigger value="bughunter" icon={<Bug className="h-3.5 w-3.5" />} label={t18n('help_page.bughunter')} />
-            <HelpTabTrigger value="settings" icon={<Settings className="h-3.5 w-3.5" />} label={t18n('help_page.settings')} />
+            <HelpTabTrigger value="quickstart" icon={<Rocket className="size-3.5" />} label={t18n('help_page.quick_start')} />
+            <HelpTabTrigger value="dashboard" icon={<LayoutDashboard className="size-3.5" />} label={t18n('help_page.dashboard')} />
+            <HelpTabTrigger value="sessions" icon={<List className="size-3.5" />} label={t18n('help_page.sessions')} />
+            <HelpTabTrigger value="projects" icon={<FolderKanban className="size-3.5" />} label={t18n('help_page.projects')} />
+            <HelpTabTrigger value="estimates" icon={<CircleDollarSign className="size-3.5" />} label={t18n('help_page.estimates')} />
+            <HelpTabTrigger value="apps" icon={<AppWindow className="size-3.5" />} label={t18n('help_page.applications')} />
+            <HelpTabTrigger value="analysis" icon={<BarChart3 className="size-3.5" />} label={t18n('help_page.time_analysis')} />
+            <HelpTabTrigger value="ai" icon={<Brain className="size-3.5" />} label={t18n('help_page.ai_model')} />
+            <HelpTabTrigger value="data" icon={<Import className="size-3.5" />} label={t18n('help_page.data')} />
+            <HelpTabTrigger value="reports" icon={<FileText className="size-3.5" />} label={t18n('help_page.reports')} />
+            <HelpTabTrigger value="pm" icon={<Briefcase className="size-3.5" />} label={t18n('help_page.pm')} />
+            <HelpTabTrigger value="daemon" icon={<Cpu className="size-3.5" />} label={t18n('help_page.daemon')} />
+            <HelpTabTrigger value="online-sync" icon={<Activity className="size-3.5" />} label={t18n('help_page.online_sync')} />
+            <HelpTabTrigger value="lan-sync" icon={<Wifi className="size-3.5" />} label={t18n('help_page.lan_sync_title')} />
+            <HelpTabTrigger value="bughunter" icon={<Bug className="size-3.5" />} label={t18n('help_page.bughunter')} />
+            <HelpTabTrigger value="settings" icon={<Settings className="size-3.5" />} label={t18n('help_page.settings')} />
           </TabsList>
 
           <div className="flex-1 min-w-0 w-full pl-10">

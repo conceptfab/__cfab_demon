@@ -237,7 +237,7 @@ export function ManualSessionDialog({
                   <SelectItem key={p.id} value={String(p.id)}>
                     <div className="flex items-center gap-2">
                       <div
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        className="size-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: p.color }}
                       />
                       {p.name}
@@ -292,7 +292,7 @@ export function ManualSessionDialog({
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-input accent-primary"
+              className="size-4 rounded border-input accent-primary"
               checked={allowMultiDay}
               onChange={(e) => handleAllowMultiDayChange(e.target.checked)}
             />

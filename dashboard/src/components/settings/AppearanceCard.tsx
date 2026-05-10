@@ -37,7 +37,7 @@ export function AppearanceCard({
           <input
             id="chartAnimationsEnabled"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={checked}
             onChange={(e) => onToggle(e.target.checked)}
           />

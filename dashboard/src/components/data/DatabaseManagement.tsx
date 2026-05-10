@@ -248,7 +248,7 @@ export function DatabaseManagement() {
         <Card className="overflow-hidden border-border/40 bg-background/50 backdrop-blur-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Database className="h-4 w-4 text-blue-500" />
+              <Database className="size-4 text-blue-500" />
               {t('data_page.database_management.database_health')}
             </CardTitle>
             <CardDescription className="text-xs">
@@ -270,7 +270,7 @@ export function DatabaseManagement() {
                 onClick={handleVacuum}
                 disabled={loading}
               >
-                <Wind className="h-3.5 w-3.5" />
+                <Wind className="size-3.5" />
                 {t('data_page.database_management.run_vacuum')}
               </Button>
             </div>
@@ -327,18 +327,18 @@ export function DatabaseManagement() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0"
+                      className="size-8 shrink-0"
                       onClick={saveOptimizeInterval}
                       disabled={saving}
                     >
-                      <Save className="h-3.5 w-3.5" />
+                      <Save className="size-3.5" />
                     </Button>
                   </AppTooltip>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5 text-[11px] font-medium py-1.5">
-                <Clock className="h-3 w-3 text-muted-foreground" />
+                <Clock className="size-3 text-muted-foreground" />
                 {t('data_page.database_management.last_optimization')}
                 {" "}
                 {settings.last_optimize_at
@@ -353,7 +353,7 @@ export function DatabaseManagement() {
                   className="w-full gap-2 h-8 text-[11px]"
                   onClick={handleOpenFolder}
                 >
-                  <FolderOpen className="h-3.5 w-3.5" />
+                  <FolderOpen className="size-3.5" />
                   {t('data_page.database_management.open_db_folder')}
                 </Button>
                 <Button
@@ -363,7 +363,7 @@ export function DatabaseManagement() {
                   onClick={handleOptimize}
                   disabled={loading}
                 >
-                  <Zap className="h-3.5 w-3.5" />
+                  <Zap className="size-3.5" />
                   {t('data_page.database_management.optimize_now')}
                 </Button>
                 <Button
@@ -372,7 +372,7 @@ export function DatabaseManagement() {
                   className="w-full gap-2 h-8 text-[11px] text-amber-500 hover:text-amber-600"
                   onClick={handleRestore}
                 >
-                  <FileUp className="h-3.5 w-3.5" />
+                  <FileUp className="size-3.5" />
                   {t('data_page.database_management.restore_db')}
                 </Button>
               </div>
@@ -383,7 +383,7 @@ export function DatabaseManagement() {
         <Card className="overflow-hidden border-border/40 bg-background/50 backdrop-blur-sm">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" />
+              <ShieldCheck className="size-4 text-emerald-500" />
               {t('data_page.database_management.data_backups')}
             </CardTitle>
             <CardDescription className="text-xs">
@@ -437,11 +437,11 @@ export function DatabaseManagement() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 shrink-0"
+                      className="size-8 shrink-0"
                       onClick={saveBackupInterval}
                       disabled={saving}
                     >
-                      <Save className="h-3.5 w-3.5" />
+                      <Save className="size-3.5" />
                     </Button>
                   </AppTooltip>
                 </div>
@@ -451,7 +451,7 @@ export function DatabaseManagement() {
                   {t('data_page.database_management.last_backup')}
                 </Label>
                 <div className="flex items-center gap-1.5 text-[11px] font-medium py-1.5">
-                  <Clock className="h-3 w-3 text-muted-foreground" />
+                  <Clock className="size-3 text-muted-foreground" />
                   {settings.last_backup_at
                     ? new Date(settings.last_backup_at).toLocaleDateString()
                     : t('data_page.database_management.never')}
@@ -464,7 +464,7 @@ export function DatabaseManagement() {
               onClick={handleManualBackup}
               disabled={loading}
             >
-              <Save className="h-4 w-4" />
+              <Save className="size-4" />
               {t('data_page.database_management.backup_now')}
             </Button>
           </CardContent>
@@ -474,7 +474,7 @@ export function DatabaseManagement() {
       <Card className="overflow-hidden border-border/40 bg-background/50 backdrop-blur-sm">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Trash2 className="h-4 w-4 text-amber-500" />
+            <Trash2 className="size-4 text-amber-500" />
             {t('data_page.database_management.data_cleanup')}
           </CardTitle>
           <CardDescription className="text-xs">
@@ -503,7 +503,7 @@ export function DatabaseManagement() {
               onClick={handleCleanup}
               disabled={cleaning || !folderStats || folderStats.file_count === 0}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="size-3.5" />
               {cleaning
                 ? t('data_page.database_management.cleanup_cleaning')
                 : t('data_page.database_management.cleanup_button')}

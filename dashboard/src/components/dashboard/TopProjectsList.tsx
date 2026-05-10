@@ -86,7 +86,7 @@ export function TopProjectsList({
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <FolderOpen className="h-3 w-3 shrink-0 text-muted-foreground" />
+                  <FolderOpen className="size-3 shrink-0 text-muted-foreground" />
                   <span className="truncate text-xs font-medium">{projectLabel}</span>
                 </div>
                 <div className="flex items-center gap-2 mt-0.5 ml-5.5">
@@ -115,7 +115,7 @@ export function TopProjectsList({
                               { count: manual },
                             )}
                           >
-                            <MousePointerClick className="h-2.5 w-2.5" />
+                            <MousePointerClick className="size-2.5" />
                             {manual}
                           </span>
                         )}
@@ -127,7 +127,7 @@ export function TopProjectsList({
                               { count: boosted },
                             )}
                           >
-                            <Flame className="h-2.5 w-2.5" />
+                            <Flame className="size-2.5" />
                             {boosted}
                           </span>
                         )}

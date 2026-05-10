@@ -7,7 +7,7 @@ export function HelpProjectsSection() {
 
   return (
     <SectionHelp
-      icon={<FolderKanban className="h-6 w-6" />}
+      icon={<FolderKanban className="size-6" />}
       title={t18n('help_page.projects_2')}
       description={t18n('help_page.managing_task_structure_and_intelligent_automation_of_pr')}
       footer={t18n('help_page.key_functionalities')}

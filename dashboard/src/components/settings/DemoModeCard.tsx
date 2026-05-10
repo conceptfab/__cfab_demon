@@ -65,7 +65,7 @@ export function DemoModeCard({
           <input
             id="demoModeEnabled"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={demoModeStatus?.enabled ?? false}
             disabled={demoModeLoading || demoModeSwitching}
             onChange={(e) => onToggle(e.target.checked)}

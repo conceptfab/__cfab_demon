@@ -59,10 +59,10 @@ export function DateRangeToolbar({
               variant="ghost"
               size="icon"
               aria-label={t('date_range_toolbar.previous_period')}
-              className="h-8 w-8"
+              className="size-8"
               onClick={() => shiftDateRange(-1)}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="size-4" />
             </Button>
           </AppTooltip>
           <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
@@ -73,11 +73,11 @@ export function DateRangeToolbar({
               variant="ghost"
               size="icon"
               aria-label={t('date_range_toolbar.next_period')}
-              className="h-8 w-8"
+              className="size-8"
               onClick={() => shiftDateRange(1)}
               disabled={!canShiftForward}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="size-4" />
             </Button>
           </AppTooltip>
         </>

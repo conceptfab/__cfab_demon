@@ -119,7 +119,7 @@ export function DataHistory() {
         <Card className="border-border/40 bg-background/50 backdrop-blur-sm shadow-xl flex flex-col h-[320px]">
           <CardHeader className="pb-3 shrink-0">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <History className="h-4 w-4 text-sky-500" />
+              <History className="size-4 text-sky-500" />
               {t("data_page.history.import_history.title")}
             </CardTitle>
             <CardDescription className="text-[10px]">
@@ -129,7 +129,7 @@ export function DataHistory() {
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {imported.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
-                <FileJson className="h-8 w-8 mb-2" />
+                <FileJson className="size-8 mb-2" />
                 <p className="text-[10px] uppercase tracking-wider">
                   {t("data_page.history.import_history.empty")}
                 </p>
@@ -139,7 +139,7 @@ export function DataHistory() {
                 {imported.map((f) => (
                   <div key={f.file_path} className="flex items-center justify-between text-[11px] p-2 rounded-md bg-accent/20 border border-border/10 hover:bg-accent/30 transition-colors group">
                     <div className="flex items-center gap-2 min-w-0">
-                      <FileJson className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <FileJson className="size-3 text-muted-foreground shrink-0" />
                       <span className="truncate font-medium" title={f.file_path}>{f.file_path.split(/[/\\]/).pop()}</span>
                     </div>
                     <span className="shrink-0 text-[9px] text-muted-foreground bg-background/50 px-1.5 py-0.5 rounded border border-border/30">
@@ -156,7 +156,7 @@ export function DataHistory() {
         <Card className="border-border/40 bg-background/50 backdrop-blur-sm shadow-xl flex flex-col h-[320px]">
           <CardHeader className="pb-3 shrink-0">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Database className="h-4 w-4 text-emerald-500" />
+              <Database className="size-4 text-emerald-500" />
               {t("data_page.history.backups.title")}
             </CardTitle>
             <CardDescription className="text-[10px]">
@@ -166,7 +166,7 @@ export function DataHistory() {
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {backups.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
-                <Database className="h-8 w-8 mb-2" />
+                <Database className="size-8 mb-2" />
                 <p className="text-[10px] uppercase tracking-wider">
                   {t("data_page.history.backups.empty")}
                 </p>
@@ -177,13 +177,13 @@ export function DataHistory() {
                   <div key={f.path} className="flex flex-col gap-1 p-2 rounded-md bg-accent/20 border border-border/10 hover:bg-accent/30 transition-colors">
                     <div className="flex items-center justify-between gap-2 text-[11px]">
                       <div className="flex items-center gap-2 min-w-0">
-                        <File className="h-3 w-3 text-emerald-500/70 shrink-0" />
+                        <File className="size-3 text-emerald-500/70 shrink-0" />
                         <span className="truncate font-medium">{f.name}</span>
                       </div>
                       <span className="shrink-0 text-[9px] font-mono text-muted-foreground">{formatBytes(f.size_bytes, 1)}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground/70">
-                      <Clock className="h-2.5 w-2.5" />
+                      <Clock className="size-2.5" />
                       {new Date(f.modified_at).toLocaleString()}
                     </div>
                   </div>
@@ -197,7 +197,7 @@ export function DataHistory() {
         <Card className="border-border/40 bg-background/50 backdrop-blur-sm shadow-xl flex flex-col h-[320px]">
           <CardHeader className="pb-3 shrink-0">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Archive className="h-4 w-4 text-amber-500" />
+              <Archive className="size-4 text-amber-500" />
               {t("data_page.history.archive.title")}
             </CardTitle>
             <CardDescription className="text-[10px]">
@@ -207,7 +207,7 @@ export function DataHistory() {
           <CardContent className="flex-1 overflow-hidden flex flex-col">
             {archive.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40">
-                <Archive className="h-8 w-8 mb-2" />
+                <Archive className="size-8 mb-2" />
                 <p className="text-[10px] uppercase tracking-wider">
                   {t("data_page.history.archive.empty")}
                 </p>
@@ -217,18 +217,18 @@ export function DataHistory() {
                 {archive.map((f) => (
                   <div key={f.file_name} className="flex items-center justify-between gap-2 text-[11px] p-2 rounded-md bg-accent/20 border border-border/10 hover:bg-accent/30 transition-colors group">
                     <div className="flex items-center gap-2 min-w-0">
-                      <FileJson className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <FileJson className="size-3 text-muted-foreground shrink-0" />
                       <span className="truncate font-medium" title={f.file_path}>{f.file_name}</span>
                     </div>
                     <AppTooltip content={t("layout.tooltips.delete_from_archive")}>
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
+                        className="size-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100"
                         onClick={() => handleDeleteArchive(f.file_name)}
                         disabled={deleting === f.file_name}
                       >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="size-3" />
                       </Button>
                     </AppTooltip>
                   </div>

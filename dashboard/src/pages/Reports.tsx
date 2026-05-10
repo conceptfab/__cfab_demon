@@ -361,7 +361,7 @@ export function Reports() {
                   : 'border-border/20 text-muted-foreground/50 hover:border-border/40 hover:text-foreground/70'
               }`}
             >
-              <FileText className="h-3 w-3" />
+              <FileText className="size-3" />
               {template.name}
             </button>
           ))
@@ -377,7 +377,7 @@ export function Reports() {
           className="h-7 px-2 text-muted-foreground/40 hover:text-sky-300"
           title={t('reports_page.tooltips.new_template')}
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="size-3.5" />
         </Button>
         <Button
           variant="ghost"
@@ -386,7 +386,7 @@ export function Reports() {
           className="h-7 px-2 text-muted-foreground/40 hover:text-sky-300"
           title={t('reports_page.tooltips.duplicate_template')}
         >
-          <Copy className="h-3.5 w-3.5" />
+          <Copy className="size-3.5" />
         </Button>
         {templates.length > 1 && (
           <Button
@@ -396,7 +396,7 @@ export function Reports() {
             className="h-7 px-2 text-muted-foreground/40 hover:text-destructive"
             title={t('reports_page.tooltips.delete_template')}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="size-3.5" />
           </Button>
         )}
       </div>
@@ -415,12 +415,12 @@ export function Reports() {
                 placeholder={t('reports_page.fields.name_placeholder')}
               />
             </label>
-            <label className="flex items-center gap-2 rounded border border-border/40 bg-secondary/10 px-2 py-2 text-[11px]">
+            <label className="flex items-center gap-2 rounded border border-border/40 bg-secondary/10 p-2 text-[11px]">
               <input
                 type="checkbox"
                 checked={activeTemplate.showLogo}
                 onChange={(e) => patchTemplate({ showLogo: e.target.checked })}
-                className="h-3.5 w-3.5 accent-sky-500"
+                className="size-3.5 accent-sky-500"
               />
               <span className="font-semibold text-muted-foreground/80">
                 {t('reports_page.fields.show_logo')}
@@ -449,21 +449,21 @@ export function Reports() {
                           className="text-muted-foreground/30 hover:text-foreground"
                           title="↑"
                         >
-                          <ArrowUp className="h-3 w-3" />
+                          <ArrowUp className="size-3" />
                         </button>
                         <button
                           onClick={() => moveDown(idx)}
                           className="text-muted-foreground/30 hover:text-foreground"
                           title="↓"
                         >
-                          <ArrowDown className="h-3 w-3" />
+                          <ArrowDown className="size-3" />
                         </button>
                         <button
                           onClick={() => removeSection(id)}
                           className="text-muted-foreground/30 hover:text-destructive"
                           title="×"
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="size-3" />
                         </button>
                       </div>
                     );
@@ -483,7 +483,7 @@ export function Reports() {
                         onClick={() => addSection(section.id)}
                         className="flex items-center gap-1.5 w-full rounded-md border border-border/20 bg-secondary/5 px-2 py-1.5 text-[11px] text-muted-foreground/40 hover:border-sky-500/30 hover:text-sky-300 transition-colors"
                       >
-                        <Plus className="h-3 w-3" />
+                        <Plus className="size-3" />
                         <span>{t(section.labelKey)}</span>
                       </button>
                     ))}
@@ -532,7 +532,7 @@ export function Reports() {
             {t('reports_page.empty.templates')}
           </p>
           <Button className="mt-4" onClick={handleNewTemplate}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 size-4" />
             {t('reports_page.empty.create_template')}
           </Button>
         </div>

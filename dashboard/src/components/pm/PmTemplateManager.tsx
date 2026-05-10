@@ -190,7 +190,7 @@ export function PmTemplateManager({ open, onClose }: Props) {
           <div className="grid gap-3">
             <div className="flex justify-end">
               <Button size="sm" onClick={startNew}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
+                <Plus className="mr-1.5 size-3.5" />
                 {t('pm.template_manager.new_template')}
               </Button>
             </div>
@@ -222,20 +222,20 @@ export function PmTemplateManager({ open, onClose }: Props) {
                         <td className="px-3 py-2">
                           <div className="flex items-center justify-end gap-1">
                             {!tpl.is_default && (
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
+                              <Button variant="ghost" size="sm" className="size-7 p-0"
                                 title={t('pm.template_manager.set_default')}
                                 onClick={() => handleSetDefault(tpl.id)}>
-                                <Star className="h-3.5 w-3.5" />
+                                <Star className="size-3.5" />
                               </Button>
                             )}
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0"
+                            <Button variant="ghost" size="sm" className="size-7 p-0"
                               onClick={() => startEdit(tpl)}>
-                              <Pencil className="h-3.5 w-3.5" />
+                              <Pencil className="size-3.5" />
                             </Button>
                             {tpl.id !== 'default' && (
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive"
+                              <Button variant="ghost" size="sm" className="size-7 p-0 text-destructive"
                                 onClick={() => handleDelete(tpl.id)}>
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="size-3.5" />
                               </Button>
                             )}
                           </div>

@@ -60,7 +60,7 @@ export function ProjectEstimatesSection({
                 onClick={onResetTime}
                 title={t('project_page.text.reset_time')}
               >
-                <TimerReset className="h-4 w-4" />
+                <TimerReset className="size-4" />
               </Button>
             )}
             <Button
@@ -74,7 +74,7 @@ export function ProjectEstimatesSection({
                   : t('project_page.text.freeze_project')
               }
             >
-              <Snowflake className="h-4 w-4" />
+              <Snowflake className="size-4" />
             </Button>
             {!minimal && (
               <Button
@@ -84,7 +84,7 @@ export function ProjectEstimatesSection({
                 onClick={onExclude}
                 title={t('project_page.text.exclude_project')}
               >
-                <CircleOff className="h-4 w-4" />
+                <CircleOff className="size-4" />
               </Button>
             )}
           </div>
@@ -152,9 +152,9 @@ export function ProjectEstimatesSection({
                   <span>{value}</span>
                   {Icon && value > 0 && (
                     <div
-                      className={`flex h-6 w-6 items-center justify-center rounded ${iconBg} ${iconText}`}
+                      className={`flex size-6 items-center justify-center rounded ${iconBg} ${iconText}`}
                     >
-                      <Icon className="h-3.5 w-3.5" />
+                      <Icon className="size-3.5" />
                     </div>
                   )}
                 </p>
@@ -192,7 +192,7 @@ export function ProjectEstimatesSection({
                 className="flex items-center gap-3 rounded-md p-2 transition-colors hover:bg-secondary/20"
               >
                 <div
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  className="size-2.5 shrink-0 rounded-full"
                   style={{ backgroundColor: app.color || '#64748b' }}
                 />
                 <span className="flex-1 truncate text-sm font-medium">
@@ -231,9 +231,9 @@ export function ProjectEstimatesSection({
               }
             >
               {busy === 'compact' ? (
-                <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
+                <RefreshCw className="mr-2 size-3.5 animate-spin" />
               ) : (
-                <LayoutDashboard className="mr-2 h-3.5 w-3.5" />
+                <LayoutDashboard className="mr-2 size-3.5" />
               )}
               {t('project_page.text.compact_detailed_records')}
             </Button>

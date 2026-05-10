@@ -213,7 +213,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
       <div className="flex items-center gap-2 flex-wrap shrink-0">
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
           <input
             className="h-7 w-48 rounded-md border border-border bg-background pl-7 pr-2 text-[11px] placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder={t('pm.filter.search_placeholder')}
@@ -224,7 +224,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
 
         <div className="h-4 w-px bg-border/50" />
 
-        <Filter className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+        <Filter className="size-3.5 text-muted-foreground shrink-0" />
 
         {/* Year filter */}
         <select className={selectClass} value={filterYear} onChange={(e) => setFilterYear(e.target.value)}>
@@ -255,14 +255,14 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
               <option key={f.key} value={f.key}>{t(f.labelKey)}</option>
             ))}
           </select>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={toggleSortDir}>
-            <SortIcon className="h-3.5 w-3.5" />
+          <Button variant="ghost" size="sm" className="size-7 p-0" onClick={toggleSortDir}>
+            <SortIcon className="size-3.5" />
           </Button>
         </div>
 
         {hasAnyFilter && (
           <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px] text-muted-foreground" onClick={clearFilters}>
-            <X className="mr-1 h-3 w-3" />
+            <X className="mr-1 size-3" />
             {t('pm.filter.clear')}
           </Button>
         )}
@@ -287,7 +287,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                 <span className="flex items-center gap-1">
                   #
                   {sortField === 'global' && (
-                    <SortIcon className="h-3 w-3 text-primary" />
+                    <SortIcon className="size-3 text-primary" />
                   )}
                 </span>
               </th>
@@ -298,7 +298,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                 <span className="flex items-center gap-1">
                   {t('pm.columns.number')}/{t('pm.columns.year')}
                   {(sortField === 'number' || sortField === 'year') && (
-                    <SortIcon className="h-3 w-3 text-primary" />
+                    <SortIcon className="size-3 text-primary" />
                   )}
                 </span>
               </th>
@@ -314,7 +314,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                   <span className="flex items-center gap-1">
                     {t(col.key)}
                     {sortField === col.field && (
-                      <SortIcon className="h-3 w-3 text-primary" />
+                      <SortIcon className="size-3 text-primary" />
                     )}
                   </span>
                 </th>
@@ -326,7 +326,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
               >
                 <span className="flex items-center gap-1">
                   {t('pm.columns.status')}
-                  {sortField === 'status' && <SortIcon className="h-3 w-3 text-primary" />}
+                  {sortField === 'status' && <SortIcon className="size-3 text-primary" />}
                 </span>
               </th>
               <th className="px-3 py-2 font-medium text-right">{t('pm.columns.time')}</th>
@@ -352,7 +352,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                       onClick={() => onOpenProjectCard(tfMatches[p.prj_code].tfProjectId!)}
                       title={t('pm.open_project_card')}
                     >
-                      <LayoutDashboard className="h-3.5 w-3.5" />
+                      <LayoutDashboard className="size-3.5" />
                     </button>
                   )}
                 </td>
@@ -365,13 +365,13 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                 <td className="px-3 py-2 text-right font-mono text-xs">
                   <span className="inline-flex items-center gap-1">
                     {formatValue(tfMatches[p.prj_code]?.estimatedValue || 0)}
-                    {tfMatches[p.prj_code]?.hasRate && <Euro className="h-3 w-3 text-green-500/70" />}
-                    {tfMatches[p.prj_code]?.isHot && <Trophy className="h-3 w-3 text-amber-500 fill-amber-500/20" />}
+                    {tfMatches[p.prj_code]?.hasRate && <Euro className="size-3 text-green-500/70" />}
+                    {tfMatches[p.prj_code]?.isHot && <Trophy className="size-3 text-amber-500 fill-amber-500/20" />}
                   </span>
                 </td>
                 <td className="px-1 py-2 text-center">
                   {p.prj_status !== 'archived' && (
-                    <Monitor className="h-3.5 w-3.5 text-primary/40" />
+                    <Monitor className="size-3.5 text-primary/40" />
                   )}
                 </td>
                 <td className="px-1 py-2 text-center">
@@ -379,7 +379,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
                     className="opacity-30 hover:opacity-100 transition-opacity cursor-pointer"
                     onClick={() => onSelect(originalIndices[di])}
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="size-3.5" />
                   </button>
                 </td>
               </tr>

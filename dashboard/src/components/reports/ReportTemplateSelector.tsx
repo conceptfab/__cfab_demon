@@ -26,11 +26,11 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
       <div className="w-full max-w-sm rounded-xl border border-border bg-popover p-5 shadow-2xl space-y-4 animate-in zoom-in-95">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-sky-400" />
+            <FileText className="size-5 text-sky-400" />
             <h2 className="text-base font-bold">{t('reports.template_selector.choose_template')}</h2>
           </div>
-          <Button variant="ghost" size="sm" onClick={onCancel} className="h-7 w-7 p-0">
-            <X className="h-4 w-4" />
+          <Button variant="ghost" size="sm" onClick={onCancel} className="size-7 p-0">
+            <X className="size-4" />
           </Button>
         </div>
 
@@ -46,7 +46,7 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
               }`}
             >
               <div className="flex items-center gap-2">
-                {selectedId === tpl.id && <Check className="h-4 w-4 text-sky-400 shrink-0" />}
+                {selectedId === tpl.id && <Check className="size-4 text-sky-400 shrink-0" />}
                 <span className="text-sm font-medium">{tpl.name}</span>
               </div>
               <p className="text-[10px] text-muted-foreground/50 mt-1 pl-6">
@@ -58,7 +58,7 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
 
         <div className="flex justify-between pt-1">
           <Button variant="ghost" size="sm" onClick={onEditTemplates}>
-            <Edit2 className="mr-1.5 h-3.5 w-3.5" />
+            <Edit2 className="mr-1.5 size-3.5" />
             {t('reports.template_selector.edit_templates')}
           </Button>
           <Button

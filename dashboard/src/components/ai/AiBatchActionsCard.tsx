@@ -77,7 +77,7 @@ export function AiBatchActionsCard({
                 onClick={onRun}
                 disabled={runningAuto || !modeIsAutoSafe}
               >
-                <WandSparkles className="mr-2 h-4 w-4" />
+                <WandSparkles className="mr-2 size-4" />
                 {runningAuto ? runStartingLabel : runLabel}
               </Button>
             </span>
@@ -89,7 +89,7 @@ export function AiBatchActionsCard({
             onClick={onRollback}
             disabled={rollingBack || !canRollbackLastRun}
           >
-            <RotateCcw className="mr-2 h-4 w-4" />
+            <RotateCcw className="mr-2 size-4" />
             {rollingBack ? rollbackRunningLabel : rollbackLabel}
           </Button>
         </div>

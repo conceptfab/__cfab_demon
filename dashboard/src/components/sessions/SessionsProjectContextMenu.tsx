@@ -67,7 +67,7 @@ export function SessionsProjectContextMenu({
             onClose();
           }}
         >
-          <MessageSquare className="h-3.5 w-3.5" />
+          <MessageSquare className="size-3.5" />
           {bulkCommentLabel} ({menu.sessionIds.length})
         </button>
       )}

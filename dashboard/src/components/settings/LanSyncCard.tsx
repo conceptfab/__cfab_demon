@@ -169,7 +169,7 @@ function PairCodeDialog({
           setTimeout(() => inputRefs.current[0]?.focus(), 100);
         }}
       >
-        <Shield className="h-3 w-3 mr-1" />
+        <Shield className="size-3 mr-1" />
         {buttonLabel}
       </Button>
       {open && (
@@ -202,7 +202,7 @@ function PairCodeDialog({
                 onClick={() => void handleSubmit()}
                 disabled={submitting || digits.some(d => !d)}
               >
-                {submitting ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : null}
+                {submitting ? <Loader2 className="size-3 animate-spin mr-1" /> : null}
                 {submitLabel}
               </Button>
             </div>
@@ -421,7 +421,7 @@ export function LanSyncCard({
 
       <CardHeader className="pb-4">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <Wifi className="h-4 w-4 text-sky-400" />
+          <Wifi className="size-4 text-sky-400" />
           {title}
         </CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>
@@ -440,7 +440,7 @@ export function LanSyncCard({
           <input
             id="lanSyncEnabled"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={settings.enabled}
             onChange={(e) => onEnabledChange(e.target.checked)}
           />
@@ -459,7 +459,7 @@ export function LanSyncCard({
           <input
             id="lanAutoSync"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={settings.autoSyncOnPeerFound}
             onChange={(e) => onAutoSyncChange(e.target.checked)}
           />
@@ -520,9 +520,9 @@ export function LanSyncCard({
               onClick={() => void handleManualPing()}
             >
               {pinging ? (
-                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                <Loader2 className="size-3 animate-spin mr-1" />
               ) : (
-                <Search className="h-3 w-3 mr-1" />
+                <Search className="size-3 mr-1" />
               )}
               {manualSearchButton}
             </Button>
@@ -535,7 +535,7 @@ export function LanSyncCard({
         {latestMarker && (
           <div className="rounded-md border border-border/70 bg-background/35 p-3 space-y-1">
             <div className="flex items-center gap-2">
-              <Shield className="h-3.5 w-3.5 text-sky-400" />
+              <Shield className="size-3.5 text-sky-400" />
               <p className="text-sm font-medium">{syncMarkerLabel}</p>
             </div>
             <p className="text-xs text-muted-foreground font-mono truncate">
@@ -561,9 +561,9 @@ export function LanSyncCard({
                 onClick={handleScanSubnet}
               >
                 {scanning ? (
-                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  <Loader2 className="size-3 animate-spin mr-1" />
                 ) : (
-                  <Search className="h-3 w-3 mr-1" />
+                  <Search className="size-3 mr-1" />
                 )}
                 {scanning ? 'Scanning…' : 'Scan LAN'}
               </Button>
@@ -603,7 +603,7 @@ export function LanSyncCard({
                   size="sm"
                   onClick={onGeneratePairingCode}
                 >
-                  <Shield className="h-3 w-3 mr-1.5" />
+                  <Shield className="size-3 mr-1.5" />
                   {pairingGenerateCodeLabel ?? 'Generate pairing code'}
                 </Button>
               )}
@@ -616,7 +616,7 @@ export function LanSyncCard({
               {settings.enabled && (
                 <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
                   <div className="flex items-start gap-2">
-                    <Shield className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <Shield className="size-4 text-amber-400 shrink-0 mt-0.5" />
                     <div className="text-xs text-amber-300/80 space-y-1">
                       <p className="font-medium">{firewallHintTitle ?? 'No visible peers — check your firewall'}</p>
                       <p>{firewallHintDescription ?? 'If the daemon did not have administrator privileges, firewall rules may not have been added. Add them manually:'}</p>
@@ -643,7 +643,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                     className="flex items-center justify-between gap-3 rounded-md border border-border/50 bg-background/20 p-2.5"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <Monitor className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <Monitor className="size-4 shrink-0 text-muted-foreground" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">
                           {peer.machine_name}
@@ -667,19 +667,19 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                       {/* Pairing status icon */}
                       {isPaired && !isPairingExpired && (
                         <span className="ml-1.5 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium" title={pairingBadgePairedLabel ?? 'paired'}>
-                          <ShieldCheck className="h-3.5 w-3.5" />
+                          <ShieldCheck className="size-3.5" />
                           {pairingBadgePairedLabel ?? 'paired'}
                         </span>
                       )}
                       {isPairingExpired && (
                         <span className="ml-1.5 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium" title={pairingBadgeExpiredLabel ?? 'pairing expired'}>
-                          <ShieldAlert className="h-3.5 w-3.5" />
+                          <ShieldAlert className="size-3.5" />
                           {pairingBadgeExpiredLabel ?? 'pairing expired'}
                         </span>
                       )}
                       {onPairWithPeer && !isPaired && !isPairingExpired && (
                         <span className="ml-1.5 flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-500/10 text-zinc-500 font-medium">
-                          <ShieldX className="h-3.5 w-3.5" />
+                          <ShieldX className="size-3.5" />
                         </span>
                       )}
                     </div>
@@ -690,7 +690,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                           {/* Just-paired success flash */}
                           {justPairedIds.has(peer.device_id) && (
                             <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium animate-pulse">
-                              <CheckCircle2 className="h-4 w-4" />
+                              <CheckCircle2 className="size-4" />
                               {pairingBadgePairedLabel ?? 'Paired'}!
                             </span>
                           )}
@@ -748,9 +748,9 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                             }}
                           >
                             {isBusy ? (
-                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                              <Loader2 className="size-3 animate-spin mr-1" />
                             ) : (
-                              <RefreshCw className="h-3 w-3 mr-1" />
+                              <RefreshCw className="size-3 mr-1" />
                             )}
                             {isBusy ? syncingLabel : syncButtonLabel}
                           </Button>
@@ -776,7 +776,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                               onClick={() => onForceSyncWithPeer(peer)}
                               title={forceMergeTooltip ?? 'Force merge — ignores hash comparison'}
                             >
-                              <Zap className="h-3 w-3 mr-1" />
+                              <Zap className="size-3 mr-1" />
                               {forceSyncButtonLabel ?? 'Force'}
                             </Button>
                           )}
@@ -823,7 +823,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
             className="h-7 px-2 text-xs text-muted-foreground"
             onClick={() => setShowLog((v) => !v)}
           >
-            <FileText className="h-3 w-3 mr-1" />
+            <FileText className="size-3 mr-1" />
             {showLog ? (hideLogLabel ?? 'Hide Log') : (showLogLabel ?? 'Show Log')}
           </Button>
         </div>
@@ -858,7 +858,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                 setContextMenu(null);
               }}
             >
-              <RefreshCw className="h-3 w-3 mr-2 inline" />
+              <RefreshCw className="size-3 mr-2 inline" />
               Delta sync
             </button>
             {onFullSyncWithPeer && (
@@ -870,7 +870,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                   setContextMenu(null);
                 }}
               >
-                <RefreshCw className="h-3 w-3 mr-2 inline" />
+                <RefreshCw className="size-3 mr-2 inline" />
                 Full sync
               </button>
             )}
@@ -883,7 +883,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
                   setContextMenu(null);
                 }}
               >
-                <Zap className="h-3 w-3 mr-2 inline" />
+                <Zap className="size-3 mr-2 inline" />
                 Force sync
               </button>
             )}

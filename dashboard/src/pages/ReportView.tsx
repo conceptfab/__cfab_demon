@@ -120,7 +120,7 @@ export function ReportView() {
           size="sm"
           onClick={() => setCurrentPage('project-card')}
         >
-          <ChevronLeft className="mr-1 h-4 w-4" />
+          <ChevronLeft className="mr-1 size-4" />
           {t('report_view.back_to_project')}
         </Button>
       </div>
@@ -146,7 +146,7 @@ export function ReportView() {
             size="sm"
             onClick={() => setCurrentPage('project-card')}
           >
-            <ChevronLeft className="mr-1 h-4 w-4" />
+            <ChevronLeft className="mr-1 size-4" />
             {t('report_view.back_to_project')}
           </Button>
 
@@ -155,7 +155,7 @@ export function ReportView() {
             onClick={handlePrint}
             className="bg-sky-600 hover:bg-sky-700 text-white"
           >
-            <Printer className="mr-1.5 h-4 w-4" />
+            <Printer className="mr-1.5 size-4" />
             {t('report_view.print_pdf')}
           </Button>
         </div>
@@ -172,7 +172,7 @@ export function ReportView() {
                   <img
                     src={logoSrc}
                     alt="TIMEFLOW"
-                    className="h-8 w-8 print:block"
+                    className="size-8 print:block"
                   />
                   <span className="text-sm font-semibold uppercase tracking-wide print:text-black">
                     TIMEFLOW
@@ -186,7 +186,7 @@ export function ReportView() {
               )}
               <div className="flex items-center gap-3 mb-1">
                 <div
-                  className="h-5 w-5 rounded-full ring-2 ring-offset-2 ring-offset-background print:ring-offset-white"
+                  className="size-5 rounded-full ring-2 ring-offset-2 ring-offset-background print:ring-offset-white"
                   style={{
                     backgroundColor: report.project.color,
                     boxShadow: 'none',

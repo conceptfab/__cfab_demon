@@ -31,7 +31,7 @@ export function LanguageCard({
     <Card>
       <CardHeader className="pb-4">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <Languages className="h-4 w-4 text-primary" />
+          <Languages className="size-4 text-primary" />
           {title}
         </CardTitle>
         <p className="text-sm text-muted-foreground">{description}</p>

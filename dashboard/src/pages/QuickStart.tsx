@@ -31,7 +31,7 @@ export function QuickStart() {
 
   const steps = [
     {
-      icon: <Monitor className="h-6 w-6" />,
+      icon: <Monitor className="size-6" />,
       title: t('quickstart.steps.file_preparation.title'),
       desc: (
         <Trans i18nKey="quickstart.steps.file_preparation.description" />
@@ -40,7 +40,7 @@ export function QuickStart() {
       bg: 'bg-blue-400/10',
     },
     {
-      icon: <FolderKanban className="h-6 w-6" />,
+      icon: <FolderKanban className="size-6" />,
       title: t('quickstart.steps.projects_configuration.title'),
       desc: (
         <Trans
@@ -52,7 +52,7 @@ export function QuickStart() {
       bg: 'bg-emerald-400/10',
     },
     {
-      icon: <AppWindow className="h-6 w-6" />,
+      icon: <AppWindow className="size-6" />,
       title: t('quickstart.steps.adding_applications.title'),
       desc: (
         <Trans
@@ -64,7 +64,7 @@ export function QuickStart() {
       bg: 'bg-amber-400/10',
     },
     {
-      icon: <Cpu className="h-6 w-6" />,
+      icon: <Cpu className="size-6" />,
       title: t('quickstart.steps.starting_daemon.title'),
       desc: (
         <Trans
@@ -76,7 +76,7 @@ export function QuickStart() {
       bg: 'bg-purple-400/10',
     },
     {
-      icon: <MousePointer2 className="h-6 w-6" />,
+      icon: <MousePointer2 className="size-6" />,
       title: t('quickstart.steps.assigning_sessions.title'),
       desc: (
         <Trans
@@ -88,7 +88,7 @@ export function QuickStart() {
       bg: 'bg-sky-400/10',
     },
     {
-      icon: <Brain className="h-6 w-6" />,
+      icon: <Brain className="size-6" />,
       title: t('quickstart.steps.ai_training.title'),
       desc: (
         <Trans
@@ -110,7 +110,7 @@ export function QuickStart() {
           onClick={handleStart}
           className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="size-4" />
           {t('quickstart.actions.back')}
         </Button>
         <span className="text-[11px] text-muted-foreground">
@@ -120,7 +120,7 @@ export function QuickStart() {
 
       <div className="text-center space-y-2 py-4">
         <div className="inline-flex p-3 rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-          <Rocket className="h-8 w-8" />
+          <Rocket className="size-8" />
         </div>
         <h1 className="text-3xl font-light tracking-[0.2em] uppercase">
           {t('quickstart.heading.quick')}{' '}
@@ -136,7 +136,7 @@ export function QuickStart() {
           <div key={idx} className="flex gap-8 items-start w-full group">
             <div
               className={cn(
-                'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset shadow-sm transition-all duration-500',
+                'flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset shadow-sm transition-all duration-500',
                 step.bg,
                 step.color,
                 'ring-current/20',
@@ -171,7 +171,7 @@ export function QuickStart() {
           className="group px-12 rounded-full font-bold tracking-widest uppercase transition-all hover:scale-105 active:scale-95 bg-primary text-primary-foreground hover:bg-primary/95 shadow-lg shadow-primary/20"
         >
           {t('quickstart.actions.lets_go')}
-          <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+          <ArrowRight className="ml-2 size-4 group-hover:translate-x-1 transition-transform" />
         </Button>
       </div>
     </div>

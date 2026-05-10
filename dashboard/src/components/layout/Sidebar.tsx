@@ -96,14 +96,14 @@ function StatusIndicator({
         <div className="relative shrink-0">
           <Icon
             className={cn(
-              'h-3.5 w-3.5',
+              'size-3.5',
               colorClass || 'text-muted-foreground/70',
             )}
           />
           {pulse && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500"></span>
+            <span className="absolute -right-0.5 -top-0.5 flex size-1.5">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+              <span className="relative inline-flex size-1.5 rounded-full bg-sky-500"></span>
             </span>
           )}
         </div>
@@ -344,7 +344,7 @@ export function Sidebar() {
               )}
             >
               <span className="flex items-center gap-2.5">
-                <item.icon className="h-3.5 w-3.5" />
+                <item.icon className="size-3.5" />
                 <span>{t(item.labelKey)}</span>
               </span>
               {item.id === 'sessions' && unassignedSessions > 0 && (
@@ -397,7 +397,7 @@ export function Sidebar() {
           />
 
           {/* LAN status row: Wifi (peer) | Readiness (paired) | Delta sync */}
-          <div className="flex w-full items-center gap-0.5 rounded-md px-1 py-1">
+          <div className="flex w-full items-center gap-0.5 rounded-md p-1">
             {/* Wifi — peer discovery status */}
             <AppTooltip
               content={
@@ -420,7 +420,7 @@ export function Sidebar() {
               >
                 <Wifi
                   className={cn(
-                    'h-3.5 w-3.5',
+                    'size-3.5',
                     lanSyncing || lanScanning
                       ? 'text-amber-400'
                       : lanPeer
@@ -466,7 +466,7 @@ export function Sidebar() {
                         : 'text-muted-foreground/25',
                   )}
                 >
-                  <Link2 className="h-3.5 w-3.5" />
+                  <Link2 className="size-3.5" />
                 </div>
               </AppTooltip>
 
@@ -494,7 +494,7 @@ export function Sidebar() {
                     lanSyncing && 'animate-pulse text-amber-400',
                   )}
                 >
-                  <ArrowDownUp className="h-3.5 w-3.5" />
+                  <ArrowDownUp className="size-3.5" />
                 </button>
               </AppTooltip>
             </div>
@@ -589,7 +589,7 @@ export function Sidebar() {
                   'transition-all text-muted-foreground/30 hover:text-destructive active:scale-90',
                 )}
               >
-                <Bug className="h-4 w-4" />
+                <Bug className="size-4" />
               </button>
             </AppTooltip>
             <AppTooltip content={t('layout.tooltips.quick_start')}>
@@ -607,15 +607,15 @@ export function Sidebar() {
               >
                 <Rocket
                   className={cn(
-                    'h-4 w-4',
+                    'size-4',
                     firstRun &&
                       'animate-bounce text-primary drop-shadow-[0_0_8px_rgba(var(--primary),0.8)]',
                   )}
                 />
                 {firstRun && (
-                  <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                  <span className="absolute -top-1 -right-1 flex size-2">
+                    <span className="animate-ping absolute inline-flex size-full rounded-full bg-primary opacity-75"></span>
+                    <span className="relative inline-flex rounded-full size-2 bg-primary"></span>
                   </span>
                 )}
               </button>
@@ -631,7 +631,7 @@ export function Sidebar() {
                     : 'text-muted-foreground/30 hover:text-foreground',
                 )}
               >
-                <HelpCircle className="h-4 w-4" />
+                <HelpCircle className="size-4" />
               </button>
             </AppTooltip>
             <AppTooltip content={t('layout.tooltips.settings')}>
@@ -645,7 +645,7 @@ export function Sidebar() {
                     : 'text-muted-foreground/30 hover:text-foreground',
                 )}
               >
-                <Settings className="h-4 w-4" />
+                <Settings className="size-4" />
               </button>
             </AppTooltip>
           </div>

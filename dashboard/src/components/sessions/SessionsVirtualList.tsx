@@ -96,7 +96,7 @@ export function SessionsVirtualList({
     <>
       {showUnassignedBanner && unassignedSessionCount > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-          <div className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/20">
+          <div className="flex size-5 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/20">
             <span className="text-[10px] font-bold text-amber-500">!</span>
           </div>
           <p className="text-[11px] font-medium text-amber-200/80">
@@ -152,7 +152,7 @@ export function SessionsVirtualList({
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <div
-                          className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]"
+                          className="size-2.5 shrink-0 rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]"
                           style={{ backgroundColor: group.projectColor }}
                         />
                         <span className="text-[13px] font-bold tracking-tight text-foreground/90">
@@ -168,7 +168,7 @@ export function SessionsVirtualList({
                         </Badge>
                         {group.boostedCount > 0 && (
                           <span className="inline-flex items-center gap-1 rounded border border-emerald-500/20 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400/80">
-                            <CircleDollarSign className="h-3 w-3" />
+                            <CircleDollarSign className="size-3" />
                             {t('sessions.group.boosted_count', {
                               count: group.boostedCount,
                             })}
@@ -201,7 +201,7 @@ export function SessionsVirtualList({
                   >
                     <div className="flex items-center gap-2">
                       <div
-                        className="h-3 w-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.4)]"
+                        className="size-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.4)]"
                         style={{ backgroundColor: group.projectColor }}
                       />
                       <span className="select-none text-lg font-bold tracking-tight">

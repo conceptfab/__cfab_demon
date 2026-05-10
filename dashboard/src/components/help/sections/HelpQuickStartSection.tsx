@@ -10,7 +10,7 @@ export function HelpQuickStartSection() {
 
   return (
     <SectionHelp
-      icon={<Rocket className="h-6 w-6" />}
+      icon={<Rocket className="size-6" />}
       title={t18n('help_page.quick_start_2')}
       description={t18n('help_page.fast_timeflow_setup_for_a_new_install_and_first_launch')}
       footer={t18n('help_page.key_functionalities')}
@@ -39,7 +39,7 @@ export function HelpQuickStartSection() {
           className="mt-3 h-8 px-2 text-primary hover:bg-primary/10"
           onClick={() => setCurrentPage('quickstart')}
         >
-          <Rocket className="mr-2 h-3.5 w-3.5" />
+          <Rocket className="mr-2 size-3.5" />
           {t18n('help_page.launch_quick_start')}
         </Button>
       </div>

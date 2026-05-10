@@ -113,7 +113,7 @@ export function SessionSplitCard({
               }`}
             >
               <span
-                className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                className={`inline-block size-3.5 rounded-full bg-white transition-transform ${
                   splitSettings.autoSplitEnabled
                     ? 'translate-x-4.5'
                     : 'translate-x-0.5'

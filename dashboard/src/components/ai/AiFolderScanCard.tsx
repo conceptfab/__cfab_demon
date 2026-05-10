@@ -54,7 +54,7 @@ export function AiFolderScanCard({
             onClick={onScan}
             disabled={scanning}
           >
-            <FolderSearch className="mr-2 h-4 w-4" />
+            <FolderSearch className="mr-2 size-4" />
             {scanning
               ? t('ai_page.folder_scan.scanning')
               : t('ai_page.folder_scan.scan_button')}
@@ -67,7 +67,7 @@ export function AiFolderScanCard({
               onClick={onClear}
               disabled={clearing}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
+              <Trash2 className="mr-2 size-4" />
               {clearing
                 ? t('ai_page.folder_scan.clearing')
                 : t('ai_page.folder_scan.clear_button')}

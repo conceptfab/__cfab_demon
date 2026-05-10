@@ -99,7 +99,7 @@ export function OnlineSyncCard({
         {/* License activation section */}
         <div className="grid gap-3 rounded-md border border-border/70 bg-background/35 p-3">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            <ShieldCheck className="size-4 text-muted-foreground" />
             <span className="text-sm font-medium">{t('settings.license.title')}</span>
           </div>
           {licenseInfo ? (
@@ -176,7 +176,7 @@ export function OnlineSyncCard({
           <input
             id="onlineSyncEnabled"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={settings.enabled}
             onChange={(e) => onEnabledChange(e.target.checked)}
           />
@@ -195,7 +195,7 @@ export function OnlineSyncCard({
           <input
             id="onlineSyncOnStartup"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={settings.autoSyncOnStartup}
             onChange={(e) => onAutoSyncOnStartupChange(e.target.checked)}
           />
@@ -240,7 +240,7 @@ export function OnlineSyncCard({
           <input
             id="onlineSyncLogging"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={settings.enableLogging}
             onChange={(e) => onEnableLoggingChange(e.target.checked)}
           />
@@ -302,9 +302,9 @@ export function OnlineSyncCard({
                   aria-label={showToken ? t('settings_page.hide_token') : t('settings_page.show_token')}
                 >
                   {showToken ? (
-                    <EyeOff className="h-4 w-4" />
+                    <EyeOff className="size-4" />
                   ) : (
-                    <Eye className="h-4 w-4" />
+                    <Eye className="size-4" />
                   )}
                 </Button>
               </AppTooltip>

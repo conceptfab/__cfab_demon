@@ -20,7 +20,7 @@ export function SplashScreen() {
     <div
       className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#16161e] transition-opacity duration-300 ${fadeOut ? 'opacity-0' : 'opacity-100'}`}
     >
-      <img src={logoSrc} alt="TIMEFLOW" className="h-16 w-16 object-contain" />
+      <img src={logoSrc} alt="TIMEFLOW" className="size-16 object-contain" />
       <h1 className="mt-3 text-xs font-semibold uppercase tracking-[0.32em] text-sky-300/90">
         TIMEFLOW
       </h1>

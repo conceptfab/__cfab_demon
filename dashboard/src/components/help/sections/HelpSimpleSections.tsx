@@ -14,7 +14,7 @@ export function HelpDashboardSection() {
 
   return (
     <SectionHelp
-      icon={<LayoutDashboard className="h-6 w-6" />}
+      icon={<LayoutDashboard className="size-6" />}
       title={t18n('help_page.dashboard')}
       description={t18n('help_page.quick_overview_of_your_current_activity_and_key_performa')}
       footer={t18n('help_page.key_functionalities')}
@@ -44,7 +44,7 @@ export function HelpEstimatesSection() {
 
   return (
     <SectionHelp
-      icon={<CircleDollarSign className="h-6 w-6" />}
+      icon={<CircleDollarSign className="size-6" />}
       title={t18n('help_page.estimates_2')}
       description={t18n('help_page.business_module_for_precise_conversion_of_time_into_fina')}
       footer={t18n('help_page.key_functionalities')}
@@ -69,7 +69,7 @@ export function HelpAppsSection() {
 
   return (
     <SectionHelp
-      icon={<AppWindow className="h-6 w-6" />}
+      icon={<AppWindow className="size-6" />}
       title={t18n('help_page.applications_2')}
       description={t18n('help_page.managing_the_list_of_detected_software_and_processes')}
       footer={t18n('help_page.key_functionalities')}
@@ -94,7 +94,7 @@ export function HelpAnalysisSection() {
 
   return (
     <SectionHelp
-      icon={<BarChart3 className="h-6 w-6" />}
+      icon={<BarChart3 className="size-6" />}
       title={t18n('help_page.time_analysis_2')}
       description={t18n('help_page.deep_visualization_of_your_habits_and_work_intensity')}
       footer={t18n('help_page.key_functionalities')}
@@ -117,7 +117,7 @@ export function HelpDaemonSection() {
 
   return (
     <SectionHelp
-      icon={<Cpu className="h-6 w-6" />}
+      icon={<Cpu className="size-6" />}
       title={t18n('help_page.daemon')}
       description={t18n('help_page.control_center_for_the_background_process_responsible_fo')}
       footer={t18n('help_page.key_functionalities')}
@@ -148,7 +148,7 @@ export function HelpPmSection() {
 
   return (
     <SectionHelp
-      icon={<Briefcase className="h-6 w-6" />}
+      icon={<Briefcase className="size-6" />}
       title={t18n('help_page.pm_2')}
       description={t18n('help_page.pm_description')}
       footer={t18n('help_page.key_functionalities')}

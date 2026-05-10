@@ -45,7 +45,7 @@ function FolderRow({
             saveColor: t('projects.labels.save'),
           }}
           onSave={onColorSave}
-          dotClassName="h-5 w-5"
+          dotClassName="size-5"
         />
 
         <span
@@ -72,11 +72,11 @@ function FolderRow({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-destructive"
+            className="size-7 text-destructive"
             onClick={onRemove}
             disabled={busy === `remove-folder:${folder.path}`}
           >
-            <CircleOff className="h-3.5 w-3.5" />
+            <CircleOff className="size-3.5" />
           </Button>
         </AppTooltip>
       </div>
@@ -205,7 +205,7 @@ export function ProjectDiscoveryPanel({
               onClick={onAddFolder}
               disabled={busy === 'add-folder'}
             >
-              <Plus className="mr-1.5 h-4 w-4" />
+              <Plus className="mr-1.5 size-4" />
               {t('projects.actions.add')}
             </Button>
           </div>
@@ -226,7 +226,7 @@ export function ProjectDiscoveryPanel({
               onClick={onSyncFolders}
               disabled={busy === 'sync-folders' || projectFolders.length === 0}
             >
-              <RefreshCw className="mr-1.5 h-4 w-4" />
+              <RefreshCw className="mr-1.5 size-4" />
               {t('projects_page.sync_subfolders_as_projects')}
             </Button>
           </div>
@@ -253,7 +253,7 @@ export function ProjectDiscoveryPanel({
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 py-6">
-              <FolderOpen className="h-8 w-8 text-muted-foreground/50" />
+              <FolderOpen className="size-8 text-muted-foreground/50" />
               <p className="text-sm text-muted-foreground">
                 {t('projects.empty.no_folders_configured')}
               </p>
@@ -296,7 +296,7 @@ export function ProjectDiscoveryPanel({
                   onClick={() => onCreateFromFolder(candidate.folder_path)}
                   disabled={busy === `create-folder:${candidate.folder_path}`}
                 >
-                  <Plus className="mr-1 h-3 w-3" />
+                  <Plus className="mr-1 size-3" />
                   {t('projects.actions.create')}
                 </Button>
               </div>
@@ -318,7 +318,7 @@ export function ProjectDiscoveryPanel({
               onClick={onClearCandidates}
               disabled={isClearingCandidates}
             >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              <Trash2 className="mr-1.5 size-3.5" />
               {t('projects.actions.exclude_all_candidates', { count: visibleFolderCandidates.length })}
             </Button>
           </div>
@@ -367,10 +367,10 @@ export function ProjectDiscoveryPanel({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 shrink-0 text-destructive"
+                      className="size-7 shrink-0 text-destructive"
                       onClick={() => onBlacklistDetected(candidate.project_name)}
                     >
-                      <CircleOff className="h-3.5 w-3.5" />
+                      <CircleOff className="size-3.5" />
                     </Button>
                   </AppTooltip>
                 </div>
@@ -396,7 +396,7 @@ export function ProjectDiscoveryPanel({
                 onClick={onClearAllDetected}
                 disabled={isClearingAllDetected}
               >
-                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                <Trash2 className="mr-1.5 size-3.5" />
                 {t('projects.actions.blacklist_all_detected', { count: detectedCandidatesView.totalCandidateCount })}
               </Button>
             )}
@@ -409,7 +409,7 @@ export function ProjectDiscoveryPanel({
                 detectedCandidatesView.totalCandidateCount === 0
               }
             >
-              <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+              <Wand2 className="mr-1.5 size-3.5" />
               {t('projects_page.auto_create_detected_projects')}
             </Button>
           </div>

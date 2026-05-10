@@ -196,7 +196,7 @@ export function MultiSplitSessionModal({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <Scissors className="h-5 w-5 text-amber-400" />
+              <Scissors className="size-5 text-amber-400" />
               <h2 className="text-base font-bold">
                 {t('sessions.split_multi.title')}
               </h2>
@@ -208,11 +208,11 @@ export function MultiSplitSessionModal({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="size-7 p-0"
             onClick={onCancel}
             disabled={isSubmitting}
           >
-            <X className="h-4 w-4" />
+            <X className="size-4" />
           </Button>
         </div>
 
@@ -246,7 +246,7 @@ export function MultiSplitSessionModal({
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
-                          <Sparkles className="h-3 w-3 text-sky-400" />
+                          <Sparkles className="size-3 text-sky-400" />
                           <span className="truncate">
                             {candidate.project_name}
                           </span>
@@ -268,7 +268,7 @@ export function MultiSplitSessionModal({
                 >
                   <div className="flex items-center gap-2 overflow-hidden">
                     <div
-                      className="h-3 w-3 shrink-0 rounded-full"
+                      className="size-3 shrink-0 rounded-full"
                       style={{
                         backgroundColor:
                           part.project_id != null
@@ -351,7 +351,7 @@ export function MultiSplitSessionModal({
               </div>
             </div>
             <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-300/80">
-              <BrainCircuit className="h-4 w-4 shrink-0 mt-0.5 text-sky-400/60" />
+              <BrainCircuit className="size-4 shrink-0 mt-0.5 text-sky-400/60" />
               <div>
                 <p className="font-medium">{t('sessions.split_multi.learning_title')}</p>
                 <p className="text-sky-300/50 mt-0.5">{t('sessions.split_multi.learning_desc')}</p>

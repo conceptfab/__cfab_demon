@@ -766,7 +766,7 @@ export function Projects() {
 
     return (
       <span
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600 shrink-0"
+        className="inline-flex size-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600 shrink-0"
         title={title}
         aria-label={title}
       >

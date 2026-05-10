@@ -892,7 +892,7 @@ export function ProjectPage() {
                 className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
                 onClick={handleEditComment}
               >
-                <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
+                <MessageSquare className="size-3.5 text-sky-400" />
                 <span>
                   {ctxMenu.sessions[0]?.comment
                     ? t('project_page.text.edit_comment')
@@ -906,7 +906,7 @@ export function ProjectPage() {
                 className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
                 onClick={() => handleBulkUnassign(ctxMenu.sessions)}
               >
-                <History className="h-3.5 w-3.5 text-muted-foreground/40" />
+                <History className="size-3.5 text-muted-foreground/40" />
                 <span className="truncate">
                   {t('project_page.text.unassign_group_from_project')}
                 </span>
@@ -916,7 +916,7 @@ export function ProjectPage() {
                 className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-red-500/10 text-red-400/70 hover:text-red-400 cursor-pointer transition-colors group"
                 onClick={() => handleBulkDelete(ctxMenu.sessions)}
               >
-                <Trash2 className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100" />
+                <Trash2 className="size-3.5 opacity-50 group-hover:opacity-100" />
                 <span>{t('project_page.text.delete_group')}</span>
               </button>
 
@@ -931,7 +931,7 @@ export function ProjectPage() {
                   setCtxMenu(null);
                 }}
               >
-                <Plus className="h-3.5 w-3.5 text-emerald-400" />
+                <Plus className="size-3.5 text-emerald-400" />
                 <span>{t('project_page.text.add_manual_session')}</span>
               </button>
 
@@ -952,7 +952,7 @@ export function ProjectPage() {
                           setCtxMenu(null);
                         }}
                       >
-                        <PenLine className="h-3.5 w-3.5" />
+                        <PenLine className="size-3.5" />
                         <span className="font-bold uppercase tracking-tight">
                           {t('project_page.text.edit_manual_session')}{' '}
                           {manuals[0].comment ||
@@ -974,7 +974,7 @@ export function ProjectPage() {
                               setCtxMenu(null);
                             }}
                           >
-                            <PenLine className="h-3.5 w-3.5 text-emerald-400" />
+                            <PenLine className="size-3.5 text-emerald-400" />
                             <div className="flex flex-col items-start leading-none truncate">
                               <span className="font-medium">
                                 {t('project_page.text.edit')}{' '}
@@ -996,7 +996,7 @@ export function ProjectPage() {
             </>
           ) : (
             <>
-              <div className="px-2 py-2 text-[11px] font-semibold text-muted-foreground/50 border-b border-white/5 mb-1 flex items-center justify-between">
+              <div className="p-2 text-[11px] font-semibold text-muted-foreground/50 border-b border-white/5 mb-1 flex items-center justify-between">
                 <span>{t('project_page.text.zone_actions')}</span>
                 <span className="bg-white/5 px-1.5 py-0.5 rounded text-[10px]">
                   {new Date(ctxMenu.date).toLocaleDateString(
@@ -1009,7 +1009,7 @@ export function ProjectPage() {
                 </span>
               </div>
               <button
-                className="flex w-full items-center gap-3 rounded-sm px-2 py-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-all active:scale-95"
+                className="flex w-full items-center gap-3 rounded-sm p-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-all active:scale-95"
                 onClick={() => {
                   setSessionDialogDate(ctxMenu.date);
                   setEditManualSession(null);
@@ -1017,8 +1017,8 @@ export function ProjectPage() {
                   setCtxMenu(null);
                 }}
               >
-                <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-500/10 text-emerald-400">
-                  <Plus className="h-4 w-4" />
+                <div className="flex size-6 items-center justify-center rounded bg-emerald-500/10 text-emerald-400">
+                  <Plus className="size-4" />
                 </div>
                 <div className="flex flex-col items-start leading-none text-left">
                   <span className="font-medium text-xs">
@@ -1055,7 +1055,7 @@ export function ProjectPage() {
           </div>
 
           <button
-            className="flex w-full items-center justify-between rounded-sm px-2 py-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
+            className="flex w-full items-center justify-between rounded-sm p-2 text-sm hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
             onClick={() => {
               setSelectedSessionDetail(ctxMenu.session);
               setSessionDetailOpen(true);
@@ -1102,12 +1102,12 @@ export function ProjectPage() {
           >
             {ctxMenu.session.isManual ? (
               <>
-                <PenLine className="h-3.5 w-3.5 text-emerald-400" />
+                <PenLine className="size-3.5 text-emerald-400" />
                 <span>{t('project_page.text.edit_manual_session_2')}</span>
               </>
             ) : (
               <>
-                <MessageSquare className="h-3.5 w-3.5 text-sky-400" />
+                <MessageSquare className="size-3.5 text-sky-400" />
                 <span>
                   {ctxMenu.session.comment
                     ? t('project_page.text.edit_comment')
@@ -1123,7 +1123,7 @@ export function ProjectPage() {
             className="flex w-full items-center gap-2 rounded-sm px-3 py-2 text-[12px] hover:bg-white/5 hover:text-white cursor-pointer transition-colors"
             onClick={() => handleAssign(null)}
           >
-            <History className="h-3.5 w-3.5 text-muted-foreground/40" />
+            <History className="size-3.5 text-muted-foreground/40" />
             <span className="truncate">
               {t('project_page.text.unassign_from_project')}
             </span>
@@ -1146,7 +1146,7 @@ export function ProjectPage() {
               }
             }}
           >
-            <Trash2 className="h-3.5 w-3.5 opacity-50 group-hover:opacity-100" />
+            <Trash2 className="size-3.5 opacity-50 group-hover:opacity-100" />
             <span>{t('project_page.text.delete_session')}</span>
           </button>
         </div>

@@ -165,7 +165,7 @@ export const SessionRow = memo(function SessionRow({
             <div className="flex items-center gap-1.5 min-w-0">
               {isManual ? (
                 <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-400/80">
-                  <CalendarPlus className="h-3 w-3 shrink-0" />
+                  <CalendarPlus className="size-3 shrink-0" />
                   <span className="truncate max-w-[70px]">{s.comment || s.app_name}</span>
                 </span>
               ) : (
@@ -177,20 +177,20 @@ export const SessionRow = memo(function SessionRow({
                 </span>
               )}
               {!isManual && (s.rate_multiplier ?? 1) > 1.000_001 && (
-                <CircleDollarSign className="h-3 w-3 text-emerald-400/80 fill-emerald-500/5 shrink-0" />
+                <CircleDollarSign className="size-3 text-emerald-400/80 fill-emerald-500/5 shrink-0" />
               )}
               {typeof s.split_source_session_id === 'number' && (
                 <span className="inline-flex shrink-0 ml-0.5" title={splitBadgeTitle}>
                   <GitBranch
                     aria-hidden="true"
-                    className="h-3 w-3 text-sky-400/60 shrink-0"
+                    className="size-3 text-sky-400/60 shrink-0"
                   />
                 </span>
               )}
               {isSplittable && onSplitClick && (
                 <button
                   type="button"
-                  className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer ml-1"
+                  className="inline-flex size-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer ml-1"
                   onClick={(e) => {
                     e.stopPropagation();
                     onSplitClick(s);
@@ -199,7 +199,7 @@ export const SessionRow = memo(function SessionRow({
                     'sessions.menu.split_suggestion',
                   )}
                 >
-                  <Scissors className="h-3.5 w-3.5 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
+                  <Scissors className="size-3.5 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
                 </button>
               )}
             </div>
@@ -238,7 +238,7 @@ export const SessionRow = memo(function SessionRow({
                 />
               )}
               {ind.showAiBadge && s.ai_assigned && !isSuggested && (
-                <Sparkles className="h-3 w-3 text-violet-400/60 shrink-0" />
+                <Sparkles className="size-3 text-violet-400/60 shrink-0" />
               )}
               {ind.showScoreBreakdown && (
                 <SessionScoreBadge
@@ -250,7 +250,7 @@ export const SessionRow = memo(function SessionRow({
               )}
               <button
                 type="button"
-                className="h-4 w-4 shrink-0 flex items-center justify-center rounded-[2px] text-destructive/30 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
+                className="size-4 shrink-0 flex items-center justify-center rounded-[2px] text-destructive/30 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
                 onClick={async (e) => {
                   e.stopPropagation();
                   try {
@@ -260,7 +260,7 @@ export const SessionRow = memo(function SessionRow({
                   }
                 }}
               >
-                <Trash2 className="h-2.5 w-2.5" />
+                <Trash2 className="size-2.5" />
               </button>
             </div>
           </div>
@@ -268,7 +268,7 @@ export const SessionRow = memo(function SessionRow({
         {(scoreBreakdownSessionId === s.id || forceShowScoreBreakdown) && (
           <div className="mt-1 border-t border-border/10 pt-1">
             <div className="text-[8px] text-muted-foreground/60 font-medium mb-0.5 flex items-center gap-1">
-              <BarChart3 className="h-2 w-2" />
+              <BarChart3 className="size-2" />
               {t('sessions.row.ai_score_breakdown')}
               {scoreBreakdownData?.has_manual_override && (
                 <span className="text-amber-400/70 ml-1">
@@ -308,7 +308,7 @@ export const SessionRow = memo(function SessionRow({
         <div className="flex items-center gap-2 min-w-0">
           {isManual ? (
             <span className="inline-flex items-center gap-1 text-[13px] font-medium text-emerald-400/90">
-              <CalendarPlus className="h-4 w-4 shrink-0" />
+              <CalendarPlus className="size-4 shrink-0" />
               <span className="truncate max-w-[180px]">{s.comment || s.app_name}</span>
             </span>
           ) : (
@@ -320,23 +320,23 @@ export const SessionRow = memo(function SessionRow({
             </span>
           )}
           {!isManual && (s.rate_multiplier ?? 1) > 1.000_001 && (
-            <CircleDollarSign className="h-4 w-4 text-emerald-400 fill-emerald-500/10 shrink-0" />
+            <CircleDollarSign className="size-4 text-emerald-400 fill-emerald-500/10 shrink-0" />
           )}
           {!isManual && ind.showAiBadge && s.ai_assigned && !isSuggested && (
-            <Sparkles className="h-3.5 w-3.5 text-violet-400/60 shrink-0" />
+            <Sparkles className="size-3.5 text-violet-400/60 shrink-0" />
           )}
           {typeof s.split_source_session_id === 'number' && (
             <span className="inline-flex shrink-0" title={splitBadgeTitle}>
               <GitBranch
                 aria-hidden="true"
-                className="h-3.5 w-3.5 text-sky-400/60 shrink-0"
+                className="size-3.5 text-sky-400/60 shrink-0"
               />
             </span>
           )}
           {isSplittable && onSplitClick && (
             <button
               type="button"
-              className="inline-flex h-4 w-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer ml-1"
+              className="inline-flex size-4 items-center justify-center rounded text-amber-400 hover:text-amber-300 cursor-pointer ml-1"
               onClick={(e) => {
                 e.stopPropagation();
                 onSplitClick(s);
@@ -345,7 +345,7 @@ export const SessionRow = memo(function SessionRow({
                 'sessions.menu.split_suggestion',
               )}
             >
-              <Scissors className="h-4 w-4 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
+              <Scissors className="size-4 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]" />
             </button>
           )}
           {ind.showScoreBreakdown && (
@@ -372,7 +372,7 @@ export const SessionRow = memo(function SessionRow({
           <div className="flex items-center">
             <button
               type="button"
-              className="h-5 w-5 shrink-0 flex items-center justify-center rounded-sm text-destructive/40 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
+              className="size-5 shrink-0 flex items-center justify-center rounded-sm text-destructive/40 hover:text-destructive hover:bg-destructive/10 !transition-none transform-gpu cursor-pointer"
               onClick={async (e) => {
                 e.stopPropagation();
                 try {
@@ -382,7 +382,7 @@ export const SessionRow = memo(function SessionRow({
                 }
               }}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="size-3.5" />
             </button>
           </div>
         </div>
@@ -434,7 +434,7 @@ export const SessionRow = memo(function SessionRow({
 
           {s.comment && (
             <div className="mt-1.5 flex items-start gap-1 text-amber-500/50 italic border-t border-border/5 pt-1">
-              <MessageSquare className="h-2.5 w-2.5 mt-0.5 shrink-0" />
+              <MessageSquare className="size-2.5 mt-0.5 shrink-0" />
               <p className="text-[10px] line-clamp-1">{s.comment}</p>
             </div>
           )}
@@ -444,7 +444,7 @@ export const SessionRow = memo(function SessionRow({
       {(scoreBreakdownSessionId === s.id || forceShowScoreBreakdown) && (
         <div className="mt-2 border-t border-border/10 pt-2">
           <div className="text-[11px] text-muted-foreground/60 font-medium mb-1 flex items-center gap-1">
-            <BarChart3 className="h-3 w-3" />
+            <BarChart3 className="size-3" />
             {t('sessions.row.ai_score_breakdown')}
             {scoreBreakdownData?.has_manual_override && (
               <span className="text-amber-400/70 ml-1">

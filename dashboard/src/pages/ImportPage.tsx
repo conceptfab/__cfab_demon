@@ -83,11 +83,11 @@ export function ImportPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-destructive"
+                      className="size-7 text-destructive"
                       onClick={() => handleDeleteArchive(f.file_name)}
                       disabled={deleting === f.file_name}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="size-3.5" />
                     </Button>
                   </AppTooltip>
                 </div>

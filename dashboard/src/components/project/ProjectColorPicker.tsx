@@ -8,7 +8,7 @@ interface ProjectColorPickerProps {
   currentColor: string;
   labels: { changeColor: string; chooseColor: string; saveColor: string };
   onSave: (color: string) => Promise<void>;
-  /** CSS class for the dot button size, default "h-3 w-3" */
+  /** CSS class for the dot button size, default "size-3" */
   dotClassName?: string;
 }
 
@@ -28,7 +28,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave, dotClassName 
         <button
           type="button"
           aria-label={labels.changeColor}
-          className={`${dotClassName || 'h-3 w-3'} rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform`}
+          className={`${dotClassName || 'size-3'} rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform`}
           style={{ backgroundColor: pending && editing ? pending : currentColor }}
           onClick={() => {
             setEditing(!editing);
@@ -51,12 +51,12 @@ export function ProjectColorPicker({ currentColor, labels, onSave, dotClassName 
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-green-500 hover:text-green-400"
+                className="size-8 text-green-500 hover:text-green-400"
                 aria-label={labels.saveColor}
                 onClick={() => void applyColor(pending)}
                 title={labels.saveColor}
               >
-                <Save className="h-4 w-4" />
+                <Save className="size-4" />
               </Button>
             )}
           </div>
@@ -65,7 +65,7 @@ export function ProjectColorPicker({ currentColor, labels, onSave, dotClassName 
               <button
                 type="button"
                 key={c}
-                className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
+                className="size-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                 style={{ backgroundColor: c }}
                 onClick={() => void applyColor(c)}
                 aria-label={`${labels.chooseColor}: ${c}`}

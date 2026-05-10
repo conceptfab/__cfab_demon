@@ -679,7 +679,7 @@ export function AIPage() {
                   }}
                   disabled={training || status?.is_training}
                 >
-                  <PlayCircle className="mr-2 h-4 w-4" />
+                  <PlayCircle className="mr-2 size-4" />
                   {training || status?.is_training
                     ? tr('ai_page.text.training')
                     : tr('ai_page.text.train_now')}

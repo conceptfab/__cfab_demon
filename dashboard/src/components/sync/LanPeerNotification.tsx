@@ -243,14 +243,14 @@ export function LanPeerNotification() {
       <div className="flex flex-col gap-2">
         {syncError && (
           <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-background/95 backdrop-blur-sm px-4 py-2 shadow-lg text-xs text-red-400">
-            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <AlertTriangle className="size-3.5 shrink-0" />
             <span className="min-w-0 truncate max-w-[250px]">{syncError}</span>
           </div>
         )}
 
         {incompatPeer && (
           <div className="flex items-start gap-3 rounded-lg border border-red-500/40 bg-background/95 backdrop-blur-sm px-4 py-3 shadow-lg shadow-red-500/10 max-w-[360px]">
-            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+            <AlertTriangle className="size-4 text-red-400 shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-red-300">
                 {t('settings.lan_sync.version_mismatch_title', {
@@ -270,14 +270,14 @@ export function LanPeerNotification() {
               onClick={handleIncompatDismiss}
               aria-label={t('common.dismiss', 'Dismiss')}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="size-3.5" />
             </button>
           </div>
         )}
 
         {visiblePeer && (
           <div className="flex items-center gap-3 rounded-lg border border-sky-500/30 bg-background/95 backdrop-blur-sm px-4 py-3 shadow-lg shadow-sky-500/10">
-            <Wifi className="h-4 w-4 text-sky-400 shrink-0" />
+            <Wifi className="size-4 text-sky-400 shrink-0" />
             <div className="min-w-0">
               <p className="text-sm font-medium">
                 {t('settings.lan_sync.peer_found', { name: visiblePeer.machine_name })}
@@ -298,7 +298,7 @@ export function LanPeerNotification() {
               onClick={handleDismiss}
               aria-label={t('common.dismiss', 'Dismiss')}
             >
-              <X className="h-3.5 w-3.5" />
+              <X className="size-3.5" />
             </button>
           </div>
         )}

@@ -84,7 +84,7 @@ function AutoImportBanner() {
     return (
       <Card className="border-primary/30 bg-primary/5">
         <CardContent className="flex items-center gap-2.5 p-3">
-          <Archive className="h-4 w-4 text-muted-foreground animate-pulse" />
+          <Archive className="size-4 text-muted-foreground animate-pulse" />
           <span className="text-xs">
             {t('dashboard.auto_import.importing')}
           </span>
@@ -101,8 +101,8 @@ function AutoImportBanner() {
     ? 'border-destructive/30 bg-destructive/5'
     : 'border-emerald-500/30 bg-emerald-500/5';
   const iconClassName = importFailed
-    ? 'icon-colored h-4 w-4 text-destructive'
-    : 'h-4 w-4 text-emerald-400';
+    ? 'icon-colored size-4 text-destructive'
+    : 'size-4 text-emerald-400';
   const messageClassName = importFailed
     ? 'text-xs text-destructive'
     : 'text-xs text-emerald-300';
@@ -152,7 +152,7 @@ function DiscoveredProjectsBanner() {
   return (
     <Card className="border-sky-500/30 bg-sky-500/5">
       <CardContent className="flex items-center gap-2.5 p-3">
-        <FolderOpen className="h-4 w-4 text-sky-400 shrink-0" />
+        <FolderOpen className="size-4 text-sky-400 shrink-0" />
         <span className="text-xs text-sky-300">
           {t('dashboard.discovered_projects.summary', {
             count: projects.length,
@@ -440,7 +440,7 @@ export function Dashboard() {
           onClick={handleRefresh}
           disabled={refreshing}
         >
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+          <RefreshCw className="mr-1.5 size-3.5" />
           {refreshing
             ? t('dashboard.actions.refreshing')
             : t('dashboard.actions.refresh')}
@@ -453,7 +453,7 @@ export function Dashboard() {
       {loadError && (
         <Card className="border-destructive/30 bg-destructive/5">
           <CardContent className="flex items-center gap-2.5 p-3">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+            <AlertTriangle className="size-4 shrink-0 text-destructive" />
             <span className="text-xs text-destructive">
               {t('dashboard.errors.loading_data')}: {loadError}
             </span>
@@ -464,7 +464,7 @@ export function Dashboard() {
       {timePreset === 'today' && unassignedToday.sessionCount > 0 && (
         <Card className="border-amber-500/40 bg-amber-500/10">
           <CardContent className="flex flex-wrap items-center gap-2.5 p-3">
-            <AlertTriangle className="icon-colored h-4 w-4 text-amber-300" />
+            <AlertTriangle className="icon-colored size-4 text-amber-300" />
             <span className="text-xs text-amber-100">
               {t('dashboard.unassigned_banner.message', {
                 sessionCount: unassignedToday.sessionCount,
@@ -501,7 +501,7 @@ export function Dashboard() {
         </div>
       ) : stats && stats.total_seconds === 0 && !loadError ? (
         <div className="flex flex-col items-center gap-4 py-12">
-          <Rocket className="h-12 w-12 text-muted-foreground/40" />
+          <Rocket className="size-12 text-muted-foreground/40" />
           <p className="text-muted-foreground">
             {t('dashboard_page.empty_state_title')}
           </p>

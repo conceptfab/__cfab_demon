@@ -42,7 +42,7 @@ export function AiSessionIndicatorsCard({
             >
               <input
                 type="checkbox"
-                className="mt-0.5 h-4 w-4 rounded border-input accent-primary cursor-pointer"
+                className="mt-0.5 size-4 rounded border-input accent-primary cursor-pointer"
                 checked={indicators[item.key]}
                 onChange={(e) => onToggle(item.key, e.target.checked)}
               />

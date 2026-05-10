@@ -39,7 +39,7 @@ export function SessionSuggestionBadge({
           }`}
           onClick={(e) => onAcceptSuggestion(session, e)}
         >
-          <Check className={variant === 'detailed' ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+          <Check className={variant === 'detailed' ? 'size-3.5' : 'size-3'} />
         </button>
       )}
       {onRejectSuggestion && (
@@ -50,7 +50,7 @@ export function SessionSuggestionBadge({
           }`}
           onClick={(e) => onRejectSuggestion(session, e)}
         >
-          <X className={variant === 'detailed' ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+          <X className={variant === 'detailed' ? 'size-3.5' : 'size-3'} />
         </button>
       )}
     </div>
@@ -59,7 +59,7 @@ export function SessionSuggestionBadge({
   if (variant === 'compact') {
     return (
       <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-        <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
+        <Sparkles className="size-3 text-sky-400 shrink-0" />
         <span
           className="text-[9px] text-sky-300 font-medium truncate max-w-[150px]"
           title={projectName}
@@ -75,7 +75,7 @@ export function SessionSuggestionBadge({
 
   return (
     <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-sky-500/10 border border-sky-500/20">
-      <Sparkles className="h-3 w-3 text-sky-400 shrink-0" />
+      <Sparkles className="size-3 text-sky-400 shrink-0" />
       {onOpenBreakdown ? (
         <button
           className="text-[9px] text-sky-300 italic font-medium hover:underline cursor-pointer"

@@ -183,7 +183,7 @@ export function AiSettingsForm({
 
         <div className="flex justify-end">
           <Button className="h-9 min-w-[9rem]" onClick={onSave} disabled={saving}>
-            <Save className="mr-2 h-4 w-4" />
+            <Save className="mr-2 size-4" />
             {saving
               ? tr('ai_page.text.saving')
               : tr('ai_page.text.save_model_settings')}

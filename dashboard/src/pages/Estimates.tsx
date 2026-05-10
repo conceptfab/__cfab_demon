@@ -309,7 +309,7 @@ export function Estimates() {
               onClick={handleSaveGlobalRate}
               disabled={savingGlobal}
             >
-              <Save className="mr-1.5 h-3.5 w-3.5" />
+              <Save className="mr-1.5 size-3.5" />
               {savingGlobal
                 ? t('estimates_page.actions.saving')
                 : t('estimates_page.actions.save')}
@@ -392,7 +392,7 @@ export function Estimates() {
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <span
-                          className="h-3 w-3 shrink-0 rounded-full"
+                          className="size-3 shrink-0 rounded-full"
                           style={{ backgroundColor: row.project_color }}
                         />
                         <span
@@ -417,7 +417,7 @@ export function Estimates() {
                                 setCurrentPage('sessions');
                               }}
                             >
-                              <CircleDollarSign className="h-3 w-3" />
+                              <CircleDollarSign className="size-3" />
                               {row.multiplied_session_count}{' '}
                               {t('estimates_page.labels.boosted')}
                             </button>
@@ -487,12 +487,12 @@ export function Estimates() {
                         >
                           {isSaving ? (
                             <>
-                              <RefreshCw className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                              <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
                               {t('estimates_page.actions.saving')}
                             </>
                           ) : (
                             <>
-                              <Save className="mr-1.5 h-3.5 w-3.5" />
+                              <Save className="mr-1.5 size-3.5" />
                               {t('estimates_page.actions.save')}
                             </>
                           )}

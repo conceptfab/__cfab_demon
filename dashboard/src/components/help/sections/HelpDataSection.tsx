@@ -7,7 +7,7 @@ export function HelpDataSection() {
 
   return (
     <SectionHelp
-      icon={<Import className="h-6 w-6" />}
+      icon={<Import className="size-6" />}
       title={t18n('help_page.data_2')}
       description={t18n('help_page.importing_exporting_and_organizing_the_knowledge_base')}
       footer={t18n('help_page.key_functionalities')}

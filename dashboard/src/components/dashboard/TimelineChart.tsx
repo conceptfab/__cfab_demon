@@ -338,13 +338,13 @@ export function TimelineChart({
         )}
         {row?.has_boost && (
           <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, color: '#f87171', fontSize: 10, fontWeight: 700 }}>
-            <Flame className="h-3 w-3" />
+            <Flame className="size-3" />
             {t("components.timeline_chart.boosted_activity")}
           </div>
         )}
         {row?.has_manual && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#34d399', fontSize: 10, fontWeight: 700 }}>
-            <PenLine className="h-3 w-3" />
+            <PenLine className="size-3" />
             {t("components.timeline_chart.manual_data_included")}
           </div>
         )}
@@ -415,14 +415,14 @@ export function TimelineChart({
           <div
             className={`${chartHeightClassName} flex flex-col items-center justify-center gap-3 text-muted-foreground`}
           >
-            <RefreshCw className="h-5 w-5 animate-spin" />
+            <RefreshCw className="size-5 animate-spin" />
             <p className="text-xs font-medium">{loadingMessage}</p>
           </div>
         ) : errorMessage ? (
           <div
             className={`${chartHeightClassName} flex flex-col items-center justify-center gap-3 text-center`}
           >
-            <AlertTriangle className="h-5 w-5 text-destructive" />
+            <AlertTriangle className="size-5 text-destructive" />
             <p className="max-w-sm text-xs text-muted-foreground">{errorMessage}</p>
           </div>
         ) : !hasChartData ? (

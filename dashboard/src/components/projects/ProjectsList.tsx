@@ -90,7 +90,7 @@ export function ProjectsList({
           {duplicateGroupCount > 0 && (
             <p className="text-xs text-amber-600/90">
               {t('projects_page.marked_with')}{' '}
-              <span className="mx-1 inline-flex h-4 w-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
+              <span className="mx-1 inline-flex size-4 translate-y-[1px] items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600">
                 D
               </span>
               = {t('projects_page.possible_duplicate_names_in_this_tab')} (
@@ -101,7 +101,7 @@ export function ProjectsList({
         </div>
         <div className="flex items-center gap-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="w-48 pl-9"
               aria-label={t('projects_page.search_projects')}
@@ -126,7 +126,7 @@ export function ProjectsList({
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <Type className="h-4 w-4" />
+                <Type className="size-4" />
               </Button>
             </AppTooltip>
             <AppTooltip content={t('projects.labels.sort_value')}>
@@ -146,7 +146,7 @@ export function ProjectsList({
                     : 'text-muted-foreground'
                 }`}
               >
-                <CircleDollarSign className="h-4 w-4" />
+                <CircleDollarSign className="size-4" />
               </Button>
             </AppTooltip>
             <AppTooltip content={t('projects.labels.sort_time')}>
@@ -166,7 +166,7 @@ export function ProjectsList({
                     : 'text-muted-foreground'
                 }`}
               >
-                <Clock className="h-4 w-4" />
+                <Clock className="size-4" />
               </Button>
             </AppTooltip>
             <div className="mx-0.5 h-4 w-[1px] bg-border/40" />
@@ -183,7 +183,7 @@ export function ProjectsList({
                     : 'text-muted-foreground'
                 }`}
               >
-                <Folders className="h-4 w-4" />
+                <Folders className="size-4" />
               </Button>
             </AppTooltip>
           </div>
@@ -222,12 +222,12 @@ export function ProjectsList({
               aria-label={t('projects_page.save_view_as_default')}
               onClick={onSaveDefaults}
             >
-              <Save className="h-4 w-4" />
+              <Save className="size-4" />
             </Button>
           </AppTooltip>
 
           <Button size="sm" onClick={onCreateProject}>
-            <Plus className="mr-2 h-4 w-4" /> {t('projects_page.new_project')}
+            <Plus className="mr-2 size-4" /> {t('projects_page.new_project')}
           </Button>
         </div>
       </div>

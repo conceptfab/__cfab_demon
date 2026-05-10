@@ -23,9 +23,9 @@ export function CollapsibleSection({
       >
         <div className="flex items-center gap-2">
           {isOpen ? (
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
           )}
           <CardTitle className="text-sm font-medium">{title}</CardTitle>
         </div>

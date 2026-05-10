@@ -126,7 +126,7 @@ export function CreateProjectDialog({
               {PROJECT_COLORS.map((c) => (
                 <button
                   key={c}
-                  className="h-8 w-8 rounded-full border-2 transition-transform"
+                  className="size-8 rounded-full border-2 transition-transform"
                   style={{
                     backgroundColor: c,
                     borderColor: color === c ? '#fff' : 'transparent',

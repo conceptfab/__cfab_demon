@@ -92,7 +92,7 @@ export function FileDropzone() {
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Upload
             className={cn(
-              'mb-4 h-10 w-10',
+              'mb-4 size-10',
               isDragging ? 'text-foreground' : 'text-muted-foreground',
             )}
           />
@@ -105,7 +105,7 @@ export function FileDropzone() {
             {t('components.file_dropzone.browse_hint')}
           </p>
           <Button variant="outline" onClick={handleBrowse} disabled={importing}>
-            <FileJson className="mr-2 h-4 w-4" />
+            <FileJson className="mr-2 size-4" />
             {t('components.file_dropzone.browse_files')}
           </Button>
         </CardContent>
@@ -124,7 +124,7 @@ export function FileDropzone() {
             <div className="flex items-center gap-4 text-sm">
               {succeeded > 0 && (
                 <span className="flex items-center gap-1 text-emerald-400">
-                  <CheckCircle2 className="h-4 w-4" />{' '}
+                  <CheckCircle2 className="size-4" />{' '}
                   {t('components.file_dropzone.imported_summary', {
                     succeeded,
                     totalImported,
@@ -133,7 +133,7 @@ export function FileDropzone() {
               )}
               {failed > 0 && (
                 <span className="flex items-center gap-1 text-destructive">
-                  <XCircle className="h-4 w-4" />{' '}
+                  <XCircle className="size-4" />{' '}
                   {t('components.file_dropzone.failed_summary', { failed })}
                 </span>
               )}

@@ -179,7 +179,7 @@ export function PM() {
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
-          <Briefcase className="h-5 w-5 text-primary" />
+          <Briefcase className="size-5 text-primary" />
           <h1 className="text-lg font-semibold">{t('pm.title')}</h1>
           {!loading && settings?.work_folder && (
             <span className="ml-2 text-xs text-muted-foreground">
@@ -189,11 +189,11 @@ export function PM() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            <RefreshCw className="mr-1.5 size-3.5" />
             {t('pm.refresh')}
           </Button>
           <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!!noFolder}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" />
+            <Plus className="mr-1.5 size-3.5" />
             {t('pm.new_project')}
           </Button>
         </div>
@@ -234,7 +234,7 @@ export function PM() {
         )}
         {noFolder && !loading && (
           <div className="flex h-40 flex-col items-center justify-center gap-2 text-muted-foreground text-sm">
-            <FolderOpen className="h-8 w-8 opacity-40" />
+            <FolderOpen className="size-8 opacity-40" />
             <p>{t('pm.no_work_folder')}</p>
             <Button variant="outline" size="sm" onClick={() => setCurrentPage('settings')}>
               {t('pm.go_to_settings')}

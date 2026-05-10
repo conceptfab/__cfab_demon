@@ -7,7 +7,7 @@ export function HelpOnlineSyncSection() {
 
   return (
     <SectionHelp
-      icon={<Activity className="h-6 w-6" />}
+      icon={<Activity className="size-6" />}
       title={t18n('help_page.online_sync_setup_title')}
       description={t18n('help_page.online_sync_set_up_synchronization_with_an_external_serv')}
       footer={t18n('help_page.key_functionalities')}

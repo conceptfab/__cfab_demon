@@ -60,7 +60,7 @@ export function ExportPanel() {
     <Card className="border-border/40 bg-background/50 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Archive className="h-5 w-5 text-sky-500" />
+          <Archive className="size-5 text-sky-500" />
           {t("data_page.export_panel.title")}
         </CardTitle>
         <CardDescription>{t("data_page.export_panel.description")}</CardDescription>
@@ -124,7 +124,7 @@ export function ExportPanel() {
               <input
                 id="allTime"
                 type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
+                className="size-4 rounded border-input accent-primary"
                 checked={allTime}
                 onChange={(e) => setAllTime(e.target.checked)}
               />
@@ -142,7 +142,7 @@ export function ExportPanel() {
                         {t("data_page.export_panel.from")}
                       </span>
                       <div className="relative">
-                        <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Calendar className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
                         <input
                           type="date"
                           value={dateStart}
@@ -156,7 +156,7 @@ export function ExportPanel() {
                         {t("data_page.export_panel.to")}
                       </span>
                       <div className="relative">
-                        <Calendar className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Calendar className="absolute left-2 top-2.5 size-4 text-muted-foreground" />
                         <input
                           type="date"
                           value={dateEnd}
@@ -177,7 +177,7 @@ export function ExportPanel() {
           disabled={loading} 
           className="w-full gap-2 bg-sky-600 hover:bg-sky-700 text-white border-0 shadow-lg shadow-sky-950/20 transition-all duration-200"
         >
-          <Download className="h-4 w-4" />
+          <Download className="size-4" />
           {loading
             ? t("data_page.export_panel.exporting")
             : t("data_page.export_panel.export_data")}

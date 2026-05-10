@@ -53,7 +53,7 @@ export function ProjectSessionsTable({
       <CardHeader>
         <CardTitle className="flex items-center justify-between text-sm font-medium uppercase tracking-wider text-muted-foreground">
           <div className="flex items-center gap-2">
-            <History className="h-4 w-4" />
+            <History className="size-4" />
             {t('project_page.text.detailed_session_list')}
           </div>
           <span className="text-xs font-normal lowercase text-muted-foreground">
@@ -105,7 +105,7 @@ export function ProjectSessionsTable({
                       <td className="min-w-[120px] whitespace-nowrap px-4 py-3">
                         <div className="flex items-center gap-2">
                           {session.isManual && (
-                            <PenLine className="h-3 w-3 text-emerald-400" />
+                            <PenLine className="size-3 text-emerald-400" />
                           )}
                           {format(parseISO(session.start_time), 'HH:mm')}
                           <span className="mx-1.5 select-none text-muted-foreground opacity-30">
@@ -118,14 +118,14 @@ export function ProjectSessionsTable({
                         <div className="flex items-center gap-2">
                           {formatDuration(session.duration_seconds)}
                           {(session.rate_multiplier ?? 1) > 1.000_001 && (
-                            <CircleDollarSign className="h-3 w-3 text-emerald-400" />
+                            <CircleDollarSign className="size-3 text-emerald-400" />
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div
-                            className="h-2 w-2 rounded-full"
+                            className="size-2 rounded-full"
                             style={{
                               backgroundColor: session.project_color || '#64748b',
                             }}
@@ -157,15 +157,15 @@ export function ProjectSessionsTable({
                         >
                           {session.comment ? (
                             <>
-                              <MessageSquare className="h-3 w-3 shrink-0" />
+                              <MessageSquare className="size-3 shrink-0" />
                               {session.comment}
                               {session.isManual && (
-                                <PenLine className="ml-1 h-2 w-2 text-muted-foreground" />
+                                <PenLine className="ml-1 size-2 text-muted-foreground" />
                               )}
                             </>
                           ) : (
                             <>
-                              <MessageSquare className="h-3 w-3 shrink-0 opacity-0 transition-opacity group-hover/comment:opacity-100" />
+                              <MessageSquare className="size-3 shrink-0 opacity-0 transition-opacity group-hover/comment:opacity-100" />
                               <span className="text-muted-foreground/20 transition-colors group-hover/comment:text-muted-foreground/50">
                                 -
                               </span>

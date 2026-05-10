@@ -91,33 +91,33 @@ export function TopBar() {
             <button
               type="button"
               aria-label={t("topbar.aria.minimize")}
-              className="flex h-12 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground [app-region:no-drag] [-webkit-app-region:no-drag]"
+              className="flex size-12 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground [app-region:no-drag] [-webkit-app-region:no-drag]"
               onMouseDown={stopTitlebarButtonMouseDown}
               onClick={() => withWindow((appWindow) => appWindow.minimize())}
             >
-              <Minus className="h-4 w-4" />
+              <Minus className="size-4" />
             </button>
           </AppTooltip>
           <AppTooltip content={isMaximized ? t("topbar.aria.restore") : t("topbar.aria.maximize")} side="bottom">
             <button
               type="button"
               aria-label={isMaximized ? t("topbar.aria.restore") : t("topbar.aria.maximize")}
-              className="flex h-12 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground [app-region:no-drag] [-webkit-app-region:no-drag]"
+              className="flex size-12 items-center justify-center text-muted-foreground transition-colors hover:bg-accent/70 hover:text-foreground [app-region:no-drag] [-webkit-app-region:no-drag]"
               onMouseDown={stopTitlebarButtonMouseDown}
               onClick={() => withWindow((appWindow) => appWindow.toggleMaximize())}
             >
-              {isMaximized ? <Copy className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+              {isMaximized ? <Copy className="size-3.5" /> : <Square className="size-3.5" />}
             </button>
           </AppTooltip>
           <AppTooltip content={t("topbar.aria.close")} side="bottom">
             <button
               type="button"
               aria-label={t("topbar.aria.close")}
-              className="flex h-12 w-12 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive [app-region:no-drag] [-webkit-app-region:no-drag]"
+              className="flex size-12 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive [app-region:no-drag] [-webkit-app-region:no-drag]"
               onMouseDown={stopTitlebarButtonMouseDown}
               onClick={() => withWindow((appWindow) => appWindow.close())}
             >
-              <X className="h-4 w-4" />
+              <X className="size-4" />
             </button>
           </AppTooltip>
         </div>

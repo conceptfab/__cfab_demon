@@ -360,7 +360,7 @@ export function Applications() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Shield className="h-4 w-4" />
+            <Shield className="size-4" />
             {t('applications_page.monitored.title')}
             <div className="ml-auto flex items-center gap-2">
               <Button
@@ -374,7 +374,7 @@ export function Applications() {
                 aria-busy={syncingMonitored}
               >
                 <RefreshCw
-                  className={`mr-1 h-3.5 w-3.5 ${
+                  className={`mr-1 size-3.5 ${
                     syncingMonitored ? 'animate-spin' : ''
                   }`}
                 />
@@ -413,7 +413,7 @@ export function Applications() {
               onClick={handleAddApp}
               disabled={!newExe.trim() || addingApp}
             >
-              <Plus className="h-3.5 w-3.5 mr-1" />
+              <Plus className="size-3.5 mr-1" />
               {t('applications_page.actions.add')}
             </Button>
           </div>
@@ -456,22 +456,22 @@ export function Applications() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0"
+                        className="size-7 p-0"
                         aria-label={t('applications_page.tooltips.rename_monitored')}
                         onClick={() => handleRenameMonitoredApp(app)}
                       >
-                        <Pencil className="h-3.5 w-3.5" />
+                        <Pencil className="size-3.5" />
                       </Button>
                     </AppTooltip>
                     <AppTooltip content={t('applications_page.tooltips.remove_monitored')}>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        className="size-7 p-0 text-muted-foreground hover:text-destructive"
                         aria-label={t('applications_page.tooltips.remove_monitored')}
                         onClick={() => handleRemoveApp(app.exe_name)}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="size-3.5" />
                       </Button>
                     </AppTooltip>
                   </div>
@@ -493,7 +493,7 @@ export function Applications() {
       {/* Tracked Apps Table */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             className="flex h-9 w-full rounded-md border bg-transparent pl-9 pr-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
             aria-label={t('applications_page.search_placeholder')}
@@ -531,7 +531,7 @@ export function Applications() {
                       onClick={() => toggleSort(key)}
                     >
                       {label}
-                      <ArrowUpDown className="ml-1 h-3 w-3" />
+                      <ArrowUpDown className="ml-1 size-3" />
                     </Button>
                   </th>
                 ))}
@@ -554,7 +554,7 @@ export function Applications() {
                           <button
                             type="button"
                             aria-label={t('applications_page.tooltips.change_color')}
-                            className="h-3 w-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
+                            className="size-3 rounded-full border-0 bg-transparent p-0 cursor-pointer hover:scale-125 transition-transform"
                             style={{ backgroundColor: pendingColor && editingColorId === app.id ? pendingColor : app.color }}
                             onClick={() => {
                               if (editingColorId === app.id) {
@@ -582,7 +582,7 @@ export function Applications() {
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 text-green-500 hover:text-green-400"
+                                  className="size-8 text-green-500 hover:text-green-400"
                                   aria-label={t('applications_page.tooltips.save_color')}
                                   onClick={() => {
                                     handleUpdateColor(app.id, pendingColor);
@@ -590,7 +590,7 @@ export function Applications() {
                                   }}
                                   title={t('applications_page.tooltips.save_color')}
                                 >
-                                  <Save className="h-4 w-4" />
+                                  <Save className="size-4" />
                                 </Button>
                               )}
                             </div>
@@ -608,7 +608,7 @@ export function Applications() {
                                 <button
                                   type="button"
                                   key={c}
-                                  className="h-5 w-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
+                                  className="size-5 rounded-full border border-white/10 hover:scale-110 transition-transform"
                                   style={{ backgroundColor: c }}
                                   onClick={() => {
                                     handleUpdateColor(app.id, c);
@@ -670,33 +670,33 @@ export function Applications() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7"
+                          className="size-7"
                           aria-label={t('applications_page.tooltips.rename_app')}
                           onClick={() => handleRenameApp(app)}
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Pencil className="size-3.5" />
                         </Button>
                       </AppTooltip>
                       <AppTooltip content={t('applications_page.tooltips.reset_time')}>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7"
+                          className="size-7"
                           aria-label={t('applications_page.tooltips.reset_time')}
                           onClick={() => handleResetAppTime(app)}
                         >
-                          <TimerReset className="h-3.5 w-3.5" />
+                          <TimerReset className="size-3.5" />
                         </Button>
                       </AppTooltip>
                       <AppTooltip content={t('applications_page.tooltips.delete_app_and_sessions')}>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          className="size-7 text-muted-foreground hover:text-destructive"
                           aria-label={t('applications_page.tooltips.delete_app_and_sessions')}
                           onClick={() => handleDeleteApp(app)}
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="size-3.5" />
                         </Button>
                       </AppTooltip>
                     </div>

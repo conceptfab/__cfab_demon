@@ -7,7 +7,7 @@ export function HelpSessionsSection() {
 
   return (
     <SectionHelp
-      icon={<List className="h-6 w-6" />}
+      icon={<List className="size-6" />}
       title={t18n('help_page.sessions_2')}
       description={t18n('help_page.detailed_list_of_all_activity_blocks_registered_in_the_s')}
       footer={t18n('help_page.key_functionalities')}

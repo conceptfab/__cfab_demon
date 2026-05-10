@@ -80,7 +80,7 @@ export function ImportPanel() {
     <Card className="border-border/40 bg-background/50 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="text-lg flex items-center gap-2">
-          <Upload className="h-5 w-5 text-orange-500" />
+          <Upload className="size-5 text-orange-500" />
           {t('data_page.import_panel.title')}
         </CardTitle>
         <CardDescription>{t('data_page.import_panel.description')}</CardDescription>
@@ -88,7 +88,7 @@ export function ImportPanel() {
       <CardContent className="space-y-6">
         {error && (
           <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <AlertTriangle className="size-4 shrink-0" />
             {error}
           </div>
         )}
@@ -98,7 +98,7 @@ export function ImportPanel() {
             onClick={selectFile}
           >
             <div className="bg-accent/50 p-2 rounded-md">
-              <FileJson className="h-5 w-5 text-muted-foreground" />
+              <FileJson className="size-5 text-muted-foreground" />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium">
@@ -130,9 +130,9 @@ export function ImportPanel() {
                   {t('data_page.import_panel.validation_status')}
                 </span>
                 {validation.valid ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                  <CheckCircle2 className="size-4 text-emerald-500" />
                 ) : (
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertTriangle className="size-4 text-amber-500" />
                 )}
               </div>
               <div className="text-xs text-muted-foreground space-y-1">
@@ -155,7 +155,7 @@ export function ImportPanel() {
               <div className="rounded-md border border-border/70 bg-background/35 p-3">
                 <div className="space-y-1">
                   <p className="text-xs font-medium flex items-center gap-1">
-                    <Info className="h-3 w-3" />{' '}
+                    <Info className="size-3" />{' '}
                     {t('data_page.import_panel.new_projects_to_create')}
                   </p>
                   <div className="text-[10px] bg-sky-500/10 text-sky-400 p-2 rounded max-h-24 overflow-y-auto">
@@ -170,7 +170,7 @@ export function ImportPanel() {
               disabled={importing}
               className="w-full gap-2 bg-orange-600 hover:bg-orange-700 text-white border-0 shadow-lg shadow-orange-950/20 transition-all duration-200"
             >
-              <Upload className="h-4 w-4" />
+              <Upload className="size-4" />
               {importing
                 ? t('data_page.import_panel.importing')
                 : t('data_page.import_panel.start_import')}
@@ -192,8 +192,8 @@ export function ImportPanel() {
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
             <div className="text-center space-y-2 py-4">
               <div className="flex justify-center">
-                <div className="h-12 w-12 bg-emerald-500/10 rounded-full flex items-center justify-center">
-                  <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                <div className="size-12 bg-emerald-500/10 rounded-full flex items-center justify-center">
+                  <CheckCircle2 className="size-8 text-emerald-500" />
                 </div>
               </div>
               <h3 className="font-semibold">{t('data_page.import_panel.finished')}</h3>

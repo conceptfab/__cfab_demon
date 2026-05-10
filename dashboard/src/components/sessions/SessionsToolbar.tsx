@@ -98,10 +98,10 @@ export function SessionsToolbar({
               variant="ghost"
               size="icon"
               aria-label={range.labels.previousTooltip}
-              className="h-7 w-7"
+              className="size-7"
               onClick={range.onShiftBackward}
             >
-              <ChevronLeft className="h-3.5 w-3.5" />
+              <ChevronLeft className="size-3.5" />
             </Button>
           </AppTooltip>
           <span className="text-[10px] font-mono font-bold text-muted-foreground/80 min-w-[5rem] text-center">
@@ -112,11 +112,11 @@ export function SessionsToolbar({
               variant="ghost"
               size="icon"
               aria-label={range.labels.nextTooltip}
-              className="h-7 w-7"
+              className="size-7"
               onClick={range.onShiftForward}
               disabled={!range.canShiftForward}
             >
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRight className="size-3.5" />
             </Button>
           </AppTooltip>
         </div>

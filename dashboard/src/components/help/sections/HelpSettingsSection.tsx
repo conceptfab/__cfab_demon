@@ -7,7 +7,7 @@ export function HelpSettingsSection() {
 
   return (
     <SectionHelp
-      icon={<Settings className="h-6 w-6" />}
+      icon={<Settings className="size-6" />}
       title={t18n('help_page.settings_2')}
       description={t18n('help_page.full_control_over_application_configuration_and_security')}
       footer={t18n('help_page.key_functionalities')}

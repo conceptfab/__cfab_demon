@@ -36,7 +36,7 @@ export function ProjectManualSessionsCard({
       <CardHeader>
         <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <MousePointerClick className="h-4 w-4 text-sky-400" />
+            <MousePointerClick className="size-4 text-sky-400" />
             {labels.title}
           </div>
           <Button

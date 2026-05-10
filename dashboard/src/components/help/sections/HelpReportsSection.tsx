@@ -7,7 +7,7 @@ export function HelpReportsSection() {
 
   return (
     <SectionHelp
-      icon={<FileText className="h-6 w-6" />}
+      icon={<FileText className="size-6" />}
       title={t18n('help_page.reports_2')}
       description={t18n('help_page.create_configurable_project_reports_for_print_and_pdf_ex')}
       footer={t18n('help_page.key_functionalities')}

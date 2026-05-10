@@ -201,22 +201,22 @@ export function DaemonControl() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Cpu className="h-4 w-4" />
+              <Cpu className="size-4" />
               {t("daemon_page.status_title")}
               <Button
                 variant="ghost"
                 size="sm"
-                className="ml-auto h-7 w-7 p-0"
+                className="ml-auto size-7 p-0"
                 onClick={() => refreshAll({ includeLogs: false })}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="size-3.5" />
               </Button>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3">
               <div
-                className={`h-3 w-3 rounded-full ${
+                className={`size-3 rounded-full ${
                   status?.running
                     ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
                     : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]"
@@ -281,7 +281,7 @@ export function DaemonControl() {
                     onClick={handleStop}
                     disabled={!!loading}
                   >
-                    <Square className="h-3.5 w-3.5 mr-1.5" />
+                    <Square className="size-3.5 mr-1.5" />
                     {loading === "stop"
                       ? t("daemon_page.stopping")
                       : t("daemon_page.stop")}
@@ -293,7 +293,7 @@ export function DaemonControl() {
                     onClick={handleRestart}
                     disabled={!!loading}
                   >
-                    <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                    <RotateCcw className="size-3.5 mr-1.5" />
                     {loading === "restart"
                       ? t("daemon_page.restarting")
                       : t("daemon_page.restart")}
@@ -306,7 +306,7 @@ export function DaemonControl() {
                   onClick={handleStart}
                   disabled={!!loading}
                 >
-                  <Play className="h-3.5 w-3.5 mr-1.5" />
+                  <Play className="size-3.5 mr-1.5" />
                   {loading === "start"
                     ? t("daemon_page.starting")
                     : t("daemon_page.start")}
@@ -343,7 +343,7 @@ export function DaemonControl() {
                 }`}
               >
                 <span
-                  className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                  className={`inline-block size-4 rounded-full bg-white transition-transform ${
                     status?.autostart ? "translate-x-6" : "translate-x-1"
                   }`}
                 />
@@ -357,7 +357,7 @@ export function DaemonControl() {
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <ScrollText className="h-4 w-4" />
+            <ScrollText className="size-4" />
             {t("daemon_page.logs_title")}
             <div className="ml-auto flex items-center gap-2">
               <button
@@ -375,10 +375,10 @@ export function DaemonControl() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 p-0"
+                className="size-7 p-0"
                 onClick={() => refreshAll()}
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="size-3.5" />
               </Button>
             </div>
           </CardTitle>

@@ -26,7 +26,7 @@ export function HelpTabTrigger({
         {icon}
         <span>{label}</span>
       </span>
-      <ChevronRight className="h-3 w-3 opacity-0 data-[state=active]:opacity-100 transition-opacity" />
+      <ChevronRight className="size-3 opacity-0 data-[state=active]:opacity-100 transition-opacity" />
     </TabsTrigger>
   );
 }
@@ -71,7 +71,7 @@ export function SectionHelp({
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">
             {features.map((f, i) => (
               <li key={i} className="flex items-start gap-3 text-sm group">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary transition-colors" />
+                <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary/40 group-hover:bg-primary transition-colors" />
                 <span className="text-foreground/80 leading-snug">{f}</span>
               </li>
             ))}

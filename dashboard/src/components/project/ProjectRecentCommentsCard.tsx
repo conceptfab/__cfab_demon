@@ -35,7 +35,7 @@ export function ProjectRecentCommentsCard({
     <Card>
       <CardHeader>
         <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-sky-500" />
+          <MessageSquare className="size-4 text-sky-500" />
           {labels.title}
         </CardTitle>
       </CardHeader>

@@ -88,7 +88,7 @@ export function SessionContextMenu({
         menu.session.project_name === null && (
           <div className="mx-1 mb-1 rounded-sm border border-sky-500/25 bg-sky-500/15 px-2 py-1.5">
             <div className="flex items-center gap-1.5">
-              <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
+              <Sparkles className="size-3 shrink-0 text-sky-400" />
               <span className="text-[11px] text-sky-200">
                 {t('sessions.menu.ai_suggests')}{' '}
                 <span className="font-medium">
@@ -147,7 +147,7 @@ export function SessionContextMenu({
             className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
             onClick={onEditComment}
           >
-            <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
             <span>
               {menu.session.comment
                 ? t('sessions.menu.edit_comment')
@@ -161,7 +161,7 @@ export function SessionContextMenu({
           className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
           onClick={onOpenSplit}
         >
-          <Scissors className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <Scissors className="size-4 shrink-0 text-muted-foreground" />
           <span>{t('sessions.menu.split_session', 'Split session')}</span>
         </button>
       )}
@@ -181,14 +181,14 @@ export function SessionContextMenu({
           >
             <button
               type="button"
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+              className={`inline-flex size-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                 assignProjectListMode === 'alpha_active'
                   ? 'bg-background text-sky-200 shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
               onClick={() => onAssignProjectListModeChange('alpha_active')}
             >
-              <Type className="h-3.5 w-3.5" />
+              <Type className="size-3.5" />
             </button>
           </AppTooltip>
           <AppTooltip
@@ -199,14 +199,14 @@ export function SessionContextMenu({
           >
             <button
               type="button"
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+              className={`inline-flex size-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                 assignProjectListMode === 'new_top_rest'
                   ? 'bg-background text-amber-300 shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
               onClick={() => onAssignProjectListModeChange('new_top_rest')}
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <Sparkles className="size-3.5" />
             </button>
           </AppTooltip>
           <AppTooltip
@@ -217,14 +217,14 @@ export function SessionContextMenu({
           >
             <button
               type="button"
-              className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+              className={`inline-flex size-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                 assignProjectListMode === 'top_new_rest'
                   ? 'bg-background text-orange-300 shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
               }`}
               onClick={() => onAssignProjectListModeChange('top_new_rest')}
             >
-              <Flame className="h-3.5 w-3.5" />
+              <Flame className="size-3.5" />
             </button>
           </AppTooltip>
         </div>
@@ -237,7 +237,7 @@ export function SessionContextMenu({
           className="flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground"
           onClick={() => onAssign(null, 'manual_session_unassign')}
         >
-          <div className="h-2.5 w-2.5 shrink-0 rounded-full bg-muted-foreground/60" />
+          <div className="size-2.5 shrink-0 rounded-full bg-muted-foreground/60" />
           <span className="truncate">{t('sessions.menu.unassigned')}</span>
         </button>
         {assignProjectsCount > 0 ? (
@@ -255,7 +255,7 @@ export function SessionContextMenu({
                   onClick={() => onAssign(project.id, 'manual_session_change')}
                 >
                   <div
-                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    className="size-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: project.color }}
                   />
                   <span className="truncate">{project.name}</span>

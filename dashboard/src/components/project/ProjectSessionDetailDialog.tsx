@@ -66,7 +66,7 @@ export function ProjectSessionDetailDialog({
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-lg">
                 <div
-                  className="h-3 w-3 rounded-full"
+                  className="size-3 rounded-full"
                   style={{ backgroundColor: session.project_color || '#64748b' }}
                 />
                 <span>{labels.title}</span>
@@ -131,7 +131,7 @@ export function ProjectSessionDetailDialog({
             {session.comment && (
               <div className="mt-4 rounded-md border border-sky-500/20 bg-sky-500/5 p-3">
                 <p className="text-[10px] uppercase tracking-wider text-sky-400 font-bold flex items-center gap-1.5">
-                  <MessageSquare className="h-3 w-3" />
+                  <MessageSquare className="size-3" />
                   {labels.comment}
                 </p>
                 <p className="mt-1 text-sm italic text-sky-100/90 leading-relaxed">

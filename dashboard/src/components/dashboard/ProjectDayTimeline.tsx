@@ -412,7 +412,7 @@ export function ProjectDayTimeline({
               <AppTooltip content={t('project_day_timeline.text.sort_by_time')}>
                 <button
                   type="button"
-                  className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                  className={`inline-flex size-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                     sortMode === "time_desc"
                       ? "bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -420,13 +420,13 @@ export function ProjectDayTimeline({
                   onClick={() => setSortMode("time_desc")}
                   aria-label={t('project_day_timeline.text.sort_by_time')}
                 >
-                  <Clock3 className="h-3.5 w-3.5" />
+                  <Clock3 className="size-3.5" />
                 </button>
               </AppTooltip>
               <AppTooltip content={t('project_day_timeline.text.sort_alphabetically')}>
                 <button
                   type="button"
-                  className={`inline-flex h-6 w-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                  className={`inline-flex size-6 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                     sortMode === "alpha_asc"
                       ? "bg-background text-foreground shadow-sm"
                       : "text-muted-foreground hover:text-foreground"
@@ -434,14 +434,14 @@ export function ProjectDayTimeline({
                   onClick={() => setSortMode("alpha_asc")}
                   aria-label={t('project_day_timeline.text.sort_alphabetically')}
                 >
-                  <Type className="h-3.5 w-3.5" />
+                  <Type className="size-3.5" />
                 </button>
               </AppTooltip>
             </div>
             <AppTooltip content={saveView ? t('project_day_timeline.text.saved_view_enabled') : t('project_day_timeline.text.saved_view_disabled')}>
               <button
                 type="button"
-                className={`inline-flex h-7 w-7 items-center justify-center rounded-sm border transition-colors cursor-pointer ${
+                className={`inline-flex size-7 items-center justify-center rounded-sm border transition-colors cursor-pointer ${
                   saveView
                     ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
                     : "border-border/70 bg-secondary/20 text-muted-foreground hover:text-foreground"
@@ -449,7 +449,7 @@ export function ProjectDayTimeline({
                 onClick={() => setSaveView((prev) => !prev)}
                 aria-label={saveView ? t('project_day_timeline.text.saved_view_enabled') : t('project_day_timeline.text.saved_view_disabled')}
               >
-                <Save className="h-3.5 w-3.5" />
+                <Save className="size-3.5" />
               </button>
             </AppTooltip>
             <span className="text-xs text-muted-foreground">
@@ -491,7 +491,7 @@ export function ProjectDayTimeline({
                   className={`flex items-center gap-1 text-xs ${row.isUnassigned ? "text-amber-300" : "text-muted-foreground"}`}
                   title={row.name}
                 >
-                  <span className="inline-block h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                  <span className="inline-block size-2.5 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
                   <span className="truncate">{row.name}</span>
                   {row.boostedCount > 0 && (
                     <AppTooltip
@@ -501,7 +501,7 @@ export function ProjectDayTimeline({
                       )}
                     >
                       <span className="shrink-0">
-                        <Flame className="h-3 w-3 text-emerald-400" />
+                        <Flame className="size-3 text-emerald-400" />
                       </span>
                     </AppTooltip>
                   )}
@@ -571,22 +571,22 @@ export function ProjectDayTimeline({
                         )}
                         {segment.hasSuggestion && !segment.isManual && (
                           <div className="pointer-events-none absolute left-0.5 top-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
-                            <Sparkles className="h-2.5 w-2.5 text-sky-300" />
+                            <Sparkles className="size-2.5 text-sky-300" />
                           </div>
                         )}
                         {segment.comment && (
                           <div className="pointer-events-none absolute left-0.5 bottom-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm border border-amber-500/30">
-                            <MessageSquare className="h-3 w-3 text-amber-500 fill-amber-500/20" />
+                            <MessageSquare className="size-3 text-amber-500 fill-amber-500/20" />
                           </div>
                         )}
                         {segment.isManual && (
                           <div className="pointer-events-none absolute left-0.5 top-0.5 flex items-center justify-center rounded bg-black/40 p-[2px] shadow-sm">
-                            <MousePointerClick className="h-2.5 w-2.5 text-sky-300" />
+                            <MousePointerClick className="size-2.5 text-sky-300" />
                           </div>
                         )}
                         {(segment.rateMultiplier ?? 1) > 1.000001 && (
                           <div className="pointer-events-none absolute right-0.5 top-0.5 flex items-center justify-center rounded bg-black/35 p-[1px] shadow-sm">
-                            <Flame className="h-3 w-3 text-emerald-400" />
+                            <Flame className="size-3 text-emerald-400" />
                           </div>
                         )}
                       </div>
@@ -642,7 +642,7 @@ export function ProjectDayTimeline({
           {ctxMenu.segment.hasSuggestion && !ctxMenu.segment.isManual && (
             <div className="mx-1 mb-1 rounded-sm bg-sky-500/15 border border-sky-500/25 px-2 py-1.5">
               <div className="flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3 shrink-0 text-sky-400" />
+                <Sparkles className="size-3 shrink-0 text-sky-400" />
                 <span className="text-[11px] text-sky-200">
                   {t('project_day_timeline.text.ai_suggests')} <span className="font-medium">{ctxMenu.segment.suggestedProjectName || t('project_day_timeline.text.unknown')}</span>
                   {ctxMenu.segment.suggestedConfidence != null && (
@@ -719,7 +719,7 @@ export function ProjectDayTimeline({
                 className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
                 onClick={() => void handleEditComment()}
               >
-                <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
                 <span>{ctxMenu.segment.comment ? t('project_day_timeline.text.edit_comment') : t('project_day_timeline.text.add_comment')}</span>
               </button>
             </>
@@ -735,7 +735,7 @@ export function ProjectDayTimeline({
                   <AppTooltip content={t('project_day_timeline.text.active_alphabetical_a_z')}>
                     <button
                       type="button"
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                      className={`inline-flex size-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                         assignProjectListMode === "alpha_active"
                           ? "bg-background text-sky-200 shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
@@ -743,13 +743,13 @@ export function ProjectDayTimeline({
                       onClick={() => setAssignProjectListMode("alpha_active")}
                       aria-label={t('project_day_timeline.text.active_alphabetical')}
                     >
-                      <Type className="h-3.5 w-3.5" />
+                      <Type className="size-3.5" />
                     </button>
                   </AppTooltip>
                   <AppTooltip content={t('project_day_timeline.text.newest_top_rest_a_z')}>
                     <button
                       type="button"
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                      className={`inline-flex size-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                         assignProjectListMode === "new_top_rest"
                           ? "bg-background text-amber-300 shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
@@ -757,13 +757,13 @@ export function ProjectDayTimeline({
                       onClick={() => setAssignProjectListMode("new_top_rest")}
                       aria-label={t('project_day_timeline.text.newest_then_top')}
                     >
-                      <Sparkles className="h-3.5 w-3.5" />
+                      <Sparkles className="size-3.5" />
                     </button>
                   </AppTooltip>
                   <AppTooltip content={t('project_day_timeline.text.top_newest_rest_a_z')}>
                     <button
                       type="button"
-                      className={`inline-flex h-7 w-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
+                      className={`inline-flex size-7 items-center justify-center rounded-sm transition-colors cursor-pointer ${
                         assignProjectListMode === "top_new_rest"
                           ? "bg-background text-orange-300 shadow-sm"
                           : "text-muted-foreground hover:text-foreground"
@@ -771,7 +771,7 @@ export function ProjectDayTimeline({
                       onClick={() => setAssignProjectListMode("top_new_rest")}
                       aria-label={t('project_day_timeline.text.top_then_newest')}
                     >
-                      <Flame className="h-3.5 w-3.5" />
+                      <Flame className="size-3.5" />
                     </button>
                   </AppTooltip>
                 </div>
@@ -784,7 +784,7 @@ export function ProjectDayTimeline({
                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground cursor-pointer"
                   onClick={() => handleAssign(null)}
                 >
-                  <div className="h-2.5 w-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
+                  <div className="size-2.5 rounded-full shrink-0 bg-muted-foreground/60" />
                   <span className="truncate">{t('project_day_timeline.text.unassigned')}</span>
                 </button>
                 {assignProjectsCount > 0 ? (
@@ -802,7 +802,7 @@ export function ProjectDayTimeline({
                           onClick={() => handleAssign(p.id)}
                         >
                           <div
-                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            className="size-2.5 rounded-full shrink-0"
                             style={{ backgroundColor: p.color }}
                           />
                           <span className="truncate">{p.name}</span>
@@ -833,7 +833,7 @@ export function ProjectDayTimeline({
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <span
-                    className="inline-block h-2.5 w-2.5 rounded-full"
+                    className="inline-block size-2.5 rounded-full"
                     style={{ backgroundColor: clusterDetails.rowColor }}
                   />
                   <span className="truncate">{t('project_day_timeline.text.session_details')}</span>
@@ -886,7 +886,7 @@ export function ProjectDayTimeline({
                   ))}
                   {clusterDetailsSummary.boostedCount > 0 && (
                     <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-300 gap-1 flex items-center">
-                      <Flame className="h-2.5 w-2.5" />
+                      <Flame className="size-2.5" />
                       <span>{clusterDetailsSummary.boostedCount}/{clusterDetailsSummary.fragments.length}</span>
                     </Badge>
                   )}
@@ -916,7 +916,7 @@ export function ProjectDayTimeline({
                             <span className="truncate font-medium">{f.appName}</span>
                             {(multiplierValue > 1.000_001) && (
                               <Badge variant="outline" className="h-4 text-[10px] border-emerald-500/40 text-emerald-300 gap-1 flex items-center">
-                                <Flame className="h-2.5 w-2.5" />
+                                <Flame className="size-2.5" />
                                 <span>{formatMultiplierLabel(multiplierValue)}</span>
                               </Badge>
                             )}

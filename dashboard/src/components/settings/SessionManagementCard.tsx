@@ -136,7 +136,7 @@ export function SessionManagementCard({
           <input
             id="rebuildOnStartup"
             type="checkbox"
-            className="h-4 w-4 rounded border-input accent-primary"
+            className="size-4 rounded border-input accent-primary"
             checked={rebuildOnStartup}
             onChange={(e) => onRebuildOnStartupChange(e.target.checked)}
           />
@@ -155,7 +155,7 @@ export function SessionManagementCard({
             onClick={onRebuild}
             disabled={rebuilding}
           >
-            <TimerReset className="mr-2 h-4 w-4" />
+            <TimerReset className="mr-2 size-4" />
             {rebuilding ? rebuildingLabel : rebuildLabel}
           </Button>
         </div>

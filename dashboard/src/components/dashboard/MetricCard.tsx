@@ -21,7 +21,7 @@ export function MetricCard({ title, value, subtitle, icon: Icon, className }: Me
             {subtitle && <p className="text-[10px] text-muted-foreground">{subtitle}</p>}
           </div>
           <div className="rounded-md border border-border/80 bg-accent/35 p-1.5 text-muted-foreground">
-            <Icon className="h-4 w-4" />
+            <Icon className="size-4" />
           </div>
         </div>
       </CardContent>

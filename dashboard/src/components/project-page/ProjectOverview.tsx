@@ -23,7 +23,7 @@ export function ProjectOverview({
   return (
     <div className="flex items-center gap-4">
       <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
-        <ChevronLeft className="mr-1 h-4 w-4" />
+        <ChevronLeft className="mr-1 size-4" />
         {t('project_page.text.back_to_projects')}
       </Button>
       <div className="h-4 w-[1px] bg-border" />
@@ -48,7 +48,7 @@ export function ProjectOverview({
         className="ml-auto bg-sky-600 text-white hover:bg-sky-700"
         onClick={onGenerateReport}
       >
-        <FileText className="mr-2 h-4 w-4" />
+        <FileText className="mr-2 size-4" />
         {t('project_page.text.generate_report_pdf')}
       </Button>
     </div>

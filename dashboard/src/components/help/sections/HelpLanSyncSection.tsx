@@ -7,7 +7,7 @@ export function HelpLanSyncSection() {
 
   return (
     <SectionHelp
-      icon={<Wifi className="h-6 w-6" />}
+      icon={<Wifi className="size-6" />}
       title={t18n('help_page.lan_sync_section_title')}
       description={t18n('help_page.lan_sync_description')}
       footer={t18n('help_page.key_functionalities')}

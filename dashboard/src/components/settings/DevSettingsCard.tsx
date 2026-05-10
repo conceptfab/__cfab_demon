@@ -110,7 +110,7 @@ export function DevSettingsCard() {
     <Card>
       <CardHeader className="pb-4">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <Terminal className="h-4 w-4 text-amber-400" />
+          <Terminal className="size-4 text-amber-400" />
           {t('dev_settings.title')}
         </CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -140,7 +140,7 @@ export function DevSettingsCard() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown className="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <ChevronDown className="absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                 </div>
               </div>
             ))}
@@ -165,7 +165,7 @@ export function DevSettingsCard() {
               <option value={2048}>2 MB</option>
               <option value={5120}>5 MB</option>
             </select>
-            <ChevronDown className="absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <ChevronDown className="absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           </div>
         </div>
 
@@ -180,7 +180,7 @@ export function DevSettingsCard() {
               className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
               onClick={() => logManagementApi.openLogsFolder().catch(() => {})}
             >
-              <FolderOpen className="h-3 w-3 mr-1" />
+              <FolderOpen className="size-3 mr-1" />
               {t('dev_settings.open_folder')}
             </Button>
           </div>
@@ -197,7 +197,7 @@ export function DevSettingsCard() {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span
-                    className={`h-1.5 w-1.5 rounded-full shrink-0 ${
+                    className={`size-1.5 rounded-full shrink-0 ${
                       file.exists && file.size_bytes > 0
                         ? 'bg-emerald-400'
                         : 'bg-zinc-500'
@@ -213,14 +213,14 @@ export function DevSettingsCard() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    className="size-6 p-0 text-muted-foreground hover:text-destructive"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleClear(file.key);
                     }}
                     title={t('dev_settings.clear_log')}
                   >
-                    <Trash2 className="h-3 w-3" />
+                    <Trash2 className="size-3" />
                   </Button>
                 </div>
               </div>
@@ -239,7 +239,7 @@ export function DevSettingsCard() {
                 <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
                   <input
                     type="checkbox"
-                    className="h-3 w-3 rounded border-input accent-primary"
+                    className="size-3 rounded border-input accent-primary"
                     checked={autoScroll}
                     onChange={(e) => setAutoScroll(e.target.checked)}
                   />
@@ -257,7 +257,7 @@ export function DevSettingsCard() {
                       .catch(() => {});
                   }}
                 >
-                  <RefreshCw className="h-3 w-3 mr-1" />
+                  <RefreshCw className="size-3 mr-1" />
                   {t('dev_settings.refresh')}
                 </Button>
               </div>

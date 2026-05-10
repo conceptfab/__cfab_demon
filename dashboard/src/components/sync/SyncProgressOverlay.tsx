@@ -115,15 +115,15 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
         {/* Header */}
         <div className="flex items-center gap-2 mb-2">
           {isCompleted ? (
-            <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+            <CheckCircle2 className="size-4 text-green-400 shrink-0" />
           ) : isError ? (
-            <XCircle className="h-4 w-4 text-red-400 shrink-0" />
+            <XCircle className="size-4 text-red-400 shrink-0" />
           ) : progress.direction === 'download' ? (
-            <ArrowDown className="h-4 w-4 text-sky-400 shrink-0 animate-pulse" />
+            <ArrowDown className="size-4 text-sky-400 shrink-0 animate-pulse" />
           ) : progress.direction === 'upload' ? (
-            <ArrowUp className="h-4 w-4 text-sky-400 shrink-0 animate-pulse" />
+            <ArrowUp className="size-4 text-sky-400 shrink-0 animate-pulse" />
           ) : (
-            <Loader2 className="h-4 w-4 text-sky-400 shrink-0 animate-spin" />
+            <Loader2 className="size-4 text-sky-400 shrink-0 animate-spin" />
           )}
           <span className="text-sm font-medium truncate">
             {syncType === 'online'
@@ -155,7 +155,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
               }}
               className="flex items-center gap-1.5 text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors"
             >
-              <RotateCw className="h-3.5 w-3.5" />
+              <RotateCw className="size-3.5" />
               {t('sync_progress.retry', 'Retry')}
             </button>
             <button

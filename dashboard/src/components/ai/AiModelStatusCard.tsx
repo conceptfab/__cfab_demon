@@ -51,7 +51,7 @@ export function AiModelStatusCard({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base font-semibold">
-          <Brain className="h-4 w-4" />
+          <Brain className="size-4" />
           {tr('ai_page.text.model_status')}
         </CardTitle>
       </CardHeader>
@@ -147,7 +147,7 @@ export function AiModelStatusCard({
             onClick={onTrainNow}
             disabled={training || status?.is_training}
           >
-            <PlayCircle className="mr-2 h-4 w-4" />
+            <PlayCircle className="mr-2 size-4" />
             {training || status?.is_training
               ? tr('ai_page.text.training')
               : tr('ai_page.text.train_now')}
@@ -158,7 +158,7 @@ export function AiModelStatusCard({
             onClick={onFullRebuild}
             disabled={training || status?.is_training}
           >
-            <RotateCcw className="mr-2 h-4 w-4" />
+            <RotateCcw className="mr-2 size-4" />
             {tr('ai_page.text.full_rebuild')}
           </Button>
           <Button
@@ -168,7 +168,7 @@ export function AiModelStatusCard({
             disabled={refreshingStatus}
           >
             <RefreshCw
-              className={`mr-2 h-4 w-4 ${refreshingStatus ? 'animate-spin' : ''}`}
+              className={`mr-2 size-4 ${refreshingStatus ? 'animate-spin' : ''}`}
             />
             {refreshingStatus
               ? tr('ai_page.text.refreshing')
@@ -180,7 +180,7 @@ export function AiModelStatusCard({
             onClick={onResetWeights}
             disabled={resettingKnowledge}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 className="mr-2 size-4" />
             {resettingKnowledge
               ? tr('ai_page.text.resetting')
               : tr('ai_page.text.reset_ai_weights')}
@@ -191,7 +191,7 @@ export function AiModelStatusCard({
             onClick={onResetFull}
             disabled={resettingKnowledge}
           >
-            <Trash2 className="mr-2 h-4 w-4" />
+            <Trash2 className="mr-2 size-4" />
             {resettingKnowledge
               ? tr('ai_page.text.resetting')
               : tr('ai_page.text.reset_ai_full')}
