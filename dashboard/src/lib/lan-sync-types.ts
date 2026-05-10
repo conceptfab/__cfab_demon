@@ -14,6 +14,8 @@ export interface LanPeer {
   dashboard_port: number;
   last_seen: string;
   dashboard_running: boolean;
+  /** Wersja TIMEFLOW peera (np. "0.1.5701"). Pusty string lub undefined = nieznana. */
+  timeflow_version?: string;
 }
 
 export interface LanSyncState {

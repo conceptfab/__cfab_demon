@@ -120,6 +120,11 @@ pub struct PeerInfo {
     pub role: String,
     #[serde(default)]
     pub uptime_secs: u64,
+    /// Wersja TIMEFLOW po stronie peera (np. "0.1.5701"). Pusty string gdy
+    /// peer jeszcze nie ogłosił wersji (stare daemony przed feature'em strict
+    /// version-match w LAN sync).
+    #[serde(default)]
+    pub timeflow_version: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -345,6 +350,7 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
                                     dashboard_running: beacon.dashboard_running,
                                     role: beacon.role.clone(),
                                     uptime_secs: beacon.uptime_secs,
+                                    timeflow_version: beacon.timeflow_version.clone(),
                                 };
                                 peers.insert(beacon.device_id.clone(), peer);
                                 peers_dirty = true;
@@ -999,6 +1005,7 @@ fn handle_packet(
                 dashboard_running: beacon.dashboard_running,
                 role: beacon.role.clone(),
                 uptime_secs: beacon.uptime_secs,
+                timeflow_version: beacon.timeflow_version.clone(),
             };
             peers.insert(beacon.device_id.clone(), peer);
             *dirty = true;
@@ -1113,6 +1120,11 @@ fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
     }
     let machine_name = parsed.get("machine_name")?.as_str()?.to_string();
     let role = parsed.get("role").and_then(|v| v.as_str()).unwrap_or("undecided").to_string();
+    let timeflow_version = parsed
+        .get("version")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     Some((
         device_id.clone(),
@@ -1125,6 +1137,7 @@ fn http_ping_one(ip: String, my_device_id: &str) -> Option<(String, PeerInfo)> {
             dashboard_running: true,
             role,
             uptime_secs: 0,
+            timeflow_version,
         },
     ))
 }

@@ -1268,6 +1268,8 @@
       "dashboard_running": "online",
       "dashboard_offline": "offline",
       "peer_found": "TIMEFLOW znaleziony na {{name}}",
+      "version_mismatch_title": "Niezgodność wersji z {{name}}",
+      "version_mismatch_detail": "Sync zablokowany. Peer: v{{peer}}, lokalny: v{{local}}. Zaktualizuj obie maszyny do tej samej wersji.",
       "error_peer_unreachable": "Peer offline — uruchom TIMEFLOW Dashboard na drugiej maszynie",
       "full_sync": "Pełny Sync",
       "sync_interval": "Interwał synchronizacji",

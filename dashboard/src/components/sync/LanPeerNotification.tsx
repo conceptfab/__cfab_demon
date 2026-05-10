@@ -2,11 +2,21 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AlertTriangle, Wifi, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { lanSyncApi } from '@/lib/tauri';
+import { lanSyncApi, getDaemonRuntimeStatus } from '@/lib/tauri';
 import { loadLanSyncSettings, loadLanSyncState, recordPeerSync } from '@/lib/lan-sync';
 import type { LanPeer } from '@/lib/lan-sync-types';
 import { useDataStore } from '@/store/data-store';
 import { SyncProgressOverlay } from './SyncProgressOverlay';
+
+/**
+ * Strict version match — LAN sync ma sens tylko dla identycznych wersji
+ * po obu stronach (schema bazy / format snapshotu mogą się rozjechać między
+ * patchami). Backend `run_lan_sync` blokuje to dodatkowo serwerowo.
+ */
+function peerVersionMatches(peer: LanPeer, localVersion: string): boolean {
+  const peerVersion = (peer.timeflow_version ?? '').trim();
+  return localVersion !== '' && peerVersion !== '' && peerVersion === localVersion;
+}
 
 const POLL_INTERVAL_MS = 5_000;
 const NOTIFICATION_DISMISS_KEY = 'timeflow.lan-sync.dismissed-peers';
@@ -69,12 +79,37 @@ export function LanPeerNotification() {
   const { t } = useTranslation();
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const [visiblePeer, setVisiblePeer] = useState<LanPeer | null>(null);
+  const [incompatPeer, setIncompatPeer] = useState<LanPeer | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [localVersion, setLocalVersion] = useState<string>('');
   const pollRef = useRef<number | null>(null);
   const visiblePeerRef = useRef<LanPeer | null>(null);
+  const incompatPeerRef = useRef<LanPeer | null>(null);
+  const localVersionRef = useRef<string>('');
 
   visiblePeerRef.current = visiblePeer;
+  incompatPeerRef.current = incompatPeer;
+  localVersionRef.current = localVersion;
+
+  // Wersja własna dashboardu — pobierana raz, używana do strict version match
+  // przy wyświetlaniu toastu LAN sync. Bez niej ukrywamy oba banery
+  // (nie wiemy do czego porównać).
+  useEffect(() => {
+    let cancelled = false;
+    getDaemonRuntimeStatus()
+      .then((s) => {
+        if (cancelled) return;
+        setLocalVersion((s.dashboard_version ?? '').trim());
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLocalVersion('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Keep a ref to handleSync so the polling effect always calls the latest version
   const handleSyncRef = useRef<(peer: LanPeer) => Promise<void>>();
@@ -92,17 +127,22 @@ export function LanPeerNotification() {
         ]);
         const pairedIds = new Set(pairedDevices.map((d) => d.device_id));
         const dismissed = getDismissedPeers();
-        const activePeer = peers.find(
+        const candidates = peers.filter(
           (p) =>
             p.dashboard_running &&
             pairedIds.has(p.device_id) &&
             !dismissed.has(p.device_id),
         );
 
-        if (activePeer && !visiblePeerRef.current) {
-          setVisiblePeer(activePeer);
-        } else if (!activePeer && visiblePeerRef.current) {
-          setVisiblePeer(null);
+        const local = localVersionRef.current;
+        const compat = candidates.find((p) => peerVersionMatches(p, local)) ?? null;
+        const incompat = candidates.find((p) => !peerVersionMatches(p, local)) ?? null;
+
+        if (compat?.device_id !== visiblePeerRef.current?.device_id) {
+          setVisiblePeer(compat);
+        }
+        if (incompat?.device_id !== incompatPeerRef.current?.device_id) {
+          setIncompatPeer(incompat);
         }
       } catch {
         // Silent fail — discovery may not be ready (no lan_peers.json yet)
@@ -177,6 +217,13 @@ export function LanPeerNotification() {
     setVisiblePeer(null);
   }, [visiblePeer]);
 
+  const handleIncompatDismiss = useCallback(() => {
+    if (incompatPeer) {
+      dismissPeer(incompatPeer.device_id);
+    }
+    setIncompatPeer(null);
+  }, [incompatPeer]);
+
   const handleSyncFinished = useCallback((success: boolean) => {
     if (success) {
       triggerRefresh('lan_sync_pull');
@@ -189,7 +236,7 @@ export function LanPeerNotification() {
     return <SyncProgressOverlay active={syncing} onFinished={handleSyncFinished} />;
   }
 
-  if (!visiblePeer) return null;
+  if (!visiblePeer && !incompatPeer) return null;
 
   return (
     <div className="fixed bottom-20 right-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
@@ -200,31 +247,61 @@ export function LanPeerNotification() {
             <span className="min-w-0 truncate max-w-[250px]">{syncError}</span>
           </div>
         )}
-        <div className="flex items-center gap-3 rounded-lg border border-sky-500/30 bg-background/95 backdrop-blur-sm px-4 py-3 shadow-lg shadow-sky-500/10">
-          <Wifi className="h-4 w-4 text-sky-400 shrink-0" />
-          <div className="min-w-0">
-            <p className="text-sm font-medium">
-              {t('settings.lan_sync.peer_found', { name: visiblePeer.machine_name })}
-            </p>
+
+        {incompatPeer && (
+          <div className="flex items-start gap-3 rounded-lg border border-red-500/40 bg-background/95 backdrop-blur-sm px-4 py-3 shadow-lg shadow-red-500/10 max-w-[360px]">
+            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-red-300">
+                {t('settings.lan_sync.version_mismatch_title', {
+                  name: incompatPeer.machine_name,
+                })}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t('settings.lan_sync.version_mismatch_detail', {
+                  peer: incompatPeer.timeflow_version || '?.?.?',
+                  local: localVersion || '?.?.?',
+                })}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              onClick={handleIncompatDismiss}
+              aria-label={t('common.dismiss', 'Dismiss')}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 px-2.5 text-xs border-sky-500/30 text-sky-400 hover:bg-sky-500/10 shrink-0"
-            disabled={syncing}
-            onClick={() => void handleSync(visiblePeer)}
-          >
-            {syncing ? t('settings.lan_sync.syncing') : t('settings.lan_sync.sync_button')}
-          </Button>
-          <button
-            type="button"
-            className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-            onClick={handleDismiss}
-            aria-label={t('common.dismiss', 'Dismiss')}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        )}
+
+        {visiblePeer && (
+          <div className="flex items-center gap-3 rounded-lg border border-sky-500/30 bg-background/95 backdrop-blur-sm px-4 py-3 shadow-lg shadow-sky-500/10">
+            <Wifi className="h-4 w-4 text-sky-400 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium">
+                {t('settings.lan_sync.peer_found', { name: visiblePeer.machine_name })}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs border-sky-500/30 text-sky-400 hover:bg-sky-500/10 shrink-0"
+              disabled={syncing}
+              onClick={() => void handleSync(visiblePeer)}
+            >
+              {syncing ? t('settings.lan_sync.syncing') : t('settings.lan_sync.sync_button')}
+            </Button>
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              onClick={handleDismiss}
+              aria-label={t('common.dismiss', 'Dismiss')}
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
