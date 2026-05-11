@@ -20,7 +20,47 @@ import type {
   ProjectWithStats,
 } from '@/lib/db-types';
 import { PROJECT_COLORS } from '@/lib/project-colors';
-import { cn, formatMoney } from '@/lib/utils';
+import { cn, formatMoney, getDurationParts } from '@/lib/utils';
+
+function DurationDisplay({ seconds }: { seconds: number }) {
+  const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
+  const unitClass = 'text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline';
+
+  if (hours > 0) {
+    return (
+      <span className="flex items-baseline gap-x-1">
+        <span>
+          {hours}
+          <span className={unitClass}>h</span>
+        </span>
+        <span>
+          {minutes}
+          <span className={unitClass}>m</span>
+        </span>
+      </span>
+    );
+  }
+  if (minutes > 0) {
+    return (
+      <span className="flex items-baseline gap-x-1">
+        <span>
+          {minutes}
+          <span className={unitClass}>m</span>
+        </span>
+        <span>
+          {remainingSeconds}
+          <span className={unitClass}>s</span>
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="flex items-baseline">
+      {remainingSeconds}
+      <span className={unitClass}>s</span>
+    </span>
+  );
+}
 
 type ProjectCardProps = {
   project: ProjectWithStats;
@@ -37,7 +77,6 @@ type ProjectCardProps = {
   assignOpen: boolean;
   isColorEditorOpen: boolean;
   pendingColor: string | null;
-  renderDuration: (seconds: number) => ReactNode;
   onToggleColorEditor: () => void;
   onPendingColorChange: (color: string) => void;
   onSavePendingColor: () => void;
@@ -70,7 +109,6 @@ function ProjectCardComponent({
   assignOpen,
   isColorEditorOpen,
   pendingColor,
-  renderDuration,
   onToggleColorEditor,
   onPendingColorChange,
   onSavePendingColor,
@@ -215,7 +253,7 @@ function ProjectCardComponent({
               {t('projects.labels.total_time_value')}
             </p>
             <p className="flex items-baseline gap-x-1 text-xl leading-none font-[200] text-emerald-400">
-              {renderDuration(project.total_seconds)}
+              <DurationDisplay seconds={project.total_seconds} />
               <span className="text-[1em] font-[600] opacity-30">/</span>
               <span className="text-[0.8em] font-[200] opacity-90">
                 {formatMoney(estimateValue, currencyCode)}
@@ -303,7 +341,7 @@ function ProjectCardComponent({
                       />
                       <span className="flex-1 truncate">{app.name}</span>
                       <span className="shrink-0 font-mono text-emerald-400">
-                        {renderDuration(app.seconds)}
+                        <DurationDisplay seconds={app.seconds} />
                       </span>
                     </div>
                   ))}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -12,7 +12,6 @@ import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { ProjectCard } from '@/components/project/ProjectCard';
 import { CreateProjectDialog } from '@/components/project/CreateProjectDialog';
 import {
-  getDurationParts,
   formatPathForDisplay,
   getErrorMessage,
   logTauriError,
@@ -42,6 +41,49 @@ const SORT_STORAGE_KEY = 'timeflow-dashboard-projects-sort';
 const FOLDERS_STORAGE_KEY = 'timeflow-dashboard-projects-use-folders';
 const SECTION_STORAGE_KEY = 'timeflow-dashboard-projects-section-open';
 const LEGACY_SECTION_STORAGE_KEY = 'cfab-dashboard-projects-section-open';
+
+type DuplicateInfo = {
+  groupSize: number;
+  normalizedKey: string;
+  groupNames: string[];
+};
+
+function DuplicateMarkerBadge({
+  duplicateInfo,
+}: {
+  duplicateInfo: DuplicateInfo;
+}) {
+  const { t } = useTranslation();
+  const title =
+    duplicateInfo.groupNames.length > 1
+      ? t('projects.labels.possible_duplicate_named', {
+          groupSize: duplicateInfo.groupSize,
+          groupNames: duplicateInfo.groupNames.join(' | '),
+        })
+      : t('projects.labels.possible_duplicate_normalized', {
+          groupSize: duplicateInfo.groupSize,
+        });
+
+  return (
+    <span
+      className="inline-flex size-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600 shrink-0"
+      title={title}
+      aria-label={title}
+    >
+      {t('projects.labels.duplicate_marker')}
+    </span>
+  );
+}
+
+function makeDuplicateMarkerRenderer(
+  byProjectId: Map<number, DuplicateInfo>,
+): (project: ProjectWithStats) => ReactNode {
+  return (project: ProjectWithStats) => {
+    const info = byProjectId.get(project.id);
+    if (!info) return null;
+    return <DuplicateMarkerBadge duplicateInfo={info} />;
+  };
+}
 
 function normalizeProjectDuplicateKey(name: string): string {
   return name.trim().toLowerCase().replace(/[_-]+/g, '').replace(/\s+/g, '');
@@ -87,45 +129,6 @@ function filterProjectList(
   );
 }
 
-function renderDuration(seconds: number) {
-  const { hours, minutes, seconds: remainingSeconds } = getDurationParts(seconds);
-  const unitClass = 'text-[0.7em] font-[400] opacity-70 ml-0.5 self-baseline';
-
-  if (hours > 0) {
-    return (
-      <span className="flex items-baseline gap-x-1">
-        <span>
-          {hours}
-          <span className={unitClass}>h</span>
-        </span>
-        <span>
-          {minutes}
-          <span className={unitClass}>m</span>
-        </span>
-      </span>
-    );
-  }
-  if (minutes > 0) {
-    return (
-      <span className="flex items-baseline gap-x-1">
-        <span>
-          {minutes}
-          <span className={unitClass}>m</span>
-        </span>
-        <span>
-          {remainingSeconds}
-          <span className={unitClass}>s</span>
-        </span>
-      </span>
-    );
-  }
-  return (
-    <span className="flex items-baseline">
-      {remainingSeconds}
-      <span className={unitClass}>s</span>
-    </span>
-  );
-}
 
 export function Projects() {
   const { t } = useTranslation();
@@ -750,30 +753,10 @@ export function Projects() {
     filteredExcludedProjects.length - visibleExcludedProjects.length,
   );
 
-  const renderDuplicateMarker = (project: ProjectWithStats) => {
-    const info = duplicateProjectsView.byProjectId.get(project.id);
-    if (!info) return null;
-
-    const title =
-      info.groupNames.length > 1
-        ? t('projects.labels.possible_duplicate_named', {
-            groupSize: info.groupSize,
-            groupNames: info.groupNames.join(' | '),
-          })
-        : t('projects.labels.possible_duplicate_normalized', {
-            groupSize: info.groupSize,
-          });
-
-    return (
-      <span
-        className="inline-flex size-4 items-center justify-center rounded-full border border-amber-500/40 bg-amber-500/10 text-[10px] font-bold leading-none text-amber-600 shrink-0"
-        title={title}
-        aria-label={title}
-      >
-        {t('projects.labels.duplicate_marker')}
-      </span>
-    );
-  };
+  const renderDuplicateMarker = useMemo(
+    () => makeDuplicateMarkerRenderer(duplicateProjectsView.byProjectId),
+    [duplicateProjectsView.byProjectId],
+  );
 
   const renderProjectList = (
     projectList: ProjectWithStats[],
@@ -806,6 +789,10 @@ export function Projects() {
     options?: { inDialog?: boolean },
   ) => {
     const isDeleting = busy === `delete-project:${p.id}`;
+    const duplicateInfo = duplicateProjectsView.byProjectId.get(p.id);
+    const duplicateMarker = duplicateInfo
+      ? <DuplicateMarkerBadge duplicateInfo={duplicateInfo} />
+      : null;
     return (
       <ProjectCard
         key={p.id}
@@ -818,14 +805,13 @@ export function Projects() {
         isDeleting={isDeleting}
         isHotProject={hotProjectIds.has(p.id)}
         inDialog={options?.inDialog}
-        duplicateMarker={renderDuplicateMarker(p)}
+        duplicateMarker={duplicateMarker}
         extraInfo={extraInfo}
         loadingExtra={loadingExtra}
         apps={apps}
         assignOpen={assignOpen === p.id}
         isColorEditorOpen={editingColorId === p.id}
         pendingColor={pendingColor}
-        renderDuration={renderDuration}
         onToggleColorEditor={() => {
           if (editingColorId === p.id) {
             setEditingColorId(null);
