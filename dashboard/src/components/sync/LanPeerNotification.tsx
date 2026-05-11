@@ -254,7 +254,7 @@ export function LanPeerNotification() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-red-300">
                 {t('settings.lan_sync.version_mismatch_title', {
-                  name: incompatPeer.machine_name,
+                  name: incompatPeer.machine_name?.trim() || incompatPeer.ip || t('settings.lan_sync.unknown_peer', 'peer'),
                 })}
               </p>
               <p className="text-xs text-muted-foreground mt-1">

@@ -106,6 +106,13 @@ interface BackgroundStatusState {
   lanPeer: LanPeer | null;
   lanPeerPaired: boolean;
   lanIsSlave: boolean;
+  /**
+   * `false` only when peer is online AND local + peer `timeflow_version`
+   * are both known AND differ. Unknown versions default to `true` so we
+   * don't flash a false "mismatch" warning during startup. Backend still
+   * rejects sync on real mismatch (412), this is purely a UI gate.
+   */
+  lanPeerVersionOk: boolean;
   refreshDiagnostics: () => Promise<void>;
   refreshAiStatus: () => Promise<void>;
   refreshDatabaseSettings: () => Promise<void>;
@@ -125,6 +132,7 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
     lanPeer: null,
     lanPeerPaired: false,
     lanIsSlave: false,
+    lanPeerVersionOk: true,
     refreshDiagnostics: async () => {
       if (diagnosticsInFlight) return;
       diagnosticsInFlight = true;
@@ -204,8 +212,13 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
       try {
         const settings = loadLanSyncSettings();
         if (!settings.enabled) {
-          if (get().lanPeer !== null || get().lanPeerPaired || get().lanIsSlave) {
-            set({ lanPeer: null, lanPeerPaired: false, lanIsSlave: false });
+          if (
+            get().lanPeer !== null ||
+            get().lanPeerPaired ||
+            get().lanIsSlave ||
+            !get().lanPeerVersionOk
+          ) {
+            set({ lanPeer: null, lanPeerPaired: false, lanIsSlave: false, lanPeerVersionOk: true });
           }
           return;
         }
@@ -227,11 +240,20 @@ export const useBackgroundStatusStore = create<BackgroundStatusState>(
             isSlave = p.role === 'slave';
           } catch { /* default not-slave */ }
         }
-        if (get().lanPeer !== online || get().lanPeerPaired !== isPaired || get().lanIsSlave !== isSlave) {
-          set({ lanPeer: online, lanPeerPaired: isPaired, lanIsSlave: isSlave });
+        const localVersion = (get().daemonStatus?.dashboard_version ?? '').trim();
+        const peerVersion = (online?.timeflow_version ?? '').trim();
+        const versionOk =
+          !online || localVersion === '' || peerVersion === '' || localVersion === peerVersion;
+        if (
+          get().lanPeer !== online ||
+          get().lanPeerPaired !== isPaired ||
+          get().lanIsSlave !== isSlave ||
+          get().lanPeerVersionOk !== versionOk
+        ) {
+          set({ lanPeer: online, lanPeerPaired: isPaired, lanIsSlave: isSlave, lanPeerVersionOk: versionOk });
         }
       } catch {
-        if (get().lanPeer !== null) set({ lanPeer: null, lanPeerPaired: false });
+        if (get().lanPeer !== null) set({ lanPeer: null, lanPeerPaired: false, lanPeerVersionOk: true });
       } finally {
         lanPeerPollInFlight = false;
       }

@@ -142,7 +142,10 @@ export function Sidebar() {
   const lanPeer = useBackgroundStatusStore((s) => s.lanPeer);
   const lanPeerPaired = useBackgroundStatusStore((s) => s.lanPeerPaired);
   const lanIsSlave = useBackgroundStatusStore((s) => s.lanIsSlave);
+  const lanPeerVersionOk = useBackgroundStatusStore((s) => s.lanPeerVersionOk);
   const refreshLanPeers = useBackgroundStatusStore((s) => s.refreshLanPeers);
+  // Sync is only allowed when peer is paired, online AND running the same TIMEFLOW version.
+  const lanSyncReady = !!lanPeer && lanPeerPaired && lanPeerVersionOk;
   const [lanSyncing, setLanSyncing] = useState(false);
   const [lanSyncMessage, setLanSyncMessage] = useState<string | null>(null);
   const [lanScanning, setLanScanning] = useState(false);
@@ -170,6 +173,11 @@ export function Sidebar() {
 
   const handleLanSync = useCallback(async () => {
     if (!lanPeer || lanSyncing || lanIsSlave) return;
+    if (!lanPeerVersionOk) {
+      setLanSyncMessage(t('layout.tooltips.lan_readiness_version_mismatch'));
+      clearLanSyncMessageLater(8_000);
+      return;
+    }
     setLanSyncing(true);
     setLanSyncMessage(t('settings.lan_sync.syncing'));
     try {
@@ -224,7 +232,7 @@ export function Sidebar() {
     } finally {
       setLanSyncing(false);
     }
-  }, [lanPeer, lanSyncing, lanIsSlave, triggerRefresh, t, clearLanSyncMessageLater, refreshLanPeers]);
+  }, [lanPeer, lanSyncing, lanIsSlave, lanPeerVersionOk, triggerRefresh, t, clearLanSyncMessageLater, refreshLanPeers]);
 
   const handleLanScan = useCallback(async () => {
     if (lanScanning || lanSyncing) return;
@@ -446,25 +454,29 @@ export function Sidebar() {
             </AppTooltip>
 
             <div className="flex items-center gap-0.5 ml-auto">
-              {/* Readiness — both peers paired & online */}
+              {/* Readiness — paired, online, and on the same TIMEFLOW version */}
               <AppTooltip
                 content={
-                  lanPeer && lanPeerPaired
-                    ? t('layout.tooltips.lan_readiness_ready')
-                    : lanPeer && !lanPeerPaired
+                  !lanPeer
+                    ? t('layout.tooltips.lan_readiness_no_peer')
+                    : !lanPeerPaired
                       ? t('layout.tooltips.lan_readiness_not_paired')
-                      : t('layout.tooltips.lan_readiness_no_peer')
+                      : !lanPeerVersionOk
+                        ? t('layout.tooltips.lan_readiness_version_mismatch')
+                        : t('layout.tooltips.lan_readiness_ready')
                 }
                 side="right"
               >
                 <div
                   className={cn(
                     'flex items-center justify-center rounded-md p-1.5 transition-all',
-                    lanPeer && lanPeerPaired
+                    lanSyncReady
                       ? 'text-emerald-500'
-                      : lanPeer
-                        ? 'text-amber-400'
-                        : 'text-muted-foreground/25',
+                      : lanPeer && !lanPeerVersionOk
+                        ? 'text-red-400'
+                        : lanPeer
+                          ? 'text-amber-400'
+                          : 'text-muted-foreground/25',
                   )}
                 >
                   <Link2 className="size-3.5" />
@@ -474,22 +486,24 @@ export function Sidebar() {
               {/* Delta sync trigger */}
               <AppTooltip
                 content={
-                  lanPeer && lanPeerPaired && !lanIsSlave
+                  lanSyncReady && !lanIsSlave
                     ? t('layout.tooltips.lan_delta_sync')
-                    : t('layout.tooltips.lan_delta_sync_disabled')
+                    : lanPeer && lanPeerPaired && !lanPeerVersionOk
+                      ? t('layout.tooltips.lan_readiness_version_mismatch')
+                      : t('layout.tooltips.lan_delta_sync_disabled')
                 }
                 side="right"
               >
                 <button
                   onClick={
-                    lanPeer && lanPeerPaired && !lanIsSlave && !lanSyncing
+                    lanSyncReady && !lanIsSlave && !lanSyncing
                       ? () => void handleLanSync()
                       : undefined
                   }
-                  disabled={!lanPeer || !lanPeerPaired || lanIsSlave || lanSyncing}
+                  disabled={!lanSyncReady || lanIsSlave || lanSyncing}
                   className={cn(
                     'flex items-center justify-center rounded-md p-1.5 transition-all',
-                    lanPeer && lanPeerPaired && !lanIsSlave && !lanSyncing
+                    lanSyncReady && !lanIsSlave && !lanSyncing
                       ? 'text-sky-400 hover:bg-sky-500/15 hover:text-sky-300 active:scale-90'
                       : 'text-muted-foreground/25 cursor-not-allowed',
                     lanSyncing && 'animate-pulse text-amber-400',

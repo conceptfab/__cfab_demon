@@ -169,6 +169,15 @@ export function useJobPool() {
       const activePeer = peers.find((p) => p.dashboard_running);
       if (!activePeer) return;
 
+      // Sync wymaga zgodnej wersji TIMEFLOW po obu stronach — backend i tak
+      // odrzuci niezgodne (412), ale nie ma sensu nawet próbować z tła.
+      const localVersion = (useBackgroundStatusStore.getState().daemonStatus?.dashboard_version ?? '').trim();
+      const peerVersion = (activePeer.timeflow_version ?? '').trim();
+      if (localVersion !== '' && peerVersion !== '' && localVersion !== peerVersion) {
+        logger.log(`[useJobPool] LAN sync skipped — version mismatch (local=${localVersion}, peer=${peerVersion})`);
+        return;
+      }
+
       isLanSyncingRef.current = true;
       logger.log(`[useJobPool] Running LAN sync interval with peer ${activePeer.machine_name}`);
 
