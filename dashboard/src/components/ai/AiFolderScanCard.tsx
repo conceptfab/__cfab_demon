@@ -36,7 +36,7 @@ export function AiFolderScanCard({
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
             {status.last_scanned_at && (
               <span>
-                {/* react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
+                {/* eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
                 {t('ai_page.folder_scan.last_scan')}: {new Date(status.last_scanned_at).toLocaleString()}
               </span>
             )}

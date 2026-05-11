@@ -153,6 +153,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
                 setSpeed(0);
                 setEta(null);
                 prevBytesRef.current = 0;
+                // eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app); Date.now() in event handler
                 prevTimeRef.current = Date.now();
                 onRetry();
               }}

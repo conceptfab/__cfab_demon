@@ -554,7 +554,7 @@ export function Sidebar() {
               dbSettings?.backup_enabled
                 ? t('layout.tooltips.last_backup', {
                     date: dbSettings.last_backup_at
-                      // react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app)
+                      // eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app)
                       ? new Date(dbSettings.last_backup_at).toLocaleDateString(
                           i18n.resolvedLanguage || undefined,
                         )

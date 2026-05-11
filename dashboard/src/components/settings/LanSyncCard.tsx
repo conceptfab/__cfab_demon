@@ -544,7 +544,7 @@ export function LanSyncCard({
               {latestMarker.marker_hash.slice(0, 16)}…
             </p>
             <p className="text-xs text-muted-foreground">
-              {/* react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
+              {/* eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
               {new Date(latestMarker.created_at).toLocaleString()}, {latestMarker.device_id}
               {latestMarker.full_sync ? ' (full)' : ' (delta)'}
             </p>
@@ -803,7 +803,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
               <p className="text-xs text-muted-foreground">
                 {lastSyncLabel}{' '}
                 <span className="font-mono text-foreground">
-                  {/* react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
+                  {/* eslint-disable-next-line react-doctor/rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
                   {new Date(lastSyncAt).toLocaleString()}
                 </span>
               </p>
