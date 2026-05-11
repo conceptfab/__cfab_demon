@@ -198,7 +198,7 @@ export function MultiSplitSessionModal({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Scissors className="size-5 text-amber-400" />
-              <h2 className="text-base font-bold">
+              <h2 className="text-base font-semibold">
                 {t('sessions.split_multi.title')}
               </h2>
             </div>

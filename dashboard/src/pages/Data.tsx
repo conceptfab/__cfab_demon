@@ -15,7 +15,7 @@ export function DataManagement() {
       {/* Primary Actions Section */}
       <section className="space-y-6">
         <div className="flex items-center gap-4 px-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
             {t("data_page.sections.data_exchange")}
           </h2>
           <div className="h-px w-full bg-border/40" />
@@ -29,7 +29,7 @@ export function DataManagement() {
       {/* System Maintenance Section */}
       <section className="space-y-6">
         <div className="flex items-center gap-4 px-1">
-          <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
             {t("data_page.sections.system_database")}
           </h2>
           <div className="h-px w-full bg-border/40" />

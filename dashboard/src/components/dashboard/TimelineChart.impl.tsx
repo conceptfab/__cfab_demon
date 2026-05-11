@@ -333,7 +333,7 @@ export function TimelineChart({
         {comments && comments.length > 0 && (
           <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px dashed ${CHART_GRID_COLOR}` }}>
             {comments.map((c, i) => (
-              <div key={`comment-${i}-${c}`} style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontSize: 11, fontStyle: "italic", marginBottom: 2 }}>
+              <div key={`comment-${i}-${c}`} style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontSize: 12, fontStyle: "italic", marginBottom: 2 }}>
                 "{c}"
               </div>
             ))}
@@ -471,7 +471,7 @@ export function TimelineChart({
                     tick={useSimpleRendering ? undefined : renderCustomAxisTick}
                     tickFormatter={useSimpleRendering ? xTickFormatter : undefined}
                     stroke={CHART_AXIS_COLOR}
-                    fontSize={11}
+                    fontSize={12}
                     tickLine={false}
                     axisLine={false}
                     interval={isHourly ? 2 : undefined}

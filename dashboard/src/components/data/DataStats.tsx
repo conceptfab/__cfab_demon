@@ -67,7 +67,7 @@ export function DataStats() {
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       {items.map((item) => (
         <Card key={item.label} className="overflow-hidden border-border/40 bg-background/50 backdrop-blur-sm">
-          <CardContent className="p-4 flex flex-col items-center text-center space-y-1">
+          <CardContent className="p-4 flex flex-col items-center text-center gap-y-1">
             <item.icon className={`size-4 ${item.color} opacity-80`} />
             <div className="text-xl font-bold tracking-tight">{item.value}</div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">

@@ -118,7 +118,7 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
         </DialogHeader>
 
         {isSent ? (
-          <div className="flex flex-col items-center justify-center py-10 space-y-4 animate-in fade-in zoom-in duration-300">
+          <div className="flex flex-col items-center justify-center py-10 gap-y-4 animate-in fade-in zoom-in duration-300">
             <div className="size-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
               <Check className="size-6 stroke-[3px]" />
             </div>

@@ -102,7 +102,7 @@ export function QuickStart() {
   ];
 
   return (
-    <div className="flex h-full flex-col p-8 space-y-6 overflow-y-auto max-w-7xl mx-auto">
+    <div className="flex h-full flex-col p-8 gap-y-6 overflow-y-auto max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <Button
           variant="ghost"

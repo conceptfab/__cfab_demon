@@ -108,7 +108,7 @@ export function DataHistory() {
   return (
     <div className="space-y-8 mt-4">
       <div className="flex items-center gap-4 px-1">
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground/70 whitespace-nowrap">
           {t("data_page.history.title")}
         </h2>
         <div className="h-px w-full bg-border/40" />

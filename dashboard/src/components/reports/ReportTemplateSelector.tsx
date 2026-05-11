@@ -27,7 +27,7 @@ export function ReportTemplateSelector({ onSelect, onCancel, onEditTemplates }: 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileText className="size-5 text-sky-400" />
-            <h2 className="text-base font-bold">{t('reports.template_selector.choose_template')}</h2>
+            <h2 className="text-base font-semibold">{t('reports.template_selector.choose_template')}</h2>
           </div>
           <Button variant="ghost" size="sm" onClick={onCancel} className="size-7 p-0">
             <X className="size-4" />

@@ -192,7 +192,7 @@ export function ReportView() {
                     boxShadow: 'none',
                   }}
                 />
-                <h1 className="text-2xl font-bold tracking-tight print:text-black">
+                <h1 className="text-2xl font-semibold tracking-tight print:text-black">
                   {report.project.name}
                 </h1>
               </div>
@@ -272,7 +272,7 @@ export function ReportView() {
           {/* ═══ TOP APPS ═══ */}
           {has('apps') && report.extra.top_apps.length > 0 && (
             <div>
-              <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-3 print:text-gray-500">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-3 print:text-gray-500">
                 {t('report_view.most_used_applications')}
               </h2>
               <div className="space-y-2">
@@ -307,7 +307,7 @@ export function ReportView() {
           {/* ═══ AI DATA ═══ */}
           {has('ai') && (
             <div className="rounded-lg border border-border/20 p-4 print:border-gray-200 print:break-inside-avoid">
-              <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                 {t('report_view.ai_model')}
               </h2>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -334,7 +334,7 @@ export function ReportView() {
           {/* ═══ SESSION TABLE ═══ */}
           {has('sessions') && report.sessions.length > 0 && (
             <div>
-              <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                 {t('report_view.sessions')} ({report.sessions.length})
               </h2>
               <table className="w-full text-[11px] border-collapse">
@@ -390,7 +390,7 @@ export function ReportView() {
           {/* ═══ COMMENTS ═══ */}
           {has('comments') && sessionsWithComments.length > 0 && (
             <div>
-              <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                 {t('report_view.comments')} ({sessionsWithComments.length})
               </h2>
               <div className="space-y-1.5">
@@ -423,7 +423,7 @@ export function ReportView() {
             if (boostedSessions.length === 0) return null;
             return (
               <div>
-                <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+                <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                   {t('report_view.boosted_sessions')} ({boostedSessions.length})
                 </h2>
                 <table className="w-full text-[11px] border-collapse">
@@ -472,7 +472,7 @@ export function ReportView() {
           {/* ═══ MANUAL SESSIONS ═══ */}
           {has('manual_sessions') && report.manual_sessions.length > 0 && (
             <div>
-              <h2 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
+              <h2 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50 mb-2 print:text-gray-500">
                 {t('report_view.manual_sessions')} ({report.manual_sessions.length})
               </h2>
               <table className="w-full text-[11px] border-collapse">

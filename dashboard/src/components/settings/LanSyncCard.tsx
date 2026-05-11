@@ -544,7 +544,7 @@ export function LanSyncCard({
               {latestMarker.marker_hash.slice(0, 16)}…
             </p>
             <p className="text-xs text-muted-foreground">
-              {new Date(latestMarker.created_at).toLocaleString()} — {latestMarker.device_id}
+              {new Date(latestMarker.created_at).toLocaleString()}, {latestMarker.device_id}
               {latestMarker.full_sync ? ' (full)' : ' (delta)'}
             </p>
           </div>

@@ -65,7 +65,7 @@ export function SectionHelp({
         {children}
 
         <div className="mt-8">
-          <h4 className="text-[10px] font-bold mb-4 uppercase tracking-[0.15em] text-muted-foreground/60 border-b border-border/10 pb-2">
+          <h4 className="text-[10px] font-semibold mb-4 uppercase tracking-[0.15em] text-muted-foreground/60 border-b border-border/10 pb-2">
             {footer}
           </h4>
           <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-3">

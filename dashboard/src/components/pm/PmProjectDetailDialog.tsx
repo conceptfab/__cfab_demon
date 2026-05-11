@@ -151,7 +151,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
             <div className="grid gap-2 text-sm">
               <div className="flex items-center gap-2">
                 <span className="font-medium">{project.prj_client}</span>
-                <span className="text-muted-foreground">—</span>
+                <span className="text-muted-foreground">·</span>
                 <span>{project.prj_name}</span>
                 <Badge variant="outline" className="ml-auto text-[10px]">{t(`pm.status.${project.prj_status}`, project.prj_status)}</Badge>
               </div>

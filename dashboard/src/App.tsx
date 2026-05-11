@@ -136,15 +136,15 @@ class ErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="flex h-screen items-center justify-center bg-slate-950 text-slate-200">
+        <div className="flex h-screen items-center justify-center bg-background text-foreground">
           <div className="max-w-md space-y-4 text-center">
             <h1 className="text-xl font-semibold">
               {i18n.t('ui.app.error_title')}
             </h1>
-            <p className="text-sm text-slate-400">{this.state.error.message}</p>
+            <p className="text-sm text-muted-foreground">{this.state.error.message}</p>
             <div className="flex gap-3 justify-center">
               <button
-                className="rounded bg-slate-700 px-4 py-2 text-sm hover:bg-slate-600"
+                className="rounded bg-secondary px-4 py-2 text-sm hover:bg-accent"
                 onClick={() => {
                   this.setState({ error: null });
                   useUIStore.getState().setCurrentPage('dashboard');

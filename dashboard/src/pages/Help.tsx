@@ -71,7 +71,7 @@ export function Help() {
   };
 
   return (
-    <div className="flex h-full flex-col p-8 space-y-8 overflow-y-auto max-w-6xl mx-auto">
+    <div className="flex h-full flex-col p-8 gap-y-8 overflow-y-auto max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-border/10 pb-6">
         <div className="space-y-2">
           <h1 className="text-3xl font-light tracking-[0.1em] flex items-center gap-3">
