@@ -184,6 +184,7 @@ export function DataHistory() {
                     </div>
                     <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground/70">
                       <Clock className="size-2.5" />
+                      {/* react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
                       {new Date(f.modified_at).toLocaleString()}
                     </div>
                   </div>

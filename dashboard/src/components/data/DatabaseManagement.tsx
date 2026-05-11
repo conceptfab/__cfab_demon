@@ -342,6 +342,7 @@ export function DatabaseManagement() {
                 {t('data_page.database_management.last_optimization')}
                 {" "}
                 {settings.last_optimize_at
+                  // react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app)
                   ? new Date(settings.last_optimize_at).toLocaleString()
                   : t('data_page.database_management.never')}
               </div>
@@ -453,6 +454,7 @@ export function DatabaseManagement() {
                 <div className="flex items-center gap-1.5 text-[11px] font-medium py-1.5">
                   <Clock className="size-3 text-muted-foreground" />
                   {settings.last_backup_at
+                    // react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app)
                     ? new Date(settings.last_backup_at).toLocaleDateString()
                     : t('data_page.database_management.never')}
                 </div>

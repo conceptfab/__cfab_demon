@@ -1004,6 +1004,7 @@ export function ProjectPage() {
               <div className="p-2 text-[11px] font-semibold text-muted-foreground/50 border-b border-white/5 mb-1 flex items-center justify-between">
                 <span>{t('project_page.text.zone_actions')}</span>
                 <span className="bg-white/5 px-1.5 py-0.5 rounded text-[10px]">
+                  {/* react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
                   {new Date(ctxMenu.date).toLocaleDateString(
                     i18n.resolvedLanguage || undefined,
                     {

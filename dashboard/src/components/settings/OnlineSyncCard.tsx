@@ -127,6 +127,7 @@ export function OnlineSyncCard({
               </div>
               {licenseInfo.expiresAt && (
                 <div className="text-muted-foreground">
+                  {/* react-doctor-disable-next-line rendering-hydration-mismatch-time -- No SSR (Tauri client app) */}
                   {t('settings.license.expires')}: <span className="text-foreground">{new Date(licenseInfo.expiresAt).toLocaleDateString()}</span>
                 </div>
               )}
