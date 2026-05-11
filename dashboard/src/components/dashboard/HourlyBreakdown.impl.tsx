@@ -1,3 +1,4 @@
+/* eslint-disable react-doctor/prefer-dynamic-import -- lazy-loaded by sibling wrapper (.tsx → .impl.tsx) */
 import { useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 import {

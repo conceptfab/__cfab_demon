@@ -55,7 +55,7 @@ function groupClients(projects: PmProject[]) {
     if (!s.variants.includes(clientUpper)) s.variants.push(clientUpper);
   }
 
-  return { stats, groups: [...stats.keys()].sort((a, b) => a.localeCompare(b)) };
+  return { stats, groups: Array.from(stats.keys()).toSorted((a, b) => a.localeCompare(b)) };
 }
 
 export function PmClientsList({ projects, clientColors, onColorsChanged }: Props) {

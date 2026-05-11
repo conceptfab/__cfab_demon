@@ -117,7 +117,7 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
 
   // Extract unique values for filters
   const uniqueYears = useMemo(() =>
-    [...new Set(projects.map((p) => p.prj_year))].sort((a, b) => b.localeCompare(a)),
+    Array.from(new Set(projects.map((p) => p.prj_year))).toSorted((a, b) => b.localeCompare(a)),
     [projects],
   );
   const { uniqueClients, clientGroupOf } = useMemo(() => {
@@ -140,14 +140,14 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
       }
       groupMap.set(name, name);
     }
-    const groups = [...new Set(groupMap.values())].sort((a, b) => a.localeCompare(b));
+    const groups = Array.from(new Set(groupMap.values())).toSorted((a, b) => a.localeCompare(b));
     return {
       uniqueClients: groups,
       clientGroupOf: (raw: string) => groupMap.get(raw.toUpperCase()) || raw.toUpperCase(),
     };
   }, [projects]);
   const uniqueStatuses = useMemo(() =>
-    [...new Set(projects.map((p) => p.prj_status))].sort(),
+    Array.from(new Set(projects.map((p) => p.prj_status))).toSorted(),
     [projects],
   );
 

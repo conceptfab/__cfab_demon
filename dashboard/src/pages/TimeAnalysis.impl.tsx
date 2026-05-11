@@ -1,3 +1,4 @@
+/* eslint-disable react-doctor/prefer-dynamic-import -- lazy-loaded by sibling wrapper (.tsx → .impl.tsx) */
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Button } from '@/components/ui/button';

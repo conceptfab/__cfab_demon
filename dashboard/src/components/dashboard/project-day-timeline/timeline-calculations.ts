@@ -579,8 +579,8 @@ export function buildAssignProjectSections(params: {
   }
 
   const topProjectIds = new Set(
-    [...activeProjects]
-      .sort((left, right) => {
+    activeProjects
+      .toSorted((left, right) => {
         const byTime = right.total_seconds - left.total_seconds;
         if (byTime !== 0) return byTime;
         return compareProjectsByName(left, right);

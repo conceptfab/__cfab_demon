@@ -252,8 +252,8 @@ export function Projects() {
 
   const hotProjectIds = useMemo(() => {
     return new Set(
-      [...projects]
-        .sort((a, b) => b.total_seconds - a.total_seconds)
+      projects
+        .toSorted((a, b) => b.total_seconds - a.total_seconds)
         .slice(0, 5)
         .map((p) => p.id),
     );
