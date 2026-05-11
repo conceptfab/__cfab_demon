@@ -188,12 +188,15 @@ export function DevSettingsCard() {
             {files.map((file) => (
               <div
                 key={file.key}
+                role="button"
+                tabIndex={0}
                 className={`flex items-center justify-between rounded-md border p-2 cursor-pointer transition-colors ${
                   activeLog === file.key
                     ? 'border-amber-500/50 bg-amber-500/5'
                     : 'border-border/50 bg-background/20 hover:bg-background/40'
                 }`}
                 onClick={() => setActiveLog(activeLog === file.key ? null : file.key)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveLog(activeLog === file.key ? null : file.key); } }}
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <span

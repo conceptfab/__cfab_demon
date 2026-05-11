@@ -54,8 +54,11 @@ export function ProjectManualSessionsCard({
           {sessions.map((session) => (
             <div
               key={session.id}
+              role="button"
+              tabIndex={0}
               className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/40 cursor-pointer hover:bg-secondary/30 transition-colors"
               onClick={() => onEditManual(session)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditManual(session); } }}
             >
               <div className="space-y-1">
                 <p className="text-sm font-medium">{session.title}</p>

@@ -132,6 +132,8 @@ export function SessionsVirtualList({
                 return (
                   <div className="mt-4 space-y-1 first:mt-0">
                     <div
+                      role="button"
+                      tabIndex={0}
                       data-project-id={projectMenuId ?? undefined}
                       data-project-name={
                         projectMenuId != null ? group.projectName : undefined
@@ -142,6 +144,12 @@ export function SessionsVirtualList({
                           projectMenuId == null ? 'unassigned' : projectMenuId,
                         )
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onSelectProjectFilter(projectMenuId == null ? 'unassigned' : projectMenuId);
+                        }
+                      }}
                       onContextMenu={(event) =>
                         onProjectContextMenu(
                           event,

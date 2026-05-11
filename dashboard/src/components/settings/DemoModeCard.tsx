@@ -54,6 +54,7 @@ export function DemoModeCard({
       <CardContent className="space-y-4">
         <label
           htmlFor="demoModeEnabled"
+          aria-label="Enable demo mode"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">

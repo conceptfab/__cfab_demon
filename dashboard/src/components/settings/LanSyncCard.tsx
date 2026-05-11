@@ -429,6 +429,7 @@ export function LanSyncCard({
       <CardContent className="space-y-4">
         <label
           htmlFor="lanSyncEnabled"
+          aria-label="Enable LAN sync"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
@@ -448,6 +449,7 @@ export function LanSyncCard({
 
         <label
           htmlFor="lanAutoSync"
+          aria-label="Auto sync on peer found"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
@@ -840,11 +842,14 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
 
       {/* Context menu for right-click on sync button */}
       {contextMenu && (
-        <div
-          className="fixed inset-0 z-[100]"
+        <button
+          type="button"
+          aria-label="Close context menu"
+          className="fixed inset-0 z-[100] cursor-default bg-transparent border-0 p-0"
           onClick={() => setContextMenu(null)}
           onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
         >
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
           <div
             className="absolute rounded-md border border-border bg-popover shadow-lg py-1 min-w-[160px]"
             style={{ left: contextMenu.x, top: contextMenu.y }}
@@ -888,7 +893,7 @@ netsh advfirewall firewall add rule name="TIMEFLOW LAN Server" dir=in action=all
               </button>
             )}
           </div>
-        </div>
+        </button>
       )}
     </Card>
   );

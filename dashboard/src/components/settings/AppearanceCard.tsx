@@ -26,6 +26,7 @@ export function AppearanceCard({
       <CardContent className="space-y-4">
         <label
           htmlFor="chartAnimationsEnabled"
+          aria-label="Enable chart animations"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">

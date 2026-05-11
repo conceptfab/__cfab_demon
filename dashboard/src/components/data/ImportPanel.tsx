@@ -94,8 +94,11 @@ export function ImportPanel() {
         )}
         {!validation && !summary && (
           <div
+            role="button"
+            tabIndex={0}
             className="border border-dashed rounded-lg p-3 flex items-center gap-4 hover:bg-accent/40 transition-colors cursor-pointer"
             onClick={selectFile}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectFile(); } }}
           >
             <div className="bg-accent/50 p-2 rounded-md">
               <FileJson className="size-5 text-muted-foreground" />

@@ -141,6 +141,8 @@ export function ProjectSessionsTable({
                       </td>
                       <td className="group/comment px-4 py-3">
                         <div
+                          role="button"
+                          tabIndex={0}
                           className="flex max-w-xs cursor-pointer items-center gap-2 truncate text-sky-200 italic transition-colors hover:text-sky-100"
                           onClick={() => {
                             if (session.isManual) {
@@ -148,6 +150,13 @@ export function ProjectSessionsTable({
                               return;
                             }
                             onEditComment(session);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              if (session.isManual) { onEditManualSession(session); return; }
+                              onEditComment(session);
+                            }
                           }}
                           title={
                             session.comment

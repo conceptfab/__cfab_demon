@@ -92,6 +92,7 @@ export function SessionSplitCard({
 
           <label
             htmlFor="autoSplitEnabled"
+            aria-label="Enable auto session split"
             className="grid cursor-pointer gap-3 p-3 sm:grid-cols-[1fr_auto] sm:items-center hover:bg-secondary/5 transition-colors"
           >
             <div className="min-w-0">

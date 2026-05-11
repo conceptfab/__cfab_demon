@@ -73,6 +73,7 @@ export function TopBar() {
 
   return (
     <header className="flex h-12 items-stretch border-b border-border/25 bg-background/95">
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events -- Tauri drag region, not a keyboard-navigable element */}
       <div
         data-tauri-drag-region
         className="flex min-w-0 flex-1 select-none items-center justify-end px-4 [app-region:drag] [-webkit-app-region:drag]"

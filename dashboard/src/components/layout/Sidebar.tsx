@@ -303,6 +303,7 @@ export function Sidebar() {
 
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-56 flex-col border-r border-border/35 bg-background">
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- Tauri drag region, not a keyboard-navigable element */}
       <div
         data-tauri-drag-region
         className="flex h-12 select-none items-center border-b border-border/25 px-4"

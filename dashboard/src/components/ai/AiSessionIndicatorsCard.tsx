@@ -38,6 +38,7 @@ export function AiSessionIndicatorsCard({
           {items.map((item) => (
             <label
               key={item.key}
+              aria-label={item.label}
               className="flex items-start gap-3 cursor-pointer group"
             >
               <input

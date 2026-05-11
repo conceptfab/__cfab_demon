@@ -165,6 +165,7 @@ export function OnlineSyncCard({
 
         <label
           htmlFor="onlineSyncEnabled"
+          aria-label="Enable online sync"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
@@ -184,6 +185,7 @@ export function OnlineSyncCard({
 
         <label
           htmlFor="onlineSyncOnStartup"
+          aria-label="Sync on startup"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">
@@ -229,6 +231,7 @@ export function OnlineSyncCard({
 
         <label
           htmlFor="onlineSyncLogging"
+          aria-label="Enable sync logging"
           className="grid cursor-pointer gap-3 rounded-md border border-border/70 bg-background/35 p-3 sm:grid-cols-[1fr_auto] sm:items-center"
         >
           <div className="min-w-0">

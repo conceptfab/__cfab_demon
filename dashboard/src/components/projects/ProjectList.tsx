@@ -46,6 +46,8 @@ function ProjectListComponent({
           {projects.map((project) => (
             <div
               key={project.id}
+              role="button"
+              tabIndex={0}
               data-project-id={project.id}
               data-project-name={project.name}
               className={cn(
@@ -55,6 +57,7 @@ function ProjectListComponent({
                 }) && 'border-yellow-400/70',
               )}
               onClick={() => onOpenProject(project)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenProject(project); } }}
             >
               <div
                 className="size-3 shrink-0 rounded-full"
