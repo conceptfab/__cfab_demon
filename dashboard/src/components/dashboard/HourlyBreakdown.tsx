@@ -1,3 +1,4 @@
+// @public-api — lazy-loaded chart component
 import { lazy, Suspense } from 'react';
 import type { ComponentProps } from 'react';
 

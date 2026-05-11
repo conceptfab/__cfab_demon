@@ -1,3 +1,4 @@
+// @public-api — Tauri command bindings; knip cannot detect dynamic invoke() usage
 import { invoke } from './core';
 
 export interface LogSettings {

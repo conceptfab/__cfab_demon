@@ -1,3 +1,4 @@
+// @public-api — Tauri command bindings; knip cannot detect dynamic invoke() usage
 import { invoke, invokeMutation } from './core';
 import type { SyncProgress } from '@/lib/lan-sync-types';
 
