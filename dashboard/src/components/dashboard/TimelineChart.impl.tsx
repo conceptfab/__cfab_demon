@@ -333,21 +333,21 @@ export function TimelineChart({
         ))}
         {comments && comments.length > 0 && (
           <div style={{ marginTop: 8, paddingTop: 6, borderTop: `1px dashed ${CHART_GRID_COLOR}` }}>
-            {comments.map((c, i) => (
-              <div key={`comment-${i}-${c}`} style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontSize: 12, fontStyle: "italic", marginBottom: 2 }}>
+            {comments.map((c) => (
+              <div key={`comment-${c}`} style={{ color: CHART_TOOLTIP_TITLE_COLOR, fontSize: 12, fontStyle: "italic", marginBottom: 2 }}>
                 "{c}"
               </div>
             ))}
           </div>
         )}
         {row?.has_boost && (
-          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, color: '#f87171', fontSize: 10, fontWeight: 700 }}>
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 4, color: '#f87171', fontSize: 12, fontWeight: 700 }}>
             <Flame className="size-3" />
             {t("components.timeline_chart.boosted_activity")}
           </div>
         )}
         {row?.has_manual && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#34d399', fontSize: 10, fontWeight: 700 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#34d399', fontSize: 12, fontWeight: 700 }}>
             <PenLine className="size-3" />
             {t("components.timeline_chart.manual_data_included")}
           </div>

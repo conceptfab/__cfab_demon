@@ -1,19 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-export function handleSettledResult<T>(
-  result: PromiseSettledResult<T>,
-  handlers: {
-    onFulfilled: (value: T) => void;
-    onRejected?: (reason: unknown) => void;
-  },
-): void {
-  if (result.status === 'fulfilled') {
-    handlers.onFulfilled(result.value);
-    return;
-  }
-  handlers.onRejected?.(result.reason);
-}
-
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(

@@ -88,6 +88,8 @@ interface LanSyncCardProps {
   onForceSyncWithPeer?: (peer: LanPeer) => void;
 }
 
+const PIN_POSITION_KEYS = ['pin-a', 'pin-b', 'pin-c', 'pin-d', 'pin-e', 'pin-f'] as const;
+
 function PairCodeDialog({
   peer,
   onSubmit,
@@ -180,7 +182,7 @@ function PairCodeDialog({
             <div className="flex justify-center gap-2 mb-4" onPaste={handlePaste}>
               {digits.map((digit, i) => (
                 <input
-                  key={`pin-digit-${i}`}
+                  key={PIN_POSITION_KEYS[i]}
                   ref={(el) => { inputRefs.current[i] = el; }}
                   type="text"
                   inputMode="numeric"

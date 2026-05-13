@@ -330,14 +330,14 @@ export function MultiSplitSessionModal({
 
             <div className="overflow-hidden rounded-full border border-border/30 bg-secondary/20">
               <div className="flex h-4 w-full">
-                {parts
-                  .filter((part) => part.percent > 0)
-                  .map((part, idx) => {
-                    const projectColor =
-                      part.project_id != null
-                        ? (projectById.get(part.project_id)?.color ?? '#64748b')
-                        : '#6b7280';
-                    return (
+                {parts.flatMap((part, idx) => {
+                  if (part.percent <= 0) return [];
+                  const projectColor =
+                    part.project_id != null
+                      ? (projectById.get(part.project_id)?.color ?? '#64748b')
+                      : '#6b7280';
+                  return [
+                    (
                       <div
                         key={`preview-${part.project_id ?? `unassigned-${idx}`}`}
                         style={{
@@ -347,8 +347,9 @@ export function MultiSplitSessionModal({
                         className="h-full"
                         title={`${part.project_id != null ? (projectById.get(part.project_id)?.name ?? part.project_id) : t('sessions.split_multi.unassigned')} · ${part.percent}%`}
                       />
-                    );
-                  })}
+                    ),
+                  ];
+                })}
               </div>
             </div>
             <div className="flex items-start gap-2 rounded-lg border border-sky-500/20 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-300/80">

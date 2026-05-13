@@ -139,13 +139,13 @@ export function FileDropzone() {
                 </span>
               )}
             </div>
-            {results
-              .filter((r) => !r.success)
-              .map((r) => (
+            {results.flatMap((r) => (
+              r.success ? [] : [(
                 <p key={r.file_path} className="text-xs text-destructive">
                   {r.file_path}: {r.error}
                 </p>
-              ))}
+              )]
+            ))}
             {succeeded > 0 && (
               <p className="text-xs text-muted-foreground">
                 {t('components.file_dropzone.success_hint')}

@@ -131,14 +131,6 @@ export const AI_ASSIGNMENT_DONE_EVENT = 'timeflow:ai-assignment-done';
 export const ONLINE_SYNC_DONE_EVENT = 'timeflow:online-sync-done';
 export const LAN_SYNC_DONE_EVENT = 'timeflow:lan-sync-done';
 
-export function dispatchOnlineSyncDone(action: string, reason: string) {
-  if (action !== 'none') {
-    window.dispatchEvent(
-      new CustomEvent(ONLINE_SYNC_DONE_EVENT, { detail: { action, reason } }),
-    );
-  }
-}
-
 export function dispatchLanSyncDone(peerName: string) {
   window.dispatchEvent(
     new CustomEvent(LAN_SYNC_DONE_EVENT, { detail: { peerName } }),

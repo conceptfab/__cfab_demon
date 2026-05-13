@@ -150,6 +150,3 @@ export function disconnectSSE(): void {
   reconnectAttempts = 0;
 }
 
-export function isSSEConnected(): boolean {
-  return abortController !== null && !abortController.signal.aborted;
-}

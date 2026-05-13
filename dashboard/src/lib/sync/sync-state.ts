@@ -10,14 +10,11 @@ import {
   getOnlineSyncStateScopeKey,
   hasWindow,
   LEGACY_ONLINE_SYNC_SETTINGS_KEY,
-  LEGACY_ONLINE_SYNC_STATE_KEY,
   normalizeApiToken,
   normalizeAutoSyncIntervalMinutes,
   normalizeOnlineSyncState,
   normalizeServerUrl,
   ONLINE_SYNC_SETTINGS_KEY,
-  ONLINE_SYNC_STATE_KEY,
-  ONLINE_SYNC_STATE_STORAGE_VERSION,
   readJsonStorage,
   readJsonStorageWithFallback,
   readOnlineSyncStateEnvelope,
@@ -165,21 +162,3 @@ export function loadOnlineSyncState(
   return normalizeOnlineSyncState(readOnlineSyncStateStorageRaw());
 }
 
-export function saveOnlineSyncStateRaw(
-  next: OnlineSyncState,
-  settings: OnlineSyncSettings = loadOnlineSyncSettings(),
-): OnlineSyncState {
-  const normalized = normalizeOnlineSyncState(next);
-  const scopeKey = getOnlineSyncStateScopeKey(settings);
-  const envelope = readOnlineSyncStateEnvelope() ?? {
-    version: ONLINE_SYNC_STATE_STORAGE_VERSION,
-    scopes: {},
-  };
-
-  envelope.scopes[scopeKey] = normalized;
-  writeJsonStorage(ONLINE_SYNC_STATE_KEY, envelope);
-  if (hasWindow()) {
-    window.localStorage.removeItem(LEGACY_ONLINE_SYNC_STATE_KEY);
-  }
-  return normalized;
-}

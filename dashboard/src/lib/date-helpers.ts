@@ -16,13 +16,6 @@ export function buildTodayDate(): string {
   return format(new Date(), 'yyyy-MM-dd');
 }
 
-export function allTimeRangeTo(end: string): DateRange {
-  return {
-    start: ALL_TIME_START,
-    end,
-  };
-}
-
 export function resolveDateFnsLocale(language?: string | null): Locale {
   if (language?.toLowerCase().startsWith('pl')) {
     return pl;

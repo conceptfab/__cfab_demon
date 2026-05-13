@@ -2,7 +2,6 @@ import type {
   LicenseActivationResult,
   LicenseInfo,
   OnlineSyncSettings,
-  OnlineSyncState,
 } from '@/lib/online-sync-types';
 export type {
   LicenseActivationResult,
@@ -28,27 +27,16 @@ export {
   getOnlineSyncIndicatorSnapshot,
   subscribeOnlineSyncIndicator,
 } from '@/lib/sync/sync-indicator';
-export { runOnlineSyncOnce } from '@/lib/sync/sync-runner';
 
 import { refreshIndicatorFromStorage } from '@/lib/sync/sync-indicator';
 import {
   saveOnlineSyncSettingsRaw,
-  saveOnlineSyncStateRaw,
 } from '@/lib/sync/sync-state';
 
 export function saveOnlineSyncSettings(
   next: Partial<OnlineSyncSettings>,
 ): OnlineSyncSettings {
   const saved = saveOnlineSyncSettingsRaw(next);
-  refreshIndicatorFromStorage();
-  return saved;
-}
-
-export function saveOnlineSyncState(
-  next: OnlineSyncState,
-  settings?: OnlineSyncSettings,
-): OnlineSyncState {
-  const saved = saveOnlineSyncStateRaw(next, settings);
   refreshIndicatorFromStorage();
   return saved;
 }

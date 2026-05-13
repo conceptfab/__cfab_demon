@@ -161,13 +161,16 @@ export function PmTemplateManager({ open, onClose }: Props) {
               <div className="rounded-md border border-border/50 bg-muted/30 p-3 max-h-36 overflow-auto">
                 <p className="text-xs text-muted-foreground mb-1">{t('pm.template_manager.preview')}</p>
                 <div className="text-xs font-mono space-y-0.5">
-                  {edit.foldersText.split('\n').filter((l) => l.trim()).map((f, i) => {
-                    const resolved = f.trim().replace('{name}', exampleName);
-                    return (
-                      <div key={`folder-${i}-${f}`} className="text-muted-foreground">
-                        {String(i).padStart(2, '0')}_{exampleCode}{resolved}
+                  {edit.foldersText.split('\n').flatMap((raw, i) => {
+                    const trimmed = raw.trim();
+                    if (!trimmed) return [];
+                    const resolved = trimmed.replace('{name}', exampleName);
+                    const prefix = String(i).padStart(2, '0');
+                    return [(
+                      <div key={`${prefix}-${trimmed}`} className="text-muted-foreground">
+                        {prefix}_{exampleCode}{resolved}
                       </div>
-                    );
+                    )];
                   })}
                 </div>
               </div>

@@ -43,16 +43,16 @@ function groupClients(projects: PmProject[]) {
   }
 
   // Build group stats
-  const stats = new Map<string, { count: number; budgetSum: number; variants: string[] }>();
+  const stats = new Map<string, { count: number; budgetSum: number; variants: Set<string> }>();
   for (const p of projects) {
     const clientUpper = p.prj_client.toUpperCase();
     const group = groupMap.get(clientUpper) || clientUpper;
     let s = stats.get(group);
-    if (!s) { s = { count: 0, budgetSum: 0, variants: [] }; stats.set(group, s); }
+    if (!s) { s = { count: 0, budgetSum: 0, variants: new Set<string>() }; stats.set(group, s); }
     s.count++;
     const b = parseFloat(p.prj_budget);
     if (!isNaN(b)) s.budgetSum += b;
-    if (!s.variants.includes(clientUpper)) s.variants.push(clientUpper);
+    s.variants.add(clientUpper);
   }
 
   return { stats, groups: Array.from(stats.keys()).toSorted((a, b) => a.localeCompare(b)) };
@@ -190,9 +190,9 @@ export function PmClientsList({ projects, clientColors, onColorsChanged }: Props
 
                   {/* Variants */}
                   <td className="px-3 py-2">
-                    {s.variants.length > 1 && (
+                    {s.variants.size > 1 && (
                       <div className="flex gap-1 flex-wrap">
-                        {s.variants.map((v) => (
+                        {[...s.variants].map((v) => (
                           <Badge key={v} variant="outline" className="text-[9px]">{v}</Badge>
                         ))}
                       </div>

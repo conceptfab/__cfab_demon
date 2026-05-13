@@ -63,12 +63,6 @@ function buildRechartsAnimationConfig(
   };
 }
 
-export function getRechartsAnimationConfig(
-  options: RechartsAnimationOptions & { enabled?: boolean },
-): RechartsAnimationConfig {
-  return buildRechartsAnimationConfig(options, options.enabled ?? true);
-}
-
 export function useRechartsAnimationConfig({
   complexity,
   maxComplexity,

@@ -2,7 +2,6 @@ import i18n from '@/i18n';
 import type {
   OnlineSyncIndicatorSnapshot,
   OnlineSyncPendingAck,
-  OnlineSyncRunResult,
   OnlineSyncStatusListener,
   OnlineSyncState,
 } from '@/lib/online-sync-types';
@@ -177,96 +176,6 @@ function emitOnlineSyncIndicatorSnapshot(
 
 export function refreshIndicatorFromStorage(): void {
   emitOnlineSyncIndicatorSnapshot(buildIndicatorSnapshotFromStorage());
-}
-
-export function updateIndicatorFromRunResult(
-  result: OnlineSyncRunResult,
-): void {
-  const state = loadOnlineSyncState();
-
-  if (result.skipped) {
-    if (result.reason === 'demo_mode') {
-      emitOnlineSyncIndicatorSnapshot(
-        buildSnapshot(state, {
-          status: 'disabled',
-          label: syncIndicatorT('online_sync_indicator.labels.disabled_demo'),
-          detail: syncIndicatorT(
-            'online_sync_indicator.details.disabled_demo',
-          ),
-          lastAction: result.action,
-          lastReason: result.reason,
-        }),
-      );
-      return;
-    }
-
-    refreshIndicatorFromStorage();
-    return;
-  }
-
-  if (!result.ok) {
-    emitOnlineSyncIndicatorSnapshot(
-      buildSnapshot(state, {
-        status: 'error',
-        label:
-          result.needsReseed || state.needsReseed
-            ? syncIndicatorT('online_sync_indicator.labels.reseed_required')
-            : syncIndicatorT('online_sync_indicator.labels.error'),
-        detail: result.error ?? result.reason,
-        lastAction: result.action,
-        lastReason: result.reason,
-        error: result.error ?? result.reason,
-      }),
-    );
-    return;
-  }
-
-  if (result.ackPending || state.pendingAck) {
-    emitOnlineSyncIndicatorSnapshot(
-      buildSnapshot(state, {
-        status: 'warning',
-        label: syncIndicatorT('online_sync_indicator.labels.ack_pending'),
-        detail:
-          result.ackReason && result.ackReason !== 'ack_deferred'
-            ? syncIndicatorT('online_sync_indicator.details.waiting_retry', {
-                reason: result.ackReason,
-              })
-            : formatPendingAckDetail(state),
-        lastAction: result.action,
-        lastReason: result.reason,
-      }),
-    );
-    return;
-  }
-
-  const labelMap: Record<OnlineSyncRunResult['action'], string> = {
-    none: syncIndicatorT('online_sync_indicator.labels.ok'),
-    noop: syncIndicatorT('online_sync_indicator.labels.noop'),
-    push: syncIndicatorT('online_sync_indicator.labels.push'),
-    pull: syncIndicatorT('online_sync_indicator.labels.pull'),
-  };
-
-  emitOnlineSyncIndicatorSnapshot(
-    buildSnapshot(state, {
-      status: 'success',
-      label: labelMap[result.action],
-      detail: formatLastSyncDetail(state),
-      lastAction: result.action,
-      lastReason: result.reason,
-    }),
-  );
-}
-
-export function emitSyncingIndicatorSnapshot(serverUrl: string): void {
-  emitOnlineSyncIndicatorSnapshot({
-    ...getOnlineSyncIndicatorSnapshot(),
-    status: 'syncing',
-    label: syncIndicatorT('online_sync_indicator.labels.syncing'),
-    detail: syncIndicatorT('online_sync_indicator.details.contacting', {
-      server: serverUrl || 'server',
-    }),
-    error: null,
-  });
 }
 
 export function getOnlineSyncIndicatorSnapshot(): OnlineSyncIndicatorSnapshot {

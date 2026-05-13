@@ -233,16 +233,18 @@ export function ManualSessionDialog({
                 <SelectValue placeholder={t("components.manual_session_dialog.placeholders.select_project")} />
               </SelectTrigger>
               <SelectContent>
-                {projects.filter((p) => !p.frozen_at).map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="size-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      {p.name}
-                    </div>
-                  </SelectItem>
+                {projects.flatMap((p) => (
+                  p.frozen_at ? [] : [(
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="size-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: p.color }}
+                        />
+                        {p.name}
+                      </div>
+                    </SelectItem>
+                  )]
                 ))}
               </SelectContent>
             </Select>

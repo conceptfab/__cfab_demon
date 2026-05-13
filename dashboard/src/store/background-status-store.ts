@@ -21,8 +21,7 @@ let lanPeerPollInFlight = false;
 
 function areStringArraysEqual(left: string[], right: string[]): boolean {
   if (left === right) return true;
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function areDaemonStatusesEqual(

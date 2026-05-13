@@ -95,9 +95,9 @@ export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
     <div className="min-w-[600px]">
       {/* Hour labels */}
       <div className="flex text-xs text-muted-foreground mb-2">
-        {Array.from({ length: 24 }, (_, i) => (
-          <div key={`hour-label-${i}`} className="flex-1 text-center">
-            {i.toString().padStart(2, '0')}
+        {Array.from({ length: 24 }, (_, hour) => (
+          <div key={`hour-${hour.toString().padStart(2, '0')}`} className="flex-1 text-center">
+            {hour.toString().padStart(2, '0')}
           </div>
         ))}
       </div>
@@ -150,9 +150,8 @@ export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
 
       {/* Detailed rows per hour (only hours with data) */}
       <div className="space-y-1 mt-4">
-        {dailyHourlyGrid.hours
-          .filter((s) => s.totalSeconds > 0)
-          .map((slot) => (
+        {dailyHourlyGrid.hours.flatMap((slot) => (
+          slot.totalSeconds > 0 ? [(
             <div key={slot.hour} className="flex items-center gap-2">
               <span className="w-12 text-xs text-muted-foreground text-right font-mono">
                 {slot.hour.toString().padStart(2, '0')}:00
@@ -182,7 +181,8 @@ export function DailyHeatmap({ dailyHourlyGrid }: DailyHeatmapProps) {
                 {formatDuration(slot.totalSeconds)}
               </span>
             </div>
-          ))}
+          )] : []
+        ))}
       </div>
     </div>
   );

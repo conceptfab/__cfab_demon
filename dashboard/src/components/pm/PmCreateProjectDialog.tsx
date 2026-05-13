@@ -177,9 +177,10 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
               <div className="text-xs font-mono space-y-0.5">
                 {selectedTemplate.folders.map((f, i) => {
                   const resolved = f.replace('{name}', name || 'Project');
+                  const prefix = String(i).padStart(2, '0');
                   return (
-                    <div key={`folder-${i}-${f}`} className="text-muted-foreground">
-                      {String(i).padStart(2, '0')}_{previewCode}{resolved}
+                    <div key={`${prefix}-${f}`} className="text-muted-foreground">
+                      {prefix}_{previewCode}{resolved}
                     </div>
                   );
                 })}

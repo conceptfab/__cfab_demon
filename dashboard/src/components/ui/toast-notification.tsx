@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -19,7 +19,7 @@ const ToastContext = createContext<ToastContextValue>({
 });
 
 export function useToast() {
-  return useContext(ToastContext);
+  return use(ToastContext);
 }
 
 let nextId = 0;

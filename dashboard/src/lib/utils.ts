@@ -71,17 +71,23 @@ export function logTauriWarn(action: string, ...args: unknown[]): void {
   if (isDev) console.warn(`[TIMEFLOW] ${action}`, ...args);
 }
 
-export function logTauriInfo(action: string, ...args: unknown[]): void {
-  if (isDev) console.info(`[TIMEFLOW] ${action}`, ...args);
+const moneyFormatterCache = new Map<string, Intl.NumberFormat>();
+
+function getMoneyFormatter(currencyCode: string): Intl.NumberFormat {
+  const cached = moneyFormatterCache.get(currencyCode);
+  if (cached) return cached;
+  const formatter = new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currencyCode,
+    maximumFractionDigits: 2,
+  });
+  moneyFormatterCache.set(currencyCode, formatter);
+  return formatter;
 }
 
 export function formatMoney(value: number, currencyCode: string): string {
   try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency: currencyCode,
-      maximumFractionDigits: 2,
-    }).format(value);
+    return getMoneyFormatter(currencyCode).format(value);
   } catch {
     return value.toFixed(2);
   }
@@ -111,20 +117,6 @@ export function formatDateTime(value: string | Date | null | undefined): string 
 export function clampNumber(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, value));
-}
-
-export function parseMultilineList(value: string): string[] {
-  const unique = new Set<string>();
-  for (const line of value.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    unique.add(trimmed);
-  }
-  return Array.from(unique);
-}
-
-export function formatMultilineList(values: string[]): string {
-  return values.join('\n');
 }
 
 export function formatPercent(value: number, fractionDigits = 1): string {
