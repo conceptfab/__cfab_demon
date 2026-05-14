@@ -162,6 +162,7 @@ export function HelpPmSection() {
         t18n('help_page.pm_feature_clients'),
         t18n('help_page.pm_feature_tf_match'),
         t18n('help_page.pm_feature_filters'),
+        t18n('help_page.pm_feature_save_view'),
         t18n('help_page.pm_feature_folder_size'),
         t18n('help_page.pm_feature_compat'),
         t18n('help_page.pm_template_manager'),

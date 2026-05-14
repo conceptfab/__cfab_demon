@@ -1884,6 +1884,7 @@
     "pm_feature_clients": "Clients — group projects by client. Manage the client list, assign colors for visual distinction, and view per-client statistics.",
     "pm_feature_tf_match": "TF Match — link PM projects with TIMEFLOW tracked projects to see real tracked time alongside budget and deadline data.",
     "pm_feature_filters": "Filters — filter the project list by year, client, and status (active / inactive / archived).",
+    "pm_feature_save_view": "Save default view — the disk button in the list toolbar saves the current filters and sort as the default view; without clicking, changes are not remembered after reopening.",
     "pm_feature_folder_size": "Folder size — view the disk size of each project folder directly in the project list.",
     "quickstart_f1_shortcut": "F1 contextual help — press F1 on any screen to jump directly to the relevant Help section.",
     "quickstart_rerun_info": "Re-running Quick Start — you can reopen the tutorial at any time from the sidebar or Help screen. It does not reset your data or settings.",
@@ -2157,6 +2158,10 @@
       "showing": "Showing",
       "no_results": "No projects matching filters",
       "search_placeholder": "Search client, name, code..."
+    },
+    "save_view_as_default": "Save view as default",
+    "messages": {
+      "view_settings_saved": "View settings saved as default"
     },
     "statusbar": {
       "projects": "projects",

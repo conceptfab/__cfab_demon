@@ -1884,6 +1884,7 @@
     "pm_feature_clients": "Klienci — grupuj projekty wg klienta. Zarządzaj listą klientów, przypisuj kolory do wizualnego rozróżnienia i przeglądaj statystyki per klient.",
     "pm_feature_tf_match": "TF Match — połącz projekty PM z projektami TIMEFLOW, aby zobaczyć rzeczywisty śledzony czas obok danych o budżecie i terminach.",
     "pm_feature_filters": "Filtry — filtruj listę projektów wg roku, klienta i statusu (aktywny / nieaktywny / zarchiwizowany).",
+    "pm_feature_save_view": "Zapisz domyślny widok — przycisk dyskietki w pasku listy zapisuje bieżące filtry i sortowanie jako domyślny widok; bez kliknięcia zmiany nie są pamiętane po ponownym otwarciu.",
     "pm_feature_folder_size": "Rozmiar folderu — podgląd rozmiaru folderu projektu na dysku bezpośrednio w liście projektów.",
     "quickstart_f1_shortcut": "Pomoc kontekstowa F1 — naciśnij F1 na dowolnym ekranie, aby przejść bezpośrednio do odpowiedniej sekcji Pomocy.",
     "quickstart_rerun_info": "Ponowne uruchomienie Szybkiego startu — samouczek możesz otworzyć ponownie w dowolnym momencie z sidebara lub ekranu Pomocy. Nie resetuje danych ani ustawień.",
@@ -2157,6 +2158,10 @@
       "showing": "Wyświetlane",
       "no_results": "Brak projektów pasujących do filtrów",
       "search_placeholder": "Szukaj klienta, nazwy, kodu..."
+    },
+    "save_view_as_default": "Zapisz widok jako domyślny",
+    "messages": {
+      "view_settings_saved": "Ustawienia widoku zapisane jako domyślne"
     },
     "statusbar": {
       "projects": "projektów",
