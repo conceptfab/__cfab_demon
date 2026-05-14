@@ -29,6 +29,9 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
   const [templates, setTemplates] = useState<PmFolderTemplate[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projectNumber, setProjectNumber] = useState('');
+  const [numberLoading, setNumberLoading] = useState(false);
+  const [numberError, setNumberError] = useState(false);
 
   useEffect(() => {
     pmApi.getPmTemplates().then((tpl) => {
@@ -39,9 +42,25 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
     }).catch((e) => logTauriError('pm load templates', e));
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    setNumberLoading(true);
+    setNumberError(false);
+    pmApi.suggestProjectNumber()
+      .then((n) => setProjectNumber(n))
+      .catch((e) => {
+        logTauriError('pm suggest project number', e);
+        setNumberError(true);
+        setProjectNumber('');
+      })
+      .finally(() => setNumberLoading(false));
+  }, [open]);
+
   const year = new Date().getFullYear().toString().slice(-2);
-  const previewCode = `XX${year}`;
-  const previewName = client && name ? `XX_${year}_${client}_${name}` : '';
+  const numberIsValid = /^\d{1,3}$/.test(projectNumber.trim()) && Number(projectNumber.trim()) > 0;
+  const displayNumber = numberIsValid ? projectNumber.trim().padStart(2, '0') : 'XX';
+  const previewCode = `${displayNumber}${year}`;
+  const previewName = client && name ? `${displayNumber}_${year}_${client}_${name}` : '';
 
   const selectedTemplate = templates.find((t) => t.id === templateId);
 
@@ -49,6 +68,12 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
     setError(null);
     if (!client.trim()) { setError(t('pm.errors.client_required')); return; }
     if (!name.trim()) { setError(t('pm.errors.name_required')); return; }
+
+    const trimmedNumber = projectNumber.trim();
+    if (!/^\d{1,3}$/.test(trimmedNumber) || Number(trimmedNumber) <= 0) {
+      setError(t('pm.errors.number_invalid'));
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -59,10 +84,16 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
         prj_budget: budget.trim(),
         prj_term: term,
         template_id: templateId || 'default',
+        prj_number: trimmedNumber,
       });
       onCreated();
     } catch (e) {
-      setError(getErrorMessage(e, t('pm.errors.create_failed')));
+      const msg = getErrorMessage(e, t('pm.errors.create_failed'));
+      if (msg.includes('PM_NUMBER_TAKEN')) {
+        setError(t('pm.errors.number_taken', { number: trimmedNumber }));
+      } else {
+        setError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -79,6 +110,23 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
         </DialogHeader>
 
         <div className="grid gap-3">
+          {/* Project number */}
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t('pm.create.number')} *
+            </label>
+            <input
+              className="w-32 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              value={projectNumber}
+              onChange={(e) => setProjectNumber(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              inputMode="numeric"
+              placeholder={numberLoading ? '…' : '01'}
+              disabled={numberLoading}
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              {numberError ? t('pm.errors.number_load_failed') : t('pm.create.number_hint')}
+            </p>
+          </div>
           {/* Client + Name */}
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -196,7 +244,7 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
             <Button variant="outline" size="sm" onClick={onClose}>
               {t('ui.buttons.cancel')}
             </Button>
-            <Button size="sm" onClick={handleSubmit} disabled={submitting}>
+            <Button size="sm" onClick={handleSubmit} disabled={submitting || numberLoading || numberError}>
               {t('pm.create.submit')}
             </Button>
           </div>

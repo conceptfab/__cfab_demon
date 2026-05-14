@@ -19,6 +19,7 @@ export interface PmNewProject {
   prj_budget: string;
   prj_term: string;
   template_id: string;
+  prj_number: string;
 }
 
 export interface PmFolderTemplate {

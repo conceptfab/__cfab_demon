@@ -8,6 +8,9 @@ export const getPmProjects = () =>
 export const createPmProject = (project: PmNewProject) =>
   invoke<PmProject>('pm_create_project', { project });
 
+export const suggestProjectNumber = () =>
+  invoke<string>('pm_suggest_project_number');
+
 export const updatePmProject = (index: number, project: PmProject) =>
   invoke<void>('pm_update_project', { index, project });
 
@@ -47,6 +50,7 @@ export const savePmClientColors = (colors: PmClientColors) =>
 export const pmApi = {
   getPmProjects,
   createPmProject,
+  suggestProjectNumber,
   updatePmProject,
   deletePmProject,
   getPmSettings,
