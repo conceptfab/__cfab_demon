@@ -1874,8 +1874,8 @@
     "bughunter_detail_limitations": "Ograniczenia i konsekwencje: pojedynczy załącznik ma limit 5 MB, temat i opis są wymagane, a formularz nie zamyka błędu automatycznie po stronie wsparcia.",
     "pm_2": "PM",
     "pm_description": "Zarządzanie projektami klienckimi — tworzenie, edycja, przeglądanie. Automatyczne numerowanie i generowanie struktury folderów na dysku.",
-    "pm_feature_create": "Tworzenie projektu — podaj klienta, nazwę, opis, budżet i termin; numer i kod generowane automatycznie.",
-    "pm_feature_numbering": "Automatyczna numeracja — numer projektu przydzielany kolejno w ramach roku (np. 01, 02, 03…).",
+    "pm_feature_create": "Tworzenie projektu — podaj klienta, nazwę, opis, budżet i termin; numer projektu jest podpowiadany i edytowalny, kod generowany automatycznie.",
+    "pm_feature_numbering": "Numeracja projektów — numer podpowiadany automatycznie jako najwyższy w danym roku + 1 (uwzględnia listę projektów i foldery na dysku); w oknie tworzenia możesz go potwierdzić lub zmienić, a numer już zajęty jest blokowany.",
     "pm_feature_folders": "Drzewo folderów — po utworzeniu projektu na dysku powstaje folder z podfolderami wg wybranego szablonu.",
     "pm_feature_templates": "Szablony folderów — domyślny szablon odpowiada oryginalnemu PM. Możesz tworzyć własne szablony z dowolną strukturą. Placeholder {name} w nazwie folderu zamieniany na nazwę projektu.",
     "pm_feature_status": "Status projektu — Aktywny / Nieaktywny / Archiwalny. Zmiana statusu w szczegółach projektu.",
@@ -2105,6 +2105,8 @@
       "template": "Szablon folderów",
       "preview": "Nazwa folderu",
       "folder_preview": "Podgląd drzewa folderów",
+      "number": "Numer projektu",
+      "number_hint": "Przydzielany automatycznie (najwyższy numer w roku + 1). Możesz go zmienić.",
       "submit": "Utwórz"
     },
     "detail": {
@@ -2133,6 +2135,9 @@
       "client_required": "Nazwa klienta jest wymagana",
       "name_required": "Nazwa projektu jest wymagana",
       "create_failed": "Nie udało się utworzyć projektu",
+      "number_invalid": "Numer projektu musi być liczbą większą od zera.",
+      "number_taken": "Numer {{number}} jest już zajęty w tym roku. Wybierz inny.",
+      "number_load_failed": "Nie udało się ustalić numeru — sprawdź, czy folder roboczy PM jest ustawiony.",
       "load_failed": "Nie udało się wczytać danych PM"
     },
     "empty": "Brak projektów",

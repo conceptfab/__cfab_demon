@@ -1874,8 +1874,8 @@
     "bughunter_detail_limitations": "Limitations and consequences: each attachment is limited to 5 MB, subject and description are required, and sending the form does not automatically resolve the issue on the support side.",
     "pm_2": "PM",
     "pm_description": "Client project management — create, edit, browse projects. Automatic numbering and disk folder structure generation.",
-    "pm_feature_create": "Project creation — enter client, name, description, budget and deadline; number and code are generated automatically.",
-    "pm_feature_numbering": "Automatic numbering — project number assigned sequentially within the year (e.g. 01, 02, 03…).",
+    "pm_feature_create": "Project creation — enter client, name, description, budget and deadline; the project number is suggested and editable, the code is generated automatically.",
+    "pm_feature_numbering": "Project numbering — the number is suggested automatically as the highest in the given year + 1 (covering both the project list and folders on disk); in the create dialog you can confirm or change it, and a number that is already taken is blocked.",
     "pm_feature_folders": "Folder tree — when a project is created, a directory with subfolders is created on disk according to the selected template.",
     "pm_feature_templates": "Folder templates — the default template matches the original PM. You can create custom templates with any structure. The {name} placeholder in folder names is replaced with the project name.",
     "pm_feature_status": "Project status — Active / Inactive / Archived. Change the status in the project detail view.",
@@ -2105,6 +2105,8 @@
       "template": "Folder template",
       "preview": "Folder name",
       "folder_preview": "Folder tree preview",
+      "number": "Project number",
+      "number_hint": "Assigned automatically (highest number this year + 1). You can change it.",
       "submit": "Create"
     },
     "detail": {
@@ -2133,6 +2135,9 @@
       "client_required": "Client name is required",
       "name_required": "Project name is required",
       "create_failed": "Failed to create project",
+      "number_invalid": "Project number must be a number greater than zero.",
+      "number_taken": "Number {{number}} is already taken this year. Pick another one.",
+      "number_load_failed": "Could not determine the number — check that the PM work folder is set.",
       "load_failed": "Failed to load PM data"
     },
     "empty": "No projects yet",
