@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUpDown, ArrowUp, ArrowDown, Filter, X, Search, Monitor, Trophy, Euro, Pencil, LayoutDashboard } from 'lucide-react';
+import { ArrowUpDown, ArrowUp, ArrowDown, Filter, X, Search, Monitor, Trophy, Euro, Pencil, LayoutDashboard, Save } from 'lucide-react';
 import type { PmProject, PmSortField, PmClientColors } from '@/lib/pm-types';
 import type { PmTfMatch } from '@/pages/PM';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { usePersistedState } from '@/hooks/usePersistedState';
+import { AppTooltip } from '@/components/ui/app-tooltip';
+import { loadPmViewDefaults, savePmViewDefaults } from './pm-view-defaults';
 
 interface PmProjectsListProps {
   projects: PmProject[];
@@ -88,32 +89,31 @@ function sortProjects(list: PmProject[], allProjects: PmProject[], field: PmSort
   return sorted;
 }
 
-const STORAGE_KEY_YEAR = 'timeflow-pm-filter-year';
-const STORAGE_KEY_CLIENT = 'timeflow-pm-filter-client';
-const STORAGE_KEY_STATUS = 'timeflow-pm-filter-status';
-const STORAGE_KEY_SORT_FIELD = 'timeflow-pm-sort-field';
-const STORAGE_KEY_SORT_DIR = 'timeflow-pm-sort-dir';
-
 export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, onOpenProjectCard }: PmProjectsListProps) {
   const { t } = useTranslation();
 
-  // Search
+  // Search (never persisted)
   const [search, setSearch] = useState('');
 
-  // Filters
-  const [filterYear, setFilterYear] = usePersistedState(STORAGE_KEY_YEAR, '');
-  const [filterClient, setFilterClient] = usePersistedState(STORAGE_KEY_CLIENT, '');
-  const [filterStatus, setFilterStatus] = usePersistedState(STORAGE_KEY_STATUS, '');
+  // Filters + sort — initialized from the saved default view, persisted only on explicit Save
+  const initialView = useMemo(() => loadPmViewDefaults(), []);
+  const [filterYear, setFilterYear] = useState(initialView.filterYear);
+  const [filterClient, setFilterClient] = useState(initialView.filterClient);
+  const [filterStatus, setFilterStatus] = useState(initialView.filterStatus);
+  const [sortField, setSortField] = useState<PmSortField>(initialView.sortField);
+  const [sortDir, setSortDir] = useState<SortDir>(initialView.sortDir);
 
-  // Sort
-  const [sortField, setSortField] = usePersistedState<PmSortField>(
-    STORAGE_KEY_SORT_FIELD,
-    'number',
-  );
-  const [sortDir, setSortDir] = usePersistedState<SortDir>(
-    STORAGE_KEY_SORT_DIR,
-    'desc',
-  );
+  // Transient "view saved" confirmation
+  const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const savedMsgTimeoutRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (savedMsgTimeoutRef.current !== null) {
+        window.clearTimeout(savedMsgTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Extract unique values for filters
   const uniqueYears = useMemo(() =>
@@ -195,6 +195,18 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
     setFilterStatus('');
   };
 
+  const handleSaveView = () => {
+    savePmViewDefaults({ filterYear, filterClient, filterStatus, sortField, sortDir });
+    setSavedMsg(t('pm.messages.view_settings_saved'));
+    if (savedMsgTimeoutRef.current !== null) {
+      window.clearTimeout(savedMsgTimeoutRef.current);
+    }
+    savedMsgTimeoutRef.current = window.setTimeout(() => {
+      setSavedMsg(null);
+      savedMsgTimeoutRef.current = null;
+    }, 3000);
+  };
+
   const selectClass = 'h-7 rounded-md border border-border bg-background px-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-primary';
 
   const SortIcon = sortField ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
@@ -266,6 +278,18 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
             {t('pm.filter.clear')}
           </Button>
         )}
+
+        <AppTooltip content={t('pm.save_view_as_default')}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="size-7 p-0"
+            aria-label={t('pm.save_view_as_default')}
+            onClick={handleSaveView}
+          >
+            <Save className="size-3.5" />
+          </Button>
+        </AppTooltip>
       </div>
 
       {/* Count */}
@@ -273,6 +297,10 @@ export function PmProjectsList({ projects, clientColors, tfMatches, onSelect, on
         <p className="text-[10px] text-muted-foreground shrink-0">
           {t('pm.filter.showing')}: {displayed.length} / {projects.length}
         </p>
+      )}
+
+      {savedMsg && (
+        <p className="text-[10px] text-green-400 shrink-0">{savedMsg}</p>
       )}
 
       {/* Table — scrollable */}
