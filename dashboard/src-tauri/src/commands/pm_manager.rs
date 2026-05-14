@@ -26,6 +26,7 @@ pub struct PmNewProject {
     pub prj_budget: String,
     pub prj_term: String,
     pub template_id: String,
+    pub prj_number: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,19 +100,57 @@ fn backup_projects_file(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn count_projects_this_year(projects: &[PmProject]) -> usize {
-    let year = Local::now().format("%y").to_string();
-    projects.iter().filter(|p| p.prj_year == year).count()
+/// Skan folderu roboczego: zwraca numery `NN` projektów pasujących do wzorca
+/// `NN_RR_...` dla podanego 2-cyfrowego `year`. Wpisy niepasujące, pliki
+/// oraz błędy odczytu katalogu są ignorowane.
+fn scan_disk_project_numbers(work_folder: &str, year: &str) -> Vec<u32> {
+    let mut nums = Vec::new();
+    let entries = match fs::read_dir(work_folder) {
+        Ok(e) => e,
+        Err(_) => return nums,
+    };
+    for entry in entries.flatten() {
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let file_name = entry.file_name();
+        let name = match file_name.to_str() {
+            Some(n) => n,
+            None => continue,
+        };
+        let mut parts = name.splitn(3, '_');
+        let num_part = parts.next().unwrap_or("");
+        let year_part = parts.next().unwrap_or("");
+        let is_num = (2..=3).contains(&num_part.len())
+            && num_part.chars().all(|c| c.is_ascii_digit());
+        if is_num && year_part == year {
+            if let Ok(n) = num_part.parse::<u32>() {
+                nums.push(n);
+            }
+        }
+    }
+    nums
 }
 
-fn next_project_number(projects: &[PmProject]) -> String {
-    let count = count_projects_this_year(projects);
-    let next = count + 1;
-    if next < 10 {
-        format!("0{}", next)
-    } else {
-        next.to_string()
-    }
+/// Numery zajęte w danym roku — scalone z rejestru JSON i skanu dysku.
+fn existing_project_numbers(work_folder: &str, year: &str) -> Result<Vec<u32>, String> {
+    let projects = read_projects(work_folder)?;
+    let mut nums: Vec<u32> = projects
+        .iter()
+        .filter(|p| p.prj_year == year)
+        .filter_map(|p| p.prj_number.trim().parse::<u32>().ok())
+        .collect();
+    nums.extend(scan_disk_project_numbers(work_folder, year));
+    Ok(nums)
+}
+
+/// Sugerowany kolejny numer projektu dla bieżącego roku: `max(zajęte) + 1`,
+/// z zerem wiodącym (`{:02}`).
+pub fn next_project_number(work_folder: &str) -> Result<String, String> {
+    let year = Local::now().format("%y").to_string();
+    let existing = existing_project_numbers(work_folder, &year)?;
+    let next = existing.into_iter().max().unwrap_or(0) + 1;
+    Ok(format!("{:02}", next))
 }
 
 fn default_template() -> PmFolderTemplate {
@@ -189,7 +228,21 @@ pub fn create_project(work_folder: &str, new: PmNewProject) -> Result<PmProject,
     let template = find_template(&templates, &new.template_id);
 
     let year = Local::now().format("%y").to_string();
-    let number = next_project_number(&projects);
+
+    let number_val: u32 = new
+        .prj_number
+        .trim()
+        .parse()
+        .map_err(|_| format!("Invalid project number: '{}'", new.prj_number.trim()))?;
+    if number_val == 0 {
+        return Err("Project number must be greater than 0".to_string());
+    }
+    let existing = existing_project_numbers(work_folder, &year)?;
+    if existing.contains(&number_val) {
+        return Err(format!("PM_NUMBER_TAKEN:{}", number_val));
+    }
+    let number = format!("{:02}", number_val);
+
     let code = format!("{}{}", number, year);
     let full_name = format!("{}_{}_{}_{}", number, year, new.prj_client, new.prj_name);
 
@@ -314,4 +367,147 @@ pub fn write_client_colors(work_folder: &str, colors: &std::collections::HashMap
         .map_err(|e| format!("JSON serialize error: {}", e))?;
     fs::write(&path, json)
         .map_err(|e| format!("Cannot write {}: {}", path.display(), e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_work_folder(tag: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("tf_pm_{}_{}", tag, nanos));
+        fs::create_dir_all(&dir).expect("create temp work folder");
+        dir
+    }
+
+    fn mkdir(work: &Path, name: &str) {
+        fs::create_dir_all(work.join(name)).expect("create project dir");
+    }
+
+    #[test]
+    fn scan_disk_picks_matching_year_only() {
+        let work = unique_work_folder("scan");
+        let year = Local::now().format("%y").to_string();
+        let other_year = if year == "00" { "99".to_string() } else { "00".to_string() };
+        mkdir(&work, &format!("01_{}_ACME_Site", year));
+        mkdir(&work, &format!("04_{}_ACME_Shop", year));
+        mkdir(&work, &format!("07_{}_OLD_Thing", other_year)); // inny rok - pomijany
+        mkdir(&work, "00_PM_NX"); // folder ustawień - pomijany
+        mkdir(&work, "notes"); // bez wzorca - pomijany
+
+        let mut nums = scan_disk_project_numbers(work.to_str().unwrap(), &year);
+        nums.sort();
+        assert_eq!(nums, vec![1, 4]);
+
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn existing_numbers_merge_json_and_disk() {
+        let work = unique_work_folder("merge");
+        let year = Local::now().format("%y").to_string();
+        mkdir(&work, &format!("04_{}_ACME_Shop", year)); // numer 04 tylko na dysku
+        let json_project = PmProject {
+            prj_folder: work.to_str().unwrap().to_string(),
+            prj_number: "02".into(),
+            prj_year: year.clone(),
+            prj_code: format!("02{}", year),
+            prj_client: "ACME".into(),
+            prj_name: "Site".into(),
+            prj_desc: String::new(),
+            prj_full_name: format!("02_{}_ACME_Site", year),
+            prj_budget: String::new(),
+            prj_term: String::new(),
+            prj_status: "Aktywny".into(),
+        };
+        write_projects(work.to_str().unwrap(), &[json_project]).expect("write json");
+
+        let mut nums = existing_project_numbers(work.to_str().unwrap(), &year).expect("existing");
+        nums.sort();
+        assert_eq!(nums, vec![2, 4]);
+
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn next_number_is_max_plus_one_with_gaps() {
+        let work = unique_work_folder("next");
+        let year = Local::now().format("%y").to_string();
+        mkdir(&work, &format!("01_{}_A_X", year));
+        mkdir(&work, &format!("02_{}_A_Y", year));
+        mkdir(&work, &format!("04_{}_A_Z", year)); // luka przy 03 NIE jest wypełniana
+        assert_eq!(next_project_number(work.to_str().unwrap()).unwrap(), "05");
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn next_number_starts_at_01_when_empty() {
+        let work = unique_work_folder("empty");
+        assert_eq!(next_project_number(work.to_str().unwrap()).unwrap(), "01");
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn create_project_rejects_taken_number() {
+        let work = unique_work_folder("collision");
+        let year = Local::now().format("%y").to_string();
+        mkdir(&work, &format!("03_{}_ACME_Existing", year));
+
+        let new = PmNewProject {
+            prj_client: "ACME".into(),
+            prj_name: "Dup".into(),
+            prj_desc: String::new(),
+            prj_budget: String::new(),
+            prj_term: String::new(),
+            template_id: "default".into(),
+            prj_number: "3".into(),
+        };
+        let result = create_project(work.to_str().unwrap(), new);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("PM_NUMBER_TAKEN"));
+
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn create_project_rejects_invalid_number() {
+        let work = unique_work_folder("invalid");
+        let new = PmNewProject {
+            prj_client: "ACME".into(),
+            prj_name: "Bad".into(),
+            prj_desc: String::new(),
+            prj_budget: String::new(),
+            prj_term: String::new(),
+            template_id: "default".into(),
+            prj_number: "abc".into(),
+        };
+        assert!(create_project(work.to_str().unwrap(), new).is_err());
+        fs::remove_dir_all(&work).ok();
+    }
+
+    #[test]
+    fn create_project_accepts_free_number() {
+        let work = unique_work_folder("ok");
+        let year = Local::now().format("%y").to_string();
+        let new = PmNewProject {
+            prj_client: "ACME".into(),
+            prj_name: "Fresh".into(),
+            prj_desc: String::new(),
+            prj_budget: String::new(),
+            prj_term: String::new(),
+            template_id: "default".into(),
+            prj_number: "7".into(),
+        };
+        let project = create_project(work.to_str().unwrap(), new).expect("create");
+        assert_eq!(project.prj_number, "07");
+        assert_eq!(project.prj_year, year);
+        assert_eq!(project.prj_code, format!("07{}", year));
+        assert_eq!(project.prj_full_name, format!("07_{}_ACME_Fresh", year));
+        assert!(work.join(format!("07_{}_ACME_Fresh", year)).is_dir());
+        fs::remove_dir_all(&work).ok();
+    }
 }
