@@ -9,6 +9,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { pmApi } from '@/lib/tauri/pm';
 import type { PmProject } from '@/lib/pm-types';
 import { getErrorMessage, logTauriError } from '@/lib/utils';
@@ -30,6 +32,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
   const [folderSize, setFolderSize] = useState<number | null | undefined>(undefined);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialogProps: confirmDialogProps } = useConfirmDialogState();
 
   useEffect(() => {
     pmApi.getPmFolderSize(project.prj_full_name)
@@ -51,6 +54,11 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
   };
 
   const handleDelete = async () => {
+    const confirmed = await confirm(
+      t('pm.detail.delete_confirm', { name: project.prj_full_name }),
+    );
+    if (!confirmed) return;
+    setError(null);
     setSubmitting(true);
     try {
       await pmApi.deletePmProject(index);
@@ -71,6 +79,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
     'w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary';
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
@@ -171,7 +180,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
             <div>
               {editing && (
                 <Button variant="destructive" size="sm" onClick={handleDelete} disabled={submitting}>
-                  {t('ui.buttons.confirm')}
+                  {t('pm.detail.delete')}
                 </Button>
               )}
             </div>
@@ -200,5 +209,7 @@ export function PmProjectDetailDialog({ open, project, index, onClose, onUpdated
         </div>
       </DialogContent>
     </Dialog>
+    <ConfirmDialog {...confirmDialogProps} />
+    </>
   );
 }

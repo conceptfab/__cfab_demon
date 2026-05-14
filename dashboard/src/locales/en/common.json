@@ -2115,6 +2115,8 @@
       "edit": "Edit",
       "save": "Save",
       "cancel": "Cancel",
+      "delete": "Delete",
+      "delete_confirm": "Delete project \"{{name}}\"? This permanently removes it from the project list and cannot be undone. The project folder on disk is not affected.",
       "folder_path": "Folder path",
       "folder_size": "Folder size",
       "folder_not_found": "Folder not found"

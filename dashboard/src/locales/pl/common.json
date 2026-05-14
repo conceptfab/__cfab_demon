@@ -2115,6 +2115,8 @@
       "edit": "Edytuj",
       "save": "Zapisz",
       "cancel": "Anuluj",
+      "delete": "Usuń",
+      "delete_confirm": "Usunąć projekt \"{{name}}\"? Spowoduje to trwałe usunięcie go z listy projektów i nie można tego cofnąć. Folder projektu na dysku nie zostanie naruszony.",
       "folder_path": "Ścieżka folderu",
       "folder_size": "Rozmiar folderu",
       "folder_not_found": "Folder nie istnieje"
