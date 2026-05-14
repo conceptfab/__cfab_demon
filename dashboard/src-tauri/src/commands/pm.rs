@@ -57,6 +57,12 @@ pub fn pm_create_project(
 }
 
 #[tauri::command]
+pub fn pm_suggest_project_number() -> Result<String, String> {
+    let folder = load_work_folder()?;
+    pm_manager::next_project_number(&folder)
+}
+
+#[tauri::command]
 pub fn pm_update_project(
     index: usize,
     project: pm_manager::PmProject,

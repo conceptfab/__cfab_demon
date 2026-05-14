@@ -279,6 +279,7 @@ pub fn run() {
             commands::clear_log_file,
             commands::open_logs_folder,
             commands::pm_get_projects,
+            commands::pm_suggest_project_number,
             commands::pm_create_project,
             commands::pm_update_project,
             commands::pm_delete_project,
