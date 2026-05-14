@@ -18,6 +18,11 @@ interface Props {
   onCreated: () => void;
 }
 
+function isValidProjectNumber(value: string): boolean {
+  const trimmed = value.trim();
+  return /^\d{1,3}$/.test(trimmed) && Number(trimmed) > 0;
+}
+
 export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
   const { t } = useTranslation();
   const [client, setClient] = useState('');
@@ -44,20 +49,23 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    let cancelled = false;
     setNumberLoading(true);
     setNumberError(false);
     pmApi.suggestProjectNumber()
-      .then((n) => setProjectNumber(n))
+      .then((n) => { if (!cancelled) setProjectNumber(n); })
       .catch((e) => {
+        if (cancelled) return;
         logTauriError('pm suggest project number', e);
         setNumberError(true);
         setProjectNumber('');
       })
-      .finally(() => setNumberLoading(false));
+      .finally(() => { if (!cancelled) setNumberLoading(false); });
+    return () => { cancelled = true; };
   }, [open]);
 
   const year = new Date().getFullYear().toString().slice(-2);
-  const numberIsValid = /^\d{1,3}$/.test(projectNumber.trim()) && Number(projectNumber.trim()) > 0;
+  const numberIsValid = isValidProjectNumber(projectNumber);
   const displayNumber = numberIsValid ? projectNumber.trim().padStart(2, '0') : 'XX';
   const previewCode = `${displayNumber}${year}`;
   const previewName = client && name ? `${displayNumber}_${year}_${client}_${name}` : '';
@@ -70,7 +78,7 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
     if (!name.trim()) { setError(t('pm.errors.name_required')); return; }
 
     const trimmedNumber = projectNumber.trim();
-    if (!/^\d{1,3}$/.test(trimmedNumber) || Number(trimmedNumber) <= 0) {
+    if (!isValidProjectNumber(trimmedNumber)) {
       setError(t('pm.errors.number_invalid'));
       return;
     }
@@ -118,7 +126,10 @@ export function PmCreateProjectDialog({ open, onClose, onCreated }: Props) {
             <input
               className="w-32 rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
               value={projectNumber}
-              onChange={(e) => setProjectNumber(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              onChange={(e) => {
+                setNumberError(false);
+                setProjectNumber(e.target.value.replace(/\D/g, '').slice(0, 3));
+              }}
               inputMode="numeric"
               placeholder={numberLoading ? '…' : '01'}
               disabled={numberLoading}
