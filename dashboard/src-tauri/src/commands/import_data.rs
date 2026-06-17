@@ -1296,8 +1296,13 @@ fn create_pre_sync_backup(app: &AppHandle, sync_type: &str) -> Result<String, St
     let file_name = format!("timeflow_pre_{}_sync_{}.db", sync_type, timestamp);
     let dest_path = backup_dir.join(&file_name);
 
-    let escaped = dest_path.to_string_lossy().replace('\'', "''");
-    conn.execute_batch(&format!("VACUUM INTO '{}'", escaped))
+    // Escape the path via SQLite quote() instead of manual replace (mirrors
+    // sync_markers.rs) — robust quoting, no format! string-injection antipattern.
+    let dest = dest_path.to_string_lossy().to_string();
+    let quoted: String = conn
+        .query_row("SELECT quote(?1)", [&dest], |row| row.get(0))
+        .map_err(|e| format!("Failed to escape backup path: {}", e))?;
+    conn.execute_batch(&format!("VACUUM INTO {}", quoted))
         .map_err(|e| format!("Pre-sync backup failed: {}", e))?;
 
     // Rotate: keep max 10 pre-sync backups per type
