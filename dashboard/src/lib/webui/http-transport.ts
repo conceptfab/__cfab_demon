@@ -1,5 +1,16 @@
 const TOKEN_KEY = 'timeflow.webui.token';
 
+/**
+ * True gdy strona jest serwowana z loopbacku (127.0.0.1 / localhost). Lokalny
+ * dostęp nie wymaga kodu parowania — bramki Origin + X-Timeflow-Rpc po stronie
+ * serwera już blokują CSRF. Kod jest potrzebny tylko z innych urządzeń (LAN).
+ */
+export function isLoopbackHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const h = window.location.hostname;
+  return h === '127.0.0.1' || h === 'localhost' || h === '::1';
+}
+
 export function getWebToken(): string | null {
   try {
     return localStorage.getItem(TOKEN_KEY);
@@ -43,19 +54,21 @@ export async function httpInvoke<T>(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  // Token is mandatory — there is no loopback "trusted host" path anymore
-  // (that was the CSRF vector). Every browser must pair to obtain a token.
+  // Token wymagany poza loopbackiem. Lokalnie (127.0.0.1) serwer ufa połączeniu
+  // bez tokenu — chroni go nagłówek X-Timeflow-Rpc + walidacja Origin, których
+  // obca strona nie ustawi cross-origin. Z LAN/innego urządzenia token konieczny.
   const token = getWebToken();
-  if (!token) throw new WebUnauthorizedError('no_token');
+  if (!token && !isLoopbackHost()) throw new WebUnauthorizedError('no_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    // Custom header — unsettable cross-origin without a CORS preflight, so the
+    // server can require it as an anti-CSRF gate (see webui/server.rs).
+    'X-Timeflow-Rpc': '1',
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch('/rpc', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      // Custom header — unsettable cross-origin without a CORS preflight, so the
-      // server can require it as an anti-CSRF gate (see webui/server.rs).
-      'X-Timeflow-Rpc': '1',
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
     body: JSON.stringify({ command, args: args ?? {} }),
   });
   if (res.status === 401) {

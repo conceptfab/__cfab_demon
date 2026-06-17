@@ -2,19 +2,14 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { hasTauriRuntime } from '@/lib/tauri/core';
-import { getWebToken, pairWithCode } from '@/lib/webui/http-transport';
-
-function isLocalDevelopmentHost(): boolean {
-  if (!import.meta.env.DEV || typeof window === 'undefined') {
-    return false;
-  }
-  return window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
-}
+import { getWebToken, isLoopbackHost, pairWithCode } from '@/lib/webui/http-transport';
 
 export function WebLoginGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
+  // Loopback (127.0.0.1) nie wymaga kodu — lokalny dostęp z menu demona jest
+  // bezkodowy; kod parowania dotyczy tylko innych urządzeń (LAN).
   const [authed] = useState(
-    () => hasTauriRuntime() || isLocalDevelopmentHost() || !!getWebToken(),
+    () => hasTauriRuntime() || isLoopbackHost() || !!getWebToken(),
   );
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);

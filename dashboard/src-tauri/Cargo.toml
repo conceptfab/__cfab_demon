@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-dashboard"
-version = "0.1.5731"
+version = "0.1.5732"
 description = "TimeFlow Dashboard"
 authors = ["you"]
 license = ""

@@ -2168,7 +2168,7 @@
     "webserver_clients_read_write": "Clients support — the web UI can list, create, edit, archive, and delete clients through local RPC.",
     "webserver_settings_tab": "Settings > Web Server shows the port, access address, pairing code, and active sessions.",
     "webserver_settings_feature": "Web Server — a dedicated settings tab for enabling browser access on a trusted local network.",
-    "webserver_pairing_code": "Pairing code — every browser (including one on the host computer) must pair with a short-lived code that creates a session token; there is no automatic \"trusted host\" anymore.",
+    "webserver_pairing_code": "Pairing code — browsers on other devices (phone, tablet, or a second computer over the LAN) pair with a short-lived code that creates a session token. The local browser on the host computer (127.0.0.1) connects without a code.",
     "webserver_active_sessions": "Active sessions — paired browsers can be revoked from settings.",
     "webserver_restart_required": "Changing the port or enabled state requires restarting the app before the server starts listening.",
     "webserver_http_lan_warning": "The connection uses unencrypted HTTP, so use it only on a trusted local network.",

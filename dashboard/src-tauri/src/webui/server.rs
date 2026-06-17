@@ -306,14 +306,21 @@ fn origin_is_forbidden(request: &ParsedRequest) -> bool {
     !allowed
 }
 
-/// Token JEST wymagany zawsze — brak loopback-bypass (to był wektor CSRF:
-/// dowolna strona mogła wskazać przeglądarkę na 127.0.0.1 i wywołać komendy).
+/// Loopback (127.0.0.1) jest zaufany BEZ tokenu — ale wyłącznie dlatego, że
+/// `handle_rpc` woła tę funkcję DOPIERO po `origin_is_forbidden` i
+/// `request_has_rpc_header`. Obca strona nie ustawi nagłówka `X-Timeflow-Rpc`
+/// cross-origin bez preflightu (serwer go nie zwraca) ani nie poda naszego
+/// Origin — więc „loopback + te bramki” = nasz same-origin SPA, nie CSRF.
+/// Token wymagany tylko dla połączeń NIE-loopback (LAN / inne urządzenia).
 fn rpc_is_authorized(
     request: &ParsedRequest,
     auth: &AuthState,
     now: u64,
-    _is_loopback: bool,
+    is_loopback: bool,
 ) -> bool {
+    if is_loopback {
+        return true;
+    }
     request
         .bearer
         .as_deref()
@@ -397,15 +404,29 @@ mod tests {
     }
 
     #[test]
-    fn rpc_without_token_is_unauthorized_even_on_loopback() {
+    fn rpc_loopback_authorized_without_token() {
+        // Loopback (127.0.0.1) NIE wymaga tokenu — bramki Origin + X-Timeflow-Rpc
+        // w handle_rpc już udowodniły, że to nasz same-origin SPA, nie CSRF.
         let app_raw = concat!(
             "POST /rpc HTTP/1.1\r\nHost: 127.0.0.1:47892\r\n",
-            "Content-Type: text/plain\r\n\r\n",
-            r#"{"command":"clear_all_data","args":{}}"#
+            "X-Timeflow-Rpc: 1\r\nContent-Type: text/plain\r\n\r\n",
+            r#"{"command":"clients_list","args":{}}"#
         );
         let req = parse_request(app_raw).unwrap();
-        // is_loopback=true nie może już autoryzować bez tokenu:
-        assert!(!rpc_is_authorized(&req, &AuthState::new(), 0, true));
+        assert!(rpc_is_authorized(&req, &AuthState::new(), 0, true));
+    }
+
+    #[test]
+    fn rpc_non_loopback_without_token_is_unauthorized() {
+        // LAN / inne urządzenie (nie-loopback) bez tokenu = 401 — kod parowania
+        // jest wymagany poza loopbackiem.
+        let app_raw = concat!(
+            "POST /rpc HTTP/1.1\r\nHost: 192.168.1.50:47892\r\n",
+            "X-Timeflow-Rpc: 1\r\nContent-Type: text/plain\r\n\r\n",
+            r#"{"command":"clients_list","args":{}}"#
+        );
+        let req = parse_request(app_raw).unwrap();
+        assert!(!rpc_is_authorized(&req, &AuthState::new(), 0, false));
     }
 
     #[test]

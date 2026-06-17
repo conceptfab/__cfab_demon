@@ -2168,7 +2168,7 @@
     "webserver_clients_read_write": "Obsługa klientów — web UI pozwala przeglądać, tworzyć, edytować, archiwizować i usuwać klientów przez lokalny RPC.",
     "webserver_settings_tab": "Zakładka Ustawienia > Serwer WWW pokazuje port, adres dostępu, kod parowania i aktywne sesje.",
     "webserver_settings_feature": "Serwer WWW — osobna zakładka ustawień do włączenia dostępu przez przeglądarkę w zaufanej sieci lokalnej.",
-    "webserver_pairing_code": "Kod parowania — każda przeglądarka (także na komputerze głównym) musi sparować się krótkotrwałym kodem, który tworzy token sesji; nie ma już automatycznie „zaufanego hosta”.",
+    "webserver_pairing_code": "Kod parowania — przeglądarki na innych urządzeniach (telefon, tablet lub drugi komputer w sieci LAN) parują się krótkotrwałym kodem, który tworzy token sesji. Lokalna przeglądarka na komputerze głównym (127.0.0.1) łączy się bez kodu.",
     "webserver_active_sessions": "Aktywne sesje — sparowane przeglądarki możesz odłączyć z poziomu ustawień.",
     "webserver_restart_required": "Zmiana portu lub włączenia wymaga restartu aplikacji, aby serwer zaczął nasłuchiwać.",
     "webserver_http_lan_warning": "Połączenie działa przez nieszyfrowane HTTP, więc używaj go wyłącznie w zaufanej sieci lokalnej.",
