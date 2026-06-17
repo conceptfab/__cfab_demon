@@ -151,6 +151,11 @@ fn serve_index(_is_loopback: bool) -> Vec<u8> {
 
 fn serve_spa(path: &str, is_loopback: bool) -> Vec<u8> {
     let rel = path.trim_start_matches('/');
+    // Defense-in-depth: SPA is an embedded include_dir! (no disk reads), but
+    // reject '..' explicitly so a traversal attempt can never resolve a file.
+    if rel.contains("..") {
+        return serve_index(is_loopback);
+    }
     let candidate = if rel.is_empty() { "index.html" } else { rel };
     if candidate == "index.html" {
         return serve_index(is_loopback);
@@ -373,6 +378,14 @@ mod tests {
         // intentionally keeps 'unsafe-inline' — Radix/Recharts inject inline styles.
         assert!(head.contains("script-src 'self';"));
         assert!(!head.contains("script-src 'self' 'unsafe-inline'"));
+    }
+
+    #[test]
+    fn serve_spa_rejects_dotdot() {
+        let resp = String::from_utf8(serve_spa("/../secret", false)).unwrap();
+        // Fallback to index.html HTML — never a file resolved via traversal.
+        assert!(resp.contains("<"));
+        assert!(resp.contains("text/html"));
     }
 
     #[test]
