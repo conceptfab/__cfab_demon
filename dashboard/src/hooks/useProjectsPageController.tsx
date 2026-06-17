@@ -142,19 +142,6 @@ export function useProjectsPageController() {
   >({});
   const projectRenderLimits =
     limitsByScope[projectListScopeKey] ?? EMPTY_PROJECT_RENDER_LIMITS;
-  const setProjectRenderLimits = (
-    updater: (
-      prev: Record<string, number>,
-    ) => Record<string, number>,
-  ) => {
-    setLimitsByScope((prev) => ({
-      ...prev,
-      [projectListScopeKey]: updater(
-        prev[projectListScopeKey] ?? EMPTY_PROJECT_RENDER_LIMITS,
-      ),
-    }));
-  };
-
   const [sectionOpen, setSectionOpen] = useState(loadSectionOpenState);
 
   const toggleSection = (key: keyof typeof DEFAULT_SECTION_OPEN) => () =>

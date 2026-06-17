@@ -1,6 +1,6 @@
 import { UNASSIGNED_PROJECT_SENTINEL } from '@/lib/project-labels';
 import { manualToSessionRow, wallClockSeconds } from '@/lib/session-utils';
-import type { ManualSessionWithProject, SessionWithApp } from '@/lib/db-types';
+import type { SessionWithApp } from '@/lib/db-types';
 
 export interface GroupedProject {
   projectId: number | null;

@@ -87,8 +87,8 @@ export function useSessionSplitAnalysis({
               is_splittable: false,
               leader_project_id: null,
               leader_score: 0,
-            },
-          } as const;
+            } satisfies MultiProjectAnalysis,
+          };
         },
       )
       .then(({ analysis }) => {

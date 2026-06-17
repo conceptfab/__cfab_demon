@@ -36,6 +36,7 @@ export function useTimeAnalysisData() {
   const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
   const [groupBy, setGroupBy] = useState<GroupBy>("projects");
   const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [overrideDateRange, setOverrideDateRangeState] = useState<DateRange | null>(null);
   const [isPending, startTransition] = useTransition();
   const [analysisView, setAnalysisView] = useState<{
     timeline: TimelinePoint[];
@@ -69,9 +70,10 @@ export function useTimeAnalysisData() {
     }, 60_000);
     return () => window.clearInterval(interval);
   }, []);
-  const canShiftForward = anchorDate < today;
+  const canShiftForward = !overrideDateRange && anchorDate < today;
 
   const activeDateRange = useMemo<DateRange>(() => {
+    if (overrideDateRange) return overrideDateRange;
     const d = parseISO(anchorDate);
     switch (rangeMode) {
       case "daily":
@@ -81,11 +83,17 @@ export function useTimeAnalysisData() {
       case "monthly":
         return { start: format(startOfMonth(d), "yyyy-MM-dd"), end: format(endOfMonth(d), "yyyy-MM-dd") };
     }
-  }, [rangeMode, anchorDate]);
+  }, [rangeMode, anchorDate, overrideDateRange]);
+
+  // Własny zakres (od–do) renderujemy ścieżką dzienno-granularną (kalendarz + słupki
+  // dzienne), bo tylko ona poprawnie obsługuje dowolny wielodniowy przedział.
+  const effectiveRangeMode: RangeMode = overrideDateRange ? "monthly" : rangeMode;
+  const isCustomRange = overrideDateRange !== null;
 
   const setRangeModeWithLoading = useCallback((next: RangeMode) => {
     setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
     startTransition(() => {
+      setOverrideDateRangeState(null);
       setRangeMode(next);
     });
   }, []);
@@ -94,6 +102,13 @@ export function useTimeAnalysisData() {
     setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
     startTransition(() => {
       setGroupBy(next);
+    });
+  }, []);
+
+  const setOverrideDateRange = useCallback((range: DateRange | null) => {
+    setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
+    startTransition(() => {
+      setOverrideDateRangeState(range);
     });
   }, []);
 
@@ -109,6 +124,7 @@ export function useTimeAnalysisData() {
     if (next > today) return;
     setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
     startTransition(() => {
+      setOverrideDateRangeState(null);
       setAnchorDate(next);
     });
   }, [anchorDate, rangeMode, today]);
@@ -116,7 +132,7 @@ export function useTimeAnalysisData() {
   useEffect(() => {
     let cancelled = false;
 
-    const hpPromise = rangeMode === "monthly"
+    const hpPromise = effectiveRangeMode === "monthly"
       ? getProjectTimeline(activeDateRange, 200, "day")
       : getProjectTimeline(activeDateRange, 200, "hour");
 
@@ -184,7 +200,7 @@ export function useTimeAnalysisData() {
     return () => {
       cancelled = true;
     };
-  }, [activeDateRange, rangeMode, groupBy, t]);
+  }, [activeDateRange, effectiveRangeMode, groupBy, t]);
 
   // Parsed hourly project data (shared between daily & weekly)
   const parsed = useMemo(
@@ -233,7 +249,7 @@ export function useTimeAnalysisData() {
 
   // Weekly heatmap grid
   const weeklyHourlyGrid = useMemo(() => {
-    if (rangeMode !== "weekly") return { days: [] as WeekDaySlot[], allProjects: parsed.allProjects, maxVal: 1 };
+    if (effectiveRangeMode !== "weekly") return { days: [] as WeekDaySlot[], allProjects: parsed.allProjects, maxVal: 1 };
 
     let maxVal = 1;
     const days: WeekDaySlot[] = [];
@@ -249,18 +265,18 @@ export function useTimeAnalysisData() {
     }
 
     return { days, allProjects: parsed.allProjects, maxVal };
-  }, [rangeMode, parsed, activeDateRange, locale]);
+  }, [effectiveRangeMode, parsed, activeDateRange, locale]);
 
   // Daily heatmap grid
   const dailyHourlyGrid = useMemo(() => {
-    if (rangeMode !== "daily") return { hours: [] as HourSlot[], allProjects: parsed.allProjects, maxVal: 1 };
+    if (effectiveRangeMode !== "daily") return { hours: [] as HourSlot[], allProjects: parsed.allProjects, maxVal: 1 };
     const { slots, maxVal } = buildDaySlots(parsed.byDateHour.get(anchorDate));
     return { hours: slots, allProjects: parsed.allProjects, maxVal };
-  }, [rangeMode, parsed, anchorDate]);
+  }, [effectiveRangeMode, parsed, anchorDate]);
 
   // Bar data — monthly (stacked by project per day)
   const monthlyBarData = useMemo(() => {
-    if (rangeMode !== "monthly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    if (effectiveRangeMode !== "monthly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
     const projectSet = new Set<string>();
     // hourlyProjects for monthly mode contains day-granularity rows
     const perDay = new Map<string, Record<string, number>>();
@@ -285,11 +301,11 @@ export function useTimeAnalysisData() {
       return row;
     });
     return { data, projectNames: Array.from(projectSet) };
-  }, [hourlyProjects, hourlySeriesMetaByKey, rangeMode]);
+  }, [hourlyProjects, hourlySeriesMetaByKey, effectiveRangeMode]);
 
   // Daily hourly bar data: stacked by project per hour
   const dailyBarData = useMemo(() => {
-    if (rangeMode !== "daily") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    if (effectiveRangeMode !== "daily") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
     const projectSet = new Set<string>();
     const barRows = dailyHourlyGrid.hours.map((slot) => {
       const row: Record<string, unknown> = { hour: `${slot.hour.toString().padStart(2, "0")}:00` };
@@ -300,11 +316,11 @@ export function useTimeAnalysisData() {
       return row;
     });
     return { data: barRows, projectNames: Array.from(projectSet) };
-  }, [rangeMode, dailyHourlyGrid]);
+  }, [effectiveRangeMode, dailyHourlyGrid]);
 
   // Weekly daily bar data: stacked by project per day
   const weeklyBarData = useMemo(() => {
-    if (rangeMode !== "weekly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    if (effectiveRangeMode !== "weekly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
     const projectSet = new Set<string>();
     const barRows = weeklyHourlyGrid.days.map((day) => {
       const row: Record<string, unknown> = { date: day.dateStr };
@@ -317,13 +333,13 @@ export function useTimeAnalysisData() {
       return row;
     });
     return { data: barRows, projectNames: Array.from(projectSet) };
-  }, [rangeMode, weeklyHourlyGrid]);
+  }, [effectiveRangeMode, weeklyHourlyGrid]);
 
   // Project color map for stacked bars
   const stackedBarColorMap = useMemo(() => {
-    const names = rangeMode === "daily"
+    const names = effectiveRangeMode === "daily"
       ? dailyBarData.projectNames
-      : rangeMode === "weekly"
+      : effectiveRangeMode === "weekly"
         ? weeklyBarData.projectNames
         : monthlyBarData.projectNames;
     const map = new Map<string, string>();
@@ -341,25 +357,25 @@ export function useTimeAnalysisData() {
     monthlyBarData.projectNames,
     parsed.colorMap,
     projectColors,
-    rangeMode,
+    effectiveRangeMode,
     weeklyBarData.projectNames,
   ]);
 
   // Daily total hours
   const dailyTotalHours = useMemo(() => {
-    if (rangeMode !== "daily") return 0;
+    if (effectiveRangeMode !== "daily") return 0;
     return dailyHourlyGrid.hours.reduce((s, h) => s + h.totalSeconds, 0) / 3600;
-  }, [rangeMode, dailyHourlyGrid]);
+  }, [effectiveRangeMode, dailyHourlyGrid]);
 
   // Weekly total hours
   const weeklyTotalHours = useMemo(() => {
-    if (rangeMode !== "weekly") return 0;
+    if (effectiveRangeMode !== "weekly") return 0;
     return weeklyHourlyGrid.days.reduce((s, d) => s + d.totalSeconds, 0) / 3600;
-  }, [rangeMode, weeklyHourlyGrid]);
+  }, [effectiveRangeMode, weeklyHourlyGrid]);
 
   // Monthly calendar heatmap
   const monthCalendar = useMemo(() => {
-    if (rangeMode !== "monthly") return { weeks: [] as CalendarWeek[], maxVal: 1 };
+    if (effectiveRangeMode !== "monthly") return { weeks: [] as CalendarWeek[], maxVal: 1 };
     const mStart = parseISO(activeDateRange.start);
     const mEnd = parseISO(activeDateRange.end);
     const weekStarts = eachWeekOfInterval({ start: mStart, end: mEnd }, { weekStartsOn: 1 });
@@ -410,18 +426,21 @@ export function useTimeAnalysisData() {
     locale,
     parsed.colorMap,
     projectColors,
-    rangeMode,
+    effectiveRangeMode,
     timeline,
   ]);
 
   // Monthly total
   const monthTotalHours = useMemo(() => {
-    if (rangeMode !== "monthly") return 0;
+    if (effectiveRangeMode !== "monthly") return 0;
     return timeline.reduce((s, t) => s + t.seconds, 0) / 3600;
-  }, [rangeMode, timeline]);
+  }, [effectiveRangeMode, timeline]);
 
   // Date label
   const dateLabel = useMemo(() => {
+    if (overrideDateRange) {
+      return `${format(parseISO(activeDateRange.start), "MMM d", { locale })} – ${format(parseISO(activeDateRange.end), "MMM d", { locale })}`;
+    }
     if (rangeMode === "monthly") {
       return format(parseISO(activeDateRange.start), "MMMM yyyy", { locale });
     }
@@ -429,12 +448,12 @@ export function useTimeAnalysisData() {
       return format(parseISO(activeDateRange.start), "EEE, MMM d", { locale });
     }
     return `${format(parseISO(activeDateRange.start), "MMM d", { locale })} – ${format(parseISO(activeDateRange.end), "MMM d", { locale })}`;
-  }, [rangeMode, activeDateRange, locale]);
+  }, [rangeMode, activeDateRange, locale, overrideDateRange]);
 
   // Export handler
   const handleExport = () => {
     let csv: string;
-    if (rangeMode === "daily") {
+    if (effectiveRangeMode === "daily") {
       const projects = dailyBarData.projectNames;
       const header = `Hour,${projects.join(",")},Total`;
       const rows = dailyBarData.data.map((row) => {
@@ -444,7 +463,7 @@ export function useTimeAnalysisData() {
         return `${hour},${vals.join(",")},${total}`;
       });
       csv = [header, ...rows].join("\n");
-    } else if (rangeMode === "weekly") {
+    } else if (effectiveRangeMode === "weekly") {
       const projects = weeklyBarData.projectNames;
       const header = `Date,${projects.join(",")},Total`;
       const rows = weeklyBarData.data.map((row) => {
@@ -470,7 +489,11 @@ export function useTimeAnalysisData() {
 
   return {
     rangeMode,
+    effectiveRangeMode,
+    isCustomRange,
+    activeDateRange,
     setRangeMode: setRangeModeWithLoading,
+    setOverrideDateRange,
     groupBy,
     setGroupBy: setGroupByWithLoading,
     canShiftForward,

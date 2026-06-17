@@ -4,7 +4,7 @@ import { Terminal, FolderOpen, Trash2, RefreshCw, ChevronDown } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { logManagementApi } from '@/lib/tauri/log-management';
-import type { LogSettings, LogFileInfo } from '@/lib/tauri/log-management';
+import type { LogSettings } from '@/lib/tauri/log-management';
 import {
   devSettingsCardReducer,
   initialDevSettingsCardState,

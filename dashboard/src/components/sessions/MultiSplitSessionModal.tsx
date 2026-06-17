@@ -13,7 +13,6 @@ import type {
 import {
   buildInitialParts,
   rebalanceSplitPercents,
-  type EditableSplitPart,
 } from '@/components/sessions/multi-split-utils';
 import { MultiSplitSessionEditor } from '@/components/sessions/MultiSplitSessionEditor';
 

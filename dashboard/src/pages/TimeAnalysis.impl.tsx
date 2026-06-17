@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { AppTooltip } from '@/components/ui/app-tooltip';
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import {
   TOOLTIP_CONTENT_STYLE,
   CHART_TOOLTIP_TEXT_COLOR,
@@ -115,56 +116,72 @@ export function TimeAnalysis() {
 
         <SegmentedToolbar aria-label={t('time_analysis_page.range.toolbar_label')}>
           <SegmentedToolbarButton
-            active={d.rangeMode === 'daily'}
+            active={!d.isCustomRange && d.rangeMode === 'daily'}
             onClick={() => d.setRangeMode('daily')}
           >
             {t('time_analysis_page.range.today')}
           </SegmentedToolbarButton>
           <SegmentedToolbarButton
-            active={d.rangeMode === 'weekly'}
+            active={!d.isCustomRange && d.rangeMode === 'weekly'}
             onClick={() => d.setRangeMode('weekly')}
           >
             {t('time_analysis_page.range.week')}
           </SegmentedToolbarButton>
           <SegmentedToolbarButton
-            active={d.rangeMode === 'monthly'}
+            active={!d.isCustomRange && d.rangeMode === 'monthly'}
             onClick={() => d.setRangeMode('monthly')}
           >
             {t('time_analysis_page.range.month')}
           </SegmentedToolbarButton>
         </SegmentedToolbar>
 
-        <div className="grid w-full min-w-0 grid-cols-[2.25rem_1fr_2.25rem] items-center md:hidden">
-          <span className={MOBILE_SIDE_SLOT} aria-hidden />
-          <div className="flex min-w-0 items-center justify-center gap-0.5">
-            <AppTooltip content={t('time_analysis_page.previous_period')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t('time_analysis_page.previous_period')}
-                className={MOBILE_SIDE_SLOT}
-                onClick={() => d.shiftDateRange(-1)}
-              >
-                <ChevronLeft className="size-4" />
-              </Button>
-            </AppTooltip>
+        {d.isCustomRange ? (
+          <div className="flex w-full items-center justify-center md:hidden">
             <span className="min-w-[5.5rem] whitespace-nowrap text-center text-xs text-muted-foreground">
               {d.dateLabel}
             </span>
-            <AppTooltip content={t('time_analysis_page.next_period')}>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t('time_analysis_page.next_period')}
-                className={MOBILE_SIDE_SLOT}
-                onClick={() => d.shiftDateRange(1)}
-                disabled={!d.canShiftForward}
-              >
-                <ChevronRight className="size-4" />
-              </Button>
-            </AppTooltip>
           </div>
-          <span className={MOBILE_SIDE_SLOT} aria-hidden />
+        ) : (
+          <div className="grid w-full min-w-0 grid-cols-[2.25rem_1fr_2.25rem] items-center md:hidden">
+            <span className={MOBILE_SIDE_SLOT} aria-hidden />
+            <div className="flex min-w-0 items-center justify-center gap-0.5">
+              <AppTooltip content={t('time_analysis_page.previous_period')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('time_analysis_page.previous_period')}
+                  className={MOBILE_SIDE_SLOT}
+                  onClick={() => d.shiftDateRange(-1)}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+              </AppTooltip>
+              <span className="min-w-[5.5rem] whitespace-nowrap text-center text-xs text-muted-foreground">
+                {d.dateLabel}
+              </span>
+              <AppTooltip content={t('time_analysis_page.next_period')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('time_analysis_page.next_period')}
+                  className={MOBILE_SIDE_SLOT}
+                  onClick={() => d.shiftDateRange(1)}
+                  disabled={!d.canShiftForward}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </AppTooltip>
+            </div>
+            <span className={MOBILE_SIDE_SLOT} aria-hidden />
+          </div>
+        )}
+
+        <div className="flex w-full items-center justify-end md:hidden">
+          <DateRangePicker
+            start={d.activeDateRange.start}
+            end={d.activeDateRange.end}
+            onApply={d.setOverrideDateRange}
+          />
         </div>
 
         <div className="hidden flex-wrap items-center justify-end gap-2 md:flex">
@@ -184,53 +201,67 @@ export function TimeAnalysis() {
           </Button>
           <div className="mx-1 h-5 w-px bg-border" />
           <Button
-            variant={d.rangeMode === 'daily' ? 'default' : 'outline'}
+            variant={!d.isCustomRange && d.rangeMode === 'daily' ? 'default' : 'outline'}
             size="sm"
             onClick={() => d.setRangeMode('daily')}
           >
             {t('time_analysis_page.range.today')}
           </Button>
           <Button
-            variant={d.rangeMode === 'weekly' ? 'default' : 'outline'}
+            variant={!d.isCustomRange && d.rangeMode === 'weekly' ? 'default' : 'outline'}
             size="sm"
             onClick={() => d.setRangeMode('weekly')}
           >
             {t('time_analysis_page.range.week')}
           </Button>
           <Button
-            variant={d.rangeMode === 'monthly' ? 'default' : 'outline'}
+            variant={!d.isCustomRange && d.rangeMode === 'monthly' ? 'default' : 'outline'}
             size="sm"
             onClick={() => d.setRangeMode('monthly')}
           >
             {t('time_analysis_page.range.month')}
           </Button>
           <div className="mx-1 h-5 w-px bg-border" />
-          <AppTooltip content={t('time_analysis_page.previous_period')}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label={t('time_analysis_page.previous_period')}
-              onClick={() => d.shiftDateRange(-1)}
-            >
-              <ChevronLeft className="size-4" />
-            </Button>
-          </AppTooltip>
-          <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
-            {d.dateLabel}
-          </span>
-          <AppTooltip content={t('time_analysis_page.next_period')}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              aria-label={t('time_analysis_page.next_period')}
-              onClick={() => d.shiftDateRange(1)}
-              disabled={!d.canShiftForward}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </AppTooltip>
+          {d.isCustomRange ? (
+            <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
+              {d.dateLabel}
+            </span>
+          ) : (
+            <>
+              <AppTooltip content={t('time_analysis_page.previous_period')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  aria-label={t('time_analysis_page.previous_period')}
+                  onClick={() => d.shiftDateRange(-1)}
+                >
+                  <ChevronLeft className="size-4" />
+                </Button>
+              </AppTooltip>
+              <span className="min-w-[5rem] text-center text-xs text-muted-foreground">
+                {d.dateLabel}
+              </span>
+              <AppTooltip content={t('time_analysis_page.next_period')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  aria-label={t('time_analysis_page.next_period')}
+                  onClick={() => d.shiftDateRange(1)}
+                  disabled={!d.canShiftForward}
+                >
+                  <ChevronRight className="size-4" />
+                </Button>
+              </AppTooltip>
+            </>
+          )}
+          <div className="mx-1 h-5 w-px bg-border" />
+          <DateRangePicker
+            start={d.activeDateRange.start}
+            end={d.activeDateRange.end}
+            onApply={d.setOverrideDateRange}
+          />
         </div>
       </div>
 
@@ -257,9 +288,9 @@ export function TimeAnalysis() {
       {/* Charts row */}
       <div className={mobileLayout.chartGrid}>
         {/* Bar chart — delegates to view-specific component */}
-        {d.rangeMode === 'daily' ? (
+        {d.effectiveRangeMode === 'daily' ? (
           <DailyBarChart {...d} />
-        ) : d.rangeMode === 'weekly' ? (
+        ) : d.effectiveRangeMode === 'weekly' ? (
           <WeeklyBarChart {...d} />
         ) : (
           <MonthlyBarChart {...d} />
@@ -346,17 +377,17 @@ export function TimeAnalysis() {
       {/* Heatmap */}
       <div className="flex flex-col">
         <h3 className="pb-4 text-sm font-medium">
-          {d.rangeMode === 'daily'
+          {d.effectiveRangeMode === 'daily'
             ? t('time_analysis_page.heatmap.daily_timeline')
-            : d.rangeMode === 'monthly'
+            : d.effectiveRangeMode === 'monthly'
               ? t('time_analysis_page.heatmap.monthly_heatmap')
               : t('time_analysis_page.heatmap.weekly_timeline')}
         </h3>
         <div className="px-0">
           <div className="overflow-x-auto">
-            {d.rangeMode === 'daily' ? (
+            {d.effectiveRangeMode === 'daily' ? (
               <DailyHeatmap {...d} />
-            ) : d.rangeMode === 'monthly' ? (
+            ) : d.effectiveRangeMode === 'monthly' ? (
               <MonthlyHeatmap {...d} />
             ) : (
               <WeeklyHeatmap {...d} />

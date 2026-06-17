@@ -24,6 +24,7 @@ export function HelpDashboardSection() {
         t18n('help_page.interactive_timeline_with_hourly_view_today_or_daily_vie'),
         t18n('help_page.top_5_projects_charts_and_analysis_of_most_used_applicat'),
         t18n('help_page.quick_time_range_switching_today_week_month_all_time'),
+        t18n('help_page.dashboard_custom_range'),
         t18n('help_page.timeline_visualization_mode_shows_your_engagement_in_rea'),
         t18n('help_page.notifications_on_auto_import_status_and_potential_data_r'),
         t18n('help_page.sidebar_status_indicators_act_as_a_control_center_they_s'),
@@ -135,6 +136,7 @@ export function HelpAnalysisSection() {
         t18n('help_page.stacked_bar_charts_percentage_share_of_projects_in_your'),
         t18n('help_page.timeline_project_view_detailed_timeline_broken_down_by_s'),
         t18n('help_page.range_toolbar_daily_weekly_monthly_buttons_switch_the_da'),
+        t18n('help_page.analysis_custom_range'),
         t18n('help_page.period_navigation_previous_next_arrows_let_you_move_betw'),
         t18n('help_page.interactive_legend_project_list_with_colors_and_times_cl'),
       ]}

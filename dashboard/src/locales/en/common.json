@@ -123,6 +123,12 @@
     "previous_period": "Previous period",
     "next_period": "Next period"
   },
+  "date_range_picker": {
+    "button": "Range",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply"
+  },
   "dashboard": {
     "actions": {
       "refresh": "Refresh",
@@ -1157,12 +1163,6 @@
       "choose_variant": "Choose report variant",
       "edit_templates": "Edit templates",
       "generate_action": "Generate"
-    },
-    "range_picker": {
-      "button": "Range",
-      "from": "From",
-      "to": "To",
-      "apply": "Apply"
     }
   },
   "reports_page": {
@@ -2204,7 +2204,9 @@
     "estimates_client_filter": "Client filter — choose which clients' projects count toward the metrics and the report. All clients are included by default; the \"No client\" option covers unassigned projects.",
     "estimates_report_variants": "Report generation — the \"Generate report\" button creates a simplified report for the current date range and selected clients in two variants: \"simple\" (projects + total time and value) and \"plus\" (additionally a per-day breakdown with hours and value). The variants are estimate templates editable in the report template editor.",
     "estimates_report_rounding": "Report rounding — the report respects the rounding settings (\"full / rounded\" toggle) and prints to PDF just like project reports.",
-    "estimates_custom_range": "Custom date range — the \"Range\" button next to the presets opens a from–to picker; the chosen range drives the metrics, project list and report."
+    "estimates_custom_range": "Custom date range — the \"Range\" button next to the presets opens a from–to picker; the chosen range drives the metrics, project list and report.",
+    "dashboard_custom_range": "Custom date range — the \"Range\" button next to the Today/Week/Month/All Time presets opens a from–to picker; the chosen range drives the metrics, timeline and charts.",
+    "analysis_custom_range": "Custom date range — the \"Range\" button next to the Day/Week/Month presets opens a from–to picker; any span is shown as a day calendar and per-day bars."
   },
   "sync_progress": {
     "title": "LAN Synchronization",

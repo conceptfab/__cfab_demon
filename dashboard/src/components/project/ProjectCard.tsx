@@ -95,7 +95,6 @@ function ProjectCardComponent({
     isDeleting,
     isHotProject,
     isNew,
-    minimal,
   } = flags;
 
   return (

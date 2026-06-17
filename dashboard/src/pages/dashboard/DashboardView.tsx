@@ -18,6 +18,7 @@ import { TopProjectsList } from '@/components/dashboard/TopProjectsList';
 import { ManualSessionDialog } from '@/components/ManualSessionDialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DateRangePicker } from '@/components/ui/DateRangePicker';
 import { DateRangeToolbar } from '@/components/ui/DateRangeToolbar';
 import { MobileAlertBanner } from '@/components/ui/MobileAlertBanner';
 import { RoundedDuration } from '@/components/ui/RoundedDuration';
@@ -62,6 +63,7 @@ export function DashboardView({ controller }: DashboardViewProps) {
     sessionDialogOpen,
     sessionDialogStartTime,
     setCurrentPage,
+    setDateRange,
     setSessionsFocusDate,
     setTimePreset,
     shiftDateRange,
@@ -84,6 +86,11 @@ export function DashboardView({ controller }: DashboardViewProps) {
         shiftDateRange={shiftDateRange}
         canShiftForward={canShiftForward}
       >
+        <DateRangePicker
+          start={dateRange.start}
+          end={dateRange.end}
+          onApply={setDateRange}
+        />
         <Button
           variant="outline"
           size="icon"

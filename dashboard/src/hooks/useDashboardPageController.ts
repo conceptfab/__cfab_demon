@@ -44,6 +44,7 @@ export function useDashboardPageController() {
   const dateRange = useDataStore((s) => s.dateRange);
   const timePreset = useDataStore((s) => s.timePreset);
   const setTimePreset = useDataStore((s) => s.setTimePreset);
+  const setDateRange = useDataStore((s) => s.setDateRange);
   const shiftDateRange = useDataStore((s) => s.shiftDateRange);
   const canShiftForward = useDataStore((s) => s.canShiftForward);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
@@ -183,7 +184,7 @@ export function useDashboardPageController() {
     setCurrentPage('sessions');
   };
 
-  const handleAddManualSession = (startTime: string) => {
+  const handleAddManualSession = (startTime?: string) => {
     setSessionDialogStartTime(startTime);
     setSessionDialogOpen(true);
   };
@@ -351,6 +352,7 @@ export function useDashboardPageController() {
     sessionDialogOpen,
     sessionDialogStartTime,
     setCurrentPage,
+    setDateRange,
     setSessionsFocusDate,
     setTimePreset,
     shiftDateRange,

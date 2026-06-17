@@ -3,6 +3,7 @@ import { BrainCircuit, Sparkles } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { EditableSplitPart } from '@/components/sessions/multi-split-utils';
+import type { MultiProjectAnalysis, ProjectWithStats } from '@/lib/db-types';
 
 interface MultiSplitSessionEditorProps {
   analysis: MultiProjectAnalysis;

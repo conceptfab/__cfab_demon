@@ -105,7 +105,9 @@ export function useEstimatesPageController() {
           if (cancelled) return;
           setPage({
             loading: false,
-            data: applyEstimatesReloadResults(results, t),
+            data: applyEstimatesReloadResults(results, (key, fallback) =>
+              t(key, fallback ?? key),
+            ),
           });
         })
         .catch(() => {

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { settingsApi, type TimeAlgorithmInfo } from '@/lib/tauri';
 import { DEFAULT_ONLINE_SYNC_SERVER_URL } from '@/lib/online-sync';
-import { saveRoundingSettings, type AppLanguageCode } from '@/lib/user-settings';
+import type { AppLanguageCode } from '@/lib/user-settings';
 import { useToast } from '@/components/ui/toast-notification';
 import { useConfirmDialogState } from '@/hooks/useConfirmDialogState';
 import { useSettingsFormState } from '@/hooks/useSettingsFormState';

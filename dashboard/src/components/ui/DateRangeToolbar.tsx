@@ -98,14 +98,17 @@ export function DateRangeToolbar({
         ))}
       </fieldset>
 
-      {/* Mobile: data na środku, odświeżenie po prawej (symetryczne sloty) */}
-      {(showRangeNavigation || children) && (
-        <div className="grid w-full min-w-0 max-w-full grid-cols-[2.25rem_1fr_2.25rem] items-center md:hidden">
-          <span className={SIDE_SLOT} aria-hidden />
-          {showRangeNavigation ? dateNavigation : <div />}
-          <div className="flex items-center justify-end">
-            {children ?? <span className={SIDE_SLOT} aria-hidden />}
-          </div>
+      {/* Mobile: nawigacja datą na środku (własny wiersz) */}
+      {showRangeNavigation && (
+        <div className="flex w-full items-center justify-center md:hidden">
+          {dateNavigation}
+        </div>
+      )}
+
+      {/* Mobile: akcje (zakres / odświeżenie) w osobnym wierszu po prawej */}
+      {children && (
+        <div className="flex w-full items-center justify-end gap-2 md:hidden">
+          {children}
         </div>
       )}
 
@@ -129,7 +132,9 @@ export function DateRangeToolbar({
             {dateNavigation}
           </>
         )}
-        {children ? <div className="shrink-0">{children}</div> : null}
+        {children ? (
+          <div className="flex shrink-0 items-center gap-2">{children}</div>
+        ) : null}
       </div>
     </div>
   );
