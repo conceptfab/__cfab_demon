@@ -26,14 +26,14 @@ export function ClientCard({ summary, currencyCode, onClick }: ClientCardProps) 
           <span className="truncate text-base font-semibold">{summary.client_name}</span>
         </div>
 
-        <div className="flex items-baseline justify-between">
-          <span className="font-mono text-lg font-semibold text-sky-400">
+        <div className="space-y-0.5">
+          <div className="font-mono text-xl font-semibold tabular-nums text-sky-400">
             {formatMoney(summary.total_value, currencyCode)}
-          </span>
-          <span className="text-xs text-muted-foreground">
+          </div>
+          <div className="text-xs text-muted-foreground tabular-nums">
             {t('clients_page.card.projects', { n: summary.project_count })} ·{' '}
             {formatDurationWithDaily(summary.total_seconds, summary.daily_seconds)}
-          </span>
+          </div>
         </div>
       </CardContent>
     </Card>

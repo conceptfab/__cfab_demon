@@ -162,17 +162,17 @@ export const SessionRow = memo(function SessionRow({
         className={`group relative rounded border border-transparent hover:border-border/30 hover:bg-secondary/10 transition-colors p-1.5 bg-secondary/5 cursor-default mb-0.5 ${className}`}
         onContextMenu={(e) => handleContextMenu(e, s)}
       >
-        <div className="grid grid-cols-[140px_1fr] gap-x-3">
-          <div className="flex border-r border-border/5 pr-2 items-center justify-between">
+        <div className="grid grid-cols-[200px_1fr] gap-x-3">
+          <div className="flex border-r border-border/5 pr-2 items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               {isManual ? (
-                <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-400/80">
+                <span className="inline-flex min-w-0 items-center gap-0.5 text-[10px] font-medium text-emerald-400/80">
                   <CalendarPlus className="size-3 shrink-0" />
-                  <span className="truncate max-w-[70px]">{s.comment || s.app_name}</span>
+                  <span className="truncate">{s.comment || s.app_name}</span>
                 </span>
               ) : (
                 <span
-                  className="font-bold text-[11px] text-foreground/80 truncate max-w-[80px]"
+                  className="min-w-0 font-bold text-[11px] text-foreground/80 truncate"
                   title={s.app_name}
                 >
                   {s.app_name}
@@ -205,7 +205,7 @@ export const SessionRow = memo(function SessionRow({
                 </button>
               )}
             </div>
-            <span className="font-mono text-[10px] font-bold text-foreground/30">
+            <span className="shrink-0 whitespace-nowrap font-mono text-[10px] font-bold tabular-nums text-foreground/55">
               {formatDuration(s.duration_seconds)}
             </span>
           </div>
@@ -216,7 +216,7 @@ export const SessionRow = memo(function SessionRow({
                 s.files.slice(0, 5).map((f) => (
                   <div
                     key={f.file_name}
-                    className="flex items-center gap-0.5 text-[9px] leading-none opacity-40"
+                    className="flex items-center gap-0.5 text-[10px] leading-none opacity-65"
                   >
                     <span className="truncate max-w-[120px]">
                       {f.file_name}
@@ -224,7 +224,7 @@ export const SessionRow = memo(function SessionRow({
                   </div>
                 ))
               ) : (
-                <span className="text-[9px] text-muted-foreground/10 italic">
+                <span className="text-[10px] text-muted-foreground/40 italic">
                   {t('sessions.row.idle')}
                 </span>
               )}

@@ -179,7 +179,7 @@ export function SessionsVirtualList({
                           </span>
                         )}
                       </div>
-                      <span className="font-mono text-[13px] font-bold text-foreground/40 transition-colors group-hover/hdr:text-foreground/70">
+                      <span className="shrink-0 whitespace-nowrap font-mono text-[13px] font-bold tabular-nums text-foreground/60 transition-colors group-hover/hdr:text-foreground/80">
                         {formatDuration(group.totalSeconds)}
                       </span>
                     </button>
