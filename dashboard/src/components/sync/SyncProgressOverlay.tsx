@@ -48,6 +48,7 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
     }
 
     let cancelled = false;
+    finishedRef.current = false;
     prevBytesRef.current = 0;
     prevTimeRef.current = Date.now();
     const poll = async () => {
@@ -100,21 +101,18 @@ export function SyncProgressOverlay({ active, onFinished, syncType = 'lan', onRe
     return () => { cancelled = true; clearInterval(id); };
   }, [active, syncType]);
 
-  const prevActiveRef = useRef(active);
-  if (!active && prevActiveRef.current) {
-    finishedRef.current = false;
-    prevBytesRef.current = 0;
-    if (progress !== null) {
+  // Reset stanu po dezaktywacji — wzorzec prev-state w useState (bez refów
+  // czytanych/pisanych w renderze). Reset refów (finished/prevBytes/prevTime)
+  // wykonuje poll-effect przy (re)aktywacji.
+  const [wasActive, setWasActive] = useState(active);
+  if (wasActive !== active) {
+    setWasActive(active);
+    if (!active && progress !== null) {
       setProgress(null);
       setSpeed(0);
       setEta(null);
     }
-  } else if (active && !prevActiveRef.current) {
-    finishedRef.current = false;
-    prevBytesRef.current = 0;
-    prevTimeRef.current = Date.now();
   }
-  prevActiveRef.current = active;
 
   if (!active || !progress || progress.phase === 'idle') return null;
 

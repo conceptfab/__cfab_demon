@@ -517,6 +517,9 @@ export function useProjectsPageController() {
     }, 3000);
   };
 
+  // React Compiler nie jest w buildzie (Vite plugin-react) — useMemo działa
+  // runtime'owo; hint „could not preserve" jest informacyjny, bez wpływu na działanie.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const visibleFolderCandidates = useMemo(() => {
     const existingProjectNames = new Set(
       [...projects, ...excludedProjects].map((project) =>
@@ -532,6 +535,8 @@ export function useProjectsPageController() {
   const hiddenRegisteredFolderCandidatesCount =
     folderCandidates.length - visibleFolderCandidates.length;
 
+  // React Compiler nie jest w buildzie — useMemo działa runtime'owo (patrz wyżej).
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const detectedCandidatesView = useMemo(() => {
     const cap = isDemoMode ? 8 : detectedProjects.length;
     const visible = detectedProjects.slice(0, cap);

@@ -24,7 +24,7 @@ async function bootstrap(): Promise<void> {
     }
   } catch (err) {
     console.error(
-      '[bootstrap] hydratacja ustawień nie powiodła się — render z lokalnego cache',
+      '[bootstrap] settings hydration failed — rendering from local cache',
       err,
     )
   }

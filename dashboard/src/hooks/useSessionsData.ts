@@ -70,7 +70,10 @@ export function useSessionsData(params: {
   }, [buildFetchParams, replaceSessionsPage]);
 
   const loadFirstPageRef = useRef(loadFirstSessionsPage);
-  loadFirstPageRef.current = loadFirstSessionsPage;
+  // Zapis refa poza renderem (react-hooks/refs); czytany w handleVisibleSessionsRefresh.
+  useEffect(() => {
+    loadFirstPageRef.current = loadFirstSessionsPage;
+  });
 
   const handleVisibleSessionsRefresh = useCallback(() => {
     void loadFirstPageRef.current().catch(console.error);

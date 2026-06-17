@@ -99,9 +99,9 @@ export function useSessionScoreBreakdown({
   const scoreBreakdownCacheRef = useRef<Map<number, CachedBreakdownEntry> | null>(
     null,
   );
-  if (!aiBreakdownsRef.current) aiBreakdownsRef.current = new Map();
-  if (!scoreBreakdownRequestsRef.current) scoreBreakdownRequestsRef.current = new Map();
-  if (!scoreBreakdownCacheRef.current) scoreBreakdownCacheRef.current = new Map();
+  if (aiBreakdownsRef.current == null) aiBreakdownsRef.current = new Map();
+  if (scoreBreakdownRequestsRef.current == null) scoreBreakdownRequestsRef.current = new Map();
+  if (scoreBreakdownCacheRef.current == null) scoreBreakdownCacheRef.current = new Map();
 
   const getCachedBreakdown = useCallback(
     (sessionId: number): ScoreBreakdown | null => {

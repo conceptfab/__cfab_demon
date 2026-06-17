@@ -93,9 +93,12 @@ export function LanPeerNotification() {
   const incompatPeerRef = useRef<LanPeer | null>(null);
   const localVersionRef = useRef<string>('');
 
-  visiblePeerRef.current = visiblePeer;
-  incompatPeerRef.current = incompatPeer;
-  localVersionRef.current = localVersion;
+  // Zapis refów poza renderem (react-hooks/refs); czytane w poll-evencie / handleSync.
+  useEffect(() => {
+    visiblePeerRef.current = visiblePeer;
+    incompatPeerRef.current = incompatPeer;
+    localVersionRef.current = localVersion;
+  });
 
   // Wersja własna dashboardu — pobierana raz, używana do strict version match
   // przy wyświetlaniu toastu LAN sync. Bez niej ukrywamy oba banery
@@ -118,9 +121,6 @@ export function LanPeerNotification() {
       cancelled = true;
     };
   }, []);
-
-  // Keep a ref to handleSync so the polling effect always calls the latest version
-  const handleSyncRef = useRef<((peer: LanPeer) => Promise<void>) | undefined>(undefined);
 
   useEffect(() => {
     const poll = async () => {
@@ -203,9 +203,6 @@ export function LanPeerNotification() {
       dispatch({ type: 'set_syncing', syncing: false });
     }
   }, [triggerRefresh, t]);
-
-  // Keep ref in sync with latest handleSync
-  handleSyncRef.current = handleSync;
 
   const handleDismiss = useCallback(() => {
     if (visiblePeer) {

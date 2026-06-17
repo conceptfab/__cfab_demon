@@ -45,7 +45,7 @@ export function useSessionSplitAnalysis({
   } = splitAnalysisUi;
   const modalAnalysisInFlightRef = useRef<number | null>(null);
   const splitEligibilityCacheRef = useRef<Map<number, string>>(undefined!);
-  if (!splitEligibilityCacheRef.current) {
+  if (splitEligibilityCacheRef.current == null) {
     splitEligibilityCacheRef.current = new Map();
   }
   const splitAnalysisBatchTimerRef = useRef<number | null>(null);

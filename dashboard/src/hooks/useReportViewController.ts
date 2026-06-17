@@ -115,6 +115,9 @@ export function useReportViewController() {
     return computeReportDisplayValues(report, rounded, roundingSettings);
   }, [report, rounded, roundingSettings]);
 
+  // React Compiler nie jest w buildzie (Vite plugin-react) — useMemo działa
+  // runtime'owo; hint „could not preserve" jest informacyjny, bez wpływu na działanie.
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const fmtDur = useMemo(() => {
     if (!displayValues) {
       return (seconds: number) => String(seconds);

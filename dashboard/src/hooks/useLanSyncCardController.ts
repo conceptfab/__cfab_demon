@@ -34,7 +34,10 @@ export function useLanSyncCardController({
   const isBusy = syncing || daemonSyncing;
   useDaemonSyncPollInterval(isBusy);
   const showLogRef = useRef(showLog);
-  showLogRef.current = showLog;
+  // Zapis refa poza renderem (react-hooks/refs); czytany w efekcie auto-open logu.
+  useEffect(() => {
+    showLogRef.current = showLog;
+  });
 
   const daemonRole = progress?.role || '';
   const isSlave =

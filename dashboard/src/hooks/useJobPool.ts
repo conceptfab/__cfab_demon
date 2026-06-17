@@ -44,16 +44,17 @@ export function useJobPool() {
   const nextRefreshRef = useRef(0);
   const nextSigCheckRef = useRef(0);
   const nextAutoSplitRef = useRef(0);
-  // Start with a delay so the 'startup' sync runs first without duplicates
-  // from the interval/poll triggers firing immediately on the first tick.
-  const nextSyncIntervalRef = useRef(Date.now() + 30_000);
-  const nextSyncPollRef = useRef(Date.now() + 120_000);
-  // LAN sync interval — delayed 60s to let discovery find peers first
-  const nextLanSyncRef = useRef(Date.now() + 60_000);
+  // Deadline'y schedulera — inicjalizowane raz w efekcie mount-only (Date.now()
+  // w renderze łamie czystość; react-hooks/purity). Infinity = jeszcze nie
+  // zaplanowane. Delaye (30/120/60 s + 90 s niżej) liczone od mountu, by
+  // 'startup' sync biegł pierwszy, bez duplikatów z interwału/pollu.
+  const nextSyncIntervalRef = useRef(Infinity);
+  const nextSyncPollRef = useRef(Infinity);
+  const nextLanSyncRef = useRef(Infinity);
   const isLanSyncingRef = useRef(false);
 
   const syncSettingsRef = useRef<ReturnType<typeof loadOnlineSyncSettings>>(undefined!);
-  if (!syncSettingsRef.current) {
+  if (syncSettingsRef.current == null) {
     syncSettingsRef.current = loadOnlineSyncSettings();
   }
   const syncFailCountRef = useRef(0);
@@ -130,8 +131,9 @@ export function useJobPool() {
     );
   }, [autoImportDone]);
 
-  // Periodically trigger daemon online sync (handles async delta pull from SFTP)
-  const nextDaemonOnlineSyncRef = useRef(Date.now() + 90_000);
+  // Periodically trigger daemon online sync (handles async delta pull from SFTP).
+  // Deadline init w efekcie mount-only (patrz wyżej; react-hooks/purity).
+  const nextDaemonOnlineSyncRef = useRef(Infinity);
   const isDaemonOnlineSyncingRef = useRef(false);
 
   const runDaemonOnlineSyncInterval = useCallback(async () => {
@@ -244,27 +246,27 @@ export function useJobPool() {
     [triggerRefresh],
   );
 
+  // Najnowsze wersje tych callbacków trafiają do refów w sync-efekcie niżej
+  // (refów nie wolno pisać w renderze — react-hooks/refs).
   const refreshSyncSettingsCacheRef = useRef(refreshSyncSettingsCache);
-  refreshSyncSettingsCacheRef.current = refreshSyncSettingsCache;
   const handleSyncSettingsChange = useCallback(() => {
     refreshSyncSettingsCacheRef.current();
   }, []);
 
   const refreshDiagnosticsRef = useRef(refreshDiagnostics);
-  refreshDiagnosticsRef.current = refreshDiagnostics;
   const handleDiagnosticsRefresh = useCallback(() => {
     void refreshDiagnosticsRef.current();
   }, []);
 
   const refreshDatabaseSettingsRef = useRef(refreshDatabaseSettings);
-  refreshDatabaseSettingsRef.current = refreshDatabaseSettings;
   const handleDatabaseSettingsRefresh = useCallback(() => {
     void refreshDatabaseSettingsRef.current();
   }, []);
 
-  // Stable refs for event handlers that capture mutable closure state
+  // Stable refs for event handlers that capture mutable closure state.
+  // Najnowsze domknięcie przypisujemy do refa w sync-efekcie (react-hooks/refs).
   const visibilityHandlerRef = useRef<() => void>(() => {});
-  visibilityHandlerRef.current = () => {
+  const visibilityHandler = () => {
     refreshSyncSettingsCache();
     if (!isDocumentVisible()) {
       if (visibilityDebounceTimer.current) {
@@ -297,7 +299,7 @@ export function useJobPool() {
   const handleVisibilityChange = useCallback(() => visibilityHandlerRef.current(), []);
 
   const localDataChangeRef = useRef<() => void>(() => {});
-  localDataChangeRef.current = () => {
+  const localDataChange = () => {
     if (!isDocumentVisible()) return;
 
     handleDatabaseSettingsRefresh();
@@ -321,6 +323,25 @@ export function useJobPool() {
     }, 1_500);
   };
   const handleLocalDataChange = useCallback(() => localDataChangeRef.current(), []);
+
+  // Sync najnowszych callbacków/domknięć do refów po renderze (react-hooks/refs);
+  // czytane wyłącznie w event-handlerach/efektach (po commicie).
+  useEffect(() => {
+    refreshSyncSettingsCacheRef.current = refreshSyncSettingsCache;
+    refreshDiagnosticsRef.current = refreshDiagnostics;
+    refreshDatabaseSettingsRef.current = refreshDatabaseSettings;
+    visibilityHandlerRef.current = visibilityHandler;
+    localDataChangeRef.current = localDataChange;
+  });
+
+  // Init deadline'ów schedulera raz na mount (Date.now() poza renderem).
+  useEffect(() => {
+    const now = Date.now();
+    nextSyncIntervalRef.current = now + 30_000;
+    nextSyncPollRef.current = now + 120_000;
+    nextLanSyncRef.current = now + 60_000;
+    nextDaemonOnlineSyncRef.current = now + 90_000;
+  }, []);
 
   useEffect(() => {
     handleDiagnosticsRefresh();

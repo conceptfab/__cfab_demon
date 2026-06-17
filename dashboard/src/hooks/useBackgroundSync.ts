@@ -28,7 +28,10 @@ export function useOnlineSyncSSE() {
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
   const refreshTimerRef = useRef<number | null>(null);
   const triggerRefreshRef = useRef(triggerRefresh);
-  triggerRefreshRef.current = triggerRefresh;
+  // Zapis refa poza renderem (react-hooks/refs); czytany w callbacku SSE.
+  useEffect(() => {
+    triggerRefreshRef.current = triggerRefresh;
+  });
 
   useEffect(() => {
     const refreshTimer = refreshTimerRef;

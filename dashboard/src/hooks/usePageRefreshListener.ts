@@ -11,7 +11,10 @@ export function usePageRefreshListener(
   onRefresh: (reasons: string[], source: 'app' | 'local') => void,
 ) {
   const onRefreshRef = useRef(onRefresh);
-  onRefreshRef.current = onRefresh;
+  // Zapis refa poza renderem (react-hooks/refs); czytany w handleRefresh.
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  });
 
   const handleRefresh = useCallback(
     (reasons: string[], source: 'app' | 'local') => onRefreshRef.current(reasons, source),

@@ -1,3 +1,5 @@
 [
-  "src/pages/Settings.tsx|{ code: 'PLN', symbol: 'zł' },"
+  "src/hooks/settings/useSyncSettings.ts|: `Wysyłanie ${(rawBytes.length / 1024).toFixed(0)} KB (brak kompresji)...`,",
+  "src/hooks/settings/useSyncSettings.ts|? `Wysyłanie ${(compressedSize / 1024).toFixed(0)} KB (gzip ${ratio}% kompresji z ${(rawBytes.length / 1024).toFixed(0)} KB)...`",
+  "src/hooks/useSettingsPageController.ts|{ code: 'PLN', symbol: 'zł' },"
 ]

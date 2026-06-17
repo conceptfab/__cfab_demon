@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Dialog,
@@ -310,13 +310,16 @@ function PmCreateProjectForm({
 }
 
 export function PmCreateProjectDialog({ open, onClose, onCreated, clients = EMPTY_CLIENTS }: Props) {
-  const prevOpenRef = useRef(false);
-  const openCountRef = useRef(0);
-  if (open && !prevOpenRef.current) {
-    openCountRef.current += 1;
+  // Prev-state pattern (zamiast refów czytanych/pisanych w renderze): inkrementuj
+  // licznik przy każdym przejściu open false→true, by wymusić remount formularza
+  // (zmiana key). Reset formularza po ponownym otwarciu.
+  const [prevOpen, setPrevOpen] = useState(false);
+  const [openCount, setOpenCount] = useState(0);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setOpenCount((c) => c + 1);
   }
-  prevOpenRef.current = open;
-  const formKey = open ? `open-${openCountRef.current}` : 'closed';
+  const formKey = open ? `open-${openCount}` : 'closed';
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>

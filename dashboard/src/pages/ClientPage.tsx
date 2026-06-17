@@ -70,6 +70,8 @@ export function ClientPage() {
   }, [clientName, showError, t]);
 
   useEffect(() => {
+    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load, refreshKey]);
 

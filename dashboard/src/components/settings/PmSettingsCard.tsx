@@ -23,7 +23,12 @@ export function PmSettingsCard() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // async loader: setSettings biegnie po await (fetch-on-mount), nie kaskaduje
+    // renderów synchronicznie.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
 
   const handleSetWorkFolder = async () => {
     try {

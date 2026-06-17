@@ -89,6 +89,8 @@ export function useLanSyncManager() {
   // Poll peers every 5s; auto-scan subnet once if no peers found after 10s
   useEffect(() => {
     if (!lanSettings.enabled) {
+      // reset listy peerów gdy LAN wyłączony; pojedynczy re-render, nie kaskada.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLanPeers([]);
       return;
     }
@@ -181,6 +183,8 @@ export function useLanSyncManager() {
   }, [pairingCode]);
 
   useEffect(() => {
+    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshPairedDevices();
   }, [refreshPairedDevices]);
 

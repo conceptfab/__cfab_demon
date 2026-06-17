@@ -294,7 +294,11 @@ export function useProjectsData(projectDialogId: number | null) {
         setExtraInfo(null);
       });
     } else {
+      // Synchroniczny odczyt mutowalnego cache (ref) na przejściu dialogId, by
+      // od razu pokazać zapisane dane bez mignięcia loadingu. Celowy odczyt refa
+      // w renderze — wynik natychmiast trafia do setState.
       const cachedInfo = projectExtraInfoCacheRef.current[projectDialogId];
+      // eslint-disable-next-line react-hooks/refs
       if (cachedInfo) {
         setExtraInfo(cachedInfo);
         setLoadingExtra(false);

@@ -74,7 +74,7 @@ export function DateRangeToolbar({
 
   return (
     <div className="box-border flex w-full min-w-0 max-w-full flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:justify-end">
-      {/* Mobile: pełna szerokość, 4 równe presety */}
+      {/* Mobile: full-width row, 4 equal-width presets */}
       <fieldset
         className="box-border m-0 flex w-full min-w-0 max-w-full rounded-lg border border-border/70 bg-muted/15 p-0.5 md:hidden"
       >
@@ -98,14 +98,14 @@ export function DateRangeToolbar({
         ))}
       </fieldset>
 
-      {/* Mobile: nawigacja datą na środku (własny wiersz) */}
+      {/* Mobile: date navigation centered on its own row */}
       {showRangeNavigation && (
         <div className="flex w-full items-center justify-center md:hidden">
           {dateNavigation}
         </div>
       )}
 
-      {/* Mobile: akcje (zakres / odświeżenie) w osobnym wierszu po prawej */}
+      {/* Mobile: actions (range / refresh) on a separate right-aligned row */}
       {children && (
         <div className="flex w-full items-center justify-end gap-2 md:hidden">
           {children}

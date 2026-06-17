@@ -109,6 +109,8 @@ export function useApplicationsPageController() {
   });
 
   useEffect(() => {
+    // async loadery na mount: setState biegnie po await, nie kaskaduje renderów.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadApplications();
     void loadMonitored();
   }, [loadApplications, loadMonitored]);

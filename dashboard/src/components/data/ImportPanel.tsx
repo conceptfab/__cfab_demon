@@ -32,7 +32,10 @@ export function ImportPanel() {
   const [state, dispatch] = useReducer(importPanelReducer, initialImportPanelState);
   const { dragActive, error, importing, summary, validating, validation } = state;
   const busyRef = useRef(false);
-  busyRef.current = importing || validating;
+  // Zapis refa poza renderem (react-hooks/refs); czytany w handlerze drag-drop.
+  useEffect(() => {
+    busyRef.current = importing || validating;
+  });
 
   const handleValidate = useCallback(
     async (path: string) => {

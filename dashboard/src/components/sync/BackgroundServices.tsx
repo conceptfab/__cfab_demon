@@ -28,9 +28,12 @@ export function BackgroundServices() {
   const { t } = useTranslation();
   const { showInfo } = useToast();
   const showInfoRef = useRef(showInfo);
-  showInfoRef.current = showInfo;
   const tRef = useRef(t);
-  tRef.current = t;
+  // Zapis refów poza renderem (react-hooks/refs); czytane w handlerach poniżej.
+  useEffect(() => {
+    showInfoRef.current = showInfo;
+    tRef.current = t;
+  });
   useEffect(() => {
     const onAiAssignmentDone = (e: Event) => {
       const count = (e as CustomEvent<number>).detail;

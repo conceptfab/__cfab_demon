@@ -53,9 +53,10 @@ export function DaemonSyncOverlay() {
   }, []);
 
   const lastSyncTypeRef = useRef<'lan' | 'online' | null>(null);
-  if (activeSyncType) {
-    lastSyncTypeRef.current = activeSyncType;
-  }
+  // Zapis refa poza renderem (react-hooks/refs); czytany w handleRetry.
+  useEffect(() => {
+    if (activeSyncType) lastSyncTypeRef.current = activeSyncType;
+  }, [activeSyncType]);
 
   const handleRetry = useCallback(() => {
     const retryType = lastSyncTypeRef.current;
@@ -83,7 +84,8 @@ export function DaemonSyncOverlay() {
   // Start timeout when sync becomes active — allow dismiss after 5min
   useEffect(() => {
     if (activeSyncType === null) return;
-    setCanDismiss(false);
+    // canDismiss=false ustawiane przy aktywacji w pollu (poniżej), nie tu —
+    // unikamy synchronicznego setState w efekcie (react-hooks/set-state-in-effect).
     timeoutRef.current = window.setTimeout(() => setCanDismiss(true), OVERLAY_TIMEOUT_MS);
     return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
   }, [activeSyncType]);
@@ -112,6 +114,7 @@ export function DaemonSyncOverlay() {
         if (!cancelled && isActive(progress) && !isTerminal(progress)) {
           wasActiveRef.current = true;
           const type = progress.sync_type === 'online' ? 'online' : 'lan';
+          setCanDismiss(false);
           setActiveSyncType(type);
           return;
         }
