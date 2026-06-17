@@ -24,7 +24,8 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://cfabserver-production.up.railway.app; font-src 'self' data:"
+      "csp": "default-src 'self'; base-uri 'self'; form-action 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://cfabserver-production.up.railway.app; font-src 'self' data:",
+      "freezePrototype": true
     }
   },
   "bundle": {
