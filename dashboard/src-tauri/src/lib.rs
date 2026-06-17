@@ -4,68 +4,47 @@ mod db_migrations;
 mod webui;
 pub const VERSION: &str = env!("TIMEFLOW_VERSION");
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Load .env file (SMTP credentials, etc.)
-    // Priority of loading .env:
-    // 1. User data directory (stable production config path)
-    // 2. Next to executable (packaged/custom setup)
-    // 3. Walk up from executable parent directory (useful when running inside .app bundle in workspace)
-    // 4. Walk up from CWD (fallback for CLI run)
-    let mut loaded = false;
-
-    // 1. User data directory
+/// Load `.env` (SMTP credentials, etc.) from SAFE locations only:
+/// 1. user data dir (stable production path), 2. next to the executable.
+/// The previous walk-up across CWD/exe parents was dropped — in a packaged app
+/// it could pull in a planted `.env` with credentials. The dev-only CWD walk-up
+/// (step 3) is compiled out of release builds.
+fn load_dotenv() {
+    // 1. User data directory.
     if let Ok(data_dir) = timeflow_shared::timeflow_paths::timeflow_data_dir() {
         let env_path = data_dir.join(".env");
-        if env_path.exists() {
-            if dotenvy::from_path(&env_path).is_ok() {
-                loaded = true;
+        if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+            return;
+        }
+    }
+    // 2. Next to the executable (packaged app), without walking up.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let env_path = dir.join(".env");
+            if env_path.exists() && dotenvy::from_path(&env_path).is_ok() {
+                return;
             }
         }
     }
+    // 3. Dev only: walk up from CWD to find the repo-root .env. Absent in release.
+    #[cfg(debug_assertions)]
+    if let Ok(mut dir) = std::env::current_dir() {
+        for _ in 0..6 {
+            let env_path = dir.join(".env");
+            if env_path.exists() {
+                let _ = dotenvy::from_path(&env_path);
+                return;
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+}
 
-    // 2 & 3. Executable location and walking up from it
-    if !loaded {
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                // Check next to exe first
-                let env_path = dir.join(".env");
-                if env_path.exists() {
-                    if dotenvy::from_path(&env_path).is_ok() {
-                        loaded = true;
-                    }
-                }
-                // Walk up from exe parent
-                if !loaded {
-                    let mut temp_dir = dir.to_path_buf();
-                    for _ in 0..6 {
-                        let env_path = temp_dir.join(".env");
-                        if env_path.exists() {
-                            if dotenvy::from_path(&env_path).is_ok() {
-                                loaded = true;
-                                break;
-                            }
-                        }
-                        if !temp_dir.pop() { break; }
-                    }
-                }
-            }
-        }
-    }
-
-    // 4. Walk up from CWD
-    if !loaded {
-        if let Ok(mut dir) = std::env::current_dir() {
-            for _ in 0..6 {
-                let env_path = dir.join(".env");
-                if env_path.exists() {
-                    let _ = dotenvy::from_path(&env_path);
-                    break;
-                }
-                if !dir.pop() { break; }
-            }
-        }
-    }
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    load_dotenv();
 
     let headless = std::env::args().any(|a| a == "--headless");
 
