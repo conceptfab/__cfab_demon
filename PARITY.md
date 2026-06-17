@@ -28,3 +28,22 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
   `X-TimeFlow-Secret` — docelowo challenge-response (HMAC z nonce); wymaga zmiany
   protokołu i wersjonowania. Mitygacja częściowa: constant-time compare po stronie serwera.
 - **Drag&drop monitored apps**: zmiany w `src/monitor.rs` i `src/platform/windows/process_snapshot.rs` (pole `bundle_id: None`, `pid_paths` puste, sygnatura `measure_cpu_for_app`) są lustrzane i kompilowane tylko na Windows — niezweryfikowane buildem na macOS (libsqlite3-sys cross-compile). Na Windows drag&drop obsługuje wyłącznie `.exe`; `.lnk` zwraca czytelny błąd.
+
+## Code signing / notarization (macOS) — świadomy dług (audyt 2026-06-17, M4)
+- Stan obecny: buildy macOS są **niesygnowane**. `tauri.conf.json` ma
+  `macOS.signingIdentity = null`, `entitlements = null`, `providerShortName = null`;
+  `build_all_macos.py` **nie** wywołuje `codesign` ani `notarytool`. (Tauri config
+  to czysty JSON — nie da się tam zostawić komentarza, stąd notatka tutaj, by `null`
+  nie wyglądał na przeoczenie.)
+- Konsekwencja: dystrybucja DMG poza App Store → Gatekeeper pokazuje ostrzeżenie
+  „niezweryfikowany deweloper"; brak Hardened Runtime.
+- Decyzja: na ten etap **bez podpisu** (brak skonfigurowanego Developer ID /
+  poświadczeń notaryzacji w repo — i słusznie, sekretów nie trzymamy w repo).
+- Ścieżka włączenia, gdy dystrybucja tego wymaga (skille `tauri-code-signing`/
+  `tauri-macos-distribution`):
+  1. `signingIdentity` = „Developer ID Application: …" (z env/keychain, nie z repo),
+     ustaw `entitlements` + Hardened Runtime.
+  2. Krok notaryzacji w `build_all_macos.py` (`xcrun notarytool submit … --wait`,
+     potem `xcrun stapler staple`).
+  3. Weryfikacja artefaktu: `codesign --verify --deep --strict --verbose=2 *.app`
+     oraz `spctl -a -vvv *.app` → `accepted`.
