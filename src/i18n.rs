@@ -1,0 +1,204 @@
+// Minimalna lokalizacja demona (PL/EN).
+// Język odczytywany z <katalog danych>/language.json (wspólny z dashboardem).
+
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::SystemTime;
+
+use crate::config;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lang {
+    Pl,
+    En,
+}
+
+impl Lang {
+    pub fn t(&self, key: TrayText) -> &'static str {
+        match (self, key) {
+            (Lang::Pl, TrayText::RunningInBackground) => "działa w tle",
+            (Lang::En, TrayText::RunningInBackground) => "running in background",
+
+            (Lang::Pl, TrayText::UnassignedSessions) => "nieprzypisanych sesji",
+            (Lang::En, TrayText::UnassignedSessions) => "unassigned sessions",
+
+            (Lang::Pl, TrayText::Close) => "Zamknij",
+            (Lang::En, TrayText::Close) => "Close",
+
+            (Lang::Pl, TrayText::Restart) => "Uruchom ponownie",
+            (Lang::En, TrayText::Restart) => "Restart",
+
+            (Lang::Pl, TrayText::OpenDashboard) => "Otwórz Dashboard",
+            (Lang::En, TrayText::OpenDashboard) => "Open Dashboard",
+
+            (Lang::Pl, TrayText::DashboardNotFound) => "Nie znaleziono TIMEFLOW Dashboard (timeflow-dashboard.exe).\nUpewnij się, że znajduje się w tym samym folderze co timeflow-demon.exe.",
+            (Lang::En, TrayText::DashboardNotFound) => "TIMEFLOW Dashboard (timeflow-dashboard.exe) not found.\nMake sure it is in the same folder as timeflow-demon.exe.",
+
+            (Lang::Pl, TrayText::VersionMismatchTemplate) => "Niezgodność wersji TIMEFLOW!\nDemon: {}\nDashboard: {}\n\nTo połączenie może działać nieprawidłowo.",
+            (Lang::En, TrayText::VersionMismatchTemplate) => "TIMEFLOW Version mismatch!\nDaemon: {}\nDashboard: {}\n\nThis connection may not work properly.",
+
+            (Lang::Pl, TrayText::VersionErrorTitle) => "TIMEFLOW - Błąd wersji",
+            (Lang::En, TrayText::VersionErrorTitle) => "TIMEFLOW - Version Error",
+
+            (Lang::Pl, TrayText::DemonErrorTitle) => "TIMEFLOW - Demon",
+            (Lang::En, TrayText::DemonErrorTitle) => "TIMEFLOW - Daemon",
+
+            (Lang::Pl, TrayText::AlreadyRunning) => {
+                "Inna instancja TIMEFLOW Demon jest już uruchomiona."
+            }
+            (Lang::En, TrayText::AlreadyRunning) => {
+                "Another TIMEFLOW Daemon instance is already running."
+            }
+
+            (Lang::Pl, TrayText::SyncDelta) => "Synchronizuj",
+            (Lang::En, TrayText::SyncDelta) => "Synchronize",
+
+            (Lang::Pl, TrayText::SyncForceFull) => "Synchronizuj (pełna)",
+            (Lang::En, TrayText::SyncForceFull) => "Synchronize (full)",
+
+            (Lang::Pl, TrayText::SyncCompleted) => "Synchronizacja zakończona pomyślnie",
+            (Lang::En, TrayText::SyncCompleted) => "Synchronization completed successfully",
+
+            (Lang::Pl, TrayText::SyncNotNeeded) => "Synchronizacja niepotrzebna \u{2014} bazy są identyczne",
+            (Lang::En, TrayText::SyncNotNeeded) => "Synchronization not needed \u{2014} databases are identical",
+
+            (Lang::Pl, TrayText::SyncFailed) => "Synchronizacja nie powiodła się",
+            (Lang::En, TrayText::SyncFailed) => "Synchronization failed",
+
+            (Lang::Pl, TrayText::SyncIdle) => "Sync: bezczynny",
+            (Lang::En, TrayText::SyncIdle) => "Sync: idle",
+
+            (Lang::Pl, TrayText::SyncStatusPrefix) => "Sync",
+            (Lang::En, TrayText::SyncStatusPrefix) => "Sync",
+
+            (Lang::Pl, TrayText::SyncFrozenSuffix) => "zamrożony",
+            (Lang::En, TrayText::SyncFrozenSuffix) => "frozen",
+
+            (Lang::Pl, TrayText::SyncUnavailable) => "niedostępny",
+            (Lang::En, TrayText::SyncUnavailable) => "unavailable",
+
+            (Lang::Pl, TrayText::LanSyncInProgress) => "LAN Sync...",
+            (Lang::En, TrayText::LanSyncInProgress) => "LAN Sync...",
+
+            (Lang::Pl, TrayText::WebUiStart) => "Uruchom Web UI",
+            (Lang::En, TrayText::WebUiStart) => "Start Web UI",
+
+            (Lang::Pl, TrayText::WebUiStop) => "Zatrzymaj Web UI",
+            (Lang::En, TrayText::WebUiStop) => "Stop Web UI",
+
+            (Lang::Pl, TrayText::WebUiStatusOff) => "Web UI: zatrzymane",
+            (Lang::En, TrayText::WebUiStatusOff) => "Web UI: stopped",
+
+            (Lang::Pl, TrayText::WebUiStatusOn) => "Web UI:",
+            (Lang::En, TrayText::WebUiStatusOn) => "Web UI:",
+
+            (Lang::Pl, TrayText::WebUiStatusDisabled) => "Web UI: wyłączone w ustawieniach",
+            (Lang::En, TrayText::WebUiStatusDisabled) => "Web UI: disabled in settings",
+
+            (Lang::Pl, TrayText::WebUiNotifyTitle) => "TIMEFLOW",
+            (Lang::En, TrayText::WebUiNotifyTitle) => "TIMEFLOW",
+
+            (Lang::Pl, TrayText::WebUiNotifyPortBusy) => "Nie udało się uruchomić Web UI — port jest zajęty.",
+            (Lang::En, TrayText::WebUiNotifyPortBusy) => "Could not start Web UI — the port is in use.",
+
+            (Lang::Pl, TrayText::WebUiNotifyDisabled) => "Web Server jest wyłączony w ustawieniach — włącz go, aby uruchomić Web UI.",
+            (Lang::En, TrayText::WebUiNotifyDisabled) => "Web Server is disabled in settings — enable it to start Web UI.",
+        }
+    }
+}
+
+// Większość wariantów konsumowana jest wyłącznie przez tray Windowsa
+// (platform/windows/tray.rs); na macOS tray ma inne menu i `cargo check`
+// oznacza je jako dead_code. `#[allow]` trzyma ostrzeżenia z daleka bez
+// ukrywania prawdziwych nieużywanych tłumaczeń.
+#[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
+pub enum TrayText {
+    RunningInBackground,
+    UnassignedSessions,
+    Close,
+    Restart,
+    OpenDashboard,
+    DashboardNotFound,
+    VersionMismatchTemplate,
+    VersionErrorTitle,
+    DemonErrorTitle,
+    AlreadyRunning,
+    SyncDelta,
+    SyncForceFull,
+    SyncCompleted,
+    SyncNotNeeded,
+    SyncFailed,
+    SyncIdle,
+    SyncStatusPrefix,
+    SyncFrozenSuffix,
+    SyncUnavailable,
+    LanSyncInProgress,
+    WebUiStart,
+    WebUiStop,
+    WebUiStatusOff,
+    WebUiStatusOn,
+    WebUiStatusDisabled,
+    WebUiNotifyTitle,
+    WebUiNotifyPortBusy,
+    WebUiNotifyDisabled,
+}
+
+fn language_file_path() -> Option<PathBuf> {
+    // Wspólny resolver katalogu danych (ten sam, którego używa dashboard), żeby
+    // demon i dashboard zawsze czytały TEN SAM language.json — niezależnie od
+    // platformy i wielkości liter w nazwie katalogu.
+    crate::config::config_dir()
+        .ok()
+        .map(|dir| dir.join("language.json"))
+}
+
+static LANG_CACHE: Mutex<Option<(SystemTime, Lang)>> = Mutex::new(None);
+const MISSING_LANGUAGE_FILE_MTIME: SystemTime = SystemTime::UNIX_EPOCH;
+
+/// Odczytuje język z pliku współdzielonego z dashboardem.
+/// Fallback: PL (zachowanie dotychczasowe).
+/// Wynik cachowany na podstawie mtime pliku.
+pub fn load_language() -> Lang {
+    let path = match language_file_path() {
+        Some(p) => p,
+        None => return Lang::Pl,
+    };
+    let mtime = config::file_mtime(&path).unwrap_or(MISSING_LANGUAGE_FILE_MTIME);
+    // Hold the lock for the entire check-read-update cycle to avoid TOCTOU
+    let mut guard = match LANG_CACHE.lock() {
+        Ok(g) => g,
+        Err(_) => return Lang::Pl,
+    };
+    if let Some((cached_mtime, cached_lang)) = guard.as_ref() {
+        if *cached_mtime == mtime {
+            return *cached_lang;
+        }
+    }
+    if mtime == MISSING_LANGUAGE_FILE_MTIME {
+        *guard = Some((mtime, Lang::Pl));
+        return Lang::Pl;
+    }
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => {
+            *guard = Some((mtime, Lang::Pl));
+            return Lang::Pl;
+        }
+    };
+    let lang = if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&content) {
+        if parsed
+            .get("code")
+            .and_then(|v| v.as_str())
+            .map_or(false, |c| c.eq_ignore_ascii_case("en"))
+        {
+            Lang::En
+        } else {
+            Lang::Pl
+        }
+    } else {
+        Lang::Pl
+    };
+    *guard = Some((mtime, lang));
+    lang
+}

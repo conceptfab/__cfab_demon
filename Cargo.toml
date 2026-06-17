@@ -1,0 +1,90 @@
+[package]
+name = "timeflow-demon"
+version = "0.2.0"
+edition = "2021"
+description = "TIMEFLOW cross-platform tray daemon with application monitor"
+autobins = false
+
+[workspace]
+members = [".", "dashboard/src-tauri", "shared"]
+resolver = "2"
+
+[[bin]]
+name = "timeflow-demon"
+path = "src/main.rs"
+
+[dependencies]
+# Serializacja JSON
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Data i czas
+chrono = { version = "0.4", features = ["serde"] }
+
+# Obsługa błędów
+anyhow = "1.0"
+rusqlite = { version = "0.31", features = ["bundled", "backup"] }
+
+# Logowanie
+log = { version = "0.4", features = ["std"] }
+timeflow-shared = { path = "shared" }
+
+# Online sync
+ssh2 = "0.9"
+aes-gcm = "0.10"
+flate2 = "1.1"
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+ureq = { version = "2", features = ["tls"] }
+getrandom = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# GUI system tray (Windows)
+native-windows-gui = { version = "1.0.13", default-features = false, features = [
+    "message-window",
+    "tray-notification",
+    "menu",
+    "embed-resource",
+    "cursor",
+    "animation-timer",
+] }
+# WinAPI
+winapi = { version = "0.3", features = [
+    "synchapi", "errhandlingapi", "winnt", "handleapi", "winuser",
+    "processthreadsapi", "winbase", "tlhelp32", "minwindef", "shellapi",
+] }
+wmi = "0.13"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# System tray (cross-platform crate, used only for macOS for now)
+tray-icon = "0.14"
+# macOS / Objective-C bindings
+objc2 = "0.5"
+objc2-app-kit = { version = "0.2", features = ["NSWorkspace", "NSRunningApplication", "NSApplication", "NSResponder", "NSEvent", "libc"] }
+objc2-foundation = { version = "0.2", features = ["NSString", "NSNotification", "NSArray", "NSDate", "NSRunLoop", "NSThread", "NSOperation", "block2"] }
+block2 = "0.5"
+core-foundation = "0.9"
+core-graphics = "0.23.2"
+# Proces listing cross-platform
+sysinfo = "0.31"
+# Plik-lock (flock)
+fs2 = "0.4"
+# Dekodowanie PNG do RGBA dla tray icon (logo TIMEFLOW)
+png = "0.17"
+
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
+
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 1
+strip = false
+panic = "abort"
+
+[profile.release.package.timeflow-dashboard]
+opt-level = 2

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/main.tsx", "index.html"],
+  "project": ["src/**/*.{ts,tsx}"],
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": [],
+  "ignore": [
+    "src/lib/tauri/**",
+    "src/components/ui/**",
+    "src/lib/db-types.ts",
+    "src/lib/online-sync-types.ts",
+    "src/lib/lan-sync-types.ts",
+    "src/lib/sync-events.ts"
+  ]
+}

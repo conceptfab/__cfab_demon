@@ -1,0 +1,718 @@
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
+pub use timeflow_shared::monitored_app::MonitoredApp;
+
+// ==================== JSON Import Types ====================
+
+pub(crate) use crate::commands::daily_store::{
+    StoredAppDailyData as AppDailyData, StoredDailyData as DailyData,
+};
+
+// ==================== Response Types ====================
+
+#[derive(Serialize)]
+pub struct ImportResult {
+    pub file_path: String,
+    pub success: bool,
+    pub records_imported: usize,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Project {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub hourly_rate: Option<f64>,
+    #[serde(default)]
+    pub created_at: String,
+    pub excluded_at: Option<String>,
+    pub frozen_at: Option<String>,
+    #[serde(default)]
+    pub merged_into: Option<String>,
+    #[serde(default)]
+    pub merged_at: Option<String>,
+    pub assigned_folder_path: Option<String>,
+    #[serde(default)]
+    pub is_imported: i64,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct ProjectWithStats {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub created_at: String,
+    pub excluded_at: Option<String>,
+    pub frozen_at: Option<String>,
+    pub merged_into: Option<String>,
+    pub merged_at: Option<String>,
+    pub total_seconds: i64,
+    pub period_seconds: Option<i64>,
+    pub app_count: i64,
+    pub last_activity: Option<String>,
+    pub assigned_folder_path: Option<String>,
+    /// Surowe sekundy (dedup) per kalendarzowy dzień — do zaokrąglania `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}
+
+#[derive(Serialize)]
+pub struct AppWithStats {
+    pub id: i64,
+    pub executable_name: String,
+    pub display_name: String,
+    pub project_id: Option<i64>,
+    pub total_seconds: i64,
+    pub session_count: i64,
+    pub last_used: Option<String>,
+    pub project_name: Option<String>,
+    pub project_color: Option<String>,
+    pub color: Option<String>,
+    /// Surowe sekundy per kalendarzowy dzień — do zaokrąglania `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}
+
+#[derive(Serialize)]
+pub struct SessionWithApp {
+    pub id: i64,
+    pub app_id: i64,
+    pub project_id: Option<i64>,
+    pub split_source_session_id: Option<i64>,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_seconds: i64,
+    pub rate_multiplier: f64,
+    pub app_name: String,
+    pub executable_name: String,
+    pub project_name: Option<String>,
+    pub project_color: Option<String>,
+    pub files: Vec<FileActivity>,
+    pub suggested_project_id: Option<i64>,
+    pub suggested_project_name: Option<String>,
+    pub suggested_confidence: Option<f64>,
+    /// true when the most recent assignment_feedback for this session has source = 'auto_accept'
+    pub ai_assigned: bool,
+    pub comment: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FileActivity {
+    pub id: i64,
+    pub app_id: i64,
+    pub file_name: String,
+    pub total_seconds: i64,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub project_id: Option<i64>,
+    pub project_name: Option<String>,
+    pub project_color: Option<String>,
+    pub activity_spans: Vec<(String, String)>,
+}
+
+#[derive(Serialize)]
+pub struct DashboardStats {
+    pub total_seconds: i64,
+    pub app_count: i64,
+    pub session_count: i64,
+    pub avg_daily_seconds: i64,
+    pub top_apps: Vec<TopApp>,
+    pub top_project: Option<TopProject>,
+    /// Łączny czas per kalendarzowy dzień (suma projektów w dniu) — do `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}
+
+#[derive(Serialize)]
+pub struct DashboardData {
+    pub stats: DashboardStats,
+    pub top_projects: Vec<ProjectTimeRow>,
+    pub all_projects: Vec<ProjectTimeRow>,
+    pub project_timeline: Vec<StackedBarData>,
+}
+
+#[derive(Serialize)]
+pub struct TopApp {
+    pub name: String,
+    pub seconds: i64,
+    pub color: Option<String>,
+    /// Surowe sekundy per kalendarzowy dzień — do zaokrąglania `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}
+
+#[derive(Serialize)]
+pub struct TopProject {
+    pub name: String,
+    pub seconds: i64,
+    pub color: String,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct StackedSeriesMeta {
+    pub key: String,
+    pub label: String,
+    pub color: String,
+    pub project_id: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct ProjectDbStats {
+    pub session_count: i64,
+    pub file_activity_count: i64,
+    pub manual_session_count: i64,
+    pub comment_count: i64,
+    pub boosted_session_count: i64,
+    pub estimated_size_bytes: i64,
+}
+
+#[derive(Serialize)]
+pub struct ProjectExtraInfo {
+    pub current_value: f64,
+    pub period_value: f64,
+    pub db_stats: ProjectDbStats,
+    pub top_apps: Vec<TopApp>,
+}
+
+#[derive(Serialize)]
+pub struct ProjectReportData {
+    pub project: ProjectWithStats,
+    pub extra: ProjectExtraInfo,
+    pub estimate: f64,
+    pub sessions: Vec<SessionWithApp>,
+    pub manual_sessions: Vec<ManualSessionWithProject>,
+}
+
+#[derive(Serialize)]
+pub struct ProjectTimeRow {
+    pub project_id: Option<i64>,
+    pub name: String,
+    pub seconds: i64,
+    pub color: String,
+    pub session_count: i64,
+    pub app_count: i64,
+    /// Surowe sekundy per kalendarzowy dzień — do zaokrąglania `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}
+
+#[derive(Serialize)]
+pub struct TimelinePoint {
+    pub date: String,
+    pub seconds: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateSettings {
+    pub global_hourly_rate: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateDay {
+    pub date: String,
+    pub seconds: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateProjectRow {
+    pub project_id: i64,
+    pub project_name: String,
+    pub project_color: String,
+    pub seconds: i64,
+    pub hours: f64,
+    pub weighted_hours: f64,
+    pub project_hourly_rate: Option<f64>,
+    pub effective_hourly_rate: f64,
+    pub estimated_value: f64,
+    pub session_count: i64,
+    pub multiplied_session_count: i64,
+    pub multiplier_extra_seconds: f64,
+    /// Surowe sekundy (clock, dedup) per dzień — dla zaokrąglania w trybie `per_day`
+    /// (każdy dzień → pełna godzina → suma). Liczone tym samym silnikiem co `seconds`.
+    pub daily_seconds: Vec<i64>,
+    /// Klient przypisany do projektu (po `projects.client_name`) — do filtra klientów
+    /// w panelu Estymacje i raportu per klient. `None` = projekt bez klienta.
+    pub client_name: Option<String>,
+    /// Rozbicie czasu na dni z ETYKIETAMI DAT (YYYY-MM-DD), chronologicznie. Dla raportu
+    /// estymacji w wariancie „plus" (projekt → dni z godzinami). Pomija dni z 0 s.
+    pub days: Vec<EstimateDay>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct EstimateSummary {
+    pub total_seconds: i64,
+    pub total_hours: f64,
+    pub total_value: f64,
+    pub projects_count: i64,
+    pub overrides_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct StackedBarData {
+    pub date: String,
+    pub has_boost: bool,
+    pub has_manual: bool,
+    pub comments: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub series_meta: Vec<StackedSeriesMeta>,
+    #[serde(flatten)]
+    pub data: HashMap<String, i64>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DateRange {
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct SessionFilters {
+    #[serde(rename = "dateRange")]
+    pub date_range: Option<DateRange>,
+    #[serde(rename = "appId")]
+    pub app_id: Option<i64>,
+    #[serde(rename = "projectId")]
+    pub project_id: Option<i64>,
+    pub unassigned: Option<bool>,
+    #[serde(rename = "minDuration")]
+    pub min_duration: Option<i64>,
+    #[serde(rename = "includeFiles")]
+    pub include_files: Option<bool>,
+    #[serde(rename = "includeAiSuggestions")]
+    pub include_ai_suggestions: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct ImportedFileInfo {
+    pub file_path: String,
+    pub import_date: String,
+    pub records_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct ArchivedFileInfo {
+    pub file_name: String,
+    pub file_path: String,
+    pub modified_at: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ProjectFolder {
+    pub path: String,
+    pub added_at: String,
+    #[serde(default)]
+    pub color: String,
+    #[serde(default)]
+    pub category: String,
+    #[serde(default)]
+    pub badge: String,
+}
+
+#[derive(Serialize)]
+pub struct FolderProjectCandidate {
+    pub name: String,
+    pub folder_path: String,
+    pub root_path: String,
+    pub already_exists: bool,
+}
+
+#[derive(Serialize)]
+pub struct FolderSyncResult {
+    pub created_projects: Vec<String>,
+    pub scanned_folders: usize,
+}
+
+#[derive(Serialize)]
+pub struct AutoImportResult {
+    pub files_found: usize,
+    pub files_imported: usize,
+    pub files_skipped: usize,
+    pub files_archived: usize,
+    pub errors: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct DetectedProject {
+    pub file_name: String,
+    pub project_name: String,
+    pub total_seconds: i64,
+    pub occurrence_count: i64,
+    pub apps: Vec<String>,
+    pub first_seen: String,
+    pub last_seen: String,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub(crate) struct MonitoredConfig {
+    pub apps: Vec<MonitoredApp>,
+}
+
+#[derive(Serialize)]
+pub struct DaemonStatus {
+    pub running: bool,
+    pub pid: Option<u32>,
+    pub exe_path: Option<String>,
+    pub autostart: bool,
+    pub needs_assignment: bool,
+    pub unassigned_sessions: i64,
+    pub unassigned_apps: i64,
+    pub version: Option<String>,
+    pub dashboard_version: String,
+    pub is_compatible: bool,
+}
+
+#[derive(Serialize)]
+pub struct BackgroundDiagnostics {
+    pub daemon_status: DaemonStatus,
+    pub ai_status: crate::commands::assignment_model::AssignmentModelStatus,
+    pub today_unassigned: i64,
+    pub all_unassigned: i64,
+}
+
+#[derive(Serialize)]
+pub struct RefreshResult {
+    pub sessions_upserted: usize,
+    pub file_found: bool,
+}
+
+/// Result of backfilling days that exist in the daemon's daily_store but are
+/// missing from the dashboard database (e.g. days worked while the dashboard
+/// was never opened).
+#[derive(Serialize, Default)]
+pub struct BackfillResult {
+    pub days_scanned: usize,
+    pub days_backfilled: usize,
+    pub sessions_upserted: usize,
+}
+
+#[derive(Serialize)]
+pub struct TodayFileSignature {
+    pub exists: bool,
+    pub path: String,
+    pub modified_unix_ms: Option<u128>,
+    pub size_bytes: Option<u64>,
+    pub revision: Option<u64>,
+}
+
+// ==================== Manual Sessions ====================
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ManualSession {
+    pub id: i64,
+    pub title: String,
+    #[serde(default)]
+    pub session_type: String,
+    pub project_id: i64,
+    pub app_id: Option<i64>,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_seconds: i64,
+    #[serde(default)]
+    pub date: String,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Serialize)]
+pub struct ManualSessionWithProject {
+    pub id: i64,
+    pub title: String,
+    pub session_type: String,
+    pub project_id: i64,
+    pub app_id: Option<i64>,
+    pub project_name: String,
+    pub project_color: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_seconds: i64,
+    pub date: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateManualSessionInput {
+    pub title: String,
+    pub session_type: String,
+    pub project_id: i64,
+    pub app_id: Option<i64>,
+    pub start_time: String,
+    pub end_time: String,
+}
+
+#[derive(Deserialize)]
+pub struct ManualSessionFilters {
+    #[serde(rename = "dateRange")]
+    pub date_range: Option<DateRange>,
+    #[serde(rename = "projectId")]
+    pub project_id: Option<i64>,
+}
+
+// ==================== Export/Import Archive Types ====================
+
+#[derive(Serialize, Deserialize)]
+pub struct ExportArchive {
+    pub version: String,
+    pub exported_at: String,
+    pub machine_id: String,
+    pub export_type: String,
+    pub date_range: DateRange,
+    pub metadata: ExportMetadata,
+    pub data: ExportData,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ExportMetadata {
+    pub project_id: Option<i64>,
+    pub project_name: Option<String>,
+    pub total_sessions: i64,
+    pub total_seconds: i64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ExportData {
+    pub projects: Vec<Project>,
+    pub applications: Vec<ApplicationRow>,
+    pub sessions: Vec<SessionRow>,
+    pub manual_sessions: Vec<ManualSession>,
+    pub daily_files: BTreeMap<String, DailyData>,
+    pub tombstones: Vec<Tombstone>,
+    #[serde(default)]
+    pub assignment_feedback: Vec<AssignmentFeedbackRow>,
+    #[serde(default)]
+    pub assignment_auto_runs: Vec<AssignmentAutoRunRow>,
+    #[serde(default)]
+    pub file_activities: Vec<FileActivityExportRow>,
+}
+
+/// Wiersz `file_activities` w archiwum eksportu — wszystkie kolumny tabeli
+/// poza lokalnym `id` (bezużyteczne między maszynami; mapowanie po
+/// UNIQUE(app_id, date, file_path)).
+#[derive(Serialize, Deserialize, Clone)]
+pub struct FileActivityExportRow {
+    pub app_id: i64,
+    pub date: String,
+    pub file_name: String,
+    pub file_path: String,
+    pub total_seconds: i64,
+    pub first_seen: String,
+    pub last_seen: String,
+    #[serde(default)]
+    pub project_id: Option<i64>,
+    #[serde(default)]
+    pub window_title: Option<String>,
+    #[serde(default)]
+    pub detected_path: Option<String>,
+    #[serde(default)]
+    pub title_history: Option<String>,
+    #[serde(default)]
+    pub activity_type: Option<String>,
+    #[serde(default = "default_activity_spans")]
+    pub activity_spans: String,
+}
+
+fn default_activity_spans() -> String {
+    "[]".to_string()
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Tombstone {
+    #[serde(default)]
+    pub id: Option<i64>,
+    pub table_name: String,
+    pub record_id: Option<i64>,
+    pub record_uuid: Option<String>,
+    pub deleted_at: String,
+    pub sync_key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ApplicationRow {
+    pub id: i64,
+    pub executable_name: String,
+    #[serde(default)]
+    pub display_name: String,
+    pub project_id: Option<i64>,
+    #[serde(default)]
+    pub is_imported: i64,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SessionRow {
+    pub id: i64,
+    pub app_id: i64,
+    pub project_id: Option<i64>,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_seconds: i64,
+    #[serde(default = "default_rate_multiplier")]
+    pub rate_multiplier: f64,
+    pub date: String,
+    pub comment: Option<String>,
+    #[serde(default)]
+    pub is_hidden: bool,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    /// Etykieta projektu (m20). LAN sync przenosi ją od zawsze; archiwum JSON
+    /// dopiero od tej wersji — stare archiwa deserializują się do None.
+    /// Na imporcie pozwala przypisać sesję po NAZWIE, gdy mapowanie po id
+    /// zawiedzie (ghost names), albo przynajmniej zachować etykietę.
+    #[serde(default)]
+    pub project_name: Option<String>,
+}
+
+fn default_rate_multiplier() -> f64 {
+    1.0
+}
+
+// ==================== Multi-Project Split Types ====================
+
+#[derive(Serialize)]
+pub struct ProjectCandidate {
+    pub project_id: i64,
+    pub project_name: String,
+    pub score: f64,
+    pub ratio_to_leader: f64,
+}
+
+#[derive(Serialize)]
+pub struct MultiProjectAnalysis {
+    pub session_id: i64,
+    pub candidates: Vec<ProjectCandidate>,
+    pub is_splittable: bool,
+    pub leader_project_id: Option<i64>,
+    pub leader_score: f64,
+}
+
+#[derive(Serialize)]
+pub struct SessionSplittableFlag {
+    pub session_id: i64,
+    pub is_splittable: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SplitPart {
+    pub project_id: Option<i64>,
+    pub ratio: f64,
+}
+
+#[derive(Serialize)]
+pub struct ImportValidation {
+    pub valid: bool,
+    pub missing_projects: Vec<String>,
+    pub missing_applications: Vec<String>,
+    pub overlapping_sessions: Vec<SessionConflict>,
+}
+
+#[derive(Serialize)]
+pub struct SessionConflict {
+    pub app_name: String,
+    pub start: String,
+    pub end: String,
+    pub existing_start: String,
+    pub existing_end: String,
+}
+
+#[derive(Serialize)]
+pub struct ImportSummary {
+    pub projects_created: usize,
+    pub apps_created: usize,
+    pub sessions_imported: usize,
+    pub sessions_merged: usize,
+    pub daily_files_imported: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AssignmentFeedbackRow {
+    pub id: i64,
+    pub session_id: Option<i64>,
+    pub app_id: Option<i64>,
+    pub from_project_id: Option<i64>,
+    pub to_project_id: Option<i64>,
+    pub source: String,
+    pub weight: f64,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AssignmentAutoRunRow {
+    pub id: i64,
+    pub started_at: String,
+    pub finished_at: Option<String>,
+    pub sessions_scanned: i64,
+    pub sessions_assigned: i64,
+    pub sessions_skipped: i64,
+    pub rolled_back_at: Option<String>,
+}
+
+// ==================== Clients ====================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Client {
+    pub id: i64,
+    pub name: String,
+    pub contact: Option<String>,
+    pub address: Option<String>,
+    pub tax_id: Option<String>,
+    pub currency: Option<String>,
+    pub default_hourly_rate: Option<f64>,
+    pub color: String,
+    pub archived_at: Option<String>,
+    #[serde(default)]
+    pub created_at: String,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ClientAutofillResult {
+    pub clients_created: i64,
+    pub projects_assigned: i64,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ProjectClientRow {
+    pub id: i64,
+    pub name: String,
+    pub color: String,
+    pub client_name: Option<String>,
+    pub status: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ClientProjectSummary {
+    pub project_id: i64,
+    pub project_name: String,
+    pub project_color: String,
+    pub status: String,
+    pub seconds: i64,
+    pub value: f64,
+    /// Surowe sekundy per kalendarzowy dzień — do zaokrąglania `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ClientSummary {
+    pub client_name: String,
+    pub color: String,
+    pub projects: Vec<ClientProjectSummary>,
+    pub project_count: i64,
+    pub total_seconds: i64,
+    pub total_value: f64,
+    pub active_value: f64,
+    pub done_value: f64,
+    pub paid_value: f64,
+    pub paid_seconds: i64,
+    /// Łączny czas per kalendarzowy dzień (suma projektów klienta w dniu) — do `per_day`.
+    #[serde(default)]
+    pub daily_seconds: Vec<i64>,
+}

@@ -1,0 +1,501 @@
+import { useCallback, useEffect, useState, useMemo, useTransition } from "react";
+import { useTranslation } from 'react-i18next';
+import { getTimeline, getProjectTimeline, projectsWithClient, clientsList } from "@/lib/tauri";
+import { groupStackedByClient } from "@/lib/group-stacked-by-client";
+import {
+  addDays, addMonths, subMonths, format, parseISO, subDays,
+  startOfMonth, endOfMonth, endOfWeek, eachWeekOfInterval,
+  isBefore, isAfter, getWeek,
+} from "date-fns";
+import type { DateRange, TimelinePoint, StackedBarData } from "@/lib/db-types";
+import { resolveDateFnsLocale } from "@/lib/date-helpers";
+import { parseHourlyProjects, buildDaySlots, PALETTE } from "./types";
+import type { HourSlot, WeekDaySlot, CalendarWeek, ProjectSlot, CalendarDay } from "./types";
+import { loadProjectsAllTime } from "@/store/projects-cache-store";
+import {
+  buildStackedSeriesMetaMap,
+  getStackedSeriesEntries,
+  getStackedSeriesLabel,
+} from "@/lib/stacked-bar-series";
+
+export type RangeMode = "daily" | "weekly" | "monthly";
+export type GroupBy = "projects" | "clients";
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return h;
+}
+
+export function useTimeAnalysisData() {
+  const { t, i18n } = useTranslation();
+  const locale = useMemo(
+    () => resolveDateFnsLocale(i18n.resolvedLanguage ?? i18n.language),
+    [i18n.language, i18n.resolvedLanguage],
+  );
+  const [rangeMode, setRangeMode] = useState<RangeMode>("daily");
+  const [groupBy, setGroupBy] = useState<GroupBy>("projects");
+  const [anchorDate, setAnchorDate] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  const [isPending, startTransition] = useTransition();
+  const [analysisView, setAnalysisView] = useState<{
+    timeline: TimelinePoint[];
+    hourlyProjects: StackedBarData[];
+    projectColors: Map<string, string>;
+    loading: boolean;
+    error: string | null;
+  }>({
+    timeline: [],
+    hourlyProjects: [],
+    projectColors: new Map(),
+    loading: false,
+    error: null,
+  });
+  const {
+    timeline,
+    hourlyProjects,
+    projectColors,
+    loading: isLoading,
+    error: loadError,
+  } = analysisView;
+  const hourlySeriesMetaByKey = useMemo(
+    () => buildStackedSeriesMetaMap(hourlyProjects),
+    [hourlyProjects],
+  );
+
+  const [today, setToday] = useState<string>(() => format(new Date(), "yyyy-MM-dd"));
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setToday(format(new Date(), "yyyy-MM-dd"));
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+  const canShiftForward = anchorDate < today;
+
+  const activeDateRange = useMemo<DateRange>(() => {
+    const d = parseISO(anchorDate);
+    switch (rangeMode) {
+      case "daily":
+        return { start: anchorDate, end: anchorDate };
+      case "weekly":
+        return { start: format(subDays(d, 6), "yyyy-MM-dd"), end: anchorDate };
+      case "monthly":
+        return { start: format(startOfMonth(d), "yyyy-MM-dd"), end: format(endOfMonth(d), "yyyy-MM-dd") };
+    }
+  }, [rangeMode, anchorDate]);
+
+  const setRangeModeWithLoading = useCallback((next: RangeMode) => {
+    setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
+    startTransition(() => {
+      setRangeMode(next);
+    });
+  }, []);
+
+  const setGroupByWithLoading = useCallback((next: GroupBy) => {
+    setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
+    startTransition(() => {
+      setGroupBy(next);
+    });
+  }, []);
+
+  const shiftDateRange = useCallback((direction: -1 | 1) => {
+    const current = parseISO(anchorDate);
+    let next: string;
+    if (rangeMode === "monthly") {
+      next = format(direction === 1 ? addMonths(current, 1) : subMonths(current, 1), "yyyy-MM-dd");
+    } else {
+      const step = rangeMode === "weekly" ? 7 : 1;
+      next = format(addDays(current, direction * step), "yyyy-MM-dd");
+    }
+    if (next > today) return;
+    setAnalysisView((prev) => ({ ...prev, loading: true, error: null }));
+    startTransition(() => {
+      setAnchorDate(next);
+    });
+  }, [anchorDate, rangeMode, today]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hpPromise = rangeMode === "monthly"
+      ? getProjectTimeline(activeDateRange, 200, "day")
+      : getProjectTimeline(activeDateRange, 200, "hour");
+
+    Promise.all([
+      getTimeline(activeDateRange),
+      hpPromise,
+      loadProjectsAllTime(),
+      groupBy === "clients" ? projectsWithClient() : Promise.resolve([]),
+      groupBy === "clients" ? clientsList() : Promise.resolve([]),
+    ]).then(([tl, hp, projects, projectClients, clients]) => {
+      if (cancelled) return;
+      const colorMap = new Map<string, string>();
+      for (const p of projects) colorMap.set(p.name, p.color);
+
+      if (groupBy === "clients") {
+        const noClientLabel = t("time_analysis_page.no_client");
+        const projectIdToClient = new Map<number, string>();
+        const projectNameToClient = new Map<string, string>();
+        for (const p of projectClients) {
+          if (p.client_name) {
+            projectIdToClient.set(p.id, p.client_name);
+            projectNameToClient.set(p.name, p.client_name);
+          }
+        }
+        const clientColors = new Map<string, string>();
+        for (const c of clients) clientColors.set(c.name, c.color);
+        const clientColor = (name: string) =>
+          clientColors.get(name) ||
+          PALETTE[Math.abs(hashString(name)) % PALETTE.length];
+
+        const grouped = groupStackedByClient(hp, {
+          projectIdToClient,
+          projectNameToClient,
+          clientColor,
+          noClientLabel,
+        });
+        const clientColorMap = new Map<string, string>();
+        for (const [name, color] of clientColors) clientColorMap.set(name, color);
+        clientColorMap.set(noClientLabel, "#64748b");
+        setAnalysisView((prev) => ({
+          ...prev,
+          loading: false,
+          error: null,
+          timeline: tl,
+          hourlyProjects: grouped,
+          projectColors: clientColorMap,
+        }));
+      } else {
+        setAnalysisView((prev) => ({
+          ...prev,
+          loading: false,
+          error: null,
+          timeline: tl,
+          hourlyProjects: hp,
+          projectColors: colorMap,
+        }));
+      }
+    }).catch((error: unknown) => {
+      if (cancelled) return;
+      console.error(error);
+      const message = error instanceof Error ? error.message : "Unknown data loading error";
+      setAnalysisView((prev) => ({ ...prev, loading: false, error: message }));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDateRange, rangeMode, groupBy, t]);
+
+  // Parsed hourly project data (shared between daily & weekly)
+  const parsed = useMemo(
+    () => parseHourlyProjects(hourlyProjects, projectColors),
+    [hourlyProjects, projectColors],
+  );
+
+  // Pie chart — project breakdown
+  const pieData = useMemo(() => {
+    const totals = new Map<string, number>();
+
+    for (const row of hourlyProjects) {
+      for (const [key, val] of getStackedSeriesEntries(row)) {
+        const label = getStackedSeriesLabel(hourlySeriesMetaByKey, key);
+        totals.set(label, (totals.get(label) || 0) + val);
+      }
+    }
+
+    return Array.from(totals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, seconds], i) => ({
+        name,
+        value: Math.round(seconds),
+        fill: projectColors.get(name) || PALETTE[i % PALETTE.length],
+      }));
+  }, [hourlyProjects, hourlySeriesMetaByKey, projectColors]);
+
+  const totalRangeSeconds = useMemo(
+    () => timeline.reduce((sum, point) => sum + point.seconds, 0),
+    [timeline],
+  );
+
+  const pieFallbackMessage = useMemo(() => {
+    if (isLoading) return t("time_analysis_page.fallbacks.loading_chart_data");
+    if (loadError) {
+      return t("time_analysis_page.fallbacks.load_chart_failed");
+    }
+    if (totalRangeSeconds <= 0) {
+      return t("time_analysis_page.fallbacks.no_tracked_activity");
+    }
+    if (hourlyProjects.length === 0) {
+      return t("time_analysis_page.fallbacks.no_project_timeline_data");
+    }
+    return t("time_analysis_page.fallbacks.no_project_distribution_data");
+  }, [hourlyProjects.length, isLoading, loadError, t, totalRangeSeconds]);
+
+  // Weekly heatmap grid
+  const weeklyHourlyGrid = useMemo(() => {
+    if (rangeMode !== "weekly") return { days: [] as WeekDaySlot[], allProjects: parsed.allProjects, maxVal: 1 };
+
+    let maxVal = 1;
+    const days: WeekDaySlot[] = [];
+    const startDate = parseISO(activeDateRange.start);
+    for (let di = 0; di < 7; di++) {
+      const d = addDays(startDate, di);
+      const dateStr = format(d, "yyyy-MM-dd");
+      const dayLabel = format(d, "EEE", { locale });
+      const { slots, maxVal: dayMax } = buildDaySlots(parsed.byDateHour.get(dateStr));
+      if (dayMax > maxVal) maxVal = dayMax;
+      const dayTotal = slots.reduce((s, h) => s + h.totalSeconds, 0);
+      days.push({ dayLabel, dateStr, hours: slots, totalSeconds: dayTotal });
+    }
+
+    return { days, allProjects: parsed.allProjects, maxVal };
+  }, [rangeMode, parsed, activeDateRange, locale]);
+
+  // Daily heatmap grid
+  const dailyHourlyGrid = useMemo(() => {
+    if (rangeMode !== "daily") return { hours: [] as HourSlot[], allProjects: parsed.allProjects, maxVal: 1 };
+    const { slots, maxVal } = buildDaySlots(parsed.byDateHour.get(anchorDate));
+    return { hours: slots, allProjects: parsed.allProjects, maxVal };
+  }, [rangeMode, parsed, anchorDate]);
+
+  // Bar data — monthly (stacked by project per day)
+  const monthlyBarData = useMemo(() => {
+    if (rangeMode !== "monthly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    const projectSet = new Set<string>();
+    // hourlyProjects for monthly mode contains day-granularity rows
+    const perDay = new Map<string, Record<string, number>>();
+    for (const row of hourlyProjects) {
+      const datePart = row.date.split("T")[0] || row.date;
+      if (!perDay.has(datePart)) perDay.set(datePart, {});
+      const bucket = perDay.get(datePart)!;
+      for (const [key, val] of getStackedSeriesEntries(row)) {
+        const label = getStackedSeriesLabel(hourlySeriesMetaByKey, key);
+        bucket[label] = (bucket[label] || 0) + val / 3600;
+        projectSet.add(label);
+      }
+    }
+    // Build rows sorted by date
+    const dates = Array.from(perDay.keys()).sort();
+    const data = dates.map((date) => {
+      const bucket = perDay.get(date)!;
+      const row: Record<string, unknown> = { date };
+      for (const [k, v] of Object.entries(bucket)) {
+        row[k] = +v.toFixed(3);
+      }
+      return row;
+    });
+    return { data, projectNames: Array.from(projectSet) };
+  }, [hourlyProjects, hourlySeriesMetaByKey, rangeMode]);
+
+  // Daily hourly bar data: stacked by project per hour
+  const dailyBarData = useMemo(() => {
+    if (rangeMode !== "daily") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    const projectSet = new Set<string>();
+    const barRows = dailyHourlyGrid.hours.map((slot) => {
+      const row: Record<string, unknown> = { hour: `${slot.hour.toString().padStart(2, "0")}:00` };
+      for (const proj of slot.projects) {
+        row[proj.name] = +(proj.seconds / 3600).toFixed(3);
+        projectSet.add(proj.name);
+      }
+      return row;
+    });
+    return { data: barRows, projectNames: Array.from(projectSet) };
+  }, [rangeMode, dailyHourlyGrid]);
+
+  // Weekly daily bar data: stacked by project per day
+  const weeklyBarData = useMemo(() => {
+    if (rangeMode !== "weekly") return { data: [] as Record<string, unknown>[], projectNames: [] as string[] };
+    const projectSet = new Set<string>();
+    const barRows = weeklyHourlyGrid.days.map((day) => {
+      const row: Record<string, unknown> = { date: day.dateStr };
+      for (const hourSlot of day.hours) {
+        for (const proj of hourSlot.projects) {
+          row[proj.name] = +((row[proj.name] as number || 0) + proj.seconds / 3600).toFixed(3);
+          projectSet.add(proj.name);
+        }
+      }
+      return row;
+    });
+    return { data: barRows, projectNames: Array.from(projectSet) };
+  }, [rangeMode, weeklyHourlyGrid]);
+
+  // Project color map for stacked bars
+  const stackedBarColorMap = useMemo(() => {
+    const names = rangeMode === "daily"
+      ? dailyBarData.projectNames
+      : rangeMode === "weekly"
+        ? weeklyBarData.projectNames
+        : monthlyBarData.projectNames;
+    const map = new Map<string, string>();
+    names.forEach((name, i) => {
+      map.set(
+        name,
+        parsed.colorMap.get(name) ||
+          projectColors.get(name) ||
+          PALETTE[i % PALETTE.length],
+      );
+    });
+    return map;
+  }, [
+    dailyBarData.projectNames,
+    monthlyBarData.projectNames,
+    parsed.colorMap,
+    projectColors,
+    rangeMode,
+    weeklyBarData.projectNames,
+  ]);
+
+  // Daily total hours
+  const dailyTotalHours = useMemo(() => {
+    if (rangeMode !== "daily") return 0;
+    return dailyHourlyGrid.hours.reduce((s, h) => s + h.totalSeconds, 0) / 3600;
+  }, [rangeMode, dailyHourlyGrid]);
+
+  // Weekly total hours
+  const weeklyTotalHours = useMemo(() => {
+    if (rangeMode !== "weekly") return 0;
+    return weeklyHourlyGrid.days.reduce((s, d) => s + d.totalSeconds, 0) / 3600;
+  }, [rangeMode, weeklyHourlyGrid]);
+
+  // Monthly calendar heatmap
+  const monthCalendar = useMemo(() => {
+    if (rangeMode !== "monthly") return { weeks: [] as CalendarWeek[], maxVal: 1 };
+    const mStart = parseISO(activeDateRange.start);
+    const mEnd = parseISO(activeDateRange.end);
+    const weekStarts = eachWeekOfInterval({ start: mStart, end: mEnd }, { weekStartsOn: 1 });
+
+    const timeMap = new Map<string, number>();
+    for (const t of timeline) timeMap.set(t.date, t.seconds);
+
+    const projectPerRow = new Map<string, ProjectSlot[]>();
+    for (const row of hourlyProjects) {
+      const datePart = row.date.split("T")[0] || row.date;
+      const projects: ProjectSlot[] = [];
+      getStackedSeriesEntries(row).forEach(([key, val]) => {
+        const label = getStackedSeriesLabel(hourlySeriesMetaByKey, key);
+        projects.push({
+          name: label,
+          seconds: val,
+          color: parsed.colorMap.get(label) || projectColors.get(label) || PALETTE[0],
+        });
+      });
+      projects.sort((a, b) => b.seconds - a.seconds);
+      projectPerRow.set(datePart, projects);
+    }
+
+    let maxVal = 1;
+    const weeks: CalendarWeek[] = weekStarts.map((ws) => {
+      const we = endOfWeek(ws, { weekStartsOn: 1 });
+      const days: CalendarDay[] = [];
+      for (let d = ws; !isAfter(d, we); d = addDays(d, 1)) {
+        const key = format(d, "yyyy-MM-dd");
+        const sec = timeMap.get(key) || 0;
+        const inMonth = !isBefore(d, mStart) && !isAfter(d, mEnd);
+        if (sec > maxVal) maxVal = sec;
+        days.push({
+          date: key,
+          seconds: sec,
+          inMonth,
+          projects: projectPerRow.get(key) || [],
+        });
+      }
+      const weekNum = getWeek(ws, { weekStartsOn: 1 });
+      return { label: `W${weekNum}`, subLabel: format(ws, "MMM d", { locale }), days };
+    });
+    return { weeks, maxVal };
+  }, [
+    activeDateRange,
+    hourlyProjects,
+    hourlySeriesMetaByKey,
+    locale,
+    parsed.colorMap,
+    projectColors,
+    rangeMode,
+    timeline,
+  ]);
+
+  // Monthly total
+  const monthTotalHours = useMemo(() => {
+    if (rangeMode !== "monthly") return 0;
+    return timeline.reduce((s, t) => s + t.seconds, 0) / 3600;
+  }, [rangeMode, timeline]);
+
+  // Date label
+  const dateLabel = useMemo(() => {
+    if (rangeMode === "monthly") {
+      return format(parseISO(activeDateRange.start), "MMMM yyyy", { locale });
+    }
+    if (activeDateRange.start === activeDateRange.end) {
+      return format(parseISO(activeDateRange.start), "EEE, MMM d", { locale });
+    }
+    return `${format(parseISO(activeDateRange.start), "MMM d", { locale })} – ${format(parseISO(activeDateRange.end), "MMM d", { locale })}`;
+  }, [rangeMode, activeDateRange, locale]);
+
+  // Export handler
+  const handleExport = () => {
+    let csv: string;
+    if (rangeMode === "daily") {
+      const projects = dailyBarData.projectNames;
+      const header = `Hour,${projects.join(",")},Total`;
+      const rows = dailyBarData.data.map((row) => {
+        const hour = row.hour as string;
+        const vals = projects.map((p) => ((row[p] as number) || 0).toFixed(3));
+        const total = projects.reduce((s, p) => s + ((row[p] as number) || 0), 0).toFixed(2);
+        return `${hour},${vals.join(",")},${total}`;
+      });
+      csv = [header, ...rows].join("\n");
+    } else if (rangeMode === "weekly") {
+      const projects = weeklyBarData.projectNames;
+      const header = `Date,${projects.join(",")},Total`;
+      const rows = weeklyBarData.data.map((row) => {
+        const date = row.date as string;
+        const vals = projects.map((p) => ((row[p] as number) || 0).toFixed(3));
+        const total = projects.reduce((s, p) => s + ((row[p] as number) || 0), 0).toFixed(2);
+        return `${date},${vals.join(",")},${total}`;
+      });
+      csv = [header, ...rows].join("\n");
+    } else {
+      const header = "Date,Hours";
+      const rows = timeline.map((t) => `${t.date},${(t.seconds / 3600).toFixed(2)}`);
+      csv = [header, ...rows].join("\n");
+    }
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `time-analysis-${activeDateRange.start}-${activeDateRange.end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return {
+    rangeMode,
+    setRangeMode: setRangeModeWithLoading,
+    groupBy,
+    setGroupBy: setGroupByWithLoading,
+    canShiftForward,
+    shiftDateRange,
+    dateLabel,
+    handleExport,
+    pieData,
+    pieFallbackMessage,
+    isLoading: isLoading || isPending,
+    loadError,
+    projectColors,
+    // Daily
+    dailyHourlyGrid,
+    dailyBarData,
+    dailyTotalHours,
+    // Weekly
+    weeklyHourlyGrid,
+    weeklyBarData,
+    weeklyTotalHours,
+    // Monthly
+    monthCalendar,
+    monthlyBarData,
+    monthTotalHours,
+    // Shared
+    stackedBarColorMap,
+  };
+}
+

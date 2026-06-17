@@ -1,0 +1,243 @@
+use std::process::Command;
+
+use crate::commands::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
+#[cfg(not(windows))]
+use crate::commands::helpers::DAEMON_AUTOSTART_LNK;
+
+use super::{find_daemon_exe, session_settings, startup_dir};
+#[cfg(windows)]
+use super::autostart_win;
+
+/// Windows autostart przez klucz rejestru `HKCU\...\Run`. Wcześniejsza wersja
+/// tworzyła plik `.lnk` w Start Menu\Programs\Startup przez PowerShell, ale
+/// była podatna na ciche błędy COM, OneDrive Known Folder Move oraz brak
+/// `WorkingDirectory`. Klucz rejestru jest niezależny od shellu i synchronizacji.
+///
+/// Dodatkowo każde wywołanie sprząta starą wartość `.lnk` (jeśli istnieje
+/// po poprzednich wersjach), żeby demon nie wystartował dwa razy po
+/// migracji.
+#[cfg(windows)]
+#[tauri::command]
+pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    // Cleanup po starym mechanizmie — niezależnie od `enabled`.
+    if let Ok(dir) = startup_dir() {
+        let legacy_lnk = dir.join(crate::commands::helpers::DAEMON_AUTOSTART_LNK);
+        if legacy_lnk.exists() {
+            let _ = std::fs::remove_file(&legacy_lnk);
+        }
+    }
+
+    if enabled {
+        let exe = find_daemon_exe()?;
+        let command = autostart_win::build_command(&exe);
+        autostart_win::write(&command)?;
+    } else {
+        autostart_win::delete()?;
+    }
+
+    Ok(())
+}
+
+/// macOS autostart: generuje LaunchAgent plist w ~/Library/LaunchAgents
+/// i rejestruje go przez `launchctl load -w`. Wyłączenie — `launchctl unload -w`
+/// i usunięcie pliku plist.
+#[cfg(target_os = "macos")]
+#[tauri::command]
+pub async fn set_autostart_enabled(enabled: bool) -> Result<(), String> {
+    let dir = startup_dir()?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let plist_path = dir.join(DAEMON_AUTOSTART_LNK);
+
+    if enabled {
+        let exe = find_daemon_exe()?;
+        let label = DAEMON_AUTOSTART_LNK
+            .strip_suffix(".plist")
+            .unwrap_or(DAEMON_AUTOSTART_LNK);
+        let plist = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{label}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{exe}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+"#,
+            label = label,
+            exe = exe.to_string_lossy(),
+        );
+        std::fs::write(&plist_path, plist).map_err(|e| e.to_string())?;
+
+        // Odśwież rejestrację w launchctl (unload ignoruje błąd gdy brak wpisu).
+        let _ = Command::new("launchctl")
+            .args(["unload", "-w"])
+            .arg(&plist_path)
+            .output();
+        let output = Command::new("launchctl")
+            .args(["load", "-w"])
+            .arg(&plist_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(format!(
+                "launchctl load failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+    } else if plist_path.exists() {
+        let _ = Command::new("launchctl")
+            .args(["unload", "-w"])
+            .arg(&plist_path)
+            .output();
+        std::fs::remove_file(&plist_path).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn start_daemon() -> Result<(), String> {
+    let exe = find_daemon_exe()?;
+    let mut cmd = Command::new(&exe);
+    no_console(&mut cmd);
+    cmd.spawn()
+        .map_err(|e| format!("Failed to start daemon: {}", e))?;    Ok(())
+}
+
+#[cfg(windows)]
+#[tauri::command]
+pub async fn stop_daemon() -> Result<(), String> {
+    let mut cmd = Command::new("taskkill");
+    no_console(&mut cmd);
+    let output = cmd
+        .args(["/F", "/T", "/IM", DAEMON_EXE_NAME])
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("not found") {
+            return Err(format!("Failed to stop daemon: {}", stderr));
+        }
+    }    Ok(())
+}
+
+/// macOS/Linux: zatrzymuje daemona przez `pkill -f <exe_name>`. pkill zwraca 1
+/// gdy nie znajdzie procesu — interpretujemy to jako sukces ("nic do zabicia").
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn stop_daemon() -> Result<(), String> {
+    let output = Command::new("pkill")
+        .args(["-TERM", "-f", DAEMON_EXE_NAME])
+        .output()
+        .map_err(|e| e.to_string())?;
+    // pkill exit codes: 0 = znaleziono+zabito, 1 = brak procesu (to też OK),
+    // 2 = błąd składni, 3 = błąd wewnętrzny.
+    let code = output.status.code().unwrap_or(-1);
+    if !(code == 0 || code == 1) {
+        return Err(format!(
+            "pkill zakończył się kodem {code}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }    Ok(())
+}
+
+#[cfg(windows)]
+#[tauri::command]
+pub async fn restart_daemon() -> Result<(), String> {
+    let mut kill_cmd = Command::new("taskkill");
+    no_console(&mut kill_cmd);
+    let _ = kill_cmd.args(["/F", "/T", "/IM", DAEMON_EXE_NAME]).output();    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    let exe = find_daemon_exe()?;
+    let mut start_cmd = Command::new(&exe);
+    no_console(&mut start_cmd);
+    start_cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start daemon: {}", e))?;    Ok(())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn restart_daemon() -> Result<(), String> {
+    let _ = Command::new("pkill")
+        .args(["-TERM", "-f", DAEMON_EXE_NAME])
+        .output();    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+    let exe = find_daemon_exe()?;
+    let mut start_cmd = Command::new(&exe);
+    no_console(&mut start_cmd);
+    start_cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start daemon: {}", e))?;    Ok(())
+}
+
+#[tauri::command]
+pub async fn persist_language_for_daemon(code: String) -> Result<(), String> {
+    let base_dir = timeflow_data_dir()?;
+    let lang_file = base_dir.join("language.json");
+    let normalized = if code.to_lowercase().starts_with("pl") {
+        "pl"
+    } else {
+        "en"
+    };
+    let content = serde_json::json!({ "code": normalized });
+    std::fs::write(&lang_file, content.to_string())
+        .map_err(|e| format!("Failed to write language.json: {}", e))
+}
+
+/// Reads the shared language code from language.json (written by
+/// persist_language_for_daemon). This is the single source of truth shared by
+/// the desktop app, the daemon and the LAN web UI, so the browser stays 1:1.
+#[tauri::command]
+pub async fn get_persisted_language() -> Result<String, String> {
+    let base_dir = timeflow_data_dir()?;
+    let lang_file = base_dir.join("language.json");
+    let raw = match std::fs::read_to_string(&lang_file) {
+        Ok(raw) => raw,
+        Err(_) => return Ok(String::new()),
+    };
+    let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
+    Ok(parsed
+        .get("code")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_string())
+}
+
+#[tauri::command]
+pub async fn persist_session_settings_for_daemon(
+    min_session_duration_seconds: i64,
+) -> Result<(), String> {
+    let base_dir = timeflow_data_dir()?;
+    let settings = session_settings::SharedSessionSettings {
+        min_session_duration_seconds,
+    };
+    session_settings::write_session_settings(&base_dir, &settings)
+}
+
+#[tauri::command]
+pub async fn persist_lan_sync_settings_for_daemon(
+    sync_interval_hours: u32,
+    discovery_duration_minutes: u32,
+    enabled: bool,
+    forced_role: Option<String>,
+    auto_sync_on_peer_found: Option<bool>,
+) -> Result<(), String> {
+    let base_dir = timeflow_data_dir()?;
+    let path = base_dir.join("lan_sync_settings.json");
+    let content = serde_json::json!({
+        "sync_interval_hours": sync_interval_hours,
+        "discovery_duration_minutes": discovery_duration_minutes,
+        "enabled": enabled,
+        "forced_role": forced_role.unwrap_or_default(),
+        "auto_sync_on_peer_found": auto_sync_on_peer_found.unwrap_or(false),
+    });
+    std::fs::write(&path, content.to_string())
+        .map_err(|e| format!("Failed to write lan_sync_settings.json: {}", e))
+}

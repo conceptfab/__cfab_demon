@@ -1,0 +1,615 @@
+export interface Project {
+  id: number;
+  name: string;
+  color: string;
+  hourly_rate?: number | null;
+  created_at: string;
+  updated_at: string;
+  excluded_at?: string | null;
+  frozen_at?: string | null;
+  merged_into?: string | null;       // parent project name (null = not merged)
+  merged_at?: string | null;
+  assigned_folder_path?: string | null;
+  is_imported: number;
+}
+
+export interface Application {
+  id: number;
+  executable_name: string;
+  display_name: string;
+  project_id: number | null;
+  is_imported: number;
+}
+
+export interface Session {
+  id: number;
+  app_id: number;
+  project_id?: number | null;
+  start_time: string;
+  end_time: string;
+  duration_seconds: number;
+  rate_multiplier?: number;
+  comment?: string | null;
+  is_hidden?: boolean;
+}
+
+export interface FileActivity {
+  id: number;
+  app_id: number;
+  file_name: string;
+  file_path?: string;
+  total_seconds: number;
+  first_seen: string;
+  last_seen: string;
+  project_id?: number | null;
+  project_name?: string | null;
+  project_color?: string | null;
+  activity_spans?: [string, string][];
+}
+
+export interface ImportedFile {
+  file_path: string;
+  import_date: string;
+  records_count: number;
+}
+
+export interface ArchivedFile {
+  file_name: string;
+  file_path: string;
+  modified_at: string;
+  size_bytes: number;
+}
+
+// Aggregated types for UI
+export interface AppWithStats extends Application {
+  total_seconds: number;
+  session_count: number;
+  last_used: string | null;
+  project_name: string | null;
+  project_color: string | null;
+  color: string;
+  /** Sekundy per kalendarzowy dzień — do zaokrąglania `per_day`. */
+  daily_seconds: number[];
+}
+
+export interface SessionWithApp extends Session {
+  app_name: string;
+  executable_name: string;
+  project_id: number | null;
+  split_source_session_id?: number | null;
+  project_name: string | null;
+  project_color: string | null;
+  files: FileActivity[];
+  suggested_project_id?: number;
+  suggested_project_name?: string;
+  suggested_confidence?: number;
+  /** true when the most recent assignment for this session was made by AI auto-safe */
+  ai_assigned?: boolean;
+  comment?: string | null;
+}
+
+export type AssignmentMode = 'off' | 'suggest' | 'auto_safe';
+
+export interface AssignmentModelStatus {
+  mode: AssignmentMode;
+  min_confidence_suggest: number;
+  min_confidence_auto: number;
+  min_evidence_auto: number;
+  training_horizon_days: number;
+  decay_half_life_days: number;
+  training_app_blacklist: string[];
+  training_folder_blacklist: string[];
+  last_train_at: string | null;
+  feedback_since_train: number;
+  is_training: boolean;
+  last_train_duration_ms: number | null;
+  last_train_samples: number | null;
+  train_error_last: string | null;
+  cooldown_until: string | null;
+  last_auto_run_at: string | null;
+  last_auto_assigned_count: number;
+  last_auto_rolled_back_at: string | null;
+  can_rollback_last_auto_run: boolean;
+  feedback_weight: number;
+}
+
+export interface AssignmentModelMetricsPoint {
+  date: string;
+  feedback_total: number;
+  feedback_accepted: number;
+  feedback_rejected: number;
+  feedback_manual_change: number;
+  auto_runs: number;
+  auto_assigned: number;
+  auto_rollbacks: number;
+  coverage_total_entries: number;
+  coverage_with_detected_path: number;
+  coverage_with_title_history: number;
+  coverage_with_activity_type: number;
+}
+
+export interface AssignmentModelMetricsSummary {
+  feedback_total: number;
+  feedback_accepted: number;
+  feedback_rejected: number;
+  feedback_manual_change: number;
+  feedback_manual_corrections: number;
+  feedback_precision: number;
+  auto_runs: number;
+  auto_assigned: number;
+  auto_rollbacks: number;
+  coverage_total_entries: number;
+  coverage_detected_path_ratio: number;
+  coverage_title_history_ratio: number;
+  coverage_activity_type_ratio: number;
+}
+
+export interface AssignmentModelMetrics {
+  window_days: number;
+  points: AssignmentModelMetricsPoint[];
+  summary: AssignmentModelMetricsSummary;
+}
+
+export interface AutoSafeRunResult {
+  run_id: number | null;
+  scanned: number;
+  suggested: number;
+  assigned: number;
+  skipped_low_confidence: number;
+  skipped_ambiguous: number;
+  skipped_already_assigned: number;
+}
+
+export interface AutoSafeRollbackResult {
+  run_id: number;
+  reverted: number;
+  skipped: number;
+}
+
+export interface DeterministicResult {
+  apps_with_rules: number;
+  sessions_assigned: number;
+  sessions_skipped: number;
+}
+
+export interface CandidateScore {
+  project_id: number;
+  project_name: string;
+  layer0_file_score: number;
+  layer1_app_score: number;
+  layer2_time_score: number;
+  layer3_token_score: number;
+  layer3b_folder_score: number;
+  total_score: number;
+  evidence_count: number;
+}
+
+export interface ProjectSuggestion {
+  project_id: number;
+  confidence: number;
+  evidence_count: number;
+  margin: number;
+  breakdown?: SuggestionBreakdown;
+}
+
+export interface SuggestionBreakdown {
+  file_score: number;
+  app_score: number;
+  time_score: number;
+  token_score: number;
+  folder_score: number;
+}
+
+export interface FolderScanResult {
+  projects_scanned: number;
+  tokens_total: number;
+  duration_ms: number;
+}
+
+export interface FolderScanStatus {
+  has_scan_data: boolean;
+  last_scanned_at: string | null;
+  projects_count: number;
+  tokens_count: number;
+}
+
+export interface ScoreBreakdown {
+  candidates: CandidateScore[];
+  final_suggestion: ProjectSuggestion | null;
+  has_manual_override: boolean;
+  manual_override_project_id: number | null;
+}
+
+export interface DashboardStats {
+  total_seconds: number;
+  app_count: number;
+  session_count: number;
+  avg_daily_seconds: number;
+  top_apps: { name: string; seconds: number; color: string | null; daily_seconds: number[] }[];
+  top_project: { name: string; seconds: number; color: string } | null;
+  /** Łączny czas per kalendarzowy dzień — do zaokrąglania `per_day`. */
+  daily_seconds: number[];
+}
+
+export interface DashboardData {
+  stats: DashboardStats;
+  top_projects: ProjectTimeRow[];
+  all_projects: ProjectTimeRow[];
+  project_timeline: StackedBarData[];
+}
+
+export interface ProjectTimeRow {
+  project_id?: number | null;
+  name: string;
+  seconds: number;
+  color: string;
+  session_count: number;
+  app_count: number;
+  /** Sekundy per kalendarzowy dzień — do zaokrąglania `per_day`. */
+  daily_seconds: number[];
+}
+
+export interface TimelinePoint {
+  date: string;
+  seconds: number;
+}
+
+export interface HourlyData {
+  hour: number;
+  seconds: number;
+}
+
+export interface EstimateSettings {
+  global_hourly_rate: number;
+}
+
+export interface EstimateDay {
+  date: string;
+  seconds: number;
+}
+
+export interface EstimateProjectRow {
+  project_id: number;
+  project_name: string;
+  project_color: string;
+  seconds: number;
+  hours: number;
+  weighted_hours: number;
+  project_hourly_rate: number | null;
+  effective_hourly_rate: number;
+  estimated_value: number;
+  session_count: number;
+  multiplied_session_count: number;
+  multiplier_extra_seconds: number;
+  /** Surowe sekundy (clock, dedup) per dzień — do zaokrąglania w trybie `per_day`. */
+  daily_seconds: number[];
+  /** Klient projektu (po `projects.client_name`); null = bez klienta. */
+  client_name: string | null;
+  /** Rozbicie czasu na dni z etykietami dat (YYYY-MM-DD), chronologicznie. */
+  days: EstimateDay[];
+}
+
+export interface EstimateSummary {
+  total_seconds: number;
+  total_hours: number;
+  total_value: number;
+  projects_count: number;
+  overrides_count: number;
+}
+
+export interface DateRange {
+  start: string;
+  end: string;
+}
+
+export interface ImportResult {
+  file_path: string;
+  success: boolean;
+  records_imported: number;
+  error: string | null;
+}
+
+export interface ProjectWithStats extends Project {
+  total_seconds: number;
+  period_seconds?: number | null;
+  app_count: number;
+  last_activity: string | null;
+  assigned_folder_path?: string | null;
+  /** Sekundy per kalendarzowy dzień (all-time) — do zaokrąglania `per_day`. */
+  daily_seconds: number[];
+}
+
+export interface ProjectDbStats {
+  session_count: number;
+  file_activity_count: number;
+  manual_session_count: number;
+  comment_count: number;
+  boosted_session_count: number;
+  estimated_size_bytes: number;
+}
+
+export interface ProjectExtraInfo {
+  current_value: number;
+  period_value: number;
+  db_stats: ProjectDbStats;
+  top_apps: { name: string; seconds: number; color: string | null; daily_seconds: number[] }[];
+}
+
+export interface ProjectReportData {
+  project: ProjectWithStats;
+  extra: ProjectExtraInfo;
+  estimate: number;
+  sessions: SessionWithApp[];
+  manual_sessions: ManualSessionWithProject[];
+}
+
+export interface ProjectFolder {
+  path: string;
+  added_at: string;
+  color: string;
+  category: string;
+  badge: string;
+}
+
+export interface FolderProjectCandidate {
+  name: string;
+  folder_path: string;
+  root_path: string;
+  already_exists: boolean;
+}
+
+export interface HeatmapCell {
+  day: number; // 0=Sun..6=Sat
+  hour: number;
+  seconds: number;
+}
+
+export interface StackedBarData {
+  date: string;
+  has_boost?: boolean;
+  has_manual?: boolean;
+  comments?: string[];
+  series_meta?: StackedSeriesMeta[];
+  [appName: string]:
+    | string
+    | number
+    | string[]
+    | boolean
+    | StackedSeriesMeta[]
+    | undefined;
+}
+
+export interface StackedSeriesMeta {
+  key: string;
+  label: string;
+  color: string;
+  project_id?: number | null;
+}
+
+export interface FolderSyncResult {
+  created_projects: string[];
+  scanned_folders: number;
+}
+
+export interface AutoImportResult {
+  files_found: number;
+  files_imported: number;
+  files_skipped: number;
+  files_archived: number;
+  errors: string[];
+}
+
+export interface DaemonStatus {
+  running: boolean;
+  pid: number | null;
+  exe_path: string | null;
+  autostart: boolean;
+  needs_assignment: boolean;
+  unassigned_sessions: number;
+  unassigned_apps: number;
+  version?: string;
+  dashboard_version?: string;
+  is_compatible?: boolean;
+}
+
+export interface BackgroundDiagnostics {
+  daemon_status: DaemonStatus;
+  ai_status: AssignmentModelStatus;
+  today_unassigned: number;
+  all_unassigned: number;
+}
+
+export interface MonitoredApp {
+  exe_name: string;
+  display_name: string;
+  added_at: string;
+  bundle_id: string | null;
+  app_path: string | null;
+}
+
+export interface DroppedAppInfo {
+  exe_name: string;
+  display_name: string;
+  bundle_id: string | null;
+  app_path: string | null;
+}
+
+export interface MonitoredAppsSyncResult {
+  scanned: number;
+  added: number;
+  already_monitored: number;
+}
+
+export interface DetectedProject {
+  file_name: string;
+  project_name: string;
+  total_seconds: number;
+  occurrence_count: number;
+  apps: string[];
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface RefreshResult {
+  sessions_upserted: number;
+  file_found: boolean;
+}
+
+export interface BackfillResult {
+  days_scanned: number;
+  days_backfilled: number;
+  sessions_upserted: number;
+}
+
+export interface TodayFileSignature {
+  exists: boolean;
+  path: string;
+  modified_unix_ms: number | null;
+  size_bytes: number | null;
+  revision?: number | null;
+}
+
+export interface DemoModeStatus {
+  enabled: boolean;
+  activeDbPath: string;
+  primaryDbPath: string;
+  demoDbPath: string;
+}
+
+export interface ManualSession {
+  id: number;
+  title: string;
+  session_type: string;
+  project_id: number;
+  app_id?: number | null;
+  start_time: string;
+  end_time: string;
+  duration_seconds: number;
+  date: string;
+  created_at: string;
+}
+
+export interface ManualSessionWithProject {
+  id: number;
+  title: string;
+  session_type: string;
+  project_id: number;
+  app_id?: number | null;
+  project_name: string;
+  project_color: string;
+  start_time: string;
+  end_time: string;
+  duration_seconds: number;
+  date: string;
+}
+
+export interface ExportArchive {
+  version: string;
+  exported_at: string;
+  machine_id: string;
+  export_type: 'single_project' | 'all_data';
+  date_range: DateRange;
+  metadata: {
+    project_id?: number;
+    project_name?: string;
+    total_sessions: number;
+    total_seconds: number;
+  };
+  data: {
+    projects: Project[];
+    applications: Application[];
+    sessions: Session[];
+    manual_sessions: ManualSession[];
+    daily_files: Record<string, unknown>;
+    tombstones?: Array<{
+      table_name: string;
+      record_id?: number | null;
+      record_uuid?: string | null;
+      deleted_at: string;
+      sync_key?: string | null;
+    }>;
+  };
+}
+
+export interface ImportValidation {
+  valid: boolean;
+  missing_projects: string[];
+  missing_applications: string[];
+  overlapping_sessions: SessionConflict[];
+}
+
+export interface SessionConflict {
+  app_name: string;
+  start: string;
+  end: string;
+  existing_start: string;
+  existing_end: string;
+}
+
+export interface ImportSummary {
+  projects_created: number;
+  apps_created: number;
+  sessions_imported: number;
+  sessions_merged: number;
+  daily_files_imported: number;
+}
+
+export interface DbInfo {
+  path: string;
+  size_bytes: number;
+}
+
+export interface DatabaseSettings {
+  vacuum_on_startup: boolean;
+  backup_enabled: boolean;
+  backup_path: string;
+  backup_interval_days: number;
+  last_backup_at: string | null;
+  auto_optimize_enabled: boolean;
+  auto_optimize_interval_hours: number;
+  last_optimize_at: string | null;
+}
+
+export interface BackupFile {
+  name: string;
+  path: string;
+  size_bytes: number;
+  modified_at: string;
+}
+
+export interface DataFolderStats {
+  file_count: number;
+  total_bytes: number;
+}
+
+export interface CleanupResult {
+  files_deleted: number;
+  bytes_freed: number;
+}
+
+// ==================== Multi-Project Split Types ====================
+
+export interface ProjectCandidate {
+  project_id: number;
+  project_name: string;
+  score: number;
+  ratio_to_leader: number;
+}
+
+export interface MultiProjectAnalysis {
+  session_id: number;
+  candidates: ProjectCandidate[];
+  is_splittable: boolean;
+  leader_project_id: number | null;
+  leader_score: number;
+}
+
+export interface SessionSplittableFlag {
+  session_id: number;
+  is_splittable: boolean;
+}
+
+export interface SplitPart {
+  project_id: number | null;
+  ratio: number;
+}

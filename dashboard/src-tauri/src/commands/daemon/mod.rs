@@ -1,0 +1,452 @@
+use std::io::{Read, Seek, SeekFrom};
+use std::process::Command;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+use tauri::AppHandle;
+use timeflow_shared::{session_settings, version_compat};
+
+use super::helpers::{no_console, timeflow_data_dir, DAEMON_EXE_NAME};
+#[cfg(not(windows))]
+use super::helpers::DAEMON_AUTOSTART_LNK;
+use super::types::DaemonStatus;
+use crate::commands::sql_fragments::ACTIVE_SESSION_FILTER_S;
+use crate::db;
+
+#[cfg(windows)]
+mod autostart_win;
+mod control;
+mod status;
+
+pub use control::*;
+pub use status::*;
+
+const DAEMON_VERSION_CACHE_TTL: Duration = Duration::from_secs(300);
+
+#[derive(Clone)]
+struct DaemonVersionCacheEntry {
+    exe_path: std::path::PathBuf,
+    version: String,
+    cached_at: Instant,
+}
+
+fn daemon_version_cache() -> &'static Mutex<Option<DaemonVersionCacheEntry>> {
+    static DAEMON_VERSION_CACHE: OnceLock<Mutex<Option<DaemonVersionCacheEntry>>> = OnceLock::new();
+    DAEMON_VERSION_CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn read_cached_daemon_version(exe: &std::path::Path) -> Option<String> {
+    let guard = daemon_version_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entry = guard.as_ref()?;
+    if entry.exe_path != exe || entry.cached_at.elapsed() > DAEMON_VERSION_CACHE_TTL {
+        return None;
+    }
+    Some(entry.version.clone())
+}
+
+fn store_cached_daemon_version(exe: &std::path::Path, version: &str) {
+    let mut guard = daemon_version_cache()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    *guard = Some(DaemonVersionCacheEntry {
+        exe_path: exe.to_path_buf(),
+        version: version.to_string(),
+        cached_at: Instant::now(),
+    });
+}
+
+fn load_daemon_version(exe: &std::path::Path) -> Option<String> {
+    if let Some(version) = read_cached_daemon_version(exe) {
+        return Some(version);
+    }
+
+    let mut v_cmd = Command::new(exe);
+    no_console(&mut v_cmd);
+    let output = v_cmd.arg("--version").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() {
+        return None;
+    }
+
+    store_cached_daemon_version(exe, &version);
+    Some(version)
+}
+
+pub(super) fn find_daemon_exe() -> Result<std::path::PathBuf, String> {
+    // macOS: daemon siedzi zwykle w siostrzanym `.app` bundle obok dashboardu
+    // (dist/TIMEFLOW Demon.app/Contents/MacOS/timeflow-demon).
+    #[cfg(target_os = "macos")]
+    const DAEMON_APP_BUNDLE: &str = "TIMEFLOW Demon.app";
+
+    // Helper: sprawdź wszystkie znane layouty pod danym prefiksem.
+    let probe = |base: &std::path::Path| -> Option<std::path::PathBuf> {
+        // macOS: gdy w tym samym katalogu (np. `dist/`) leży zarówno goła binarka
+        // (artefakt builda), jak i bundle `.app`, demon ZAWSZE działa z wnętrza
+        // bundla. Sprawdzamy go najpierw, inaczej `pgrep -f <ścieżka>` celuje w
+        // nieużywaną kopię i fałszywie raportuje "Stopped" mimo żywego demona.
+        #[cfg(target_os = "macos")]
+        {
+            let in_bundle = base
+                .join(DAEMON_APP_BUNDLE)
+                .join("Contents")
+                .join("MacOS")
+                .join(DAEMON_EXE_NAME);
+            if in_bundle.exists() {
+                return Some(in_bundle);
+            }
+        }
+        let direct = base.join(DAEMON_EXE_NAME);
+        if direct.exists() {
+            return Some(direct);
+        }
+        None
+    };
+
+    // 1) Obok dashboardu (w tym samym katalogu co exe dashboardu).
+    if let Ok(self_exe) = std::env::current_exe() {
+        if let Some(dir) = self_exe.parent() {
+            if let Some(p) = probe(dir) {
+                return Ok(p);
+            }
+        }
+    }
+    // 2) Zapisana ścieżka w katalogu danych.
+    let data_dir = timeflow_data_dir()?;
+    if let Ok(content) = std::fs::read_to_string(data_dir.join("daemon_path.txt")) {
+        let p = std::path::PathBuf::from(content.trim());
+        if p.exists() {
+            return Ok(p);
+        }
+    }
+    // 3) Skanuj przodków oraz ich `dist/` — działa zarówno dla layoutu
+    //    dev (target/release obok źródeł) jak i produkcji (obie apki w dist/).
+    if let Ok(self_exe) = std::env::current_exe() {
+        for ancestor in self_exe.ancestors().take(6) {
+            if let Some(p) = probe(ancestor) {
+                return Ok(p);
+            }
+            let dist = ancestor.join("dist");
+            if let Some(p) = probe(&dist) {
+                return Ok(p);
+            }
+        }
+    }
+    // 4) macOS: zainstalowane w /Applications (siostra dashboardu).
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(p) = probe(std::path::Path::new("/Applications")) {
+            return Ok(p);
+        }
+    }
+
+    Err(format!("Cannot find {}", DAEMON_EXE_NAME))
+}
+
+pub(super) fn daemon_log_path() -> Result<std::path::PathBuf, String> {
+    let exe = find_daemon_exe()?;
+    Ok(exe
+        .parent()
+        .ok_or_else(|| "Cannot determine parent directory of daemon exe".to_string())?
+        .join("timeflow_demon.log"))
+}
+
+/// Katalog, w którym przechowywany jest artefakt autostartu daemona:
+/// - Windows: Start Menu → Programs → Startup (aplikacja uruchamia się przy logowaniu)
+/// - macOS:   `~/Library/LaunchAgents` (plist + `launchctl load -w`)
+#[cfg(windows)]
+pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
+    let appdata = std::env::var("APPDATA").map_err(|e| e.to_string())?;
+    Ok(std::path::PathBuf::from(appdata)
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs")
+        .join("Startup"))
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    Ok(std::path::PathBuf::from(home)
+        .join("Library")
+        .join("LaunchAgents"))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(super) fn startup_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| e.to_string())?;
+    Ok(std::path::PathBuf::from(home)
+        .join(".config")
+        .join("autostart"))
+}
+
+/// Czy autostart demona jest aktywny:
+/// - Windows: wartość w `HKCU\...\Run\TIMEFLOW Demon`
+/// - inne: obecność pliku artefaktu (`.plist` / `.desktop` / itp.) w `startup_dir()`
+#[cfg(windows)]
+pub(super) fn autostart_enabled_probe() -> bool {
+    autostart_win::is_enabled()
+}
+
+#[cfg(not(windows))]
+pub(super) fn autostart_enabled_probe() -> bool {
+    startup_dir()
+        .map(|d| d.join(DAEMON_AUTOSTART_LNK).exists())
+        .unwrap_or(false)
+}
+
+pub(super) fn read_last_n_lines(path: &std::path::Path, n: usize) -> Result<String, String> {
+    if n == 0 {
+        return Ok(String::new());
+    }
+
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    let file_len = file.metadata().map_err(|e| e.to_string())?.len();
+    if file_len == 0 {
+        return Ok(String::new());
+    }
+
+    const CHUNK_SIZE: u64 = 8192;
+    let mut pos = file_len;
+    let mut newline_count = 0usize;
+    let mut chunks: Vec<Vec<u8>> = Vec::new();
+
+    while pos > 0 && newline_count <= n {
+        let read_size = std::cmp::min(CHUNK_SIZE, pos) as usize;
+        pos -= read_size as u64;
+        file.seek(SeekFrom::Start(pos)).map_err(|e| e.to_string())?;
+
+        let mut chunk = vec![0u8; read_size];
+        file.read_exact(&mut chunk).map_err(|e| e.to_string())?;
+        newline_count += chunk.iter().filter(|&&b| b == b'\n').count();
+        chunks.push(chunk);
+    }
+
+    let total_size: usize = chunks.iter().map(|c| c.len()).sum();
+    let mut data = Vec::with_capacity(total_size);
+    for chunk in chunks.into_iter().rev() {
+        data.extend_from_slice(&chunk);
+    }
+
+    let text = String::from_utf8_lossy(&data);
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines.len().saturating_sub(n);
+    Ok(lines[start..].join("\n"))
+}
+
+fn query_unassigned_counts(app: &AppHandle, min_duration_sec: i64) -> (i64, i64) {
+    let conn = match db::get_connection(app) {
+        Ok(conn) => conn,
+        Err(e) => {
+            log::warn!("Failed to open dashboard DB for daemon status: {}", e);
+            return (0, 0);
+        }
+    };
+
+    conn.query_row(
+        &format!(
+            "SELECT
+                COUNT(*) as unassigned_sessions,
+                COUNT(DISTINCT s.app_id) as unassigned_apps
+             FROM sessions s
+             WHERE {ACTIVE_SESSION_FILTER_S}
+               AND s.project_id IS NULL
+               AND s.duration_seconds >= ?1"
+        ),
+        [min_duration_sec],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )
+    .unwrap_or((0, 0))
+}
+
+/// Windows: wykrywa TYLKO demona zarządzanego przez ten dashboard, porównując
+/// pełną `ExecutablePath` z binarką zwracaną przez `find_daemon_exe()` — sam
+/// `IMAGENAME` nie odróżnia demona z innego builda/instalacji ani osieroconego.
+/// Każde niepowodzenie (brak ścieżki, błąd PowerShell) cofa do starej detekcji
+/// po nazwie, by nie raportować fałszywie "Stopped".
+#[cfg(windows)]
+fn query_daemon_process_status() -> Result<(bool, Option<u32>), String> {
+    match query_daemon_process_status_scoped_win() {
+        Ok(Some(result)) => Ok(result),
+        // Ścieżka nieustalona albo PowerShell niedostępny — użyj detekcji po nazwie.
+        Ok(None) | Err(_) => query_daemon_process_status_by_name_win(),
+    }
+}
+
+/// Zwraca `Ok(Some(..))` gdy udało się wyliczyć procesy i porównać ścieżki,
+/// `Ok(None)` gdy nie znamy ścieżki demona (brak podstawy do zawężenia),
+/// `Err(..)` gdy zapytanie PowerShell zawiodło technicznie.
+#[cfg(windows)]
+fn query_daemon_process_status_scoped_win() -> Result<Option<(bool, Option<u32>)>, String> {
+    let managed = match find_daemon_exe() {
+        Ok(p) => p.to_string_lossy().to_lowercase(),
+        Err(_) => return Ok(None),
+    };
+
+    let mut cmd = Command::new("powershell");
+    no_console(&mut cmd);
+    let output = cmd
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            &format!(
+                "Get-CimInstance Win32_Process -Filter \"Name='{}'\" | \
+                 ForEach-Object {{ \"$($_.ProcessId)|$($_.ExecutablePath)\" }}",
+                DAEMON_EXE_NAME
+            ),
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "powershell process query failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(2, '|');
+        let pid_str = parts.next().unwrap_or("").trim();
+        let path = parts.next().unwrap_or("").trim();
+        if !path.is_empty() && path.to_lowercase() == managed {
+            return Ok(Some((true, pid_str.parse::<u32>().ok())));
+        }
+    }
+
+    // PowerShell wyliczył procesy, żaden nie pasuje ścieżką → demon nie działa.
+    Ok(Some((false, None)))
+}
+
+/// Detekcja po samej nazwie obrazu (poprzednie zachowanie) — używana jako
+/// fallback, gdy zawężenie po ścieżce nie jest możliwe.
+#[cfg(windows)]
+fn query_daemon_process_status_by_name_win() -> Result<(bool, Option<u32>), String> {
+    let mut cmd = Command::new("tasklist");
+    no_console(&mut cmd);
+    let output = cmd
+        .args([
+            "/FI",
+            &format!("IMAGENAME eq {}", DAEMON_EXE_NAME),
+            "/FO",
+            "CSV",
+            "/NH",
+        ])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut running = false;
+    let mut pid = None;
+
+    for line in stdout.lines() {
+        if line.contains(DAEMON_EXE_NAME) {
+            running = true;
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 2 {
+                pid = parts[1].trim_matches('"').parse::<u32>().ok();
+            }
+            break;
+        }
+    }
+
+    Ok((running, pid))
+}
+
+/// macOS/Linux: wykrywa TYLKO demona zarządzanego przez ten dashboard, tj.
+/// proces uruchomiony z dokładnie tej binarki, którą zwraca `find_daemon_exe()`.
+/// Demon zawsze startuje z absolutną ścieżką jako argv[0] (`start_daemon` oraz
+/// LaunchAgent plist), więc `pgrep -f <pełna_ścieżka>` nie złapie demona z innego
+/// builda (np. dist/ vs target/) ani osieroconego z poprzedniej sesji.
+/// Fallback do gołej nazwy, gdy ścieżki nie da się ustalić — nigdy nie chcemy
+/// fałszywie zaraportować "Stopped", gdy demon faktycznie żyje.
+#[cfg(not(windows))]
+fn query_daemon_process_status() -> Result<(bool, Option<u32>), String> {
+    let pattern = find_daemon_exe()
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| DAEMON_EXE_NAME.to_string());
+
+    let output = Command::new("pgrep")
+        .args(["-f", &pattern])
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut pid = None;
+    for line in stdout.lines() {
+        if let Ok(p) = line.trim().parse::<u32>() {
+            pid = Some(p);
+            break;
+        }
+    }
+    Ok((pid.is_some(), pid))
+}
+
+pub(super) fn build_daemon_status(
+    app: &AppHandle,
+    min_duration: Option<i64>,
+    include_assignment_counts: bool,
+) -> Result<DaemonStatus, String> {
+    // Jedyne źródło prawdy o statusie demona: żywy odczyt z systemu
+    // (pgrep / tasklist), zawężony do binarki z `find_daemon_exe`. Bez cache —
+    // wskaźnik nigdy nie pokazuje nieaktualnego stanu.
+    let (running, pid) = query_daemon_process_status()?;
+    let daemon_exe = find_daemon_exe().ok();
+    let exe_path = daemon_exe.as_ref().map(|p| p.to_string_lossy().to_string());
+    let autostart = autostart_enabled_probe();
+
+    let (unassigned_sessions, unassigned_apps) = if include_assignment_counts {
+        let min_dur = min_duration.unwrap_or_else(load_persisted_session_min_duration);
+        query_unassigned_counts(app, min_dur)
+    } else {
+        (0, 0)
+    };
+
+    let daemon_version = daemon_exe.as_ref().and_then(|exe| load_daemon_version(exe));
+
+    let is_compatible = if let Some(ref dv) = daemon_version {
+        version_compat::check_version_compatibility(dv, crate::VERSION.trim())
+    } else {
+        true
+    };
+
+    Ok(DaemonStatus {
+        running,
+        pid,
+        exe_path,
+        autostart,
+        needs_assignment: unassigned_sessions > 0,
+        unassigned_sessions,
+        unassigned_apps,
+        version: daemon_version,
+        dashboard_version: crate::VERSION.trim().to_string(),
+        is_compatible,
+    })
+}
+
+pub(super) fn load_persisted_session_min_duration() -> i64 {
+    let base_dir = match timeflow_data_dir() {
+        Ok(dir) => dir,
+        Err(error) => {
+            log::warn!(
+                "Failed to resolve TIMEFLOW dir for session settings: {}",
+                error
+            );
+            return session_settings::DEFAULT_MIN_SESSION_DURATION_SECONDS;
+        }
+    };
+
+    session_settings::read_session_settings(&base_dir).min_session_duration_seconds
+}

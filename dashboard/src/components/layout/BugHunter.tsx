@@ -1,0 +1,212 @@
+import React, { useReducer, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { Bug, Paperclip, X, Send, Check } from "lucide-react";
+import { invoke } from "@/lib/tauri";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/components/ui/toast-notification";
+import {
+  bugHunterReducer,
+  initialBugHunterState,
+} from '@/components/layout/bug-hunter-state';
+
+interface BugHunterProps {
+  isOpen: boolean;
+  onClose: () => void;
+  version: string;
+}
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
+  const { t } = useTranslation();
+  const { showError } = useToast();
+  const [state, dispatch] = useReducer(bugHunterReducer, initialBugHunterState);
+  const { attachments, description, isSending, isSent, title } = state;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const newAttachments: typeof attachments = [];
+    for (let i = 0; i < files.length; i++) {
+        if (files[i].size > MAX_FILE_SIZE) {
+            showError(t("components.bughunter.errors.file_too_large", { name: files[i].name }));
+            continue;
+        }
+        newAttachments.push({
+            file: files[i],
+            id: Math.random().toString(36).substring(7)
+        });
+    }
+    dispatch({ type: 'add_attachments', attachments: newAttachments });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeAttachment = (id: string) => {
+    dispatch({ type: 'remove_attachment', id });
+  };
+
+  const handleSend = async () => {
+    if (!title || !description) return;
+    dispatch({ type: 'set_is_sending', isSending: true });
+
+    try {
+      const attachmentsData = await Promise.all(
+        attachments.map(async (atch) => {
+          const buffer = await atch.file.arrayBuffer();
+          return [atch.file.name, Array.from(new Uint8Array(buffer))];
+        })
+      );
+
+      const result = await invoke<{ ok: boolean; message: string }>("send_bug_report", {
+        subject: title,
+        message: description,
+        version: version,
+        attachments: attachmentsData,
+      });
+
+      if (!result.ok) {
+        throw new Error(result.message || t("components.bughunter.errors.send_report_failed"));
+      }
+
+      dispatch({ type: 'set_is_sending', isSending: false });
+      dispatch({ type: 'set_is_sent', isSent: true });
+
+      setTimeout(() => {
+        dispatch({ type: 'reset_form' });
+        onClose();
+      }, 2000);
+    } catch (error) {
+      console.error("BugHunter failed to send:", error);
+      showError(t("components.bughunter.errors.send_failed", { error: String(error) }));
+      dispatch({ type: 'set_is_sending', isSending: false });
+    }
+  };
+
+
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-3 rounded-md border border-border/90 bg-card/98 p-5 shadow-[0_18px_48px_rgba(0,0,0,0.45)] outline-none">
+        <DialogHeader className="space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-destructive/10 text-destructive">
+                <Bug className="size-4" />
+            </div>
+            <DialogTitle className="text-xl font-semibold tracking-tight">{t("components.bughunter.title")}</DialogTitle>
+          </div>
+          <DialogDescription className="text-sm text-muted-foreground">
+            {t("components.bughunter.description")}
+          </DialogDescription>
+        </DialogHeader>
+
+        {isSent ? (
+          <div className="flex flex-col items-center justify-center py-10 gap-y-4 animate-in fade-in zoom-in duration-300">
+            <div className="size-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+              <Check className="size-6 stroke-[3px]" />
+            </div>
+            <p className="text-sm font-medium text-emerald-300">{t("components.bughunter.sent")}</p>
+          </div>
+        ) : (
+          <div className="space-y-4 pt-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="subject" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("components.bughunter.fields.subject", { version })}</Label>
+              <Input
+                id="subject"
+                placeholder={t("components.bughunter.fields.subject_placeholder")}
+                value={title}
+                onChange={(e) => dispatch({ type: 'set_title', title: e.target.value })}
+                className="bg-secondary/20 border-border/40 text-[13px] h-9"
+              />
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="message" className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("components.bughunter.fields.details")}</Label>
+              <textarea
+                id="message"
+                aria-label={t("components.bughunter.fields.details")}
+                placeholder={t("components.bughunter.fields.details_placeholder")}
+                value={description}
+                onChange={(e) => dispatch({ type: 'set_description', description: e.target.value })}
+                className="flex min-h-[140px] w-full rounded-md border border-border/40 bg-secondary/20 px-3 py-2 text-[13px] shadow-sm placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none transition-colors"
+                spellCheck={false}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground/60">{t("components.bughunter.fields.attachments")}</Label>
+                <button type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-[10px] text-sky-400 hover:text-sky-300 transition-colors font-semibold"
+                >
+                    <Paperclip className="size-3" />
+                    {t("components.bughunter.actions.add_files")}
+                </button>
+              </div>
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                ref={fileInputRef}
+                aria-label={t("components.bughunter.fields.attachments")}
+                onChange={handleFileChange}
+              />
+              
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {attachments.map((atch) => (
+                    <div
+                      key={atch.id}
+                      className="group flex items-center gap-2 rounded bg-secondary/40 border border-border/40 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-all"
+                    >
+                      <span className="truncate max-w-[150px]">{atch.file.name}</span>
+                      <button type="button"
+                        onClick={() => removeAttachment(atch.id)}
+                        className="text-muted-foreground group-hover:text-destructive transition-colors"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                variant="ghost"
+                onClick={onClose}
+                className="text-xs text-muted-foreground hover:text-foreground h-9 px-4"
+              >
+                {t("components.bughunter.actions.cancel")}
+              </Button>
+              <Button
+                onClick={handleSend}
+                disabled={isSending || !title || !description}
+                className="bg-primary text-primary-foreground text-xs font-semibold h-9 px-5 flex items-center gap-2 hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-primary/10"
+              >
+                {isSending ? (
+                  <div className="size-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                ) : (
+                  <Send className="size-3.5" />
+                )}
+                {isSending ? t("components.bughunter.actions.sending") : t("components.bughunter.actions.send_report")}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TIMEFLOW — Schemat przepływu danych</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1d2230;
+    --border: #2a3142;
+    --text: #e6e9ef;
+    --muted: #8c93a3;
+    --accent: #5ac8fa;
+    --daemon: #ff7a59;
+    --dashboard: #6db0ff;
+    --storage: #9c8cff;
+    --external: #34c77b;
+    --user: #ffd166;
+    --edge: #4a5468;
+    --edge-active: #5ac8fa;
+    --shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: .02em;
+  }
+  header h1 strong { color: var(--accent); }
+  header .meta { color: var(--muted); font-size: 12px; }
+  .filters {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .filters button {
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background .15s, border-color .15s;
+  }
+  .filters button:hover { border-color: var(--accent); }
+  .filters button.active {
+    background: var(--accent);
+    color: #0a1117;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  main {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    height: calc(100vh - 53px);
+  }
+  #diagram {
+    overflow: auto;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(90, 200, 250, .06), transparent 60%),
+      radial-gradient(circle at 80% 70%, rgba(156, 140, 255, .05), transparent 60%),
+      var(--bg);
+    position: relative;
+  }
+  svg { display: block; }
+  .lane-bg { fill: rgba(255,255,255,0.015); stroke: var(--border); stroke-dasharray: 4 4; }
+  .lane-title {
+    fill: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .node rect {
+    rx: 8;
+    ry: 8;
+    fill: var(--panel-2);
+    stroke: var(--border);
+    stroke-width: 1.5;
+    transition: fill .15s, stroke .15s, filter .15s;
+  }
+  .node.layer-daemon rect { stroke: var(--daemon); }
+  .node.layer-dashboard rect { stroke: var(--dashboard); }
+  .node.layer-storage rect { stroke: var(--storage); }
+  .node.layer-external rect { stroke: var(--external); }
+  .node.layer-user rect { stroke: var(--user); }
+  .node text.title {
+    fill: var(--text);
+    font-size: 12.5px;
+    font-weight: 600;
+    pointer-events: none;
+  }
+  .node text.subtitle {
+    fill: var(--muted);
+    font-size: 10.5px;
+    pointer-events: none;
+  }
+  .node { cursor: pointer; }
+  .node:hover rect {
+    fill: var(--panel);
+    filter: drop-shadow(0 0 6px rgba(90, 200, 250, .35));
+  }
+  .node.selected rect {
+    fill: #232a3b;
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 10px rgba(90, 200, 250, .55));
+  }
+  .node.dimmed rect { opacity: .25; }
+  .node.dimmed text { opacity: .35; }
+  .edge {
+    fill: none;
+    stroke: var(--edge);
+    stroke-width: 1.5;
+    marker-end: url(#arrow);
+    transition: stroke .15s, stroke-width .15s, opacity .15s;
+  }
+  .edge.bidirectional { marker-start: url(#arrow); }
+  .edge.dashed { stroke-dasharray: 5 4; }
+  .edge.highlight { stroke: var(--edge-active); stroke-width: 2.5; marker-end: url(#arrow-active); }
+  .edge.highlight.bidirectional { marker-start: url(#arrow-active); }
+  .edge.dimmed { opacity: .12; }
+  .edge-label {
+    fill: var(--muted);
+    font-size: 10.5px;
+    pointer-events: none;
+    text-anchor: middle;
+  }
+  .edge-label.highlight { fill: var(--accent); font-weight: 600; }
+  .legend-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .legend {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  aside {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 18px 20px;
+  }
+  aside h2 {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  aside .layer-tag {
+    display: inline-block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    padding: 2px 8px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+    border: 1px solid;
+  }
+  aside .layer-tag.layer-daemon   { color: var(--daemon);    border-color: var(--daemon); }
+  aside .layer-tag.layer-dashboard{ color: var(--dashboard); border-color: var(--dashboard); }
+  aside .layer-tag.layer-storage  { color: var(--storage);   border-color: var(--storage); }
+  aside .layer-tag.layer-external { color: var(--external);  border-color: var(--external); }
+  aside .layer-tag.layer-user     { color: var(--user);      border-color: var(--user); }
+  aside p.desc {
+    color: var(--muted);
+    margin: 0 0 14px 0;
+  }
+  aside h3 {
+    margin: 16px 0 6px 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: var(--accent);
+  }
+  aside ul { margin: 0; padding-left: 18px; }
+  aside li { margin-bottom: 4px; }
+  aside code {
+    background: var(--panel-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 12px;
+    color: #ffd9b3;
+  }
+  aside .files {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  aside .files div { padding: 2px 0; }
+  .hint {
+    color: var(--muted);
+    font-style: italic;
+    font-size: 12.5px;
+  }
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-left: 0; border-top: 1px solid var(--border); max-height: 45vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><strong>TIMEFLOW</strong> — schemat przepływu danych</h1>
+  <span class="meta">Daemon (Rust) + Dashboard (Tauri + React) + LAN/Online sync</span>
+  <div class="filters" id="filters">
+    <button data-flow="all" class="active">Wszystko</button>
+    <button data-flow="capture">Capture aktywności</button>
+    <button data-flow="dashboard">UI ↔ DB</button>
+    <button data-flow="lan">LAN sync</button>
+    <button data-flow="online">Online sync</button>
+  </div>
+</header>
+<main>
+  <div id="diagram">
+    <svg id="svg" width="1480" height="1100" viewBox="0 0 1480 1100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#4a5468" />
+        </marker>
+        <marker id="arrow-active" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 Z" fill="#5ac8fa" />
+        </marker>
+      </defs>
+
+      <!-- LANES -->
+      <g id="lanes">
+        <rect class="lane-bg" x="20"  y="60"  width="1440" height="160" />
+        <text class="lane-title" x="32" y="80">Użytkownik / system</text>
+
+        <rect class="lane-bg" x="20"  y="240" width="1440" height="240" />
+        <text class="lane-title" x="32" y="260">Dashboard (Tauri window — React + Rust)</text>
+
+        <rect class="lane-bg" x="20"  y="500" width="1440" height="280" />
+        <text class="lane-title" x="32" y="520">Daemon TIMEFLOW (proces w tle, tray)</text>
+
+        <rect class="lane-bg" x="20"  y="800" width="900"  height="280" />
+        <text class="lane-title" x="32" y="820">Lokalne dane (dysk użytkownika)</text>
+
+        <rect class="lane-bg" x="940" y="800" width="520"  height="280" />
+        <text class="lane-title" x="952" y="820">Świat zewnętrzny (LAN / Internet)</text>
+      </g>
+
+      <!-- EDGES (placed before nodes so nodes overlap arrows nicely) -->
+      <g id="edges"></g>
+
+      <!-- NODES -->
+      <g id="nodes"></g>
+
+      <!-- EDGE LABELS -->
+      <g id="edge-labels"></g>
+    </svg>
+  </div>
+
+  <aside id="detail">
+    <h2 id="d-title">Wybierz element schematu</h2>
+    <div id="d-tag"></div>
+    <p class="desc" id="d-desc">Kliknij na dowolny węzeł, aby zobaczyć opis, pliki źródłowe i powiązania.
+      U góry przełączasz, który przepływ jest podświetlony.</p>
+
+    <div id="d-extra"></div>
+
+    <h3>Legenda warstw</h3>
+    <div class="legend">
+      <span><span class="legend-dot" style="background:var(--user)"></span> Użytkownik</span>
+      <span><span class="legend-dot" style="background:var(--dashboard)"></span> Dashboard</span>
+      <span><span class="legend-dot" style="background:var(--daemon)"></span> Daemon</span>
+      <span><span class="legend-dot" style="background:var(--storage)"></span> Storage</span>
+      <span><span class="legend-dot" style="background:var(--external)"></span> Zewnętrzne</span>
+    </div>
+
+    <h3>Skrót architektury</h3>
+    <p class="desc">
+      Daemon to lekki binar w tle (Rust). Co ~10 s próbkuje aktywne okno
+      i CPU, agreguje dane w pamięci, a co ~5 min zapisuje snapshot dnia
+      do współdzielonej bazy SQLite (<code>daily_store</code>).
+      Dashboard to osobny proces Tauri: React UI + Rust backend
+      ze swoją bazą (projekty, sesje manualne, PM). Synchronizacja w LAN
+      idzie przez wbudowany HTTP serwer daemona na porcie 47891,
+      a online sync przez SFTP + serwer koordynacyjny.
+    </p>
+  </aside>
+</main>
+
+<script>
+/* ────────────── DATA MODEL ────────────── */
+const NODES = [
+  // USER lane
+  { id: 'user',       layer: 'user',      x:  60, y: 110, w: 200, h: 80,
+    title: 'Użytkownik',         subtitle: 'klik w UI / tray menu',
+    desc: 'Wchodzi w interakcję z dwoma punktami: oknem dashboardu (analityka, ustawienia, projekty) i ikoną tray daemona (start/stop/restart).',
+    flows: ['capture','dashboard','lan','online']
+  },
+  { id: 'tray',       layer: 'user',      x: 300, y: 110, w: 240, h: 80,
+    title: 'Tray icon',          subtitle: 'platform::tray',
+    desc: 'Główna UX powierzchnia daemona: menu kontekstowe (pauza, status sync, wyjście, restart). Renderuje też wskaźnik sync (kolor ikony).',
+    files: ['src/platform/macos/tray.rs','src/platform/windows/tray.rs','src/platform/tray_common.rs'],
+    flows: ['capture','lan','online']
+  },
+  { id: 'os',         layer: 'user',      x: 580, y: 110, w: 320, h: 80,
+    title: 'System operacyjny',  subtitle: 'foreground window / CPU / procesy',
+    desc: 'Źródło prawdy o aktywności: Win32 SetWinEventHook (Windows) lub polling NSWorkspace + AX API (macOS). Daemon obserwuje zmiany foreground i pyta o tytuł okna.',
+    files: ['src/monitor.rs','src/monitor_macos.rs','src/platform/windows/foreground.rs','src/platform/macos/foreground.rs','src/platform/macos/window_title.rs'],
+    flows: ['capture']
+  },
+  { id: 'lan-peer',   layer: 'external',  x: 960, y: 110, w: 220, h: 80,
+    title: 'LAN peer',           subtitle: 'inny TIMEFLOW w sieci',
+    desc: 'Drugie urządzenie z TIMEFLOW. Odkrywane przez UDP broadcast, parowane PIN-em, synchronizuje dane przez HTTP po porcie 47891.',
+    flows: ['lan']
+  },
+  { id: 'cloud',      layer: 'external',  x: 1200, y: 110, w: 240, h: 80,
+    title: 'SFTP + serwer koordynacyjny', subtitle: 'online sync',
+    desc: 'Zewnętrzny serwer SFTP (transfer paczek delta) i HTTP API koordynacyjne (rezerwacja sesji, ACK). 13-krokowa maszyna stanu w online_sync.rs.',
+    flows: ['online']
+  },
+
+  // DASHBOARD lane (pages + sync + backend)
+  { id: 'react-ui',   layer: 'dashboard', x:  60, y: 290, w: 280, h: 100,
+    title: 'React pages',        subtitle: 'Dashboard, Sessions, PM, Reports…',
+    desc: 'Interfejs użytkownika. Strony korzystają z hooków, czytają stan z Zustand i wywołują polecenia Tauri przez wrapper invoke().',
+    files: ['dashboard/src/pages/Dashboard.tsx','dashboard/src/pages/Sessions.tsx','dashboard/src/pages/Projects.tsx','dashboard/src/pages/PM.tsx','dashboard/src/pages/Reports.tsx','dashboard/src/pages/Settings.tsx','dashboard/src/pages/Help.tsx'],
+    flows: ['dashboard']
+  },
+  { id: 'stores',     layer: 'dashboard', x: 360, y: 290, w: 240, h: 100,
+    title: 'Zustand stores',     subtitle: 'data / settings / ui / cache',
+    desc: 'Stan klienta: zakres dat, presety czasu, klucz odświeżania, status backgroundu, cache projektów. Słucha eventu LOCAL_DATA_CHANGED i wywołuje triggerRefresh.',
+    files: ['dashboard/src/store/data-store.ts','dashboard/src/store/settings-store.ts','dashboard/src/store/ui-store.ts','dashboard/src/store/projects-cache-store.ts','dashboard/src/store/background-status-store.ts'],
+    flows: ['dashboard']
+  },
+  { id: 'tauri-fe',   layer: 'dashboard', x: 620, y: 290, w: 260, h: 100,
+    title: 'Tauri bindings (TS)', subtitle: 'lib/tauri/* + invoke / invokeMutation',
+    desc: 'Cienka warstwa nad @tauri-apps/api/core. invokeMutation() po sukcesie emituje globalny event LOCAL_DATA_CHANGED, który wymusza odświeżenie zapytań.',
+    files: ['dashboard/src/lib/tauri/core.ts','dashboard/src/lib/tauri/database.ts','dashboard/src/lib/tauri/projects.ts','dashboard/src/lib/tauri/sessions.ts','dashboard/src/lib/tauri/pm.ts','dashboard/src/lib/tauri/online-sync.ts','dashboard/src/lib/tauri/lan-sync.ts','dashboard/src/lib/sync-events.ts'],
+    flows: ['dashboard']
+  },
+  { id: 'sync-ui',    layer: 'dashboard', x: 900, y: 290, w: 220, h: 100,
+    title: 'Sync UI (SSE)',      subtitle: 'lib/sync/*',
+    desc: 'Komponenty statusu sync (LanSyncCard, indicator w nagłówku) i strumień SSE do daemona po stanie sync. Odbiera zdarzenia z LAN/online sync i renderuje stan w UI.',
+    files: ['dashboard/src/lib/sync/sync-sse.ts','dashboard/src/lib/sync/sync-indicator.ts','dashboard/src/lib/sync/sync-state.ts','dashboard/src/lib/sync/sync-http.ts','dashboard/src/components/sync/'],
+    flows: ['lan','online']
+  },
+  { id: 'tauri-be',   layer: 'dashboard', x: 1140, y: 290, w: 280, h: 100,
+    title: 'Tauri backend (Rust)', subtitle: 'src-tauri/commands/*',
+    desc: '~30 modułów komend Tauri: projekty, sesje, PM, raporty, import/export, online_sync, lan_sync, bridge do daily_store. Operuje na puli połączeń SQLite.',
+    files: ['dashboard/src-tauri/src/lib.rs','dashboard/src-tauri/src/commands/projects.rs','dashboard/src-tauri/src/commands/sessions/','dashboard/src-tauri/src/commands/pm.rs','dashboard/src-tauri/src/commands/online_sync.rs','dashboard/src-tauri/src/commands/lan_sync.rs','dashboard/src-tauri/src/commands/daily_store_bridge.rs','dashboard/src-tauri/src/db.rs','dashboard/src-tauri/src/db/pool.rs'],
+    flows: ['dashboard','lan','online']
+  },
+
+  // DAEMON lane
+  { id: 'tracker',    layer: 'daemon',    x:  60, y: 560, w: 240, h: 100,
+    title: 'tracker (monitor thread)', subtitle: 'co 10 s sample, co 5 min flush',
+    desc: 'Wątek monitorujący. Po sygnale z foreground hook lub po timeoutcie pyta o aktywne okno i CPU, aktualizuje agregaty w pamięci. Co ~5 min wywołuje storage::save_to_daily_store.',
+    files: ['src/tracker.rs','src/monitor.rs','src/monitor_macos.rs','src/activity.rs','src/title_parser.rs'],
+    flows: ['capture']
+  },
+  { id: 'storage',    layer: 'daemon',    x: 320, y: 560, w: 220, h: 100,
+    title: 'storage / daily_store', subtitle: 'serializacja → SQLite',
+    desc: 'Przekształca strukturę in-memory (DailyData → StoredDailyData) i zapisuje do współdzielonej bazy daily_store. Sanityzuje długości pól, deduplikuje pliki.',
+    files: ['src/storage.rs','shared/daily_store.rs','shared/daily_store/read.rs','shared/daily_store/write.rs','shared/daily_store/types.rs','shared/daily_store/schema.rs','shared/daily_store/legacy.rs'],
+    flows: ['capture','dashboard']
+  },
+  { id: 'config',     layer: 'daemon',    x: 560, y: 560, w: 200, h: 100,
+    title: 'config / settings',   subtitle: 'settings.json, heartbeat.txt',
+    desc: 'Odczyt/zapis settings.json (LAN, online sync, język, autostart). Zapisuje heartbeat.txt — dashboard wykrywa, że daemon żyje.',
+    files: ['src/config.rs','shared/session_settings.rs','shared/timeflow_paths.rs'],
+    flows: ['capture','lan','online','dashboard']
+  },
+  { id: 'lan-disc',   layer: 'daemon',    x: 780, y: 560, w: 200, h: 100,
+    title: 'lan_discovery',       subtitle: 'UDP broadcast :47892',
+    desc: 'Wątek emitujący pakiety beacon w UDP broadcast (machine_id, role, version) i nasłuchujący beaconów innych peerów. Wynik trafia do listy peerów w LAN sync state.',
+    files: ['src/lan_discovery.rs','src/lan_common.rs'],
+    flows: ['lan']
+  },
+  { id: 'lan-server', layer: 'daemon',    x: 1000, y: 560, w: 220, h: 100,
+    title: 'lan_server (HTTP :47891)', subtitle: 'pairing + sync endpoints',
+    desc: 'Wbudowany serwer HTTP (std::net) z endpointami: /lan/local-identity, /lan/pair, /lan/submit-pairing-code, /lan/sync (push/pull table hashes, archiwum delta).',
+    files: ['src/lan_server.rs','src/lan_pairing.rs','src/lan_pair_throttle.rs','src/lan_sync_orchestrator.rs','src/sync_common.rs','src/sync_encryption.rs'],
+    flows: ['lan']
+  },
+  { id: 'online',     layer: 'daemon',    x: 1240, y: 560, w: 200, h: 100,
+    title: 'online_sync',         subtitle: 'SFTP + 13-step state machine',
+    desc: 'Maszyna stanu: rezerwacja sesji w API → build delta archive → SFTP upload → poll → SFTP download → apply → ACK. Retry z exponential backoff. Trigger ze startupu lub ręcznie z UI.',
+    files: ['src/online_sync.rs','src/sftp_client.rs','src/sync_trigger.rs','src/sync_encryption.rs'],
+    flows: ['online']
+  },
+  { id: 'tray-runtime', layer: 'daemon',  x: 60, y: 680, w: 240, h: 80,
+    title: 'tray + foreground hooks', subtitle: 'event loop, sygnały',
+    desc: 'Główna pętla GUI daemona (tao/tray-icon) i platform::foreground (event-driven wybudzanie trackera). Single instance lock, firewall rules na Windows.',
+    files: ['src/platform/mod.rs','src/platform/foreground_signal.rs','src/platform/macos/','src/platform/windows/'],
+    flows: ['capture']
+  },
+
+  // STORAGE lane
+  { id: 'daily-db',   layer: 'storage',   x:  60, y: 860, w: 260, h: 100,
+    title: 'daily_store SQLite',  subtitle: 'współdzielona baza dni',
+    desc: 'Plik SQLite ze snapshotami dziennej aktywności. Pisany przez daemon (storage.rs → shared/daily_store/write.rs), czytany przez dashboard backend (commands/daily_store_bridge.rs). Migracja z legacy JSON.',
+    files: ['shared/daily_store/schema.rs','shared/daily_store/write.rs','shared/daily_store/read.rs','dashboard/src-tauri/src/commands/daily_store_bridge.rs'],
+    flows: ['capture','dashboard']
+  },
+  { id: 'dash-db',    layer: 'storage',   x: 340, y: 860, w: 260, h: 100,
+    title: 'timeflow_dashboard.db', subtitle: 'projekty / sesje / PM / raporty',
+    desc: 'Baza wyłączna dashboardu. Trzyma projekty, zasady przypisań, sesje manualne, plan PM, klientów, raporty. Wersja demo: timeflow_dashboard_demo.db (przełącznik trybu).',
+    files: ['dashboard/src-tauri/src/db.rs','dashboard/src-tauri/src/db/pool.rs','dashboard/src-tauri/resources/sql/schema.sql','dashboard/src-tauri/src/db_migrations/'],
+    flows: ['dashboard','lan','online']
+  },
+  { id: 'settings',   layer: 'storage',   x: 620, y: 860, w: 220, h: 100,
+    title: 'settings.json + secure store', subtitle: 'konfiguracja, sekrety',
+    desc: 'Plikowa konfiguracja: język UI, autostart, parametry LAN i online sync. Sekrety (token SFTP, slave_secret peerów) w secure_store (OS keychain).',
+    files: ['src/config.rs','dashboard/src-tauri/src/commands/secure_store.rs','dashboard/src-tauri/src/commands/settings.rs'],
+    flows: ['lan','online','dashboard']
+  },
+  { id: 'fs-artifacts', layer: 'storage', x: 860, y: 860, w: 60, h: 100, hidden: true },
+
+  // hidden alias node so we can route arrows
+  // EXTERNAL placeholder for paired drive routes — using lan-peer & cloud nodes
+
+  // small helper "events" pseudo-node? skipping
+];
+
+const EDGES = [
+  // capture flow
+  { from: 'os',           to: 'tray-runtime', label: 'WinEvent / NSWorkspace',  flows: ['capture'] },
+  { from: 'tray-runtime', to: 'tracker',      label: 'wybudź na foreground change', flows: ['capture'] },
+  { from: 'os',           to: 'tracker',      label: 'snapshot CPU + tytuł okna', flows: ['capture'], dashed: true },
+  { from: 'tracker',      to: 'storage',      label: 'co 5 min: flush snapshot', flows: ['capture'] },
+  { from: 'storage',      to: 'daily-db',     label: 'INSERT/REPLACE day',       flows: ['capture','dashboard'] },
+  { from: 'user',         to: 'tray',         label: 'menu / klik ikony',        flows: ['capture','lan','online'] },
+  { from: 'tray',         to: 'tray-runtime', label: 'akcje (start/stop/restart)', flows: ['capture','lan','online'] },
+
+  // dashboard UI ↔ DB
+  { from: 'user',         to: 'react-ui',     label: 'okno dashboardu',          flows: ['dashboard'] },
+  { from: 'react-ui',     to: 'stores',       label: 'czytaj / setState',        flows: ['dashboard'], bidirectional: true },
+  { from: 'react-ui',     to: 'tauri-fe',     label: 'invoke / invokeMutation',  flows: ['dashboard','lan','online'] },
+  { from: 'tauri-fe',     to: 'tauri-be',     label: 'IPC (tauri::command)',     flows: ['dashboard','lan','online'] },
+  { from: 'tauri-be',     to: 'dash-db',      label: 'SQL via rusqlite pool',    flows: ['dashboard'], bidirectional: true },
+  { from: 'tauri-be',     to: 'daily-db',     label: 'odczyt snapshotów',        flows: ['dashboard'] },
+  { from: 'tauri-fe',     to: 'stores',       label: 'mutacja → LOCAL_DATA_CHANGED → triggerRefresh', flows: ['dashboard'], dashed: true },
+  { from: 'tauri-be',     to: 'settings',     label: 'read/write settings',      flows: ['dashboard'], bidirectional: true },
+
+  // sync indicator
+  { from: 'sync-ui',      to: 'lan-server',   label: 'SSE: stan sync',           flows: ['lan','online'], dashed: true },
+  { from: 'react-ui',     to: 'sync-ui',     label: 'wskaźnik + panel LAN/online', flows: ['lan','online'] },
+
+  // LAN sync flow
+  { from: 'lan-disc',     to: 'lan-peer',     label: 'UDP broadcast :47892',     flows: ['lan'], bidirectional: true, dashed: true },
+  { from: 'lan-server',   to: 'lan-peer',     label: 'HTTP :47891 (pair/sync)',  flows: ['lan'], bidirectional: true },
+  { from: 'lan-server',   to: 'dash-db',      label: 'odczyt/zapis tabel sync',  flows: ['lan'], bidirectional: true },
+  { from: 'lan-server',   to: 'config',       label: 'sparowane peery / klucze', flows: ['lan'], bidirectional: true },
+  { from: 'tauri-be',     to: 'lan-server',   label: 'komendy: pair, trigger, status', flows: ['lan'] },
+
+  // Online sync flow
+  { from: 'online',       to: 'cloud',        label: 'SFTP + HTTPS API',         flows: ['online'], bidirectional: true },
+  { from: 'online',       to: 'dash-db',      label: 'build delta / apply delta', flows: ['online'], bidirectional: true },
+  { from: 'online',       to: 'config',       label: 'token / interval / mode',  flows: ['online'] },
+  { from: 'tauri-be',     to: 'online',       label: 'trigger ze Settings UI',   flows: ['online'], dashed: true },
+
+  // daemon ↔ storage common
+  { from: 'tray-runtime', to: 'config',       label: 'heartbeat.txt + autostart', flows: ['capture','lan','online'], dashed: true },
+];
+
+/* ────────────── RENDER ────────────── */
+const svg = document.getElementById('svg');
+const NS = 'http://www.w3.org/2000/svg';
+const nodesG = document.getElementById('nodes');
+const edgesG = document.getElementById('edges');
+const labelsG = document.getElementById('edge-labels');
+
+const nodeMap = new Map(NODES.map(n => [n.id, n]));
+
+function nodeAnchors(n) {
+  return {
+    top:    { x: n.x + n.w/2, y: n.y },
+    bottom: { x: n.x + n.w/2, y: n.y + n.h },
+    left:   { x: n.x,         y: n.y + n.h/2 },
+    right:  { x: n.x + n.w,   y: n.y + n.h/2 },
+    center: { x: n.x + n.w/2, y: n.y + n.h/2 },
+  };
+}
+
+function pickAnchors(a, b) {
+  const A = nodeAnchors(a), B = nodeAnchors(b);
+  const dx = (b.x + b.w/2) - (a.x + a.w/2);
+  const dy = (b.y + b.h/2) - (a.y + a.h/2);
+  let pa, pb;
+  if (Math.abs(dy) > Math.abs(dx)) {
+    pa = dy > 0 ? A.bottom : A.top;
+    pb = dy > 0 ? B.top    : B.bottom;
+  } else {
+    pa = dx > 0 ? A.right  : A.left;
+    pb = dx > 0 ? B.left   : B.right;
+  }
+  return [pa, pb];
+}
+
+function makeEdgePath(a, b) {
+  const [pa, pb] = pickAnchors(a, b);
+  const mx = (pa.x + pb.x) / 2;
+  const my = (pa.y + pb.y) / 2;
+  // cubic-ish using quadratic with mid control offset perpendicular for slight curvature
+  const dx = pb.x - pa.x;
+  const dy = pb.y - pa.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const offset = Math.min(40, len * 0.12);
+  // perpendicular
+  const nx = -dy / len * offset;
+  const ny =  dx / len * offset;
+  const c1x = pa.x + dx * 0.5 + nx;
+  const c1y = pa.y + dy * 0.5 + ny;
+  return { d: `M ${pa.x} ${pa.y} Q ${c1x} ${c1y} ${pb.x} ${pb.y}`, mid: { x: c1x, y: c1y }, pa, pb };
+}
+
+// Build edges
+EDGES.forEach((e, i) => {
+  const a = nodeMap.get(e.from);
+  const b = nodeMap.get(e.to);
+  if (!a || !b) return;
+  const { d, mid, pa, pb } = makeEdgePath(a, b);
+
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', d);
+  path.setAttribute('class', 'edge'
+    + (e.bidirectional ? ' bidirectional' : '')
+    + (e.dashed ? ' dashed' : ''));
+  path.dataset.flows = e.flows.join(',');
+  path.dataset.from = e.from;
+  path.dataset.to = e.to;
+  edgesG.appendChild(path);
+
+  if (e.label) {
+    const lbl = document.createElementNS(NS, 'text');
+    // place label near midpoint between pa-pb but slightly offset to avoid overlap
+    const lx = (pa.x + pb.x)/2;
+    const ly = (pa.y + pb.y)/2 - 6;
+    lbl.setAttribute('x', lx);
+    lbl.setAttribute('y', ly);
+    lbl.setAttribute('class', 'edge-label');
+    lbl.dataset.flows = e.flows.join(',');
+    lbl.dataset.from = e.from;
+    lbl.dataset.to = e.to;
+    lbl.textContent = e.label;
+    labelsG.appendChild(lbl);
+  }
+});
+
+// Build nodes
+NODES.forEach(n => {
+  if (n.hidden) return;
+  const g = document.createElementNS(NS, 'g');
+  g.setAttribute('class', 'node layer-' + n.layer);
+  g.dataset.id = n.id;
+  g.dataset.flows = (n.flows || []).join(',');
+  g.setAttribute('transform', `translate(${n.x},${n.y})`);
+
+  const r = document.createElementNS(NS, 'rect');
+  r.setAttribute('width', n.w);
+  r.setAttribute('height', n.h);
+  g.appendChild(r);
+
+  const title = document.createElementNS(NS, 'text');
+  title.setAttribute('class', 'title');
+  title.setAttribute('x', 14);
+  title.setAttribute('y', 26);
+  title.textContent = n.title;
+  g.appendChild(title);
+
+  if (n.subtitle) {
+    const sub = document.createElementNS(NS, 'text');
+    sub.setAttribute('class', 'subtitle');
+    sub.setAttribute('x', 14);
+    sub.setAttribute('y', 46);
+    sub.textContent = n.subtitle;
+    g.appendChild(sub);
+  }
+
+  g.addEventListener('click', () => selectNode(n.id));
+  nodesG.appendChild(g);
+});
+
+/* ────────────── INTERACTION ────────────── */
+const detail = {
+  title: document.getElementById('d-title'),
+  desc:  document.getElementById('d-desc'),
+  tag:   document.getElementById('d-tag'),
+  extra: document.getElementById('d-extra'),
+};
+let selectedId = null;
+
+function selectNode(id) {
+  selectedId = id;
+  const n = nodeMap.get(id);
+  // ui chrome
+  document.querySelectorAll('.node').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+  // detail panel
+  detail.title.textContent = n.title;
+  detail.tag.innerHTML = `<span class="layer-tag layer-${n.layer}">${({
+    user:'Użytkownik', dashboard:'Dashboard', daemon:'Daemon', storage:'Storage', external:'Zewnętrzne'
+  })[n.layer]}</span>`;
+  detail.desc.textContent = n.desc || '';
+
+  let extra = '';
+  // related edges
+  const related = EDGES.filter(e => e.from === id || e.to === id);
+  if (related.length) {
+    extra += `<h3>Połączenia</h3><ul>`;
+    related.forEach(e => {
+      const other = e.from === id ? e.to : e.from;
+      const dir = e.bidirectional ? '↔' : (e.from === id ? '→' : '←');
+      extra += `<li>${dir} <code>${nodeMap.get(other).title}</code>${e.label ? ' — ' + e.label : ''}</li>`;
+    });
+    extra += `</ul>`;
+  }
+  if (n.files && n.files.length) {
+    extra += `<h3>Pliki źródłowe</h3><div class="files">`;
+    n.files.forEach(f => extra += `<div>${f}</div>`);
+    extra += `</div>`;
+  }
+  detail.extra.innerHTML = extra;
+
+  // highlight edges connected to this node and the related nodes
+  applyHighlight();
+}
+
+/* ────────────── FILTERS ────────────── */
+let activeFlow = 'all';
+const filtersEl = document.getElementById('filters');
+filtersEl.addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  activeFlow = e.target.dataset.flow;
+  filtersEl.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === e.target));
+  applyHighlight();
+});
+
+function applyHighlight() {
+  const isAll = activeFlow === 'all';
+  // edges
+  document.querySelectorAll('.edge').forEach(el => {
+    const flows = (el.dataset.flows || '').split(',');
+    const inFlow = isAll || flows.includes(activeFlow);
+    const touchesSelected = selectedId && (el.dataset.from === selectedId || el.dataset.to === selectedId);
+    el.classList.toggle('dimmed', !inFlow && !touchesSelected);
+    el.classList.toggle('highlight', (inFlow && !isAll) || touchesSelected);
+  });
+  document.querySelectorAll('.edge-label').forEach(el => {
+    const flows = (el.dataset.flows || '').split(',');
+    const inFlow = isAll || flows.includes(activeFlow);
+    const touchesSelected = selectedId && (el.dataset.from === selectedId || el.dataset.to === selectedId);
+    el.classList.toggle('highlight', (inFlow && !isAll) || touchesSelected);
+    el.style.opacity = (inFlow || touchesSelected) ? 1 : 0.18;
+  });
+  // nodes
+  document.querySelectorAll('.node').forEach(el => {
+    const flows = (el.dataset.flows || '').split(',');
+    const inFlow = isAll || flows.includes(activeFlow);
+    const isSel = el.dataset.id === selectedId;
+    el.classList.toggle('dimmed', !inFlow && !isSel);
+  });
+}
+
+// initial state
+applyHighlight();
+</script>
+</body>
+</html>

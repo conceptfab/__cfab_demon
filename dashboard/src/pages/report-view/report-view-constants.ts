@@ -1,0 +1,1 @@
+export const REPORT_VIEW_SCREEN_LIMIT = 100;

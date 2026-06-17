@@ -1,0 +1,45 @@
+# Rust/Cargo build artifacts
+target/
+solidtime-main/
+SCREENS/
+# Python / build output
+dist/
+*.pyc
+__pycache__/
+.venv/
+venv/
+*.egg-info/
+*.egg
+
+# Node (root level)
+__logs
+node_modules/
+__timeflow_server/
+
+# Logs
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / editor (local)
+.claude/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Custom configs
+ftp_config.py
+

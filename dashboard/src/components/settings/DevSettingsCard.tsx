@@ -1,0 +1,287 @@
+import { useReducer, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Terminal, FolderOpen, Trash2, RefreshCw, ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { logManagementApi } from '@/lib/tauri/log-management';
+import type { LogSettings, LogFileInfo } from '@/lib/tauri/log-management';
+import {
+  devSettingsCardReducer,
+  initialDevSettingsCardState,
+} from '@/components/settings/dev-settings-card-state';
+
+const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error', 'off'] as const;
+
+const LOG_CHANNELS = [
+  { key: 'daemon' as const, label: 'Daemon', settingsKey: 'daemon_level' as const },
+  { key: 'lan_sync' as const, label: 'LAN Sync', settingsKey: 'lan_sync_level' as const },
+  { key: 'online_sync' as const, label: 'Online Sync', settingsKey: 'online_sync_level' as const },
+  { key: 'dashboard' as const, label: 'Dashboard', settingsKey: 'dashboard_level' as const },
+];
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function DevSettingsCard() {
+  const { t } = useTranslation();
+  const [state, dispatch] = useReducer(devSettingsCardReducer, initialDevSettingsCardState);
+  const { activeLog, autoScroll, files, logContent, settings } = state;
+  const logRef = useRef<HTMLPreElement>(null);
+  const pollRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    logManagementApi.getLogSettings()
+      .then((nextSettings) => dispatch({ type: 'set_settings', settings: nextSettings }))
+      .catch(() => {});
+    logManagementApi.getLogFilesInfo()
+      .then((nextFiles) => dispatch({ type: 'set_files', files: nextFiles }))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!activeLog) return;
+    const poll = () => {
+      logManagementApi
+        .readLogFile(activeLog, 200)
+        .then((content) => {
+          dispatch({ type: 'set_log_content', logContent: content });
+          if (autoScroll && logRef.current) {
+            logRef.current.scrollTop = logRef.current.scrollHeight;
+          }
+        })
+        .catch(() => {});
+    };
+    poll();
+    pollRef.current = window.setInterval(poll, 2000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [activeLog, autoScroll]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      logManagementApi.getLogFilesInfo()
+        .then((nextFiles) => dispatch({ type: 'set_files', files: nextFiles }))
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleLevelChange = useCallback(
+    (settingsKey: keyof LogSettings, value: string) => {
+      if (!settings) return;
+      const next = { ...settings, [settingsKey]: value };
+      dispatch({ type: 'patch_settings', settings: next });
+      logManagementApi.saveLogSettings(next).catch(() => {});
+    },
+    [settings],
+  );
+
+  const handleMaxSizeChange = useCallback((kb: number) => {
+    if (!settings) return;
+    const next = { ...settings, max_log_size_kb: kb };
+    dispatch({ type: 'patch_settings', settings: next });
+    logManagementApi.saveLogSettings(next).catch(() => {});
+  }, [settings]);
+
+  const handleClear = useCallback(
+    (key: string) => {
+      logManagementApi
+        .clearLogFile(key)
+        .then(() => {
+          logManagementApi.getLogFilesInfo()
+            .then((nextFiles) => dispatch({ type: 'set_files', files: nextFiles }))
+            .catch(() => {});
+          if (activeLog === key) dispatch({ type: 'set_log_content', logContent: '' });
+        })
+        .catch(() => {});
+    },
+    [activeLog],
+  );
+
+  if (!settings) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <Terminal className="size-4 text-amber-400" />
+          {t('dev_settings.title')}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {t('dev_settings.description')}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Log Levels */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t('dev_settings.log_levels')}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {LOG_CHANNELS.map((ch) => (
+              <div
+                key={ch.key}
+                className="flex items-center justify-between rounded-md border border-border/70 bg-background/35 p-2.5"
+              >
+                <span className="text-sm">{ch.label}</span>
+                <div className="relative">
+                  <select
+                    className="h-7 w-24 appearance-none rounded-md border border-input bg-background pl-2 pr-7 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                    value={settings[ch.settingsKey] || 'info'}
+                    onChange={(e) => handleLevelChange(ch.settingsKey, e.target.value)}
+                  >
+                    {LOG_LEVELS.map((level) => (
+                      <option key={level} value={level}>
+                        {level.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Max log size */}
+        <div className="flex items-center justify-between rounded-md border border-border/70 bg-background/35 p-2.5">
+          <div>
+            <p className="text-sm font-medium">{t('dev_settings.max_log_size')}</p>
+            <p className="text-xs text-muted-foreground">{t('dev_settings.max_log_size_desc')}</p>
+          </div>
+          <div className="relative">
+            <select
+              className="h-7 w-24 appearance-none rounded-md border border-input bg-background pl-2 pr-7 text-xs shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              value={settings.max_log_size_kb}
+              onChange={(e) => handleMaxSizeChange(Number(e.target.value))}
+            >
+              <option value={256}>256 KB</option>
+              <option value={512}>512 KB</option>
+              <option value={1024}>1 MB</option>
+              <option value={2048}>2 MB</option>
+              <option value={5120}>5 MB</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          </div>
+        </div>
+
+        {/* Log Files */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">{t('dev_settings.log_files')}</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-[10px] text-muted-foreground hover:text-foreground"
+              onClick={() => logManagementApi.openLogsFolder().catch(() => {})}
+            >
+              <FolderOpen className="size-3 mr-1" />
+              {t('dev_settings.open_folder')}
+            </Button>
+          </div>
+          <div className="grid gap-1.5">
+            {files.map((file) => (
+              <div
+                key={file.key}
+                className={`flex items-center justify-between rounded-md border p-2 transition-colors ${
+                  activeLog === file.key
+                    ? 'border-amber-500/50 bg-amber-500/5'
+                    : 'border-border/50 bg-background/20 hover:bg-background/40'
+                }`}
+              >
+                <button
+                  type="button"
+                  aria-label={t('dev_settings.open_log_file', { name: file.name })}
+                  aria-pressed={activeLog === file.key}
+                  className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left"
+                  onClick={() =>
+                    dispatch({
+                      type: 'set_active_log',
+                      activeLog: activeLog === file.key ? null : file.key,
+                    })
+                  }
+                >
+                  <span
+                    className={`size-1.5 rounded-full shrink-0 ${
+                      file.exists && file.size_bytes > 0
+                        ? 'bg-emerald-400'
+                        : 'bg-zinc-500'
+                    }`}
+                  />
+                  <span className="text-sm font-mono truncate">{file.name}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {file.exists ? formatBytes(file.size_bytes) : t('dev_settings.empty')}
+                  </span>
+                </button>
+                <div className="flex gap-1 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="size-6 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => handleClear(file.key)}
+                    title={t('dev_settings.clear_log')}
+                    aria-label={t('dev_settings.clear_log')}
+                  >
+                    <Trash2 className="size-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Log Viewer */}
+        {activeLog && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">
+                {files.find((f) => f.key === activeLog)?.name ?? activeLog}
+              </p>
+              <div className="flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="size-3 rounded border-input accent-primary"
+                    checked={autoScroll}
+                    onChange={(e) =>
+                      dispatch({ type: 'set_auto_scroll', autoScroll: e.target.checked })
+                    }
+                  />
+                  {t('dev_settings.auto_scroll')}
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-[10px] text-muted-foreground"
+                  onClick={() => {
+                    logManagementApi
+                      .readLogFile(activeLog, 200)
+                      .then((content) =>
+                        dispatch({ type: 'set_log_content', logContent: content }),
+                      )
+                      .catch(() => {});
+                  }}
+                >
+                  <RefreshCw className="size-3 mr-1" />
+                  {t('dev_settings.refresh')}
+                </Button>
+              </div>
+            </div>
+            <pre
+              ref={logRef}
+              className="max-h-72 overflow-auto rounded-md border border-border/50 bg-black/40 p-2.5 text-[10px] font-mono leading-relaxed text-muted-foreground whitespace-pre-wrap select-all"
+            >
+              {logContent || t('dev_settings.empty_content')}
+            </pre>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

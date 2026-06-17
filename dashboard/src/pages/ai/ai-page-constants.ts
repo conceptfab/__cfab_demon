@@ -1,0 +1,3 @@
+export const AI_FEEDBACK_TRIGGER = 30;
+export const AI_RETRAIN_INTERVAL_HOURS = 24;
+export const AI_REMINDER_SNOOZE_HOURS = 24;

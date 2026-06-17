@@ -1,0 +1,124 @@
+import * as React from 'react';
+import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+
+interface PromptModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  initialValue: string;
+  onConfirm: (value: string) => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
+}
+
+type PromptFormProps = Omit<PromptModalProps, 'open'> & {
+  confirmLabel: string;
+  cancelLabel: string;
+};
+
+function PromptModalForm({
+  onOpenChange,
+  title,
+  description,
+  initialValue,
+  onConfirm,
+  confirmLabel,
+  cancelLabel,
+}: PromptFormProps) {
+  const [value, setValue] = React.useState(initialValue);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const focusTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    focusTimerRef.current = window.setTimeout(() => inputRef.current?.focus(), 100);
+    return () => {
+      if (focusTimerRef.current !== null) {
+        window.clearTimeout(focusTimerRef.current);
+        focusTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onConfirm(value);
+    onOpenChange(false);
+  };
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{title}</DialogTitle>
+        {description && <DialogDescription>{description}</DialogDescription>}
+      </DialogHeader>
+      <form onSubmit={handleSubmit} className="space-y-4 py-4">
+        <Input
+          ref={inputRef}
+          className="bg-secondary/30 border-secondary focus:border-primary/50"
+          aria-label={title}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+          >
+            {cancelLabel}
+          </Button>
+          <Button type="submit" size="sm" className="min-w-[70px]">
+            {confirmLabel}
+          </Button>
+        </div>
+      </form>
+    </>
+  );
+}
+
+export function PromptModal({
+  open,
+  onOpenChange,
+  title,
+  description,
+  initialValue,
+  onConfirm,
+  confirmLabel,
+  cancelLabel,
+}: PromptModalProps) {
+  const { t } = useTranslation();
+  const effectiveConfirmLabel =
+    confirmLabel ?? t('components.prompt_modal.confirm_default');
+  const effectiveCancelLabel =
+    cancelLabel ?? t('components.prompt_modal.cancel_default');
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[425px]">
+        {open && (
+          <PromptModalForm
+            key={initialValue}
+            onOpenChange={onOpenChange}
+            title={title}
+            description={description}
+            initialValue={initialValue}
+            onConfirm={onConfirm}
+            confirmLabel={effectiveConfirmLabel}
+            cancelLabel={effectiveCancelLabel}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

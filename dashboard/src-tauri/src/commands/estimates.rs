@@ -1,0 +1,736 @@
+use std::collections::HashMap;
+
+use rusqlite::OptionalExtension;
+use tauri::AppHandle;
+
+use super::analysis::{
+    compute_project_activity_unique, daily_seconds_by_series, project_series_key,
+};
+use super::helpers::run_db_blocking;
+use super::sql_fragments::{ensure_session_project_cache, SESSION_PROJECT_CTE};
+use super::time_algorithm::daily_buckets_by_series;
+use super::types::{DateRange, EstimateDay, EstimateProjectRow, EstimateSettings, EstimateSummary};
+
+const DEFAULT_GLOBAL_HOURLY_RATE: f64 = 100.0;
+const MAX_HOURLY_RATE: f64 = 100000.0;
+type ProjectMetaRow = (i64, String, String, Option<f64>, Option<String>);
+type ProjectMetaById = HashMap<i64, ProjectMetaRow>;
+
+fn sanitize_rate(rate: f64) -> Option<f64> {
+    if rate.is_finite() && rate > 0.0 && rate <= MAX_HOURLY_RATE {
+        Some(rate)
+    } else {
+        None
+    }
+}
+
+fn validate_hourly_rate(rate: f64) -> Result<(), String> {
+    if !rate.is_finite() {
+        return Err("Rate must be a finite number".to_string());
+    }
+    if rate < 0.0 {
+        return Err("Rate must be >= 0".to_string());
+    }
+    if rate > MAX_HOURLY_RATE {
+        return Err(format!("Rate must be <= {}", MAX_HOURLY_RATE));
+    }
+    Ok(())
+}
+
+pub(crate) fn get_global_hourly_rate(conn: &rusqlite::Connection) -> Result<f64, String> {
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT value FROM estimate_settings WHERE key = 'global_hourly_rate' LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+
+    let parsed = raw
+        .as_deref()
+        .and_then(|v| v.parse::<f64>().ok())
+        .and_then(sanitize_rate)
+        .unwrap_or(DEFAULT_GLOBAL_HOURLY_RATE);
+
+    Ok(parsed)
+}
+
+fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaById, String> {
+    let mut stmt = conn
+        .prepare_cached("SELECT id, name, color, hourly_rate, client_name FROM projects")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            let rate: Option<f64> = row.get(3)?;
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                rate.and_then(sanitize_rate),
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut out = HashMap::new();
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project metadata row: {}", e))?;
+        out.insert(row.0, row);
+    }
+    Ok(out)
+}
+
+fn query_project_session_counts(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+) -> Result<HashMap<String, i64>, String> {
+    // Merged-aware: a merged child's sessions count toward its PARENT
+    // (effective id via COALESCE) and are allowed when the parent passes the
+    // exclusion filter — matching the series fold in the time algorithm.
+    let sql = format!(
+        "{SESSION_PROJECT_CTE},
+         combined AS (
+             SELECT COALESCE(parent.id, sp.project_id) as project_id, 1 as session_count
+             FROM session_projects sp
+             LEFT JOIN projects p ON p.id = sp.project_id
+             LEFT JOIN projects parent ON parent.name = p.merged_into
+             WHERE sp.project_id IS NULL
+                OR (p.id IS NOT NULL AND p.merged_into IS NULL AND p.excluded_at IS NULL)
+                OR (parent.id IS NOT NULL AND parent.excluded_at IS NULL)
+             UNION ALL
+             SELECT COALESCE(parent.id, ms.project_id) as project_id, 1 as session_count
+             FROM manual_sessions ms
+             JOIN projects p ON p.id = ms.project_id
+             LEFT JOIN projects parent ON parent.name = p.merged_into
+             WHERE ms.date >= ?1 AND ms.date <= ?2
+               AND ((p.merged_into IS NULL AND p.excluded_at IS NULL)
+                    OR (parent.id IS NOT NULL AND parent.excluded_at IS NULL))
+         )
+         SELECT project_id, SUM(session_count) as session_count
+         FROM combined
+         GROUP BY project_id"
+    );
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
+            Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, i64>(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut out = HashMap::new();
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read project session count row: {}", e))?;
+        out.insert(project_series_key(row.0), row.1);
+    }
+    Ok(out)
+}
+
+struct MultiplierInfo {
+    extra_seconds: f64,
+    session_count: i64,
+}
+
+fn query_project_multiplier_extra_seconds(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+) -> Result<HashMap<String, MultiplierInfo>, String> {
+    // Merged-aware: see query_project_session_counts — children map to parent.
+    let sql = format!(
+        "{SESSION_PROJECT_CTE},
+         combined AS (
+             SELECT COALESCE(parent.id, sp.project_id) as project_id,
+                    CASE
+                        WHEN sp.safe_rate_multiplier <= 1.0 THEN 0.0
+                        ELSE (sp.duration_seconds * (sp.safe_rate_multiplier - 1.0))
+                    END as extra_seconds
+             FROM session_projects sp
+             LEFT JOIN projects p ON p.id = sp.project_id
+             LEFT JOIN projects parent ON parent.name = p.merged_into
+             WHERE sp.project_id IS NULL
+                OR (p.id IS NOT NULL AND p.merged_into IS NULL AND p.excluded_at IS NULL)
+                OR (parent.id IS NOT NULL AND parent.excluded_at IS NULL)
+             UNION ALL
+             SELECT COALESCE(parent.id, ms.project_id) as project_id, 0.0 as extra_seconds
+             FROM manual_sessions ms
+             JOIN projects p ON p.id = ms.project_id
+             LEFT JOIN projects parent ON parent.name = p.merged_into
+             WHERE ms.date >= ?1 AND ms.date <= ?2
+               AND ((p.merged_into IS NULL AND p.excluded_at IS NULL)
+                    OR (parent.id IS NOT NULL AND parent.excluded_at IS NULL))
+         )
+         SELECT project_id,
+                SUM(extra_seconds) as extra_seconds,
+                SUM(CASE WHEN extra_seconds > 0.0 THEN 1 ELSE 0 END) as multiplied_count
+         FROM combined
+         GROUP BY project_id"
+    );
+    let mut stmt = conn.prepare_cached(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params![date_range.start, date_range.end], |row| {
+            Ok((
+                row.get::<_, Option<i64>>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut out = HashMap::new();
+    for row in rows {
+        let row = row.map_err(|e| format!("Failed to read multiplier aggregate row: {}", e))?;
+        out.insert(
+            project_series_key(row.0),
+            MultiplierInfo {
+                extra_seconds: row.1,
+                session_count: row.2,
+            },
+        );
+    }
+    Ok(out)
+}
+
+pub(crate) fn build_estimate_rows(
+    conn: &rusqlite::Connection,
+    date_range: &DateRange,
+) -> Result<Vec<EstimateProjectRow>, String> {
+    ensure_session_project_cache(conn, &date_range.start, &date_range.end)?;
+
+    let global_hourly_rate = get_global_hourly_rate(conn)?;
+    let (bucket_project_seconds, totals, series_meta_by_key, _, _) =
+        compute_project_activity_unique(
+            conn,
+            date_range,
+            false,
+            true,
+            None,
+            Some(super::daemon::load_persisted_session_min_duration()),
+            true,
+        )?;
+    if totals.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Dzienne sekundy per projekt (clock, dedup) — bucket = data, bo hourly=false.
+    // Potrzebne do zaokrąglania per_day po stronie frontu (każdy dzień → pełna godzina).
+    let mut daily_by_series = daily_seconds_by_series(&bucket_project_seconds);
+    let mut daily_buckets = daily_buckets_by_series(&bucket_project_seconds);
+
+    let project_meta = query_project_meta(conn)?;
+    let session_counts = query_project_session_counts(conn, date_range)?;
+    let multiplier_extra_seconds_by_project =
+        query_project_multiplier_extra_seconds(conn, date_range)?;
+
+    let mut rows: Vec<EstimateProjectRow> = Vec::new();
+    for (series_key, seconds_f64) in totals {
+        let Some(project_id) = series_meta_by_key
+            .get(&series_key)
+            .and_then(|series| series.project_id)
+        else {
+            continue;
+        };
+
+        let Some((project_id, mapped_name, project_color, project_hourly_rate, client_name)) =
+            project_meta.get(&project_id)
+        else {
+            log::warn!(
+                "Could not resolve project metadata for project_id={} while building estimates",
+                project_id
+            );
+            continue;
+        };
+
+        let seconds = seconds_f64.round() as i64;
+        let hours = seconds_f64 / 3600.0;
+        let effective_hourly_rate = project_hourly_rate
+            .filter(|r| r.is_finite() && *r > 0.0)
+            .unwrap_or(global_hourly_rate);
+        let mult_info = multiplier_extra_seconds_by_project.get(&series_key);
+        let extra_secs = mult_info.map(|m| m.extra_seconds).unwrap_or(0.0);
+        let weighted_hours = hours + (extra_secs / 3600.0);
+        let estimated_value = weighted_hours * effective_hourly_rate;
+        let session_count = session_counts.get(&series_key).copied().unwrap_or(0);
+        let multiplied_session_count = mult_info.map(|m| m.session_count).unwrap_or(0);
+
+        rows.push(EstimateProjectRow {
+            project_id: *project_id,
+            project_name: mapped_name.clone(),
+            project_color: project_color.clone(),
+            seconds,
+            hours,
+            weighted_hours,
+            project_hourly_rate: *project_hourly_rate,
+            effective_hourly_rate,
+            estimated_value,
+            session_count,
+            multiplied_session_count,
+            multiplier_extra_seconds: extra_secs,
+            daily_seconds: daily_by_series.remove(&series_key).unwrap_or_default(),
+            client_name: client_name.clone(),
+            days: daily_buckets
+                .remove(&series_key)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(date, seconds)| EstimateDay { date, seconds })
+                .collect(),
+        });
+    }
+
+    rows.sort_by(|a, b| {
+        b.estimated_value
+            .total_cmp(&a.estimated_value)
+            .then_with(|| {
+                a.project_name
+                    .to_lowercase()
+                    .cmp(&b.project_name.to_lowercase())
+            })
+    });
+
+    Ok(rows)
+}
+
+#[tauri::command]
+pub async fn get_estimate_settings(app: AppHandle) -> Result<EstimateSettings, String> {
+    run_db_blocking(app, move |conn| {
+        Ok(EstimateSettings {
+            global_hourly_rate: get_global_hourly_rate(conn)?,
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn update_global_hourly_rate(app: AppHandle, rate: f64) -> Result<(), String> {
+    validate_hourly_rate(rate)?;
+    run_db_blocking(app, move |conn| {
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at)
+             VALUES ('global_hourly_rate', ?1, datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = datetime('now')",
+            rusqlite::params![rate.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn update_project_hourly_rate(
+    app: AppHandle,
+    project_id: i64,
+    rate: Option<f64>,
+) -> Result<(), String> {
+    if let Some(v) = rate {
+        validate_hourly_rate(v)?;
+    }
+    run_db_blocking(app, move |conn| {
+        let updated = conn
+            .execute(
+                "UPDATE projects SET hourly_rate = ?2 WHERE id = ?1",
+                rusqlite::params![project_id, rate],
+            )
+            .map_err(|e| e.to_string())?;
+        if updated == 0 {
+            return Err("Project not found".to_string());
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn get_project_estimates(
+    app: AppHandle,
+    date_range: DateRange,
+) -> Result<Vec<EstimateProjectRow>, String> {
+    run_db_blocking(app, move |conn| build_estimate_rows(conn, &date_range)).await
+}
+
+#[tauri::command]
+pub async fn get_estimates_summary(
+    app: AppHandle,
+    date_range: DateRange,
+) -> Result<EstimateSummary, String> {
+    run_db_blocking(app, move |conn| {
+        let rows = build_estimate_rows(conn, &date_range)?;
+
+        let total_seconds = rows.iter().map(|r| r.seconds).sum::<i64>();
+        let total_hours = total_seconds as f64 / 3600.0;
+        let total_value = rows.iter().map(|r| r.estimated_value).sum::<f64>();
+        let projects_count = rows.len() as i64;
+        let overrides_count = rows
+            .iter()
+            .filter(|r| r.project_hourly_rate.is_some())
+            .count() as i64;
+
+        Ok(EstimateSummary {
+            total_seconds,
+            total_hours,
+            total_value,
+            projects_count,
+            overrides_count,
+        })
+    })
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{build_estimate_rows, get_global_hourly_rate};
+    use crate::commands::types::DateRange;
+
+    fn setup_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT NOT NULL,
+                hourly_rate REAL,
+                client_name TEXT,
+                excluded_at TEXT,
+                frozen_at TEXT,
+                merged_into TEXT,
+                merged_at TEXT
+            );
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
+                project_id INTEGER,
+                is_hidden INTEGER DEFAULT 0,
+                comment TEXT
+            );
+            CREATE TABLE file_activities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                app_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                project_id INTEGER,
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL
+            );
+            CREATE TABLE manual_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL DEFAULT '',
+                project_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL
+            );
+            CREATE TABLE estimate_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE session_project_cache (
+                session_id INTEGER PRIMARY KEY,
+                session_date TEXT NOT NULL,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                project_id INTEGER,
+                multiplier REAL NOT NULL,
+                duration_seconds REAL NOT NULL,
+                comment TEXT,
+                built_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE session_project_cache_dirty (
+                date TEXT PRIMARY KEY,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    #[test]
+    fn global_rate_falls_back_to_default() {
+        let conn = setup_conn();
+        let global = get_global_hourly_rate(&conn).expect("global rate");
+        assert_eq!(global, 100.0);
+    }
+
+    #[test]
+    fn estimate_rows_use_project_override_or_global() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Project A", "#111111", Option::<f64>::None],
+        )
+        .expect("insert project a");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![2i64, "Project B", "#222222", Some(150.0f64)],
+        )
+        .expect("insert project b");
+
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            rusqlite::params![
+                1i64,
+                "2026-01-01T10:00:00",
+                "2026-01-01T12:00:00",
+                7200i64,
+                "2026-01-01",
+                1i64
+            ],
+        )
+        .expect("insert session a");
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)",
+            rusqlite::params![
+                2i64,
+                "2026-01-01T12:00:00",
+                "2026-01-01T13:00:00",
+                3600i64,
+                "2026-01-01",
+                2i64
+            ],
+        )
+        .expect("insert session b");
+
+        // Unassigned session should be omitted from estimates.
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (?1, ?2, ?3, ?4, ?5, NULL, 0)",
+            rusqlite::params![
+                3i64,
+                "2026-01-01T13:00:00",
+                "2026-01-01T14:00:00",
+                3600i64,
+                "2026-01-01"
+            ],
+        )
+        .expect("insert unassigned session");
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-01-01".to_string(),
+                end: "2026-01-01".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        assert_eq!(rows.len(), 2);
+
+        let row_a = rows
+            .iter()
+            .find(|r| r.project_name == "Project A")
+            .expect("row a");
+        let row_b = rows
+            .iter()
+            .find(|r| r.project_name == "Project B")
+            .expect("row b");
+
+        assert_eq!(row_a.seconds, 7200);
+        assert_eq!(row_a.daily_seconds, vec![7200]);
+        assert_eq!(row_b.daily_seconds, vec![3600]);
+        assert_eq!(row_a.project_hourly_rate, None);
+        assert!((row_a.effective_hourly_rate - 100.0).abs() < 0.0001);
+        assert!((row_a.estimated_value - 200.0).abs() < 0.0001);
+
+        assert_eq!(row_b.seconds, 3600);
+        assert_eq!(row_b.project_hourly_rate, Some(150.0));
+        assert!((row_b.effective_hourly_rate - 150.0).abs() < 0.0001);
+        assert!((row_b.estimated_value - 150.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_rows_keep_clock_time_and_add_multiplier_only_once() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Boosted", "#111111", Option::<f64>::None],
+        )
+        .expect("insert project");
+        conn.execute(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden, rate_multiplier)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)",
+            rusqlite::params![
+                1i64,
+                "2026-01-02T09:00:00",
+                "2026-01-02T10:00:00",
+                3600i64,
+                "2026-01-02",
+                1i64,
+                2.0f64
+            ],
+        )
+        .expect("insert boosted session");
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-01-02".to_string(),
+                end: "2026-01-02".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        let row = rows.first().expect("row");
+        assert_eq!(row.seconds, 3600);
+        assert!((row.hours - 1.0).abs() < 0.0001);
+        assert!((row.weighted_hours - 2.0).abs() < 0.0001);
+        assert!((row.estimated_value - 200.0).abs() < 0.0001);
+        assert!((row.multiplier_extra_seconds - 3600.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn estimate_rows_split_seconds_per_day() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1i64, "Multi", "#111111", Option::<f64>::None],
+        )
+        .expect("insert project");
+        // Two days: 10 min on day 1, 1h05m on day 2. Total 4500s; daily split [600, 3900].
+        conn.execute_batch(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (1, '2026-01-04T09:00:00', '2026-01-04T09:10:00', 600, '2026-01-04', 1, 0);
+             INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (1, '2026-01-05T09:00:00', '2026-01-05T10:05:00', 3900, '2026-01-05', 1, 0);",
+        )
+        .expect("insert sessions");
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-01-04".to_string(),
+                end: "2026-01-05".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        let row = rows.first().expect("row");
+        assert_eq!(row.seconds, 4500);
+        let mut daily = row.daily_seconds.clone();
+        daily.sort_unstable();
+        assert_eq!(daily, vec![600, 3900], "seconds must split per day");
+    }
+
+    #[test]
+    fn estimate_rows_fold_merged_children_into_parent() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, color) VALUES (1, 'final', '#111111');
+             INSERT INTO projects (id, name, color, excluded_at, merged_into, merged_at)
+             VALUES (2, 'stage1', '#222222', datetime('now'), 'final', datetime('now'));",
+        )
+        .expect("insert projects");
+
+        // Parent: 2h of sessions. Merged child: 1h session + 30min manual.
+        conn.execute_batch(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (1, '2026-01-03T09:00:00', '2026-01-03T11:00:00', 7200, '2026-01-03', 1, 0);
+             INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (2, '2026-01-03T11:00:00', '2026-01-03T12:00:00', 3600, '2026-01-03', 2, 0);
+             INSERT INTO manual_sessions (title, project_id, start_time, end_time, duration_seconds, date)
+             VALUES ('stage work', 2, '2026-01-03T13:00:00', '2026-01-03T13:30:00', 1800, '2026-01-03');",
+        )
+        .expect("insert activity");
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-01-03".to_string(),
+                end: "2026-01-03".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        assert_eq!(rows.len(), 1, "merged child must not produce its own row");
+        let row = rows.first().expect("parent row");
+        assert_eq!(row.project_id, 1);
+        assert_eq!(row.project_name, "final");
+        assert_eq!(
+            row.seconds, 12600,
+            "parent hours must include the merged child's session and manual time"
+        );
+        assert_eq!(
+            row.session_count, 3,
+            "parent session count must include the merged child's sessions"
+        );
+        assert_eq!(
+            row.daily_seconds,
+            vec![12600],
+            "all activity on one day folds into a single daily bucket"
+        );
+    }
+
+    #[test]
+    fn estimate_rows_expose_days_with_dates_and_client() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO estimate_settings (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params!["global_hourly_rate", "100"],
+        )
+        .expect("insert setting");
+        conn.execute(
+            "INSERT INTO projects (id, name, color, hourly_rate, client_name) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![1i64, "Acme work", "#111111", Option::<f64>::None, "Acme"],
+        )
+        .expect("insert project");
+        conn.execute_batch(
+            "INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (1, '2026-01-04T09:00:00', '2026-01-04T09:10:00', 600, '2026-01-04', 1, 0);
+             INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, project_id, is_hidden)
+             VALUES (1, '2026-01-05T09:00:00', '2026-01-05T10:05:00', 3900, '2026-01-05', 1, 0);",
+        )
+        .expect("insert sessions");
+
+        let rows = build_estimate_rows(
+            &conn,
+            &DateRange {
+                start: "2026-01-04".to_string(),
+                end: "2026-01-05".to_string(),
+            },
+        )
+        .expect("estimate rows");
+
+        let row = rows.first().expect("row");
+        assert_eq!(row.client_name.as_deref(), Some("Acme"));
+        let days: Vec<(String, i64)> =
+            row.days.iter().map(|d| (d.date.clone(), d.seconds)).collect();
+        assert_eq!(
+            days,
+            vec![
+                ("2026-01-04".to_string(), 600),
+                ("2026-01-05".to_string(), 3900),
+            ],
+            "days must carry chronological date labels"
+        );
+    }
+}
