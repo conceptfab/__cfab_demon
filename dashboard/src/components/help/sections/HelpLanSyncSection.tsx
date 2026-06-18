@@ -27,6 +27,7 @@ export function HelpLanSyncSection() {
         t18n('help_page.lan_sync_progress'),
         t18n('help_page.lan_sync_force_sync'),
         t18n('help_page.lan_sync_auto_sync'),
+        t18n('help_page.lan_sync_circuit_breaker'),
         t18n('help_page.lan_sync_firewall'),
         t18n('help_page.lan_sync_subnet_broadcast'),
         t18n('help_page.lan_sync_background_interval'),

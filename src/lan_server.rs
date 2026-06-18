@@ -9,7 +9,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -19,6 +19,16 @@ const MAX_REQUEST_BODY: usize = 50 * 1024 * 1024; // 50MB
 const MAX_CONNECTIONS: usize = 32;
 /// Minimum seconds after a completed sync before accepting another LAN sync.
 pub(crate) const SYNC_COOLDOWN_SECS: u64 = 30;
+
+/// Circuit breaker: after this many consecutive failed sync cycles, auto-sync
+/// enters an exponential backoff window so a persistent conflict (e.g. an
+/// unresolvable merge error) stops hammering both machines every ~45s. The
+/// breaker resets on the first successful sync; a forced (manual) sync bypasses it.
+const SYNC_CIRCUIT_BREAKER_THRESHOLD: u32 = 3;
+/// First backoff window once the breaker opens; doubles per extra failure.
+const SYNC_BACKOFF_BASE_SECS: u64 = 60;
+/// Upper bound on the backoff window so sync always recovers eventually.
+const SYNC_BACKOFF_MAX_SECS: u64 = 3600;
 
 struct ConnectionGuard(Arc<AtomicUsize>);
 impl Drop for ConnectionGuard {
@@ -128,6 +138,10 @@ pub struct LanSyncState {
     /// Updated by lan_discovery; read by the tray to decide whether sync
     /// actions make sense (no peer ⇒ sync impossible ⇒ hide the menu options).
     pub peer_present: AtomicBool,
+    /// Circuit breaker: count of consecutive failed sync cycles. Reset on success.
+    pub consecutive_sync_failures: AtomicU32,
+    /// Unix epoch secs until which the circuit breaker suppresses auto-sync (0 = none).
+    pub sync_backoff_until: AtomicU64,
 }
 
 /// Guard that resets sync_in_progress to false on drop (panic-safe).
@@ -153,6 +167,8 @@ impl LanSyncState {
             progress: std::sync::Mutex::new(SyncProgress::idle()),
             last_sync_completed: AtomicU64::new(0),
             peer_present: AtomicBool::new(false),
+            consecutive_sync_failures: AtomicU32::new(0),
+            sync_backoff_until: AtomicU64::new(0),
         }
     }
 
@@ -176,6 +192,47 @@ impl LanSyncState {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         now.saturating_sub(last)
+    }
+
+    /// Record a sync cycle outcome for the circuit breaker. Success clears the
+    /// breaker; once consecutive failures reach the threshold, an exponential
+    /// (capped) backoff window opens to suppress further auto-sync attempts.
+    pub fn note_sync_outcome(&self, success: bool) {
+        if success {
+            self.consecutive_sync_failures.store(0, Ordering::Relaxed);
+            self.sync_backoff_until.store(0, Ordering::Relaxed);
+            return;
+        }
+        let failures = self.consecutive_sync_failures.fetch_add(1, Ordering::Relaxed) + 1;
+        if failures >= SYNC_CIRCUIT_BREAKER_THRESHOLD {
+            let exp = (failures - SYNC_CIRCUIT_BREAKER_THRESHOLD).min(20);
+            let backoff = SYNC_BACKOFF_BASE_SECS
+                .saturating_mul(1u64 << exp)
+                .min(SYNC_BACKOFF_MAX_SECS);
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            self.sync_backoff_until.store(now + backoff, Ordering::Relaxed);
+            log::warn!(
+                "LAN sync circuit breaker OPEN: {} consecutive failures → backoff {}s",
+                failures,
+                backoff
+            );
+        }
+    }
+
+    /// Remaining seconds the circuit breaker suppresses auto-sync (0 = none/elapsed).
+    pub fn sync_backoff_remaining_secs(&self) -> u64 {
+        let until = self.sync_backoff_until.load(Ordering::Relaxed);
+        if until == 0 {
+            return 0;
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        until.saturating_sub(now)
     }
 
     /// Update sync progress (called by orchestrator).
@@ -832,9 +889,10 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
             return (500, json_error(&format!("No incoming data file: {}", e)));
         }
     };
-    // Clean up temp file and pointer after reading
-    let _ = std::fs::remove_file(&incoming_path);
-    let _ = std::fs::remove_file(dir.join("lan_sync_incoming_latest.txt"));
+    // NOTE: cleanup of the temp file + pointer happens AFTER a successful merge+verify
+    // (see below). Deleting before merge made the db-ready retries useless — a failed
+    // merge left no file, so every retry hit "No incoming data file" and the orchestrator
+    // looped the whole sequence forever.
 
     let data_kb = merged_data.len() as f64 / 1024.0;
     sync_log(&format!("[SLAVE] Importuje {:.1} KB scalonych danych...", data_kb));
@@ -871,6 +929,11 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         }
         return (500, json_error(&format!("Verify failed: {}", e)));
     }
+
+    // Merge + verify succeeded — now it's safe to drop the incoming file and pointer.
+    // Leaving them in place on failure lets the db-ready retry re-read the same payload.
+    let _ = std::fs::remove_file(&incoming_path);
+    let _ = std::fs::remove_file(dir.join("lan_sync_incoming_latest.txt"));
 
     // Generate OWN marker hash based on slave's actual post-merge state
     let now = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
@@ -1519,7 +1582,8 @@ mod tests {
     use super::{
         constant_time_eq, handle_local_identity, handle_pair, handle_pull,
         handle_trigger_sync, handle_online_trigger_sync, handle_online_cancel_sync,
-        LanSyncState, AUTO_UNFREEZE_TIMEOUT,
+        LanSyncState, AUTO_UNFREEZE_TIMEOUT, SYNC_BACKOFF_BASE_SECS,
+        SYNC_CIRCUIT_BREAKER_THRESHOLD,
     };
     use std::net::{IpAddr, Ipv4Addr};
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -1541,6 +1605,40 @@ mod tests {
         let (status, resp) = handle_pull(&state, &body);
         assert_eq!(status, 409, "pull outside an active sync must be rejected");
         assert!(resp.contains("no_active_sync"));
+    }
+
+    #[test]
+    fn circuit_breaker_opens_after_threshold_and_resets_on_success() {
+        let state = LanSyncState::new();
+        assert_eq!(state.sync_backoff_remaining_secs(), 0, "fresh state has no backoff");
+
+        // Failures below the threshold must NOT open the breaker.
+        for _ in 0..(SYNC_CIRCUIT_BREAKER_THRESHOLD - 1) {
+            state.note_sync_outcome(false);
+        }
+        assert_eq!(
+            state.sync_backoff_remaining_secs(),
+            0,
+            "breaker stays closed below the threshold"
+        );
+
+        // Reaching the threshold opens an exponential (capped) backoff window.
+        state.note_sync_outcome(false);
+        let remaining = state.sync_backoff_remaining_secs();
+        assert!(
+            remaining > 0 && remaining <= SYNC_BACKOFF_BASE_SECS,
+            "first open uses the base window, got {}s",
+            remaining
+        );
+        assert_eq!(
+            state.consecutive_sync_failures.load(Ordering::Relaxed),
+            SYNC_CIRCUIT_BREAKER_THRESHOLD
+        );
+
+        // A success clears the breaker entirely.
+        state.note_sync_outcome(true);
+        assert_eq!(state.sync_backoff_remaining_secs(), 0, "success closes the breaker");
+        assert_eq!(state.consecutive_sync_failures.load(Ordering::Relaxed), 0);
     }
 
     #[test]

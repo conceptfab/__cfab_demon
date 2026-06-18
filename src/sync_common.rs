@@ -564,6 +564,21 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     }
 
     // Merge projects
+    //
+    // The blacklist BEFORE-triggers (schema.sql: trg_projects_blacklist_block_insert/update)
+    // RAISE(ABORT) whenever an *active* project (excluded_at IS NULL) whose name sits on the
+    // local blacklist is inserted/updated — which aborts the WHOLE merge transaction. Incoming
+    // sync data is authoritative, so when the peer says a project is active we drop any stale
+    // local blacklist row for that name before upserting it (active/excluded is still resolved
+    // by LWW on excluded_at). Guarded on table presence so older DBs without the table are safe.
+    let has_blacklist_table = tx
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='project_name_blacklist'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
     let mut diag_proj_new: Vec<String> = Vec::new();
     let mut diag_proj_updated: Vec<String> = Vec::new();
     let mut diag_proj_local_wins: u32 = 0;
@@ -610,6 +625,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                         None => local_merged_at.clone(),
                         Some(v) => v.as_str().map(|s| s.to_string()),
                     };
+                    // Peer says this project is active → clear any stale local blacklist row
+                    // so the BEFORE UPDATE trigger doesn't abort the merge.
+                    if has_blacklist_table && json_str_opt(proj, "excluded_at").is_none() {
+                        tx.execute(
+                            "DELETE FROM project_name_blacklist WHERE name_key = lower(trim(?1))",
+                            rusqlite::params![name],
+                        ).map_err(|e| e.to_string())?;
+                    }
                     // Note: assigned_folder_path is machine-specific — never overwrite from remote
                     tx.execute(
                         "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
@@ -628,6 +651,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     diag_proj_updated.push(name.to_string());
                 }
                 None => {
+                    // Peer says this project is active → clear any stale local blacklist row
+                    // so the BEFORE INSERT trigger doesn't abort the merge.
+                    if has_blacklist_table && json_str_opt(proj, "excluded_at").is_none() {
+                        tx.execute(
+                            "DELETE FROM project_name_blacklist WHERE name_key = lower(trim(?1))",
+                            rusqlite::params![name],
+                        ).map_err(|e| e.to_string())?;
+                    }
                     tx.execute(
                         "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, \
                          frozen_at, assigned_folder_path, merged_into, merged_at, is_imported, updated_at) \
@@ -1509,6 +1540,81 @@ mod tests {
             Some("parent"),
             "poprawne merged_into musi przetrwac verify"
         );
+    }
+
+    #[test]
+    fn merge_active_project_clears_conflicting_blacklist() {
+        // Regresja: czarna lista nazw na jednej maszynie nie moze blokowac calego
+        // merge sync, gdy peer ma projekt o tej nazwie AKTYWNY. Pokrywa oba warianty:
+        // UPDATE (lokalny projekt byl wykluczony) i INSERT (projekt tylko na czarnej liscie).
+        let mut conn = open_test_db();
+        // Zainstaluj realna tabele + BEFORE-triggery, ktore bez Fix A przerywaja transakcje.
+        conn.execute_batch(
+            "CREATE TABLE project_name_blacklist (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                name_key TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TRIGGER trg_projects_blacklist_block_insert
+            BEFORE INSERT ON projects FOR EACH ROW
+            WHEN NEW.excluded_at IS NULL AND trim(NEW.name) <> ''
+             AND EXISTS (SELECT 1 FROM project_name_blacklist b WHERE b.name_key = lower(trim(NEW.name)))
+            BEGIN SELECT RAISE(ABORT, 'Project name is blacklisted'); END;
+            CREATE TRIGGER trg_projects_blacklist_block_update
+            BEFORE UPDATE OF name, excluded_at ON projects FOR EACH ROW
+            WHEN NEW.excluded_at IS NULL AND trim(NEW.name) <> ''
+             AND EXISTS (SELECT 1 FROM project_name_blacklist b WHERE b.name_key = lower(trim(NEW.name)))
+            BEGIN SELECT RAISE(ABORT, 'Project name is blacklisted'); END;",
+        )
+        .unwrap();
+
+        // Lokalnie: 'reused' zostal kiedys wykluczony → nazwa wpadla na czarna liste.
+        // 'fresh' nie ma lokalnego projektu — tylko wpis na czarnej liscie.
+        conn.execute(
+            "INSERT INTO projects (name, excluded_at, updated_at) \
+             VALUES ('reused', '2026-06-01 09:00:00', '2026-06-01 09:00:00')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO project_name_blacklist (name, name_key) VALUES ('reused', 'reused'), ('fresh', 'fresh')",
+            [],
+        )
+        .unwrap();
+
+        // Peer (autorytatywny): 'reused' znow AKTYWNY i nowszy, plus nowy aktywny 'fresh'.
+        let payload = serde_json::json!({
+            "data": {
+                "projects": [
+                    { "name": "reused", "color": "#38bdf8", "created_at": "2026-05-01 08:00:00", "excluded_at": null, "updated_at": "2026-06-18 12:00:00" },
+                    { "name": "fresh",  "color": "#38bdf8", "created_at": "2026-06-18 11:00:00", "excluded_at": null, "updated_at": "2026-06-18 12:00:00" }
+                ]
+            }
+        })
+        .to_string();
+
+        // Bez Fix A triggery zrobilyby RAISE(ABORT) → merge zwrocilby Err.
+        merge_incoming_data(&mut conn, &payload)
+            .expect("merge nie moze byc blokowany przez czarna liste nazw");
+
+        let active: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM projects WHERE name IN ('reused','fresh') AND excluded_at IS NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(active, 2, "oba projekty musza byc aktywne po merge (UPDATE + INSERT)");
+
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM project_name_blacklist WHERE name_key IN ('reused','fresh')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining, 0, "kolidujace wpisy czarnej listy musza zniknac");
     }
 
     // ── Diagnostic round-trip test ──

@@ -313,6 +313,23 @@ pub fn run_sync_as_master_with_options(
     force: bool,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
+        // Circuit breaker: after repeated full-cycle failures the breaker opens an
+        // exponential backoff window. Skip auto-sync while it's active so a persistent
+        // conflict stops hammering both machines. A forced (manual) sync bypasses it.
+        let backoff_left = sync_state.sync_backoff_remaining_secs();
+        if !force && backoff_left > 0 {
+            sync_log(&format!(
+                "=== SYNC POMINIETY — circuit breaker aktywny po {} kolejnych bledach, nastepna proba za {}s (wymus reczna sync, aby pominac) ===",
+                sync_state.consecutive_sync_failures.load(Ordering::Relaxed),
+                backoff_left
+            ));
+            // Release the in-progress guard the caller set and restore idle state.
+            sync_state.unfreeze();
+            sync_state.reset_progress();
+            sync_state.set_role("undecided");
+            return;
+        }
+
         sync_log(&format!("=== START SYNC z {}:{} {} ===",
             peer.ip, peer.port, if force { "[FORCE]" } else { "" }));
         sync_state.set_sync_type("lan");
@@ -375,6 +392,10 @@ pub fn run_sync_as_master_with_options(
         if !last_err.is_empty() {
             sync_log(&format!("=== SYNC NIEUDANY po {} probach: {} ===", MAX_RETRIES, last_err));
         }
+
+        // Feed this cycle's outcome to the circuit breaker (success resets it,
+        // repeated failures open the backoff window checked at thread entry).
+        sync_state.note_sync_outcome(last_err.is_empty());
 
         // Guarantee cleanup: always unfreeze + reset progress when thread exits.
         // This prevents the "stuck in syncing" state if any step panics or errors
