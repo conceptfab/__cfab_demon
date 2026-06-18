@@ -19,9 +19,10 @@ fn pid_alive(pid: u32) -> bool {
 #[cfg(windows)]
 fn pid_alive(pid: u32) -> bool {
     use std::process::Command;
-    let out = Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-        .output();
+    let mut cmd = Command::new("tasklist");
+    cmd.args(["/FI", &format!("PID eq {pid}"), "/NH"]);
+    timeflow_shared::process_utils::no_console(&mut cmd);
+    let out = cmd.output();
     match out {
         Ok(o) => String::from_utf8_lossy(&o.stdout).contains(&pid.to_string()),
         Err(_) => false,
@@ -196,10 +197,10 @@ fn process_comm(pid: u32) -> Option<String> {
 /// ⚠️ Windows: compile-check tylko na Windows. tasklist CSV: "image","pid",...
 #[cfg(windows)]
 fn process_comm(pid: u32) -> Option<String> {
-    let out = std::process::Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
-        .output()
-        .ok()?;
+    let mut cmd = std::process::Command::new("tasklist");
+    cmd.args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"]);
+    timeflow_shared::process_utils::no_console(&mut cmd);
+    let out = cmd.output().ok()?;
     let text = String::from_utf8_lossy(&out.stdout);
     let first = text.lines().next()?.trim();
     if first.is_empty() || !first.contains(&pid.to_string()) {
@@ -260,9 +261,10 @@ fn kill_pid(pid: u32) {
 
 #[cfg(windows)]
 fn kill_pid(pid: u32) {
-    let _ = std::process::Command::new("taskkill")
-        .args(["/PID", &pid.to_string(), "/F"])
-        .status();
+    let mut cmd = std::process::Command::new("taskkill");
+    cmd.args(["/PID", &pid.to_string(), "/F"]);
+    timeflow_shared::process_utils::no_console(&mut cmd);
+    let _ = cmd.status();
 }
 
 #[cfg(target_os = "macos")]
@@ -391,9 +393,10 @@ fn open_url(url: &str) {
 
 #[cfg(windows)]
 fn open_url(url: &str) {
-    let _ = std::process::Command::new("cmd")
-        .args(["/C", "start", "", url])
-        .status();
+    let mut cmd = std::process::Command::new("cmd");
+    cmd.args(["/C", "start", "", url]);
+    timeflow_shared::process_utils::no_console(&mut cmd);
+    let _ = cmd.status();
 }
 
 #[cfg(test)]
