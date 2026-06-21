@@ -304,6 +304,9 @@ pub(crate) const DB_READY_ATTEMPT_SECS: u64 = 180;
 /// Liczba prób db-ready.
 pub(crate) const DB_READY_ATTEMPTS: u64 = 3;
 /// Górny budżet czasu kroku db-ready: próby + backoffy między nimi (10s, 20s).
+/// Wartość referencyjna pilnowana przez test `auto_unfreeze_exceeds_db_ready_budget`
+/// (używana tylko w `#[cfg(test)]`, stąd allow).
+#[allow(dead_code)]
 pub(crate) const DB_READY_BUDGET_SECS: u64 =
     DB_READY_ATTEMPT_SECS * DB_READY_ATTEMPTS + 10 + 20;
 
