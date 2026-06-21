@@ -147,6 +147,10 @@ pub struct LanSyncState {
     pub sync_backoff_until: AtomicU64,
     /// Ostatni ukończony db-ready: (marker_hash mastera, wygenerowany własny marker).
     /// Pozwala na idempotentny replay retry, gdy odpowiedź na db-ready zginęła.
+    /// Trzyma tylko ostatni wpis i nie jest czyszczony między syncami — to bezpieczne:
+    /// replay wyzwala wyłącznie dokładne dopasowanie marker_hash mastera, a ten jest
+    /// unikalny per sync (hash z tables_hash + sekunda UTC + device_id), więc stary
+    /// wpis nigdy nie pasuje do nowego db-ready.
     pub last_db_ready: std::sync::Mutex<Option<(String, String)>>,
 }
 
