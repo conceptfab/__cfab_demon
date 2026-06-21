@@ -74,6 +74,9 @@ struct NegotiateResponse {
     ok: bool,
     mode: String, // "delta" or "full"
     slave_marker_hash: Option<String>,
+    /// created_at naszego najnowszego markera w NASZEJ bazie (zegar slave'a).
+    /// Master użyje go jako `since`, by uniknąć cross-clock skew.
+    slave_marker_created_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -777,6 +780,10 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
     let db = lan_common::open_dashboard_db_readonly().ok();
     let local_marker = db.as_ref().and_then(|conn| get_latest_marker_hash(conn));
 
+    let local_marker_created_at = local_marker
+        .as_deref()
+        .and_then(|h| db.as_ref().and_then(|conn| find_marker_timestamp(conn, h)));
+
     let mode = match (&local_marker, &req.master_marker_hash) {
         (Some(local), Some(remote)) if local == remote => "delta",
         (_, Some(remote)) => {
@@ -799,6 +806,7 @@ fn handle_negotiate(state: &LanSyncState, body: &str) -> (u16, String) {
         ok: true,
         mode: mode.to_string(),
         slave_marker_hash: local_marker,
+        slave_marker_created_at: local_marker_created_at,
     };
     (200, serde_json::to_string(&resp).unwrap_or_default())
 }

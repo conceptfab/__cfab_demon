@@ -12,6 +12,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 const SYNC_TIMEOUT: Duration = Duration::from_secs(300); // 5 min max
+const EPOCH: &str = "1970-01-01 00:00:00";
 
 /// RAII guard that removes temporary files on drop (even on early return / panic).
 struct TempFileGuard {
@@ -519,6 +520,8 @@ fn execute_master_sync(
         ok: bool,
         mode: String,
         slave_marker_hash: Option<String>,
+        #[serde(default)]
+        slave_marker_created_at: Option<String>,
     }
     let neg: NegResp = serde_json::from_str(&negotiate_resp)
         .map_err(|e| { sync_log(&format!("[3/13] BLAD parsowania: {}", e)); format!("Negotiate parse error: {}", e) })?;
@@ -557,12 +560,13 @@ fn execute_master_sync(
 
     // Step 6: Pull data from SLAVE
     sync_state.set_progress(6, "downloading_from_slave", "download");
-    let since = match transfer_mode.as_str() {
-        "delta" => neg.slave_marker_hash.as_deref()
-            .and_then(|hash| get_marker_created_at_by_hash(&conn, hash))
-            .unwrap_or_else(|| "1970-01-01 00:00:00".to_string()),
-        _ => "1970-01-01 00:00:00".to_string(),
-    };
+    let master_side_lookup = neg.slave_marker_hash.as_deref()
+        .and_then(|hash| get_marker_created_at_by_hash(&conn, hash));
+    let since = resolve_pull_since(
+        &transfer_mode,
+        neg.slave_marker_created_at.as_deref(),
+        master_side_lookup,
+    );
     sync_log(&format!("[6/13] Pobieranie danych z peera (since={})...", since));
 
     let pull_body = serde_json::json!({
@@ -795,6 +799,24 @@ fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String
     get_latest_marker(conn).map(|(hash, _)| hash)
 }
 
+/// Ustal próg `since` dla delta-pull. Preferuj `created_at` markera zgłoszony
+/// przez slave'a (jego zegar) — wtedy próg i `updated_at` wierszy slave'a
+/// dzielą ten sam zegar, co eliminuje pomijanie wierszy przy rozjeździe zegarów.
+/// Dla starszych peerów (brak pola) wracamy do lookupu po stronie mastera.
+fn resolve_pull_since(
+    transfer_mode: &str,
+    slave_reported_created_at: Option<&str>,
+    master_side_lookup: Option<String>,
+) -> String {
+    if transfer_mode != "delta" {
+        return EPOCH.to_string();
+    }
+    slave_reported_created_at
+        .map(|s| s.to_string())
+        .or(master_side_lookup)
+        .unwrap_or_else(|| EPOCH.to_string())
+}
+
 /// Find the created_at timestamp for a specific marker hash.
 /// Used to determine the correct `since` for delta sync — we need
 /// the date of the marker matching the remote peer's hash, not our latest.
@@ -810,6 +832,36 @@ fn get_marker_created_at_by_hash(conn: &rusqlite::Connection, hash: &str) -> Opt
 #[cfg(test)]
 mod tests {
     use super::version_compat_error;
+    use super::resolve_pull_since;
+
+    #[test]
+    fn pull_since_prefers_slave_clock() {
+        assert_eq!(
+            resolve_pull_since("delta", Some("2026-06-01 10:00:00"), Some("2026-06-01 10:00:09".to_string())),
+            "2026-06-01 10:00:00"
+        );
+    }
+
+    #[test]
+    fn pull_since_falls_back_to_master_lookup_for_old_peers() {
+        assert_eq!(
+            resolve_pull_since("delta", None, Some("2026-05-01 08:00:00".to_string())),
+            "2026-05-01 08:00:00"
+        );
+    }
+
+    #[test]
+    fn pull_since_epoch_when_nothing_known() {
+        assert_eq!(resolve_pull_since("delta", None, None), "1970-01-01 00:00:00");
+    }
+
+    #[test]
+    fn pull_since_full_is_always_epoch() {
+        assert_eq!(
+            resolve_pull_since("full", Some("2026-06-01 10:00:00"), None),
+            "1970-01-01 00:00:00"
+        );
+    }
 
     #[test]
     fn version_match_is_ok() {
