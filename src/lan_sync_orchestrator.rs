@@ -299,6 +299,14 @@ fn http_request_with_timeout(
 
 const MAX_RETRIES: u32 = 3;
 
+/// Pojedyncza próba db-ready (slave importuje — może trwać przy dużej bazie).
+pub(crate) const DB_READY_ATTEMPT_SECS: u64 = 180;
+/// Liczba prób db-ready.
+pub(crate) const DB_READY_ATTEMPTS: u64 = 3;
+/// Górny budżet czasu kroku db-ready: próby + backoffy między nimi (10s, 20s).
+pub(crate) const DB_READY_BUDGET_SECS: u64 =
+    DB_READY_ATTEMPT_SECS * DB_READY_ATTEMPTS + 10 + 20;
+
 pub fn run_sync_as_master(
     peer: PeerTarget,
     sync_state: Arc<LanSyncState>,
@@ -359,7 +367,7 @@ pub fn run_sync_as_master_with_options(
                     // Unfreeze DB but keep sync_in_progress = true to prevent
                     // another thread from starting a concurrent sync during backoff.
                     sync_state.db_frozen.store(false, Ordering::SeqCst);
-                    // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (5 min).
+                    // Unfreeze slave too — otherwise slave stays frozen until auto-unfreeze (AUTO_UNFREEZE_TIMEOUT).
                     // Skip the unfreeze call when peer is not paired (no secret available) —
                     // without a matching secret it would just loop on 401.
                     if let Some(retry_secret) = resolve_peer_secret(&peer.device_id) {
@@ -698,7 +706,7 @@ fn execute_master_sync(
     // db-ready now blocks until slave finishes import — use long timeout with retry
     let db_ready_url = format!("{}/lan/db-ready", base_url);
     let db_ready_body = ready_body.to_string();
-    let db_ready_timeouts = [180u64, 180, 180]; // 3 attempts × 180s each
+    let db_ready_timeouts = [DB_READY_ATTEMPT_SECS; DB_READY_ATTEMPTS as usize];
     let mut db_ready_resp = Err("db-ready not attempted".to_string());
 
     for (i, &timeout_secs) in db_ready_timeouts.iter().enumerate() {

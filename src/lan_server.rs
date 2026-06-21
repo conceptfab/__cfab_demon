@@ -160,7 +160,11 @@ impl Drop for SyncGuard {
     }
 }
 
-const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(600); // 10 minutes
+// Musi z zapasem przekraczać budżet kroku db-ready
+// (crate::lan_sync_orchestrator::DB_READY_BUDGET_SECS ≈ 570s) + czas merge na slave,
+// inaczej slave odmraża bazę w trakcie trwającego sync. Patrz test
+// auto_unfreeze_exceeds_db_ready_budget.
+const AUTO_UNFREEZE_TIMEOUT: Duration = Duration::from_secs(1200); // 20 minutes
 
 impl LanSyncState {
     pub fn new() -> Self {
@@ -1842,5 +1846,17 @@ mod tests {
         assert!(!state.db_frozen.load(Ordering::SeqCst));
         assert!(!state.sync_in_progress.load(Ordering::SeqCst));
         assert_eq!(state.get_progress().phase, "idle");
+    }
+
+    #[test]
+    fn auto_unfreeze_exceeds_db_ready_budget() {
+        // Slave nie może auto-odmrozić bazy przed końcem najdłuższego okna db-ready.
+        let budget = crate::lan_sync_orchestrator::DB_READY_BUDGET_SECS;
+        assert!(
+            AUTO_UNFREEZE_TIMEOUT.as_secs() > budget + 300,
+            "auto-unfreeze ({}s) musi przekraczać budżet db-ready ({}s) z zapasem na merge",
+            AUTO_UNFREEZE_TIMEOUT.as_secs(),
+            budget
+        );
     }
 }
