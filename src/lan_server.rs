@@ -145,6 +145,9 @@ pub struct LanSyncState {
     pub consecutive_sync_failures: AtomicU32,
     /// Unix epoch secs until which the circuit breaker suppresses auto-sync (0 = none).
     pub sync_backoff_until: AtomicU64,
+    /// Ostatni ukończony db-ready: (marker_hash mastera, wygenerowany własny marker).
+    /// Pozwala na idempotentny replay retry, gdy odpowiedź na db-ready zginęła.
+    pub last_db_ready: std::sync::Mutex<Option<(String, String)>>,
 }
 
 /// Guard that resets sync_in_progress to false on drop (panic-safe).
@@ -172,7 +175,24 @@ impl LanSyncState {
             peer_present: AtomicBool::new(false),
             consecutive_sync_failures: AtomicU32::new(0),
             sync_backoff_until: AtomicU64::new(0),
+            last_db_ready: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Zwróć własny marker z poprzednio ukończonego db-ready dla danego markera
+    /// mastera (jeśli istnieje) — replay przy ponowionym db-ready.
+    pub fn completed_db_ready_for(&self, master_marker: &str) -> Option<String> {
+        let guard = self.last_db_ready.lock().unwrap_or_else(|e| e.into_inner());
+        guard
+            .as_ref()
+            .filter(|(m, _)| m == master_marker)
+            .map(|(_, own)| own.clone())
+    }
+
+    /// Zapamiętaj ukończony db-ready, by retry mógł go odtworzyć.
+    pub fn record_db_ready(&self, master_marker: &str, own_marker: &str) {
+        let mut guard = self.last_db_ready.lock().unwrap_or_else(|e| e.into_inner());
+        *guard = Some((master_marker.to_string(), own_marker.to_string()));
     }
 
     /// Record that a sync just completed (for cooldown logic).
@@ -871,6 +891,21 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
         Err(e) => return (400, json_error(&format!("Invalid db-ready request: {}", e))),
     };
 
+    // Idempotentny replay: jeśli ten sam db-ready (po marker_hash mastera) już
+    // się powiódł, zwróć zapisany własny marker — retry po zgubionej odpowiedzi
+    // nie powtarza merge ani nie pada na usuniętym pliku tymczasowym.
+    if !req.marker_hash.is_empty() {
+        if let Some(own) = state.completed_db_ready_for(&req.marker_hash) {
+            sync_log("[SLAVE] db-ready replay — import juz wykonany, zwracam zapisany marker");
+            let resp = DbReadyResponse {
+                ok: true,
+                marker_hash: own,
+                transfer_mode: req.transfer_mode,
+            };
+            return (200, serde_json::to_string(&resp).unwrap_or_default());
+        }
+    }
+
     state.set_progress(12, "slave_importing", "local");
     sync_log("[SLAVE] Master zakonczyl scalanie — importuje dane...");
 
@@ -975,6 +1010,10 @@ fn handle_db_ready(state: &LanSyncState, body: &str) -> (u16, String) {
 
     state.set_progress(12, "slave_import_done", "local");
     sync_log("[SLAVE] Import zakonczony — dane scalone i zweryfikowane");
+
+    if !req.marker_hash.is_empty() {
+        state.record_db_ready(&req.marker_hash, &own_marker);
+    }
 
     let resp = DbReadyResponse {
         ok: true,
@@ -1613,6 +1652,16 @@ mod tests {
         let (status, resp) = handle_pull(&state, &body);
         assert_eq!(status, 409, "pull outside an active sync must be rejected");
         assert!(resp.contains("no_active_sync"));
+    }
+
+    #[test]
+    fn db_ready_replay_is_idempotent_per_master_marker() {
+        let state = LanSyncState::new();
+        assert_eq!(state.completed_db_ready_for("m1"), None, "świeży stan: brak zapisu");
+        state.record_db_ready("m1", "own-1");
+        assert_eq!(state.completed_db_ready_for("m1"), Some("own-1".to_string()));
+        // Inny marker mastera → brak replayu (to nowy import).
+        assert_eq!(state.completed_db_ready_for("m2"), None);
     }
 
     #[test]
