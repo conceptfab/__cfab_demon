@@ -972,10 +972,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             }
 
             // Resolve remote IDs to local
-            let local_project_id: Option<i64> = ms.get("project_id").and_then(|v| v.as_i64())
+            // Sentinel 0 = nieprzypisane. manual_sessions.project_id jest NOT NULL,
+            // więc nierozwiązany remote project_id (w tym jego własny sentinel 0)
+            // MUSI zmapować się na 0 — bind NULL przerwałby cały merge i wymusił restore.
+            let local_project_id: i64 = ms.get("project_id").and_then(|v| v.as_i64())
                 .and_then(|rid| remote_project_id_to_name.get(&rid))
                 .and_then(|name| project_name_to_local_id.get(name))
-                .copied();
+                .copied()
+                .unwrap_or(0);
             let local_app_id: Option<i64> = ms.get("app_id").and_then(|v| v.as_i64())
                 .and_then(|rid| remote_app_id_to_name.get(&rid))
                 .and_then(|name| app_name_to_local_id.get(name))
@@ -2724,5 +2728,35 @@ mod tests {
             )
             .unwrap();
         assert_eq!(app_count, 0, "fully stale app is still deleted by the tombstone");
+    }
+
+    #[test]
+    fn merge_keeps_unassigned_manual_session_sentinel_zero() {
+        // Regresja: peer z nieprzypisaną sesją manualną (sentinel project_id = 0).
+        // manual_sessions.project_id jest NOT NULL — nierozwiązany id MUSI zmapować
+        // się na 0, nie NULL, inaczej cały merge pada (NOT NULL constraint) i robi restore.
+        let mut master = open_test_db();
+        let slave = open_test_db();
+        slave
+            .execute(
+                "INSERT INTO manual_sessions \
+                 (title, session_type, project_id, start_time, end_time, duration_seconds, date, created_at, updated_at) \
+                 VALUES ('Unassigned task', 'work', 0, '2026-04-21 09:00:00', '2026-04-21 09:30:00', 1800, '2026-04-21', '2026-04-21 09:00:00', '2026-04-21 09:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&slave).expect("export slave");
+        merge_incoming_data(&mut master, &export)
+            .expect("merge nie może paść na nieprzypisanej sesji manualnej");
+
+        let pid: i64 = master
+            .query_row(
+                "SELECT project_id FROM manual_sessions WHERE title = 'Unassigned task'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("sesja manualna obecna na masterze");
+        assert_eq!(pid, 0, "nieprzypisana sesja manualna zachowuje sentinel 0");
     }
 }
