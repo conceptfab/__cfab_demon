@@ -391,6 +391,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
 
             if !exists {
                 let deleted_at_str = ts.get("deleted_at").and_then(|v| v.as_str()).unwrap_or("");
+                let deleted_at_norm = normalize_ts(deleted_at_str);
 
                 // Guard: don't delete a record that was re-created/updated AFTER the tombstone
                 // Applied to ALL tables, not just projects (5.7 fix)
@@ -468,7 +469,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     tx.execute(
                         "INSERT OR IGNORE INTO tombstones (table_name, record_id, deleted_at, sync_key) \
                          VALUES (?1, ?2, ?3, ?4)",
-                        rusqlite::params![table_name, json_i64(ts, "record_id"), deleted_at_str, sync_key],
+                        rusqlite::params![table_name, json_i64(ts, "record_id"), deleted_at_norm, sync_key],
                     ).map_err(|e| e.to_string())?;
                     continue;
                 }
@@ -555,7 +556,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     rusqlite::params![
                         table_name,
                         json_i64(ts, "record_id"),
-                        json_str(ts, "deleted_at"),
+                        deleted_at_norm,
                         sync_key,
                     ],
                 ).map_err(|e| e.to_string())?;
@@ -2758,5 +2759,29 @@ mod tests {
             )
             .expect("sesja manualna obecna na masterze");
         assert_eq!(pid, 0, "nieprzypisana sesja manualna zachowuje sentinel 0");
+    }
+
+    #[test]
+    fn merge_normalizes_tombstone_deleted_at() {
+        let mut conn = open_test_db();
+        let archive = serde_json::json!({
+            "data": {
+                "tombstones": [
+                    { "table_name": "sessions",
+                      "sync_key": "x.exe|2026-04-20 10:00:00",
+                      "deleted_at": "2026-04-20T10:00:00+02:00" }
+                ]
+            }
+        })
+        .to_string();
+        merge_incoming_data(&mut conn, &archive).expect("merge");
+        let stored: String = conn
+            .query_row(
+                "SELECT deleted_at FROM tombstones WHERE table_name = 'sessions'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("tombstone zapisany");
+        assert_eq!(stored, "2026-04-20 08:00:00", "RFC3339 +02:00 → kanoniczny UTC");
     }
 }
