@@ -394,9 +394,13 @@ pub fn run_sync_as_master_with_options(
             sync_log(&format!("=== SYNC NIEUDANY po {} probach: {} ===", MAX_RETRIES, last_err));
         }
 
-        // Feed this cycle's outcome to the circuit breaker (success resets it,
-        // repeated failures open the backoff window checked at thread entry).
-        sync_state.note_sync_outcome(last_err.is_empty());
+        // Feed this cycle's outcome to the circuit breaker. A stop-signal abort is
+        // neither success nor failure — leave the breaker untouched in that case.
+        if let Some(success) =
+            breaker_outcome(stop_signal.load(Ordering::Relaxed), last_err.is_empty())
+        {
+            sync_state.note_sync_outcome(success);
+        }
 
         // Guarantee cleanup: always unfreeze + reset progress when thread exits.
         // This prevents the "stuck in syncing" state if any step panics or errors
@@ -799,6 +803,15 @@ fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String
     get_latest_marker(conn).map(|(hash, _)| hash)
 }
 
+/// Co podać circuit breakerowi po cyklu sync.
+/// `None` = nie ruszaj breakera (cykl przerwany stopem — to nie porażka).
+fn breaker_outcome(stopped: bool, last_err_empty: bool) -> Option<bool> {
+    if stopped {
+        return None;
+    }
+    Some(last_err_empty)
+}
+
 /// Ustal próg `since` dla delta-pull. Preferuj `created_at` markera zgłoszony
 /// przez slave'a (jego zegar) — wtedy próg i `updated_at` wierszy slave'a
 /// dzielą ten sam zegar, co eliminuje pomijanie wierszy przy rozjeździe zegarów.
@@ -833,6 +846,7 @@ fn get_marker_created_at_by_hash(conn: &rusqlite::Connection, hash: &str) -> Opt
 mod tests {
     use super::version_compat_error;
     use super::resolve_pull_since;
+    use super::breaker_outcome;
 
     #[test]
     fn pull_since_prefers_slave_clock() {
@@ -881,5 +895,21 @@ mod tests {
     fn missing_peer_version_is_rejected() {
         // Very old peers don't return `version` in preflight — treat as mismatch.
         assert!(version_compat_error("0.1.5704", None).is_some());
+    }
+
+    #[test]
+    fn breaker_records_success_when_clean() {
+        assert_eq!(breaker_outcome(false, true), Some(true));
+    }
+
+    #[test]
+    fn breaker_records_failure_on_error() {
+        assert_eq!(breaker_outcome(false, false), Some(false));
+    }
+
+    #[test]
+    fn breaker_ignores_stop_abort() {
+        assert_eq!(breaker_outcome(true, false), None);
+        assert_eq!(breaker_outcome(true, true), None);
     }
 }
