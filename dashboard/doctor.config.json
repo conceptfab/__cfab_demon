@@ -4,6 +4,12 @@
     "react-doctor/js-set-map-lookups": "off"
   },
   "ignore": {
-    "rules": ["deslop/unused-export"]
+    "rules": ["deslop/unused-export"],
+    "overrides": [
+      {
+        "files": ["**/*.test.ts", "**/*.test.tsx"],
+        "rules": ["react-doctor/auth-token-in-web-storage"]
+      }
+    ]
   }
 }
