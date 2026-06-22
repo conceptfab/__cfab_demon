@@ -1514,16 +1514,23 @@ fn build_delta_for_pull(
     since: &str,
     include_tombstones: bool,
 ) -> Result<String, String> {
-    // Defensive: the merged_* columns come from a dashboard migration (m23);
-    // make sure they exist before SELECT-ing them (no-op when already migrated).
+    // Defensive: the merged_* columns come from a dashboard migration (m23) and
+    // client_name/status + the clients entity from m24; make sure they exist
+    // before SELECT-ing them (no-op when already migrated).
     crate::sync_common::ensure_project_merge_columns(conn);
+    crate::sync_common::ensure_project_client_columns(conn);
 
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
     let since_ref = if since_norm.len() > 19 { &since_norm[..19] } else { &since_norm };
 
-    // Fetch projects (always full — small table, needed for ID resolution)
-    let projects = fetch_all_rows(conn, "SELECT id, name, color, hourly_rate, created_at, excluded_at, frozen_at, assigned_folder_path, merged_into, merged_at, updated_at FROM projects ORDER BY name")?;
+    // Fetch projects (always full — small table, needed for ID resolution).
+    // client_name + status (m24) ride along so the client→project assignment and
+    // project status converge across peers, mirroring merged_into/merged_at (m23).
+    let projects = fetch_all_rows(conn, "SELECT id, name, color, hourly_rate, created_at, excluded_at, frozen_at, assigned_folder_path, merged_into, merged_at, client_name, status, updated_at FROM projects ORDER BY name")?;
+
+    // Fetch clients (m24 entity — always full, tiny table). Identified by name.
+    let clients = fetch_all_rows(conn, "SELECT id, name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at FROM clients ORDER BY name")?;
 
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, updated_at FROM applications ORDER BY executable_name")?;
@@ -1568,6 +1575,7 @@ fn build_delta_for_pull(
         "device_id": lan_common::get_device_id(),
         "data": {
             "projects": projects,
+            "clients": clients,
             "applications": apps,
             "sessions": sessions,
             "manual_sessions": manual,

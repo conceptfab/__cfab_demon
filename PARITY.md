@@ -24,6 +24,25 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
   (preflight zwraca CARGO_PKG_VERSION) będzie blokowany do czasu aktualizacji obu maszyn.
 - `get_machine_name`: macOS używa `hostname` (dotąd zawsze "unknown" — COMPUTERNAME
   jest tylko na Windows).
+- **LAN sync — domknięcie parności m24 (klienci + przypisania):** migracja m24
+  dodała `projects.client_name`, `projects.status` oraz encję `clients`, ale NIE
+  wpięła ich w sync demona (eksport/merge/checksum) — przez co po sync znikało
+  przypisanie klienta do projektu, a usunięty klient „zmartwychwstawał". Naprawione:
+  `client_name`/`status` jadą w eksporcie/merge projektów (reguła absent-key =
+  zachowaj lokalne, jak `merged_into`), encja `clients` synchronizuje się jako
+  osobna tabela (LWW po `updated_at`) z tombstonami (trigger `trg_clients_tombstone`
+  w schema.sql + migracja **m25** + lustro `src/tombstone_triggers.rs`), a checksum
+  projektów jest teraz content-hashem (wykrywa rozjazd `client_name`/`status`/
+  `merged_into`, więc rozjazd się sam leczy zamiast wyglądać na „zsynchronizowane").
+  Mieszane wersje: stary peer (bez kluczy m24) nie nadpisuje lokalnych wartości
+  (absent-key), ale encja `clients` i tombstony klientów propagują się dopiero, gdy
+  OBIE maszyny mają tę wersję. Marker zmienia się raz po aktualizacji → pierwszy
+  sync będzie pełny (świadome, wymusza ponowną konwergencję).
+- **Rozmergowanie po sync — naprawione:** `verify_merge_integrity` zerował
+  `merged_into` gdy rodzic był chwilowo NIEOBECNY podczas konwergencji (ciche
+  rozmergowanie). Teraz czyści marker TYLKO gdy rodzic ma tombstone (naprawdę
+  usunięty); wiszący marker jest nieszkodliwy (rollup robi LEFT JOIN + fallback do
+  dziecka), więc przeżywa do dotarcia wiersza rodzica.
 - FOLLOW-UP (otwarte): sekret LAN nadal przesyłany plaintext HTTP w nagłówku
   `X-TimeFlow-Secret` — docelowo challenge-response (HMAC z nonce); wymaga zmiany
   protokołu i wersjonowania. Mitygacja częściowa: constant-time compare po stronie serwera.

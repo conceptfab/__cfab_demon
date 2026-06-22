@@ -203,8 +203,21 @@ pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
 pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let sql = match table {
         "projects" => {
+            // Content hash, not just name+updated_at: a merge can leave two peers
+            // with identical name+updated_at but diverging merged_into/client_name/
+            // status (these ride along without re-bumping updated_at on the loser).
+            // Hashing the synced columns lets convergence detection self-heal such
+            // silent divergence instead of declaring the peers identical forever.
+            "SELECT COALESCE(group_concat( \
+                name || '|' || COALESCE(color,'') || '|' || COALESCE(hourly_rate,'') || '|' || \
+                COALESCE(excluded_at,'') || '|' || COALESCE(frozen_at,'') || '|' || \
+                COALESCE(merged_into,'') || '|' || COALESCE(client_name,'') || '|' || \
+                COALESCE(status,'') || '|' || updated_at, ';'), '') \
+             FROM (SELECT * FROM projects ORDER BY name)"
+        }
+        "clients" => {
             "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-             FROM (SELECT name, updated_at FROM projects ORDER BY name)"
+             FROM (SELECT name, updated_at FROM clients ORDER BY name)"
         }
         "applications" => {
             "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
@@ -228,9 +241,9 @@ pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     format!("{:032x}", hash_128(concat.as_bytes()))
 }
 
-/// Compute hashes for all 4 sync tables, concatenated.
+/// Compute hashes for all sync tables, concatenated.
 pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
-    let tables = ["projects", "applications", "sessions", "manual_sessions"];
+    let tables = ["projects", "clients", "applications", "sessions", "manual_sessions"];
     let mut combined = String::new();
     for table in &tables {
         combined.push_str(&compute_table_hash(conn, table));

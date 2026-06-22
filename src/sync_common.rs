@@ -321,6 +321,42 @@ pub(crate) fn ensure_project_merge_columns(conn: &rusqlite::Connection) {
     }
 }
 
+/// Daemon-side defensive schema guard for the m24 client entity/columns.
+/// Mirrors `ensure_project_merge_columns` — the dashboard owns the migration,
+/// but the daemon may export/merge against a DB upgraded a moment earlier.
+/// Idempotent: "duplicate column"/"already exists" are expected and ignored.
+pub(crate) fn ensure_project_client_columns(conn: &rusqlite::Connection) {
+    for sql in [
+        "ALTER TABLE projects ADD COLUMN client_name TEXT",
+        "ALTER TABLE projects ADD COLUMN status TEXT NOT NULL DEFAULT 'active'",
+    ] {
+        if let Err(e) = conn.execute(sql, []) {
+            let msg = e.to_string();
+            if !msg.contains("duplicate column name") {
+                lan_common::sync_log(&format!("ensure_project_client_columns: {}", msg));
+            }
+        }
+    }
+    // Clients entity (m24). Created if missing so export/merge never fail on it.
+    if let Err(e) = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS clients (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            contact TEXT,
+            address TEXT,
+            tax_id TEXT,
+            currency TEXT,
+            default_hourly_rate REAL,
+            color TEXT NOT NULL DEFAULT '#38bdf8',
+            archived_at TEXT,
+            created_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+        );",
+    ) {
+        lan_common::sync_log(&format!("ensure_project_client_columns (clients table): {}", e));
+    }
+}
+
 // ── Merge ──
 
 pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) -> Result<(), String> {
@@ -328,6 +364,7 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
         .lock()
         .map_err(|_| "merge mutex poisoned".to_string())?;
     ensure_project_merge_columns(conn);
+    ensure_project_client_columns(conn);
     const MAX_PAYLOAD_SIZE: usize = 200 * 1024 * 1024; // 200 MB
     if slave_data.len() > MAX_PAYLOAD_SIZE {
         return Err(format!(
@@ -547,6 +584,16 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                             let _ = tx.execute("DELETE FROM manual_sessions WHERE id = CAST(?1 AS INTEGER)", [sync_key]);
                         }
                     }
+                    "clients" => {
+                        // sync_key = client name. Detach projects first (assignment
+                        // becomes unset), mirroring the dashboard delete_client path.
+                        if let Err(e) = tx.execute(
+                            "UPDATE projects SET client_name = NULL \
+                             WHERE lower(client_name) = lower(?1)",
+                            [sync_key],
+                        ) { log::warn!("tombstone FK cleanup projects for client '{}': {}", sync_key, e); }
+                        let _ = tx.execute("DELETE FROM clients WHERE name = ?1", [sync_key]);
+                    }
                     _ => { log::warn!("Tombstone for unknown table: {}", table_name); }
                 }
 
@@ -598,26 +645,26 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                 continue;
             }
 
-            let existing: Option<(String, Option<String>, Option<String>)> = tx
+            let existing: Option<(String, Option<String>, Option<String>, Option<String>, Option<String>)> = tx
                 .query_row(
-                    "SELECT updated_at, merged_into, merged_at FROM projects WHERE name = ?1",
+                    "SELECT updated_at, merged_into, merged_at, client_name, status FROM projects WHERE name = ?1",
                     [name],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
                 )
                 .ok();
 
             match existing {
-                Some((local_ts, _, _)) if normalize_ts(&local_ts) >= normalize_ts(updated_at) => {
+                Some((local_ts, _, _, _, _)) if normalize_ts(&local_ts) >= normalize_ts(updated_at) => {
                     // Local wins — log only if timestamps differ (actual conflict)
                     if normalize_ts(&local_ts) != normalize_ts(updated_at) {
                         log_merge_conflict(&tx, "projects", name, &local_ts, updated_at, "local");
                     }
                     diag_proj_local_wins += 1;
                 }
-                Some((ref local_ts, ref local_merged_into, ref local_merged_at)) => {
+                Some((ref local_ts, ref local_merged_into, ref local_merged_at, ref local_client_name, ref local_status)) => {
                     log_merge_conflict(&tx, "projects", name, local_ts, updated_at, "remote");
-                    // Old peers don't know merged_* keys — absent key means
-                    // "preserve local value", explicit null means "cleared by unmerge".
+                    // Old peers don't know merged_*/client_name/status keys — absent
+                    // key means "preserve local value", explicit null means "cleared".
                     let merged_into: Option<String> = match proj.get("merged_into") {
                         None => local_merged_into.clone(),
                         Some(v) => v.as_str().map(|s| s.to_string()),
@@ -625,6 +672,18 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     let merged_at: Option<String> = match proj.get("merged_at") {
                         None => local_merged_at.clone(),
                         Some(v) => v.as_str().map(|s| s.to_string()),
+                    };
+                    let client_name: Option<String> = match proj.get("client_name") {
+                        None => local_client_name.clone(),
+                        Some(v) => v.as_str().map(|s| s.to_string()),
+                    };
+                    // status is NOT NULL — preserve local when absent, fall back to
+                    // 'active' only if neither side has a value (shouldn't happen).
+                    let status: String = match proj.get("status") {
+                        None => local_status.clone().unwrap_or_else(|| "active".to_string()),
+                        Some(v) => v.as_str().map(|s| s.to_string())
+                            .or_else(|| local_status.clone())
+                            .unwrap_or_else(|| "active".to_string()),
                     };
                     // Peer says this project is active → clear any stale local blacklist row
                     // so the BEFORE UPDATE trigger doesn't abort the merge.
@@ -637,7 +696,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                     // Note: assigned_folder_path is machine-specific — never overwrite from remote
                     tx.execute(
                         "UPDATE projects SET color = ?1, hourly_rate = ?2, excluded_at = ?3, \
-                         frozen_at = ?4, merged_into = ?5, merged_at = ?6, updated_at = ?7 WHERE name = ?8",
+                         frozen_at = ?4, merged_into = ?5, merged_at = ?6, client_name = ?7, \
+                         status = ?8, updated_at = ?9 WHERE name = ?10",
                         rusqlite::params![
                             json_str(proj, "color"),
                             json_f64_opt(proj, "hourly_rate"),
@@ -645,6 +705,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                             json_str_opt(proj, "frozen_at"),
                             merged_into,
                             merged_at,
+                            client_name,
+                            status,
                             updated_at,
                             name,
                         ],
@@ -660,10 +722,14 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                             rusqlite::params![name],
                         ).map_err(|e| e.to_string())?;
                     }
+                    // status is NOT NULL — a peer that doesn't send the key (old
+                    // version) defaults to 'active'.
+                    let new_status =
+                        json_str_opt(proj, "status").unwrap_or_else(|| "active".to_string());
                     tx.execute(
                         "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, \
-                         frozen_at, assigned_folder_path, merged_into, merged_at, is_imported, updated_at) \
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 1, ?10)",
+                         frozen_at, assigned_folder_path, merged_into, merged_at, client_name, status, is_imported, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 1, ?12)",
                         rusqlite::params![
                             name,
                             json_str(proj, "color"),
@@ -674,6 +740,8 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
                             json_str_opt(proj, "assigned_folder_path"),
                             json_str_opt(proj, "merged_into"),
                             json_str_opt(proj, "merged_at"),
+                            json_str_opt(proj, "client_name"),
+                            new_status,
                             updated_at,
                         ],
                     ).map_err(|e| e.to_string())?;
@@ -689,6 +757,69 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
             diag_proj_updated.len(), diag_proj_updated,
             diag_proj_local_wins
         ));
+    }
+
+    // Merge clients (m24 entity). Identified by NAME (stable cross-machine key,
+    // like projects). Last-writer-wins on updated_at. A local tombstone newer
+    // than the incoming row blocks resurrection.
+    if let Some(clients) = archive.pointer("/data/clients").and_then(|v| v.as_array()) {
+        for c in clients {
+            let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            if name.is_empty() {
+                continue;
+            }
+            let updated_at = c.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+            if local_tombstone_covers(&tx, "clients", name, updated_at) {
+                continue;
+            }
+            let local_ts: Option<String> = tx
+                .query_row(
+                    "SELECT updated_at FROM clients WHERE name = ?1",
+                    [name],
+                    |row| row.get(0),
+                )
+                .ok();
+            let color = json_str_opt(c, "color").unwrap_or_else(|| "#38bdf8".to_string());
+            match local_ts {
+                Some(lt) if normalize_ts(&lt) >= normalize_ts(updated_at) => { /* local wins */ }
+                Some(_) => {
+                    tx.execute(
+                        "UPDATE clients SET contact = ?1, address = ?2, tax_id = ?3, currency = ?4, \
+                         default_hourly_rate = ?5, color = ?6, archived_at = ?7, updated_at = ?8 WHERE name = ?9",
+                        rusqlite::params![
+                            json_str_opt(c, "contact"),
+                            json_str_opt(c, "address"),
+                            json_str_opt(c, "tax_id"),
+                            json_str_opt(c, "currency"),
+                            json_f64_opt(c, "default_hourly_rate"),
+                            color,
+                            json_str_opt(c, "archived_at"),
+                            updated_at,
+                            name,
+                        ],
+                    ).map_err(|e| e.to_string())?;
+                }
+                None => {
+                    tx.execute(
+                        "INSERT INTO clients (name, contact, address, tax_id, currency, \
+                         default_hourly_rate, color, archived_at, created_at, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        rusqlite::params![
+                            name,
+                            json_str_opt(c, "contact"),
+                            json_str_opt(c, "address"),
+                            json_str_opt(c, "tax_id"),
+                            json_str_opt(c, "currency"),
+                            json_f64_opt(c, "default_hourly_rate"),
+                            color,
+                            json_str_opt(c, "archived_at"),
+                            json_str_opt(c, "created_at"),
+                            updated_at,
+                        ],
+                    ).map_err(|e| e.to_string())?;
+                }
+            }
+        }
     }
 
     // Build ID maps once: remote ID → name, local name → ID
@@ -1213,19 +1344,25 @@ pub fn verify_merge_integrity(conn: &rusqlite::Connection) -> Result<(), String>
         log::warn!("Sync verify: fixed {} applications with orphan project_id", orphan_apps);
     }
 
-    // Clear merge markers pointing at projects that don't exist locally.
-    // A dangling merged_into makes the per-stage time rollup silently drop the
-    // child's time (no parent row to attribute it to). The marker is
-    // re-established by a future sync once the parent project row arrives.
+    // Clear merge markers ONLY when the parent was genuinely DELETED (a parent
+    // tombstone exists) — not merely absent. During a multi-step converge the
+    // parent row can lag its children for a window; unconditionally nulling the
+    // marker then (the old behaviour) silently un-merged projects and re-activated
+    // the stage. A dangling marker is harmless meanwhile: the time rollup
+    // LEFT-JOINs the parent and falls back to the child's own id, so no time is
+    // lost or double-counted while we wait for the parent row to arrive.
+    // Comparison is case-insensitive to match the rollup join (lower(name)).
     let dangling_merged = conn.execute(
         "UPDATE projects SET merged_into = NULL, merged_at = NULL \
          WHERE merged_into IS NOT NULL \
-           AND merged_into NOT IN (SELECT name FROM projects)",
+           AND lower(merged_into) NOT IN (SELECT lower(name) FROM projects) \
+           AND lower(merged_into) IN \
+               (SELECT lower(sync_key) FROM tombstones WHERE table_name = 'projects')",
         [],
     ).map_err(|e| e.to_string())?;
     if dangling_merged > 0 {
         log::warn!(
-            "Sync verify: cleared {} dangling merged_into markers (parent project missing locally)",
+            "Sync verify: cleared {} merge markers whose parent was deleted (tombstoned)",
             dangling_merged
         );
     }
@@ -1491,14 +1628,21 @@ mod tests {
     }
 
     #[test]
-    fn verify_clears_dangling_merged_into() {
+    fn verify_clears_merge_marker_only_when_parent_tombstoned() {
+        // Regresja krytyczna ("projekty zmergowane przestaly byc zmergowane"):
+        // podczas wielokrokowej konwergencji wiersz rodzica potrafi chwilowo nie
+        // dotrzec przed dzieckiem. Stary kod bezwarunkowo zerowal merged_into gdy
+        // rodzic byl NIEOBECNY -> ciche rozmergowanie. Teraz marker czyscimy TYLKO
+        // gdy rodzic zostal naprawde USUNIETY (istnieje jego tombstone).
         let conn = open_test_db();
+        // 1) Rodzic tylko nieobecny (brak tombstona) -> marker MUSI przezyc.
         conn.execute(
             "INSERT INTO projects (name, merged_into, merged_at, updated_at) \
-             VALUES ('child-dangling', 'missing-parent', '2026-06-10 10:00:00', '2026-06-10 10:00:00')",
+             VALUES ('child-pending', 'not-yet-arrived', '2026-06-10 10:00:00', '2026-06-10 10:00:00')",
             [],
         )
         .unwrap();
+        // 2) Rodzic istnieje -> marker przezywa.
         conn.execute(
             "INSERT INTO projects (name, updated_at) VALUES ('parent', '2026-06-10 10:00:00')",
             [],
@@ -1510,28 +1654,34 @@ mod tests {
             [],
         )
         .unwrap();
+        // 3) Rodzic naprawde usuniety (tombstone) -> marker MUSI byc wyczyszczony.
+        conn.execute(
+            "INSERT INTO projects (name, merged_into, merged_at, updated_at) \
+             VALUES ('child-orphaned', 'deleted-parent', '2026-06-10 10:00:00', '2026-06-10 10:00:00')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO tombstones (table_name, sync_key, deleted_at) \
+             VALUES ('projects', 'deleted-parent', '2026-06-11 10:00:00')",
+            [],
+        )
+        .unwrap();
 
         verify_merge_integrity(&conn).unwrap();
 
-        let dangling: Option<String> = conn
+        let pending: Option<String> = conn
             .query_row(
-                "SELECT merged_into FROM projects WHERE name = 'child-dangling'",
+                "SELECT merged_into FROM projects WHERE name = 'child-pending'",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
-        assert!(
-            dangling.is_none(),
-            "merged_into wskazujace na nieistniejacy projekt musi byc wyczyszczone"
+        assert_eq!(
+            pending.as_deref(),
+            Some("not-yet-arrived"),
+            "marker rodzica jeszcze-nieobecnego (bez tombstona) musi przezyc verify"
         );
-        let dangling_at: Option<String> = conn
-            .query_row(
-                "SELECT merged_at FROM projects WHERE name = 'child-dangling'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(dangling_at.is_none(), "merged_at czyszczone razem z merged_into");
 
         let valid: Option<String> = conn
             .query_row(
@@ -1540,10 +1690,18 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(
-            valid.as_deref(),
-            Some("parent"),
-            "poprawne merged_into musi przetrwac verify"
+        assert_eq!(valid.as_deref(), Some("parent"), "poprawne merged_into musi przetrwac");
+
+        let orphaned: Option<String> = conn
+            .query_row(
+                "SELECT merged_into FROM projects WHERE name = 'child-orphaned'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            orphaned.is_none(),
+            "marker rodzica z tombstonem (naprawde usuniety) musi byc wyczyszczony"
         );
     }
 
@@ -1640,7 +1798,22 @@ mod tests {
                 frozen_at TEXT,
                 merged_into TEXT,
                 merged_at TEXT,
+                client_name TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
                 is_imported INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            CREATE TABLE clients (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                contact TEXT,
+                address TEXT,
+                tax_id TEXT,
+                currency TEXT,
+                default_hourly_rate REAL,
+                color TEXT NOT NULL DEFAULT '#38bdf8',
+                archived_at TEXT,
+                created_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
             );
             CREATE TABLE applications (
@@ -2038,6 +2211,163 @@ mod tests {
         assert_eq!(color, "#999999", "remote-wins fields must still be applied");
         assert_eq!(excluded.as_deref(), Some("2026-06-04 10:00:00"), "remote excluded_at must be applied");
         assert_eq!(updated, "2026-06-04 10:00:00", "remote updated_at must be applied");
+    }
+
+    #[test]
+    fn merge_carries_client_name_and_status_via_export_roundtrip() {
+        // Regresja krytyczna ("przypisanie klientow do projektow zniknelo"):
+        // eksport/merge demona ignorowal kolumny m24 (client_name, status), wiec
+        // przypisanie nie przezywalo sync (gubione na sciezce INSERT/konwergencji).
+        let master = open_test_db();
+        master
+            .execute(
+                "INSERT INTO projects (name, color, client_name, status, updated_at) \
+                 VALUES ('11_26_Metro', '#111111', 'METRO', 'done', '2026-06-20 10:00:00')",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        // INSERT path (projekt nowy na slave) — przypisanie musi dojechac.
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+        let (client, status): (Option<String>, String) = slave
+            .query_row(
+                "SELECT client_name, status FROM projects WHERE name = '11_26_Metro'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("project present on slave");
+        assert_eq!(client.as_deref(), Some("METRO"), "client_name musi przezyc sync (INSERT)");
+        assert_eq!(status, "done", "status musi przezyc sync (INSERT)");
+
+        // UPDATE path (projekt istnieje, lokalnie stary) — nowszy peer wygrywa.
+        slave
+            .execute(
+                "UPDATE projects SET client_name = 'STARY', status = 'active', \
+                 updated_at = '2026-06-19 10:00:00' WHERE name = '11_26_Metro'",
+                [],
+            )
+            .unwrap();
+        merge_incoming_data(&mut slave, &export).expect("re-merge into slave");
+        let (client2, status2): (Option<String>, String) = slave
+            .query_row(
+                "SELECT client_name, status FROM projects WHERE name = '11_26_Metro'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(client2.as_deref(), Some("METRO"), "nowszy peer nadpisuje client_name (UPDATE)");
+        assert_eq!(status2, "done", "nowszy peer nadpisuje status (UPDATE)");
+    }
+
+    #[test]
+    fn merge_preserves_client_name_on_old_peer_absent_key() {
+        // Stary peer (brak kluczy client_name/status) z nowszym updated_at NIE moze
+        // wyzerowac lokalnego przypisania — absent key = zachowaj (jak merged_into).
+        let mut conn = open_test_db();
+        conn.execute(
+            "INSERT INTO projects (name, color, client_name, status, updated_at) \
+             VALUES ('P', '#111111', 'METRO', 'done', '2026-06-01 10:00:00')",
+            [],
+        )
+        .unwrap();
+        let old_peer = serde_json::json!({
+            "data": { "projects": [{
+                "name": "P", "color": "#999999", "hourly_rate": null,
+                "created_at": "2026-06-01 09:00:00", "excluded_at": null, "frozen_at": null,
+                "updated_at": "2026-06-05 10:00:00"
+            }]}
+        });
+        merge_incoming_data(&mut conn, &old_peer.to_string()).expect("merge old peer");
+        let (client, status, color): (Option<String>, String, String) = conn
+            .query_row(
+                "SELECT client_name, status, color FROM projects WHERE name = 'P'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(client.as_deref(), Some("METRO"), "brak klucza client_name = zachowaj lokalne");
+        assert_eq!(status, "done", "brak klucza status = zachowaj lokalne");
+        assert_eq!(color, "#999999", "pola remote-wins (color) i tak sie aplikuja");
+    }
+
+    #[test]
+    fn merge_syncs_clients_entity_lww_and_tombstone() {
+        let mut conn = open_test_db();
+        // 1) Nowy klient z peera -> insert.
+        let a = serde_json::json!({
+            "data": { "clients": [{
+                "name": "METRO", "color": "#ff0000", "contact": "ania@metro",
+                "updated_at": "2026-06-10 10:00:00"
+            }]}
+        });
+        merge_incoming_data(&mut conn, &a.to_string()).expect("merge new client");
+        let (color, contact): (String, Option<String>) = conn
+            .query_row(
+                "SELECT color, contact FROM clients WHERE name = 'METRO'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .expect("client inserted");
+        assert_eq!(color, "#ff0000");
+        assert_eq!(contact.as_deref(), Some("ania@metro"));
+
+        // 2) Nowszy update wygrywa (LWW).
+        let b = serde_json::json!({
+            "data": { "clients": [{
+                "name": "METRO", "color": "#00ff00", "updated_at": "2026-06-12 10:00:00"
+            }]}
+        });
+        merge_incoming_data(&mut conn, &b.to_string()).expect("merge client update");
+        let color2: String = conn
+            .query_row("SELECT color FROM clients WHERE name = 'METRO'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(color2, "#00ff00", "nowszy updated_at wygrywa (LWW)");
+
+        // 3) Tombstone klienta usuwa wpis i odpina projekty.
+        conn.execute(
+            "INSERT INTO projects (name, client_name, updated_at) \
+             VALUES ('proj', 'METRO', '2026-06-12 10:00:00')",
+            [],
+        )
+        .unwrap();
+        let c = serde_json::json!({
+            "data": { "tombstones": [{
+                "table_name": "clients", "sync_key": "METRO", "deleted_at": "2026-06-13 10:00:00"
+            }]}
+        });
+        merge_incoming_data(&mut conn, &c.to_string()).expect("merge client tombstone");
+        let gone: i64 = conn
+            .query_row("SELECT count(*) FROM clients WHERE name = 'METRO'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(gone, 0, "tombstone klienta usuwa wpis");
+        let detached: Option<String> = conn
+            .query_row("SELECT client_name FROM projects WHERE name = 'proj'", [], |r| r.get(0))
+            .unwrap();
+        assert!(detached.is_none(), "usuniety klient odpina sie od projektu");
+    }
+
+    #[test]
+    fn checksum_detects_client_name_divergence() {
+        // Dwa peery identyczne poza client_name MUSZA sie roznic w checksumie,
+        // inaczej protokol uzna je za zsynchronizowane na zawsze (cichy rozjazd).
+        let a = open_test_db();
+        let b = open_test_db();
+        for c in [&a, &b] {
+            c.execute(
+                "INSERT INTO projects (name, color, status, updated_at) \
+                 VALUES ('P', '#111111', 'active', '2026-06-01 10:00:00')",
+                [],
+            )
+            .unwrap();
+        }
+        a.execute("UPDATE projects SET client_name = 'METRO' WHERE name = 'P'", [])
+            .unwrap();
+        let ha = crate::lan_common::compute_table_hash(&a, "projects");
+        let hb = crate::lan_common::compute_table_hash(&b, "projects");
+        assert_ne!(ha, hb, "rozjazd client_name musi byc widoczny w checksumie");
     }
 
     #[test]
@@ -2633,6 +2963,11 @@ mod tests {
                  project_id INTEGER NOT NULL DEFAULT 0,
                  start_time TEXT,
                  title TEXT
+             );
+             CREATE TABLE clients (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 name TEXT NOT NULL UNIQUE,
+                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
              );
              CREATE TABLE tombstones (
                  id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -47,6 +47,9 @@ pub(crate) const DROP_PROJECTS_TOMBSTONE_TRIGGER_SQL: &str =
 pub(crate) const DROP_MANUAL_SESSIONS_TOMBSTONE_TRIGGER_SQL: &str =
     "DROP TRIGGER IF EXISTS trg_manual_sessions_tombstone";
 
+pub(crate) const DROP_CLIENTS_TOMBSTONE_TRIGGER_SQL: &str =
+    "DROP TRIGGER IF EXISTS trg_clients_tombstone";
+
 /// Mirror of resources/sql/schema.sql — sync_key = project name.
 pub(crate) const PROJECTS_TOMBSTONE_TRIGGER_SQL: &str =
     "CREATE TRIGGER IF NOT EXISTS trg_projects_tombstone
@@ -67,18 +70,30 @@ pub(crate) const MANUAL_SESSIONS_TOMBSTONE_TRIGGER_SQL: &str =
          VALUES ('manual_sessions', OLD.id, OLD.project_id || '|' || OLD.start_time || '|' || OLD.title);
      END;";
 
-/// All four production tombstone triggers — for code paths that must run
+/// Mirror of resources/sql/schema.sql — sync_key = client name (m24 entity).
+pub(crate) const CLIENTS_TOMBSTONE_TRIGGER_SQL: &str =
+    "CREATE TRIGGER IF NOT EXISTS trg_clients_tombstone
+     AFTER DELETE ON clients
+     FOR EACH ROW
+     BEGIN
+         INSERT INTO tombstones (table_name, record_id, sync_key)
+         VALUES ('clients', OLD.id, OLD.name);
+     END;";
+
+/// All production tombstone triggers — for code paths that must run
 /// technical (non-user-intent) DELETEs without minting tombstones.
-pub(crate) const DROP_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 4] = [
+pub(crate) const DROP_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 5] = [
     DROP_SESSIONS_TOMBSTONE_TRIGGER_SQL,
     DROP_APPLICATIONS_TOMBSTONE_TRIGGER_SQL,
     DROP_PROJECTS_TOMBSTONE_TRIGGER_SQL,
     DROP_MANUAL_SESSIONS_TOMBSTONE_TRIGGER_SQL,
+    DROP_CLIENTS_TOMBSTONE_TRIGGER_SQL,
 ];
 
-pub(crate) const CREATE_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 4] = [
+pub(crate) const CREATE_ALL_TOMBSTONE_TRIGGERS_SQL: [&str; 5] = [
     SESSIONS_TOMBSTONE_TRIGGER_SQL,
     APPLICATIONS_TOMBSTONE_TRIGGER_SQL,
     PROJECTS_TOMBSTONE_TRIGGER_SQL,
     MANUAL_SESSIONS_TOMBSTONE_TRIGGER_SQL,
+    CLIENTS_TOMBSTONE_TRIGGER_SQL,
 ];
