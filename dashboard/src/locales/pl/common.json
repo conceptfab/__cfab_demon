@@ -454,7 +454,8 @@
       "weights_reset": "Wagi modelu AI zostały zresetowane — historia korekt zachowana."
     },
     "batch": {
-      "tooltip_requires_auto_safe": "Najpierw włącz tryb Auto Safe."
+      "tooltip_requires_auto_safe": "Najpierw włącz tryb Auto Safe.",
+      "tooltip_requires_save": "Zapisz ustawienia modelu, aby uruchomić Auto-safe."
     },
     "folder_scan": {
       "title": "Nauka z folderów projektów",
@@ -544,6 +545,7 @@
       "reject": "Odrzuć",
       "manual": "Ręcznie",
       "auto_safe_runs_vs_rollback": "Przebiegi Auto-safe vs wycofania",
+      "no_auto_safe_runs_yet": "Brak uruchomień Auto-safe w tym okresie. Włącz tryb Auto-safe i kliknij „Uruchom auto-safe”.",
       "assigned": "Przypisane",
       "runs": "Uruchomienia",
       "rollbacks": "Wycofania",
@@ -1950,6 +1952,7 @@
     "suggests_a_project_in_the_menu_requires_60_confidence": "Podpowiada projekt w menu (wymaga >50% pewności).",
     "auto_safe": "Auto-safe:",
     "automatically_assigns_sessions_requires_85_confidence_an": "Samodzielnie przypisuje sesje (wymaga >85% pewności i silnych dowodów).",
+    "mode_change_requires_save": "Zmiana trybu działa dopiero po kliknięciu „Zapisz ustawienia modelu”. Dopóki nie zapiszesz, przycisk „Uruchom auto-safe” pozostaje nieaktywny.",
     "k_4_optimal_learning_settings": "4. Optymalne ustawienia nauki",
     "k_1_model_operation_mode_suggest": "1. Tryb działania modelu: suggest",
     "suggest_min_confidence_0_4_0_5_lower_current_0_6": "2. Suggest Min Confidence: 0.50 (domyślne i optymalne)",
@@ -2080,7 +2083,7 @@
     "lan_sync_device_pairing": "Parowanie urządzeń – przed synchronizacją urządzenia muszą być sparowane za pomocą 6-cyfrowego kodu (TTL 5 min, maks. 5 prób). Po sparowaniu slave przechowuje secret mastera dla przyszłych synchronizacji.",
     "lan_sync_firewall": "Automatyczny Firewall – przy pierwszym uruchomieniu daemon tworzy reguły Windows Firewall dla UDP 47892 (discovery) i TCP 47891 (serwer sync) dla wszystkich profili sieciowych (prywatna, publiczna, domena). Jeśli daemon nie ma uprawnień administratora, ostrzeżenie jest logowane — reguły trzeba dodać ręcznie.",
     "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery automatycznie odczytuje maski podsieci z interfejsów sieciowych i oblicza poprawny adres broadcast. Odpowiedzi na zapytania discover są wysyłane bezpośrednio do pytającego (unicast) dla niezawodności gdy broadcast jest blokowany.",
-    "lan_sync_background_interval": "Automatyczny sync w tle – gdy ustawiony jest interwał (4h/8h/12h/24h/48h), TIMEFLOW automatycznie synchronizuje się z pierwszym dostępnym peerem w tle, bez konieczności ręcznej akcji.",
+    "lan_sync_background_interval": "Automatyczny sync w tle – gdy ustawiony jest interwał (4h/8h/12h/24h/48h), TIMEFLOW automatycznie synchronizuje się z pierwszym dostępnym peerem w tle, bez konieczności ręcznej akcji. Ustawiony interwał to minimalny odstęp między automatycznymi synchronizacjami – liczony od ostatniej zakończonej sync, niezależnie od tego, który mechanizm ją wyzwolił, więc dwie sesje nie uruchomią się jedna po drugiej. Ręczna synchronizacja („Synchronizuj” / „Force ⚡”) działa natychmiast i nie podlega temu odstępowi.",
     "online_sync_sse_realtime": "Powiadomienia w czasie rzeczywistym – gdy online sync jest włączony, TIMEFLOW utrzymuje połączenie z serwerem. Gdy inne urządzenie wyśle dane, Twoje urządzenie jest natychmiast powiadamiane i automatycznie pobiera aktualizację.",
     "lan_sync_setup_title": "Pierwsza konfiguracja LAN Sync",
     "lan_sync_setup_what_it_does": "Co robi: LAN Sync wymienia dane bezpośrednio między dwiema instancjami TIMEFLOW w tej samej sieci — bez serwera, chmury ani konta.",

@@ -349,8 +349,10 @@ pub async fn run_lan_sync(
     peer_port: u16,
     _since: String,
     force: Option<bool>,
+    background: Option<bool>,
 ) -> Result<LanSyncResult, String> {
     let force = force.unwrap_or(false);
+    let background = background.unwrap_or(false);
     ensure_private_peer(&peer_ip)?;
     sync_log(&format!(
         "LAN sync: delegating to daemon for peer {}:{}{}",
@@ -411,6 +413,7 @@ pub async fn run_lan_sync(
         "peer_port": peer_port,
         "peer_device_id": peer_device_id,
         "force": force,
+        "background": background,
     });
 
     let _trigger_result = tokio::task::spawn_blocking(move || {

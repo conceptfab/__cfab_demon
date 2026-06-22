@@ -454,7 +454,8 @@
       "weights_reset": "Model weights have been reset — feedback history preserved."
     },
     "batch": {
-      "tooltip_requires_auto_safe": "Enable Auto Safe mode first."
+      "tooltip_requires_auto_safe": "Enable Auto Safe mode first.",
+      "tooltip_requires_save": "Save model settings to run Auto-safe."
     },
     "folder_scan": {
       "title": "Learn from Project Folders",
@@ -544,6 +545,7 @@
       "reject": "Reject",
       "manual": "Manual",
       "auto_safe_runs_vs_rollback": "Auto-safe runs vs rollback",
+      "no_auto_safe_runs_yet": "No Auto-safe runs in this period. Enable Auto-safe mode and click “Run auto-safe”.",
       "assigned": "Assigned",
       "runs": "Runs",
       "rollbacks": "Rollbacks",
@@ -1950,6 +1952,7 @@
     "suggests_a_project_in_the_menu_requires_60_confidence": "Suggests a project in the menu (requires >50% confidence).",
     "auto_safe": "Auto-safe:",
     "automatically_assigns_sessions_requires_85_confidence_an": "Automatically assigns sessions (requires >85% confidence and strong evidence).",
+    "mode_change_requires_save": "A mode change only takes effect after you click “Save model settings”. Until you save, the “Run auto-safe” button stays disabled.",
     "k_4_optimal_learning_settings": "4. Optimal learning settings",
     "k_1_model_operation_mode_suggest": "1. Model operation mode: suggest",
     "suggest_min_confidence_0_4_0_5_lower_current_0_6": "2. Suggest Min Confidence: 0.50 (default and optimal)",
@@ -2080,7 +2083,7 @@
     "lan_sync_device_pairing": "Device Pairing – before syncing, devices must be paired using a 6-digit code (TTL 5 min, max 5 attempts). After pairing, the slave stores the master's secret for future syncs.",
     "lan_sync_firewall": "Automatic Firewall – on first startup, the daemon creates Windows Firewall rules for UDP 47892 (discovery) and TCP 47891 (sync server) for ALL network profiles (private, public, domain). If the daemon lacks admin privileges, a warning is logged and you may need to add the rules manually.",
     "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery reads actual subnet masks from network interfaces and calculates correct broadcast addresses. Discover responses are sent directly to the requester (unicast) for reliability when broadcast is blocked.",
-    "lan_sync_background_interval": "Background Sync Interval – when a sync interval is configured (4h/8h/12h/24h/48h), TIMEFLOW automatically syncs with the first available online peer in the background, even without manual action.",
+    "lan_sync_background_interval": "Background Sync Interval – when a sync interval is configured (4h/8h/12h/24h/48h), TIMEFLOW automatically syncs with the first available online peer in the background, even without manual action. The configured interval is the minimum gap between automatic syncs – measured from the last completed sync, regardless of which mechanism triggered it, so two sessions never run back-to-back. A manual sync (\"Sync\" / \"Force ⚡\") always runs immediately and is exempt from this gap.",
     "online_sync_sse_realtime": "Real-time Notifications – when online sync is enabled, TIMEFLOW maintains a live connection to the server. When another device pushes data, your device is instantly notified and pulls the update automatically.",
     "lan_sync_setup_title": "First LAN Sync setup",
     "lan_sync_setup_what_it_does": "What it does: LAN Sync exchanges data directly between two TIMEFLOW instances on the same network — no server, no cloud, no account needed.",

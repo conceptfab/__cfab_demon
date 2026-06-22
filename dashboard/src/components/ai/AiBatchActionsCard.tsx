@@ -15,6 +15,7 @@ interface AiBatchActionsCardProps {
   rollbackRunningLabel: string;
   rollbackHint: string;
   modeIsAutoSafe: boolean;
+  hasUnsavedAutoSafe?: boolean;
   runningAuto: boolean;
   rollingBack: boolean;
   canRollbackLastRun: boolean;
@@ -33,6 +34,7 @@ export function AiBatchActionsCard({
   rollbackRunningLabel,
   rollbackHint,
   modeIsAutoSafe,
+  hasUnsavedAutoSafe = false,
   runningAuto,
   rollingBack,
   canRollbackLastRun,
@@ -67,7 +69,9 @@ export function AiBatchActionsCard({
           <AppTooltip
             content={
               !modeIsAutoSafe
-                ? t('ai_page.batch.tooltip_requires_auto_safe')
+                ? hasUnsavedAutoSafe
+                  ? t('ai_page.batch.tooltip_requires_save')
+                  : t('ai_page.batch.tooltip_requires_auto_safe')
                 : undefined
             }
           >

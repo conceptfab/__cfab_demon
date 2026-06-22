@@ -195,13 +195,23 @@ export function useJobPool() {
 
       const state = loadLanSyncState();
       const since = state.peerSyncTimes?.[activePeer.device_id] || state.lastSyncAt || '1970-01-01T00:00:00Z';
-      await lanSyncApi.runLanSync(activePeer.ip, activePeer.dashboard_port, since);
+      // background=true → daemon enforces the full sync_interval_hours gate against
+      // the last COMPLETED sync, so this auto trigger never stacks a session right
+      // after a daemon- or peer-initiated one.
+      await lanSyncApi.runLanSync(activePeer.ip, activePeer.dashboard_port, since, false, true);
       await pollLanSyncUntilComplete();
 
       dispatchLanSyncDone(activePeer.machine_name);
       triggerRefresh('background_lan_sync_interval');
     } catch (e) {
-      logger.warn('[useJobPool] LAN sync interval failed:', e);
+      // A 429 means the daemon throttled this background attempt because the
+      // minimum interval since the last completed sync hasn't elapsed — expected,
+      // not a failure. Log it quietly; surface everything else as a warning.
+      if (e instanceof Error && /\b429\b/.test(e.message)) {
+        logger.log('[useJobPool] LAN sync interval skipped — min interval not elapsed yet');
+      } else {
+        logger.warn('[useJobPool] LAN sync interval failed:', e);
+      }
     } finally {
       isLanSyncingRef.current = false;
     }

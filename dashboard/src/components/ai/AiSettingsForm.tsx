@@ -181,7 +181,7 @@ export function AiSettingsForm({
           </label>
         </div>
 
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button className="h-9 min-w-[9rem]" onClick={onSave} disabled={saving}>
             <Save className="mr-2 size-4" />
             {saving

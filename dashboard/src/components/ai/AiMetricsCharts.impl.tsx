@@ -172,6 +172,13 @@ export function AiMetricsCharts({ metrics, loading }: AiMetricsChartsProps) {
                 <p className="text-xs text-muted-foreground">
                   {tr('ai_page.text.auto_safe_runs_vs_rollback')}
                 </p>
+                {(metricsSummary?.auto_runs ?? 0) === 0 ? (
+                  <div className="mt-2 flex h-56 items-center justify-center">
+                    <p className="max-w-[240px] text-center text-xs text-muted-foreground">
+                      {tr('ai_page.text.no_auto_safe_runs_yet')}
+                    </p>
+                  </div>
+                ) : (
                 <div className="mt-2 h-56">
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={metricsChartData}>
@@ -224,6 +231,7 @@ export function AiMetricsCharts({ metrics, loading }: AiMetricsChartsProps) {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
+                )}
               </div>
             </div>
           </>

@@ -35,8 +35,20 @@ export const scanLanSubnet = () =>
 export const buildTableHashesOnly = () =>
   invoke<TableHashes>('build_table_hashes_only');
 
-export const runLanSync = (peerIp: string, peerPort: number, since: string, force?: boolean) =>
-  invokeMutation<LanSyncResult>('run_lan_sync', { peerIp, peerPort, since, force: force ?? false });
+export const runLanSync = (
+  peerIp: string,
+  peerPort: number,
+  since: string,
+  force?: boolean,
+  background?: boolean,
+) =>
+  invokeMutation<LanSyncResult>('run_lan_sync', {
+    peerIp,
+    peerPort,
+    since,
+    force: force ?? false,
+    background: background ?? false,
+  });
 
 export const startLanServer = (port?: number) =>
   invoke<void>('start_lan_server', { port });

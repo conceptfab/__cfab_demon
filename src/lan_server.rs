@@ -1118,14 +1118,39 @@ fn handle_trigger_sync(
         peer_device_id: String,
         #[serde(default)]
         force: bool,
+        /// Background/auto trigger (interval scheduler) vs. an explicit user action.
+        /// Background syncs must respect the full configured interval; manual ones
+        /// only respect the short SYNC_COOLDOWN_SECS floor.
+        #[serde(default)]
+        background: bool,
     }
     let req: TriggerReq = match serde_json::from_str(body) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
-    if !req.force && state.secs_since_last_sync() < SYNC_COOLDOWN_SECS {
-        return (429, json_error("Sync completed recently, wait before retrying"));
+    // Minimum-interval guard. A forced (manual ⚡) sync bypasses it entirely.
+    // A background/auto sync must wait the full configured interval since the last
+    // COMPLETED sync — this is the single shared gate that prevents two sessions
+    // running back-to-back when both the daemon loop and the dashboard scheduler
+    // become due around the same time. A manual (non-force) sync only respects the
+    // short 30s floor so the user can always sync on demand.
+    if !req.force {
+        let min_gap = if req.background {
+            let hours = crate::config::load_lan_sync_settings().sync_interval_hours as u64;
+            (hours * 3600).max(SYNC_COOLDOWN_SECS)
+        } else {
+            SYNC_COOLDOWN_SECS
+        };
+        if state.secs_since_last_sync() < min_gap {
+            log::info!(
+                "LAN trigger-sync: skipped — {}s since last sync < min gap {}s (background={})",
+                state.secs_since_last_sync(),
+                min_gap,
+                req.background
+            );
+            return (429, json_error("Sync interval not elapsed yet"));
+        }
     }
 
     // Auto-clear stale sync lock: if sync_in_progress but DB not frozen and no active sync phase,
