@@ -207,7 +207,11 @@ export function useJobPool() {
       // A 429 means the daemon throttled this background attempt because the
       // minimum interval since the last completed sync hasn't elapsed — expected,
       // not a failure. Log it quietly; surface everything else as a warning.
-      if (e instanceof Error && /\b429\b/.test(e.message)) {
+      // Native Tauri invoke rejects with a raw string (Rust Err(String)), not an
+      // Error, so normalize before matching — otherwise the throttle would surface
+      // as a false failure on desktop.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/\b429\b/.test(msg)) {
         logger.log('[useJobPool] LAN sync interval skipped — min interval not elapsed yet');
       } else {
         logger.warn('[useJobPool] LAN sync interval failed:', e);

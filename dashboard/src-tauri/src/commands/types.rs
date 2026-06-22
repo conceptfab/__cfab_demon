@@ -37,6 +37,38 @@ pub struct Project {
     pub is_imported: i64,
     #[serde(default)]
     pub updated_at: String,
+    // m24: client→project assignment (by NAME) + project lifecycle status.
+    // `#[serde(default)]` keeps pre-m24 archives parseable (absent → None / "").
+    #[serde(default)]
+    pub client_name: Option<String>,
+    #[serde(default)]
+    pub status: String,
+}
+
+/// m24 client entity carried by delta archives (online sync). Mirrors the
+/// `clients` table; identified by NAME (portable across machines, like projects).
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct ClientRow {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub contact: Option<String>,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub tax_id: Option<String>,
+    #[serde(default)]
+    pub currency: Option<String>,
+    #[serde(default)]
+    pub default_hourly_rate: Option<f64>,
+    #[serde(default)]
+    pub color: Option<String>,
+    #[serde(default)]
+    pub archived_at: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[derive(Serialize)]
@@ -478,6 +510,10 @@ pub struct ExportMetadata {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct ExportData {
     pub projects: Vec<Project>,
+    // m24 clients entity. `#[serde(default)]` keeps pre-m24 archives importable
+    // (absent → empty). Carried by both full exports and delta archives.
+    #[serde(default)]
+    pub clients: Vec<ClientRow>,
     pub applications: Vec<ApplicationRow>,
     pub sessions: Vec<SessionRow>,
     pub manual_sessions: Vec<ManualSession>,

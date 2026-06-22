@@ -94,10 +94,24 @@ fn fnv1a_64(data: &[u8]) -> u64 {
 pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let (sql, count_sql) = match table {
         "projects" => {
+            // Content hash (mirrors the LAN export): a merge can leave two peers
+            // with identical name+updated_at but diverging merged_into/client_name/
+            // status, so hash the synced columns to keep the diagnostic accurate.
+            (
+                "SELECT COALESCE(group_concat( \
+                    name || '|' || COALESCE(color,'') || '|' || COALESCE(hourly_rate,'') || '|' || \
+                    COALESCE(excluded_at,'') || '|' || COALESCE(frozen_at,'') || '|' || \
+                    COALESCE(merged_into,'') || '|' || COALESCE(client_name,'') || '|' || \
+                    COALESCE(status,'') || '|' || updated_at, ';'), '') \
+                 FROM (SELECT * FROM projects ORDER BY name)",
+                "SELECT COUNT(*) FROM projects",
+            )
+        }
+        "clients" => {
             (
                 "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-                 FROM (SELECT name, updated_at FROM projects ORDER BY name)",
-                "SELECT COUNT(*) FROM projects",
+                 FROM (SELECT name, updated_at FROM clients ORDER BY name)",
+                "SELECT COUNT(*) FROM clients",
             )
         }
         "applications" => {
@@ -161,6 +175,7 @@ pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> St
 pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_export::TableHashes {
     super::delta_export::TableHashes {
         projects: compute_table_hash(conn, "projects"),
+        clients: compute_table_hash(conn, "clients"),
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),

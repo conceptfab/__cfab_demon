@@ -42,6 +42,10 @@ impl Drop for ConnectionGuard {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TableHashes {
     pub projects: String,
+    // m24 clients entity. `#[serde(default)]` keeps archives from pre-m24 peers
+    // (which omit the field) parseable.
+    #[serde(default)]
+    pub clients: String,
     pub applications: String,
     pub sessions: String,
     pub manual_sessions: String,
@@ -701,6 +705,7 @@ fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
 fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
     TableHashes {
         projects: compute_table_hash(conn, "projects"),
+        clients: compute_table_hash(conn, "clients"),
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
@@ -1659,6 +1664,7 @@ fn fetch_all_rows_params(
 impl PartialEq for TableHashes {
     fn eq(&self, other: &Self) -> bool {
         self.projects == other.projects
+            && self.clients == other.clients
             && self.applications == other.applications
             && self.sessions == other.sessions
             && self.manual_sessions == other.manual_sessions

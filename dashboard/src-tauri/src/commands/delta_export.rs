@@ -1,5 +1,5 @@
 use super::helpers::build_table_hashes;
-use super::types::{ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ManualSession, Project, SessionRow, Tombstone};
+use super::types::{ApplicationRow, AssignmentAutoRunRow, AssignmentFeedbackRow, ClientRow, ManualSession, Project, SessionRow, Tombstone};
 use crate::db;
 use serde::{Deserialize, Serialize};
 
@@ -17,12 +17,16 @@ pub struct TableHashes {
     pub assignment_feedback: String,
     #[serde(default)]
     pub assignment_auto_runs: String,
+    #[serde(default)]
+    pub clients: String,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DeltaData {
     #[serde(default)]
     pub projects: Vec<Project>,
+    #[serde(default)]
+    pub clients: Vec<ClientRow>,
     #[serde(default)]
     pub applications: Vec<ApplicationRow>,
     #[serde(default)]
@@ -75,8 +79,10 @@ pub fn build_delta_archive(
     // so the importer can resolve remote IDs → local IDs for sessions.
 
     // Projects (all — needed as lookup table for project_id resolution)
+    // client_name + status (m24) ride along so the client→project assignment and
+    // project status converge through online sync, mirroring the LAN export.
     let mut stmt = conn
-        .prepare("SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at
+        .prepare("SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, COALESCE(status, 'active')
                   FROM projects")
         .map_err(|e| e.to_string())?;
 
@@ -95,6 +101,33 @@ pub fn build_delta_archive(
                 merged_into: row.get(9)?,
                 merged_at: row.get(10)?,
                 updated_at: row.get(11)?,
+                client_name: row.get(12)?,
+                status: row.get(13)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    // Clients (m24 entity — always full, tiny reference table). Identified by name.
+    let mut stmt = conn
+        .prepare("SELECT name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at
+                  FROM clients")
+        .map_err(|e| e.to_string())?;
+
+    let clients: Vec<ClientRow> = stmt
+        .query_map([], |row| {
+            Ok(ClientRow {
+                name: row.get(0)?,
+                contact: row.get(1)?,
+                address: row.get(2)?,
+                tax_id: row.get(3)?,
+                currency: row.get(4)?,
+                default_hourly_rate: row.get(5)?,
+                color: row.get(6)?,
+                archived_at: row.get(7)?,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -244,8 +277,8 @@ pub fn build_delta_archive(
         .map_err(|e| e.to_string())?;
 
     log::info!(
-        "Delta export (since={}): projects={}, apps={}, sessions={}, manual={}, tombstones={}, feedback={}, auto_runs={}",
-        since, projects.len(), applications.len(), sessions.len(), manual_sessions.len(), tombstones.len(),
+        "Delta export (since={}): projects={}, clients={}, apps={}, sessions={}, manual={}, tombstones={}, feedback={}, auto_runs={}",
+        since, projects.len(), clients.len(), applications.len(), sessions.len(), manual_sessions.len(), tombstones.len(),
         assignment_feedback.len(), assignment_auto_runs.len()
     );
 
@@ -263,6 +296,7 @@ pub fn build_delta_archive(
         table_hashes,
         data: DeltaData {
             projects,
+            clients,
             applications,
             sessions,
             manual_sessions,

@@ -52,6 +52,7 @@ export function Sidebar({
           : t('layout.aria.collapse_sidebar')
       }
       aria-expanded={!collapsed}
+      aria-controls="app-sidebar"
       onClick={toggleSidebarCollapsed}
       onMouseDown={stopToggleMouseDown}
       className="hidden size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:flex [app-region:no-drag] [-webkit-app-region:no-drag]"
@@ -66,6 +67,7 @@ export function Sidebar({
 
   return (
     <aside
+      id="app-sidebar"
       className={cn(
         'fixed left-0 top-0 z-50 flex h-[100dvh] w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-border/35 bg-background shadow-2xl transition-[transform,width] duration-200 ease-out motion-reduce:transition-none md:z-40 md:h-screen md:translate-x-0 md:shadow-none',
         collapsed ? 'md:w-16' : 'md:w-56',

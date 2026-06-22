@@ -1,8 +1,8 @@
 use super::daily_store_bridge;
 use super::helpers::{run_app_blocking, timeflow_data_dir};
 use super::types::{
-    AppDailyData, ApplicationRow, DailyData, DateRange, ExportArchive, ExportData, ExportMetadata,
-    FileActivityExportRow, ManualSession, Project, SessionRow,
+    AppDailyData, ApplicationRow, ClientRow, DailyData, DateRange, ExportArchive, ExportData,
+    ExportMetadata, FileActivityExportRow, ManualSession, Project, SessionRow,
 };
 use crate::db;
 use rfd::AsyncFileDialog;
@@ -73,9 +73,9 @@ fn build_export_archive(
 
         // 2. Fetch Projects
         let project_query = if project_id.is_some() {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at FROM projects WHERE id = ?1"
+            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, COALESCE(status, 'active') FROM projects WHERE id = ?1"
         } else {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at FROM projects"
+            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, COALESCE(status, 'active') FROM projects"
         };
 
         let mut stmt = conn.prepare(project_query).map_err(|e| e.to_string())?;
@@ -94,6 +94,8 @@ fn build_export_archive(
                     merged_into: row.get(9)?,
                     merged_at: row.get(10)?,
                     updated_at: row.get(11)?,
+                    client_name: row.get(12)?,
+                    status: row.get(13)?,
                 })
             })
             .map_err(|e| e.to_string())?
@@ -114,11 +116,40 @@ fn build_export_archive(
                     merged_into: row.get(9)?,
                     merged_at: row.get(10)?,
                     updated_at: row.get(11)?,
+                    client_name: row.get(12)?,
+                    status: row.get(13)?,
                 })
             })
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| e.to_string())?
+        };
+
+        // Clients (m24 entity) — full table, tiny. Carried so a full export/seed
+        // propagates client definitions, mirroring the delta export.
+        let clients: Vec<ClientRow> = {
+            let mut stmt = conn
+                .prepare("SELECT name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at FROM clients")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(ClientRow {
+                        name: row.get(0)?,
+                        contact: row.get(1)?,
+                        address: row.get(2)?,
+                        tax_id: row.get(3)?,
+                        currency: row.get(4)?,
+                        default_hourly_rate: row.get(5)?,
+                        color: row.get(6)?,
+                        archived_at: row.get(7)?,
+                        created_at: row.get(8)?,
+                        updated_at: row.get(9)?,
+                    })
+                })
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| e.to_string())?;
+            rows
         };
 
         let project_ids: Vec<i64> = projects.iter().map(|p| p.id).collect();
@@ -411,6 +442,7 @@ fn build_export_archive(
             },
             data: ExportData {
                 projects,
+                clients,
                 applications,
                 sessions,
                 manual_sessions,

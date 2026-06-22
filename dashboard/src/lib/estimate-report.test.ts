@@ -113,6 +113,42 @@ describe('buildEstimateReportModel', () => {
     expect(model.projects[0].displayValue).toBeCloseTo(800, 6); // równo 800, nie 799,99
     expect(model.totalValue).toBeCloseTo(800, 6);
   });
+
+  it('scales a weighted value by CLOCK seconds, preserving the session multiplier', () => {
+    // Sesja z mnożnikiem: 3000 s czasu zegarowego, ale waga 1,5× → estimated_value (150)
+    // odzwierciedla weighted_hours (1,5), a NIE godziny zegarowe (≈0,833). Zaokrąglenie
+    // musi skalować wartość po stosunku ZEGAROWYM (displaySeconds / hours*3600), zostawiając
+    // wagę nietkniętą — regresja gdyby ktoś użył weighted_hours w mianowniku skalowania.
+    const PER_TOTAL_15: RoundingSettings = {
+      enabled: true,
+      intervalMinutes: 15,
+      mode: 'per_total',
+    };
+    const r = row({
+      seconds: 3000,
+      hours: 3000 / 3600,
+      weighted_hours: 1.5,
+      estimated_value: 150,
+      daily_seconds: [3000],
+      days: [{ date: '2026-01-01', seconds: 3000 }],
+    });
+    const model = buildEstimateReportModel([r], true, PER_TOTAL_15);
+    expect(model.projects[0].displaySeconds).toBe(3600); // 50 min → ceil 15-min → 60 min
+    // 150 × (3600 / 3000) = 180 — skalowane stosunkiem zegarowym, waga zachowana.
+    expect(model.projects[0].displayValue).toBeCloseTo(180, 6);
+  });
+
+  it('passes a weighted value through unchanged when rounding does not alter the total', () => {
+    const PER_TOTAL_60: RoundingSettings = {
+      enabled: true,
+      intervalMinutes: 60,
+      mode: 'per_total',
+    };
+    const r = row({ seconds: 3600, hours: 1, weighted_hours: 1.5, estimated_value: 150 });
+    const model = buildEstimateReportModel([r], true, PER_TOTAL_60);
+    expect(model.projects[0].displaySeconds).toBe(3600);
+    expect(model.projects[0].displayValue).toBeCloseTo(150, 6); // waga przechodzi bez zmian
+  });
 });
 
 describe('roundedEstimatesSummary', () => {

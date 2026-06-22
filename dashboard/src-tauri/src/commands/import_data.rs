@@ -354,6 +354,19 @@ fn apply_archive_tombstones(
             "manual_sessions" => {
                 apply_manual_session_tombstone(tx, sync_key, &t.deleted_at)?;
             }
+            "clients" => {
+                // sync_key = client name. Detach projects first (assignment becomes
+                // unset), mirroring the local delete_client path, then delete the
+                // client. Matches the LAN merge tombstone handling.
+                tx.execute(
+                    "UPDATE projects SET client_name = NULL \
+                     WHERE lower(client_name) = lower(?1)",
+                    [sync_key.as_str()],
+                )
+                .ok();
+                tx.execute("DELETE FROM clients WHERE name = ?1", [sync_key.as_str()])
+                    .ok();
+            }
             _ => {}
         }
     }
@@ -485,6 +498,11 @@ fn import_archive_into_tx(
                 .unwrap_or_default();
 
             if p.updated_at > local_updated_at {
+                // client_name / status (m24): absent or null in the archive means
+                // "preserve local" (COALESCE / NULLIF), so a pre-m24 export never
+                // wipes a local client assignment or status. Explicit re-assignment
+                // propagates; explicit unassignment (client_name → null) does not
+                // — an acceptable trade for online sync, which is server-mediated.
                 tx.execute(
                     "UPDATE projects
                      SET color = ?1,
@@ -493,8 +511,10 @@ fn import_archive_into_tx(
                          excluded_at = COALESCE(?4, excluded_at),
                          merged_into = COALESCE(?5, merged_into),
                          merged_at = COALESCE(?6, merged_at),
-                         updated_at = ?7
-                     WHERE id = ?8",
+                         client_name = COALESCE(?7, client_name),
+                         status = COALESCE(NULLIF(?8, ''), status, 'active'),
+                         updated_at = ?9
+                     WHERE id = ?10",
                     rusqlite::params![
                         p.color,
                         p.hourly_rate,
@@ -502,6 +522,8 @@ fn import_archive_into_tx(
                         p.excluded_at,
                         p.merged_into,
                         p.merged_at,
+                        p.client_name,
+                        p.status,
                         p.updated_at,
                         id
                     ],
@@ -510,9 +532,12 @@ fn import_archive_into_tx(
             }
             id
         } else {
+            // status is NOT NULL — a pre-m24 archive omits it (deserializes to "")
+            // so fall back to 'active' on insert.
+            let insert_status = if p.status.trim().is_empty() { "active" } else { p.status.as_str() };
             tx.execute(
-                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?7, ?8, ?9)",
-                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.frozen_at, p.merged_into, p.merged_at, p.updated_at]
+                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, client_name, status, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?7, ?8, ?9, ?10, ?11)",
+                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.frozen_at, p.merged_into, p.merged_at, p.client_name, insert_status, p.updated_at]
             ).map_err(|e| e.to_string())?;
             summary.projects_created += 1;
             let new_id = tx.last_insert_rowid();
@@ -520,6 +545,49 @@ fn import_archive_into_tx(
             new_id
         };
         project_mapping.insert(p.id, id);
+    }
+
+    // 1b. Merge clients (m24 entity). Identified by NAME, last-writer-wins on
+    // updated_at — same semantics as the projects merge above. Deletions arrive
+    // as tombstones (handled in apply_archive_tombstones).
+    for c in &archive.data.clients {
+        if c.name.trim().is_empty() {
+            continue;
+        }
+        let local_ts: Option<String> = tx
+            .query_row(
+                "SELECT updated_at FROM clients WHERE name = ?1",
+                [c.name.as_str()],
+                |row| row.get(0),
+            )
+            .ok();
+        let color = c.color.clone().unwrap_or_else(|| "#38bdf8".to_string());
+        match local_ts {
+            Some(ref lt) if lt >= &c.updated_at => { /* local wins */ }
+            Some(_) => {
+                tx.execute(
+                    "UPDATE clients SET contact = ?1, address = ?2, tax_id = ?3, currency = ?4, \
+                     default_hourly_rate = ?5, color = ?6, archived_at = ?7, updated_at = ?8 WHERE name = ?9",
+                    rusqlite::params![
+                        c.contact, c.address, c.tax_id, c.currency,
+                        c.default_hourly_rate, color, c.archived_at, c.updated_at, c.name
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO clients (name, contact, address, tax_id, currency, \
+                     default_hourly_rate, color, archived_at, created_at, updated_at) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    rusqlite::params![
+                        c.name, c.contact, c.address, c.tax_id, c.currency,
+                        c.default_hourly_rate, color, c.archived_at, c.created_at, c.updated_at
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
     }
 
     // 2. Map and Create Applications
@@ -1586,6 +1654,209 @@ mod tests {
         conn
     }
 
+    // ---- m24 online-sync parity (client_name / status / clients) ----
+
+    fn base_archive() -> super::super::types::ExportArchive {
+        use super::super::types::*;
+        ExportArchive {
+            version: "2.0".into(),
+            exported_at: "2026-06-01 00:00:00".into(),
+            machine_id: "test".into(),
+            export_type: "all_data".into(),
+            date_range: DateRange { start: String::new(), end: String::new() },
+            metadata: ExportMetadata {
+                project_id: None,
+                project_name: None,
+                total_sessions: 0,
+                total_seconds: 0,
+            },
+            data: ExportData {
+                projects: vec![],
+                clients: vec![],
+                applications: vec![],
+                sessions: vec![],
+                manual_sessions: vec![],
+                daily_files: std::collections::BTreeMap::new(),
+                tombstones: vec![],
+                assignment_feedback: vec![],
+                assignment_auto_runs: vec![],
+                file_activities: vec![],
+            },
+        }
+    }
+
+    fn proj_row(
+        name: &str,
+        updated_at: &str,
+        client_name: Option<&str>,
+        status: &str,
+    ) -> super::super::types::Project {
+        super::super::types::Project {
+            id: 0,
+            name: name.into(),
+            color: "#fff".into(),
+            hourly_rate: None,
+            created_at: "2026-01-01 00:00:00".into(),
+            excluded_at: None,
+            frozen_at: None,
+            merged_into: None,
+            merged_at: None,
+            assigned_folder_path: None,
+            is_imported: 1,
+            updated_at: updated_at.into(),
+            client_name: client_name.map(|s| s.to_string()),
+            status: status.into(),
+        }
+    }
+
+    fn client_row(name: &str, updated_at: &str) -> super::super::types::ClientRow {
+        super::super::types::ClientRow {
+            name: name.into(),
+            contact: None,
+            address: None,
+            tax_id: None,
+            currency: None,
+            default_hourly_rate: None,
+            color: Some("#abc".into()),
+            archived_at: None,
+            created_at: Some("2026-01-01 00:00:00".into()),
+            updated_at: updated_at.into(),
+        }
+    }
+
+    fn run_sync_import(
+        conn: &mut rusqlite::Connection,
+        archive: &super::super::types::ExportArchive,
+    ) {
+        let tx = conn.transaction().expect("tx");
+        import_archive_into_tx(&tx, archive, false, DailyFilesMode::Skip).expect("import");
+        tx.commit().expect("commit");
+    }
+
+    fn read_project_client(conn: &rusqlite::Connection, name: &str) -> (Option<String>, String) {
+        conn.query_row(
+            "SELECT client_name, status FROM projects WHERE name = ?1",
+            [name],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn online_sync_applies_client_name_and_status_to_existing_project() {
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (name, color, created_at, updated_at) \
+             VALUES ('P', '#fff', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        let mut a = base_archive();
+        a.data
+            .projects
+            .push(proj_row("P", "2026-02-01 00:00:00", Some("Acme"), "archived"));
+        run_sync_import(&mut conn, &a);
+        let (cn, st) = read_project_client(&conn, "P");
+        assert_eq!(cn.as_deref(), Some("Acme"), "client assignment must propagate");
+        assert_eq!(st, "archived", "status must propagate");
+    }
+
+    #[test]
+    fn online_sync_inserts_new_project_with_client_name_and_status() {
+        let mut conn = full_schema_conn();
+        let mut a = base_archive();
+        a.data
+            .projects
+            .push(proj_row("Q", "2026-02-01 00:00:00", Some("Beta"), "active"));
+        run_sync_import(&mut conn, &a);
+        let (cn, st) = read_project_client(&conn, "Q");
+        assert_eq!(cn.as_deref(), Some("Beta"));
+        assert_eq!(st, "active");
+    }
+
+    #[test]
+    fn online_sync_preserves_local_client_when_archive_omits_it() {
+        // A pre-m24 archive deserializes client_name → None, status → "".
+        // A newer such archive must NOT wipe a local client assignment/status.
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (name, color, client_name, status, created_at, updated_at) \
+             VALUES ('P', '#fff', 'Acme', 'archived', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        let mut a = base_archive();
+        a.data
+            .projects
+            .push(proj_row("P", "2026-03-01 00:00:00", None, ""));
+        run_sync_import(&mut conn, &a);
+        let (cn, st) = read_project_client(&conn, "P");
+        assert_eq!(cn.as_deref(), Some("Acme"), "absent client_name preserves local");
+        assert_eq!(st, "archived", "empty status preserves local");
+    }
+
+    #[test]
+    fn online_sync_merges_clients_last_writer_wins() {
+        let mut conn = full_schema_conn();
+        let mut insert = base_archive();
+        insert.data.clients.push(client_row("Acme", "2026-02-01 00:00:00"));
+        run_sync_import(&mut conn, &insert);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "client inserted");
+
+        // Older archive must lose (local wins on updated_at).
+        let mut older = base_archive();
+        let mut c_old = client_row("Acme", "2026-01-01 00:00:00");
+        c_old.contact = Some("OLD".into());
+        older.data.clients.push(c_old);
+        run_sync_import(&mut conn, &older);
+        let contact: Option<String> = conn
+            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(contact, None, "older archive must not overwrite (LWW)");
+
+        // Newer archive wins.
+        let mut newer = base_archive();
+        let mut c_new = client_row("Acme", "2026-03-01 00:00:00");
+        c_new.contact = Some("NEW".into());
+        newer.data.clients.push(c_new);
+        run_sync_import(&mut conn, &newer);
+        let contact: Option<String> = conn
+            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(contact.as_deref(), Some("NEW"), "newer archive wins");
+    }
+
+    #[test]
+    fn online_sync_client_tombstone_deletes_and_detaches_projects() {
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO clients (name, color, created_at, updated_at) \
+                 VALUES ('Acme', '#abc', '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+             INSERT INTO projects (name, color, client_name, status, created_at, updated_at) \
+                 VALUES ('P', '#fff', 'Acme', 'active', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        let mut a = base_archive();
+        a.data.tombstones.push(super::super::types::Tombstone {
+            id: None,
+            table_name: "clients".into(),
+            record_id: None,
+            record_uuid: None,
+            deleted_at: "2026-02-01 00:00:00".into(),
+            sync_key: Some("Acme".into()),
+        });
+        run_sync_import(&mut conn, &a);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "client deleted by tombstone");
+        let cn: Option<String> = conn
+            .query_row("SELECT client_name FROM projects WHERE name='P'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cn, None, "project detached from the deleted client");
+    }
+
     #[test]
     fn clear_synchronized_tables_does_not_mint_tombstones() {
         let mut conn = full_schema_conn();
@@ -1945,6 +2216,7 @@ mod tests {
     fn file_activities_roundtrip_through_serde() {
         let data = super::super::types::ExportData {
             projects: Vec::new(),
+            clients: Vec::new(),
             applications: Vec::new(),
             sessions: Vec::new(),
             manual_sessions: Vec::new(),
