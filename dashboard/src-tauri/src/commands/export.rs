@@ -73,12 +73,12 @@ fn build_export_archive(
 
         // 2. Fetch Projects
         let project_query = if project_id.is_some() {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, COALESCE(status, 'active') FROM projects WHERE id = ?1"
+            format!("{} WHERE id = ?1", timeflow_shared::sync::columns::PROJECT_SELECT)
         } else {
-            "SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, COALESCE(status, 'active') FROM projects"
+            timeflow_shared::sync::columns::PROJECT_SELECT.to_string()
         };
 
-        let mut stmt = conn.prepare(project_query).map_err(|e| e.to_string())?;
+        let mut stmt = conn.prepare(&project_query).map_err(|e| e.to_string())?;
         let projects: Vec<Project> = if let Some(pid) = project_id {
             stmt.query_map([pid], |row| {
                 Ok(Project {
@@ -457,6 +457,14 @@ fn build_export_archive(
     };
 
     Ok((archive, default_name))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn project_row_mapping_covers_all_columns() {
+        assert_eq!(timeflow_shared::sync::columns::PROJECT_COLUMNS.len(), 14);
+    }
 }
 
 #[tauri::command]

@@ -82,8 +82,7 @@ pub fn build_delta_archive(
     // client_name + status (m24) ride along so the client→project assignment and
     // project status converge through online sync, mirroring the LAN export.
     let mut stmt = conn
-        .prepare("SELECT id, name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at, client_name, COALESCE(status, 'active')
-                  FROM projects")
+        .prepare(timeflow_shared::sync::columns::PROJECT_SELECT)
         .map_err(|e| e.to_string())?;
 
     let projects: Vec<Project> = stmt
