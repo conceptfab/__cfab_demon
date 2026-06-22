@@ -81,15 +81,6 @@ pub(crate) fn disambiguate_name(
     }
 }
 
-/// FNV-1a 64-bit hash — deterministic, matches daemon's lan_common::fnv1a_64.
-fn fnv1a_64(data: &[u8]) -> u64 {
-    let mut hash: u64 = 14695981039346656037;
-    for byte in data {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(1099511628211);
-    }
-    hash
-}
 
 pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let (sql, count_sql) = match table {
@@ -169,7 +160,7 @@ pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> St
             row_count
         );
     }
-    format!("{:016x}", fnv1a_64(concat.as_bytes()))
+    timeflow_shared::sync::checksum::content_hash(&concat)
 }
 
 pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_export::TableHashes {
@@ -284,5 +275,17 @@ mod tests {
         assert!(validate_restore_source("relative/x.db").is_err());
         assert!(validate_restore_source("/tmp/../etc/passwd").is_err());
         assert!(validate_restore_source("/etc/passwd").is_err()); // brak rozszerzenia db
+    }
+
+    #[test]
+    fn projects_hash_matches_shared_algorithm() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, color TEXT, hourly_rate REAL,
+                excluded_at TEXT, frozen_at TEXT, merged_into TEXT, client_name TEXT, status TEXT, updated_at TEXT);
+             INSERT INTO projects (name,color,updated_at,status) VALUES ('Acme','#fff','2026-01-01 00:00:00','active');",
+        ).unwrap();
+        let h = compute_table_hash(&conn, "projects");
+        assert_eq!(h.len(), 32, "checksum musi być 32-znakowym hexem (shared content_hash)");
     }
 }

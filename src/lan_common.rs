@@ -10,16 +10,6 @@ static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
 static LOG_SETTINGS_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
 const LOG_SETTINGS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Deterministic 128-bit hash using SHA-256 (truncated to 128 bits).
-/// Stable across Rust compiler versions, unlike DefaultHasher.
-fn hash_128(data: &[u8]) -> u128 {
-    use sha2::{Sha256, Digest};
-    let result = Sha256::digest(data);
-    // Take first 16 bytes (128 bits) of the 32-byte SHA-256 digest
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&result[..16]);
-    u128::from_be_bytes(bytes)
-}
 
 /// Read device_id from config dir; create if missing.
 ///
@@ -238,7 +228,7 @@ pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
     let concat: String = conn
         .query_row(sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
-    format!("{:032x}", hash_128(concat.as_bytes()))
+    timeflow_shared::sync::checksum::content_hash(&concat)
 }
 
 /// Compute hashes for all sync tables, concatenated.
@@ -254,7 +244,7 @@ pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
 /// Generate a marker hash from tables_hash + timestamp + device_id.
 pub fn generate_marker_hash(tables_hash: &str, timestamp: &str, device_id: &str) -> String {
     let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    format!("{:032x}", hash_128(input.as_bytes()))
+    timeflow_shared::sync::checksum::content_hash(&input)
 }
 
 /// Najlepszy adres IPv4 LAN (interfejs wyjściowy), fallback None.
