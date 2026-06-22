@@ -316,25 +316,5 @@ pub fn normalize_datetime_for_sqlite_pub(s: &str) -> String {
 }
 
 fn normalize_datetime_for_sqlite(s: &str) -> String {
-    // Fast path: already in "YYYY-MM-DD HH:MM:SS" format (19 chars, no T, no Z)
-    if s.len() == 19 && !s.contains('T') && !s.ends_with('Z') {
-        return s.to_string();
-    }
-    // Try to parse as full ISO 8601 with timezone and convert to UTC
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
-        return dt
-            .with_timezone(&chrono::Utc)
-            .format("%Y-%m-%d %H:%M:%S")
-            .to_string();
-    }
-    // Fallback: simple formatting for already-plain timestamps
-    let s = s.replace('T', " ");
-    let s = s.trim_end_matches('Z');
-    if let Some(dot_pos) = s.find('.') {
-        s[..dot_pos].to_string()
-    } else if s.len() > 19 {
-        s[..19].to_string()
-    } else {
-        s.to_string()
-    }
+    timeflow_shared::sync::timestamp::normalize_datetime_for_sqlite(s)
 }
