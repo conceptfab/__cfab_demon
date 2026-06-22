@@ -6,6 +6,8 @@ import {
   loadLanguageSettings,
   loadSplitSettings,
   loadRoundingSettings,
+  loadSidebarSettings,
+  saveSidebarSettings,
   type WorkingHoursSettings,
   type AppLanguageCode,
   type SplitSettings,
@@ -25,9 +27,12 @@ interface SettingsState {
   setSplitSettings: (next: SplitSettings) => void;
   roundingSettings: RoundingSettings;
   setRoundingSettings: (next: RoundingSettings) => void;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   currencyCode: loadCurrencySettings().code,
   setCurrencyCode: (code) => set({ currencyCode: code }),
   chartAnimations: loadAppearanceSettings().chartAnimations,
@@ -40,4 +45,16 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setSplitSettings: (next) => set({ splitSettings: next }),
   roundingSettings: loadRoundingSettings(),
   setRoundingSettings: (next) => set({ roundingSettings: next }),
+  // Stan zwinięcia sidebara — utrwalany we wspólnym user_settings.json (write-through),
+  // by ta sama preferencja obowiązywała w oknie pulpitu i web UI.
+  sidebarCollapsed: loadSidebarSettings().collapsed,
+  setSidebarCollapsed: (collapsed) => {
+    saveSidebarSettings({ collapsed });
+    set({ sidebarCollapsed: collapsed });
+  },
+  toggleSidebarCollapsed: () => {
+    const next = !get().sidebarCollapsed;
+    saveSidebarSettings({ collapsed: next });
+    set({ sidebarCollapsed: next });
+  },
 }));

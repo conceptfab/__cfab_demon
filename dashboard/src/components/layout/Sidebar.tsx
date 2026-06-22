@@ -1,5 +1,5 @@
 import type { MouseEvent } from 'react';
-import { X } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
@@ -7,12 +7,18 @@ import { BugHunter } from '@/components/layout/BugHunter';
 import { SidebarNav } from '@/components/layout/SidebarNav';
 import { SidebarStatusPanel } from '@/components/layout/SidebarStatusPanel';
 import { useSidebarController } from '@/hooks/useSidebarController';
+import { useSettingsStore } from '@/store/settings-store';
 import { tryStartWindowDrag } from '@/lib/window-drag';
 import { isMacOS } from '@/lib/platform';
 
 function handleSidebarDragMouseDown(event: MouseEvent<HTMLDivElement>) {
   if (event.button !== 0) return;
   tryStartWindowDrag();
+}
+
+function stopToggleMouseDown(event: MouseEvent<HTMLButtonElement>) {
+  // Nie pozwól, by klik w przycisk zwijania uruchomił przeciąganie okna.
+  event.stopPropagation();
 }
 
 export function Sidebar({
@@ -26,11 +32,43 @@ export function Sidebar({
 }) {
   const { t } = useTranslation();
   const controller = useSidebarController({ onNavigate });
+  const collapsed = useSettingsStore((s) => s.sidebarCollapsed);
+  const toggleSidebarCollapsed = useSettingsStore(
+    (s) => s.toggleSidebarCollapsed,
+  );
+  // Na macOS natywne traffic lights (titleBarStyle: Overlay) nachodzą na lewy-
+  // górny róg, czyli na nagłówek sidebara — w trybie zwiniętym (64px) cały
+  // nagłówek jest pod nimi. Dlatego na macOS przycisk zwijania renderujemy tuż
+  // POD nagłówkiem (poza strefą traffic lights); na Windows/Linux zostaje w
+  // nagłówku obok tytułu.
+  const onMac = isMacOS();
+
+  const collapseToggle = (
+    <button
+      type="button"
+      aria-label={
+        collapsed
+          ? t('layout.aria.expand_sidebar')
+          : t('layout.aria.collapse_sidebar')
+      }
+      aria-expanded={!collapsed}
+      onClick={toggleSidebarCollapsed}
+      onMouseDown={stopToggleMouseDown}
+      className="hidden size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:flex [app-region:no-drag] [-webkit-app-region:no-drag]"
+    >
+      {collapsed ? (
+        <PanelLeftOpen className="size-4" />
+      ) : (
+        <PanelLeftClose className="size-4" />
+      )}
+    </button>
+  );
 
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-50 flex h-[100dvh] w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-border/35 bg-background shadow-2xl transition-transform duration-200 ease-out md:z-40 md:h-screen md:w-56 md:translate-x-0 md:shadow-none',
+        'fixed left-0 top-0 z-50 flex h-[100dvh] w-[min(20rem,calc(100vw-2rem))] flex-col border-r border-border/35 bg-background shadow-2xl transition-[transform,width] duration-200 ease-out motion-reduce:transition-none md:z-40 md:h-screen md:translate-x-0 md:shadow-none',
+        collapsed ? 'md:w-16' : 'md:w-56',
         isMobileOpen ? 'translate-x-0' : '-translate-x-full',
       )}
       style={isMobileOpen ? { transform: 'translateX(0)' } : undefined}
@@ -39,28 +77,47 @@ export function Sidebar({
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, react-doctor/no-static-element-interactions -- Tauri drag region, not a keyboard-navigable element */}
       <div
         data-tauri-drag-region
-        className="flex h-12 select-none items-center justify-between border-b border-border/25 px-4"
+        className={cn(
+          'flex h-12 select-none items-center justify-between border-b border-border/25 px-4',
+          collapsed && 'md:justify-center md:px-0',
+        )}
         onMouseDown={handleSidebarDragMouseDown}
       >
         <span
           className={cn(
             'text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground',
-            isMacOS() && 'md:hidden',
+            onMac && 'md:hidden',
+            collapsed && 'md:hidden',
           )}
         >
           TIMEFLOW
         </span>
-        <button
-          type="button"
-          aria-label={t('layout.aria.close_navigation')}
-          onClick={onClose}
-          className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:hidden"
-        >
-          <X className="size-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {!onMac && collapseToggle}
+          <button
+            type="button"
+            aria-label={t('layout.aria.close_navigation')}
+            onClick={onClose}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground md:hidden"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
       </div>
 
+      {onMac && (
+        <div
+          className={cn(
+            'hidden border-b border-border/25 py-1 md:flex',
+            collapsed ? 'justify-center px-2' : 'justify-end px-2',
+          )}
+        >
+          {collapseToggle}
+        </div>
+      )}
+
       <SidebarNav
+        collapsed={collapsed}
         currentPage={controller.currentPage}
         goToPage={controller.goToPage}
         sessionsAttentionTitle={controller.sessionsAttentionTitle}
@@ -68,7 +125,7 @@ export function Sidebar({
         unassignedSessions={controller.unassignedSessions}
       />
 
-      <SidebarStatusPanel {...controller} />
+      <SidebarStatusPanel collapsed={collapsed} {...controller} />
 
       <BugHunter
         isOpen={controller.isBugHunterOpen}

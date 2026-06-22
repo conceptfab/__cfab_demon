@@ -42,7 +42,9 @@
   "layout": {
     "aria": {
       "main_navigation": "Main navigation",
-      "close_navigation": "Close navigation"
+      "close_navigation": "Close navigation",
+      "collapse_sidebar": "Collapse sidebar",
+      "expand_sidebar": "Expand sidebar"
     },
     "nav": {
       "dashboard": "Dashboard",
@@ -2137,6 +2139,7 @@
     "online_sync_license_section": "License — paste your license key in Online Sync settings, click Activate, and the dashboard shows your plan, group, device count, and expiration date. License is tied to the device.",
     "online_sync_sftp_encryption_key": "SFTP encryption key — enter the encryption key in Settings > Online Sync > Encryption Key field. Generate a key using the 'Generate key' button next to the input. The key is stored locally and used for encrypting SFTP file transfers.",
     "dashboard_sidebar_backup_indicator": "Sidebar Backup indicator — the sidebar shows the last backup date and status. A warning icon appears when backup is overdue. Click to open the Data section.",
+    "dashboard_sidebar_collapse": "Collapsible sidebar — use the toggle at the top of the sidebar to collapse the navigation to a narrow icon-only rail (and expand it back). When collapsed, hover any icon to see its label and status in a tooltip. The choice is remembered and shared between the desktop window and the web UI. Available on desktop widths only; on mobile the sidebar stays a full drawer.",
     "dashboard_macos_native_window_controls": "Native window controls on macOS — TIMEFLOW uses the system traffic lights (red/yellow/green) in the top-left corner instead of custom minimize/maximize/close buttons. The TIMEFLOW label appears on the right side of the title bar. On Windows the custom controls on the right are kept.",
     "dashboard_mobile_navigation_drawer": "Mobile navigation — on narrow browser screens the sidebar moves into the top-left menu. Open it to switch sections; choosing a section closes it and leaves the full screen for content.",
     "dashboard_mobile_timeline_tap": "Activity timeline on phone — scroll horizontally to see the full day. Tap a session segment to open the assignment menu (same as right-click on desktop).",

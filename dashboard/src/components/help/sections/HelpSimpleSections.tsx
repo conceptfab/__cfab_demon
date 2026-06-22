@@ -35,6 +35,7 @@ export function HelpDashboardSection() {
         t18n('help_page.all_projects_overview_chart_showing_work_time_distributi'),
         t18n('help_page.timeline_states_loading_empty_and_error_messages_help_yo'),
         t18n('help_page.dashboard_sidebar_backup_indicator'),
+        t18n('help_page.dashboard_sidebar_collapse'),
         t18n('help_page.dashboard_macos_native_window_controls'),
         t18n('help_page.dashboard_mobile_navigation_drawer'),
         t18n('help_page.dashboard_mobile_timeline_tap'),

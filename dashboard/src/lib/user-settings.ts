@@ -291,6 +291,26 @@ const appearanceManager = createSettingsManager<AppearanceSettings>({
 export const loadAppearanceSettings = appearanceManager.load;
 export const saveAppearanceSettings = appearanceManager.save;
 
+export interface SidebarSettings {
+  collapsed: boolean;
+}
+const SIDEBAR_STORAGE_KEY = 'timeflow.settings.sidebar';
+export const DEFAULT_SIDEBAR_SETTINGS: SidebarSettings = {
+  collapsed: false,
+};
+const sidebarManager = createSettingsManager<SidebarSettings>({
+  key: SIDEBAR_STORAGE_KEY,
+  defaults: DEFAULT_SIDEBAR_SETTINGS,
+  normalize: (parsed) => ({
+    collapsed:
+      typeof parsed.collapsed === 'boolean'
+        ? parsed.collapsed
+        : DEFAULT_SIDEBAR_SETTINGS.collapsed,
+  }),
+});
+export const loadSidebarSettings = sidebarManager.load;
+export const saveSidebarSettings = sidebarManager.save;
+
 export interface SessionIndicatorSettings {
   showAiBadge: boolean;
   showScoreBreakdown: boolean;

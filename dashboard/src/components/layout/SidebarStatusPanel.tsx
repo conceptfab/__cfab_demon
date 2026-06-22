@@ -16,9 +16,12 @@ import { SidebarStatusIndicator } from '@/components/layout/SidebarStatusIndicat
 import { SidebarLanStatusRow } from '@/components/layout/SidebarLanStatusRow';
 import type { SidebarController } from '@/hooks/useSidebarController';
 
-type SidebarStatusPanelProps = SidebarController;
+type SidebarStatusPanelProps = SidebarController & {
+  collapsed?: boolean;
+};
 
 export function SidebarStatusPanel({
+  collapsed = false,
   aiModeStatusText,
   aiStatus,
   allUnassigned,
@@ -49,6 +52,7 @@ export function SidebarStatusPanel({
     <div className="space-y-1 p-2 pb-5">
       <div className="space-y-0.5">
         <SidebarStatusIndicator
+          collapsed={collapsed}
           icon={Cpu}
           label={t('layout.status.daemon')}
           statusText={
@@ -68,6 +72,7 @@ export function SidebarStatusPanel({
         />
 
         <SidebarStatusIndicator
+          collapsed={collapsed}
           icon={RefreshCw}
           label={t('layout.status.sync')}
           statusText={syncIndicator.label}
@@ -86,6 +91,7 @@ export function SidebarStatusPanel({
         />
 
         <SidebarLanStatusRow
+          collapsed={collapsed}
           goToPage={goToPage}
           handleLanScan={handleLanScan}
           handleLanSync={handleLanSync}
@@ -100,6 +106,7 @@ export function SidebarStatusPanel({
         />
 
         <SidebarStatusIndicator
+          collapsed={collapsed}
           icon={Brain}
           label={t('layout.status.ai_mode')}
           statusText={aiModeStatusText}
@@ -114,6 +121,7 @@ export function SidebarStatusPanel({
 
         {aiStatus?.is_training ? (
           <SidebarStatusIndicator
+            collapsed={collapsed}
             icon={Activity}
             label={t('layout.status.ai')}
             statusText={t('layout.status.training')}
@@ -123,6 +131,7 @@ export function SidebarStatusPanel({
           />
         ) : hasPendingAiTrainingData ? (
           <SidebarStatusIndicator
+            collapsed={collapsed}
             icon={Activity}
             label={t('layout.status.ai')}
             statusText={t('layout.status.new_data')}
@@ -135,6 +144,7 @@ export function SidebarStatusPanel({
         ) : null}
 
         <SidebarStatusIndicator
+          collapsed={collapsed}
           icon={ShieldCheck}
           label={t('layout.status.backup')}
           statusText={
@@ -163,11 +173,20 @@ export function SidebarStatusPanel({
         />
       </div>
 
-      <div className="flex items-center justify-between px-2.5 pt-1.5 border-t border-border/10">
+      <div
+        className={cn(
+          'border-t border-border/10 pt-1.5',
+          collapsed
+            ? 'flex flex-col items-center gap-1 px-0'
+            : 'flex items-center justify-between px-2.5',
+        )}
+      >
         <div className="flex items-center gap-1.5">
-          <span className="text-[9px] text-muted-foreground/40 font-mono">
-            v{status?.dashboard_version || '?.?.?'}
-          </span>
+          {!collapsed && (
+            <span className="text-[9px] text-muted-foreground/40 font-mono">
+              v{status?.dashboard_version || '?.?.?'}
+            </span>
+          )}
           {status?.version && !status.is_compatible && (
             <AppTooltip
               content={t('layout.tooltips.version_incompatibility', {
@@ -180,7 +199,12 @@ export function SidebarStatusPanel({
             </AppTooltip>
           )}
         </div>
-        <div className="flex items-center gap-0.5 sm:gap-1">
+        <div
+          className={cn(
+            'flex items-center gap-0.5 sm:gap-1',
+            collapsed && 'flex-col',
+          )}
+        >
           <AppTooltip content={t('layout.tooltips.bughunter')}>
             <button
               type="button"

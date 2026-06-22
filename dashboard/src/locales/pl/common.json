@@ -42,7 +42,9 @@
   "layout": {
     "aria": {
       "main_navigation": "Nawigacja główna",
-      "close_navigation": "Zamknij nawigację"
+      "close_navigation": "Zamknij nawigację",
+      "collapse_sidebar": "Zwiń pasek boczny",
+      "expand_sidebar": "Rozwiń pasek boczny"
     },
     "nav": {
       "dashboard": "Dashboard",
@@ -2137,6 +2139,7 @@
     "online_sync_license_section": "Licencja — wklej klucz licencyjny w ustawieniach Online Sync, kliknij Aktywuj. Dashboard pokaże plan, grupę, liczbę urządzeń i datę wygaśnięcia. Licencja jest powiązana z urządzeniem.",
     "online_sync_sftp_encryption_key": "Klucz szyfrowania SFTP — wprowadź klucz w Ustawienia > Online Sync > Klucz szyfrowania. Wygeneruj klucz przyciskiem 'Generuj klucz' obok pola. Klucz jest przechowywany lokalnie i używany do szyfrowania transferów SFTP.",
     "dashboard_sidebar_backup_indicator": "Wskaźnik backupu w sidebarze — sidebar pokazuje datę ostatniego backupu i status. Ikona ostrzeżenia pojawia się, gdy backup jest zaległy. Kliknij, aby otworzyć sekcję Dane.",
+    "dashboard_sidebar_collapse": "Zwijany pasek boczny — przyciskiem u góry paska bocznego zwijasz nawigację do wąskiego paska z samymi ikonami (i rozwijasz z powrotem). W trybie zwiniętym najedź na ikonę, aby zobaczyć jej etykietę i status w tooltipie. Wybór jest zapamiętywany i współdzielony między oknem pulpitu a web UI. Działa tylko na szerokościach desktopowych; na mobile sidebar pozostaje pełną szufladą.",
     "dashboard_macos_native_window_controls": "Natywne kontrolki okna na macOS — TIMEFLOW używa systemowych przycisków (czerwona/żółta/zielona kropka) w lewym górnym rogu zamiast własnych przycisków minimalizuj/maksymalizuj/zamknij. Etykieta TIMEFLOW pojawia się po prawej stronie paska tytułowego. Na Windows pozostają własne kontrolki po prawej.",
     "dashboard_mobile_navigation_drawer": "Nawigacja mobilna — na wąskich ekranach przeglądarki sidebar przechodzi do menu w lewym górnym rogu. Otwórz je, aby zmienić sekcję; wybór sekcji zamyka menu i zostawia cały ekran na treść.",
     "dashboard_mobile_timeline_tap": "Oś aktywności na telefonie — przewiń w poziomie, aby zobaczyć cały dzień. Dotknij segmentu sesji, aby otworzyć menu przypisania (to samo co prawy klik na desktopie).",
