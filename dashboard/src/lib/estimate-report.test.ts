@@ -10,13 +10,16 @@ import type { EstimateProjectRow } from '@/lib/db-types';
 import type { RoundingSettings } from '@/lib/rounding';
 
 function row(partial: Partial<EstimateProjectRow>): EstimateProjectRow {
+  // W realnych danych hours = seconds_f64/3600, seconds = round(seconds_f64) — domyślnie
+  // wyprowadzamy hours z seconds, żeby fixture był spójny (override przez partial.hours).
+  const seconds = partial.seconds ?? 3600;
   return {
     project_id: 1,
     project_name: 'P',
     project_color: '#111',
-    seconds: 3600,
-    hours: 1,
-    weighted_hours: 1,
+    seconds,
+    hours: seconds / 3600,
+    weighted_hours: seconds / 3600,
     project_hourly_rate: null,
     effective_hourly_rate: 100,
     estimated_value: 100,
@@ -89,6 +92,27 @@ describe('buildEstimateReportModel', () => {
     expect(model.totalSeconds).toBe(10800);
     expect(model.projects[0].displayValue).toBeCloseTo(300);
   });
+
+  it('rounded value is an exact multiple of rate — no grosz drift from float/round mismatch', () => {
+    // Regresja bugu z raportu: estimated_value liczone z NIEZAOKRĄGLONYCH godzin, a displaySeconds
+    // to pełne godziny (per_day). Skalowanie po row.seconds (= round) dawało 799,99 zamiast 800.
+    // FENG: 6,0869 h realne rozsiane na 8 dni → każdy dzień ceil do 1h = 8h × 100 = RÓWNO 800.
+    const hours = 6.0869;
+    const r = row({
+      hours, // float (≠ seconds/3600) — to niespójność, która ujawniała szum
+      seconds: Math.round(hours * 3600), // 21913
+      estimated_value: hours * 100,
+      daily_seconds: Array(8).fill(2739),
+      days: Array.from({ length: 8 }, (_, i) => ({
+        date: `2026-01-0${i + 1}`,
+        seconds: 2739,
+      })),
+    });
+    const model = buildEstimateReportModel([r], true, PER_DAY);
+    expect(model.projects[0].displaySeconds).toBe(28800); // 8 × pełna godzina
+    expect(model.projects[0].displayValue).toBeCloseTo(800, 6); // równo 800, nie 799,99
+    expect(model.totalValue).toBeCloseTo(800, 6);
+  });
 });
 
 describe('roundedEstimatesSummary', () => {
@@ -130,5 +154,22 @@ describe('roundedEstimatesSummary', () => {
     ];
     const out = roundedEstimatesSummary(rows, PER_DAY);
     expect(out?.seconds).toBe(10800); // 3600 + 7200
+  });
+
+  it('scales value against unrounded hours so 8h×100 sums to exactly 800', () => {
+    const hours = 6.0869;
+    const out = roundedEstimatesSummary(
+      [
+        row({
+          hours,
+          seconds: Math.round(hours * 3600),
+          estimated_value: hours * 100,
+          daily_seconds: Array(8).fill(2739),
+        }),
+      ],
+      PER_DAY,
+    );
+    expect(out?.seconds).toBe(28800);
+    expect(out?.value).toBeCloseTo(800, 6); // nie 799,99
   });
 });

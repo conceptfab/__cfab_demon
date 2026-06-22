@@ -43,11 +43,13 @@ export function EstimatesProjectsMobileList({
           row.seconds,
           row.daily_seconds,
         );
-        const altRatio =
-          altSec !== null && row.seconds > 0 ? altSec / row.seconds : null;
         const altHours = altSec !== null ? altSec / 3600 : null;
+        // Wartość skalujemy względem NIEZAOKRĄGLONYCH sekund (row.hours*3600), spójnie z
+        // backendowym estimated_value. Mianownik row.seconds (= round) dawał np. 799,99 zamiast 800.
         const altValue =
-          altRatio !== null ? row.estimated_value * altRatio : null;
+          altSec !== null && row.hours > 0
+            ? row.estimated_value * (altSec / (row.hours * 3600))
+            : null;
         return (
           <div
             key={row.project_id}
@@ -206,11 +208,13 @@ export function EstimatesProjectsDesktopTable({
             row.seconds,
             row.daily_seconds,
           );
-          const altRatio =
-            altSec !== null && row.seconds > 0 ? altSec / row.seconds : null;
           const altHours = altSec !== null ? altSec / 3600 : null;
+          // Wartość skalujemy względem NIEZAOKRĄGLONYCH sekund (row.hours*3600), spójnie z
+          // backendowym estimated_value. Mianownik row.seconds (= round) dawał np. 799,99 zamiast 800.
           const altValue =
-            altRatio !== null ? row.estimated_value * altRatio : null;
+            altSec !== null && row.hours > 0
+              ? row.estimated_value * (altSec / (row.hours * 3600))
+              : null;
           return (
             <div
               key={row.project_id}
