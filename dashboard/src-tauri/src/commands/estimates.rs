@@ -78,6 +78,22 @@ fn query_project_meta(conn: &rusqlite::Connection) -> Result<ProjectMetaById, St
         let row = row.map_err(|e| format!("Failed to read project metadata row: {}", e))?;
         out.insert(row.0, row);
     }
+
+    // Overlay PM's live client so estimates group by the SAME client the Clients
+    // panel shows — without requiring a manual "Sync from PM" first. No-op when
+    // PM is not configured (stored projects.client_name is kept as-is).
+    let pm_map = super::clients::load_pm_project_map(conn);
+    if !pm_map.is_empty() {
+        let canonical = super::clients::pm_canonical_map(&pm_map);
+        for meta in out.values_mut() {
+            meta.4 = super::clients::resolve_overlay_client(
+                &pm_map,
+                &canonical,
+                &meta.1,
+                meta.4.take(),
+            );
+        }
+    }
     Ok(out)
 }
 

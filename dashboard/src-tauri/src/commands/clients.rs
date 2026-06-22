@@ -35,7 +35,9 @@ fn group_of(raw_upper: &str, raw_set: &HashSet<String>) -> String {
 /// PM LIVE overlay: lower(prj_full_name) → (client_group UPPER, status lower).
 /// Empty when PM is not configured. Lets the panel reflect PM's real client +
 /// status WITHOUT requiring a manual "Sync from PM" first.
-fn load_pm_project_map(conn: &rusqlite::Connection) -> HashMap<String, (String, String)> {
+pub(crate) fn load_pm_project_map(
+    conn: &rusqlite::Connection,
+) -> HashMap<String, (String, String)> {
     let mut out: HashMap<String, (String, String)> = HashMap::new();
     let Some(folder) = super::pm::resolve_work_folder(conn) else {
         return out;
@@ -62,6 +64,41 @@ fn load_pm_project_map(conn: &rusqlite::Connection) -> HashMap<String, (String, 
         out.insert(full, (group, p.prj_status.trim().to_lowercase()));
     }
     out
+}
+
+/// Lower(client) → canonical UPPER group, derived from a PM map. Used to fold a
+/// stored local client variant onto PM's canonical spelling.
+pub(crate) fn pm_canonical_map(
+    pm_map: &HashMap<String, (String, String)>,
+) -> HashMap<String, String> {
+    pm_map
+        .values()
+        .filter(|(g, _)| !g.is_empty())
+        .map(|(g, _)| (g.to_lowercase(), g.clone()))
+        .collect()
+}
+
+/// Resolves a project's client after PM's live overlay — the single rule shared
+/// by every view (Clients panel, estimates). PM's grouped client wins; otherwise
+/// the stored value is kept but normalized to PM's canonical spelling.
+pub(crate) fn resolve_overlay_client(
+    pm_map: &HashMap<String, (String, String)>,
+    canonical: &HashMap<String, String>,
+    project_name: &str,
+    stored: Option<String>,
+) -> Option<String> {
+    let mut client = stored;
+    if let Some((group, _status)) = pm_map.get(&project_name.to_lowercase()) {
+        if !group.is_empty() {
+            client = Some(group.clone());
+        }
+    }
+    if let Some(cn) = client.as_ref() {
+        if let Some(canon) = canonical.get(&cn.to_lowercase()) {
+            client = Some(canon.clone());
+        }
+    }
+    client
 }
 
 /// PM LIVE client set: (group UPPER, color, contact), grouped + colored exactly
@@ -587,23 +624,10 @@ pub async fn projects_with_client(app: AppHandle) -> Result<Vec<ProjectClientRow
         // real status comes from frozen_at/excluded_at above (Projects tab parity).
         let pm_map = load_pm_project_map(conn);
         if !pm_map.is_empty() {
-            let canonical: HashMap<String, String> = pm_map
-                .values()
-                .filter(|(g, _)| !g.is_empty())
-                .map(|(g, _)| (g.to_lowercase(), g.clone()))
-                .collect();
+            let canonical = pm_canonical_map(&pm_map);
             for r in out.iter_mut() {
-                if let Some((group, _status)) = pm_map.get(&r.name.to_lowercase()) {
-                    if !group.is_empty() {
-                        r.client_name = Some(group.clone());
-                    }
-                }
-                // Normalize remaining local client variant → PM canonical.
-                if let Some(cn) = r.client_name.as_ref() {
-                    if let Some(canon) = canonical.get(&cn.to_lowercase()) {
-                        r.client_name = Some(canon.clone());
-                    }
-                }
+                r.client_name =
+                    resolve_overlay_client(&pm_map, &canonical, &r.name, r.client_name.take());
             }
         }
         Ok(out)
@@ -823,8 +847,49 @@ fn empty_summary(client_name: String, color: String) -> ClientSummary {
 
 #[cfg(test)]
 mod tests {
-    use super::group_of;
-    use std::collections::HashSet;
+    use super::{group_of, pm_canonical_map, resolve_overlay_client};
+    use std::collections::{HashMap, HashSet};
+
+    #[test]
+    fn overlay_resolves_client_like_clients_panel() {
+        let mut pm_map: HashMap<String, (String, String)> = HashMap::new();
+        // PM knows this project and maps it to METRO (by lower(prj_full_name)).
+        pm_map.insert(
+            "11_26_metro_visuals".to_string(),
+            ("METRO".to_string(), "aktywny".to_string()),
+        );
+        let canonical = pm_canonical_map(&pm_map);
+
+        // PM's grouped client wins, even when nothing is stored in the DB column.
+        assert_eq!(
+            resolve_overlay_client(&pm_map, &canonical, "11_26_Metro_Visuals", None),
+            Some("METRO".to_string())
+        );
+        // PM also overrides a stale stored value.
+        assert_eq!(
+            resolve_overlay_client(
+                &pm_map,
+                &canonical,
+                "11_26_Metro_Visuals",
+                Some("PROFIL".to_string())
+            ),
+            Some("METRO".to_string())
+        );
+        // Project unknown to PM keeps its stored value, folded to PM canonical case.
+        assert_eq!(
+            resolve_overlay_client(&pm_map, &canonical, "99_99_Foo", Some("metro".to_string())),
+            Some("METRO".to_string())
+        );
+        // Unknown to PM with no canonical match stays untouched.
+        assert_eq!(
+            resolve_overlay_client(&pm_map, &canonical, "99_99_Foo", Some("CUBLY".to_string())),
+            Some("CUBLY".to_string())
+        );
+        assert_eq!(
+            resolve_overlay_client(&pm_map, &canonical, "99_99_Foo", None),
+            None
+        );
+    }
 
     #[test]
     fn groups_client_variants_like_pm() {
