@@ -1,4 +1,5 @@
 use super::helpers::{run_app_blocking, run_db_blocking, timeflow_data_dir};
+use crate::commands::CommandError;
 use crate::db;
 use chrono::{DateTime, Local};
 use rusqlite::OpenFlags;
@@ -115,7 +116,7 @@ fn load_database_settings(app: &AppHandle) -> Result<DatabaseSettings, String> {
 }
 
 #[tauri::command]
-pub async fn get_db_info(app: AppHandle) -> Result<DbInfo, String> {
+pub async fn get_db_info(app: AppHandle) -> Result<DbInfo, CommandError> {
     run_app_blocking(app, move |app| {
         let status = db::get_demo_mode_status(&app)?;
         let path = status.active_db_path;
@@ -127,21 +128,25 @@ pub async fn get_db_info(app: AppHandle) -> Result<DbInfo, String> {
         })
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn vacuum_database(app: AppHandle) -> Result<(), String> {
+pub async fn vacuum_database(app: AppHandle) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         conn.execute_batch("VACUUM;")
             .map_err(|e| format!("VACUUM failed: {}", e))?;
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, String> {
-    run_app_blocking(app, move |app| load_database_settings(&app)).await
+pub async fn get_database_settings(app: AppHandle) -> Result<DatabaseSettings, CommandError> {
+    run_app_blocking(app, move |app| load_database_settings(&app))
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -153,7 +158,7 @@ pub async fn update_database_settings(
     backup_interval_days: i32,
     auto_optimize_enabled: bool,
     auto_optimize_interval_hours: i32,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let normalized_auto_optimize_interval_hours = auto_optimize_interval_hours.clamp(1, 24 * 30);
     log::info!("Updating database settings: vacuum={}, backup={}, backup_interval_days={}, auto_optimize={}, auto_optimize_interval_hours={}",
         vacuum_on_startup, backup_enabled, backup_interval_days, auto_optimize_enabled, normalized_auto_optimize_interval_hours);
@@ -173,15 +178,18 @@ pub async fn update_database_settings(
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn optimize_database(app: AppHandle) -> Result<(), String> {
-    run_db_blocking(app, move |conn| db::optimize_database_internal(conn)).await
+pub async fn optimize_database(app: AppHandle) -> Result<(), CommandError> {
+    run_db_blocking(app, move |conn| db::optimize_database_internal(conn))
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn perform_manual_backup(app: AppHandle) -> Result<String, String> {
+pub async fn perform_manual_backup(app: AppHandle) -> Result<String, CommandError> {
     run_app_blocking(app, move |app| {
         let settings = load_database_settings(&app)?;
         if settings.backup_path.is_empty() {
@@ -197,10 +205,11 @@ pub async fn perform_manual_backup(app: AppHandle) -> Result<String, String> {
         Ok(result)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
+pub async fn open_db_folder(app: AppHandle) -> Result<(), CommandError> {
     run_app_blocking(app, move |app| {
         let status = db::get_demo_mode_status(&app)?;
         let path = Path::new(&status.active_db_path);
@@ -230,6 +239,7 @@ pub async fn open_db_folder(app: AppHandle) -> Result<(), String> {
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 pub fn restore_database_from_file_internal(app: &AppHandle, path: &str) -> Result<(), String> {
@@ -479,7 +489,7 @@ pub(crate) fn restore_database_into_conn(
 }
 
 #[tauri::command]
-pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<(), String> {
+pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<(), CommandError> {
     // Reachable remotely via /rpc — validate before touching the filesystem.
     let validated = crate::commands::helpers::validate_restore_source(&path)?;
     let path = validated.to_string_lossy().to_string();
@@ -490,9 +500,10 @@ pub async fn restore_database_from_file(app: AppHandle, path: String) -> Result<
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String> {
+pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, CommandError> {
     run_app_blocking(app, move |app| {
         let backup_path_str = db::get_system_setting(&app, "backup_path")?.unwrap_or_default();
 
@@ -529,6 +540,7 @@ pub async fn get_backup_files(app: AppHandle) -> Result<Vec<BackupFile>, String>
         Ok(files)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[derive(Serialize)]
@@ -589,7 +601,7 @@ fn collect_cleanup_paths(base_dir: &Path, demo_mode: bool) -> Vec<std::path::Pat
 }
 
 #[tauri::command]
-pub async fn get_data_folder_stats(app: AppHandle) -> Result<DataFolderStats, String> {
+pub async fn get_data_folder_stats(app: AppHandle) -> Result<DataFolderStats, CommandError> {
     run_app_blocking(app, move |app| {
         let base_dir = timeflow_data_dir()?;
         let demo_mode = db::is_demo_mode_enabled(&app)?;
@@ -608,10 +620,11 @@ pub async fn get_data_folder_stats(app: AppHandle) -> Result<DataFolderStats, St
         })
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn cleanup_data_folder(app: AppHandle) -> Result<CleanupResult, String> {
+pub async fn cleanup_data_folder(app: AppHandle) -> Result<CleanupResult, CommandError> {
     run_app_blocking(app, move |app| {
         let base_dir = timeflow_data_dir()?;
         let demo_mode = db::is_demo_mode_enabled(&app)?;
@@ -639,6 +652,7 @@ pub async fn cleanup_data_folder(app: AppHandle) -> Result<CleanupResult, String
         })
     })
     .await
+    .map_err(Into::into)
 }
 
 #[cfg(test)]

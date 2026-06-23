@@ -1,6 +1,5 @@
 use serde::Serialize;
 
-#[allow(dead_code)] // będzie używany po migracji komend (następne zadanie)
 #[derive(Debug, thiserror::Error)]
 pub enum CommandError {
     #[error("not found: {0}")]
@@ -25,6 +24,14 @@ impl From<String> for CommandError {
 impl From<&str> for CommandError {
     fn from(s: &str) -> Self {
         CommandError::Other(s.to_string())
+    }
+}
+// Needed by rpc_generated.rs, which wraps commands in Result<Value, String> and
+// uses `?` to propagate command errors. CommandError::to_string() preserves the
+// full human-readable message (identical to what String-returning commands produced).
+impl From<CommandError> for String {
+    fn from(e: CommandError) -> Self {
+        e.to_string()
     }
 }
 
