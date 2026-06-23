@@ -43,3 +43,4 @@ htmlcov/
 # Custom configs
 ftp_config.py
 
+dashboard/src-tauri/Cargo.toml
