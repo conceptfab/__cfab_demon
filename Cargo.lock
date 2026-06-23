@@ -5186,7 +5186,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-demon"
-version = "0.2.0"
+version = "0.1.5737"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5221,7 +5221,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-shared"
-version = "0.1.0"
+version = "0.1.5737"
 dependencies = [
  "chrono",
  "keyring",
