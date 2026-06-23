@@ -36,6 +36,7 @@ jobs:
       - run: cd src-tauri && node scripts/gen_webrpc.cjs --check
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run lint:knip
       - run: npm test
       - run: npm run build
 
