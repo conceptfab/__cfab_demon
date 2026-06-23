@@ -16,7 +16,8 @@
     "sync:inline-i18n": "node scripts/sync-inline-i18n.cjs",
     "preview": "vite preview",
     "tauri": "tauri",
-    "doctor": "npx react-doctor@latest"
+    "doctor": "npx react-doctor@latest",
+    "audit": "npm audit --omit=dev"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
