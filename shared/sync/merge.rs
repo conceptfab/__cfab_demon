@@ -118,6 +118,7 @@ pub fn apply_tombstones(
     archive: &serde_json::Value,
     hooks: &MergeHooks<'_>,
 ) -> Result<(), String> {
+    crate::sync::connection::assert_fk_off(tx);
     if let Some(tombstones) = archive.pointer("/data/tombstones").and_then(|v| v.as_array()) {
         for ts in tombstones {
             let table_name = ts.get("table_name").and_then(|v| v.as_str()).unwrap_or("");
@@ -793,6 +794,8 @@ mod tests {
 
     fn smoke_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
+        // Merge wymaga foreign_keys=OFF (finding #5)
+        conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
         conn.execute_batch(
             "CREATE TABLE projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

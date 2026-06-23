@@ -1086,6 +1086,9 @@ mod tests {
     // Run with:  cargo test --release roundtrip -- --ignored --nocapture
     fn open_test_db() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().expect("in-memory db");
+        // Merge wymaga foreign_keys=OFF (finding #5): sentinel project_id=0 w manual_sessions
+        // i ręczne zarządzanie FK; z ON → CASCADE skasuje manual_sessions.
+        conn.execute_batch("PRAGMA foreign_keys=OFF;").expect("fk off");
         conn.execute_batch(
             "CREATE TABLE projects (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

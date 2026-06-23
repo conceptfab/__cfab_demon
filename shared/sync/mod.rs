@@ -10,3 +10,4 @@ pub mod checksum;
 pub mod timestamp;
 pub mod columns;
 pub mod merge;
+pub mod connection;

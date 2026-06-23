@@ -179,8 +179,7 @@ pub fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
     // CASCADE-delete manual_sessions (ON DELETE CASCADE) — silent data loss. The merge
     // unit tests assert this by running with `PRAGMA foreign_keys = OFF`. OFF is also the
     // SQLite default; we set it explicitly to stay immune to a future default change.
-    conn.execute_batch("PRAGMA foreign_keys=OFF; PRAGMA synchronous=NORMAL;")
-        .map_err(|e| format!("Failed to set pragmas for dashboard DB: {}", e))?;
+    timeflow_shared::sync::connection::set_merge_pragmas(&conn)?;
     Ok(conn)
 }
 
