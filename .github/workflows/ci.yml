@@ -53,6 +53,16 @@ jobs:
       - run: cd dashboard && npm ci
       - run: npx -y react-doctor@latest . --yes
 
+  windows-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Kompiluje tylko demona — cel: wykryć błędy kompilacji w platform/windows/*.
+      # timeflow-dashboard (Tauri) wymaga dist/ i dodatkowego setupu; poza zakresem.
+      - run: cargo build -p timeflow-demon
+
   audit:
     runs-on: ubuntu-latest
     steps:
