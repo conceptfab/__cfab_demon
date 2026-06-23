@@ -9,3 +9,4 @@ pub mod triggers;
 pub mod checksum;
 pub mod timestamp;
 pub mod columns;
+pub mod merge;
