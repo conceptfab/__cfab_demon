@@ -475,9 +475,10 @@ fn execute_async_push(
 
     let conn = lan_common::open_dashboard_db()?;
 
-    // Build delta since last sync
-    let last_sync_ts = sync_common::get_last_sync_timestamp(&conn);
-    sync_log(&format!("[async-push] Last sync: {:?}", last_sync_ts));
+    // Build delta since last push (H-4: używamy push-frontier, nie pull-frontier,
+    // by pull nie cofał okna niewysłanych zmian lokalnych).
+    let last_sync_ts = sync_common::get_last_push_timestamp(&conn);
+    sync_log(&format!("[async-push] Last push: {:?}", last_sync_ts));
 
     let (delta_json, delta_size) = sync_common::build_delta_export(&conn, last_sync_ts.as_deref())?;
     if delta_size == 0 {

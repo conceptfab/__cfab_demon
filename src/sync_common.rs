@@ -215,10 +215,11 @@ pub fn build_delta_export(conn: &rusqlite::Connection, since_ts: Option<&str>) -
     Ok((json, size))
 }
 
-/// Get the timestamp of the last successful sync marker, or None if never synced.
-pub fn get_last_sync_timestamp(conn: &rusqlite::Connection) -> Option<String> {
+/// Push-frontier: ostatni znacznik WŁASNEGO pusha (peer_id IS NULL).
+/// Oddzielony od pull-frontier, by pull nie cofał okna niewysłanych zmian (audyt H-4).
+pub fn get_last_push_timestamp(conn: &rusqlite::Connection) -> Option<String> {
     conn.query_row(
-        "SELECT created_at FROM sync_markers ORDER BY created_at DESC LIMIT 1",
+        "SELECT created_at FROM sync_markers WHERE peer_id IS NULL ORDER BY created_at DESC LIMIT 1",
         [],
         |row| row.get(0),
     )
@@ -2963,6 +2964,34 @@ mod tests {
         assert_eq!(
             duration3, 7200,
             "LWW: lokalny rekord sesji manualnej nowszy niz remote nie jest nadpisywany"
+        );
+    }
+
+    #[test]
+    fn push_frontier_ignores_pull_markers() {
+        // Weryfikacja H-4: get_last_push_timestamp zwraca MAX(created_at) tylko wśród
+        // markerów z peer_id IS NULL (własne push-markery), ignorując markery pull (peer_id NOT NULL).
+        let conn = gc_test_db(); // tworzy tabelę sync_markers
+
+        // push marker (peer_id NULL) – starszy
+        insert_sync_marker_db(&conn, "h_push", "2026-06-01 10:00:00", "self", None, "t", false)
+            .expect("insert push marker");
+        // pull marker (peer_id = 'peerB') – nowszy, NIE powinien wpłynąć na push-frontier
+        insert_sync_marker_db(
+            &conn,
+            "h_pull",
+            "2026-06-01 10:05:00",
+            "self",
+            Some("peerB"),
+            "t",
+            false,
+        )
+        .expect("insert pull marker");
+
+        assert_eq!(
+            get_last_push_timestamp(&conn).as_deref(),
+            Some("2026-06-01 10:00:00"),
+            "push-frontier musi ignorowac nowszy marker pull"
         );
     }
 }
