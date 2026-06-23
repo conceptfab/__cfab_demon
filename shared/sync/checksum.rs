@@ -12,6 +12,63 @@ pub fn content_hash(concat: &str) -> String {
     format!("{:032x}", u128::from_be_bytes(bytes16))
 }
 
+/// SQL budujący wejście do content_hash dla danej encji.
+/// Hashuje PEŁNY zestaw synchronizowanych kolumn (finding #3) — nie tylko
+/// key+updated_at — by rozjazd przy równym updated_at był wykrywalny.
+///
+/// FK (app_id/project_id) są LOKALNE i remapowane per maszyna, więc NIGDY ich
+/// nie hashujemy — rozwiązujemy do stabilnej nazwy (projects.name / applications.
+/// executable_name) korelowanym podzapytaniem. Inaczej dwa zbieżne peery dałyby
+/// różny hash i sync nigdy nie zgłosiłby konwergencji.
+pub fn table_hash_sql(table: &str) -> Option<&'static str> {
+    Some(match table {
+        "projects" =>
+            "SELECT COALESCE(group_concat( \
+                name || '|' || COALESCE(color,'') || '|' || COALESCE(hourly_rate,'') || '|' || \
+                COALESCE(excluded_at,'') || '|' || COALESCE(frozen_at,'') || '|' || \
+                COALESCE(merged_into,'') || '|' || COALESCE(client_name,'') || '|' || \
+                COALESCE(status,'') || '|' || updated_at, ';'), '') \
+             FROM (SELECT * FROM projects ORDER BY name)",
+        "clients" =>
+            "SELECT COALESCE(group_concat( \
+                name || '|' || COALESCE(contact,'') || '|' || COALESCE(address,'') || '|' || \
+                COALESCE(tax_id,'') || '|' || COALESCE(currency,'') || '|' || \
+                COALESCE(default_hourly_rate,'') || '|' || COALESCE(color,'') || '|' || \
+                COALESCE(archived_at,'') || '|' || updated_at, ';'), '') \
+             FROM (SELECT * FROM clients ORDER BY name)",
+        "applications" =>
+            "SELECT COALESCE(group_concat( \
+                executable_name || '|' || display_name || '|' || COALESCE(proj_name,'') || '|' || \
+                updated_at, ';'), '') \
+             FROM (SELECT a.executable_name, a.display_name, \
+                          (SELECT p.name FROM projects p WHERE p.id = a.project_id) AS proj_name, \
+                          a.updated_at \
+                   FROM applications a ORDER BY a.executable_name)",
+        "sessions" =>
+            "SELECT COALESCE(group_concat( \
+                app_name || '|' || start_time || '|' || end_time || '|' || duration_seconds || '|' || \
+                date || '|' || rate_multiplier || '|' || COALESCE(comment,'') || '|' || \
+                COALESCE(is_hidden,'') || '|' || COALESCE(proj_name,'') || '|' || updated_at, ';'), '') \
+             FROM (SELECT a.executable_name AS app_name, s.start_time, s.end_time, s.duration_seconds, \
+                          s.date, s.rate_multiplier, s.comment, s.is_hidden, \
+                          (SELECT p.name FROM projects p WHERE p.id = s.project_id) AS proj_name, \
+                          s.updated_at \
+                   FROM sessions s JOIN applications a ON s.app_id = a.id \
+                   ORDER BY a.executable_name, s.start_time)",
+        "manual_sessions" =>
+            "SELECT COALESCE(group_concat( \
+                title || '|' || session_type || '|' || start_time || '|' || end_time || '|' || \
+                duration_seconds || '|' || date || '|' || COALESCE(proj_name,'') || '|' || \
+                COALESCE(app_name,'') || '|' || updated_at, ';'), '') \
+             FROM (SELECT m.title, m.session_type, m.start_time, m.end_time, m.duration_seconds, m.date, \
+                          (SELECT p.name FROM projects p WHERE p.id = m.project_id) AS proj_name, \
+                          (SELECT a.executable_name FROM applications a WHERE a.id = m.app_id) AS app_name, \
+                          m.updated_at \
+                   FROM manual_sessions m ORDER BY m.title, m.start_time)",
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -29,5 +86,18 @@ mod tests {
     fn distinct_input_distinct_hash() {
         assert_ne!(content_hash("a"), content_hash("b"));
         assert_ne!(content_hash(""), content_hash("a"));
+    }
+}
+
+#[cfg(test)]
+mod table_hash_sql_tests {
+    use super::*;
+    #[test]
+    fn known_tables_have_sql_unknown_none() {
+        for t in ["projects", "clients", "applications", "sessions", "manual_sessions"] {
+            assert!(table_hash_sql(t).is_some(), "brak SQL dla {t}");
+        }
+        assert!(table_hash_sql("assignment_feedback").is_none());
+        assert!(table_hash_sql("nonexistent").is_none());
     }
 }

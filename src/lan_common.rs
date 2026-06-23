@@ -191,39 +191,9 @@ pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
 
 /// Compute a hash for a table's content using DefaultHasher.
 pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    let sql = match table {
-        "projects" => {
-            // Content hash, not just name+updated_at: a merge can leave two peers
-            // with identical name+updated_at but diverging merged_into/client_name/
-            // status (these ride along without re-bumping updated_at on the loser).
-            // Hashing the synced columns lets convergence detection self-heal such
-            // silent divergence instead of declaring the peers identical forever.
-            "SELECT COALESCE(group_concat( \
-                name || '|' || COALESCE(color,'') || '|' || COALESCE(hourly_rate,'') || '|' || \
-                COALESCE(excluded_at,'') || '|' || COALESCE(frozen_at,'') || '|' || \
-                COALESCE(merged_into,'') || '|' || COALESCE(client_name,'') || '|' || \
-                COALESCE(status,'') || '|' || updated_at, ';'), '') \
-             FROM (SELECT * FROM projects ORDER BY name)"
-        }
-        "clients" => {
-            "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-             FROM (SELECT name, updated_at FROM clients ORDER BY name)"
-        }
-        "applications" => {
-            "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
-             FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)"
-        }
-        "sessions" => {
-            "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
-                   FROM sessions s JOIN applications a ON s.app_id = a.id \
-                   ORDER BY a.executable_name, s.start_time)"
-        }
-        "manual_sessions" => {
-            "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)"
-        }
-        _ => return String::new(),
+    let sql = match timeflow_shared::sync::checksum::table_hash_sql(table) {
+        Some(s) => s,
+        None => return String::new(),
     };
     let concat: String = conn
         .query_row(sql, [], |row| row.get(0))
