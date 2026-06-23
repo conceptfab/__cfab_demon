@@ -30,6 +30,7 @@ include_dir = "0.7"
 getrandom = "0.2"
 sha2 = "0.10"
 
+thiserror = "2"
 tauri-plugin-fs = "2"
 rusqlite = { version = "0.31", features = ["bundled", "functions"] }
 tokio = { version = "1", features = ["time", "rt"] }

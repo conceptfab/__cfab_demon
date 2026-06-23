@@ -1,3 +1,6 @@
+mod error;
+pub(crate) use error::CommandError;
+
 mod analysis;
 mod assignment_model;
 mod bughunter;

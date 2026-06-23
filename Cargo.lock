@@ -5178,6 +5178,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-log",
+ "thiserror 2.0.18",
  "timeflow-shared",
  "tokio",
  "windows-sys 0.59.0",
