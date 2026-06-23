@@ -92,6 +92,10 @@ pub fn decrypt_credentials(
     let mut combined = ciphertext;
     combined.extend_from_slice(&tag_bytes);
 
+    if iv_bytes.len() != 12 {
+        return Err(format!("Invalid IV length: {} (expected 12)", iv_bytes.len()));
+    }
+
     let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
     let cipher = Aes256Gcm::new(key);
     let nonce = make_nonce(&iv_bytes);
@@ -213,4 +217,51 @@ pub fn decrypt_file_data(data: &[u8], key_base64: &str) -> Result<Vec<u8>, Strin
     }
 
     Ok(decompressed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Klucz: 32 bajty zerowe zakodowane jako base64
+    // = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    const TEST_KEY: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    #[test]
+    fn file_data_roundtrip_utf8_empty_and_large() {
+        for payload in [
+            "żółć ąęś — €".as_bytes().to_vec(),
+            Vec::<u8>::new(),
+            b"with\0null\0bytes".to_vec(),
+            vec![7u8; 1024 * 1024], // 1 MB — wystarczy do weryfikacji dużego payloadu
+        ] {
+            let enc = encrypt_file_data(&payload, TEST_KEY).unwrap();
+            let dec = decrypt_file_data(&enc, TEST_KEY).unwrap();
+            assert_eq!(dec, payload, "roundtrip musi zachować bajty 1:1");
+        }
+    }
+
+    #[test]
+    fn file_data_nonce_is_random_per_call() {
+        let a = encrypt_file_data(b"x", TEST_KEY).unwrap();
+        let b = encrypt_file_data(b"x", TEST_KEY).unwrap();
+        assert_ne!(a[..12], b[..12], "IV losowy per wywołanie (brak nonce reuse)");
+    }
+
+    #[test]
+    fn decrypt_credentials_rejects_bad_iv_without_panic() {
+        use base64::Engine;
+        let e = base64::engine::general_purpose::STANDARD;
+        let bad = EncryptedCredentials {
+            iv: e.encode([0u8; 8]), // 8 bajtów zamiast 12 — zły IV
+            tag: e.encode([0u8; 16]),
+            encrypted_payload: e.encode([0u8; 4]),
+        };
+        let r = decrypt_credentials(
+            &bad,
+            "sess",
+            "0123456789abcdef0123456789abcdef",
+        );
+        assert!(r.is_err(), "zły IV musi dać Err, nie panic");
+    }
 }
