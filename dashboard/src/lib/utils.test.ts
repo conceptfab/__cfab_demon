@@ -5,16 +5,16 @@ import { getErrorMessage } from '@/lib/utils';
 describe('getErrorMessage', () => {
   it('extracts message from { code, message } (CommandError shape)', () => {
     expect(
-      getErrorMessage({ code: 'not_found', message: 'nie znaleziono' }, 'fallback')
-    ).toBe('nie znaleziono');
+      getErrorMessage({ code: 'not_found', message: 'not found' }, 'fallback')
+    ).toBe('not found');
   });
 
   it('returns raw string for plain string error', () => {
-    expect(getErrorMessage('coś poszło nie tak', 'fallback')).toBe('coś poszło nie tak');
+    expect(getErrorMessage('something went wrong', 'fallback')).toBe('something went wrong');
   });
 
   it('returns message from Error instance', () => {
-    expect(getErrorMessage(new Error('błąd instancji'), 'fallback')).toBe('błąd instancji');
+    expect(getErrorMessage(new Error('instance error'), 'fallback')).toBe('instance error');
   });
 
   it('returns fallback for null', () => {
