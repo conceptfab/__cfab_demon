@@ -1358,3 +1358,53 @@ fn execute_sync_steps(
 
     Ok(())
 }
+
+// ── Tests ──
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Test 1: compute_timeout — pure function, verifies base timeout for zero-byte body.
+    #[test]
+    fn compute_timeout_base_is_30s() {
+        let t = compute_timeout(0);
+        assert_eq!(t, Duration::from_secs(30));
+    }
+
+    // Test 2: compute_timeout — verifies each additional MB adds 10 seconds.
+    // A 3 MB body should yield 30 + 3×10 = 60 seconds.
+    #[test]
+    fn compute_timeout_adds_10s_per_mb() {
+        let three_mb = 3 * 1024 * 1024;
+        let t = compute_timeout(three_mb);
+        assert_eq!(t, Duration::from_secs(60));
+
+        // Non-integer: 1.5 MB floors to 1 MB extra → 40s
+        let one_and_half_mb = 1024 * 1024 + 512 * 1024;
+        let t2 = compute_timeout(one_and_half_mb);
+        assert_eq!(t2, Duration::from_secs(40));
+    }
+
+    // Test 3: with_retry — success on first attempt returns value without sleeping.
+    #[test]
+    fn with_retry_returns_value_on_first_success() {
+        let result: Result<i32, String> = with_retry("test_op", || Ok(42));
+        assert_eq!(result, Ok(42));
+    }
+
+    // Test 4: format_ureq_error — transport errors include method and path in the message.
+    // We construct a transport error via the public From<io::Error> impl.
+    #[test]
+    fn format_ureq_transport_error_includes_method_and_path() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused");
+        let ureq_err = ureq::Error::from(io_err);
+        let msg = format_ureq_error("POST", "/api/sync/session/create", ureq_err);
+        // Transport errors are formatted as "HTTP METHOD PATH failed: ..."
+        assert!(msg.contains("POST"), "message should include method: {msg}");
+        assert!(
+            msg.contains("/api/sync/session/create"),
+            "message should include path: {msg}"
+        );
+    }
+}

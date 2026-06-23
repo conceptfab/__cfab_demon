@@ -313,3 +313,100 @@ pub fn build_delta_archive(
 fn normalize_datetime_for_sqlite(s: &str) -> String {
     timeflow_shared::sync::timestamp::normalize_datetime_for_sqlite(s)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    // ── Helper: minimal in-memory DB for delta-export tests ──
+
+    fn create_sessions_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            "PRAGMA foreign_keys=OFF;
+             CREATE TABLE sessions (
+                 id INTEGER PRIMARY KEY,
+                 app_id INTEGER,
+                 project_id INTEGER NOT NULL DEFAULT 1,
+                 start_time TEXT,
+                 end_time TEXT,
+                 duration_seconds REAL,
+                 date TEXT,
+                 rate_multiplier REAL DEFAULT 1.0,
+                 comment TEXT,
+                 is_hidden INTEGER DEFAULT 0,
+                 updated_at TEXT NOT NULL,
+                 project_name TEXT
+             );",
+        )
+        .expect("create sessions table");
+        conn
+    }
+
+    // Test 1: normalize_datetime_for_sqlite — ISO 8601 UTC (Z suffix) → SQLite format.
+    // Verifies the private fn converts correctly: T→space, strip Z, no subseconds.
+    #[test]
+    fn normalize_utc_iso_to_sqlite_format() {
+        let result = normalize_datetime_for_sqlite("2026-03-29T10:00:00Z");
+        assert_eq!(result, "2026-03-29 10:00:00");
+    }
+
+    // Test 2: normalize_datetime_for_sqlite — already-SQLite format is a fast-path identity.
+    // If the string is exactly 19 chars, has no T and no Z, it returns unchanged.
+    #[test]
+    fn normalize_sqlite_format_is_identity() {
+        let already_sqlite = "2026-03-29 10:00:00";
+        let result = normalize_datetime_for_sqlite(already_sqlite);
+        assert_eq!(result, already_sqlite);
+    }
+
+    // Test 3: delta-export sessions query uses `updated_at > ?` cutoff correctly.
+    // Insert two sessions straddling the cutoff, run the same SQL used by build_delta_archive,
+    // and assert only the post-cutoff session appears in the result.
+    #[test]
+    fn sessions_delta_query_filters_by_cutoff() {
+        let conn = create_sessions_db();
+        let cutoff = "2026-01-15 12:00:00";
+
+        // Session BEFORE cutoff — should NOT appear in delta
+        conn.execute(
+            "INSERT INTO sessions (id, project_id, start_time, end_time, duration_seconds, date, updated_at)
+             VALUES (1, 1, '2026-01-10 09:00:00', '2026-01-10 10:00:00', 3600.0, '2026-01-10', '2026-01-10 10:00:00')",
+            [],
+        ).expect("insert pre-cutoff session");
+
+        // Session AFTER cutoff — should appear in delta
+        conn.execute(
+            "INSERT INTO sessions (id, project_id, start_time, end_time, duration_seconds, date, updated_at)
+             VALUES (2, 1, '2026-01-20 09:00:00', '2026-01-20 10:00:00', 3600.0, '2026-01-20', '2026-01-20 10:00:00')",
+            [],
+        ).expect("insert post-cutoff session");
+
+        // Same SQL as build_delta_archive
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, app_id, project_id, start_time, end_time, duration_seconds, date
+                 , COALESCE(rate_multiplier, 1.0), comment, is_hidden, updated_at, project_name
+                 FROM sessions WHERE updated_at > ?1",
+            )
+            .expect("prepare");
+
+        let ids: Vec<i64> = stmt
+            .query_map([cutoff], |row| row.get::<_, i64>(0))
+            .expect("query")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect");
+
+        // Only the post-cutoff session (id=2) should appear
+        assert_eq!(ids, vec![2i64], "only post-cutoff session should be in delta");
+    }
+
+    // Test 4: normalize_datetime_for_sqlite — offset ±HH:MM is converted to UTC.
+    // "2026-03-29T10:00:00+02:00" → UTC "2026-03-29 08:00:00"
+    #[test]
+    fn normalize_tz_offset_to_utc() {
+        let result = normalize_datetime_for_sqlite("2026-03-29T10:00:00+02:00");
+        assert_eq!(result, "2026-03-29 08:00:00");
+    }
+}
