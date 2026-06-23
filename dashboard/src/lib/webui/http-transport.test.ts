@@ -22,7 +22,7 @@ describe('httpInvoke', () => {
 
     await httpInvoke('clients_list');
 
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.headers['X-Timeflow-Rpc']).toBe('1');
     expect(init.headers.Authorization).toBeUndefined();
   });
@@ -38,7 +38,7 @@ describe('httpInvoke', () => {
 
     await httpInvoke('clients_list');
 
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.headers.Authorization).toBe('Bearer tok123');
     expect(init.headers['X-Timeflow-Rpc']).toBe('1');
   });

@@ -44,7 +44,8 @@ export function parseHourlyProjects(
       name,
       (matchingKey ? getStackedSeriesColor(seriesMetaByKey, matchingKey) : undefined) ||
         projectColors.get(name) ||
-        PALETTE[i % PALETTE.length],
+        // safe: modulo always yields a valid index into a non-empty fixed array
+        PALETTE[i % PALETTE.length]!,
     );
   });
 
@@ -54,7 +55,8 @@ export function parseHourlyProjects(
     let hour = -1;
     try {
       const parts = row.date.split("T");
-      datePart = parts[0];
+      // safe: String.split always produces at least one element
+      datePart = parts[0] ?? "";
       if (parts[1]) hour = parseInt(parts[1].substring(0, 2), 10);
     } catch { /* ignore */ }
     if (!datePart || hour < 0 || hour > 23) continue;
@@ -63,7 +65,8 @@ export function parseHourlyProjects(
     const projects: ProjectSlot[] = [];
     for (const [key, val] of getStackedSeriesEntries(row)) {
       const label = getStackedSeriesLabel(seriesMetaByKey, key);
-      projects.push({ name: label, seconds: val, color: colorMap.get(label) || PALETTE[0] });
+      // safe: PALETTE[0] is always defined (non-empty constant array)
+      projects.push({ name: label, seconds: val, color: colorMap.get(label) || PALETTE[0]! });
     }
     projects.sort((a, b) => b.seconds - a.seconds);
     byDateHour.get(datePart)!.set(hour, projects);

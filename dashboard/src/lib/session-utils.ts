@@ -48,9 +48,11 @@ export function wallClockSeconds(
   intervals.sort((a, b) => a[0] - b[0]);
 
   let totalMs = 0;
-  let [curStart, curEnd] = intervals[0];
+  // safe: length === 0 already returned above
+  let [curStart, curEnd] = intervals[0]!;
   for (let i = 1; i < intervals.length; i++) {
-    const [start, end] = intervals[i];
+    // safe: loop bounds are [1, intervals.length)
+    const [start, end] = intervals[i]!;
     if (start <= curEnd) {
       if (end > curEnd) curEnd = end;
     } else {
@@ -140,7 +142,8 @@ export function areSessionsEqual(
   }
 
   for (let index = 0; index < left.files.length; index += 1) {
-    if (!areFileActivitiesEqual(left.files[index], right.files[index])) {
+    // safe: both arrays have the same length (checked above), loop is within bounds
+    if (!areFileActivitiesEqual(left.files[index]!, right.files[index]!)) {
       return false;
     }
   }
@@ -155,7 +158,8 @@ export function areSessionListsEqual(
   if (left.length !== right.length) return false;
 
   for (let index = 0; index < left.length; index += 1) {
-    if (!areSessionsEqual(left[index], right[index])) {
+    // safe: both arrays have the same length (checked above), loop is within bounds
+    if (!areSessionsEqual(left[index]!, right[index]!)) {
       return false;
     }
   }

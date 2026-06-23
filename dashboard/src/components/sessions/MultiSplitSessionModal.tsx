@@ -92,7 +92,8 @@ export function MultiSplitSessionModal({
     const ratioSum = splits.reduce((acc, part) => acc + part.ratio, 0);
     const drift = 1 - ratioSum;
     if (splits.length > 0 && Math.abs(drift) > 0.000_001) {
-      splits[splits.length - 1].ratio += drift;
+      // safe: splits.length > 0 is checked above
+      splits[splits.length - 1]!.ratio += drift;
     }
 
     setIsSubmitting(true);

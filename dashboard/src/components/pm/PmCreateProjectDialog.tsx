@@ -60,7 +60,8 @@ function PmCreateProjectForm({
       dispatch({ type: 'set_templates', templates: tpl });
       const def = tpl.find((item) => item.is_default);
       if (def) dispatch({ type: 'set_template_id', templateId: def.id });
-      else if (tpl.length > 0) dispatch({ type: 'set_template_id', templateId: tpl[0].id });
+      // safe: tpl.length > 0 is checked above
+      else if (tpl.length > 0) dispatch({ type: 'set_template_id', templateId: tpl[0]!.id });
     }).catch((e) => logTauriError('pm load templates', e));
   }, []);
 

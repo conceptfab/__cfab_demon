@@ -73,7 +73,7 @@ describe('buildEstimateReportModel', () => {
     const model = buildEstimateReportModel([row({ seconds: 5400, estimated_value: 150 })], false, OFF);
     expect(model.totalSeconds).toBe(5400);
     expect(model.totalValue).toBeCloseTo(150);
-    expect(model.projects[0].days[0].displaySeconds).toBe(3600);
+    expect(model.projects[0]!.days[0]!.displaySeconds).toBe(3600);
   });
 
   it('rounds each day to a full hour in per_day mode and keeps project total = sum of days', () => {
@@ -87,10 +87,10 @@ describe('buildEstimateReportModel', () => {
       ],
     });
     const model = buildEstimateReportModel([r], true, PER_DAY);
-    expect(model.projects[0].days.map((d) => d.displaySeconds)).toEqual([3600, 7200]);
-    expect(model.projects[0].displaySeconds).toBe(10800);
+    expect(model.projects[0]!.days.map((d) => d.displaySeconds)).toEqual([3600, 7200]);
+    expect(model.projects[0]!.displaySeconds).toBe(10800);
     expect(model.totalSeconds).toBe(10800);
-    expect(model.projects[0].displayValue).toBeCloseTo(300);
+    expect(model.projects[0]!.displayValue).toBeCloseTo(300);
   });
 
   it('rounded value is an exact multiple of rate — no grosz drift from float/round mismatch', () => {
@@ -109,8 +109,8 @@ describe('buildEstimateReportModel', () => {
       })),
     });
     const model = buildEstimateReportModel([r], true, PER_DAY);
-    expect(model.projects[0].displaySeconds).toBe(28800); // 8 × pełna godzina
-    expect(model.projects[0].displayValue).toBeCloseTo(800, 6); // równo 800, nie 799,99
+    expect(model.projects[0]!.displaySeconds).toBe(28800); // 8 × pełna godzina
+    expect(model.projects[0]!.displayValue).toBeCloseTo(800, 6); // równo 800, nie 799,99
     expect(model.totalValue).toBeCloseTo(800, 6);
   });
 
@@ -133,9 +133,9 @@ describe('buildEstimateReportModel', () => {
       days: [{ date: '2026-01-01', seconds: 3000 }],
     });
     const model = buildEstimateReportModel([r], true, PER_TOTAL_15);
-    expect(model.projects[0].displaySeconds).toBe(3600); // 50 min → ceil 15-min → 60 min
+    expect(model.projects[0]!.displaySeconds).toBe(3600); // 50 min → ceil 15-min → 60 min
     // 150 × (3600 / 3000) = 180 — skalowane stosunkiem zegarowym, waga zachowana.
-    expect(model.projects[0].displayValue).toBeCloseTo(180, 6);
+    expect(model.projects[0]!.displayValue).toBeCloseTo(180, 6);
   });
 
   it('passes a weighted value through unchanged when rounding does not alter the total', () => {
@@ -146,8 +146,8 @@ describe('buildEstimateReportModel', () => {
     };
     const r = row({ seconds: 3600, hours: 1, weighted_hours: 1.5, estimated_value: 150 });
     const model = buildEstimateReportModel([r], true, PER_TOTAL_60);
-    expect(model.projects[0].displaySeconds).toBe(3600);
-    expect(model.projects[0].displayValue).toBeCloseTo(150, 6); // waga przechodzi bez zmian
+    expect(model.projects[0]!.displaySeconds).toBe(3600);
+    expect(model.projects[0]!.displayValue).toBeCloseTo(150, 6); // waga przechodzi bez zmian
   });
 });
 

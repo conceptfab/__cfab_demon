@@ -350,7 +350,8 @@ export function useProjectDayTimelineController({
     const sessionIds = getSegmentSessionIds(ctxMenu.segment);
     if (sessionIds.length === 0) return;
     const current = ctxMenu.segment.comment ?? '';
-    const sessionId = sessionIds[0];
+    // safe: length === 0 already returned above
+    const sessionId = sessionIds[0]!;
 
     setPromptConfig({
       title: t('project_day_timeline.text.session_comment'),

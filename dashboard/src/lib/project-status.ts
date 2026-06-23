@@ -36,5 +36,6 @@ export function statusBadgeClass(status: string): string {
 
 /** Klasa koloru tekstu statusu. Nieznany status traktujemy jak „active". */
 export function statusTextClass(status: string): string {
-  return STATUS_TONE[status]?.text ?? STATUS_TONE.active.text;
+  // safe: STATUS_TONE.active is defined as a literal key in the object above
+  return STATUS_TONE[status]?.text ?? STATUS_TONE['active']!.text;
 }

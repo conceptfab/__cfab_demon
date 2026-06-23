@@ -125,7 +125,9 @@ export const DEFAULT_WORKING_HOURS: WorkingHoursSettings = {
 
 export function timeToMinutes(value: string): number | null {
   if (!isValidTime(value)) return null;
-  const [hours, minutes] = value.split(':').map(Number);
+  const parts = value.split(':').map(Number);
+  const hours = parts[0] ?? 0;
+  const minutes = parts[1] ?? 0;
   return hours * 60 + minutes;
 }
 

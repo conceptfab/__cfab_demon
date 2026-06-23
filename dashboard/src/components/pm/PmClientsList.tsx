@@ -58,7 +58,8 @@ export function PmClientsList({ projects, clientColors, onColorsChanged }: Props
     let nextIdx = 0;
     for (const g of groups) {
       if (!result[g]) {
-        result[g] = emptyInfo(DEFAULT_PALETTE[nextIdx % DEFAULT_PALETTE.length]);
+        // safe: modulo always yields a valid index into a non-empty fixed array
+        result[g] = emptyInfo(DEFAULT_PALETTE[nextIdx % DEFAULT_PALETTE.length]!);
         nextIdx++;
       }
     }
@@ -81,7 +82,8 @@ export function PmClientsList({ projects, clientColors, onColorsChanged }: Props
   };
 
   const handleColorSave = async (client: string, color: string) => {
-    const updated = { ...data, [client]: { ...data[client], color } };
+    const base = data[client] ?? emptyInfo(color);
+    const updated: PmClientColors = { ...data, [client]: { ...base, color } };
     onColorsChanged(updated);
     try {
       await pmApi.savePmClientColors(updated);
@@ -91,7 +93,8 @@ export function PmClientsList({ projects, clientColors, onColorsChanged }: Props
   };
 
   const handleFieldChange = (client: string, field: 'comment' | 'contact', value: string) => {
-    const updated = { ...data, [client]: { ...data[client], [field]: value } };
+    const base = data[client] ?? emptyInfo('');
+    const updated: PmClientColors = { ...data, [client]: { ...base, [field]: value } };
     persist(updated);
   };
 

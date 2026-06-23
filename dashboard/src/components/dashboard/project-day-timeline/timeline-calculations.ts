@@ -293,10 +293,12 @@ function computeUnionSeconds(intervals: Array<{ startMs: number; endMs: number }
   if (sorted.length === 0) return 0;
 
   let unionMs = 0;
-  let cursorStart = sorted[0].startMs;
-  let cursorEnd = sorted[0].endMs;
+  // safe: sorted.length === 0 already returned above
+  let cursorStart = sorted[0]!.startMs;
+  let cursorEnd = sorted[0]!.endMs;
   for (let i = 1; i < sorted.length; i++) {
-    const { startMs, endMs } = sorted[i];
+    // safe: loop is within [1, sorted.length)
+    const { startMs, endMs } = sorted[i]!;
     if (startMs <= cursorEnd) {
       if (endMs > cursorEnd) cursorEnd = endMs;
     } else {

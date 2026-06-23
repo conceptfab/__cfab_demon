@@ -101,7 +101,8 @@ export function useReportsPageController() {
     if (!activeTemplate || templates.length <= 1) return;
     const newList = deleteTemplate(activeTemplate.id);
     setTemplates(newList);
-    handleSelectTemplate(newList[0].id);
+    // safe: templates.length > 1 is checked above, so after deleting one, newList is non-empty
+    handleSelectTemplate(newList[0]!.id);
   };
 
   const availableSections = sectionRegistry.filter(
@@ -115,14 +116,16 @@ export function useReportsPageController() {
   const moveUp = (idx: number) => {
     if (idx <= 0) return;
     const next = [...activeIds];
-    [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+    // safe: idx > 0 ensures idx - 1 >= 0; both indices are within bounds
+    [next[idx - 1], next[idx]] = [next[idx]!, next[idx - 1]!];
     saveSections(next);
   };
 
   const moveDown = (idx: number) => {
     if (idx >= activeIds.length - 1) return;
     const next = [...activeIds];
-    [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+    // safe: idx < activeIds.length - 1 ensures idx + 1 is within bounds
+    [next[idx], next[idx + 1]] = [next[idx + 1]!, next[idx]!];
     saveSections(next);
   };
 

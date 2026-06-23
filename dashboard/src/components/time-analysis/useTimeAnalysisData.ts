@@ -159,9 +159,10 @@ export function useTimeAnalysisData() {
         }
         const clientColors = new Map<string, string>();
         for (const c of clients) clientColors.set(c.name, c.color);
-        const clientColor = (name: string) =>
+        const clientColor = (name: string): string =>
+          // safe: modulo always yields a valid index into a non-empty fixed array
           clientColors.get(name) ||
-          PALETTE[Math.abs(hashString(name)) % PALETTE.length];
+          PALETTE[Math.abs(hashString(name)) % PALETTE.length]!;
 
         const grouped = groupStackedByClient(hp, {
           projectIdToClient,
@@ -348,7 +349,8 @@ export function useTimeAnalysisData() {
         name,
         parsed.colorMap.get(name) ||
           projectColors.get(name) ||
-          PALETTE[i % PALETTE.length],
+          // safe: modulo always yields a valid index into a non-empty fixed array
+          PALETTE[i % PALETTE.length]!,
       );
     });
     return map;
@@ -392,7 +394,8 @@ export function useTimeAnalysisData() {
         projects.push({
           name: label,
           seconds: val,
-          color: parsed.colorMap.get(label) || projectColors.get(label) || PALETTE[0],
+          // safe: PALETTE[0] is always defined (non-empty constant array)
+          color: parsed.colorMap.get(label) || projectColors.get(label) || PALETTE[0]!,
         });
       });
       projects.sort((a, b) => b.seconds - a.seconds);

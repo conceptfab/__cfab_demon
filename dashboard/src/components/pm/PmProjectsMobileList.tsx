@@ -36,15 +36,17 @@ export function PmProjectsMobileList({
       {displayed.map((p, di) => {
         const match = tfMatches[p.prj_code];
         const group = clientGroupOf(p.prj_client);
+        // safe: originalIndices is parallel to displayed; di is always within bounds
+        const originalIdx = originalIndices[di]!;
         return (
           <div
-            key={`${p.prj_code}-${originalIndices[di]}-mobile`}
+            key={`${p.prj_code}-${originalIdx}-mobile`}
             className="space-y-3 rounded-md border border-border/60 p-3"
           >
             <div className="flex min-w-0 items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-mono text-xs text-muted-foreground">
-                  #{originalIndices[di] + 1} · {p.prj_number}/20{p.prj_year}
+                  #{originalIdx + 1} · {p.prj_number}/20{p.prj_year}
                 </p>
                 <p
                   className="break-words text-sm font-medium"
@@ -96,7 +98,7 @@ export function PmProjectsMobileList({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onSelect(originalIndices[di])}
+                onClick={() => onSelect(originalIdx)}
               >
                 <Pencil className="mr-1.5 size-3.5" />
                 {t('pm.edit')}

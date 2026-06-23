@@ -142,7 +142,8 @@ export function ensureClientColors(
   for (const g of [...groups].toSorted()) {
     if (!result[g]) {
       result[g] = {
-        color: DEFAULT_PALETTE[nextIdx % DEFAULT_PALETTE.length],
+        // safe: modulo always yields a valid index into a non-empty fixed array
+        color: DEFAULT_PALETTE[nextIdx % DEFAULT_PALETTE.length]!,
         comment: '',
         contact: '',
       };
