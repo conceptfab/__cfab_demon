@@ -839,7 +839,7 @@ fn get_local_marker_hash_with_conn(conn: &rusqlite::Connection) -> Option<String
 /// - `body` returns `true` on success, `false` on logical failure.
 /// - On panic, logs the panic payload (if `log_fn` is Some) and treats it as `false`.
 /// - `cleanup` is called unconditionally with the success flag.
-fn guarded_then_cleanup<B, C>(body: B, cleanup: C)
+pub(crate) fn guarded_then_cleanup<B, C>(body: B, cleanup: C)
 where
     B: FnOnce() -> bool + std::panic::UnwindSafe,
     C: FnOnce(bool),

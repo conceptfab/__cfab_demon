@@ -749,29 +749,36 @@ pub fn run_online_sync(
     // Track session_id for error cleanup
     let mut session_id_for_cleanup: Option<String> = None;
 
-    match execute_online_sync(
-        &settings,
-        &sync_state,
-        &stop_signal,
-        &mut session_id_for_cleanup,
-        false,
-    ) {
-        Ok(()) => {
-            sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
-        }
-        Err(e) => {
-            sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
-            sync_state.unfreeze();
-            sync_state.reset_progress();
-            // Try to cancel session on server (best-effort)
-            if let Some(sid) = &session_id_for_cleanup {
-                cancel_session(&server_url, &token, sid, &device_id, &e).ok();
+    // Wrap the panic-prone body (execute_online_sync + merge) in catch_unwind so
+    // that a panic cannot leave the DB frozen until AUTO_UNFREEZE_TIMEOUT (20 min).
+    // Parity with the LAN path (guarded_then_cleanup in lan_sync_orchestrator). The
+    // cleanup closure runs unconditionally — on Ok, Err AND panic.
+    let sid_cleanup = sync_state.clone();
+    crate::lan_sync_orchestrator::guarded_then_cleanup(
+        std::panic::AssertUnwindSafe(|| {
+            match execute_online_sync(
+                &settings,
+                &sync_state,
+                &stop_signal,
+                &mut session_id_for_cleanup,
+                false,
+            ) {
+                Ok(()) => {
+                    sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
+                    true
+                }
+                Err(e) => {
+                    sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
+                    // Try to cancel session on server (best-effort)
+                    if let Some(sid) = &session_id_for_cleanup {
+                        cancel_session(&server_url, &token, sid, &device_id, &e).ok();
+                    }
+                    false
+                }
             }
-        }
-    }
-    // Ensure sync_in_progress is always reset, even on success
-    sync_state.sync_in_progress.store(false, Ordering::SeqCst);
-    sync_state.set_role("undecided");
+        }),
+        move |_succeeded| guard_online_cleanup(&sid_cleanup),
+    );
 }
 
 /// Run online sync with forced full mode. Used when user explicitly requests force sync from tray menu.
@@ -803,26 +810,43 @@ pub fn run_online_sync_forced(
 
     let mut session_id_for_cleanup: Option<String> = None;
 
-    match execute_online_sync(
-        &settings,
-        &sync_state,
-        &stop_signal,
-        &mut session_id_for_cleanup,
-        force_full,
-    ) {
-        Ok(()) => {
-            sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
-        }
-        Err(e) => {
-            sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
-            sync_state.unfreeze();
-            sync_state.reset_progress();
-            if let Some(sid) = &session_id_for_cleanup {
-                cancel_session(&server_url, &token, sid, &device_id, &e).ok();
+    // Wrap the panic-prone body (execute_online_sync + merge) in catch_unwind so
+    // that a panic cannot leave the DB frozen until AUTO_UNFREEZE_TIMEOUT (20 min).
+    // Parity with the LAN path (guarded_then_cleanup in lan_sync_orchestrator). The
+    // cleanup closure runs unconditionally — on Ok, Err AND panic.
+    let sid_cleanup = sync_state.clone();
+    crate::lan_sync_orchestrator::guarded_then_cleanup(
+        std::panic::AssertUnwindSafe(|| {
+            match execute_online_sync(
+                &settings,
+                &sync_state,
+                &stop_signal,
+                &mut session_id_for_cleanup,
+                force_full,
+            ) {
+                Ok(()) => {
+                    sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
+                    true
+                }
+                Err(e) => {
+                    sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
+                    if let Some(sid) = &session_id_for_cleanup {
+                        cancel_session(&server_url, &token, sid, &device_id, &e).ok();
+                    }
+                    false
+                }
             }
-        }
-    }
-    // Ensure sync_in_progress is always reset, even on success
+        }),
+        move |_succeeded| guard_online_cleanup(&sid_cleanup),
+    );
+}
+
+/// Centralized post-sync cleanup for the online path. Runs unconditionally
+/// (Ok, Err, panic) via `guarded_then_cleanup`: unfreezes the DB (clears both
+/// `db_frozen` and `sync_in_progress`), resets progress, and releases the role.
+fn guard_online_cleanup(sync_state: &Arc<LanSyncState>) {
+    sync_state.unfreeze();
+    sync_state.reset_progress();
     sync_state.sync_in_progress.store(false, Ordering::SeqCst);
     sync_state.set_role("undecided");
 }
@@ -1365,6 +1389,40 @@ fn execute_sync_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Panic-safety contract (H-5): when the online sync body panics (e.g. merge
+    /// panics mid-sync), `guard_online_cleanup` MUST still run under
+    /// `guarded_then_cleanup` and clear `db_frozen` + `sync_in_progress`. Without
+    /// catch_unwind the panic would unwind past the cleanup and leave the DB frozen
+    /// until AUTO_UNFREEZE_TIMEOUT (20 min). Parity with the LAN master path.
+    #[test]
+    fn online_sync_cleanup_runs_after_panic() {
+        use crate::lan_server::LanSyncState;
+        use std::sync::atomic::Ordering;
+        use std::sync::Arc;
+
+        let state = Arc::new(LanSyncState::new());
+        // Simulate mid-sync state: DB frozen, sync in progress.
+        state.db_frozen.store(true, Ordering::SeqCst);
+        state.sync_in_progress.store(true, Ordering::SeqCst);
+
+        let state_for_cleanup = Arc::clone(&state);
+        // Mirrors the production wiring: AssertUnwindSafe body that panics, with
+        // guard_online_cleanup as the unconditional cleanup closure.
+        crate::lan_sync_orchestrator::guarded_then_cleanup(
+            std::panic::AssertUnwindSafe(|| -> bool { panic!("simulated online sync body panic") }),
+            move |_succeeded| guard_online_cleanup(&state_for_cleanup),
+        );
+
+        assert!(
+            !state.db_frozen.load(Ordering::SeqCst),
+            "db_frozen must be cleared after a panic in the online sync body"
+        );
+        assert!(
+            !state.sync_in_progress.load(Ordering::SeqCst),
+            "sync_in_progress must be cleared after a panic in the online sync body"
+        );
+    }
 
     // Test 1: compute_timeout — pure function, verifies base timeout for zero-byte body.
     #[test]
