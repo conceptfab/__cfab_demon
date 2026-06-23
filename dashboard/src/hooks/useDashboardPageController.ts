@@ -20,6 +20,7 @@ import {
 } from '@/lib/tauri';
 import { loadSessionSettings } from '@/lib/user-settings';
 import { getErrorMessage, logTauriError } from '@/lib/utils';
+import { usePageError } from '@/hooks/usePageError';
 import {
   EMPTY_DASHBOARD_VIEW_STATE,
   EMPTY_PROJECT_ROWS,
@@ -39,6 +40,7 @@ import { useUIStore } from '@/store/ui-store';
 export function useDashboardPageController() {
   const { t, i18n } = useTranslation();
   const locale = resolveDateFnsLocale(i18n.resolvedLanguage);
+  const reportError = usePageError();
   const setCurrentPage = useUIStore((s) => s.setCurrentPage);
   const setSessionsFocusDate = useUIStore((s) => s.setSessionsFocusDate);
   const dateRange = useDataStore((s) => s.dateRange);
@@ -121,7 +123,7 @@ export function useDashboardPageController() {
     useSessionActions({
       onAfterMutation: () => triggerRefresh('dashboard_session_mutation'),
       onError: (action, error) => {
-        console.error(`Dashboard session action failed (${action}):`, error);
+        reportError(action, error, t('dashboard.errors.session_action_failed'));
       },
     });
 
@@ -160,10 +162,10 @@ export function useDashboardPageController() {
           ),
         }));
       } catch (err) {
-        logTauriError('update session comment', err);
+        reportError('update session comment', err, t('dashboard.errors.update_session_comment'));
       }
     },
-    [updateSessionComment],
+    [reportError, t, updateSessionComment],
   );
 
   const handleRefresh = async () => {
@@ -172,7 +174,7 @@ export function useDashboardPageController() {
     try {
       await daemonApi.refreshToday();
     } catch (e) {
-      console.error('Refresh failed:', e);
+      reportError('refresh today', e, t('dashboard.errors.refresh_failed'));
     } finally {
       triggerRefresh('dashboard_manual_refresh');
       setRefreshing(false);

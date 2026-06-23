@@ -9,6 +9,7 @@ import { useConfirmDialogState } from "@/hooks/useConfirmDialogState";
 import { deleteArchiveFile, getArchiveFiles, getImportedFiles } from "@/lib/tauri";
 import type { ArchivedFile } from "@/lib/db-types";
 import { useTranslation } from "react-i18next";
+import { usePageError } from "@/hooks/usePageError";
 
 export function ImportPage() {
   const { t } = useTranslation();
@@ -16,11 +17,16 @@ export function ImportPage() {
   const [imported, setImported] = useState<{ file_path: string; import_date: string; records_count: number }[]>([]);
   const [archive, setArchive] = useState<ArchivedFile[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const reportError = usePageError();
 
   const loadImportData = useCallback(() => {
-    getImportedFiles().then(setImported).catch(console.error);
-    getArchiveFiles().then(setArchive).catch(console.error);
-  }, []);
+    getImportedFiles()
+      .then(setImported)
+      .catch((e) => reportError('load imported files', e, t('import_page.errors.load_data')));
+    getArchiveFiles()
+      .then(setArchive)
+      .catch((e) => reportError('load archive files', e, t('import_page.errors.load_data')));
+  }, [reportError, t]);
 
   useEffect(() => {
     loadImportData();
@@ -37,7 +43,7 @@ export function ImportPage() {
       await deleteArchiveFile(fileName);
       loadImportData();
     } catch (e) {
-      console.error(e);
+      reportError('delete archive file', e, t('import_page.errors.delete_archive'));
     } finally {
       setDeleting(null);
     }

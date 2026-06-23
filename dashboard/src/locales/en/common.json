@@ -159,7 +159,10 @@
       "avg_daily": "Daily avg"
     },
     "errors": {
-      "loading_data": "Error loading data"
+      "loading_data": "Error loading data",
+      "update_session_comment": "Failed to save session comment",
+      "refresh_failed": "Failed to refresh data",
+      "session_action_failed": "Failed to perform session action"
     },
     "hourly_breakdown": {
       "title": "Hourly Breakdown",
@@ -419,7 +422,9 @@
     },
     "errors": {
       "assign_failed": "Failed to assign session(s): {{error}}",
-      "update_multiplier": "Failed to update session rate multiplier: {{error}}"
+      "update_multiplier": "Failed to update session rate multiplier: {{error}}",
+      "load_manual_sessions": "Failed to load manual sessions",
+      "session_action_failed": "Failed to perform session action"
     },
     "row": {
       "idle": "idle",
@@ -940,7 +945,11 @@
     "archive_title": "Archive",
     "archive_empty": "Archive is empty",
     "delete_from_archive": "Delete from archive",
-    "delete_archive_confirm": "Delete archive file \"{{fileName}}\"? This only removes the archived file and cannot be undone."
+    "delete_archive_confirm": "Delete archive file \"{{fileName}}\"? This only removes the archived file and cannot be undone.",
+    "errors": {
+      "load_data": "Failed to load import data",
+      "delete_archive": "Failed to delete archive file"
+    }
   },
   "time_analysis_page": {
     "no_project_data": "No project data",

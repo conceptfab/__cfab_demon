@@ -159,7 +159,10 @@
       "avg_daily": "Średnio dziennie"
     },
     "errors": {
-      "loading_data": "Błąd ładowania danych"
+      "loading_data": "Błąd ładowania danych",
+      "update_session_comment": "Nie udało się zapisać komentarza do sesji",
+      "refresh_failed": "Nie udało się odświeżyć danych",
+      "session_action_failed": "Nie udało się wykonać operacji na sesji"
     },
     "hourly_breakdown": {
       "title": "Rozkład godzinowy",
@@ -419,7 +422,9 @@
     },
     "errors": {
       "assign_failed": "Nie udało się przypisać sesji: {{error}}",
-      "update_multiplier": "Nie udało się zaktualizować mnożnika stawki sesji: {{error}}"
+      "update_multiplier": "Nie udało się zaktualizować mnożnika stawki sesji: {{error}}",
+      "load_manual_sessions": "Nie udało się załadować sesji ręcznych",
+      "session_action_failed": "Nie udało się wykonać operacji na sesji"
     },
     "row": {
       "idle": "bezczynność",
@@ -940,7 +945,11 @@
     "archive_title": "Archiwum",
     "archive_empty": "Archiwum jest puste",
     "delete_from_archive": "Usuń z archiwum",
-    "delete_archive_confirm": "Usunąć plik archiwum \"{{fileName}}\"? Ta operacja usuwa tylko zapisany plik i nie może zostać cofnięta."
+    "delete_archive_confirm": "Usunąć plik archiwum \"{{fileName}}\"? Ta operacja usuwa tylko zapisany plik i nie może zostać cofnięta.",
+    "errors": {
+      "load_data": "Nie udało się wczytać danych importu",
+      "delete_archive": "Nie udało się usunąć pliku z archiwum"
+    }
   },
   "time_analysis_page": {
     "no_project_data": "Brak danych projektowych",
