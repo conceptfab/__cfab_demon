@@ -7,5 +7,23 @@ fn main() {
         .trim()
         .to_string();
     println!("cargo:rustc-env=TIMEFLOW_VERSION={}", version);
+
+    // Soft drift check: warn if rpc_generated.rs is out of sync with the generator.
+    // Non-fatal — node may be absent in some build environments.
+    println!("cargo:rerun-if-changed=src/lib.rs");
+    println!("cargo:rerun-if-changed=scripts/gen_webrpc.cjs");
+    let status = std::process::Command::new("node")
+        .arg("scripts/gen_webrpc.cjs")
+        .arg("--check")
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .status();
+    if let Ok(s) = status {
+        if !s.success() {
+            println!(
+                "cargo:warning=rpc_generated.rs jest nieaktualny — uruchom: node scripts/gen_webrpc.cjs"
+            );
+        }
+    }
+
     tauri_build::build()
 }

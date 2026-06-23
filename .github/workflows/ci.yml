@@ -33,6 +33,7 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
       - run: npm ci
+      - run: cd src-tauri && node scripts/gen_webrpc.cjs --check
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
