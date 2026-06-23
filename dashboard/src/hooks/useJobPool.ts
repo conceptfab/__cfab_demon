@@ -204,9 +204,16 @@ export function useJobPool() {
       if (isAuto && !isDocumentVisible()) return;
       isSyncingRef.current = true;
 
+      // Sync po starcie respektuje interwał: lecimy jako 'background', więc demon
+      // odrzuci go (429), jeśli ostatni sync był < interwał temu. Manualny/interval/
+      // local_change idą bez tej bramki (jak dotąd).
+      const isBackground = reason === 'startup';
+
       try {
         logger.log(`[useJobPool] Delegating online sync to daemon (reason: ${reason})`);
-        await triggerDaemonOnlineSync();
+        // runSync obsługuje tylko auto-reasony (startup/local_change/interval) → bez `force`,
+        // więc cooldown demona po nieudanych syncach obejmuje wszystkie te wyzwalacze.
+        await triggerDaemonOnlineSync({ background: isBackground });
         // Daemon handles the sync — refresh UI after delay to pick up changes
         // 5s allows for larger databases to complete processing
         if (syncRefreshTimer.current) {
@@ -218,6 +225,16 @@ export function useJobPool() {
         }, 5_000);
         syncFailCountRef.current = 0;
       } catch (e) {
+        // HTTP 429 = demon świadomie pominął sync: albo interwał nie minął, albo
+        // trwa cooldown po nieudanych próbach (serwer pada). To nie błąd po stronie
+        // dashboardu — nie naliczaj własnego backoffu; demon sam wznowi, gdy wolno.
+        // invoke odrzuca surowym stringiem (Err(String)), więc normalizujemy.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/\b429\b/.test(msg)) {
+          logger.log(`[useJobPool] Online sync skipped (reason: ${reason}) — daemon throttled (interval/cooldown)`);
+          syncFailCountRef.current = 0;
+          return;
+        }
         logger.warn('Daemon sync trigger failed (daemon may be offline):', e);
         syncFailCountRef.current += 1;
 

@@ -586,7 +586,7 @@ fn handle_connection(
         ("GET", "/lan/local-identity") => handle_local_identity(),
         ("POST", "/lan/trigger-sync") => handle_trigger_sync(&state, &stop_signal, &body, client_ip),
         // Online sync endpoints
-        ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal, client_ip),
+        ("POST", "/online/trigger-sync") => handle_online_trigger_sync(&state, &stop_signal, &body, client_ip),
         ("POST", "/online/cancel-sync") => handle_online_cancel_sync(&state, client_ip),
         ("GET", "/online/sync-progress") => handle_sync_progress(&state),
         // Legacy endpoints — /lan/pull used by 13-step protocol (step 6, master fetches from slave)
@@ -1217,12 +1217,57 @@ fn handle_trigger_sync(
 fn handle_online_trigger_sync(
     state: &Arc<LanSyncState>,
     stop_signal: &Arc<AtomicBool>,
+    body: &str,
     client_ip: IpAddr,
 ) -> (u16, String) {
     if !is_loopback(client_ip) {
         log::warn!("Online trigger-sync rejected from non-loopback {}", client_ip);
         return (403, json_error("loopback_only"));
     }
+
+    // `background` = trigger automatyczny (sync po starcie). Taki sync musi
+    // respektować pełny skonfigurowany interwał względem ostatniego UKOŃCZONEGO
+    // synca — to bramka, która powstrzymuje "sync sam startuje" po (re)starcie
+    // aplikacji. Manualny sync (background=false) i `force` ją pomijają.
+    #[derive(Deserialize, Default)]
+    struct OnlineTriggerReq {
+        #[serde(default)]
+        background: bool,
+        #[serde(default)]
+        force: bool,
+    }
+    let req: OnlineTriggerReq = if body.trim().is_empty() {
+        OnlineTriggerReq::default()
+    } else {
+        serde_json::from_str(body).unwrap_or_default()
+    };
+
+    // Cooldown po nieudanych próbach — wspólna bramka dla WSZYSTKICH auto-wyzwalaczy
+    // (useJobPool startup/local_change/interval, useBackgroundSync, panele). Gdy serwer
+    // pada, bez tego pętle ponawiają co ~1–2 s (retry storm). Manualny sync (`force`)
+    // omija cooldown — user zawsze może spróbować od razu.
+    if !req.force {
+        let remaining = crate::config::online_sync_cooldown_remaining();
+        if remaining > 0 {
+            log::info!(
+                "Online trigger-sync: skipped (cooldown) — {}s do kolejnej próby po nieudanych syncach",
+                remaining
+            );
+            return (429, json_error("Online sync backing off after repeated failures"));
+        }
+    }
+
+    if req.background && !req.force {
+        let settings = crate::config::load_online_sync_settings();
+        if crate::config::online_sync_within_interval(settings.sync_interval_minutes) {
+            log::info!(
+                "Online trigger-sync: skipped (background) — interwał {} min nie minął od ostatniego synca",
+                settings.sync_interval_minutes.max(1)
+            );
+            return (429, json_error("Online sync interval not elapsed yet"));
+        }
+    }
+
     if state.sync_in_progress.compare_exchange(
         false, true, Ordering::SeqCst, Ordering::SeqCst
     ).is_err() {
@@ -1809,7 +1854,7 @@ mod tests {
         let state = Arc::new(LanSyncState::new());
         let stop = Arc::new(AtomicBool::new(false));
         let (status, resp) = handle_online_trigger_sync(
-            &state, &stop,
+            &state, &stop, "",
             IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7)),
         );
         assert_eq!(status, 403);

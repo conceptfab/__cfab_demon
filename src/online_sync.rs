@@ -702,6 +702,7 @@ pub fn run_async_delta_sync(
         }
         Err(e) => {
             sync_log(&format!("[async] Pull error: {}", e));
+            config::record_online_sync_failure();
             sync_state.unfreeze();
             sync_state.reset_progress();
             return;
@@ -711,9 +712,11 @@ pub fn run_async_delta_sync(
     match execute_async_push(&settings, &sync_state, group_id) {
         Ok(()) => {
             sync_log("=== ASYNC DELTA SYNC ZAKOŃCZONY ===");
+            config::save_online_sync_completed();
         }
         Err(e) => {
             sync_log(&format!("[async] Push error: {}", e));
+            config::record_online_sync_failure();
         }
     }
 
@@ -765,10 +768,12 @@ pub fn run_online_sync(
             ) {
                 Ok(()) => {
                     sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
+                    config::save_online_sync_completed();
                     true
                 }
                 Err(e) => {
                     sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
+                    config::record_online_sync_failure();
                     // Try to cancel session on server (best-effort)
                     if let Some(sid) = &session_id_for_cleanup {
                         cancel_session(&server_url, &token, sid, &device_id, &e).ok();
@@ -826,10 +831,12 @@ pub fn run_online_sync_forced(
             ) {
                 Ok(()) => {
                     sync_log("=== ONLINE SYNC ZAKOŃCZONY ===");
+                    config::save_online_sync_completed();
                     true
                 }
                 Err(e) => {
                     sync_log(&format!("=== ONLINE SYNC BŁĄD: {} ===", e));
+                    config::record_online_sync_failure();
                     if let Some(sid) = &session_id_for_cleanup {
                         cancel_session(&server_url, &token, sid, &device_id, &e).ok();
                     }

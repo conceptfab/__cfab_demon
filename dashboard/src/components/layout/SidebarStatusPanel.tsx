@@ -85,7 +85,8 @@ export function SidebarStatusPanel({
           }
           pulse={syncIndicator.status === 'syncing'}
           onClick={() => {
-            triggerDaemonOnlineSync().catch(() => {});
+            // Klik usera = manualny sync → force (omija interwał i cooldown po porażkach).
+            triggerDaemonOnlineSync({ force: true }).catch(() => {});
           }}
           title={syncIndicator.detail}
         />

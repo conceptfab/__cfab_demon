@@ -76,6 +76,132 @@ fn config_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("monitored_apps.json"))
 }
 
+/// Ścieżka do trwałego znacznika ostatniego UKOŃCZONEGO online synca.
+/// Trzymany na dysku (nie w pamięci jak `LanSyncState::last_sync_completed`),
+/// bo musi przeżyć restart aplikacji — inaczej każdy start po restarcie
+/// odpalałby sync "od nowa", ignorując interwał.
+fn online_sync_last_completed_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("online_sync_last_completed.txt"))
+}
+
+/// Zapisz znacznik "online sync ukończony teraz" (unix secs). Best-effort —
+/// błąd zapisu nie może wywrócić synca, więc tylko logujemy.
+pub fn save_online_sync_completed() {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match online_sync_last_completed_path() {
+        Ok(path) => {
+            if let Err(e) = std::fs::write(&path, now.to_string()) {
+                log::warn!("Nie udało się zapisać znacznika online sync: {}", e);
+            }
+        }
+        Err(e) => log::warn!("Brak ścieżki znacznika online sync: {}", e),
+    }
+    // Sukces zeruje backoff — kolejne auto-synci nie są już bramkowane cooldownem.
+    clear_online_sync_backoff();
+}
+
+/// Odczytaj znacznik ostatniego ukończonego online synca (unix secs).
+/// `None` = nigdy nie synchronizowano (brak/niepoprawny plik) → startowy sync
+/// powinien się wtedy odbyć.
+pub fn online_sync_last_completed() -> Option<u64> {
+    let path = online_sync_last_completed_path().ok()?;
+    std::fs::read_to_string(path).ok()?.trim().parse::<u64>().ok()
+}
+
+/// Czy od ostatniego ukończonego online synca minęło mniej niż `interval_minutes`?
+/// Używane przez bramki startowe (demon + dashboard), by sync po starcie
+/// respektował skonfigurowany interwał. `false` gdy nigdy nie synchronizowano.
+pub fn online_sync_within_interval(interval_minutes: u32) -> bool {
+    let Some(last) = online_sync_last_completed() else {
+        return false;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let interval_secs = (interval_minutes.max(1) as u64) * 60;
+    now.saturating_sub(last) < interval_secs
+}
+
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Trwały stan backoffu online synca po nieudanych próbach. Trzymany na dysku,
+/// bo wiele niezależnych pętli (useJobPool, useBackgroundSync, demon) wali w ten
+/// sam endpoint `/online/trigger-sync` — gdy serwer pada, bez tego ponawiają co
+/// ~1–2 s (retry storm zalewający logi i serwer). Cooldown na dysku jest wspólną
+/// bramką dla wszystkich tych wyzwalaczy.
+fn online_sync_backoff_path() -> Result<PathBuf> {
+    Ok(config_dir()?.join("online_sync_backoff.json"))
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct OnlineSyncBackoff {
+    consecutive_failures: u32,
+    last_failure_secs: u64,
+}
+
+fn read_online_sync_backoff() -> OnlineSyncBackoff {
+    online_sync_backoff_path()
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Zarejestruj nieudaną próbę online synca (zwiększa licznik i przedłuża cooldown).
+/// Best-effort — błąd zapisu nie może wywrócić synca.
+pub fn record_online_sync_failure() {
+    let mut b = read_online_sync_backoff();
+    b.consecutive_failures = b.consecutive_failures.saturating_add(1);
+    b.last_failure_secs = now_unix_secs();
+    if let (Ok(path), Ok(json)) = (online_sync_backoff_path(), serde_json::to_string(&b)) {
+        if let Err(e) = std::fs::write(&path, json) {
+            log::warn!("Nie udało się zapisać backoffu online sync: {}", e);
+        }
+    }
+    log::warn!(
+        "Online sync: zarejestrowano porażkę #{} — cooldown {}s",
+        b.consecutive_failures,
+        online_sync_cooldown_window(b.consecutive_failures)
+    );
+}
+
+fn clear_online_sync_backoff() {
+    if let Ok(path) = online_sync_backoff_path() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Okno cooldownu (sekundy) dla danej liczby kolejnych porażek.
+/// Wykładniczo: 15, 30, 60, 120, 240, max 300 s.
+fn online_sync_cooldown_window(consecutive_failures: u32) -> u64 {
+    if consecutive_failures == 0 {
+        return 0;
+    }
+    let exp = consecutive_failures.saturating_sub(1).min(5);
+    (15u64 << exp).min(300)
+}
+
+/// Pozostały cooldown w sekundach po kolejnych porażkach (0 = można synchronizować).
+/// Wspólna bramka dla wszystkich auto-wyzwalaczy; manualny sync (`force`) ją omija.
+pub fn online_sync_cooldown_remaining() -> u64 {
+    let b = read_online_sync_backoff();
+    let window = online_sync_cooldown_window(b.consecutive_failures);
+    if window == 0 {
+        return 0;
+    }
+    let elapsed = now_unix_secs().saturating_sub(b.last_failure_secs);
+    window.saturating_sub(elapsed)
+}
+
 pub(crate) fn dashboard_db_path() -> Result<PathBuf> {
     Ok(config_dir()?.join("timeflow_dashboard.db"))
 }
@@ -207,35 +333,19 @@ impl Default for OnlineSyncSettings {
 }
 
 /// Read online sync settings from the shared file (written by dashboard).
-/// Secrets (auth_token, encryption_key) are NOT in the file — they live in the
-/// OS keychain (timeflow_shared::secret_store, service "TIMEFLOW", same accounts
-/// the dashboard writes). Hydrate them here when the file fields are empty.
+/// Wszystkie pola — w tym sekrety (auth_token, encryption_key) — są w pliku JSON.
 pub fn load_online_sync_settings() -> OnlineSyncSettings {
     let path = match config_dir() {
         Ok(d) => d.join("online_sync_settings.json"),
         Err(_) => return OnlineSyncSettings::default(),
     };
-    let mut settings: OnlineSyncSettings = match std::fs::read_to_string(&path) {
-        Ok(raw) => match serde_json::from_str(&raw) {
-            Ok(settings) => settings,
-            Err(e) => {
-                log::warn!("Invalid online_sync_settings.json, using defaults: {}", e);
-                OnlineSyncSettings::default()
-            }
-        },
+    match std::fs::read_to_string(&path) {
+        Ok(raw) => serde_json::from_str(&raw).unwrap_or_else(|e| {
+            log::warn!("Invalid online_sync_settings.json, using defaults: {}", e);
+            OnlineSyncSettings::default()
+        }),
         Err(_) => OnlineSyncSettings::default(),
-    };
-    if settings.auth_token.is_empty() {
-        if let Some(v) = timeflow_shared::secret_store::get_secret("online.auth_token") {
-            settings.auth_token = v;
-        }
     }
-    if settings.encryption_key.is_empty() {
-        if let Some(v) = timeflow_shared::secret_store::get_secret("online.encryption_key") {
-            settings.encryption_key = v;
-        }
-    }
-    settings
 }
 
 
@@ -673,6 +783,18 @@ mod tests {
             bundle_id: bundle.map(str::to_string),
             app_path: path.map(str::to_string),
         }
+    }
+
+    #[test]
+    fn online_sync_cooldown_window_backs_off_exponentially() {
+        assert_eq!(online_sync_cooldown_window(0), 0, "brak porażek = brak cooldownu");
+        assert_eq!(online_sync_cooldown_window(1), 15);
+        assert_eq!(online_sync_cooldown_window(2), 30);
+        assert_eq!(online_sync_cooldown_window(3), 60);
+        assert_eq!(online_sync_cooldown_window(4), 120);
+        assert_eq!(online_sync_cooldown_window(5), 240);
+        assert_eq!(online_sync_cooldown_window(6), 300, "cap 300s");
+        assert_eq!(online_sync_cooldown_window(100), 300, "pozostaje zacapowane");
     }
 
     #[test]

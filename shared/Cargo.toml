@@ -1,6 +1,6 @@
 [package]
 name = "timeflow-shared"
-version = "0.1.5739"
+version = "0.1.5740"
 edition = "2021"
 
 [lib]
@@ -13,15 +13,3 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
-
-# OS keychain (secret_store). keyring 3 defaults to a per-process MOCK store —
-# a native backend MUST be enabled explicitly per platform, otherwise secrets
-# would not persist nor be shared between the dashboard and the daemon.
-[target.'cfg(target_os = "macos")'.dependencies]
-keyring = { version = "3", features = ["apple-native"] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
-keyring = { version = "3", features = ["windows-native"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }

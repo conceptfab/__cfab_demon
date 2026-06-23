@@ -145,7 +145,7 @@ export function useSyncSettings({
           // Daemon not available; UI sync state can still be updated locally.
         }
 
-        await triggerDaemonOnlineSync();
+        await triggerDaemonOnlineSync({ force: true });
         await new Promise((r) => setTimeout(r, 2_000));
         setOnlineSyncState(loadOnlineSyncState());
         setManualSyncResult({
@@ -187,7 +187,7 @@ export function useSyncSettings({
         const savedOnlineSync = saveOnlineSyncSettings(onlineSyncSettings);
         setOnlineSyncSettings({ ...savedOnlineSync, apiToken: uiToken });
 
-        await triggerDaemonOnlineSync();
+        await triggerDaemonOnlineSync({ force: true });
         await new Promise((r) => setTimeout(r, 2_000));
         setOnlineSyncState(loadOnlineSyncState());
         setManualSyncResult({

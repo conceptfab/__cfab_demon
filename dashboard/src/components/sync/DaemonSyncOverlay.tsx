@@ -66,7 +66,8 @@ export function DaemonSyncOverlay() {
 
     // Re-trigger the same sync type
     if (retryType === 'online') {
-      triggerDaemonOnlineSync().catch(() => {});
+      // Retry usera = manualny sync → force (omija interwał i cooldown po porażkach).
+      triggerDaemonOnlineSync({ force: true }).catch(() => {});
     } else if (retryType === 'lan') {
       // LAN sync is triggered via daemon tray — find first peer and run
       lanSyncApi.getLanPeers().then(async (peers) => {

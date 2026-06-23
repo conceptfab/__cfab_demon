@@ -18,8 +18,18 @@ export const getDaemonOnlineSyncSettings = () =>
 export const saveDaemonOnlineSyncSettings = (settings: DaemonOnlineSyncSettings) =>
   invokeMutation<void>('save_online_sync_settings', { settings });
 
-export const triggerDaemonOnlineSync = () =>
-  invokeMutation<string>('run_online_sync');
+/**
+ * Wyzwól online sync przez demona.
+ * - `background` (sync po starcie) → demon respektuje interwał (429 jeśli nie minął).
+ * - `force` (manualny sync z UI: przycisk w panelu, „Sync now", retry) → omija interwał
+ *   ORAZ cooldown po nieudanych próbach. Auto-wyzwalacze zostawiają `force=false`,
+ *   żeby padający serwer nie wywołał retry stormu.
+ */
+export const triggerDaemonOnlineSync = (opts: { background?: boolean; force?: boolean } = {}) =>
+  invokeMutation<string>('run_online_sync', {
+    background: opts.background ?? false,
+    force: opts.force ?? false,
+  });
 
 export const getDaemonOnlineSyncProgress = () =>
   invoke<SyncProgress>('get_online_sync_progress');

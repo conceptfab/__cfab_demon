@@ -10,7 +10,6 @@ use windows_sys::Win32::Security::Cryptography::{
 };
 
 const SECURE_TOKEN_FILE: &str = "sync_token.dat";
-const KEYCHAIN_ACCOUNT: &str = "sync_token";
 
 fn secure_token_path() -> Result<std::path::PathBuf, String> {
     let dir = timeflow_data_dir()?;
@@ -19,22 +18,14 @@ fn secure_token_path() -> Result<std::path::PathBuf, String> {
 
 #[tauri::command]
 pub async fn get_secure_token(_app: AppHandle) -> Result<String, String> {
-    // 1. Keychain (źródło docelowe).
-    if let Some(tok) = timeflow_shared::secret_store::get_secret(KEYCHAIN_ACCOUNT) {
-        return Ok(tok.trim().to_string());
-    }
-    // 2. Migracja z legacy pliku plaintext (macOS/Linux) lub DPAPI (Windows).
+    // Token w pliku w katalogu danych (bez keychaina). Windows: starsze pliki
+    // zapisane DPAPI są nadal odczytywane przez decode_legacy_token.
     let path = secure_token_path()?;
     if !path.exists() {
         return Ok(String::new());
     }
     let raw = fs::read(&path).map_err(|e| format!("Failed to read secure token: {}", e))?;
-    let legacy = decode_legacy_token(&raw)?;
-    if !legacy.is_empty() {
-        let _ = timeflow_shared::secret_store::set_secret(KEYCHAIN_ACCOUNT, &legacy);
-        let _ = fs::remove_file(&path); // sprzątnij plaintext po migracji
-    }
-    Ok(legacy)
+    decode_legacy_token(&raw)
 }
 
 fn decode_legacy_token(raw: &[u8]) -> Result<String, String> {
@@ -52,12 +43,13 @@ fn decode_legacy_token(raw: &[u8]) -> Result<String, String> {
 #[tauri::command]
 pub async fn set_secure_token(_app: AppHandle, token: String) -> Result<(), String> {
     let trimmed = token.trim();
-    // Usuń ewentualny legacy plik niezależnie od wartości (sekret żyje w keychainie).
-    if let Ok(path) = secure_token_path() {
+    let path = secure_token_path()?;
+    // Pusty string = usunięcie pliku tokenu.
+    if trimmed.is_empty() {
         let _ = fs::remove_file(&path);
+        return Ok(());
     }
-    // Pusty string = usunięcie wpisu (obsłużone w secret_store::set_secret).
-    timeflow_shared::secret_store::set_secret(KEYCHAIN_ACCOUNT, trimmed)
+    fs::write(&path, trimmed.as_bytes()).map_err(|e| format!("Failed to write secure token: {}", e))
 }
 
 #[cfg(windows)]

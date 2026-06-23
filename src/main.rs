@@ -125,8 +125,23 @@ fn main() {
                 !online_settings.auth_token.is_empty(),
             );
         }
+        // Startowy sync respektuje skonfigurowany interwał: szybki restart aplikacji
+        // nie wymusza kolejnej synchronizacji, jeśli ostatnia ukończona była mniej
+        // niż `sync_interval_minutes` temu (trwały znacznik przeżywa restart).
+        let within_interval =
+            config::online_sync_within_interval(online_settings.sync_interval_minutes);
         if online_settings.enabled && online_settings.auto_sync_on_startup
             && !online_settings.server_url.is_empty() && !online_settings.auth_token.is_empty()
+            && within_interval
+        {
+            log::info!(
+                "Online sync on startup skipped — ostatni sync < {} min temu (interwał nie minął)",
+                online_settings.sync_interval_minutes.max(1)
+            );
+        }
+        if online_settings.enabled && online_settings.auto_sync_on_startup
+            && !online_settings.server_url.is_empty() && !online_settings.auth_token.is_empty()
+            && !within_interval
         {
             let sync_state_clone = sync_state.clone();
             let stop_signal_clone = stop_signal.clone();

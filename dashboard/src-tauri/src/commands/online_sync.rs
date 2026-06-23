@@ -46,60 +46,46 @@ impl Default for OnlineSyncSettings {
 
 // ── Commands ──
 
-/// Keychain accounts for the online-sync secrets. Shared with the daemon
-/// (timeflow_shared::secret_store, service "TIMEFLOW") so both read the same
-/// entries — see src/config.rs::load_online_sync_settings.
-const KC_AUTH: &str = "online.auth_token";
-const KC_ENC: &str = "online.encryption_key";
-
-/// Get online sync settings. Secrets are hydrated from the OS keychain; the JSON
-/// on disk holds only non-sensitive fields. Legacy JSON with inline secrets is
-/// migrated into the keychain (and stripped from the file) on first read.
+/// Get online sync settings. Wszystkie pola — w tym sekrety — są w pliku JSON
+/// w katalogu danych (bez keychaina). Demon czyta ten sam plik.
 #[tauri::command]
 pub fn get_online_sync_settings() -> Result<OnlineSyncSettings, String> {
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
-    let mut settings = if path.exists() {
+    if path.exists() {
         let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        serde_json::from_str::<OnlineSyncSettings>(&content).map_err(|e| e.to_string())?
+        serde_json::from_str::<OnlineSyncSettings>(&content).map_err(|e| e.to_string())
     } else {
-        OnlineSyncSettings::default()
-    };
-    // Migracja: jeśli JSON nadal trzyma sekrety, przenieś do keychaina i wyczyść plik.
-    let needs_migration =
-        !settings.auth_token.is_empty() || !settings.encryption_key.is_empty();
-    if needs_migration {
-        // save_* zapisze sekrety do keychaina i wyzeruje je w pliku na dysku.
-        save_online_sync_settings(settings.clone())?;
+        Ok(OnlineSyncSettings::default())
     }
-    settings.auth_token = timeflow_shared::secret_store::get_secret(KC_AUTH).unwrap_or_default();
-    settings.encryption_key = timeflow_shared::secret_store::get_secret(KC_ENC).unwrap_or_default();
-    Ok(settings)
 }
 
-/// Save online sync settings. Secrets go to the OS keychain; the JSON on disk is
-/// written WITHOUT secrets (the daemon hydrates them from the keychain too).
+/// Save online sync settings. Wszystkie pola (z sekretami) zapisywane do pliku JSON.
 #[tauri::command]
 pub fn save_online_sync_settings(settings: OnlineSyncSettings) -> Result<(), String> {
-    timeflow_shared::secret_store::set_secret(KC_AUTH, &settings.auth_token)?;
-    timeflow_shared::secret_store::set_secret(KC_ENC, &settings.encryption_key)?;
-    let on_disk = OnlineSyncSettings {
-        auth_token: String::new(),
-        encryption_key: String::new(),
-        ..settings
-    };
     let path = timeflow_data_dir()?.join("online_sync_settings.json");
-    let json = serde_json::to_string_pretty(&on_disk).map_err(|e| e.to_string())?;
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(&path, json).map_err(|e| e.to_string())
 }
 
 /// Trigger online sync via daemon HTTP endpoint.
+///
+/// `background=true` oznacza automatyczny trigger (sync po starcie) — demon
+/// wymusi wtedy pełny interwał względem ostatniego ukończonego synca i odrzuci
+/// żądanie z HTTP 429, jeśli interwał jeszcze nie minął.
+///
+/// `force=true` (manualny sync z UI) omija zarówno bramkę interwału, jak i cooldown
+/// po nieudanych próbach. Auto-wyzwalacze wysyłają `force=false` i podlegają cooldownowi,
+/// dzięki czemu padający serwer nie wywołuje retry stormu.
 #[tauri::command]
-pub async fn run_online_sync() -> Result<String, String> {
+pub async fn run_online_sync(background: Option<bool>, force: Option<bool>) -> Result<String, String> {
+    let background = background.unwrap_or(false);
+    let force = force.unwrap_or(false);
     let result = tokio::task::spawn_blocking(move || {
         let client = build_http_client();
         let url = format!("{}/online/trigger-sync", DAEMON_BASE);
         let resp = client
             .post(&url)
+            .json(&serde_json::json!({ "background": background, "force": force }))
             .send()
             .map_err(|e| format!("Daemon unreachable: {}", e))?;
         let status = resp.status();
