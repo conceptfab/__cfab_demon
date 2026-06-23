@@ -32,7 +32,8 @@ function distributePercents(weights: number[]): number[] {
   fractional.sort((a, b) => b.frac - a.frac);
 
   for (let idx = 0; idx < fractional.length && remainder > 0; idx += 1) {
-    floored[fractional[idx].i] += 1;
+    // safe: loop is within [0, fractional.length); floored has same length as normalized
+    floored[fractional[idx]!.i]! += 1;
     remainder -= 1;
   }
 
@@ -84,8 +85,9 @@ export function rebalanceSplitPercents(
     let changed = false;
     if (remainingDiff > 0) {
       for (const i of otherIndices) {
-        if (nextParts[i].percent < 100) {
-          nextParts[i].percent += 1;
+        // safe: otherIndices contains valid indices into nextParts (built from prev.reduce)
+        if (nextParts[i]!.percent < 100) {
+          nextParts[i]!.percent += 1;
           remainingDiff -= 1;
           changed = true;
           if (remainingDiff === 0) break;
@@ -93,8 +95,9 @@ export function rebalanceSplitPercents(
       }
     } else {
       for (const i of otherIndices) {
-        if (nextParts[i].percent > 0) {
-          nextParts[i].percent -= 1;
+        // safe: otherIndices contains valid indices into nextParts (built from prev.reduce)
+        if (nextParts[i]!.percent > 0) {
+          nextParts[i]!.percent -= 1;
           remainingDiff += 1;
           changed = true;
           if (remainingDiff === 0) break;

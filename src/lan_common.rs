@@ -10,16 +10,6 @@ static SYNC_LOG_MUTEX: Mutex<()> = Mutex::new(());
 static LOG_SETTINGS_CACHE: Mutex<Option<(Instant, u64)>> = Mutex::new(None);
 const LOG_SETTINGS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Deterministic 128-bit hash using SHA-256 (truncated to 128 bits).
-/// Stable across Rust compiler versions, unlike DefaultHasher.
-fn hash_128(data: &[u8]) -> u128 {
-    use sha2::{Sha256, Digest};
-    let result = Sha256::digest(data);
-    // Take first 16 bytes (128 bits) of the 32-byte SHA-256 digest
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&result[..16]);
-    u128::from_be_bytes(bytes)
-}
 
 /// Read device_id from config dir; create if missing.
 ///
@@ -189,8 +179,7 @@ pub fn open_dashboard_db() -> Result<rusqlite::Connection, String> {
     // CASCADE-delete manual_sessions (ON DELETE CASCADE) — silent data loss. The merge
     // unit tests assert this by running with `PRAGMA foreign_keys = OFF`. OFF is also the
     // SQLite default; we set it explicitly to stay immune to a future default change.
-    conn.execute_batch("PRAGMA foreign_keys=OFF; PRAGMA synchronous=NORMAL;")
-        .map_err(|e| format!("Failed to set pragmas for dashboard DB: {}", e))?;
+    timeflow_shared::sync::connection::set_merge_pragmas(&conn)?;
     Ok(conn)
 }
 
@@ -201,36 +190,19 @@ pub fn open_dashboard_db_readonly() -> Result<rusqlite::Connection, String> {
 
 /// Compute a hash for a table's content using DefaultHasher.
 pub fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    let sql = match table {
-        "projects" => {
-            "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-             FROM (SELECT name, updated_at FROM projects ORDER BY name)"
-        }
-        "applications" => {
-            "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
-             FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)"
-        }
-        "sessions" => {
-            "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
-                   FROM sessions s JOIN applications a ON s.app_id = a.id \
-                   ORDER BY a.executable_name, s.start_time)"
-        }
-        "manual_sessions" => {
-            "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
-             FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)"
-        }
-        _ => return String::new(),
+    let sql = match timeflow_shared::sync::checksum::table_hash_sql(table) {
+        Some(s) => s,
+        None => return String::new(),
     };
     let concat: String = conn
         .query_row(sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
-    format!("{:032x}", hash_128(concat.as_bytes()))
+    timeflow_shared::sync::checksum::content_hash(&concat)
 }
 
-/// Compute hashes for all 4 sync tables, concatenated.
+/// Compute hashes for all sync tables, concatenated.
 pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
-    let tables = ["projects", "applications", "sessions", "manual_sessions"];
+    let tables = ["projects", "clients", "applications", "sessions", "manual_sessions"];
     let mut combined = String::new();
     for table in &tables {
         combined.push_str(&compute_table_hash(conn, table));
@@ -241,7 +213,7 @@ pub fn compute_tables_hash_string(conn: &rusqlite::Connection) -> String {
 /// Generate a marker hash from tables_hash + timestamp + device_id.
 pub fn generate_marker_hash(tables_hash: &str, timestamp: &str, device_id: &str) -> String {
     let input = format!("{}{}{}", tables_hash, timestamp, device_id);
-    format!("{:032x}", hash_128(input.as_bytes()))
+    timeflow_shared::sync::checksum::content_hash(&input)
 }
 
 /// Najlepszy adres IPv4 LAN (interfejs wyjściowy), fallback None.

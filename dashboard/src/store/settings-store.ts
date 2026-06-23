@@ -1,11 +1,18 @@
 import { create } from 'zustand';
 import {
   loadCurrencySettings,
+  saveCurrencySettings,
   loadAppearanceSettings,
   loadWorkingHoursSettings,
+  saveWorkingHoursSettings,
   loadLanguageSettings,
+  saveLanguageSettings,
   loadSplitSettings,
+  saveSplitSettings,
   loadRoundingSettings,
+  saveRoundingSettings,
+  loadSidebarSettings,
+  saveSidebarSettings,
   type WorkingHoursSettings,
   type AppLanguageCode,
   type SplitSettings,
@@ -25,19 +32,49 @@ interface SettingsState {
   setSplitSettings: (next: SplitSettings) => void;
   roundingSettings: RoundingSettings;
   setRoundingSettings: (next: RoundingSettings) => void;
+  sidebarCollapsed: boolean;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
 }
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   currencyCode: loadCurrencySettings().code,
-  setCurrencyCode: (code) => set({ currencyCode: code }),
+  setCurrencyCode: (code) => {
+    saveCurrencySettings({ code });
+    set({ currencyCode: code });
+  },
   chartAnimations: loadAppearanceSettings().chartAnimations,
   setChartAnimations: (enabled) => set({ chartAnimations: enabled }),
   workingHours: loadWorkingHoursSettings(),
-  setWorkingHours: (next) => set({ workingHours: next }),
+  setWorkingHours: (next) => {
+    saveWorkingHoursSettings(next);
+    set({ workingHours: next });
+  },
   language: loadLanguageSettings().code,
-  setLanguage: (code) => set({ language: code }),
+  setLanguage: (code) => {
+    saveLanguageSettings({ code });
+    set({ language: code });
+  },
   splitSettings: loadSplitSettings(),
-  setSplitSettings: (next) => set({ splitSettings: next }),
+  setSplitSettings: (next) => {
+    saveSplitSettings(next);
+    set({ splitSettings: next });
+  },
   roundingSettings: loadRoundingSettings(),
-  setRoundingSettings: (next) => set({ roundingSettings: next }),
+  setRoundingSettings: (next) => {
+    saveRoundingSettings(next);
+    set({ roundingSettings: next });
+  },
+  // Stan zwinięcia sidebara — utrwalany we wspólnym user_settings.json (write-through),
+  // by ta sama preferencja obowiązywała w oknie pulpitu i web UI.
+  sidebarCollapsed: loadSidebarSettings().collapsed,
+  setSidebarCollapsed: (collapsed) => {
+    saveSidebarSettings({ collapsed });
+    set({ sidebarCollapsed: collapsed });
+  },
+  toggleSidebarCollapsed: () => {
+    const next = !get().sidebarCollapsed;
+    saveSidebarSettings({ collapsed: next });
+    set({ sidebarCollapsed: next });
+  },
 }));

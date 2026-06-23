@@ -28,10 +28,28 @@ export interface TableHashes {
   manual_sessions: string;
   assignment_feedback?: string;
   assignment_auto_runs?: string;
+  /** m24 clients entity. Optional for backward compatibility with pre-m24 archives. */
+  clients?: string;
+}
+
+/** m24 client row carried by archives (subset of the clients table). */
+export interface ClientRow {
+  name: string;
+  contact?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+  currency?: string | null;
+  default_hourly_rate?: number | null;
+  color?: string | null;
+  archived_at?: string | null;
+  created_at?: string | null;
+  updated_at: string;
 }
 
 export interface DeltaData {
   projects: Partial<Project>[];
+  /** m24 clients entity. Optional for backward compatibility with pre-m24 archives. */
+  clients?: Partial<ClientRow>[];
   applications: Partial<Application>[];
   sessions: Partial<Session>[];
   manual_sessions: Partial<ManualSession>[];

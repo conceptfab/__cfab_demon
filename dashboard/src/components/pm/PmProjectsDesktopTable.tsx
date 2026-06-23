@@ -143,13 +143,15 @@ export function PmProjectsDesktopTable({
           {displayed.map((p, di) => {
             const group = clientGroupOf(p.prj_client);
             const match = tfMatches[p.prj_code];
+            // safe: originalIndices is parallel to displayed; di is always within bounds
+            const originalIdx = originalIndices[di]!;
             return (
               <tr
-                key={`${p.prj_code}-${originalIndices[di]}`}
+                key={`${p.prj_code}-${originalIdx}`}
                 className="border-b border-border/50 transition-colors hover:bg-accent/30"
               >
                 <td className="pl-3 pr-3 py-2 font-mono text-xs text-muted-foreground">
-                  {originalIndices[di] + 1}
+                  {originalIdx + 1}
                 </td>
                 <td className="py-2 font-mono text-xs">
                   {p.prj_number}/20{p.prj_year}
@@ -205,7 +207,7 @@ export function PmProjectsDesktopTable({
                   <button
                     type="button"
                     className="opacity-30 hover:opacity-100 transition-opacity cursor-pointer"
-                    onClick={() => onSelect(originalIndices[di])}
+                    onClick={() => onSelect(originalIdx)}
                   >
                     <Pencil className="size-3.5" />
                   </button>

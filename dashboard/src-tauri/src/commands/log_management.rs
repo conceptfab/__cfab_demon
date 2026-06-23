@@ -53,7 +53,10 @@ pub async fn get_log_settings() -> Result<LogSettings, String> {
     if !path.exists() {
         return Ok(LogSettings::default());
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e| e.to_string())?;
     serde_json::from_str(&content).map_err(|e| e.to_string())
 }
 
@@ -62,7 +65,10 @@ pub async fn save_log_settings(settings: LogSettings) -> Result<(), String> {
     let base = timeflow_data_dir()?;
     let path = base.join("log_settings.json");
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    tokio::task::spawn_blocking(move || std::fs::write(&path, json))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e| e.to_string())
 }
 
 // ── Log Reading ──
@@ -78,23 +84,27 @@ pub struct LogFileInfo {
 #[tauri::command]
 pub async fn get_log_files_info() -> Result<Vec<LogFileInfo>, String> {
     let dir = logs_dir()?;
-    let mut files = Vec::new();
-    for (key, filename) in LOG_FILES {
-        let path = dir.join(filename);
-        let (exists, size_bytes) = if path.exists() {
-            let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
-            (true, meta.len())
-        } else {
-            (false, 0)
-        };
-        files.push(LogFileInfo {
-            name: filename.to_string(),
-            key: key.to_string(),
-            size_bytes,
-            exists,
-        });
-    }
-    Ok(files)
+    tokio::task::spawn_blocking(move || {
+        let mut files = Vec::new();
+        for (key, filename) in LOG_FILES {
+            let path = dir.join(filename);
+            let (exists, size_bytes) = if path.exists() {
+                let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+                (true, meta.len())
+            } else {
+                (false, 0)
+            };
+            files.push(LogFileInfo {
+                name: filename.to_string(),
+                key: key.to_string(),
+                size_bytes,
+                exists,
+            });
+        }
+        Ok(files)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 #[tauri::command]
@@ -110,7 +120,10 @@ pub async fn read_log_file(key: String, tail_lines: Option<usize>) -> Result<Str
     if !path.exists() {
         return Ok(String::new());
     }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let content = tokio::task::spawn_blocking(move || std::fs::read_to_string(&path))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+        .map_err(|e| e.to_string())?;
     match tail_lines {
         Some(n) => {
             let all: Vec<&str> = content.lines().collect();
@@ -132,7 +145,10 @@ pub async fn clear_log_file(key: String) -> Result<(), String> {
     let dir = logs_dir()?;
     let path = dir.join(filename);
     if path.exists() {
-        std::fs::write(&path, "").map_err(|e| e.to_string())?;
+        tokio::task::spawn_blocking(move || std::fs::write(&path, ""))
+            .await
+            .map_err(|e| format!("spawn_blocking join error: {e}"))?
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }

@@ -18,9 +18,12 @@ type SidebarLanStatusRowProps = Pick<
   | 'lanSyncMessage'
   | 'lanSyncReady'
   | 'lanSyncing'
->;
+> & {
+  collapsed?: boolean;
+};
 
 export function SidebarLanStatusRow({
+  collapsed = false,
   goToPage,
   handleLanScan,
   handleLanSync,
@@ -34,6 +37,46 @@ export function SidebarLanStatusRow({
   lanSyncing,
 }: SidebarLanStatusRowProps) {
   const { t } = useTranslation();
+
+  const wifiColor = cn(
+    'size-3.5',
+    lanSyncing || lanScanning
+      ? 'text-amber-400'
+      : lanPeer
+        ? 'text-sky-400'
+        : 'text-muted-foreground/35',
+  );
+
+  // W trybie zwiniętym pokazujemy tylko ikonę Wifi (kolor = stan); szczegóły
+  // i akcje (parowanie, delta-sync) zostają na pełnej szynie / w ustawieniach.
+  if (collapsed) {
+    const collapsedStatus =
+      lanSyncMessage ??
+      (lanPeer
+        ? lanPeer.machine_name
+        : lanScanning
+          ? t('layout.status.lan_scanning')
+          : t('layout.status.lan_no_peers'));
+    return (
+      <AppTooltip
+        content={`${t('layout.status.lan')}: ${collapsedStatus}`}
+        side="right"
+      >
+        <button
+          type="button"
+          aria-label={`${t('layout.status.lan')}: ${collapsedStatus}`}
+          onClick={
+            !lanPeer && !lanScanning
+              ? () => void handleLanScan()
+              : () => goToPage('settings')
+          }
+          className="flex w-full items-center justify-center rounded-md border border-transparent px-0 py-1.5 transition-all hover:bg-accent/40"
+        >
+          <Wifi className={wifiColor} />
+        </button>
+      </AppTooltip>
+    );
+  }
 
   return (
     <div className="flex w-full items-center gap-0.5 rounded-md p-1">
@@ -60,16 +103,7 @@ export function SidebarLanStatusRow({
             'hover:bg-accent/40',
           )}
         >
-          <Wifi
-            className={cn(
-              'size-3.5',
-              lanSyncing || lanScanning
-                ? 'text-amber-400'
-                : lanPeer
-                  ? 'text-sky-400'
-                  : 'text-muted-foreground/35',
-            )}
-          />
+          <Wifi className={wifiColor} />
           <div className="flex min-w-0 flex-col items-start gap-0.5 leading-none">
             <span className="text-[7px] font-bold uppercase tracking-wider text-muted-foreground/45">
               {t('layout.status.lan')}

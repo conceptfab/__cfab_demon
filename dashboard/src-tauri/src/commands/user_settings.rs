@@ -23,7 +23,10 @@ fn read_object(base: &std::path::Path) -> Map<String, Value> {
 #[tauri::command]
 pub async fn get_all_user_settings() -> Result<Value, String> {
     let base = timeflow_data_dir()?;
-    Ok(Value::Object(read_object(&base)))
+    let obj = tokio::task::spawn_blocking(move || read_object(&base))
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?;
+    Ok(Value::Object(obj))
 }
 
 /// Czy bieżący proces backendu działa w trybie headless (`--headless`).
@@ -40,10 +43,14 @@ pub fn webui_is_headless_process() -> bool {
 #[tauri::command]
 pub async fn set_user_setting(key: String, value: Value) -> Result<(), String> {
     let base = timeflow_data_dir()?;
-    let mut obj = read_object(&base);
-    obj.insert(key, value);
-    let serialized = serde_json::to_string(&Value::Object(obj))
-        .map_err(|e| format!("serialize user_settings: {e}"))?;
-    std::fs::write(base.join(SETTINGS_FILE), serialized)
-        .map_err(|e| format!("write user_settings.json: {e}"))
+    tokio::task::spawn_blocking(move || {
+        let mut obj = read_object(&base);
+        obj.insert(key, value);
+        let serialized = serde_json::to_string(&Value::Object(obj))
+            .map_err(|e| format!("serialize user_settings: {e}"))?;
+        std::fs::write(base.join(SETTINGS_FILE), serialized)
+            .map_err(|e| format!("write user_settings.json: {e}"))
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }

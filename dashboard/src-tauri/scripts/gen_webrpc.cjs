@@ -186,6 +186,18 @@ ${armText}
 }
 `;
 
+if (process.argv.includes('--check')) {
+  const existing = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
+  if (existing !== header) {
+    process.stderr.write(
+      'rpc_generated.rs is out of date — run: node scripts/gen_webrpc.cjs\n',
+    );
+    process.exit(1);
+  }
+  console.log('rpc_generated.rs is up to date');
+  process.exit(0);
+}
+
 fs.writeFileSync(OUT, header);
 console.log(`Generated ${OUT}`);
 console.log(`Arms: ${new Set(arms).size} (registered commands: ${registered.size})`);

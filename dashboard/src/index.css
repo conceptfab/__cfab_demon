@@ -148,6 +148,9 @@
     background: white !important;
     color: black !important;
     height: auto !important;
+    /* #root ma min-height: 100vh (base) — w druku 100vh = pełna strona A4 (297mm),
+       co przy @page margin 15mm przekracza obszar druku (267mm) i tworzy pustą 2. stronę. */
+    min-height: 0 !important;
     overflow: visible !important;
   }
   #root > *,

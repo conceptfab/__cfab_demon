@@ -46,7 +46,8 @@ export function buildProjectIndexMap(
 ): Map<PmProject, number> {
   const map = new Map<PmProject, number>();
   for (let i = 0; i < projects.length; i++) {
-    map.set(projects[i], i);
+    // safe: loop is within [0, projects.length)
+    map.set(projects[i]!, i);
   }
   return map;
 }

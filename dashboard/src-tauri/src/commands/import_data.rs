@@ -203,10 +203,12 @@ pub async fn import_data(app: AppHandle, archive_path: String) -> Result<ImportS
         let archive = parse_export_archive(&content)?;
         let mut conn = db::get_connection(&app)?;
 
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
         let daily_mode = if db::is_demo_mode_enabled(&app)? { DailyFilesMode::Demo } else { DailyFilesMode::Live };
-        let summary = import_archive_into_tx(&tx, &archive, false, daily_mode)?;
-        tx.commit().map_err(|e| e.to_string())?;
+        // FK=OFF for the merge import (shared::sync::merge contract) — see
+        // import_archive_with_fk_off. Restored to ON afterwards.
+        let summary = import_archive_with_fk_off(&mut conn, |tx| {
+            import_archive_into_tx(tx, &archive, false, daily_mode)
+        })?;
 
         log::info!(
             "import_data: archive '{}' imported — projects_created={}, apps_created={}, sessions_imported={}, sessions_merged={}, daily_files_imported={}",
@@ -282,122 +284,6 @@ fn clear_synchronized_tables(tx: &rusqlite::Transaction<'_>) -> Result<(), Strin
     Ok(())
 }
 
-/// Applies archive tombstones to local records and persists them locally with
-/// their ORIGINAL deleted_at (dedup by table_name + sync_key), so deletions
-/// keep propagating with correct LWW semantics. Caller must have tombstone
-/// triggers disabled — the DELETEs here are replays of remote deletions.
-fn apply_archive_tombstones(
-    tx: &rusqlite::Transaction<'_>,
-    tombstones: &[super::types::Tombstone],
-) -> Result<(), String> {
-    for t in tombstones {
-        let Some(ref sync_key) = t.sync_key else {
-            continue;
-        };
-        let already_known: bool = tx
-            .query_row(
-                "SELECT 1 FROM tombstones WHERE table_name = ?1 AND sync_key = ?2",
-                rusqlite::params![t.table_name, sync_key],
-                |_| Ok(()),
-            )
-            .is_ok();
-        if !already_known {
-            tx.execute(
-                "INSERT INTO tombstones (table_name, record_id, deleted_at, sync_key) \
-                 VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![t.table_name, t.record_id, t.deleted_at, sync_key],
-            )
-            .map_err(|e| e.to_string())?;
-        }
-
-        match t.table_name.as_str() {
-            "projects" => {
-                let name = sync_key;
-                // Guard: skip if project was updated after tombstone (normalize for timezone-safe comparison)
-                let local_updated: Option<String> = tx
-                    .query_row(
-                        "SELECT updated_at FROM projects WHERE name = ?1",
-                        [name.as_str()],
-                        |row| row.get(0),
-                    )
-                    .ok();
-                if let Some(ref lu) = local_updated {
-                    let norm_local = super::delta_export::normalize_datetime_for_sqlite_pub(lu);
-                    let norm_deleted =
-                        super::delta_export::normalize_datetime_for_sqlite_pub(&t.deleted_at);
-                    if norm_local > norm_deleted {
-                        continue; // Project re-created/updated after deletion — skip
-                    }
-                }
-                // Null out FK references before deleting project
-                tx.execute(
-                    "UPDATE sessions SET project_id = NULL \
-                     WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
-                    [name.as_str()],
-                )
-                .ok();
-                tx.execute(
-                    "UPDATE manual_sessions SET project_id = 0 \
-                     WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
-                    [name.as_str()],
-                )
-                .ok();
-                tx.execute(
-                    "UPDATE applications SET project_id = NULL \
-                     WHERE project_id IN (SELECT id FROM projects WHERE name = ?1)",
-                    [name.as_str()],
-                )
-                .ok();
-                tx.execute("DELETE FROM projects WHERE name = ?1", [name.as_str()])
-                    .ok();
-            }
-            "manual_sessions" => {
-                apply_manual_session_tombstone(tx, sync_key, &t.deleted_at)?;
-            }
-            _ => {}
-        }
-    }
-    Ok(())
-}
-
-/// Applies one manual_sessions tombstone with a last-writer-wins guard:
-/// a record re-created/updated AFTER the deletion must survive (mirrors the
-/// projects tombstone guard). Without this, stale tombstones from an old
-/// incident on one machine permanently delete restored data on every import.
-fn apply_manual_session_tombstone(
-    tx: &rusqlite::Transaction<'_>,
-    sync_key: &str,
-    deleted_at: &str,
-) -> Result<(), String> {
-    let parts: Vec<&str> = sync_key.split('|').collect();
-    if parts.len() != 3 {
-        return Ok(());
-    }
-    let start_time = parts[1];
-    let title = parts[2];
-    let local_updated: Option<String> = tx
-        .query_row(
-            "SELECT MAX(updated_at) FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
-            [start_time, title],
-            |row| row.get(0),
-        )
-        .ok()
-        .flatten();
-    if let Some(ref lu) = local_updated {
-        let norm_local = super::delta_export::normalize_datetime_for_sqlite_pub(lu);
-        let norm_deleted = super::delta_export::normalize_datetime_for_sqlite_pub(deleted_at);
-        if norm_local > norm_deleted {
-            return Ok(()); // Record re-created/updated after deletion — skip
-        }
-    }
-    tx.execute(
-        "DELETE FROM manual_sessions WHERE start_time = ?1 AND title = ?2",
-        [start_time, title],
-    )
-    .map_err(|e| format!("Failed to apply manual_sessions tombstone: {}", e))?;
-    Ok(())
-}
-
 /// How to handle the archive's daily JSON files during import.
 /// `Skip` keeps the import fully headless (offline harness / tests) —
 /// the DB merge is identical, only daily-store files are not written.
@@ -406,6 +292,44 @@ pub(crate) enum DailyFilesMode {
     Live,
     Demo,
     Skip,
+}
+
+/// Open a transaction with `foreign_keys=OFF` for the merge import, run `body`,
+/// and ALWAYS restore `foreign_keys=ON` on the connection afterwards (commit,
+/// early-return, or rollback). The shared merge core requires FK enforcement
+/// OFF — it manages FK references MANUALLY (sets manual_sessions.project_id to
+/// the sentinel 0, expects a project tombstone-delete NOT to CASCADE-delete its
+/// manual_sessions). This mirrors the daemon's `open_dashboard_db` contract
+/// (`src/lan_common.rs:175-183`). The dashboard pool checks connections out with
+/// `foreign_keys=ON` (`db/pool.rs`), so without this the sentinel write fails
+/// (FK 787, aborting the whole import) and a project delete would CASCADE-drop
+/// manual_sessions (silent data loss).
+///
+/// IMPORTANT: `PRAGMA foreign_keys` is a no-op inside an open transaction, so it
+/// MUST be toggled before `conn.transaction()`. We restore FK=ON explicitly
+/// (not relying solely on the pool re-arming on release) to leave the pooled
+/// connection clean regardless of pool timing.
+fn import_archive_with_fk_off<F>(conn: &mut rusqlite::Connection, body: F) -> Result<ImportSummary, String>
+where
+    F: FnOnce(&rusqlite::Transaction<'_>) -> Result<ImportSummary, String>,
+{
+    conn.execute_batch("PRAGMA foreign_keys=OFF;")
+        .map_err(|e| format!("Failed to disable foreign_keys for merge import: {}", e))?;
+    // Inner block so the transaction is fully concluded (commit/rollback) before
+    // we restore FK enforcement on the connection.
+    let result = (|| {
+        let tx = conn.transaction().map_err(|e| e.to_string())?;
+        let summary = body(&tx)?;
+        tx.commit()
+            .map_err(|e| format!("Failed to commit merge import transaction: {}", e))?;
+        Ok(summary)
+    })();
+    // Restore FK enforcement on ALL paths (success or error) so the pooled
+    // connection is never handed back with FKs disabled.
+    if let Err(e) = conn.execute_batch("PRAGMA foreign_keys=ON;") {
+        log::warn!("Failed to re-enable foreign_keys after merge import: {}", e);
+    }
+    result
 }
 
 fn import_archive_into_tx(
@@ -435,153 +359,104 @@ fn import_archive_into_tx(
         clear_synchronized_tables(tx)?;
     }
 
-    // 0. Handle Tombstones.
+    // 0. Shared merge core (finding #1): tombstones + projects + clients +
+    // applications + manual_sessions now run through timeflow_shared::sync::merge,
+    // the SAME code the daemon's LAN sync uses. This unifies semantics: tombstone
+    // guards apply to all tables, applications get full LWW (display_name +
+    // updated_at), manual_sessions UPDATE includes `date`. Sessions stay inline
+    // below (the dashboard's overlap-merge is intentionally different — finding #8).
     //
     // The whole import runs with tombstone triggers DISABLED (mirrors the
-    // daemon's LAN merge): every DELETE below is a technical replay/merge, not
-    // a user deletion — trigger-minted copies with deleted_at = NOW would
-    // block importing the same records from a second archive and propagate
-    // false deletions to peers. Remote deletions still propagate, because the
-    // archive's tombstones are persisted with their ORIGINAL deleted_at.
-    // DDL is transactional — a rollback restores the triggers.
+    // daemon's LAN merge): every DELETE inside the shared merge is a technical
+    // replay/merge, not a user deletion — trigger-minted copies with
+    // deleted_at = NOW would block importing the same records from a second
+    // archive and propagate false deletions to peers. Remote deletions still
+    // propagate, because the archive's tombstones are persisted with their
+    // ORIGINAL deleted_at. DDL is transactional — a rollback restores the triggers.
     {
         use crate::db_migrations::tombstone_triggers;
         for sql in tombstone_triggers::DROP_ALL_TOMBSTONE_TRIGGERS_SQL {
             tx.execute(sql, []).map_err(|e| e.to_string())?;
         }
     }
-    apply_archive_tombstones(tx, &archive.data.tombstones)?;
 
-    // 1. Map and Create Projects
-    let mut existing_projects_map: HashMap<String, i64> = HashMap::new();
-    {
-        let mut stmt = tx
-            .prepare("SELECT name, id FROM projects")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let (name, id) =
-                row.map_err(|e| format!("Failed to read local project mapping row: {}", e))?;
-            existing_projects_map.insert(name.trim().to_lowercase(), id);
-        }
-    }
+    // Serialize the archive to the wire shape the shared merge reads
+    // (`.pointer("/data/<entity>")`). This is the SAME format the daemon already
+    // imports from the dashboard's export over LAN sync — field names match 1:1.
+    let archive_value =
+        serde_json::to_value(archive).map_err(|e| format!("serialize archive: {e}"))?;
+    let hooks = timeflow_shared::sync::merge::MergeHooks {
+        log: &|m: &str| log::info!("{m}"),
+        diag: false,
+    };
 
-    let mut project_mapping = HashMap::new();
+    // Created-count bookkeeping: the shared merges don't return per-row counts,
+    // so derive projects_created / apps_created from before/after row totals.
+    let projects_before_merge: i64 = tx
+        .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))
+        .unwrap_or(0);
+    let apps_before_merge: i64 = tx
+        .query_row("SELECT COUNT(*) FROM applications", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    // tombstones FIRST (replaces apply_archive_tombstones + apply_manual_session_tombstone)
+    timeflow_shared::sync::merge::apply_tombstones(tx, &archive_value, &hooks)?;
+    timeflow_shared::sync::merge::merge_projects(tx, &archive_value, &hooks)?;
+    timeflow_shared::sync::merge::merge_clients(tx, &archive_value, &hooks)?;
+    let mut id_maps = timeflow_shared::sync::merge::build_id_maps(tx, &archive_value)?;
+    timeflow_shared::sync::merge::merge_applications(tx, &archive_value, &hooks, &mut id_maps)?;
+
+    let projects_after_merge: i64 = tx
+        .query_row("SELECT COUNT(*) FROM projects", [], |r| r.get(0))
+        .unwrap_or(0);
+    let apps_after_merge: i64 = tx
+        .query_row("SELECT COUNT(*) FROM applications", [], |r| r.get(0))
+        .unwrap_or(0);
+    summary.projects_created = (projects_after_merge - projects_before_merge).max(0) as usize;
+    summary.apps_created = (apps_after_merge - apps_before_merge).max(0) as usize;
+
+    // Rebuild the dashboard's archive-id → local-id maps that the SESSION loop
+    // needs, by resolving each archive entity to its local row by stable name
+    // (the shared merges have already populated the local tables). This keeps the
+    // session loop EXACTLY as before.
+    let mut project_mapping: HashMap<i64, i64> = HashMap::new();
     for p in &archive.data.projects {
-        let project_key = p.name.trim().to_lowercase();
-        let local_id = existing_projects_map.get(&project_key).copied();
-
-        let id = if let Some(id) = local_id {
-            let local_updated_at: String = tx
-                .query_row(
-                    "SELECT updated_at FROM projects WHERE id = ?1",
-                    [id],
-                    |row| row.get(0),
-                )
-                .unwrap_or_default();
-
-            if p.updated_at > local_updated_at {
-                tx.execute(
-                    "UPDATE projects
-                     SET color = ?1,
-                         hourly_rate = COALESCE(?2, hourly_rate),
-                         frozen_at = COALESCE(?3, frozen_at),
-                         excluded_at = COALESCE(?4, excluded_at),
-                         merged_into = COALESCE(?5, merged_into),
-                         merged_at = COALESCE(?6, merged_at),
-                         updated_at = ?7
-                     WHERE id = ?8",
-                    rusqlite::params![
-                        p.color,
-                        p.hourly_rate,
-                        p.frozen_at,
-                        p.excluded_at,
-                        p.merged_into,
-                        p.merged_at,
-                        p.updated_at,
-                        id
-                    ],
-                )
-                .map_err(|e| e.to_string())?;
-            }
-            id
-        } else {
-            tx.execute(
-                "INSERT INTO projects (name, color, hourly_rate, created_at, excluded_at, assigned_folder_path, is_imported, frozen_at, merged_into, merged_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, 1, ?6, ?7, ?8, ?9)",
-                rusqlite::params![p.name, p.color, p.hourly_rate, p.created_at, p.excluded_at, p.frozen_at, p.merged_into, p.merged_at, p.updated_at]
-            ).map_err(|e| e.to_string())?;
-            summary.projects_created += 1;
-            let new_id = tx.last_insert_rowid();
-            existing_projects_map.insert(project_key, new_id);
-            new_id
-        };
-        project_mapping.insert(p.id, id);
-    }
-
-    // 2. Map and Create Applications
-    let mut existing_apps_map: HashMap<String, i64> = HashMap::new();
-    let mut existing_apps_display_map: HashMap<String, i64> = HashMap::new();
-    {
-        let mut stmt = tx
-            .prepare("SELECT executable_name, display_name, id FROM applications")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-        for row in rows {
-            let (exe, display_name, id) =
-                row.map_err(|e| format!("Failed to read local application mapping row: {}", e))?;
-            existing_apps_map.insert(exe.trim().to_lowercase(), id);
-            existing_apps_display_map.insert(display_name.trim().to_lowercase(), id);
+        if let Some(local_id) = tx
+            .query_row(
+                "SELECT id FROM projects WHERE name = ?1",
+                [p.name.as_str()],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+        {
+            project_mapping.insert(p.id, local_id);
         }
     }
-
-    let mut app_mapping = HashMap::new();
+    let mut app_mapping: HashMap<i64, i64> = HashMap::new();
     for a in &archive.data.applications {
-        let exe_key = a.executable_name.trim().to_lowercase();
-        let display_key = a.display_name.trim().to_lowercase();
-        let local_id = existing_apps_map
-            .get(&exe_key)
-            .copied()
-            .or_else(|| existing_apps_display_map.get(&display_key).copied());
-
-        let mapped_project_id = a
-            .project_id
-            .and_then(|old_pid| project_mapping.get(&old_pid).copied());
-
-        let id = if let Some(id) = local_id {
-            if let Some(pid) = mapped_project_id {
-                tx.execute(
-                    "UPDATE applications
-                     SET project_id = COALESCE(project_id, ?1)
-                     WHERE id = ?2",
-                    rusqlite::params![pid, id],
+        // mirror the dashboard's existing resolution: executable_name, fallback display_name
+        let local_id = tx
+            .query_row(
+                "SELECT id FROM applications WHERE LOWER(executable_name) = LOWER(?1)",
+                [a.executable_name.as_str()],
+                |r| r.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?
+            .or_else(|| {
+                tx.query_row(
+                    "SELECT id FROM applications WHERE LOWER(display_name) = LOWER(?1)",
+                    [a.display_name.as_str()],
+                    |r| r.get::<_, i64>(0),
                 )
-                .map_err(|e| e.to_string())?;
-            }
-            id
-        } else {
-            tx.execute(
-                "INSERT INTO applications (executable_name, display_name, project_id, is_imported) VALUES (?1, ?2, ?3, 1)",
-                rusqlite::params![a.executable_name, a.display_name, mapped_project_id]
-            ).map_err(|e| e.to_string())?;
-            summary.apps_created += 1;
-            let new_id = tx.last_insert_rowid();
-            existing_apps_map.insert(exe_key, new_id);
-            existing_apps_display_map.insert(display_key, new_id);
-            new_id
-        };
-        app_mapping.insert(a.id, id);
+                .optional()
+                .ok()
+                .flatten()
+            });
+        if let Some(id) = local_id {
+            app_mapping.insert(a.id, id);
+        }
     }
 
     // 3. Import and Merge Sessions
@@ -639,48 +514,11 @@ fn import_archive_into_tx(
         }
     }
 
-    // 4. Manual Sessions
-    for ms in &archive.data.manual_sessions {
-        if let Some(&local_pid) = project_mapping.get(&ms.project_id) {
-            let local_manual_app_id = ms
-                .app_id
-                .and_then(|archive_app_id| app_mapping.get(&archive_app_id).copied());
-            let local_status: Option<(i64, String)> = tx.query_row(
-                "SELECT id, updated_at FROM manual_sessions WHERE project_id = ?1 AND start_time = ?2 AND title = ?3",
-                rusqlite::params![local_pid, ms.start_time, ms.title],
-                |row| Ok((row.get(0)?, row.get(1)?))
-            ).optional().map_err(|e| e.to_string())?;
-
-            if let Some((local_id, local_updated_at)) = local_status {
-                if ms.updated_at > local_updated_at {
-                    tx.execute(
-                        "UPDATE manual_sessions SET
-                            session_type = ?1,
-                            end_time = ?2,
-                            duration_seconds = ?3,
-                            updated_at = ?4,
-                            app_id = ?5
-                         WHERE id = ?6",
-                        rusqlite::params![
-                            ms.session_type,
-                            ms.end_time,
-                            ms.duration_seconds,
-                            ms.updated_at,
-                            local_manual_app_id,
-                            local_id
-                        ],
-                    )
-                    .map_err(|e| e.to_string())?;
-                }
-            } else {
-                tx.execute(
-                    "INSERT INTO manual_sessions (title, session_type, project_id, app_id, start_time, end_time, duration_seconds, date, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                    rusqlite::params![ms.title, ms.session_type, local_pid, local_manual_app_id, ms.start_time, ms.end_time, ms.duration_seconds, ms.date, ms.created_at, ms.updated_at]
-                ).map_err(|e| e.to_string())?;
-            }
-        }
-    }
+    // 4. Manual Sessions — via shared merge core (finding #1). Replaces the
+    // dashboard's inline block. The shared merge keys on (title, start_time),
+    // resolves remote project_id/app_id by name through `id_maps`, applies the
+    // manual-tombstone guard, and includes `date` in the UPDATE.
+    timeflow_shared::sync::merge::merge_manual_sessions(tx, &archive_value, &hooks, &id_maps)?;
 
     // 4a. File Activities (szczegóły plików/tytułów okien — dane AI i widok
     // Detailed). Upsert po UNIQUE(app_id, date, file_path) z merge MAX/MIN.
@@ -918,15 +756,15 @@ pub async fn import_data_archive(
     // If anything fails, SQLite automatically rolls back — no data loss.
     let result = run_app_blocking(app.clone(), move |app| {
         let mut conn = db::get_connection(&app)?;
-        let tx = conn.transaction().map_err(|e| e.to_string())?;
 
         // Merge server data with local instead of clearing — preserves
         // locally-recorded sessions that haven't been pushed yet.
         let daily_mode = if db::is_demo_mode_enabled(&app)? { DailyFilesMode::Demo } else { DailyFilesMode::Live };
-        let summary = import_archive_into_tx(&tx, &archive, false, daily_mode)?;
-
-        tx.commit()
-            .map_err(|e| format!("Failed to commit sync import transaction: {}", e))?;
+        // FK=OFF for the merge import (shared::sync::merge contract) — see
+        // import_archive_with_fk_off. Commits internally; FK restored to ON after.
+        let summary = import_archive_with_fk_off(&mut conn, |tx| {
+            import_archive_into_tx(tx, &archive, false, daily_mode)
+        })?;
 
         // Post-commit: reapply overrides and retrain model
         match super::sessions::apply_manual_session_overrides(&conn) {
@@ -1586,6 +1424,420 @@ mod tests {
         conn
     }
 
+    // ---- m24 online-sync parity (client_name / status / clients) ----
+
+    fn base_archive() -> super::super::types::ExportArchive {
+        use super::super::types::*;
+        ExportArchive {
+            version: "2.0".into(),
+            exported_at: "2026-06-01 00:00:00".into(),
+            machine_id: "test".into(),
+            export_type: "all_data".into(),
+            date_range: DateRange { start: String::new(), end: String::new() },
+            metadata: ExportMetadata {
+                project_id: None,
+                project_name: None,
+                total_sessions: 0,
+                total_seconds: 0,
+            },
+            data: ExportData {
+                projects: vec![],
+                clients: vec![],
+                applications: vec![],
+                sessions: vec![],
+                manual_sessions: vec![],
+                daily_files: std::collections::BTreeMap::new(),
+                tombstones: vec![],
+                assignment_feedback: vec![],
+                assignment_auto_runs: vec![],
+                file_activities: vec![],
+            },
+        }
+    }
+
+    fn proj_row(
+        name: &str,
+        updated_at: &str,
+        client_name: Option<&str>,
+        status: &str,
+    ) -> super::super::types::Project {
+        super::super::types::Project {
+            id: 0,
+            name: name.into(),
+            color: "#fff".into(),
+            hourly_rate: None,
+            created_at: "2026-01-01 00:00:00".into(),
+            excluded_at: None,
+            frozen_at: None,
+            merged_into: None,
+            merged_at: None,
+            assigned_folder_path: None,
+            is_imported: 1,
+            updated_at: updated_at.into(),
+            client_name: client_name.map(|s| s.to_string()),
+            status: status.into(),
+        }
+    }
+
+    fn client_row(name: &str, updated_at: &str) -> super::super::types::ClientRow {
+        super::super::types::ClientRow {
+            name: name.into(),
+            contact: None,
+            address: None,
+            tax_id: None,
+            currency: None,
+            default_hourly_rate: None,
+            color: Some("#abc".into()),
+            archived_at: None,
+            created_at: Some("2026-01-01 00:00:00".into()),
+            updated_at: updated_at.into(),
+        }
+    }
+
+    fn run_sync_import(
+        conn: &mut rusqlite::Connection,
+        archive: &super::super::types::ExportArchive,
+    ) {
+        // Exercise the SAME FK=OFF lifecycle as production (import_data /
+        // import_data_archive) so tests catch FK-contract regressions.
+        import_archive_with_fk_off(conn, |tx| {
+            import_archive_into_tx(tx, archive, false, DailyFilesMode::Skip)
+        })
+        .expect("import");
+    }
+
+    fn read_project_client(conn: &rusqlite::Connection, name: &str) -> (Option<String>, String) {
+        conn.query_row(
+            "SELECT client_name, status FROM projects WHERE name = ?1",
+            [name],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn online_sync_applies_client_name_and_status_to_existing_project() {
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (name, color, created_at, updated_at) \
+             VALUES ('P', '#fff', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        let mut a = base_archive();
+        a.data
+            .projects
+            .push(proj_row("P", "2026-02-01 00:00:00", Some("Acme"), "archived"));
+        run_sync_import(&mut conn, &a);
+        let (cn, st) = read_project_client(&conn, "P");
+        assert_eq!(cn.as_deref(), Some("Acme"), "client assignment must propagate");
+        assert_eq!(st, "archived", "status must propagate");
+    }
+
+    #[test]
+    fn online_sync_inserts_new_project_with_client_name_and_status() {
+        let mut conn = full_schema_conn();
+        let mut a = base_archive();
+        a.data
+            .projects
+            .push(proj_row("Q", "2026-02-01 00:00:00", Some("Beta"), "active"));
+        run_sync_import(&mut conn, &a);
+        let (cn, st) = read_project_client(&conn, "Q");
+        assert_eq!(cn.as_deref(), Some("Beta"));
+        assert_eq!(st, "active");
+    }
+
+    #[test]
+    fn online_sync_preserves_local_client_when_peer_omits_the_key() {
+        // BEHAVIOR CHANGE (3.2b): import now runs through
+        // `timeflow_shared::sync::merge::merge_projects`, which distinguishes an
+        // ABSENT key (old peer that has no concept of client_name/status →
+        // preserve local) from an EXPLICIT null (clear). A genuine pre-m24 peer
+        // OMITS the keys entirely, so this still preserves the local assignment.
+        // (The old inline path used COALESCE/NULLIF and so could not tell absent
+        // from explicit-null — see `online_sync_explicit_null_clears_client` for
+        // the now-distinct null case.)
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (name, color, client_name, status, created_at, updated_at) \
+             VALUES ('P', '#fff', 'Acme', 'archived', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        // Old-peer wire shape: client_name / status keys are absent.
+        let archive_value = serde_json::json!({
+            "data": { "projects": [{
+                "name": "P", "color": "#999", "hourly_rate": null,
+                "created_at": "2026-01-01 00:00:00", "excluded_at": null, "frozen_at": null,
+                "updated_at": "2026-03-01 00:00:00"
+            }]}
+        });
+        let tx = conn.transaction().expect("tx");
+        let hooks = timeflow_shared::sync::merge::MergeHooks { log: &|_| {}, diag: false };
+        timeflow_shared::sync::merge::merge_projects(&tx, &archive_value, &hooks).expect("merge");
+        tx.commit().expect("commit");
+        let (cn, st) = read_project_client(&conn, "P");
+        assert_eq!(cn.as_deref(), Some("Acme"), "absent client_name key preserves local");
+        assert_eq!(st, "archived", "absent status key preserves local");
+    }
+
+    #[test]
+    fn online_sync_explicit_null_clears_client() {
+        // BEHAVIOR CHANGE (3.2b): when the peer sends an EXPLICIT null for
+        // client_name (the dashboard's own export wire shape, since the typed
+        // `Project` serializes `None` → JSON null), the newer remote wins and the
+        // local assignment is CLEARED. Mirrors the daemon's LAN-sync semantics
+        // (explicit null = "cleared"). The pre-3.2b inline path could not express
+        // this — it always preserved local via COALESCE.
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (name, color, client_name, status, created_at, updated_at) \
+             VALUES ('P', '#fff', 'Acme', 'archived', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        let mut a = base_archive();
+        // proj_row builds a typed Project with client_name: None → serializes to
+        // JSON null (no skip_serializing_if), and status "active".
+        a.data
+            .projects
+            .push(proj_row("P", "2026-03-01 00:00:00", None, "active"));
+        run_sync_import(&mut conn, &a);
+        let (cn, st) = read_project_client(&conn, "P");
+        assert_eq!(cn, None, "explicit-null client_name clears local (newer remote wins)");
+        assert_eq!(st, "active", "explicit status from newer remote wins");
+    }
+
+    #[test]
+    fn online_sync_merges_clients_last_writer_wins() {
+        let mut conn = full_schema_conn();
+        let mut insert = base_archive();
+        insert.data.clients.push(client_row("Acme", "2026-02-01 00:00:00"));
+        run_sync_import(&mut conn, &insert);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 1, "client inserted");
+
+        // Older archive must lose (local wins on updated_at).
+        let mut older = base_archive();
+        let mut c_old = client_row("Acme", "2026-01-01 00:00:00");
+        c_old.contact = Some("OLD".into());
+        older.data.clients.push(c_old);
+        run_sync_import(&mut conn, &older);
+        let contact: Option<String> = conn
+            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(contact, None, "older archive must not overwrite (LWW)");
+
+        // Newer archive wins.
+        let mut newer = base_archive();
+        let mut c_new = client_row("Acme", "2026-03-01 00:00:00");
+        c_new.contact = Some("NEW".into());
+        newer.data.clients.push(c_new);
+        run_sync_import(&mut conn, &newer);
+        let contact: Option<String> = conn
+            .query_row("SELECT contact FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(contact.as_deref(), Some("NEW"), "newer archive wins");
+    }
+
+    #[test]
+    fn online_sync_client_tombstone_deletes_and_detaches_projects() {
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO clients (name, color, created_at, updated_at) \
+                 VALUES ('Acme', '#abc', '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+             INSERT INTO projects (name, color, client_name, status, created_at, updated_at) \
+                 VALUES ('P', '#fff', 'Acme', 'active', '2026-01-01 00:00:00', '2026-01-01 00:00:00');",
+        )
+        .expect("seed");
+        let mut a = base_archive();
+        a.data.tombstones.push(super::super::types::Tombstone {
+            id: None,
+            table_name: "clients".into(),
+            record_id: None,
+            record_uuid: None,
+            deleted_at: "2026-02-01 00:00:00".into(),
+            sync_key: Some("Acme".into()),
+        });
+        run_sync_import(&mut conn, &a);
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clients WHERE name='Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 0, "client deleted by tombstone");
+        let cn: Option<String> = conn
+            .query_row("SELECT client_name FROM projects WHERE name='P'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(cn, None, "project detached from the deleted client");
+    }
+
+    /// End-to-end proof that `import_archive_into_tx` is wired onto the shared
+    /// merge core (finding #1) and that the Value-shape (`serde_json::to_value`
+    /// → `.pointer("/data/<entity>")`) resolves. Builds a full ExportArchive
+    /// (projects + clients + applications + manual_sessions + a tombstone) and
+    /// asserts the two NEW behaviors the shared core brings:
+    ///   1. a record covered by a NEWER LOCAL tombstone is NOT resurrected, and
+    ///   2. an existing application's display_name IS updated when remote is newer (full LWW).
+    #[test]
+    fn roundtrip_shared_merge_tombstone_guard_and_app_lww() {
+        use super::super::types::*;
+        let mut conn = full_schema_conn();
+        // Seed: an existing application (older updated_at) + a local tombstone for
+        // a project, NEWER than the incoming project row → must block resurrection.
+        conn.execute_batch(
+            "INSERT INTO applications (executable_name, display_name, updated_at) \
+                 VALUES ('blender.exe', 'Old Name', '2026-01-01 00:00:00');
+             INSERT INTO tombstones (table_name, record_id, deleted_at, sync_key) \
+                 VALUES ('projects', 1, '2026-05-01 00:00:00', 'Ghost');",
+        )
+        .expect("seed");
+
+        let mut a = base_archive();
+        // Incoming project 'Ghost' is OLDER than the local tombstone → guard skips it.
+        a.data
+            .projects
+            .push(proj_row("Ghost", "2026-02-01 00:00:00", None, "active"));
+        // Incoming application with a NEWER updated_at → full LWW updates display_name.
+        a.data.applications.push(ApplicationRow {
+            id: 1,
+            executable_name: "blender.exe".into(),
+            display_name: "Blender 4.5".into(),
+            project_id: None,
+            is_imported: 0,
+            updated_at: Some("2026-03-01 00:00:00".into()),
+        });
+        // A client + an UNASSIGNED manual session (project_id=0 sentinel), to prove
+        // those entities flow through the shared core via the Value shape — and
+        // that the sentinel INSERT is valid under the FK=OFF import lifecycle.
+        a.data.clients.push(client_row("Acme", "2026-02-01 00:00:00"));
+        a.data.manual_sessions.push(ManualSession {
+            id: 0,
+            title: "Modeling".into(),
+            session_type: "work".into(),
+            project_id: 0,
+            app_id: None,
+            start_time: "2026-02-02T10:00".into(),
+            end_time: "2026-02-02T12:00".into(),
+            duration_seconds: 7200,
+            date: "2026-02-02".into(),
+            created_at: "2026-02-02 10:00:00".into(),
+            updated_at: "2026-02-02 12:00:00".into(),
+        });
+
+        run_sync_import(&mut conn, &a);
+
+        // 1. Tombstone guard: 'Ghost' must NOT be resurrected (local tombstone is newer).
+        let ghost: i64 = conn
+            .query_row("SELECT COUNT(*) FROM projects WHERE name = 'Ghost'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(ghost, 0, "newer local tombstone must block resurrection");
+
+        // 2. Application LWW: display_name updated because remote updated_at is newer.
+        let dn: String = conn
+            .query_row(
+                "SELECT display_name FROM applications WHERE executable_name = 'blender.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(dn, "Blender 4.5", "remote-newer application updates display_name (full LWW)");
+
+        // Sanity: client + manual session flowed through the Value shape.
+        let clients: i64 = conn
+            .query_row("SELECT COUNT(*) FROM clients WHERE name = 'Acme'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(clients, 1, "client merged via shared core");
+        let manual: i64 = conn
+            .query_row("SELECT COUNT(*) FROM manual_sessions WHERE title = 'Modeling'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(manual, 1, "manual session merged via shared core");
+    }
+
+    /// FK contract (finding #5): an UNASSIGNED manual session (sentinel
+    /// project_id=0) must import cleanly under the FK=OFF merge lifecycle. The
+    /// shared core INSERTs the sentinel; under the dashboard pool's default
+    /// foreign_keys=ON this would abort with FK 787. `import_archive_with_fk_off`
+    /// (used by run_sync_import, mirroring production) disables FK enforcement.
+    #[test]
+    fn unassigned_manual_session_imports_under_fk_off() {
+        use super::super::types::*;
+        let mut conn = full_schema_conn();
+        // Sanity: the harness connection has FK enforcement ON by default
+        // (same as the production pool) — the guard must turn it OFF.
+        let fk: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(fk, 1, "harness mirrors the FK=ON production pool");
+
+        let mut a = base_archive();
+        a.data.manual_sessions.push(ManualSession {
+            id: 0,
+            title: "Solo".into(),
+            session_type: "work".into(),
+            project_id: 0, // unassigned sentinel — no project row id=0 exists
+            app_id: None,
+            start_time: "2026-02-02T10:00".into(),
+            end_time: "2026-02-02T12:00".into(),
+            duration_seconds: 7200,
+            date: "2026-02-02".into(),
+            created_at: "2026-02-02 10:00:00".into(),
+            updated_at: "2026-02-02 12:00:00".into(),
+        });
+
+        // Must NOT panic / FK-787-abort.
+        run_sync_import(&mut conn, &a);
+
+        let pid: i64 = conn
+            .query_row("SELECT project_id FROM manual_sessions WHERE title = 'Solo'", [], |r| r.get(0))
+            .expect("unassigned manual session present");
+        assert_eq!(pid, 0, "sentinel project_id=0 preserved (unassigned)");
+
+        // FK enforcement restored on the connection afterwards.
+        let fk_after: i64 = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0)).unwrap();
+        assert_eq!(fk_after, 1, "import_archive_with_fk_off restores foreign_keys=ON");
+    }
+
+    /// FK contract (finding #5): a `projects` tombstone for a project that has a
+    /// manual session must DELETE the project but the manual session SURVIVES,
+    /// detached to the sentinel project_id=0. Under foreign_keys=ON the
+    /// `ON DELETE CASCADE` would silently drop the manual session (data loss);
+    /// the FK=OFF lifecycle + the shared core's manual FK-nulling prevent it.
+    #[test]
+    fn project_tombstone_detaches_manual_session_no_cascade_delete() {
+        let mut conn = full_schema_conn();
+        conn.execute_batch(
+            "INSERT INTO projects (id, name, color, created_at, updated_at) \
+                 VALUES (3, 'Doomed', '#fff', '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+             INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date) \
+                 VALUES ('Keep me', 'work', 3, '2026-01-05T10:00', '2026-01-05T11:00', 3600, '2026-01-05');",
+        )
+        .expect("seed");
+
+        let mut a = base_archive();
+        a.data.tombstones.push(super::super::types::Tombstone {
+            id: None,
+            table_name: "projects".into(),
+            record_id: Some(3),
+            record_uuid: None,
+            deleted_at: "2026-02-01 00:00:00".into(),
+            sync_key: Some("Doomed".into()),
+        });
+
+        run_sync_import(&mut conn, &a);
+
+        let proj: i64 = conn
+            .query_row("SELECT COUNT(*) FROM projects WHERE name = 'Doomed'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(proj, 0, "tombstone deletes the project");
+
+        // The manual session must SURVIVE (not cascade-deleted) and be detached.
+        let (cnt, pid): (i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), COALESCE(MIN(project_id), -1) FROM manual_sessions WHERE title = 'Keep me'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(cnt, 1, "manual session must NOT cascade-delete with its project");
+        assert_eq!(pid, 0, "manual session detached to sentinel project_id=0");
+    }
+
     #[test]
     fn clear_synchronized_tables_does_not_mint_tombstones() {
         let mut conn = full_schema_conn();
@@ -1706,10 +1958,11 @@ mod tests {
         for path in archives.split(':').filter(|p| !p.is_empty()) {
             let content = std::fs::read_to_string(path).expect("read archive");
             let archive = parse_export_archive(&content).expect("parse archive");
-            let tx = conn.transaction().expect("tx");
-            let summary = import_archive_into_tx(&tx, &archive, false, DailyFilesMode::Skip)
-                .expect("import");
-            tx.commit().expect("commit");
+            // Same FK=OFF lifecycle as production.
+            let summary = import_archive_with_fk_off(&mut conn, |tx| {
+                import_archive_into_tx(tx, &archive, false, DailyFilesMode::Skip)
+            })
+            .expect("import");
             println!(
                 "== {path}: imported={} merged={} projects_created={} apps_created={}",
                 summary.sessions_imported,
@@ -1733,97 +1986,15 @@ mod tests {
         println!("workdb: {}", work.display());
     }
 
-    #[test]
-    fn archive_tombstones_persist_original_date_without_minting_new_ones() {
-        let mut conn = full_schema_conn();
-        conn.execute_batch(
-            "INSERT INTO projects (id, name, created_at) VALUES (1, 'P', datetime('now'));
-             INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
-             VALUES ('old-entry', 'work', 1, '2026-01-05T10:00', '2026-01-05T11:00', 3600, '2026-01-05');
-             UPDATE manual_sessions SET updated_at = '2026-02-01 00:00:00' WHERE title = 'old-entry';",
-        )
-        .expect("seed");
-
-        let tombstones = vec![super::super::types::Tombstone {
-            id: None,
-            table_name: "manual_sessions".to_string(),
-            record_id: Some(7),
-            record_uuid: None,
-            deleted_at: "2026-03-01 12:00:00".to_string(),
-            sync_key: Some("9|2026-01-05T10:00|old-entry".to_string()),
-        }];
-
-        let tx = conn.transaction().expect("tx");
-        // jak w imporcie: triggery wyłączone na czas aplikowania
-        for sql in crate::db_migrations::tombstone_triggers::DROP_ALL_TOMBSTONE_TRIGGERS_SQL {
-            tx.execute(sql, []).unwrap();
-        }
-        apply_archive_tombstones(&tx, &tombstones).expect("apply");
-        apply_archive_tombstones(&tx, &tombstones).expect("apply twice (dedup)");
-        for sql in crate::db_migrations::tombstone_triggers::CREATE_ALL_TOMBSTONE_TRIGGERS_SQL {
-            tx.execute(sql, []).unwrap();
-        }
-        tx.commit().expect("commit");
-
-        // Rekord starszy niż tombstone → skasowany; w tabeli tombstones JEDEN
-        // wpis z ORYGINALNĄ datą (zero kopii mintowanych przez triggery z NOW).
-        let manual_left: i64 = conn
-            .query_row("SELECT COUNT(*) FROM manual_sessions", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(manual_left, 0);
-        let rows: Vec<(String, String)> = conn
-            .prepare("SELECT sync_key, deleted_at FROM tombstones WHERE table_name='manual_sessions'")
-            .unwrap()
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
-            .unwrap()
-            .collect::<Result<_, _>>()
-            .unwrap();
-        assert_eq!(rows.len(), 1, "exactly one persisted tombstone, no trigger-minted copy");
-        assert_eq!(rows[0].1, "2026-03-01 12:00:00", "original deleted_at preserved");
-    }
-
-    #[test]
-    fn manual_tombstone_older_than_record_is_ignored() {
-        let mut conn = full_schema_conn();
-        conn.execute_batch(
-            "INSERT INTO projects (id, name, created_at) VALUES (1, 'P', datetime('now'));
-             INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
-             VALUES ('modeling', 'work', 1, '2026-01-02T10:00', '2026-01-02T13:00', 10800, '2026-01-02');
-             -- jawny UPDATE: trigger m20 (project_name) bumpnął updated_at do NOW przy inssercie
-             UPDATE manual_sessions SET updated_at = '2026-04-23 08:05:10' WHERE title = 'modeling';",
-        )
-        .expect("seed");
-
-        let tx = conn.transaction().expect("tx");
-        // Stale tombstone z marca — rekord odtworzony w kwietniu MUSI przetrwać.
-        apply_manual_session_tombstone(&tx, "26|2026-01-02T10:00|modeling", "2026-03-01 12:55:54")
-            .expect("apply stale");
-        // Świeższy tombstone — kasuje.
-        apply_manual_session_tombstone(&tx, "26|2026-01-02T10:00|modeling", "2026-05-01 00:00:00")
-            .expect("apply fresh");
-        tx.commit().expect("commit");
-
-        let remaining: i64 = conn
-            .query_row("SELECT COUNT(*) FROM manual_sessions WHERE title='modeling'", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(remaining, 0, "fresh tombstone deletes");
-
-        // Osobno: sam stale tombstone nie kasuje
-        conn.execute_batch(
-            "INSERT INTO manual_sessions (title, session_type, project_id, start_time, end_time, duration_seconds, date)
-             VALUES ('modeling', 'work', 1, '2026-01-02T10:00', '2026-01-02T13:00', 10800, '2026-01-02');
-             UPDATE manual_sessions SET updated_at = '2026-04-23 08:05:10' WHERE title = 'modeling';",
-        )
-        .unwrap();
-        let tx = conn.transaction().expect("tx2");
-        apply_manual_session_tombstone(&tx, "26|2026-01-02T10:00|modeling", "2026-03-01 12:55:54")
-            .expect("apply stale 2");
-        tx.commit().expect("commit2");
-        let remaining: i64 = conn
-            .query_row("SELECT COUNT(*) FROM manual_sessions WHERE title='modeling'", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(remaining, 1, "stale tombstone must NOT delete a newer record");
-    }
+    // BEHAVIOR CHANGE (3.2b): the standalone tests
+    // `archive_tombstones_persist_original_date_without_minting_new_ones` and
+    // `manual_tombstone_older_than_record_is_ignored` exercised the dashboard's
+    // private `apply_archive_tombstones` / `apply_manual_session_tombstone`
+    // helpers directly. Those helpers are deleted — import now routes through
+    // `timeflow_shared::sync::merge::apply_tombstones`, which has its own unit
+    // tests in `shared/sync/merge.rs` and is covered end-to-end by
+    // `roundtrip_shared_merge_*` below. The tombstone-guard + original-deleted_at
+    // semantics they checked are preserved by the shared core.
 
     fn fa_row(app_id: i64, date: &str, file_path: &str) -> FileActivityExportRow {
         FileActivityExportRow {
@@ -1945,6 +2116,7 @@ mod tests {
     fn file_activities_roundtrip_through_serde() {
         let data = super::super::types::ExportData {
             projects: Vec::new(),
+            clients: Vec::new(),
             applications: Vec::new(),
             sessions: Vec::new(),
             manual_sessions: Vec::new(),

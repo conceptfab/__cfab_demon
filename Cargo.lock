@@ -5156,7 +5156,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-dashboard"
-version = "0.1.5735"
+version = "0.1.5737"
 dependencies = [
  "chrono",
  "dotenvy",
@@ -5178,6 +5178,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-log",
+ "thiserror 2.0.18",
  "timeflow-shared",
  "tokio",
  "windows-sys 0.59.0",
@@ -5185,7 +5186,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-demon"
-version = "0.2.0"
+version = "0.1.5737"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -5220,7 +5221,7 @@ dependencies = [
 
 [[package]]
 name = "timeflow-shared"
-version = "0.1.0"
+version = "0.1.5737"
 dependencies = [
  "chrono",
  "keyring",
@@ -5228,6 +5229,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

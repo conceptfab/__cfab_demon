@@ -42,7 +42,9 @@
   "layout": {
     "aria": {
       "main_navigation": "Main navigation",
-      "close_navigation": "Close navigation"
+      "close_navigation": "Close navigation",
+      "collapse_sidebar": "Collapse sidebar",
+      "expand_sidebar": "Expand sidebar"
     },
     "nav": {
       "dashboard": "Dashboard",
@@ -157,7 +159,10 @@
       "avg_daily": "Daily avg"
     },
     "errors": {
-      "loading_data": "Error loading data"
+      "loading_data": "Error loading data",
+      "update_session_comment": "Failed to save session comment",
+      "refresh_failed": "Failed to refresh data",
+      "session_action_failed": "Failed to perform session action"
     },
     "hourly_breakdown": {
       "title": "Hourly Breakdown",
@@ -417,7 +422,9 @@
     },
     "errors": {
       "assign_failed": "Failed to assign session(s): {{error}}",
-      "update_multiplier": "Failed to update session rate multiplier: {{error}}"
+      "update_multiplier": "Failed to update session rate multiplier: {{error}}",
+      "load_manual_sessions": "Failed to load manual sessions",
+      "session_action_failed": "Failed to perform session action"
     },
     "row": {
       "idle": "idle",
@@ -454,7 +461,8 @@
       "weights_reset": "Model weights have been reset — feedback history preserved."
     },
     "batch": {
-      "tooltip_requires_auto_safe": "Enable Auto Safe mode first."
+      "tooltip_requires_auto_safe": "Enable Auto Safe mode first.",
+      "tooltip_requires_save": "Save model settings to run Auto-safe."
     },
     "folder_scan": {
       "title": "Learn from Project Folders",
@@ -544,6 +552,7 @@
       "reject": "Reject",
       "manual": "Manual",
       "auto_safe_runs_vs_rollback": "Auto-safe runs vs rollback",
+      "no_auto_safe_runs_yet": "No Auto-safe runs in this period. Enable Auto-safe mode and click “Run auto-safe”.",
       "assigned": "Assigned",
       "runs": "Runs",
       "rollbacks": "Rollbacks",
@@ -936,7 +945,11 @@
     "archive_title": "Archive",
     "archive_empty": "Archive is empty",
     "delete_from_archive": "Delete from archive",
-    "delete_archive_confirm": "Delete archive file \"{{fileName}}\"? This only removes the archived file and cannot be undone."
+    "delete_archive_confirm": "Delete archive file \"{{fileName}}\"? This only removes the archived file and cannot be undone.",
+    "errors": {
+      "load_data": "Failed to load import data",
+      "delete_archive": "Failed to delete archive file"
+    }
   },
   "time_analysis_page": {
     "no_project_data": "No project data",
@@ -1950,6 +1963,7 @@
     "suggests_a_project_in_the_menu_requires_60_confidence": "Suggests a project in the menu (requires >50% confidence).",
     "auto_safe": "Auto-safe:",
     "automatically_assigns_sessions_requires_85_confidence_an": "Automatically assigns sessions (requires >85% confidence and strong evidence).",
+    "mode_change_requires_save": "A mode change only takes effect after you click “Save model settings”. Until you save, the “Run auto-safe” button stays disabled.",
     "k_4_optimal_learning_settings": "4. Optimal learning settings",
     "k_1_model_operation_mode_suggest": "1. Model operation mode: suggest",
     "suggest_min_confidence_0_4_0_5_lower_current_0_6": "2. Suggest Min Confidence: 0.50 (default and optimal)",
@@ -2063,6 +2077,7 @@
     "online_sync_daemon_mode": "Daemon-based sync (LAN Sync Protocol): When the TIMEFLOW daemon is running, online sync can use the 13-step session protocol with SFTP transfer. This provides encrypted file transfer, progress tracking, and automatic merge — same protocol as LAN sync but through a remote server. Configure the encryption key in sync settings.",
     "online_sync_cancel": "Cancel Online Sync — when a daemon-based online sync is running, TIMEFLOW can request cancellation. The sync stops at the next safe checkpoint and asks the server to cancel the active session.",
     "delta_sync_description": "Since the Delta Sync version: the system transmits only modified synchronization packets for old and new sessions, saving up to 95% of bandwidth usage.",
+    "online_sync_clients_sync": "Clients & assignments sync: client definitions, each project's assigned client and its status now travel with Online Sync, so the Clients panel stays consistent across machines. Note: re-assigning a client always propagates; clearing an assignment may need one more sync to reach the other devices.",
     "license_activation": "License activation: paste your license key in Online Sync → License section and click Activate. Your device will be registered in the group on the server. After activation the dashboard shows the plan, group, device count and expiration date.",
     "lan_sync_title": "LAN Sync",
     "lan_sync_description": "Peer-to-peer synchronization between TIMEFLOW instances on the same local network, without an intermediary server.",
@@ -2080,7 +2095,7 @@
     "lan_sync_device_pairing": "Device Pairing – before syncing, devices must be paired using a 6-digit code (TTL 5 min, max 5 attempts). After pairing, the slave stores the master's secret for future syncs.",
     "lan_sync_firewall": "Automatic Firewall – on first startup, the daemon creates Windows Firewall rules for UDP 47892 (discovery) and TCP 47891 (sync server) for ALL network profiles (private, public, domain). If the daemon lacks admin privileges, a warning is logged and you may need to add the rules manually.",
     "lan_sync_subnet_broadcast": "Subnet Broadcast – discovery reads actual subnet masks from network interfaces and calculates correct broadcast addresses. Discover responses are sent directly to the requester (unicast) for reliability when broadcast is blocked.",
-    "lan_sync_background_interval": "Background Sync Interval – when a sync interval is configured (4h/8h/12h/24h/48h), TIMEFLOW automatically syncs with the first available online peer in the background, even without manual action.",
+    "lan_sync_background_interval": "Background Sync Interval – when a sync interval is configured (4h/8h/12h/24h/48h), TIMEFLOW automatically syncs with the first available online peer in the background, even without manual action. The configured interval is the minimum gap between automatic syncs – measured from the last completed sync, regardless of which mechanism triggered it, so two sessions never run back-to-back. A manual sync (\"Sync\" / \"Force ⚡\") always runs immediately and is exempt from this gap.",
     "online_sync_sse_realtime": "Real-time Notifications – when online sync is enabled, TIMEFLOW maintains a live connection to the server. When another device pushes data, your device is instantly notified and pulls the update automatically.",
     "lan_sync_setup_title": "First LAN Sync setup",
     "lan_sync_setup_what_it_does": "What it does: LAN Sync exchanges data directly between two TIMEFLOW instances on the same network — no server, no cloud, no account needed.",
@@ -2134,6 +2149,7 @@
     "online_sync_license_section": "License — paste your license key in Online Sync settings, click Activate, and the dashboard shows your plan, group, device count, and expiration date. License is tied to the device.",
     "online_sync_sftp_encryption_key": "SFTP encryption key — enter the encryption key in Settings > Online Sync > Encryption Key field. Generate a key using the 'Generate key' button next to the input. The key is stored locally and used for encrypting SFTP file transfers.",
     "dashboard_sidebar_backup_indicator": "Sidebar Backup indicator — the sidebar shows the last backup date and status. A warning icon appears when backup is overdue. Click to open the Data section.",
+    "dashboard_sidebar_collapse": "Collapsible sidebar — use the toggle at the top of the sidebar to collapse the navigation to a narrow icon-only rail (and expand it back). When collapsed, hover any icon to see its label and status in a tooltip. The choice is remembered and shared between the desktop window and the web UI. Available on desktop widths only; on mobile the sidebar stays a full drawer.",
     "dashboard_macos_native_window_controls": "Native window controls on macOS — TIMEFLOW uses the system traffic lights (red/yellow/green) in the top-left corner instead of custom minimize/maximize/close buttons. The TIMEFLOW label appears on the right side of the title bar. On Windows the custom controls on the right are kept.",
     "dashboard_mobile_navigation_drawer": "Mobile navigation — on narrow browser screens the sidebar moves into the top-left menu. Open it to switch sections; choosing a section closes it and leaves the full screen for content.",
     "dashboard_mobile_timeline_tap": "Activity timeline on phone — scroll horizontally to see the full day. Tap a session segment to open the assignment menu (same as right-click on desktop).",
@@ -2202,7 +2218,7 @@
     "webui_setup_limitations": "Limitations: localhost access has no password — requires a trusted host machine; server port must be configured (default 47892).",
     "min_session_duration_is_a_view_filter_short_sessions_stay": "Minimum session length filters the view of saved sessions — they stay in the database and reappear when you lower the threshold. Sessions shorter than the threshold are still skipped when importing new tracking data.",
     "local_cleanup_never_touches_data_received_from_the_paired": "Local cleanup of unmonitored apps never touches data received from the paired device and is not propagated to it.",
-    "estimates_client_filter": "Client filter — choose which clients' projects count toward the metrics and the report. All clients are included by default; the \"No client\" option covers unassigned projects.",
+    "estimates_client_filter": "Client filter — choose which clients' projects count toward the metrics and the report. All clients are included by default; the \"No client\" option covers unassigned projects. The client matches the Clients page (live from PM) — no manual \"Sync from PM\" needed.",
     "estimates_report_variants": "Report generation — the \"Generate report\" button creates a simplified report for the current date range and selected clients in two variants: \"simple\" (projects + total time and value) and \"plus\" (additionally a per-day breakdown with hours and value). The variants are estimate templates editable in the report template editor.",
     "estimates_report_rounding": "Report rounding — the report respects the rounding settings (\"full / rounded\" toggle) and prints to PDF just like project reports.",
     "estimates_custom_range": "Custom date range — the \"Range\" button next to the presets opens a from–to picker; the chosen range drives the metrics, project list and report.",

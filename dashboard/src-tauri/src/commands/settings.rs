@@ -1,3 +1,4 @@
+use crate::commands::CommandError;
 use tauri::AppHandle;
 
 use super::daily_store_bridge;
@@ -62,7 +63,7 @@ fn resolve_today_demo_file(_app: &AppHandle) -> Result<std::path::PathBuf, Strin
 }
 
 #[tauri::command]
-pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
+pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, CommandError> {
     let demo_mode = db::is_demo_mode_enabled(&app)?;
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
@@ -78,7 +79,11 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
         let mut daily: Option<DailyData> = None;
         let mut last_err = String::new();
         for attempt in 1..=3 {
-            match std::fs::read_to_string(&data_path) {
+            let path_clone = data_path.clone();
+            match tokio::task::spawn_blocking(move || std::fs::read_to_string(&path_clone))
+                .await
+                .map_err(|e| format!("spawn_blocking join error: {e}"))?
+            {
                 Ok(content) => match serde_json::from_str::<DailyData>(&content) {
                     Ok(parsed) => {
                         daily = Some(parsed);
@@ -139,7 +144,7 @@ pub async fn refresh_today(app: AppHandle) -> Result<RefreshResult, String> {
 /// Days already present (which may carry manual edits, splits or assignments)
 /// are never touched.
 #[tauri::command]
-pub async fn refresh_missing_days(app: AppHandle) -> Result<BackfillResult, String> {
+pub async fn refresh_missing_days(app: AppHandle) -> Result<BackfillResult, CommandError> {
     // Demo mode reads fake data files, not the daily_store — nothing to recover.
     if db::is_demo_mode_enabled(&app)? {
         return Ok(BackfillResult::default());
@@ -212,10 +217,11 @@ pub async fn refresh_missing_days(app: AppHandle) -> Result<BackfillResult, Stri
         Ok(result)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn get_today_file_signature(app: AppHandle) -> Result<TodayFileSignature, String> {
+pub async fn get_today_file_signature(app: AppHandle) -> Result<TodayFileSignature, CommandError> {
     run_app_blocking(app, move |app| {
         let demo_mode = db::is_demo_mode_enabled(&app)?;
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -261,10 +267,11 @@ pub async fn get_today_file_signature(app: AppHandle) -> Result<TodayFileSignatu
         })
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), String> {
+pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM file_activities WHERE app_id = ?1", [app_id])
@@ -279,6 +286,7 @@ pub async fn reset_app_time(app: AppHandle, app_id: i64) -> Result<(), String> {
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -286,10 +294,10 @@ pub async fn rename_application(
     app: AppHandle,
     app_id: i64,
     display_name: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let new_name = display_name.trim();
     if new_name.is_empty() {
-        return Err("Display name cannot be empty".to_string());
+        return Err("Display name cannot be empty".to_string().into());
     }
 
     let new_name = new_name.to_string();
@@ -308,10 +316,11 @@ pub async fn rename_application(
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), String> {
+pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
 
@@ -362,10 +371,11 @@ pub async fn delete_app_and_data(app: AppHandle, app_id: i64) -> Result<(), Stri
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), String> {
+pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute(
@@ -386,10 +396,11 @@ pub async fn reset_project_time(app: AppHandle, project_id: i64) -> Result<(), S
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
+pub async fn clear_all_data(app: AppHandle) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let tx = conn.transaction().map_err(|e| e.to_string())?;
         tx.execute_batch(
@@ -416,10 +427,11 @@ pub async fn clear_all_data(app: AppHandle) -> Result<(), String> {
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn get_data_dir(app: AppHandle) -> Result<String, String> {
+pub async fn get_data_dir(app: AppHandle) -> Result<String, CommandError> {
     let base_dir = timeflow_data_dir()?;
     let demo_mode = db::is_demo_mode_enabled(&app)?;
     let dir = if demo_mode {
@@ -431,11 +443,13 @@ pub async fn get_data_dir(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, String> {
-    db::get_demo_mode_status(&app)
+pub async fn get_demo_mode_status(app: AppHandle) -> Result<db::DemoModeStatus, CommandError> {
+    db::get_demo_mode_status(&app).map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, String> {
-    run_app_blocking(app, move |app| db::set_demo_mode(&app, enabled)).await
+pub async fn set_demo_mode(app: AppHandle, enabled: bool) -> Result<db::DemoModeStatus, CommandError> {
+    run_app_blocking(app, move |app| db::set_demo_mode(&app, enabled))
+        .await
+        .map_err(Into::into)
 }

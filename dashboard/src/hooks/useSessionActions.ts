@@ -45,7 +45,8 @@ export function useSessionActions(options: UseSessionActionsOptions = {}) {
       runBatch: (sessionIds: number[]) => Promise<unknown>,
     ) => {
       if (sessionIds.length === 1) {
-        await runSingle(sessionIds[0]);
+        // safe: length === 1 is checked above
+        await runSingle(sessionIds[0]!);
         return;
       }
       await runBatch(sessionIds);

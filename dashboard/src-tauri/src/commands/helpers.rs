@@ -81,86 +81,45 @@ pub(crate) fn disambiguate_name(
     }
 }
 
-/// FNV-1a 64-bit hash — deterministic, matches daemon's lan_common::fnv1a_64.
-fn fnv1a_64(data: &[u8]) -> u64 {
-    let mut hash: u64 = 14695981039346656037;
-    for byte in data {
-        hash ^= *byte as u64;
-        hash = hash.wrapping_mul(1099511628211);
-    }
-    hash
-}
 
 pub(crate) fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
-    let (sql, count_sql) = match table {
-        "projects" => {
-            (
-                "SELECT COALESCE(group_concat(name || '|' || updated_at, ';'), '') \
-                 FROM (SELECT name, updated_at FROM projects ORDER BY name)",
-                "SELECT COUNT(*) FROM projects",
-            )
-        }
-        "applications" => {
-            (
-                "SELECT COALESCE(group_concat(executable_name || '|' || updated_at, ';'), '') \
-                 FROM (SELECT executable_name, updated_at FROM applications ORDER BY executable_name)",
-                "SELECT COUNT(*) FROM applications",
-            )
-        }
-        "sessions" => {
-            (
-                "SELECT COALESCE(group_concat(app_name || '|' || start_time || '|' || updated_at, ';'), '') \
-                 FROM (SELECT a.executable_name AS app_name, s.start_time, s.updated_at \
-                       FROM sessions s JOIN applications a ON s.app_id = a.id \
-                       ORDER BY a.executable_name, s.start_time)",
-                "SELECT COUNT(*) FROM sessions",
-            )
-        }
-        "manual_sessions" => {
-            (
-                "SELECT COALESCE(group_concat(title || '|' || start_time || '|' || updated_at, ';'), '') \
-                 FROM (SELECT title, start_time, updated_at FROM manual_sessions ORDER BY title, start_time)",
-                "SELECT COUNT(*) FROM manual_sessions",
-            )
-        }
-        "assignment_feedback" => {
-            (
-                "SELECT COALESCE(group_concat(source || '|' || created_at, ';'), '') \
-                 FROM (SELECT source, created_at FROM assignment_feedback ORDER BY created_at)",
-                "SELECT COUNT(*) FROM assignment_feedback",
-            )
-        }
-        "assignment_auto_runs" => {
-            (
-                "SELECT COALESCE(group_concat(started_at || '|' || COALESCE(finished_at, ''), ';'), '') \
-                 FROM (SELECT started_at, finished_at FROM assignment_auto_runs ORDER BY started_at)",
-                "SELECT COUNT(*) FROM assignment_auto_runs",
-            )
-        }
-        _ => {
-            log::warn!("compute_table_hash: unknown table '{}'", table);
-            return String::new();
+    // Kanoniczne tabele synchronizowane: SQL żyje w shared (finding #3).
+    let sql: String = if let Some(s) = timeflow_shared::sync::checksum::table_hash_sql(table) {
+        s.to_string()
+    } else {
+        // Tabele lokalne (diagnostyczne, NIE synchronizowane) — SQL zostaje tutaj.
+        match table {
+            "assignment_feedback" => "SELECT COALESCE(group_concat(source || '|' || created_at, ';'), '') \
+                 FROM (SELECT source, created_at FROM assignment_feedback ORDER BY created_at)".to_string(),
+            "assignment_auto_runs" => "SELECT COALESCE(group_concat(started_at || '|' || COALESCE(finished_at, ''), ';'), '') \
+                 FROM (SELECT started_at, finished_at FROM assignment_auto_runs ORDER BY started_at)".to_string(),
+            _ => {
+                log::warn!("compute_table_hash: unknown table '{}'", table);
+                return String::new();
+            }
         }
     };
     let concat: String = conn
-        .query_row(sql, [], |row| row.get(0))
+        .query_row(&sql, [], |row| row.get(0))
         .unwrap_or_else(|_| String::new());
+    // Diagnostyka: rzędy istnieją, ale hash pusty → możliwy bug (np. brak kolumny).
+    // `table` jest tu jedną z 7 znanych, bezpiecznych nazw (gałąź `_` już zwróciła).
     let row_count = conn
-        .query_row(count_sql, [], |row| row.get::<_, i64>(0))
+        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get::<_, i64>(0))
         .unwrap_or(0);
     if row_count > 0 && concat.is_empty() {
         log::warn!(
             "compute_table_hash: table '{}' has {} row(s) but produced an empty hash input",
-            table,
-            row_count
+            table, row_count
         );
     }
-    format!("{:016x}", fnv1a_64(concat.as_bytes()))
+    timeflow_shared::sync::checksum::content_hash(&concat)
 }
 
 pub(crate) fn build_table_hashes(conn: &rusqlite::Connection) -> super::delta_export::TableHashes {
     super::delta_export::TableHashes {
         projects: compute_table_hash(conn, "projects"),
+        clients: compute_table_hash(conn, "clients"),
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
@@ -269,5 +228,138 @@ mod tests {
         assert!(validate_restore_source("relative/x.db").is_err());
         assert!(validate_restore_source("/tmp/../etc/passwd").is_err());
         assert!(validate_restore_source("/etc/passwd").is_err()); // brak rozszerzenia db
+    }
+
+    #[test]
+    fn projects_hash_matches_shared_algorithm() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, color TEXT, hourly_rate REAL,
+                excluded_at TEXT, frozen_at TEXT, merged_into TEXT, client_name TEXT, status TEXT, updated_at TEXT);
+             INSERT INTO projects (name,color,updated_at,status) VALUES ('Acme','#fff','2026-01-01 00:00:00','active');",
+        ).unwrap();
+        let h = compute_table_hash(&conn, "projects");
+        assert_eq!(h.len(), 32, "checksum musi być 32-znakowym hexem (shared content_hash)");
+    }
+
+    #[test]
+    fn clients_hash_detects_field_divergence_at_equal_updated_at() {
+        let mk = |contact: &str| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE clients (id INTEGER PRIMARY KEY, name TEXT, contact TEXT, address TEXT,
+                    tax_id TEXT, currency TEXT, default_hourly_rate REAL, color TEXT, archived_at TEXT,
+                    created_at TEXT, updated_at TEXT);").unwrap();
+            conn.execute(
+                "INSERT INTO clients (name,contact,color,updated_at) VALUES ('Acme',?1,'#fff','2026-01-01 00:00:00')",
+                [contact]).unwrap();
+            compute_table_hash(&conn, "clients")
+        };
+        assert_ne!(mk("a@x.pl"), mk("b@x.pl"),
+            "rozjazd pola contact przy równym updated_at MUSI zmienić hash (finding #3)");
+    }
+
+    #[test]
+    fn applications_hash_detects_display_name_divergence() {
+        let mk = |display: &str| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, updated_at TEXT);
+                 CREATE TABLE applications (id INTEGER PRIMARY KEY, executable_name TEXT, display_name TEXT,
+                    project_id INTEGER, color TEXT, is_imported INTEGER, updated_at TEXT);").unwrap();
+            conn.execute(
+                "INSERT INTO applications (executable_name,display_name,updated_at) VALUES ('foo.exe',?1,'2026-01-01 00:00:00')",
+                [display]).unwrap();
+            compute_table_hash(&conn, "applications")
+        };
+        assert_ne!(mk("Foo"), mk("Foobar"),
+            "rozjazd display_name przy równym updated_at MUSI zmienić hash");
+    }
+
+    #[test]
+    fn sessions_hash_detects_comment_divergence() {
+        let mk = |comment: &str| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, updated_at TEXT);
+                 CREATE TABLE applications (id INTEGER PRIMARY KEY, executable_name TEXT, display_name TEXT, project_id INTEGER, updated_at TEXT);
+                 CREATE TABLE sessions (id INTEGER PRIMARY KEY, app_id INTEGER, start_time TEXT, end_time TEXT,
+                    duration_seconds INTEGER, date TEXT, rate_multiplier REAL, split_source_session_id INTEGER,
+                    project_id INTEGER, project_name TEXT, comment TEXT, is_hidden INTEGER, updated_at TEXT);").unwrap();
+            conn.execute("INSERT INTO applications (id,executable_name,display_name,updated_at) VALUES (1,'foo.exe','Foo','2026-01-01 00:00:00')", []).unwrap();
+            conn.execute(
+                "INSERT INTO sessions (app_id,start_time,end_time,duration_seconds,date,rate_multiplier,comment,is_hidden,updated_at)
+                 VALUES (1,'2026-01-01 09:00:00','2026-01-01 10:00:00',3600,'2026-01-01',1.0,?1,0,'2026-01-01 00:00:00')",
+                [comment]).unwrap();
+            compute_table_hash(&conn, "sessions")
+        };
+        assert_ne!(mk("first"), mk("second"),
+            "rozjazd comment przy równym updated_at MUSI zmienić hash");
+    }
+
+    #[test]
+    fn manual_sessions_hash_detects_duration_divergence() {
+        let mk = |dur: i64| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, updated_at TEXT);
+                 CREATE TABLE applications (id INTEGER PRIMARY KEY, executable_name TEXT, display_name TEXT, project_id INTEGER, updated_at TEXT);
+                 CREATE TABLE manual_sessions (id INTEGER PRIMARY KEY, title TEXT, session_type TEXT, project_id INTEGER,
+                    project_name TEXT, app_id INTEGER, start_time TEXT, end_time TEXT, duration_seconds INTEGER,
+                    date TEXT, created_at TEXT, updated_at TEXT);").unwrap();
+            conn.execute(
+                "INSERT INTO manual_sessions (title,session_type,project_id,start_time,end_time,duration_seconds,date,updated_at)
+                 VALUES ('Task','manual',0,'2026-01-01 09:00:00','2026-01-01 10:00:00',?1,'2026-01-01','2026-01-01 00:00:00')",
+                [dur]).unwrap();
+            compute_table_hash(&conn, "manual_sessions")
+        };
+        assert_ne!(mk(3600), mk(7200),
+            "rozjazd duration_seconds przy równym updated_at MUSI zmienić hash");
+    }
+
+    #[test]
+    fn sessions_hash_stable_across_local_id_remap() {
+        // Same logical session (same app exe-name + same project name + same data),
+        // but different LOCAL ids on each "peer" → hash MUST match.
+        let build = |base: i64| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, updated_at TEXT);
+                 CREATE TABLE applications (id INTEGER PRIMARY KEY, executable_name TEXT, display_name TEXT, project_id INTEGER, updated_at TEXT);
+                 CREATE TABLE sessions (id INTEGER PRIMARY KEY, app_id INTEGER, start_time TEXT, end_time TEXT,
+                    duration_seconds INTEGER, date TEXT, rate_multiplier REAL, project_id INTEGER, project_name TEXT,
+                    comment TEXT, is_hidden INTEGER, updated_at TEXT);").unwrap();
+            // explicit ids offset by `base` to simulate per-machine remap
+            conn.execute("INSERT INTO projects (id,name,updated_at) VALUES (?1,'Acme','2026-01-01 00:00:00')", [base+1]).unwrap();
+            conn.execute("INSERT INTO applications (id,executable_name,display_name,project_id,updated_at) VALUES (?1,'foo.exe','Foo',?2,'2026-01-01 00:00:00')", [base+5, base+1]).unwrap();
+            conn.execute(
+                "INSERT INTO sessions (id,app_id,start_time,end_time,duration_seconds,date,rate_multiplier,project_id,comment,is_hidden,updated_at)
+                 VALUES (?1,?2,'2026-01-01 09:00:00','2026-01-01 10:00:00',3600,'2026-01-01',1.0,?3,'note',0,'2026-01-01 00:00:00')",
+                [base+9, base+5, base+1]).unwrap();
+            compute_table_hash(&conn, "sessions")
+        };
+        assert_eq!(build(100), build(200),
+            "hash MUSI być niezależny od lokalnych autoincrement id (FK rozwiązywane przez nazwę)");
+    }
+
+    #[test]
+    fn manual_sessions_hash_stable_across_local_id_remap() {
+        let build = |base: i64| {
+            let conn = rusqlite::Connection::open_in_memory().unwrap();
+            conn.execute_batch(
+                "CREATE TABLE projects (id INTEGER PRIMARY KEY, name TEXT, updated_at TEXT);
+                 CREATE TABLE applications (id INTEGER PRIMARY KEY, executable_name TEXT, display_name TEXT, project_id INTEGER, updated_at TEXT);
+                 CREATE TABLE manual_sessions (id INTEGER PRIMARY KEY, title TEXT, session_type TEXT, project_id INTEGER,
+                    project_name TEXT, app_id INTEGER, start_time TEXT, end_time TEXT, duration_seconds INTEGER, date TEXT, created_at TEXT, updated_at TEXT);").unwrap();
+            conn.execute("INSERT INTO projects (id,name,updated_at) VALUES (?1,'Acme','2026-01-01 00:00:00')", [base+1]).unwrap();
+            conn.execute("INSERT INTO applications (id,executable_name,display_name,updated_at) VALUES (?1,'foo.exe','Foo','2026-01-01 00:00:00')", [base+5]).unwrap();
+            conn.execute(
+                "INSERT INTO manual_sessions (id,title,session_type,project_id,app_id,start_time,end_time,duration_seconds,date,updated_at)
+                 VALUES (?1,'Task','manual',?2,?3,'2026-01-01 09:00:00','2026-01-01 10:00:00',3600,'2026-01-01','2026-01-01 00:00:00')",
+                [base+9, base+1, base+5]).unwrap();
+            compute_table_hash(&conn, "manual_sessions")
+        };
+        assert_eq!(build(100), build(200),
+            "hash MUSI być niezależny od lokalnych autoincrement id (project/app rozwiązywane przez nazwę)");
     }
 }

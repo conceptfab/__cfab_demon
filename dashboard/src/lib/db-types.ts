@@ -11,6 +11,8 @@ export interface Project {
   merged_at?: string | null;
   assigned_folder_path?: string | null;
   is_imported: number;
+  client_name?: string | null;       // m24: assigned client (by name); null = none
+  status?: string;                   // m24: lifecycle status ('active' | 'archived')
 }
 
 export interface Application {

@@ -6,6 +6,8 @@ const repoRoot = path.resolve(dashboardRoot, "..");
 const versionPath = path.join(repoRoot, "VERSION");
 const tauriConfPath = path.join(dashboardRoot, "src-tauri", "tauri.conf.json");
 const cargoTomlPath = path.join(dashboardRoot, "src-tauri", "Cargo.toml");
+const daemonCargoTomlPath = path.join(repoRoot, "Cargo.toml");
+const sharedCargoTomlPath = path.join(repoRoot, "shared", "Cargo.toml");
 
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf8");
@@ -54,19 +56,19 @@ function syncPackageJson(version) {
   return true;
 }
 
-function syncCargoToml(version) {
-  const raw = readText(cargoTomlPath);
+function syncCargoTomlAt(filePath, version) {
+  const raw = readText(filePath);
   const packageBlockMatch = raw.match(/\[package\][\s\S]*?(?=\r?\n\[|$)/);
 
   if (!packageBlockMatch) {
-    throw new Error("Nie znaleziono sekcji [package] w dashboard/src-tauri/Cargo.toml");
+    throw new Error(`Nie znaleziono sekcji [package] w ${filePath}`);
   }
 
   const packageBlock = packageBlockMatch[0];
   const currentVersionMatch = packageBlock.match(/^version\s*=\s*"([^"]*)"/m);
 
   if (!currentVersionMatch) {
-    throw new Error("Nie znaleziono pola version w sekcji [package] dashboard/src-tauri/Cargo.toml");
+    throw new Error(`Nie znaleziono pola version w sekcji [package] ${filePath}`);
   }
 
   if (currentVersionMatch[1] === version) {
@@ -78,8 +80,12 @@ function syncCargoToml(version) {
     `version = "${version}"`
   );
   const updated = raw.replace(packageBlock, updatedPackageBlock);
-  fs.writeFileSync(cargoTomlPath, updated);
+  fs.writeFileSync(filePath, updated);
   return true;
+}
+
+function syncCargoToml(version) {
+  return syncCargoTomlAt(cargoTomlPath, version);
 }
 
 function main() {
@@ -87,11 +93,13 @@ function main() {
   const pkgChanged = syncPackageJson(version);
   const tauriChanged = syncTauriConfig(version);
   const cargoChanged = syncCargoToml(version);
+  const daemonCargoChanged = syncCargoTomlAt(daemonCargoTomlPath, version);
+  const sharedCargoChanged = syncCargoTomlAt(sharedCargoTomlPath, version);
 
-  if (pkgChanged || tauriChanged || cargoChanged) {
-    console.log(`Zsynchronizowano wersje dashboardu do ${version}`);
+  if (pkgChanged || tauriChanged || cargoChanged || daemonCargoChanged || sharedCargoChanged) {
+    console.log(`Zsynchronizowano wersje do ${version}`);
   } else {
-    console.log(`Wersja dashboardu jest juz zsynchronizowana (${version})`);
+    console.log(`Wersje sa juz zsynchronizowane (${version})`);
   }
 }
 

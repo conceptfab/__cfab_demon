@@ -119,6 +119,9 @@ export function HelpAiSection() {
               {t18n('help_page.automatically_assigns_sessions_requires_85_confidence_an')}
             </li>
           </ul>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t18n('help_page.mode_change_requires_save')}
+          </p>
         </div>
 
         <div className="space-y-4">

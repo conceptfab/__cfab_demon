@@ -27,7 +27,8 @@ export function CreateProjectDialog({
   const { t } = useTranslation();
   const [name, setName] = useState('');
   const [color, setColor] = useState(
-    PROJECT_COLORS[projectCount % PROJECT_COLORS.length],
+    // safe: modulo always yields a valid index into a non-empty fixed array
+    PROJECT_COLORS[projectCount % PROJECT_COLORS.length]!,
   );
   const [folderPath, setFolderPath] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +38,8 @@ export function CreateProjectDialog({
       setName('');
       setFolderPath('');
       setError(null);
-      setColor(PROJECT_COLORS[projectCount % PROJECT_COLORS.length]);
+      // safe: modulo always yields a valid index into a non-empty fixed array
+      setColor(PROJECT_COLORS[projectCount % PROJECT_COLORS.length]!);
     }
     onOpenChange(next);
   };

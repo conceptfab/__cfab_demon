@@ -24,9 +24,10 @@ export function PmSettingsCard() {
   }, []);
 
   useEffect(() => {
-    // async loader: setSettings biegnie po await (fetch-on-mount), nie kaskaduje
-    // renderów synchronicznie.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // load() jest useCallback reużywanym w handleSetWorkFolder — nie można wynieść
+    // do useAsyncData bez duplikowania logiki. setState biegnie po await
+    // (fetch-on-mount), nie kaskaduje renderów synchronicznie.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount; callback reused in event handler, can't cleanly extract to useAsyncData
     load();
   }, [load]);
 

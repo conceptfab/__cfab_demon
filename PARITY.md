@@ -24,10 +24,37 @@ Tracker znanych różnic w zachowaniu i stubów między platformami.
   (preflight zwraca CARGO_PKG_VERSION) będzie blokowany do czasu aktualizacji obu maszyn.
 - `get_machine_name`: macOS używa `hostname` (dotąd zawsze "unknown" — COMPUTERNAME
   jest tylko na Windows).
+- **LAN sync — domknięcie parności m24 (klienci + przypisania):** migracja m24
+  dodała `projects.client_name`, `projects.status` oraz encję `clients`, ale NIE
+  wpięła ich w sync demona (eksport/merge/checksum) — przez co po sync znikało
+  przypisanie klienta do projektu, a usunięty klient „zmartwychwstawał". Naprawione:
+  `client_name`/`status` jadą w eksporcie/merge projektów (reguła absent-key =
+  zachowaj lokalne, jak `merged_into`), encja `clients` synchronizuje się jako
+  osobna tabela (LWW po `updated_at`) z tombstonami (trigger `trg_clients_tombstone`
+  w schema.sql + migracja **m25** + lustro `src/tombstone_triggers.rs`), a checksum
+  projektów jest teraz content-hashem (wykrywa rozjazd `client_name`/`status`/
+  `merged_into`, więc rozjazd się sam leczy zamiast wyglądać na „zsynchronizowane").
+  Mieszane wersje: stary peer (bez kluczy m24) nie nadpisuje lokalnych wartości
+  (absent-key), ale encja `clients` i tombstony klientów propagują się dopiero, gdy
+  OBIE maszyny mają tę wersję. Marker zmienia się raz po aktualizacji → pierwszy
+  sync będzie pełny (świadome, wymusza ponowną konwergencję).
+- **Rozmergowanie po sync — naprawione:** `verify_merge_integrity` zerował
+  `merged_into` gdy rodzic był chwilowo NIEOBECNY podczas konwergencji (ciche
+  rozmergowanie). Teraz czyści marker TYLKO gdy rodzic ma tombstone (naprawdę
+  usunięty); wiszący marker jest nieszkodliwy (rollup robi LEFT JOIN + fallback do
+  dziecka), więc przeżywa do dotarcia wiersza rodzica.
 - FOLLOW-UP (otwarte): sekret LAN nadal przesyłany plaintext HTTP w nagłówku
   `X-TimeFlow-Secret` — docelowo challenge-response (HMAC z nonce); wymaga zmiany
   protokołu i wersjonowania. Mitygacja częściowa: constant-time compare po stronie serwera.
 - **Drag&drop monitored apps**: zmiany w `src/monitor.rs` i `src/platform/windows/process_snapshot.rs` (pole `bundle_id: None`, `pid_paths` puste, sygnatura `measure_cpu_for_app`) są lustrzane i kompilowane tylko na Windows — niezweryfikowane buildem na macOS (libsqlite3-sys cross-compile). Na Windows drag&drop obsługuje wyłącznie `.exe`; `.lnk` zwraca czytelny błąd.
+
+## Remediacja jakości/architektury (branch `chore/quality-remediation`, audyt 2026-06-23)
+- **Rdzeń merge wydzielony do `timeflow-shared::sync`:** triggery tombstone (#6), kanoniczna checksum SHA-256/128 (#2, dashboard porzucił FNV-1a — wcześniej obie strony NIGDY nie konwergowały bo różna długość hasha), normalizacja czasu (#1), `PROJECT_SELECT` (#10), content-hash PEŁNYCH kolumn dla 5 encji (#3, FK rozwiązywane do stabilnych nazw — nie lokalnych id), oraz rdzeń LWW-merge + tombstony (`shared::sync::merge`). Daemon i dashboard wołają JEDNĄ implementację.
+- **Dashboard import/online-sync ujednolicony na semantykę daemona (ZMIANA ZACHOWANIA):** ścieżka importu/restore dashboardu była ROZBIEŻNA z daemonem — brakowało guardów tombstone (skasowany rekord mógł „zmartwychwstać" z nieaktualnego archiwum) i LWW dla `applications` (display_name/updated_at nie propagowały). Teraz dashboard stosuje pełną semantykę daemona. **Konsekwencja dla restore:** przywracanie archiwum NIE wskrzesi rekordu skasowanego lokalnie nowszym tombstonem (świadoma decyzja). **Sesje WYKLUCZONE z unifikacji** — daemon robi prosty upsert po (app, start_time), dashboard `merge_or_insert_session` scala nakładające się interwały (overlap-merge); to celowo różne algorytmy do różnych celów (LAN P2P vs import).
+- **Kontrakt FK=OFF dla merge (#5):** rdzeń merge wymaga `PRAGMA foreign_keys=OFF` (sentinel `manual_sessions.project_id=0`; tombstone projektu NIE może CASCADE-skasować sesji manualnych). Daemon `open_dashboard_db` + dashboard `import_archive_with_fk_off` ustawiają OFF; `assert_fk_off` (debug) na wejściu merge jako guardrail. Bez tego dashboard pod pulą FK=ON powodował twardy abort + cichą utratę danych przez CASCADE.
+- **Warstwy obronne:** panic-guard wątku master LAN-sync (#4 — panika w merge nie zostawia DB zamrożonej na zawsze); `ensure_*_columns` abortuje merge przy realnym błędzie ALTER zamiast cichego logu (#79).
+- **CI (#7) wpięte (`.github/workflows/ci.yml`):** job `rust` (cargo test 3 crate'y, buduje front bo `timeflow-dashboard` osadza `dist` przez `include_dir!`), `frontend` (typecheck/lint/test/build + kontrola driftu `rpc_generated.rs` #18 + knip #17), `quality` (react-doctor), `audit` (cargo-deny advisories+bans + npm audit), oraz **`windows-build`** — kompiluje `timeflow-demon` na `windows-latest`. To **kompilacyjnie weryfikuje** kod `platform/windows/*` (dotąd „nigdy nie budowany" — patrz pozycje „NIEZWERYFIKOWANE na realnym Windows" wyżej; runtime nadal niezweryfikowany, ale compile-check to pierwszy gate przeciw rotcie).
+- **Odłożone (świadomie, wymagają żywego renderu/2 maszyn):** eventy postępu sync zamiast pollingu (#74), rozbicie god-files (#9) + dedup komend (#76/#77), sweep `cn()` (#16), split god-hooków (#14), migracja pozostałych ~26 modułów na `CommandError` (#8 — fundament + 3 moduły zrobione).
 
 ## Code signing / notarization (macOS) — świadomy dług (audyt 2026-06-17, M4)
 - Stan obecny: buildy macOS są **niesygnowane**. `tauri.conf.json` ma

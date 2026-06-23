@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '@/store/ui-store';
+import { useSettingsStore } from '@/store/settings-store';
 import { cn } from '@/lib/utils';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
@@ -15,6 +16,7 @@ export function MainLayout({
 }) {
   const { t } = useTranslation();
   const currentPage = useUIStore((state) => state.currentPage);
+  const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const previousPageRef = useRef(currentPage);
@@ -89,7 +91,12 @@ export function MainLayout({
             : 'pointer-events-none opacity-0',
         )}
       />
-      <div className="flex min-w-0 flex-1 flex-col md:ml-56">
+      <div
+        className={cn(
+          'flex min-w-0 flex-1 flex-col transition-[margin] duration-200 ease-out motion-reduce:transition-none',
+          sidebarCollapsed ? 'md:ml-16' : 'md:ml-56',
+        )}
+      >
         <TopBar
           mobileMenuOpen={isMobileNavOpen}
           onMenuClick={() => setIsMobileNavOpen((open) => !open)}

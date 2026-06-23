@@ -197,7 +197,7 @@ pub fn dispatch_generated(
         "restore_project" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::restore_project(app.clone(), from_arg(args, "id")?))?) })()),
         "rollback_last_auto_safe_run" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::rollback_last_auto_safe_run(app.clone()))?) })()),
         "run_auto_safe_assignment" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::run_auto_safe_assignment(app.clone(), from_arg(args, "limit")?, from_arg(args, "date_range")?, from_arg(args, "min_duration")?))?) })()),
-        "run_lan_sync" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::run_lan_sync(app.clone(), from_arg(args, "peer_ip")?, from_arg(args, "peer_port")?, from_arg(args, "_since")?, from_arg(args, "force")?))?) })()),
+        "run_lan_sync" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::run_lan_sync(app.clone(), from_arg(args, "peer_ip")?, from_arg(args, "peer_port")?, from_arg(args, "_since")?, from_arg(args, "force")?, from_arg(args, "background")?))?) })()),
         "run_online_sync" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::run_online_sync())?) })()),
         "save_log_settings" => Some((|| -> Result<Value, String> { ok(tauri::async_runtime::block_on(crate::commands::save_log_settings(from_arg(args, "settings")?))?) })()),
         "save_online_sync_settings" => Some((|| -> Result<Value, String> { ok(crate::commands::save_online_sync_settings(from_arg(args, "settings")?)?) })()),

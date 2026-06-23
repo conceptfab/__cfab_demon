@@ -39,12 +39,14 @@ export function BugHunter({ isOpen, onClose, version }: BugHunterProps) {
 
     const newAttachments: typeof attachments = [];
     for (let i = 0; i < files.length; i++) {
-        if (files[i].size > MAX_FILE_SIZE) {
-            showError(t("components.bughunter.errors.file_too_large", { name: files[i].name }));
+        // safe: loop is within [0, files.length)
+        const file = files[i]!;
+        if (file.size > MAX_FILE_SIZE) {
+            showError(t("components.bughunter.errors.file_too_large", { name: file.name }));
             continue;
         }
         newAttachments.push({
-            file: files[i],
+            file,
             id: Math.random().toString(36).substring(7)
         });
     }

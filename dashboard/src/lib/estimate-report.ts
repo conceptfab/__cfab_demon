@@ -78,6 +78,11 @@ export function buildEstimateReportModel(
 
   const projects: EstimateReportProject[] = rows.map((row) => {
     const realTotal = row.seconds;
+    // Baza WARTOŚCI musi być spójna z backendowym `estimated_value`, które liczone jest
+    // z niezaokrąglonych godzin (`seconds_f64 / 3600`), a nie z `row.seconds` (= round(seconds_f64)).
+    // Użycie `row.seconds` w mianowniku skalowania wstrzykiwało szum ±1–2 gr
+    // (np. zaokrąglone 8h × 100 → 799,99 zamiast 800).
+    const realValueSeconds = row.hours * 3600;
     const dailySeconds = row.days.map((d) => d.seconds);
     const displaySeconds = rounded
       ? usePerDay && dailySeconds.length > 0
@@ -85,13 +90,13 @@ export function buildEstimateReportModel(
         : roundSeconds(realTotal, interval)
       : realTotal;
     const displayValue = rounded
-      ? scaleValueToRounded(row.estimated_value, realTotal, displaySeconds)
+      ? scaleValueToRounded(row.estimated_value, realValueSeconds, displaySeconds)
       : row.estimated_value;
 
     const days: EstimateReportDay[] = row.days.map((d) => {
       const dayDisplaySeconds = rounded ? roundSeconds(d.seconds, interval) : d.seconds;
       const dayRawValue =
-        realTotal > 0 ? row.estimated_value * (d.seconds / realTotal) : 0;
+        realValueSeconds > 0 ? row.estimated_value * (d.seconds / realValueSeconds) : 0;
       const dayDisplayValue = rounded
         ? scaleValueToRounded(dayRawValue, d.seconds, dayDisplaySeconds)
         : dayRawValue;
@@ -147,7 +152,9 @@ export function roundedEstimatesSummary(
     roundedSeconds += rowRounded;
     rawSeconds +=
       Number.isFinite(r.seconds) && r.seconds > 0 ? Math.floor(r.seconds) : 0;
-    value += scaleValueToRounded(r.estimated_value, r.seconds, rowRounded);
+    // Skalowanie wartości względem niezaokrąglonych sekund (spójnie z backendem) — patrz
+    // `buildEstimateReportModel`. Mianownik `r.seconds` dawał ±1–2 gr szumu na sumie.
+    value += scaleValueToRounded(r.estimated_value, r.hours * 3600, rowRounded);
   }
   return roundedSeconds === rawSeconds ? null : { seconds: roundedSeconds, value };
 }

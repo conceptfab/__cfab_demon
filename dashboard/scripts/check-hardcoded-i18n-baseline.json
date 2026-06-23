@@ -1,5 +1,8 @@
 [
   "src/hooks/settings/useSyncSettings.ts|: `Wysyłanie ${(rawBytes.length / 1024).toFixed(0)} KB (brak kompresji)...`,",
   "src/hooks/settings/useSyncSettings.ts|? `Wysyłanie ${(compressedSize / 1024).toFixed(0)} KB (gzip ${ratio}% kompresji z ${(rawBytes.length / 1024).toFixed(0)} KB)...`",
-  "src/hooks/useSettingsPageController.ts|{ code: 'PLN', symbol: 'zł' },"
+  "src/hooks/useSettingsPageController.ts|{ code: 'PLN', symbol: 'zł' },",
+  "src/lib/estimate-report.test.ts|expect(model.projects[0]!.displaySeconds).toBe(28800); // 8 × pełna godzina",
+  "src/lib/estimate-report.test.ts|expect(model.projects[0]!.displayValue).toBeCloseTo(800, 6); // równo 800, nie 799,99",
+  "src/lib/estimate-report.test.ts|hours, // float (≠ seconds/3600) — to niespójność, która ujawniała szum"
 ]

@@ -21,6 +21,24 @@ type EstimatesProjectsListProps = Pick<
   | 'updateProjectDraft'
 >;
 
+type EstimateRow = EstimatesPageController['rows'][number];
+
+/**
+ * Rounded-hours alternative for a row. The value is scaled against the
+ * UNROUNDED seconds (row.hours*3600) to stay consistent with the backend's
+ * estimated_value — using row.seconds (already rounded) yielded e.g. 799.99
+ * instead of 800.
+ */
+function roundedAlternative(row: EstimateRow) {
+  const altSec = roundedAlternativeFromDaily(row.seconds, row.daily_seconds);
+  const altHours = altSec !== null ? altSec / 3600 : null;
+  const altValue =
+    altSec !== null && row.hours > 0
+      ? row.estimated_value * (altSec / (row.hours * 3600))
+      : null;
+  return { altHours, altValue };
+}
+
 export function EstimatesProjectsMobileList({
   currency,
   decimal,
@@ -39,15 +57,7 @@ export function EstimatesProjectsMobileList({
       {rows.map((row) => {
         const draft = drafts[row.project_id] ?? '';
         const isSaving = savingProjectId === row.project_id;
-        const altSec = roundedAlternativeFromDaily(
-          row.seconds,
-          row.daily_seconds,
-        );
-        const altRatio =
-          altSec !== null && row.seconds > 0 ? altSec / row.seconds : null;
-        const altHours = altSec !== null ? altSec / 3600 : null;
-        const altValue =
-          altRatio !== null ? row.estimated_value * altRatio : null;
+        const { altHours, altValue } = roundedAlternative(row);
         return (
           <div
             key={row.project_id}
@@ -202,15 +212,7 @@ export function EstimatesProjectsDesktopTable({
         {rows.map((row) => {
           const draft = drafts[row.project_id] ?? '';
           const isSaving = savingProjectId === row.project_id;
-          const altSec = roundedAlternativeFromDaily(
-            row.seconds,
-            row.daily_seconds,
-          );
-          const altRatio =
-            altSec !== null && row.seconds > 0 ? altSec / row.seconds : null;
-          const altHours = altSec !== null ? altSec / 3600 : null;
-          const altValue =
-            altRatio !== null ? row.estimated_value * altRatio : null;
+          const { altHours, altValue } = roundedAlternative(row);
           return (
             <div
               key={row.project_id}

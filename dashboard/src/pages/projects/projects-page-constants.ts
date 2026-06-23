@@ -18,4 +18,3 @@ export const DEFAULT_SECTION_OPEN: Record<
   detected: true,
 };
 
-export type ProjectsSectionKey = keyof typeof DEFAULT_SECTION_OPEN;

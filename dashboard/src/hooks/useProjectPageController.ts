@@ -462,7 +462,8 @@ export function useProjectPageController() {
         description: t(
           'project_page.text.apply_this_comment_to_all_sessions_in_this_group',
         ),
-        initialValue: sessions[0].comment || '',
+        // safe: sessions.length > 0 is checked at the condition above
+        initialValue: sessions[0]!.comment || '',
         onConfirm: async (raw) => {
           const trimmed = raw.trim();
           try {

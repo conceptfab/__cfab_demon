@@ -560,7 +560,8 @@ export function useProjectsPageController() {
 
     const folderBasenames = projectFolders.map((f) => {
       const parts = f.path.replace(/\\/g, '/').replace(/\/+$/, '').split('/');
-      return { basename: parts[parts.length - 1].toLowerCase(), path: f.path };
+      // safe: String.split always produces at least one element; parts.length - 1 >= 0
+      return { basename: parts[parts.length - 1]!.toLowerCase(), path: f.path };
     });
 
     const grouped = new Map<string, ProjectWithStats[]>();

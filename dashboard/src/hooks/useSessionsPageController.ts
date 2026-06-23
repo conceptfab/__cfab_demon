@@ -5,6 +5,7 @@ import {
   useState,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { usePageError } from '@/hooks/usePageError';
 import { format, parseISO } from 'date-fns';
 
 import { manualSessionsApi } from '@/lib/tauri';
@@ -65,6 +66,7 @@ export function useSessionsPageController() {
   const assignProjectListMode = useUIStore((s) => s.assignProjectListMode);
   const setAssignProjectListMode = useUIStore((s) => s.setAssignProjectListMode);
   const triggerRefresh = useDataStore((s) => s.triggerRefresh);
+  const reportError = usePageError();
   const {
     assignSessions,
     updateSessionRateMultipliers,
@@ -74,7 +76,7 @@ export function useSessionsPageController() {
   } = useSessionActions({
     onAfterMutation: () => triggerRefresh('sessions_mutation'),
     onError: (action, error) => {
-      console.error(`Session action failed (${action}):`, error);
+      reportError(action, error, t('sessions.errors.session_action_failed'));
     },
   });
   const projects = useProjectsCacheStore((state) => state.projectsAllTime);
@@ -147,11 +149,19 @@ export function useSessionsPageController() {
       .then((data) => {
         if (!cancelled) setManualSessions(data);
       })
-      .catch(console.error);
+      .catch((e) => {
+        if (!cancelled) {
+          reportError(
+            'load manual sessions',
+            e,
+            t('sessions.errors.load_manual_sessions'),
+          );
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [activeDateRange, dataReloadVersion]);
+  }, [activeDateRange, dataReloadVersion, reportError, t]);
 
   const mergedSessions = useMemo(() => {
     if (manualSessions.length === 0) return sessions;

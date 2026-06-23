@@ -49,8 +49,11 @@ export function DataHistory() {
   }, []);
 
   useEffect(() => {
-    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // loadData() ustawia 3 stany (imported/archive/backups) i jest reużywany
+    // przez listenery visibilitychange/focus/localDataChange w tym samym efekcie.
+    // Wyodrębnienie do useAsyncData wymagałoby rozbicia jednego efektu na kilka
+    // lub osobnych hooków dla każdej listy — za duże ryzyko regresji.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- multi-state loader shared with event listeners in same effect; extracting would split effect incorrectly
     void loadData();
 
     const handleVisibilityChange = () => {

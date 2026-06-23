@@ -42,6 +42,10 @@ impl Drop for ConnectionGuard {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TableHashes {
     pub projects: String,
+    // m24 clients entity. `#[serde(default)]` keeps archives from pre-m24 peers
+    // (which omit the field) parseable.
+    #[serde(default)]
+    pub clients: String,
     pub applications: String,
     pub sessions: String,
     pub manual_sessions: String,
@@ -701,6 +705,7 @@ fn compute_table_hash(conn: &rusqlite::Connection, table: &str) -> String {
 fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
     TableHashes {
         projects: compute_table_hash(conn, "projects"),
+        clients: compute_table_hash(conn, "clients"),
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
@@ -1118,14 +1123,39 @@ fn handle_trigger_sync(
         peer_device_id: String,
         #[serde(default)]
         force: bool,
+        /// Background/auto trigger (interval scheduler) vs. an explicit user action.
+        /// Background syncs must respect the full configured interval; manual ones
+        /// only respect the short SYNC_COOLDOWN_SECS floor.
+        #[serde(default)]
+        background: bool,
     }
     let req: TriggerReq = match serde_json::from_str(body) {
         Ok(r) => r,
         Err(e) => return (400, json_error(&format!("Invalid request: {}", e))),
     };
 
-    if !req.force && state.secs_since_last_sync() < SYNC_COOLDOWN_SECS {
-        return (429, json_error("Sync completed recently, wait before retrying"));
+    // Minimum-interval guard. A forced (manual ⚡) sync bypasses it entirely.
+    // A background/auto sync must wait the full configured interval since the last
+    // COMPLETED sync — this is the single shared gate that prevents two sessions
+    // running back-to-back when both the daemon loop and the dashboard scheduler
+    // become due around the same time. A manual (non-force) sync only respects the
+    // short 30s floor so the user can always sync on demand.
+    if !req.force {
+        let min_gap = if req.background {
+            let hours = crate::config::load_lan_sync_settings().sync_interval_hours as u64;
+            (hours * 3600).max(SYNC_COOLDOWN_SECS)
+        } else {
+            SYNC_COOLDOWN_SECS
+        };
+        if state.secs_since_last_sync() < min_gap {
+            log::info!(
+                "LAN trigger-sync: skipped — {}s since last sync < min gap {}s (background={})",
+                state.secs_since_last_sync(),
+                min_gap,
+                req.background
+            );
+            return (429, json_error("Sync interval not elapsed yet"));
+        }
     }
 
     // Auto-clear stale sync lock: if sync_in_progress but DB not frozen and no active sync phase,
@@ -1514,16 +1544,23 @@ fn build_delta_for_pull(
     since: &str,
     include_tombstones: bool,
 ) -> Result<String, String> {
-    // Defensive: the merged_* columns come from a dashboard migration (m23);
-    // make sure they exist before SELECT-ing them (no-op when already migrated).
-    crate::sync_common::ensure_project_merge_columns(conn);
+    // Defensive: the merged_* columns come from a dashboard migration (m23) and
+    // client_name/status + the clients entity from m24; make sure they exist
+    // before SELECT-ing them (no-op when already migrated).
+    crate::sync_common::ensure_project_merge_columns(conn)?;
+    crate::sync_common::ensure_project_client_columns(conn)?;
 
     // Normalize ISO timestamp for SQLite comparison
     let since_norm = since.replace('T', " ");
     let since_ref = if since_norm.len() > 19 { &since_norm[..19] } else { &since_norm };
 
-    // Fetch projects (always full — small table, needed for ID resolution)
-    let projects = fetch_all_rows(conn, "SELECT id, name, color, hourly_rate, created_at, excluded_at, frozen_at, assigned_folder_path, merged_into, merged_at, updated_at FROM projects ORDER BY name")?;
+    // Fetch projects (always full — small table, needed for ID resolution).
+    // client_name + status (m24) ride along so the client→project assignment and
+    // project status converge across peers, mirroring merged_into/merged_at (m23).
+    let projects = fetch_all_rows(conn, "SELECT id, name, color, hourly_rate, created_at, excluded_at, frozen_at, assigned_folder_path, merged_into, merged_at, client_name, status, updated_at FROM projects ORDER BY name")?;
+
+    // Fetch clients (m24 entity — always full, tiny table). Identified by name.
+    let clients = fetch_all_rows(conn, "SELECT id, name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at FROM clients ORDER BY name")?;
 
     // Fetch applications (always full)
     let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, updated_at FROM applications ORDER BY executable_name")?;
@@ -1568,6 +1605,7 @@ fn build_delta_for_pull(
         "device_id": lan_common::get_device_id(),
         "data": {
             "projects": projects,
+            "clients": clients,
             "applications": apps,
             "sessions": sessions,
             "manual_sessions": manual,
@@ -1626,6 +1664,7 @@ fn fetch_all_rows_params(
 impl PartialEq for TableHashes {
     fn eq(&self, other: &Self) -> bool {
         self.projects == other.projects
+            && self.clients == other.clients
             && self.applications == other.applications
             && self.sessions == other.sessions
             && self.manual_sessions == other.manual_sessions

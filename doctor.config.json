@@ -9,6 +9,14 @@
       {
         "files": ["webui_dev.py", "dashboard_build.py"],
         "rules": ["react-doctor/command-execution-input-risk"]
+      },
+      {
+        "files": ["**/*.test.ts", "**/*.test.tsx"],
+        "rules": ["react-doctor/auth-token-in-web-storage"]
+      },
+      {
+        "files": ["target/**", "**/target/**"],
+        "rules": ["react-doctor/dangerous-html-sink"]
       }
     ]
   }

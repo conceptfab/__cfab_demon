@@ -33,8 +33,13 @@ function defaultEndFromStart(start: string): string {
   const parts = start.split('T');
   const dateStr = parts[0] ?? '';
   const timeStr = parts[1] ?? '00:00';
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const [hours, minutes] = timeStr.split(':').map(Number);
+  const dateParts = dateStr.split('-').map(Number);
+  const timeParts = timeStr.split(':').map(Number);
+  const year = dateParts[0] ?? 0;
+  const month = dateParts[1] ?? 0;
+  const day = dateParts[2] ?? 0;
+  const hours = timeParts[0] ?? 0;
+  const minutes = timeParts[1] ?? 0;
   const startDate = new Date(year, month - 1, day, hours + 1, minutes);
   return `${String(startDate.getFullYear()).padStart(4, '0')}-${String(startDate.getMonth() + 1).padStart(2, '0')}-${String(startDate.getDate()).padStart(2, '0')}T${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`;
 }

@@ -79,8 +79,10 @@ export function useClientsPageController() {
   }, [showError, t]);
 
   useEffect(() => {
-    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // load() ustawia 3 stany (clients/summaries/projects) i reaguje na refreshKey.
+    // useAsyncData zwraca pojedynczy data: T|null — nie obsługuje wielu
+    // niezależnych kolekcji bez rozbicia na osobne hooki.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- multi-state loader (clients + summaries + projects); refreshKey dep; useAsyncData doesn't fit
     void load();
   }, [load, refreshKey]);
 

@@ -10,7 +10,7 @@ import {
 function makeLocalStorageMock() {
   let store: Record<string, string> = {};
   return {
-    getItem: (k: string): string | null => (k in store ? store[k] : null),
+    getItem: (k: string): string | null => (k in store ? (store[k] ?? null) : null),
     setItem: (k: string, v: string) => { store[k] = String(v); },
     removeItem: (k: string) => { delete store[k]; },
     clear: () => { store = {}; },

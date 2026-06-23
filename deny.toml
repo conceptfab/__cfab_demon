@@ -1,0 +1,19 @@
+[advisories]
+yanked = "deny"
+
+[bans]
+multiple-versions = "warn"
+
+# NOTE: The license allow-list below needs validation before being enforced in CI.
+# Run `cargo deny check licenses` locally and add any missing licenses, then
+# change `cargo deny check advisories bans` in ci.yml to include `licenses`.
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]

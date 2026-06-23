@@ -23,8 +23,9 @@ mod m21_tombstone_session_sync_key;
 mod m22_updated_at_indexes;
 mod m23_project_merge;
 mod m24_clients;
+mod m25_clients_tombstone;
 
-pub(crate) const LATEST_SCHEMA_VERSION: i64 = 24;
+pub(crate) const LATEST_SCHEMA_VERSION: i64 = 25;
 
 pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     db.execute_batch(
@@ -125,6 +126,9 @@ pub fn run_migrations(db: &rusqlite::Connection) -> Result<(), rusqlite::Error> 
     }
     if current_version < 24 {
         m24_clients::run(&tx)?;
+    }
+    if current_version < 25 {
+        m25_clients_tombstone::run(&tx)?;
     }
 
     tx.execute(

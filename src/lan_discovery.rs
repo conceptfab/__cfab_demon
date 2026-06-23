@@ -506,8 +506,12 @@ fn run_discovery_loop(stop_signal: Arc<AtomicBool>, sync_state: Option<Arc<LanSy
 
             if should_auto_sync {
                 let sync_cooldown = Duration::from_secs(lan_settings.sync_interval_hours as u64 * 3600);
-                let completed_cooldown_ok =
-                    state.secs_since_last_sync() >= crate::lan_server::SYNC_COOLDOWN_SECS;
+                // Gate on the FULL configured interval since the last COMPLETED sync
+                // (shared timestamp), not just the 30s floor — so the daemon loop also
+                // backs off when a dashboard-initiated sync finished recently. Without
+                // this, the two independent schedulers can fire two sessions back-to-back.
+                let completed_cooldown_ok = state.secs_since_last_sync()
+                    >= sync_cooldown.as_secs().max(crate::lan_server::SYNC_COOLDOWN_SECS);
                 if role == "master" && !in_progress && handle_done && completed_cooldown_ok && last_sync_attempt.elapsed() >= sync_cooldown {
                     // Find a slave peer to sync with
                     if let Some(slave) = peers.values().find(|p| p.role == "slave" || p.role == "undecided") {

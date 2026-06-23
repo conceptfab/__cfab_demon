@@ -1,17 +1,18 @@
 [package]
 name = "timeflow-shared"
-version = "0.1.0"
+version = "0.1.5737"
 edition = "2021"
 
 [lib]
 path = "lib.rs"
 
 [dependencies]
-log = "0.4"
-rusqlite = { version = "0.31", features = ["bundled"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-chrono = { version = "0.4", features = ["serde"] }
+log = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+sha2 = { workspace = true }
 
 # OS keychain (secret_store). keyring 3 defaults to a per-process MOCK store —
 # a native backend MUST be enabled explicitly per platform, otherwise secrets

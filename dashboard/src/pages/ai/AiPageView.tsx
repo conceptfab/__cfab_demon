@@ -123,6 +123,10 @@ export function AiPageView({ controller }: AiPageViewProps) {
             'ai_page.text.rollback_only_reverts_sessions_that_have_not_bee',
           )}
           modeIsAutoSafe={status?.mode === 'auto_safe'}
+          hasUnsavedAutoSafe={
+            settingsFormValues.mode === 'auto_safe' &&
+            status?.mode !== 'auto_safe'
+          }
           runningAuto={runningAuto}
           rollingBack={rollingBack}
           canRollbackLastRun={Boolean(status?.can_rollback_last_auto_run)}

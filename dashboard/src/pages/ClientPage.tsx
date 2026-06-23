@@ -70,8 +70,10 @@ export function ClientPage() {
   }, [clientName, showError, t]);
 
   useEffect(() => {
-    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // load() ustawia dwa stany (summary + client) i reaguje na refreshKey.
+    // useAsyncData zwraca pojedynczy data: T|null — wymagałoby krotki lub obiektu
+    // i dodatkowego unwrappowania; zysk zerowy przy ryzyku regresji.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- two-state loader (summary + client) with refreshKey dep; useAsyncData would require a tuple wrapper with no benefit
     void load();
   }, [load, refreshKey]);
 

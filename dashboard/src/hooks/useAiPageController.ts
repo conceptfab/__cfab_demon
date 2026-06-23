@@ -209,8 +209,11 @@ export function useAiPageController() {
   );
 
   useEffect(() => {
-    // async loader na mount: setState biegnie po await, nie kaskaduje renderów.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // refreshModelData() orkiestruje fetchStatus()+fetchMetrics() i jest reużywany
+    // przez handleRefreshStatus/visibility listener/usePageRefreshListener.
+    // Ustawia wiele stanów (metrics, scanStatus, loadingMetrics, aiStatus w store).
+    // useAsyncData nie obsługuje tej wielowarstwowej orkiestracji.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- multi-state orchestration (metrics + scanStatus + store); reused in multiple handlers; useAsyncData doesn't fit
     void refreshModelData();
   }, [refreshModelData]);
 

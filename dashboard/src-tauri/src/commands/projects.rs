@@ -1045,6 +1045,8 @@ pub async fn create_project(
             assigned_folder_path: normalized_folder,
             is_imported: 0,
             updated_at: chrono::Local::now().to_rfc3339(),
+            client_name: None,
+            status: "active".to_string(),
         })
     })
     .await
@@ -1463,6 +1465,8 @@ pub async fn create_project_from_folder(
             assigned_folder_path: Some(folder_path),
             is_imported: 0,
             updated_at: chrono::Local::now().to_rfc3339(),
+            client_name: None,
+            status: "active".to_string(),
         })
     })
     .await

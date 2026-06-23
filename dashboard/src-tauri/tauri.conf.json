@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "TIMEFLOW",
-  "version": "0.1.5735",
+  "version": "0.1.5737",
   "identifier": "com.timeflow.dashboard",
   "build": {
     "frontendDist": "../dist",
@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg"],
     "icon": [
       "icons/favicon-32x32.png",
       "icons/favicon-128.png",
