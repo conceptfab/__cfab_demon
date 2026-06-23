@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tauri::AppHandle;
 
+use crate::commands::CommandError;
+
 use super::analysis::{compute_project_activity_unique, daily_seconds_by_series};
 use super::helpers::run_db_blocking;
 use super::types::{
@@ -171,7 +173,7 @@ fn load_client_by_id(conn: &rusqlite::Connection, id: i64) -> Result<Client, Str
 }
 
 #[tauri::command]
-pub async fn clients_list(app: AppHandle) -> Result<Vec<Client>, String> {
+pub async fn clients_list(app: AppHandle) -> Result<Vec<Client>, CommandError> {
     run_db_blocking(app, move |conn| {
         let mut stmt = conn
             .prepare(&format!(
@@ -219,6 +221,7 @@ pub async fn clients_list(app: AppHandle) -> Result<Vec<Client>, String> {
         Ok(merged)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -232,7 +235,7 @@ pub async fn clients_create(
     currency: Option<String>,
     default_hourly_rate: Option<f64>,
     color: Option<String>,
-) -> Result<Client, String> {
+) -> Result<Client, CommandError> {
     run_db_blocking(app, move |conn| {
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -261,6 +264,7 @@ pub async fn clients_create(
         load_client_by_id(conn, conn.last_insert_rowid())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -275,7 +279,7 @@ pub async fn clients_update(
     currency: Option<String>,
     default_hourly_rate: Option<f64>,
     color: Option<String>,
-) -> Result<Client, String> {
+) -> Result<Client, CommandError> {
     run_db_blocking(app, move |conn| {
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -317,10 +321,11 @@ pub async fn clients_update(
         load_client_by_id(conn, id)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn clients_archive(app: AppHandle, id: i64, archived: bool) -> Result<Client, String> {
+pub async fn clients_archive(app: AppHandle, id: i64, archived: bool) -> Result<Client, CommandError> {
     run_db_blocking(app, move |conn| {
         let archived_at = if archived {
             Some(chrono::Local::now().to_rfc3339())
@@ -335,10 +340,11 @@ pub async fn clients_archive(app: AppHandle, id: i64, archived: bool) -> Result<
         load_client_by_id(conn, id)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn clients_delete(app: AppHandle, id: i64, name: String) -> Result<(), String> {
+pub async fn clients_delete(app: AppHandle, id: i64, name: String) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         // Resolve the canonical name (by id, or fall back to the provided name —
         // PM-sourced clients have id 0, so name is the reliable key).
@@ -368,6 +374,7 @@ pub async fn clients_delete(app: AppHandle, id: i64, name: String) -> Result<(),
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -375,7 +382,7 @@ pub async fn project_set_client(
     app: AppHandle,
     project_id: i64,
     client_name: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     run_db_blocking(app, move |conn| {
         let normalized = client_name
             .map(|c| c.trim().to_string())
@@ -388,6 +395,7 @@ pub async fn project_set_client(
         Ok(())
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -395,9 +403,9 @@ pub async fn project_set_status(
     app: AppHandle,
     project_id: i64,
     status: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     if !VALID_STATUSES.contains(&status.as_str()) {
-        return Err(format!("Invalid status: {}", status));
+        return Err(format!("Invalid status: {}", status).into());
     }
     // Status is NOT a separate field — it is derived from the project's real
     // frozen_at/excluded_at, exactly like the Projects tab (the single source
@@ -435,6 +443,7 @@ pub async fn project_set_status(
         }
     })
     .await
+    .map_err(Into::into)
 }
 
 /// Synchronizes clients from the PM module — the SINGLE source of truth. Client
@@ -443,7 +452,7 @@ pub async fn project_set_status(
 /// fallback. Every project is re-mapped to its PM client by full name, and local
 /// clients not present in PM are removed — so the panel stays consistent with PM.
 #[tauri::command]
-pub async fn clients_sync_from_pm(app: AppHandle) -> Result<ClientAutofillResult, String> {
+pub async fn clients_sync_from_pm(app: AppHandle) -> Result<ClientAutofillResult, CommandError> {
     run_db_blocking(app, move |conn| {
         let folder = super::pm::resolve_work_folder(conn)
             .ok_or_else(|| "PM work folder is not configured".to_string())?;
@@ -586,10 +595,11 @@ pub async fn clients_sync_from_pm(app: AppHandle) -> Result<ClientAutofillResult
         })
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
-pub async fn projects_with_client(app: AppHandle) -> Result<Vec<ProjectClientRow>, String> {
+pub async fn projects_with_client(app: AppHandle) -> Result<Vec<ProjectClientRow>, CommandError> {
     run_db_blocking(app, move |conn| {
         // Status is derived from the real frozen_at/excluded_at — identical to
         // the Projects tab (the single source of truth). Excluded projects are
@@ -633,13 +643,14 @@ pub async fn projects_with_client(app: AppHandle) -> Result<Vec<ProjectClientRow
         Ok(out)
     })
     .await
+    .map_err(Into::into)
 }
 
 #[tauri::command]
 pub async fn get_clients_summary(
     app: AppHandle,
     date_range: DateRange,
-) -> Result<Vec<ClientSummary>, String> {
+) -> Result<Vec<ClientSummary>, CommandError> {
     run_db_blocking(app, move |conn| {
         // Reuse the canonical estimate computation (value with rate cascade + multipliers).
         let estimate_rows = super::estimates::build_estimate_rows(conn, &date_range)?;
@@ -827,6 +838,7 @@ pub async fn get_clients_summary(
         Ok(out)
     })
     .await
+    .map_err(Into::into)
 }
 
 fn empty_summary(client_name: String, color: String) -> ClientSummary {
