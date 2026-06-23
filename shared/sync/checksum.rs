@@ -66,6 +66,24 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
                           (SELECT a.executable_name FROM applications a WHERE a.id = m.app_id) AS app_name, \
                           m.updated_at \
                    FROM manual_sessions m ORDER BY m.title, m.start_time)",
+        // H-1: append-only encje. FK (session_id/app_id/*_project_id) są LOKALNE i
+        // przenoszone wprost (nie remapowane) — hashujemy je tak jak są, klucz dedup
+        // (source, created_at) wyznacza kolejność. Hash pełnego zestawu kolumn.
+        "assignment_feedback" =>
+            "SELECT COALESCE(group_concat( \
+                source || '|' || created_at || '|' || COALESCE(suggestion_id,'') || '|' || \
+                COALESCE(session_id,'') || '|' || COALESCE(app_id,'') || '|' || \
+                COALESCE(from_project_id,'') || '|' || COALESCE(to_project_id,'') || '|' || \
+                COALESCE(weight,''), ';'), '') \
+             FROM (SELECT * FROM assignment_feedback ORDER BY source, created_at)",
+        "assignment_auto_runs" =>
+            "SELECT COALESCE(group_concat( \
+                started_at || '|' || COALESCE(finished_at,'') || '|' || COALESCE(mode,'') || '|' || \
+                COALESCE(min_confidence_auto,'') || '|' || COALESCE(min_evidence_auto,'') || '|' || \
+                sessions_scanned || '|' || sessions_suggested || '|' || sessions_assigned || '|' || \
+                COALESCE(error,'') || '|' || COALESCE(rolled_back_at,'') || '|' || \
+                COALESCE(rollback_reverted,'') || '|' || COALESCE(rollback_skipped,''), ';'), '') \
+             FROM (SELECT * FROM assignment_auto_runs ORDER BY started_at)",
         _ => return None,
     })
 }
@@ -95,10 +113,12 @@ mod table_hash_sql_tests {
     use super::*;
     #[test]
     fn known_tables_have_sql_unknown_none() {
-        for t in ["projects", "clients", "applications", "sessions", "manual_sessions"] {
+        for t in [
+            "projects", "clients", "applications", "sessions", "manual_sessions",
+            "assignment_feedback", "assignment_auto_runs",
+        ] {
             assert!(table_hash_sql(t).is_some(), "brak SQL dla {t}");
         }
-        assert!(table_hash_sql("assignment_feedback").is_none());
         assert!(table_hash_sql("nonexistent").is_none());
     }
 

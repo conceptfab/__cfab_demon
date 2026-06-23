@@ -493,6 +493,93 @@ pub fn merge_incoming_data(conn: &mut rusqlite::Connection, slave_data: &str) ->
     // Merge manual_sessions (resolved local IDs) — wydzielone do shared::sync::merge.
     timeflow_shared::sync::merge::merge_manual_sessions(&tx, &archive, &hooks, &id_maps)?;
 
+    // Merge assignment_feedback + assignment_auto_runs (H-1). Append-only encje
+    // (niemutowalne) — dedup przez EXISTS-check (brak UNIQUE constraint, więc
+    // INSERT OR IGNORE by nie zadziałał). FK (session_id/app_id/*_project_id) są
+    // LOKALNE u peera i NIE są remapowane — przenosimy je jak są (feedback służy
+    // do statystyk/uczenia, nie do twardych relacji), klucz dedup to (source, created_at).
+    {
+        use rusqlite::OptionalExtension;
+        if let Some(rows) = archive.pointer("/data/assignment_feedback").and_then(|v| v.as_array()) {
+            for r in rows {
+                let source = r.get("source").and_then(|v| v.as_str()).unwrap_or("");
+                let created_at = r.get("created_at").and_then(|v| v.as_str()).unwrap_or("");
+                if source.is_empty() && created_at.is_empty() {
+                    continue;
+                }
+                let exists: bool = tx
+                    .query_row(
+                        "SELECT 1 FROM assignment_feedback WHERE source = ?1 AND created_at = ?2",
+                        rusqlite::params![source, created_at],
+                        |_| Ok(()),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?
+                    .is_some();
+                if !exists {
+                    tx.execute(
+                        "INSERT INTO assignment_feedback \
+                         (suggestion_id, session_id, app_id, from_project_id, to_project_id, \
+                          source, weight, created_at) \
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+                        rusqlite::params![
+                            r.get("suggestion_id").and_then(|v| v.as_i64()),
+                            r.get("session_id").and_then(|v| v.as_i64()),
+                            r.get("app_id").and_then(|v| v.as_i64()),
+                            r.get("from_project_id").and_then(|v| v.as_i64()),
+                            r.get("to_project_id").and_then(|v| v.as_i64()),
+                            source,
+                            r.get("weight").and_then(|v| v.as_f64()).unwrap_or(1.0),
+                            created_at,
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        if let Some(rows) = archive.pointer("/data/assignment_auto_runs").and_then(|v| v.as_array()) {
+            for r in rows {
+                let started_at = r.get("started_at").and_then(|v| v.as_str()).unwrap_or("");
+                if started_at.is_empty() {
+                    continue;
+                }
+                let exists: bool = tx
+                    .query_row(
+                        "SELECT 1 FROM assignment_auto_runs WHERE started_at = ?1",
+                        [started_at],
+                        |_| Ok(()),
+                    )
+                    .optional()
+                    .map_err(|e| e.to_string())?
+                    .is_some();
+                if !exists {
+                    tx.execute(
+                        "INSERT INTO assignment_auto_runs \
+                         (started_at, finished_at, mode, min_confidence_auto, min_evidence_auto, \
+                          sessions_scanned, sessions_suggested, sessions_assigned, error, \
+                          rolled_back_at, rollback_reverted, rollback_skipped) \
+                         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+                        rusqlite::params![
+                            started_at,
+                            r.get("finished_at").and_then(|v| v.as_str()),
+                            r.get("mode").and_then(|v| v.as_str()).unwrap_or("auto"),
+                            r.get("min_confidence_auto").and_then(|v| v.as_f64()).unwrap_or(0.0),
+                            r.get("min_evidence_auto").and_then(|v| v.as_i64()).unwrap_or(0),
+                            r.get("sessions_scanned").and_then(|v| v.as_i64()).unwrap_or(0),
+                            r.get("sessions_suggested").and_then(|v| v.as_i64()).unwrap_or(0),
+                            r.get("sessions_assigned").and_then(|v| v.as_i64()).unwrap_or(0),
+                            r.get("error").and_then(|v| v.as_str()),
+                            r.get("rolled_back_at").and_then(|v| v.as_str()),
+                            r.get("rollback_reverted").and_then(|v| v.as_i64()).unwrap_or(0),
+                            r.get("rollback_skipped").and_then(|v| v.as_i64()).unwrap_or(0),
+                        ],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+    }
+
     // Tombstones were merged at the top of the transaction (before records),
     // so any peer deletions are already applied. Subsequent INSERT/UPDATE
     // re-introduce records the peer still has — by design.
@@ -1190,6 +1277,32 @@ mod tests {
             CREATE TABLE system_settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE assignment_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                suggestion_id INTEGER,
+                session_id INTEGER,
+                app_id INTEGER,
+                from_project_id INTEGER,
+                to_project_id INTEGER,
+                source TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 1.0,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE assignment_auto_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                mode TEXT NOT NULL,
+                min_confidence_auto REAL NOT NULL,
+                min_evidence_auto INTEGER NOT NULL,
+                sessions_scanned INTEGER NOT NULL DEFAULT 0,
+                sessions_suggested INTEGER NOT NULL DEFAULT 0,
+                sessions_assigned INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                rolled_back_at TEXT,
+                rollback_reverted INTEGER NOT NULL DEFAULT 0,
+                rollback_skipped INTEGER NOT NULL DEFAULT 0
             );",
         )
         .expect("schema");
@@ -1569,6 +1682,78 @@ mod tests {
             .unwrap();
         assert_eq!(client2.as_deref(), Some("METRO"), "nowszy peer nadpisuje client_name (UPDATE)");
         assert_eq!(status2, "done", "nowszy peer nadpisuje status (UPDATE)");
+    }
+
+    #[test]
+    fn merge_carries_assignment_feedback_and_auto_runs_via_export_roundtrip() {
+        // H-1: feedback AI i historia auto-runów nie propagowały się przez sync.
+        // Eksport full → merge → oba wiersze obecne; drugi merge nie duplikuje (dedup).
+        let master = open_test_db();
+        master
+            .execute(
+                "INSERT INTO assignment_feedback \
+                 (suggestion_id, session_id, app_id, from_project_id, to_project_id, source, weight, created_at) \
+                 VALUES (7, 42, 3, 1, 2, 'manual_assign', 1.5, '2026-06-20 10:00:00')",
+                [],
+            )
+            .unwrap();
+        master
+            .execute(
+                "INSERT INTO assignment_auto_runs \
+                 (started_at, finished_at, mode, min_confidence_auto, min_evidence_auto, \
+                  sessions_scanned, sessions_suggested, sessions_assigned, error, \
+                  rolled_back_at, rollback_reverted, rollback_skipped) \
+                 VALUES ('2026-06-20 09:00:00', '2026-06-20 09:05:00', 'auto', 0.8, 3, \
+                         100, 20, 15, NULL, NULL, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        let mut slave = open_test_db();
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let fb: i64 = slave
+            .query_row("SELECT COUNT(*) FROM assignment_feedback", [], |r| r.get(0))
+            .unwrap();
+        let ar: i64 = slave
+            .query_row("SELECT COUNT(*) FROM assignment_auto_runs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(fb, 1, "assignment_feedback musi dojechać przez sync");
+        assert_eq!(ar, 1, "assignment_auto_runs musi dojechać przez sync");
+
+        // Weryfikacja pól (nie tylko COUNT).
+        let (source, weight, sid): (String, f64, i64) = slave
+            .query_row(
+                "SELECT source, weight, session_id FROM assignment_feedback",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(source, "manual_assign");
+        assert_eq!(weight, 1.5);
+        assert_eq!(sid, 42);
+        let (scanned, assigned): (i64, i64) = slave
+            .query_row(
+                "SELECT sessions_scanned, sessions_assigned FROM assignment_auto_runs",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(scanned, 100);
+        assert_eq!(assigned, 15);
+
+        // IDEMPOTENCJA: drugi merge tego samego eksportu NIE duplikuje wierszy.
+        merge_incoming_data(&mut slave, &export).expect("re-merge into slave");
+        let fb2: i64 = slave
+            .query_row("SELECT COUNT(*) FROM assignment_feedback", [], |r| r.get(0))
+            .unwrap();
+        let ar2: i64 = slave
+            .query_row("SELECT COUNT(*) FROM assignment_auto_runs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(fb2, 1, "dedup feedback — drugi merge nie duplikuje");
+        assert_eq!(ar2, 1, "dedup auto_runs — drugi merge nie duplikuje");
     }
 
     #[test]

@@ -49,6 +49,12 @@ pub struct TableHashes {
     pub applications: String,
     pub sessions: String,
     pub manual_sessions: String,
+    // H-1 assignment tables. `#[serde(default)]` keeps archives from pre-H-1 peers
+    // (which omit the fields) parseable.
+    #[serde(default)]
+    pub assignment_feedback: String,
+    #[serde(default)]
+    pub assignment_auto_runs: String,
 }
 
 #[derive(Serialize)]
@@ -709,6 +715,8 @@ fn build_table_hashes(conn: &rusqlite::Connection) -> TableHashes {
         applications: compute_table_hash(conn, "applications"),
         sessions: compute_table_hash(conn, "sessions"),
         manual_sessions: compute_table_hash(conn, "manual_sessions"),
+        assignment_feedback: compute_table_hash(conn, "assignment_feedback"),
+        assignment_auto_runs: compute_table_hash(conn, "assignment_auto_runs"),
     }
 }
 
@@ -1597,6 +1605,17 @@ fn build_delta_for_pull(
         Vec::new()
     };
 
+    // Assignment feedback + auto-runs (always full — append-only, no `since` window,
+    // so full snapshots stay complete; mirrors projects). H-1: bez tego AI feedback
+    // i historia auto-runów nigdy nie propagują się między urządzeniami online/LAN.
+    let assignment_feedback = fetch_all_rows(conn,
+        "SELECT id, suggestion_id, session_id, app_id, from_project_id, to_project_id, \
+         source, weight, created_at FROM assignment_feedback ORDER BY created_at")?;
+    let assignment_auto_runs = fetch_all_rows(conn,
+        "SELECT id, started_at, finished_at, mode, min_confidence_auto, min_evidence_auto, \
+         sessions_scanned, sessions_suggested, sessions_assigned, error, rolled_back_at, \
+         rollback_reverted, rollback_skipped FROM assignment_auto_runs ORDER BY started_at")?;
+
     let table_hashes = build_table_hashes(conn);
 
     let archive = serde_json::json!({
@@ -1610,6 +1629,8 @@ fn build_delta_for_pull(
             "sessions": sessions,
             "manual_sessions": manual,
             "tombstones": tombstones,
+            "assignment_feedback": assignment_feedback,
+            "assignment_auto_runs": assignment_auto_runs,
         }
     });
 
