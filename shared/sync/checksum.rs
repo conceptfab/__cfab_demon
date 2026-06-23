@@ -52,7 +52,7 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
                 COALESCE(is_hidden,'') || '|' || COALESCE(proj_name,'') || '|' || updated_at, ';'), '') \
              FROM (SELECT a.executable_name AS app_name, s.start_time, s.end_time, s.duration_seconds, \
                           s.date, s.rate_multiplier, s.comment, s.is_hidden, \
-                          (SELECT p.name FROM projects p WHERE p.id = s.project_id) AS proj_name, \
+                          COALESCE((SELECT p.name FROM projects p WHERE p.id = s.project_id), s.project_name) AS proj_name, \
                           s.updated_at \
                    FROM sessions s JOIN applications a ON s.app_id = a.id \
                    ORDER BY a.executable_name, s.start_time)",
@@ -100,5 +100,106 @@ mod table_hash_sql_tests {
         }
         assert!(table_hash_sql("assignment_feedback").is_none());
         assert!(table_hash_sql("nonexistent").is_none());
+    }
+
+    /// Buduje minimalną bazę pasującą do SQL sesji.
+    fn make_session_db(schema: &str) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().expect("in-memory");
+        conn.execute_batch("PRAGMA foreign_keys=OFF;").unwrap();
+        conn.execute_batch(schema).unwrap();
+        conn
+    }
+
+    /// M-1: hash sesji musi być SYMETRYCZNY gdy jeden peer ma lokalny projekt,
+    /// a drugi ma tylko project_name w sesji (brak wiersza w projects).
+    /// Przed fixem: peer A liczy proj_name z JOIN, peer B dostaje NULL → różne hashe → wieczny re-sync.
+    #[test]
+    fn session_hash_symmetric_when_project_row_absent_but_project_name_set() {
+        let shared_schema_suffix = "
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY,
+                executable_name TEXT NOT NULL UNIQUE,
+                display_name TEXT NOT NULL,
+                project_id INTEGER,
+                color TEXT,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            INSERT INTO applications (id, executable_name, display_name, updated_at)
+            VALUES (1, 'myapp.exe', 'My App', '2026-04-20 10:00:00');
+        ";
+
+        // Peer A: ma wiersz projektu, sesja ma project_id + project_name
+        let schema_a = &format!(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            INSERT INTO projects (id, name, updated_at) VALUES (1, 'Klient', '2026-04-20 10:00:00');
+            {shared_schema_suffix}
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
+                project_id INTEGER,
+                project_name TEXT,
+                comment TEXT,
+                is_hidden INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00',
+                UNIQUE(app_id, start_time)
+            );
+            INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier,
+                                  project_id, project_name, updated_at)
+            VALUES (1, '2026-04-20 10:00:00', '2026-04-20 10:10:00', 600, '2026-04-20', 1.0,
+                    1, 'Klient', '2026-04-20 10:00:00');"
+        );
+
+        // Peer B: brak wiersza projektu (tombstone rodzica), sesja ma tylko project_name
+        let schema_b = &format!(
+            "CREATE TABLE projects (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
+            );
+            {shared_schema_suffix}
+            CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY,
+                app_id INTEGER NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                duration_seconds INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                rate_multiplier REAL NOT NULL DEFAULT 1.0,
+                project_id INTEGER,
+                project_name TEXT,
+                comment TEXT,
+                is_hidden INTEGER DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00',
+                UNIQUE(app_id, start_time)
+            );
+            INSERT INTO sessions (app_id, start_time, end_time, duration_seconds, date, rate_multiplier,
+                                  project_id, project_name, updated_at)
+            VALUES (1, '2026-04-20 10:00:00', '2026-04-20 10:10:00', 600, '2026-04-20', 1.0,
+                    NULL, 'Klient', '2026-04-20 10:00:00');"
+        );
+
+        let conn_a = make_session_db(schema_a);
+        let conn_b = make_session_db(schema_b);
+
+        let sql = table_hash_sql("sessions").unwrap();
+        let raw_a: String = conn_a.query_row(sql, [], |r| r.get(0)).expect("hash peer A");
+        let raw_b: String = conn_b.query_row(sql, [], |r| r.get(0)).expect("hash peer B");
+
+        assert_eq!(
+            content_hash(&raw_a),
+            content_hash(&raw_b),
+            "Asymetryczny hash sesji: peer A (ma projekt) = {:?}, peer B (brak projektu, project_name ustawione) = {:?}",
+            raw_a,
+            raw_b,
+        );
     }
 }

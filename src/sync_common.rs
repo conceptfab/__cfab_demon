@@ -1376,6 +1376,11 @@ mod tests {
 
         fn assert_converged(&self) {
             assert_eq!(user_data_snapshot(&self.master), user_data_snapshot(&self.slave));
+            assert_eq!(
+                compute_tables_hash_string_conn(&self.master),
+                compute_tables_hash_string_conn(&self.slave),
+                "table_hashes(master) != table_hashes(slave) po konwergencji — sync nie zgłosi 'none', wieczny re-sync"
+            );
         }
     }
 
