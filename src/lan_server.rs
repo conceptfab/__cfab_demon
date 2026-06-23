@@ -1563,7 +1563,7 @@ fn build_delta_for_pull(
     let clients = fetch_all_rows(conn, "SELECT id, name, contact, address, tax_id, currency, default_hourly_rate, color, archived_at, created_at, updated_at FROM clients ORDER BY name")?;
 
     // Fetch applications (always full)
-    let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, updated_at FROM applications ORDER BY executable_name")?;
+    let apps = fetch_all_rows(conn, "SELECT id, executable_name, display_name, project_id, color, updated_at FROM applications ORDER BY executable_name")?;
 
     // Fetch sessions since timestamp (parameterized — no SQL injection).
     // project_name carries the peer's project label so receiving peers can preserve

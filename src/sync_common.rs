@@ -1124,6 +1124,7 @@ mod tests {
                 executable_name TEXT NOT NULL UNIQUE,
                 display_name TEXT NOT NULL,
                 project_id INTEGER,
+                color TEXT,
                 is_imported INTEGER DEFAULT 0,
                 updated_at TEXT NOT NULL DEFAULT '1970-01-01 00:00:00'
             );
@@ -2511,6 +2512,53 @@ mod tests {
         assert_eq!(
             display_name3, "LocalNewer",
             "LWW: lokalny rekord nowszy niz remote nie jest nadpisywany"
+        );
+    }
+
+    #[test]
+    fn merge_applications_color_lww() {
+        // Testuje, że applications.color propaguje przez eksport i scalanie LWW.
+        // Lokalny rekord ma starszy updated_at → remote (z nowszym ts) wygrywa.
+
+        let t_old = "2026-06-20 09:00:00";
+        let t_new = "2026-06-20 11:00:00";
+
+        // Master: app z color='#ff0000' i nowszym ts
+        let master = open_test_db();
+        master
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, color, updated_at) \
+                 VALUES ('bar.exe', 'Bar', '#ff0000', ?1)",
+                rusqlite::params![t_new],
+            )
+            .unwrap();
+
+        let export = build_full_export(&master).expect("export master");
+
+        // Slave: ta sama aplikacja z color='#111111' i starszym ts
+        let mut slave = open_test_db();
+        slave
+            .execute(
+                "INSERT INTO applications (executable_name, display_name, color, updated_at) \
+                 VALUES ('bar.exe', 'Bar', '#111111', ?1)",
+                rusqlite::params![t_old],
+            )
+            .unwrap();
+
+        merge_incoming_data(&mut slave, &export).expect("merge into slave");
+
+        let color: Option<String> = slave
+            .query_row(
+                "SELECT color FROM applications WHERE executable_name = 'bar.exe'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("aplikacja powinna byc obecna na slave");
+
+        assert_eq!(
+            color.as_deref(),
+            Some("#ff0000"),
+            "LWW: remote (nowszy) color='#ff0000' powinien nadpisac lokalny '#111111'"
         );
     }
 

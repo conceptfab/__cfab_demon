@@ -39,9 +39,10 @@ pub fn table_hash_sql(table: &str) -> Option<&'static str> {
         "applications" =>
             "SELECT COALESCE(group_concat( \
                 executable_name || '|' || display_name || '|' || COALESCE(proj_name,'') || '|' || \
-                updated_at, ';'), '') \
+                COALESCE(color,'') || '|' || updated_at, ';'), '') \
              FROM (SELECT a.executable_name, a.display_name, \
                           (SELECT p.name FROM projects p WHERE p.id = a.project_id) AS proj_name, \
+                          a.color, \
                           a.updated_at \
                    FROM applications a ORDER BY a.executable_name)",
         "sessions" =>

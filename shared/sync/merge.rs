@@ -663,10 +663,12 @@ pub fn merge_applications(
                         tx.execute(
                             "UPDATE applications SET display_name = ?1, \
                              project_id = COALESCE(?2, project_id), \
-                             updated_at = ?3 WHERE executable_name = ?4",
+                             color = COALESCE(?3, color), \
+                             updated_at = ?4 WHERE executable_name = ?5",
                             rusqlite::params![
                                 json_str_opt(app, "display_name"),
                                 local_project_id,
+                                json_str_opt(app, "color"),
                                 updated_at,
                                 exe_name,
                             ],
@@ -675,9 +677,9 @@ pub fn merge_applications(
                 }
                 None => {
                     tx.execute(
-                        "INSERT INTO applications (executable_name, display_name, project_id, is_imported, updated_at) \
-                         VALUES (?1, ?2, ?3, 1, ?4)",
-                        rusqlite::params![exe_name, json_str_opt(app, "display_name"), local_project_id, updated_at],
+                        "INSERT INTO applications (executable_name, display_name, project_id, color, is_imported, updated_at) \
+                         VALUES (?1, ?2, ?3, ?4, 1, ?5)",
+                        rusqlite::params![exe_name, json_str_opt(app, "display_name"), local_project_id, json_str_opt(app, "color"), updated_at],
                     ).map_err(|e| e.to_string())?;
                     // Update app_name_to_local_id for newly-inserted apps
                     if let Ok(new_id) = tx.query_row(
